@@ -26,6 +26,9 @@ profile.cov
 go.work
 go.work.sum
 
+# External test suites (downloaded, not committed)
+testdata/external/
+
 # env file
 .env
 
