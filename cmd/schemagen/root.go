@@ -26,10 +26,11 @@ func NewRootCmd() *cobra.Command {
 
 func newGenerateCmd() *cobra.Command {
 	var (
-		outputDir string
-		pkgName   string
-		omitEmpty bool
-		verbose   bool
+		outputDir        string
+		pkgName          string
+		omitEmpty        bool
+		strictProperties bool
+		verbose          bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,9 +59,10 @@ func newGenerateCmd() *cobra.Command {
 
 				// 3. Create generator with config
 				cfg := generator.Config{
-					PackageName: pkgName,
-					OutputDir:   outputDir,
-					OmitEmpty:   omitEmpty,
+					PackageName:      pkgName,
+					OutputDir:        outputDir,
+					OmitEmpty:        omitEmpty,
+					StrictProperties: strictProperties,
 				}
 				gen := generator.New(cfg)
 
@@ -102,6 +104,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for generated files")
 	cmd.Flags().StringVarP(&pkgName, "package", "p", "generated", "Go package name for generated code")
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
+	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false (no overflow map for extra JSON keys)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd

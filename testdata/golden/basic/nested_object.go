@@ -2,15 +2,134 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type AddressLocation struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
+	Latitude             float64                    `json:"latitude"`
+	Longitude            float64                    `json:"longitude"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (a *AddressLocation) UnmarshalJSON(data []byte) error {
+	type Alias AddressLocation
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"latitude":  true,
+		"longitude": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (a AddressLocation) MarshalJSON() ([]byte, error) {
+	type Alias AddressLocation
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(a),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range a.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Address struct {
-	City     string          `json:"city"`
-	Location AddressLocation `json:"location,omitempty"`
-	State    string          `json:"state,omitempty"`
-	Street   string          `json:"street"`
-	Zip      string          `json:"zip,omitempty"`
+	City                 string                     `json:"city"`
+	Location             AddressLocation            `json:"location,omitempty"`
+	State                string                     `json:"state,omitempty"`
+	Street               string                     `json:"street"`
+	Zip                  string                     `json:"zip,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (a *Address) UnmarshalJSON(data []byte) error {
+	type Alias Address
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"city":     true,
+		"location": true,
+		"state":    true,
+		"street":   true,
+		"zip":      true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (a Address) MarshalJSON() ([]byte, error) {
+	type Alias Address
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(a),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range a.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

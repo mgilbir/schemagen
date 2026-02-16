@@ -2,10 +2,73 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type PrimitiveTypes struct {
-	BoolField   bool    `json:"bool_field,omitempty"`
-	IntField    int64   `json:"int_field,omitempty"`
-	NullableStr *string `json:"nullable_str,omitempty"`
-	NumField    float64 `json:"num_field,omitempty"`
-	StrField    string  `json:"str_field,omitempty"`
+	BoolField            bool                       `json:"bool_field,omitempty"`
+	IntField             int64                      `json:"int_field,omitempty"`
+	NullableStr          *string                    `json:"nullable_str,omitempty"`
+	NumField             float64                    `json:"num_field,omitempty"`
+	StrField             string                     `json:"str_field,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
+	type Alias PrimitiveTypes
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"bool_field":   true,
+		"int_field":    true,
+		"nullable_str": true,
+		"num_field":    true,
+		"str_field":    true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if p.AdditionalProperties == nil {
+				p.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			p.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (p PrimitiveTypes) MarshalJSON() ([]byte, error) {
+	type Alias PrimitiveTypes
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(p),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range p.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

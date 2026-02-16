@@ -58,16 +58,25 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	knownFields := map[string]bool{
 		{{- range $struct.Fields}}
-		"{{.JSONName}}": true,
+		"{{goStringLiteral .JSONName}}": true,
+		{{- end}}
+		{{- range $struct.OneOfs}}
+		"{{goStringLiteral .JSONName}}": true,
 		{{- end}}
 	}
-	{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
 	for k, v := range raw {
 		if !knownFields[k] {
+			if {{$recv}}.AdditionalProperties == nil {
+				{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+			}
+			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
+			{{$recv}}.AdditionalProperties[k] = v
+			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
 			if err := json.Unmarshal(v, &val); err == nil {
 				{{$recv}}.AdditionalProperties[k] = val
 			}
+			{{- end}}
 		}
 	}
 	{{- end}}

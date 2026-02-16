@@ -2,12 +2,128 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type DatabaseConfig struct {
-	Host string `json:"host"`
-	Port int64  `json:"port,omitempty"`
+	Host                 string                     `json:"host"`
+	Port                 int64                      `json:"port,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
+	type Alias DatabaseConfig
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(d),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"host": true,
+		"port": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if d.AdditionalProperties == nil {
+				d.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			d.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (d DatabaseConfig) MarshalJSON() ([]byte, error) {
+	type Alias DatabaseConfig
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(d),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(d.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range d.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Config struct {
-	Database *DatabaseConfig `json:"database,omitempty"`
-	Name     string          `json:"name"`
+	Database             *DatabaseConfig            `json:"database,omitempty"`
+	Name                 string                     `json:"name"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (c *Config) UnmarshalJSON(data []byte) error {
+	type Alias Config
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"database": true,
+		"name":     true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if c.AdditionalProperties == nil {
+				c.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			c.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (c Config) MarshalJSON() ([]byte, error) {
+	type Alias Config
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(c),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(c.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range c.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

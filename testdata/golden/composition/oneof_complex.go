@@ -8,26 +8,248 @@ import (
 )
 
 type EmailTarget struct {
-	EmailAddress string `json:"email_address"`
+	EmailAddress         string                     `json:"email_address"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (e *EmailTarget) UnmarshalJSON(data []byte) error {
+	type Alias EmailTarget
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"email_address": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if e.AdditionalProperties == nil {
+				e.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			e.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (e EmailTarget) MarshalJSON() ([]byte, error) {
+	type Alias EmailTarget
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(e),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(e.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range e.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type HTMLContent struct {
-	HTML    string `json:"html"`
-	Subject string `json:"subject,omitempty"`
+	HTML                 string                     `json:"html"`
+	Subject              string                     `json:"subject,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (h *HTMLContent) UnmarshalJSON(data []byte) error {
+	type Alias HTMLContent
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(h),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"html":    true,
+		"subject": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if h.AdditionalProperties == nil {
+				h.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			h.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (h HTMLContent) MarshalJSON() ([]byte, error) {
+	type Alias HTMLContent
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(h),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(h.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range h.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type SmsTarget struct {
-	PhoneNumber string `json:"phone_number"`
+	PhoneNumber          string                     `json:"phone_number"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (s *SmsTarget) UnmarshalJSON(data []byte) error {
+	type Alias SmsTarget
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"phone_number": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if s.AdditionalProperties == nil {
+				s.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			s.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (s SmsTarget) MarshalJSON() ([]byte, error) {
+	type Alias SmsTarget
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(s),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(s.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range s.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type TextContent struct {
-	Body string `json:"body"`
+	Body                 string                     `json:"body"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (t *TextContent) UnmarshalJSON(data []byte) error {
+	type Alias TextContent
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"body": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if t.AdditionalProperties == nil {
+				t.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			t.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (t TextContent) MarshalJSON() ([]byte, error) {
+	type Alias TextContent
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(t),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(t.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range t.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Notification struct {
-	ID      string                 `json:"id"`
-	Content isNotification_Content `json:"-"`
-	Target  isNotification_Target  `json:"-"`
+	ID                   string                     `json:"id"`
+	Content              isNotification_Content     `json:"-"`
+	Target               isNotification_Target      `json:"-"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 // isNotification_Content is a sealed interface for the Content field of Notification.
@@ -203,6 +425,24 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("Notification.Target: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 		}
 	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"id":      true,
+		"content": true,
+		"target":  true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if n.AdditionalProperties == nil {
+				n.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			n.AdditionalProperties[k] = v
+		}
+	}
 
 	return nil
 }
@@ -249,7 +489,21 @@ func (n Notification) MarshalJSON() ([]byte, error) {
 			aux.Target = raw
 		}
 	}
-	return json.Marshal(aux)
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(n.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range n.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 // oneofHasRequiredFields checks if a JSON object contains all the specified field names.

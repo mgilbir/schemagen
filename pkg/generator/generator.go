@@ -92,7 +92,11 @@ func (g *Generator) addRequiredImports() {
 			}
 			if sd.AdditionalProperties != nil {
 				needsJSON = true
-				needsFmt = true
+				// fmt is only needed for non-RawMessage additional properties (typed maps)
+				// because the marshal template uses fmt.Errorf for marshaling errors.
+				if sd.AdditionalProperties.ValueType.GoTypeName() != "json.RawMessage" {
+					needsFmt = true
+				}
 			}
 			if len(sd.Validations) > 0 {
 				needsFmt = true
@@ -301,15 +305,21 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// Handle additionalProperties
+	// Handle additionalProperties.
+	// Per JSON Schema spec, absent additionalProperties defaults to true (allow any extra keys).
+	// In StrictProperties mode, absent additionalProperties is treated as false (no overflow map).
 	var additionalProps *AdditionalPropertiesDef
 	if s.AdditionalProperties != nil {
-		if s.AdditionalProperties.Bool != nil && *s.AdditionalProperties.Bool {
-			additionalProps = &AdditionalPropertiesDef{
-				ValueType: &PrimitiveType{Name: "any"},
+		if s.AdditionalProperties.Bool != nil {
+			if *s.AdditionalProperties.Bool {
+				// additionalProperties: true → map[string]json.RawMessage
+				additionalProps = &AdditionalPropertiesDef{
+					ValueType: &PrimitiveType{Name: "json.RawMessage"},
+				}
+				needsMarshal = true
+				needsUnmarshal = true
 			}
-			needsMarshal = true
-			needsUnmarshal = true
+			// additionalProperties: false → no overflow map (strict)
 		} else if s.AdditionalProperties.Schema != nil {
 			valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 			additionalProps = &AdditionalPropertiesDef{
@@ -318,6 +328,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 			needsMarshal = true
 			needsUnmarshal = true
 		}
+	} else if !g.config.StrictProperties && len(fields) > 0 {
+		// No additionalProperties specified: per JSON Schema spec, defaults to true.
+		// In non-strict mode, add an overflow map to preserve extra properties.
+		// Only add when there are declared fields (otherwise it's a bare object schema
+		// and we're not generating anything useful yet).
+		additionalProps = &AdditionalPropertiesDef{
+			ValueType: &PrimitiveType{Name: "json.RawMessage"},
+		}
+		needsMarshal = true
+		needsUnmarshal = true
 	}
 
 	// Collect validation rules

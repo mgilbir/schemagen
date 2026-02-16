@@ -2,21 +2,197 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type Address struct {
-	City   string `json:"city"`
-	Street string `json:"street"`
-	Zip    string `json:"zip,omitempty"`
+	City                 string                     `json:"city"`
+	Street               string                     `json:"street"`
+	Zip                  string                     `json:"zip,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (a *Address) UnmarshalJSON(data []byte) error {
+	type Alias Address
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"city":   true,
+		"street": true,
+		"zip":    true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (a Address) MarshalJSON() ([]byte, error) {
+	type Alias Address
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(a),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range a.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Item struct {
-	Name     string  `json:"name"`
-	Price    float64 `json:"price"`
-	Quantity int64   `json:"quantity"`
+	Name                 string                     `json:"name"`
+	Price                float64                    `json:"price"`
+	Quantity             int64                      `json:"quantity"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (i *Item) UnmarshalJSON(data []byte) error {
+	type Alias Item
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(i),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"name":     true,
+		"price":    true,
+		"quantity": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if i.AdditionalProperties == nil {
+				i.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			i.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (i Item) MarshalJSON() ([]byte, error) {
+	type Alias Item
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(i),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(i.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range i.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Order struct {
-	BillingAddress  Address `json:"billing_address,omitempty"`
-	Items           []Item  `json:"items"`
-	OrderID         string  `json:"order_id"`
-	ShippingAddress Address `json:"shipping_address"`
+	BillingAddress       Address                    `json:"billing_address,omitempty"`
+	Items                []Item                     `json:"items"`
+	OrderID              string                     `json:"order_id"`
+	ShippingAddress      Address                    `json:"shipping_address"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (o *Order) UnmarshalJSON(data []byte) error {
+	type Alias Order
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(o),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"billing_address":  true,
+		"items":            true,
+		"order_id":         true,
+		"shipping_address": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if o.AdditionalProperties == nil {
+				o.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			o.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (o Order) MarshalJSON() ([]byte, error) {
+	type Alias Order
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(o),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(o.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range o.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

@@ -2,13 +2,130 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type ArrayTypesMetadataItem struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key                  string                     `json:"key"`
+	Value                string                     `json:"value"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
+	type Alias ArrayTypesMetadataItem
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"key":   true,
+		"value": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (a ArrayTypesMetadataItem) MarshalJSON() ([]byte, error) {
+	type Alias ArrayTypesMetadataItem
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(a),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range a.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type ArrayTypes struct {
-	Metadata []ArrayTypesMetadataItem `json:"metadata,omitempty"`
-	Scores   []float64                `json:"scores,omitempty"`
-	Tags     []string                 `json:"tags,omitempty"`
+	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitempty"`
+	Scores               []float64                  `json:"scores,omitempty"`
+	Tags                 []string                   `json:"tags,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
+	type Alias ArrayTypes
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"metadata": true,
+		"scores":   true,
+		"tags":     true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (a ArrayTypes) MarshalJSON() ([]byte, error) {
+	type Alias ArrayTypes
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(a),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(a.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range a.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

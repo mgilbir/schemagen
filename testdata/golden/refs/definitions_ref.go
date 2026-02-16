@@ -2,12 +2,128 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type Member struct {
-	Name string `json:"name"`
-	Role string `json:"role,omitempty"`
+	Name                 string                     `json:"name"`
+	Role                 string                     `json:"role,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (m *Member) UnmarshalJSON(data []byte) error {
+	type Alias Member
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(m),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"name": true,
+		"role": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if m.AdditionalProperties == nil {
+				m.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			m.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (m Member) MarshalJSON() ([]byte, error) {
+	type Alias Member
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(m),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(m.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range m.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Team struct {
-	Members []Member `json:"members"`
-	Name    string   `json:"name"`
+	Members              []Member                   `json:"members"`
+	Name                 string                     `json:"name"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (t *Team) UnmarshalJSON(data []byte) error {
+	type Alias Team
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"members": true,
+		"name":    true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if t.AdditionalProperties == nil {
+				t.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			t.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (t Team) MarshalJSON() ([]byte, error) {
+	type Alias Team
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(t),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(t.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range t.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

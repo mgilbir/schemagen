@@ -2,6 +2,10 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 type TaskPriority string
 
 const (
@@ -20,7 +24,64 @@ const (
 )
 
 type Task struct {
-	Priority TaskPriority `json:"priority,omitempty"`
-	Status   TaskStatus   `json:"status"`
-	Title    string       `json:"title"`
+	Priority             TaskPriority               `json:"priority,omitempty"`
+	Status               TaskStatus                 `json:"status"`
+	Title                string                     `json:"title"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type Alias Task
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"priority": true,
+		"status":   true,
+		"title":    true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if t.AdditionalProperties == nil {
+				t.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			t.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (t Task) MarshalJSON() ([]byte, error) {
+	type Alias Task
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(t),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(t.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range t.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

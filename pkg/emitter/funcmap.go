@@ -31,6 +31,8 @@ func FuncMap() template.FuncMap {
 		"isOneOfRequired":    func(recv, field string) bool { return false },
 		"requiredFieldsList": requiredFieldsListFunc,
 		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
+		"isRawMessage":       isRawMessageFunc,
+		"goStringLiteral":    goStringLiteralFunc,
 	}
 }
 
@@ -97,6 +99,24 @@ func lowerFirstFunc(s string) string {
 // addFunc adds two integers.
 func addFunc(a, b int) int {
 	return a + b
+}
+
+// isRawMessageFunc returns true if the given GoType is json.RawMessage.
+// Used in templates to avoid unnecessary unmarshal when capturing additional properties.
+func isRawMessageFunc(v any) bool {
+	if gt, ok := v.(interface{ GoTypeName() string }); ok {
+		return gt.GoTypeName() == "json.RawMessage"
+	}
+	return false
+}
+
+// goStringLiteralFunc escapes a string for use inside a Go double-quoted string literal.
+// This handles characters like double quotes and backslashes that would otherwise
+// break the generated Go source code.
+func goStringLiteralFunc(s string) string {
+	// Use %q to get a properly quoted string, then strip the surrounding quotes.
+	q := fmt.Sprintf("%q", s)
+	return q[1 : len(q)-1]
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

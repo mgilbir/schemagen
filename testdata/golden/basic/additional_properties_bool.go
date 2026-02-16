@@ -4,12 +4,11 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type FlexibleConfig struct {
-	Name                 string         `json:"name"`
-	AdditionalProperties map[string]any `json:"-"`
+	Name                 string                     `json:"name"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
@@ -31,13 +30,12 @@ func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
 	knownFields := map[string]bool{
 		"name": true,
 	}
-	f.AdditionalProperties = make(map[string]any)
 	for k, v := range raw {
 		if !knownFields[k] {
-			var val any
-			if err := json.Unmarshal(v, &val); err == nil {
-				f.AdditionalProperties[k] = val
+			if f.AdditionalProperties == nil {
+				f.AdditionalProperties = make(map[string]json.RawMessage)
 			}
+			f.AdditionalProperties[k] = v
 		}
 	}
 
@@ -62,11 +60,7 @@ func (f FlexibleConfig) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	for k, v := range f.AdditionalProperties {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
-		}
-		obj[k] = raw
+		obj[k] = v
 	}
 	return json.Marshal(obj)
 }

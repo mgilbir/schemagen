@@ -8,17 +8,129 @@ import (
 )
 
 type Circle struct {
-	Radius float64 `json:"radius"`
+	Radius               float64                    `json:"radius"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (c *Circle) UnmarshalJSON(data []byte) error {
+	type Alias Circle
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"radius": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if c.AdditionalProperties == nil {
+				c.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			c.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (c Circle) MarshalJSON() ([]byte, error) {
+	type Alias Circle
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(c),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(c.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range c.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Rectangle struct {
-	Height float64 `json:"height"`
-	Width  float64 `json:"width"`
+	Height               float64                    `json:"height"`
+	Width                float64                    `json:"width"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (r *Rectangle) UnmarshalJSON(data []byte) error {
+	type Alias Rectangle
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"height": true,
+		"width":  true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if r.AdditionalProperties == nil {
+				r.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			r.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (r Rectangle) MarshalJSON() ([]byte, error) {
+	type Alias Rectangle
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(r),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(r.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range r.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 type Drawing struct {
-	Name  string          `json:"name"`
-	Shape isDrawing_Shape `json:"-"`
+	Name                 string                     `json:"name"`
+	Shape                isDrawing_Shape            `json:"-"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 // isDrawing_Shape is a sealed interface for the Shape field of Drawing.
@@ -113,6 +225,23 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("Drawing.Shape: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 		}
 	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"name":  true,
+		"shape": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if d.AdditionalProperties == nil {
+				d.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			d.AdditionalProperties[k] = v
+		}
+	}
 
 	return nil
 }
@@ -141,7 +270,21 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 			aux.Shape = raw
 		}
 	}
-	return json.Marshal(aux)
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(d.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range d.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 // oneofHasRequiredFields checks if a JSON object contains all the specified field names.

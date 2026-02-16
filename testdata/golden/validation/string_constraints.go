@@ -3,14 +3,73 @@
 package testpkg
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
 type UserProfile struct {
-	Age      int64    `json:"age,omitempty"`
-	Bio      string   `json:"bio,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
-	Username string   `json:"username"`
+	Age                  int64                      `json:"age,omitempty"`
+	Bio                  string                     `json:"bio,omitempty"`
+	Tags                 []string                   `json:"tags,omitempty"`
+	Username             string                     `json:"username"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (u *UserProfile) UnmarshalJSON(data []byte) error {
+	type Alias UserProfile
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(u),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"age":      true,
+		"bio":      true,
+		"tags":     true,
+		"username": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if u.AdditionalProperties == nil {
+				u.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			u.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (u UserProfile) MarshalJSON() ([]byte, error) {
+	type Alias UserProfile
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(u),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(u.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range u.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 // Validate checks UserProfile against its JSON Schema constraints.

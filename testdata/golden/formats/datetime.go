@@ -3,12 +3,71 @@
 package testpkg
 
 import (
+	"encoding/json"
 	"time"
 )
 
 type Event struct {
-	EndsAt   time.Time `json:"ends_at,omitempty"`
-	Name     string    `json:"name"`
-	StartsAt time.Time `json:"starts_at"`
-	URL      string    `json:"url,omitempty"`
+	EndsAt               time.Time                  `json:"ends_at,omitempty"`
+	Name                 string                     `json:"name"`
+	StartsAt             time.Time                  `json:"starts_at"`
+	URL                  string                     `json:"url,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (e *Event) UnmarshalJSON(data []byte) error {
+	type Alias Event
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"ends_at":   true,
+		"name":      true,
+		"starts_at": true,
+		"url":       true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if e.AdditionalProperties == nil {
+				e.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			e.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (e Event) MarshalJSON() ([]byte, error) {
+	type Alias Event
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(e),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(e.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range e.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }

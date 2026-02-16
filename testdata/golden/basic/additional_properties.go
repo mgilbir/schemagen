@@ -31,9 +31,11 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	knownFields := map[string]bool{
 		"version": true,
 	}
-	m.AdditionalProperties = make(map[string]string)
 	for k, v := range raw {
 		if !knownFields[k] {
+			if m.AdditionalProperties == nil {
+				m.AdditionalProperties = make(map[string]string)
+			}
 			var val string
 			if err := json.Unmarshal(v, &val); err == nil {
 				m.AdditionalProperties[k] = val

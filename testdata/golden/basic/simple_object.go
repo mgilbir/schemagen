@@ -2,6 +2,10 @@
 
 package testpkg
 
+import (
+	"encoding/json"
+)
+
 // Person - A person record
 type Person struct {
 	Active bool `json:"active,omitempty"`
@@ -10,5 +14,63 @@ type Person struct {
 	// Email address
 	Email string `json:"email"`
 	// Full name
-	Name string `json:"name"`
+	Name                 string                     `json:"name"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (p *Person) UnmarshalJSON(data []byte) error {
+	type Alias Person
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		"active": true,
+		"age":    true,
+		"email":  true,
+		"name":   true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			if p.AdditionalProperties == nil {
+				p.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			p.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (p Person) MarshalJSON() ([]byte, error) {
+	type Alias Person
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(p),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range p.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
