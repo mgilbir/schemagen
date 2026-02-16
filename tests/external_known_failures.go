@@ -1,19 +1,15 @@
 package tests
 
 // Known failures for external JSON Schema Test Suite tests.
-// Updated after additionalProperties overflow map support.
-// CodeGen: 58 known failures (37 compile + 21 remaining emit/identifier)
-// RoundTrip: 207 known failures (down from 275, after additionalProperties fix)
+// Updated after emit/identifier and self-ref fixes.
+// CodeGen: 37 known failures (all compile errors — ref resolution, remote refs)
+// RoundTrip: 195 known failures (down from 207, after self-ref and anchor fixes)
 
 var knownParseFailures = map[string]string{}
 
 var knownCodeGenFailures = map[string]string{
 	// --- draft2019-09 ---
-	"draft2019-09/properties/properties with escaped characters":                                    "emit: invalid Go identifier from schema naming",
 	"draft2019-09/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
-	"draft2019-09/ref/URN base URI with URN and anchor ref":                                         "emit: invalid Go identifier from schema naming",
-	"draft2019-09/ref/root pointer ref":                                                             "emit: invalid Go identifier from schema naming",
-	"draft2019-09/ref/simple URN base URI with $ref via the URN":                                    "emit: invalid Go identifier from schema naming",
 	"draft2019-09/ref/refs with relative uris and defs":                                             "compile: generated code does not compile",
 	"draft2019-09/ref/relative pointer ref to object":                                               "compile: generated code does not compile",
 	"draft2019-09/ref/relative refs with absolute uris and defs":                                    "compile: generated code does not compile",
@@ -21,15 +17,10 @@ var knownCodeGenFailures = map[string]string{
 	"draft2019-09/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2019-09/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
 	"draft2019-09/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref":                  "emit: invalid Go identifier from schema naming",
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
 	// --- draft2020-12 ---
 	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference":      "compile: generated code does not compile",
-	"draft2020-12/properties/properties with escaped characters":                                    "emit: invalid Go identifier from schema naming",
 	"draft2020-12/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
-	"draft2020-12/ref/URN base URI with URN and anchor ref":                                         "emit: invalid Go identifier from schema naming",
-	"draft2020-12/ref/root pointer ref":                                                             "emit: invalid Go identifier from schema naming",
-	"draft2020-12/ref/simple URN base URI with $ref via the URN":                                    "emit: invalid Go identifier from schema naming",
 	"draft2020-12/ref/refs with relative uris and defs":                                             "compile: generated code does not compile",
 	"draft2020-12/ref/relative pointer ref to object":                                               "compile: generated code does not compile",
 	"draft2020-12/ref/relative refs with absolute uris and defs":                                    "compile: generated code does not compile",
@@ -37,36 +28,24 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2020-12/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
 	"draft2020-12/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref":                  "emit: invalid Go identifier from schema naming",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
 	// --- draft3 ---
 	"draft3/ref/relative pointer ref to object": "compile: generated code does not compile",
-	"draft3/ref/root pointer ref":               "emit: invalid Go identifier from schema naming",
 	// --- draft4 ---
-	"draft4/properties/properties with escaped characters":          "emit: invalid Go identifier from schema naming",
 	"draft4/ref/Recursive references between schemas":               "compile: generated code does not compile",
-	"draft4/ref/root pointer ref":                                   "emit: invalid Go identifier from schema naming",
 	"draft4/ref/relative pointer ref to object":                     "compile: generated code does not compile",
 	"draft4/refRemote/base URI change - change folder":              "compile: generated code does not compile",
 	"draft4/refRemote/base URI change - change folder in subschema": "compile: generated code does not compile",
 	"draft4/refRemote/root ref in remote ref":                       "compile: generated code does not compile",
 	// --- draft6 ---
-	"draft6/properties/properties with escaped characters":                         "emit: invalid Go identifier from schema naming",
 	"draft6/ref/Recursive references between schemas":                              "compile: generated code does not compile",
-	"draft6/ref/URN base URI with URN and anchor ref":                              "emit: invalid Go identifier from schema naming",
-	"draft6/ref/root pointer ref":                                                  "emit: invalid Go identifier from schema naming",
-	"draft6/ref/simple URN base URI with $ref via the URN":                         "emit: invalid Go identifier from schema naming",
 	"draft6/ref/relative pointer ref to object":                                    "compile: generated code does not compile",
 	"draft6/refRemote/base URI change - change folder":                             "compile: generated code does not compile",
 	"draft6/refRemote/base URI change - change folder in subschema":                "compile: generated code does not compile",
 	"draft6/refRemote/retrieved nested refs resolve relative to their URI not $id": "compile: generated code does not compile",
 	"draft6/refRemote/root ref in remote ref":                                      "compile: generated code does not compile",
 	// --- draft7 ---
-	"draft7/properties/properties with escaped characters":                         "emit: invalid Go identifier from schema naming",
 	"draft7/ref/Recursive references between schemas":                              "compile: generated code does not compile",
-	"draft7/ref/URN base URI with URN and anchor ref":                              "emit: invalid Go identifier from schema naming",
-	"draft7/ref/root pointer ref":                                                  "emit: invalid Go identifier from schema naming",
-	"draft7/ref/simple URN base URI with $ref via the URN":                         "emit: invalid Go identifier from schema naming",
 	"draft7/ref/relative pointer ref to object":                                    "compile: generated code does not compile",
 	"draft7/refRemote/base URI change - change folder":                             "compile: generated code does not compile",
 	"draft7/refRemote/base URI change - change folder in subschema":                "compile: generated code does not compile",
@@ -103,7 +82,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/recursiveRef/$recursiveRef without using nesting/single level match":                                                                          "no root struct type in generated code",
 	"draft2019-09/recursiveRef/$recursiveRef without using nesting/two levels, properties match with inner definition":                                          "no root struct type in generated code",
 	"draft2019-09/ref/Recursive references between schemas/valid tree":                                                                                          "round-trip: compilation or execution error",
-	"draft2019-09/ref/URN base URI with URN and anchor ref/a string is valid":                                                                                   "emit: code generation error",
 	"draft2019-09/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                                                         "round-trip: compilation or execution error",
 	"draft2019-09/ref/refs with quote/object with numbers is valid":                                                                                             "emit: code generation error",
 	"draft2019-09/ref/refs with relative uris and defs/valid on both fields":                                                                                    "round-trip: compilation or execution error",
@@ -126,10 +104,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/d is valid":                                                                        "round-trip: compilation or execution error",
 	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx + foox is valid":                                                                "round-trip: compilation or execution error",
 	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx is valid":                                                                       "round-trip: compilation or execution error",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Deep nested is valid":                                                         "emit: code generation error",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Empty is valid":                                                               "emit: code generation error",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Nested is valid":                                                              "emit: code generation error",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Single is valid":                                                              "emit: code generation error",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties false/with no unevaluated properties":                                                             "no root struct type in generated code",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with no unevaluated properties":                                                            "no root struct type in generated code",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with valid unevaluated properties":                                                         "no root struct type in generated code",
@@ -162,7 +136,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                         "round-trip: compilation or execution error",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                       "round-trip: compilation or execution error",
 	"draft2020-12/ref/Recursive references between schemas/valid tree":                                                                                    "round-trip: compilation or execution error",
-	"draft2020-12/ref/URN base URI with URN and anchor ref/a string is valid":                                                                             "emit: code generation error",
 	"draft2020-12/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                                                   "round-trip: compilation or execution error",
 	"draft2020-12/ref/refs with quote/object with numbers is valid":                                                                                       "emit: code generation error",
 	"draft2020-12/ref/refs with relative uris and defs/valid on both fields":                                                                              "round-trip: compilation or execution error",
@@ -185,10 +158,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/d is valid":                                                                  "round-trip: compilation or execution error",
 	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx + foox is valid":                                                          "round-trip: compilation or execution error",
 	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx is valid":                                                                 "round-trip: compilation or execution error",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Deep nested is valid":                                                   "emit: code generation error",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Empty is valid":                                                         "emit: code generation error",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Nested is valid":                                                        "emit: code generation error",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Single is valid":                                                        "emit: code generation error",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "round-trip: compilation or execution error",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "round-trip: compilation or execution error",
 	// --- draft3 ---
@@ -244,7 +213,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                        "round-trip: compilation or execution error",
 	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                      "round-trip: compilation or execution error",
 	"draft6/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
-	"draft6/ref/URN base URI with URN and anchor ref/a string is valid":                                                                            "emit: code generation error",
 	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 	"draft6/ref/refs with quote/object with numbers is valid":                                                                                      "emit: code generation error",
 	"draft6/ref/relative pointer ref to object/match":                                                                                              "round-trip: compilation or execution error",
@@ -274,7 +242,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                        "round-trip: compilation or execution error",
 	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                      "round-trip: compilation or execution error",
 	"draft7/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
-	"draft7/ref/URN base URI with URN and anchor ref/a string is valid":                                                                            "emit: code generation error",
 	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 	"draft7/ref/refs with quote/object with numbers is valid":                                                                                      "emit: code generation error",
 	"draft7/ref/relative pointer ref to object/match":                                                                                              "round-trip: compilation or execution error",

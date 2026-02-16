@@ -11,10 +11,13 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config    Config
-	output    *File
-	generated map[string]bool // track already-generated type names
-	defs      map[string]*schema.Schema
+	config       Config
+	output       *File
+	generated    map[string]bool // track already-generated type names
+	defs         map[string]*schema.Schema
+	rootTypeName string            // Go type name for the root schema
+	rootID       string            // $id of the root schema (for detecting self-references)
+	anchors      map[string]string // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
 }
 
 // New creates a new Generator with the given configuration.
@@ -32,13 +35,30 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	}
 	g.generated = make(map[string]bool)
 
-	// Collect definitions ($defs and definitions).
+	// Determine root type name.
+	g.rootTypeName = "Root"
+	if s.Title != "" {
+		g.rootTypeName = SchemaNameToGoName(s.Title)
+	}
+
+	// Store root schema's $id for detecting self-references.
+	g.rootID = s.ID
+	if g.rootID == "" {
+		g.rootID = s.LegacyID
+	}
+
+	// Collect definitions ($defs and definitions) and build anchor index.
 	g.defs = make(map[string]*schema.Schema)
+	g.anchors = make(map[string]string)
 	for name, def := range s.Defs {
-		g.defs["#/$defs/"+name] = def
+		refPath := "#/$defs/" + name
+		g.defs[refPath] = def
+		g.indexAnchors(def, refPath)
 	}
 	for name, def := range s.Definitions {
-		g.defs["#/definitions/"+name] = def
+		refPath := "#/definitions/" + name
+		g.defs[refPath] = def
+		g.indexAnchors(def, refPath)
 	}
 
 	// Process definitions first — generate TypeDefs for each.
@@ -62,11 +82,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 
 	// Process the root type if it defines an object, has a title, or uses composition.
 	if hasProperties(s) || s.Title != "" || len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
-		rootName := "Root"
-		if s.Title != "" {
-			rootName = SchemaNameToGoName(s.Title)
-		}
-		if err := g.generateTypeDef(rootName, s); err != nil {
+		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
 			return nil, fmt.Errorf("generating root type: %w", err)
 		}
 	}
@@ -256,9 +272,27 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 	// Sort property names for deterministic output.
 	propNames := sortedKeys(s.Properties)
 
+	// First pass: compute Go field names and deduplicate collisions.
+	goFieldNames := make(map[string]string, len(propNames)) // JSON name → Go name
+	nameCount := make(map[string]int)
+	for _, propName := range propNames {
+		goName := JSONPropertyToGoName(propName)
+		nameCount[goName]++
+	}
+	// Second pass: assign unique names by appending numeric suffix when collisions exist.
+	nameSeen := make(map[string]int)
+	for _, propName := range propNames {
+		goName := JSONPropertyToGoName(propName)
+		if nameCount[goName] > 1 {
+			nameSeen[goName]++
+			goName = fmt.Sprintf("%s%d", goName, nameSeen[goName])
+		}
+		goFieldNames[propName] = goName
+	}
+
 	for _, propName := range propNames {
 		propSchema := s.Properties[propName]
-		goFieldName := JSONPropertyToGoName(propName)
+		goFieldName := goFieldNames[propName]
 		required := requiredSet[propName]
 
 		// Check if this property uses oneOf
@@ -605,6 +639,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// $ref
 	if s.Ref != "" {
+		// Self-references (e.g. $ref: "#" or $ref matching root $id) use pointer to root type.
+		if g.isSelfRef(s.Ref) {
+			return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}, nil
+		}
 		goName := refToGoName(s.Ref)
 		// Ensure the referenced type gets generated.
 		if refSchema := g.resolveRef(s.Ref); refSchema != nil {
@@ -659,6 +697,9 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// $ref
 	if s.Ref != "" {
+		if g.isSelfRef(s.Ref) {
+			return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
+		}
 		goName := refToGoName(s.Ref)
 		if refSchema := g.resolveRef(s.Ref); refSchema != nil {
 			_ = g.generateTypeDef(goName, refSchema)
@@ -712,10 +753,49 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	return &PrimitiveType{Name: "any"}
 }
 
-// resolveRef looks up a $ref path in the collected definitions.
+// indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
+func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
+	if def.ID != "" {
+		g.anchors[def.ID] = refPath
+	}
+	if def.LegacyID != "" {
+		g.anchors[def.LegacyID] = refPath
+	}
+	if def.Anchor != "" {
+		g.anchors["#"+def.Anchor] = refPath
+	}
+}
+
+// isSelfRef returns true if ref points to the root schema itself.
+func (g *Generator) isSelfRef(ref string) bool {
+	if ref == "#" {
+		return true
+	}
+	if g.rootID != "" && (ref == g.rootID || strings.TrimSuffix(ref, "#") == g.rootID) {
+		return true
+	}
+	return false
+}
+
+// resolveRef looks up a $ref path in the collected definitions, anchors, and root schema.
 func (g *Generator) resolveRef(ref string) *schema.Schema {
 	if s, ok := g.defs[ref]; ok {
 		return s
+	}
+	// Check anchor index (handles $id-based and $anchor-based refs).
+	if refPath, ok := g.anchors[ref]; ok {
+		if s, ok2 := g.defs[refPath]; ok2 {
+			return s
+		}
+	}
+	// For URN refs with fragments (e.g. "urn:...#something"), try the fragment as an anchor.
+	if idx := strings.LastIndex(ref, "#"); idx > 0 {
+		fragment := ref[idx:]
+		if refPath, ok := g.anchors[fragment]; ok {
+			if s, ok2 := g.defs[refPath]; ok2 {
+				return s
+			}
+		}
 	}
 	return nil
 }

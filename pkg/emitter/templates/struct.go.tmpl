@@ -7,7 +7,7 @@ type {{.Name}} struct {
 	{{- if .Description}}
 	// {{.Description}}
 	{{- end}}
-	{{.Name}} {{goType .Type}} `json:"{{.JSONName}}{{if .OmitEmpty}},omitempty{{end}}"`
+	{{.Name}} {{goType .Type}} `json:"{{goStringLiteral .JSONName}}{{if .OmitEmpty}},omitempty{{end}}"`
 {{- end}}
 {{- range .OneOfs}}
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`
