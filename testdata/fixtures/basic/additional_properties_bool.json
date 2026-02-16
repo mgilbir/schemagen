@@ -1,0 +1,6 @@
+{
+  "name": "test-config",
+  "debug": true,
+  "retryCount": 3,
+  "endpoint": "https://api.example.com"
+}

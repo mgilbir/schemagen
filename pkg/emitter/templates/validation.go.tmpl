@@ -1,0 +1,46 @@
+{{define "validate"}}
+{{- $struct := . -}}
+{{- $recv := receiverName .Name -}}
+
+// Validate checks {{$struct.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{$struct.Name}}) Validate() error {
+	{{- range $struct.Validations}}
+	{{- if eq .RuleType "minLength"}}
+	if len({{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxLength"}}
+	if len({{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "minimum"}}
+	if float64({{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v is less than minimum {{.Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "maximum"}}
+	if float64({{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "pattern"}}
+	if matched, _ := regexp.MatchString({{printf "%q" .Value}}, {{$recv}}.{{.FieldName}}); !matched {
+		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern {{printf "%s" .Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "minItems"}}
+	if len({{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: has %d items, minimum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxItems"}}
+	if len({{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: has %d items, maximum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	}
+	{{- end}}
+	{{- end}}
+	return nil
+}
+{{- end}}

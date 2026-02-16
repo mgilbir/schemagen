@@ -1,0 +1,6 @@
+{
+  "username": "johndoe",
+  "bio": "Software developer",
+  "age": 30,
+  "tags": ["go", "rust"]
+}

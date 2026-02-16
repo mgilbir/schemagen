@@ -1,0 +1,32 @@
+{{define "struct"}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+type {{.Name}} struct {
+{{- range .Fields}}
+	{{- if .Description}}
+	// {{.Description}}
+	{{- end}}
+	{{.Name}} {{goType .Type}} `json:"{{.JSONName}}{{if .OmitEmpty}},omitempty{{end}}"`
+{{- end}}
+{{- range .OneOfs}}
+	{{.FieldName}} {{.InterfaceName}} `json:"-"`
+{{- end}}
+{{- if .AdditionalProperties}}
+	AdditionalProperties map[string]{{goType .AdditionalProperties.ValueType}} `json:"-"`
+{{- end}}
+}
+{{- range .OneOfs}}
+{{template "oneof_interface" mkOneOfCtx . $.Name}}
+{{template "oneof_getters" mkOneOfCtx . $.Name}}
+{{- end}}
+{{- if .NeedsUnmarshal}}
+{{template "unmarshal" .}}
+{{- end}}
+{{- if .NeedsMarshal}}
+{{template "marshal" .}}
+{{- end}}
+{{- if .Validations}}
+{{template "validate" .}}
+{{- end}}
+{{- end}}

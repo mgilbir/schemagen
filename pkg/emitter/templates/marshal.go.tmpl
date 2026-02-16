@@ -1,0 +1,55 @@
+{{define "marshal"}}
+{{- $struct := . -}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
+	type Alias {{$struct.Name}}
+	aux := struct {
+		Alias
+		{{- range $struct.OneOfs}}
+		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- end}}
+	}{
+		Alias: (Alias)({{$recv}}),
+	}
+	{{- range $oof := $struct.OneOfs}}
+
+	if {{$recv}}.{{$oof.FieldName}} != nil {
+		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		{{- range $oof.Variants}}
+		case *{{.WrapperName}}:
+			raw, err := json.Marshal(v.{{.FieldName}})
+			if err != nil {
+				return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{$oof.FieldName}}: %w", err)
+			}
+			aux.{{$oof.FieldName}} = raw
+		{{- end}}
+		}
+	}
+	{{- end}}
+
+	{{- if $struct.AdditionalProperties}}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	if len({{$recv}}.AdditionalProperties) == 0 {
+		return data, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range {{$recv}}.AdditionalProperties {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+		}
+		obj[k] = raw
+	}
+	return json.Marshal(obj)
+	{{- else}}
+	return json.Marshal(aux)
+	{{- end}}
+}
+{{- end}}

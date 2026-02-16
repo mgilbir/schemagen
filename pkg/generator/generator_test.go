@@ -1,0 +1,755 @@
+package generator
+
+import (
+	"testing"
+
+	"github.com/mgilbir/schemagen/pkg/schema"
+)
+
+// ---------- Naming tests ----------
+
+func TestJSONPropertyToGoName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"first_name", "FirstName"},
+		{"firstName", "FirstName"},
+		{"id", "ID"},
+		{"api_url", "APIURL"},
+		{"user_id", "UserID"},
+		{"html_content", "HTMLContent"},
+		{"myJSON", "MyJSON"},
+		{"simple", "Simple"},
+		{"already_PascalCase", "AlreadyPascalCase"},
+		{"ip_address", "IPAddress"},
+		{"css_class", "CSSClass"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := JSONPropertyToGoName(tt.input)
+			if got != tt.want {
+				t.Errorf("JSONPropertyToGoName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSchemaNameToGoName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"my-type", "MyType"},
+		{"my_type", "MyType"},
+		{"MyType", "MyType"},
+		{"some-api-thing", "SomeAPIThing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := SchemaNameToGoName(tt.input)
+			if got != tt.want {
+				t.Errorf("SchemaNameToGoName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToOneOfInterfaceName(t *testing.T) {
+	got := ToOneOfInterfaceName("Parent", "Field")
+	want := "isParent_Field"
+	if got != want {
+		t.Errorf("ToOneOfInterfaceName = %q, want %q", got, want)
+	}
+}
+
+func TestToOneOfWrapperName(t *testing.T) {
+	got := ToOneOfWrapperName("Parent", "Variant")
+	want := "Parent_Variant"
+	if got != want {
+		t.Errorf("ToOneOfWrapperName = %q, want %q", got, want)
+	}
+}
+
+// ---------- Primitive type mapping tests ----------
+
+func TestPrimitiveTypeFromSchema(t *testing.T) {
+	tests := []struct {
+		input    string
+		wantName string
+		wantNil  bool
+	}{
+		{"string", "string", false},
+		{"integer", "int64", false},
+		{"number", "float64", false},
+		{"boolean", "bool", false},
+		{"null", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := PrimitiveTypeFromSchema(tt.input)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("PrimitiveTypeFromSchema(%q) = %v, want nil", tt.input, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("PrimitiveTypeFromSchema(%q) = nil, want %q", tt.input, tt.wantName)
+			}
+			if got.GoTypeName() != tt.wantName {
+				t.Errorf("PrimitiveTypeFromSchema(%q).GoTypeName() = %q, want %q", tt.input, got.GoTypeName(), tt.wantName)
+			}
+		})
+	}
+}
+
+func TestPrimitiveTypeFromSchema_Object(t *testing.T) {
+	got := PrimitiveTypeFromSchema("object")
+	if got == nil {
+		t.Fatal("expected non-nil for object")
+	}
+	if got.GoTypeName() != "map[string]any" {
+		t.Errorf("got %q, want %q", got.GoTypeName(), "map[string]any")
+	}
+}
+
+func TestPrimitiveTypeFromSchema_Array(t *testing.T) {
+	got := PrimitiveTypeFromSchema("array")
+	if got == nil {
+		t.Fatal("expected non-nil for array")
+	}
+	if got.GoTypeName() != "[]any" {
+		t.Errorf("got %q, want %q", got.GoTypeName(), "[]any")
+	}
+}
+
+// ---------- GoType tests ----------
+
+func TestGoTypeNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		goType   GoType
+		wantName string
+		wantPtr  bool
+	}{
+		{
+			"PrimitiveType",
+			&PrimitiveType{Name: "string"},
+			"string",
+			false,
+		},
+		{
+			"NamedType",
+			&NamedType{Name: "Person"},
+			"Person",
+			false,
+		},
+		{
+			"NamedType pointer",
+			&NamedType{Name: "Person", Pointer: true},
+			"*Person",
+			true,
+		},
+		{
+			"ArrayType",
+			&ArrayType{ItemType: &PrimitiveType{Name: "string"}},
+			"[]string",
+			false,
+		},
+		{
+			"MapType",
+			&MapType{
+				KeyType:   &PrimitiveType{Name: "string"},
+				ValueType: &PrimitiveType{Name: "any"},
+			},
+			"map[string]any",
+			false,
+		},
+		{
+			"PointerType",
+			&PointerType{Inner: &PrimitiveType{Name: "string"}},
+			"*string",
+			true,
+		},
+		{
+			"ArrayType of NamedType",
+			&ArrayType{ItemType: &NamedType{Name: "Item"}},
+			"[]Item",
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.goType.GoTypeName(); got != tt.wantName {
+				t.Errorf("GoTypeName() = %q, want %q", got, tt.wantName)
+			}
+			if got := tt.goType.IsPointer(); got != tt.wantPtr {
+				t.Errorf("IsPointer() = %v, want %v", got, tt.wantPtr)
+			}
+		})
+	}
+}
+
+// ---------- Generator tests ----------
+
+func TestGenerate_SimpleObject(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Person",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"name": {
+				Type:        schema.TypeList{"string"},
+				Description: "The person's name",
+			},
+			"age": {
+				Type: schema.TypeList{"integer"},
+			},
+			"email": {
+				Type: schema.TypeList{"string"},
+			},
+		},
+		Required: []string{"name", "age"},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	if file.PackageName != "generated" {
+		t.Errorf("PackageName = %q, want %q", file.PackageName, "generated")
+	}
+
+	if len(file.TypeDefs) != 1 {
+		t.Fatalf("expected 1 TypeDef, got %d", len(file.TypeDefs))
+	}
+
+	sd, ok := file.TypeDefs[0].(*StructDef)
+	if !ok {
+		t.Fatalf("expected *StructDef, got %T", file.TypeDefs[0])
+	}
+
+	if sd.Name != "Person" {
+		t.Errorf("StructDef.Name = %q, want %q", sd.Name, "Person")
+	}
+
+	if len(sd.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(sd.Fields))
+	}
+
+	// Fields should be sorted by JSON name.
+	fieldMap := make(map[string]FieldDef)
+	for _, f := range sd.Fields {
+		fieldMap[f.JSONName] = f
+	}
+
+	// Check "name" field
+	nameField := fieldMap["name"]
+	if nameField.Name != "Name" {
+		t.Errorf("name field Go name = %q, want %q", nameField.Name, "Name")
+	}
+	if nameField.Type.GoTypeName() != "string" {
+		t.Errorf("name field type = %q, want %q", nameField.Type.GoTypeName(), "string")
+	}
+	if !nameField.Required {
+		t.Error("name field should be required")
+	}
+	if nameField.OmitEmpty {
+		t.Error("name field should not have omitempty (it's required)")
+	}
+
+	// Check "age" field
+	ageField := fieldMap["age"]
+	if ageField.Name != "Age" {
+		t.Errorf("age field Go name = %q, want %q", ageField.Name, "Age")
+	}
+	if ageField.Type.GoTypeName() != "int64" {
+		t.Errorf("age field type = %q, want %q", ageField.Type.GoTypeName(), "int64")
+	}
+
+	// Check "email" field (optional)
+	emailField := fieldMap["email"]
+	if !emailField.OmitEmpty {
+		t.Error("email field should have omitempty (it's optional)")
+	}
+}
+
+func TestGenerate_RefResolution(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Order",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"billing_address": {
+				Ref: "#/$defs/Address",
+			},
+			"shipping_address": {
+				Ref: "#/$defs/Address",
+			},
+		},
+		Defs: map[string]*schema.Schema{
+			"Address": {
+				Type: schema.TypeList{"object"},
+				Properties: map[string]*schema.Schema{
+					"street": {Type: schema.TypeList{"string"}},
+					"city":   {Type: schema.TypeList{"string"}},
+				},
+				Required: []string{"street", "city"},
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	// Should have Address struct + Order struct = 2 type defs.
+	if len(file.TypeDefs) != 2 {
+		t.Fatalf("expected 2 TypeDefs, got %d", len(file.TypeDefs))
+	}
+
+	// Find the Order struct.
+	var order *StructDef
+	var address *StructDef
+	for _, td := range file.TypeDefs {
+		if sd, ok := td.(*StructDef); ok {
+			switch sd.Name {
+			case "Order":
+				order = sd
+			case "Address":
+				address = sd
+			}
+		}
+	}
+
+	if order == nil {
+		t.Fatal("Order struct not found")
+	}
+	if address == nil {
+		t.Fatal("Address struct not found")
+	}
+
+	// Check that billing_address references Address.
+	fieldMap := make(map[string]FieldDef)
+	for _, f := range order.Fields {
+		fieldMap[f.JSONName] = f
+	}
+
+	billingField := fieldMap["billing_address"]
+	if billingField.Type.GoTypeName() != "Address" {
+		t.Errorf("billing_address type = %q, want %q", billingField.Type.GoTypeName(), "Address")
+	}
+
+	// Should be a NamedType
+	if _, ok := billingField.Type.(*NamedType); !ok {
+		t.Errorf("billing_address type should be *NamedType, got %T", billingField.Type)
+	}
+}
+
+func TestGenerate_NestedObject(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Company",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"name": {
+				Type: schema.TypeList{"string"},
+			},
+			"address": {
+				Type: schema.TypeList{"object"},
+				Properties: map[string]*schema.Schema{
+					"street": {Type: schema.TypeList{"string"}},
+					"city":   {Type: schema.TypeList{"string"}},
+				},
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	// Should have Company struct + CompanyAddress struct = 2 type defs.
+	if len(file.TypeDefs) != 2 {
+		t.Fatalf("expected 2 TypeDefs, got %d", len(file.TypeDefs))
+	}
+
+	names := make(map[string]bool)
+	for _, td := range file.TypeDefs {
+		names[td.TypeName()] = true
+	}
+
+	if !names["Company"] {
+		t.Error("expected Company type")
+	}
+	if !names["CompanyAddress"] {
+		t.Error("expected CompanyAddress type")
+	}
+
+	// Find Company struct and check that address field uses NamedType.
+	for _, td := range file.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok || sd.Name != "Company" {
+			continue
+		}
+		for _, f := range sd.Fields {
+			if f.JSONName == "address" {
+				if f.Type.GoTypeName() != "CompanyAddress" {
+					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "CompanyAddress")
+				}
+			}
+		}
+	}
+}
+
+func TestGenerate_NullableType(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Record",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"name": {
+				Type: schema.TypeList{"string"},
+			},
+			"nickname": {
+				Type: schema.TypeList{"string", "null"},
+			},
+			"score": {
+				Type: schema.TypeList{"integer", "null"},
+			},
+		},
+		Required: []string{"name"},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	if len(file.TypeDefs) != 1 {
+		t.Fatalf("expected 1 TypeDef, got %d", len(file.TypeDefs))
+	}
+
+	sd := file.TypeDefs[0].(*StructDef)
+	fieldMap := make(map[string]FieldDef)
+	for _, f := range sd.Fields {
+		fieldMap[f.JSONName] = f
+	}
+
+	// "name" should be plain string.
+	nameField := fieldMap["name"]
+	if nameField.Type.GoTypeName() != "string" {
+		t.Errorf("name type = %q, want %q", nameField.Type.GoTypeName(), "string")
+	}
+	if nameField.Type.IsPointer() {
+		t.Error("name should not be a pointer")
+	}
+
+	// "nickname" should be *string.
+	nicknameField := fieldMap["nickname"]
+	if nicknameField.Type.GoTypeName() != "*string" {
+		t.Errorf("nickname type = %q, want %q", nicknameField.Type.GoTypeName(), "*string")
+	}
+	if !nicknameField.Type.IsPointer() {
+		t.Error("nickname should be a pointer")
+	}
+
+	// "score" should be *int64.
+	scoreField := fieldMap["score"]
+	if scoreField.Type.GoTypeName() != "*int64" {
+		t.Errorf("score type = %q, want %q", scoreField.Type.GoTypeName(), "*int64")
+	}
+}
+
+func TestGenerate_ArrayWithItems(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Team",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"members": {
+				Type: schema.TypeList{"array"},
+				Items: &schema.SchemaOrSchemaArray{
+					Schema: &schema.Schema{
+						Type: schema.TypeList{"string"},
+					},
+				},
+			},
+			"scores": {
+				Type: schema.TypeList{"array"},
+				Items: &schema.SchemaOrSchemaArray{
+					Schema: &schema.Schema{
+						Type: schema.TypeList{"integer"},
+					},
+				},
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	sd := file.TypeDefs[0].(*StructDef)
+	fieldMap := make(map[string]FieldDef)
+	for _, f := range sd.Fields {
+		fieldMap[f.JSONName] = f
+	}
+
+	membersField := fieldMap["members"]
+	if membersField.Type.GoTypeName() != "[]string" {
+		t.Errorf("members type = %q, want %q", membersField.Type.GoTypeName(), "[]string")
+	}
+
+	scoresField := fieldMap["scores"]
+	if scoresField.Type.GoTypeName() != "[]int64" {
+		t.Errorf("scores type = %q, want %q", scoresField.Type.GoTypeName(), "[]int64")
+	}
+}
+
+func TestGenerate_EnumType(t *testing.T) {
+	s := &schema.Schema{
+		Defs: map[string]*schema.Schema{
+			"Status": {
+				Type: schema.TypeList{"string"},
+				Enum: []any{"active", "inactive", "pending"},
+			},
+		},
+		Title: "User",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"status": {
+				Ref: "#/$defs/Status",
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	// Should have Status enum + User struct.
+	var enumDef *EnumDef
+	for _, td := range file.TypeDefs {
+		if ed, ok := td.(*EnumDef); ok && ed.Name == "Status" {
+			enumDef = ed
+		}
+	}
+
+	if enumDef == nil {
+		t.Fatal("Status enum not found")
+	}
+
+	if enumDef.BaseType.GoTypeName() != "string" {
+		t.Errorf("BaseType = %q, want %q", enumDef.BaseType.GoTypeName(), "string")
+	}
+
+	if len(enumDef.Values) != 3 {
+		t.Fatalf("expected 3 values, got %d", len(enumDef.Values))
+	}
+}
+
+func TestGenerate_InlineEnum(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Task",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"title": {
+				Type: schema.TypeList{"string"},
+			},
+			"status": {
+				Type: schema.TypeList{"string"},
+				Enum: []any{"pending", "in_progress", "completed"},
+			},
+			"priority": {
+				Type: schema.TypeList{"string"},
+				Enum: []any{"low", "medium", "high"},
+			},
+		},
+		Required: []string{"title", "status"},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	// Should have TaskStatus enum + TaskPriority enum + Task struct = 3 type defs.
+	if len(file.TypeDefs) != 3 {
+		t.Fatalf("expected 3 TypeDefs, got %d", len(file.TypeDefs))
+	}
+
+	// Find the enum defs and the struct def.
+	var statusEnum, priorityEnum *EnumDef
+	var taskStruct *StructDef
+	for _, td := range file.TypeDefs {
+		switch d := td.(type) {
+		case *EnumDef:
+			switch d.Name {
+			case "TaskStatus":
+				statusEnum = d
+			case "TaskPriority":
+				priorityEnum = d
+			}
+		case *StructDef:
+			if d.Name == "Task" {
+				taskStruct = d
+			}
+		}
+	}
+
+	if statusEnum == nil {
+		t.Fatal("TaskStatus enum not found")
+	}
+	if statusEnum.BaseType.GoTypeName() != "string" {
+		t.Errorf("TaskStatus BaseType = %q, want %q", statusEnum.BaseType.GoTypeName(), "string")
+	}
+	if len(statusEnum.Values) != 3 {
+		t.Fatalf("TaskStatus expected 3 values, got %d", len(statusEnum.Values))
+	}
+	// Check naming convention: "in_progress" → "TaskStatusInProgress"
+	found := false
+	for _, v := range statusEnum.Values {
+		if v.Name == "TaskStatusInProgress" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected TaskStatusInProgress constant, not found")
+	}
+
+	if priorityEnum == nil {
+		t.Fatal("TaskPriority enum not found")
+	}
+	if len(priorityEnum.Values) != 3 {
+		t.Fatalf("TaskPriority expected 3 values, got %d", len(priorityEnum.Values))
+	}
+
+	if taskStruct == nil {
+		t.Fatal("Task struct not found")
+	}
+	// Check that the struct fields reference the enum types.
+	fieldMap := make(map[string]FieldDef)
+	for _, f := range taskStruct.Fields {
+		fieldMap[f.JSONName] = f
+	}
+	statusField := fieldMap["status"]
+	if statusField.Type.GoTypeName() != "TaskStatus" {
+		t.Errorf("status field type = %q, want %q", statusField.Type.GoTypeName(), "TaskStatus")
+	}
+	priorityField := fieldMap["priority"]
+	if priorityField.Type.GoTypeName() != "TaskPriority" {
+		t.Errorf("priority field type = %q, want %q", priorityField.Type.GoTypeName(), "TaskPriority")
+	}
+	// title should remain a plain string
+	titleField := fieldMap["title"]
+	if titleField.Type.GoTypeName() != "string" {
+		t.Errorf("title field type = %q, want %q", titleField.Type.GoTypeName(), "string")
+	}
+}
+
+func TestGenerate_Definitions(t *testing.T) {
+	s := &schema.Schema{
+		Definitions: map[string]*schema.Schema{
+			"pet": {
+				Type: schema.TypeList{"object"},
+				Properties: map[string]*schema.Schema{
+					"name": {Type: schema.TypeList{"string"}},
+					"tag":  {Type: schema.TypeList{"string"}},
+				},
+			},
+		},
+		Title: "Store",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"pet": {
+				Ref: "#/definitions/pet",
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	names := make(map[string]bool)
+	for _, td := range file.TypeDefs {
+		names[td.TypeName()] = true
+	}
+
+	if !names["Pet"] {
+		t.Error("expected Pet type from definitions")
+	}
+	if !names["Store"] {
+		t.Error("expected Store type")
+	}
+}
+
+func TestGenerate_ArrayOfObjects(t *testing.T) {
+	s := &schema.Schema{
+		Title: "Catalog",
+		Type:  schema.TypeList{"object"},
+		Properties: map[string]*schema.Schema{
+			"items": {
+				Type: schema.TypeList{"array"},
+				Items: &schema.SchemaOrSchemaArray{
+					Schema: &schema.Schema{
+						Type: schema.TypeList{"object"},
+						Properties: map[string]*schema.Schema{
+							"id":   {Type: schema.TypeList{"integer"}},
+							"name": {Type: schema.TypeList{"string"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	gen := New(DefaultConfig())
+	file, err := gen.Generate(s)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	// Should have Catalog struct + CatalogItemsItem struct.
+	if len(file.TypeDefs) != 2 {
+		t.Fatalf("expected 2 TypeDefs, got %d", len(file.TypeDefs))
+	}
+
+	names := make(map[string]bool)
+	for _, td := range file.TypeDefs {
+		names[td.TypeName()] = true
+	}
+
+	if !names["Catalog"] {
+		t.Error("expected Catalog type")
+	}
+	if !names["CatalogItemsItem"] {
+		t.Error("expected CatalogItemsItem type for nested array item")
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.PackageName != "generated" {
+		t.Errorf("PackageName = %q, want %q", cfg.PackageName, "generated")
+	}
+	if cfg.OutputDir != "." {
+		t.Errorf("OutputDir = %q, want %q", cfg.OutputDir, ".")
+	}
+	if !cfg.OmitEmpty {
+		t.Error("OmitEmpty should be true by default")
+	}
+}

@@ -1,0 +1,35 @@
+{{define "oneof_interface"}}
+{{- $oneof := .OneOf -}}
+{{- $parent := .ParentName -}}
+// {{$oneof.InterfaceName}} is a sealed interface for the {{$oneof.FieldName}} field of {{$parent}}.
+// Exactly one variant must be set.
+type {{$oneof.InterfaceName}} interface {
+	{{$oneof.InterfaceName}}()
+}
+{{range $oneof.Variants}}
+// {{.WrapperName}} wraps {{goType .Type}} as a {{$oneof.FieldName}} variant.
+type {{.WrapperName}} struct {
+	{{.FieldName}} {{goType .Type}}
+}
+
+func (*{{.WrapperName}}) {{$oneof.InterfaceName}}() {}
+{{end}}
+{{- end}}
+
+{{define "oneof_getters"}}
+{{- $oneof := .OneOf -}}
+{{- $parent := .ParentName -}}
+{{- $recv := receiverName $parent -}}
+{{range $oneof.Variants}}
+// Get{{.FieldName}} returns the {{.FieldName}} variant value, or the zero value if not set.
+func ({{$recv}} *{{$parent}}) Get{{.FieldName}}() {{goType .Type}} {
+	if {{$recv}} != nil {
+		if v, ok := {{$recv}}.{{$oneof.FieldName}}.(*{{.WrapperName}}); ok {
+			return v.{{.FieldName}}
+		}
+	}
+	var zero {{goType .Type}}
+	return zero
+}
+{{end}}
+{{- end}}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Notification",
+  "type": "object",
+  "$defs": {
+    "EmailTarget": {
+      "type": "object",
+      "properties": {
+        "email_address": { "type": "string" }
+      },
+      "required": ["email_address"]
+    },
+    "SMSTarget": {
+      "type": "object",
+      "properties": {
+        "phone_number": { "type": "string" }
+      },
+      "required": ["phone_number"]
+    },
+    "TextContent": {
+      "type": "object",
+      "properties": {
+        "body": { "type": "string" }
+      },
+      "required": ["body"]
+    },
+    "HTMLContent": {
+      "type": "object",
+      "properties": {
+        "html": { "type": "string" },
+        "subject": { "type": "string" }
+      },
+      "required": ["html"]
+    }
+  },
+  "properties": {
+    "id": { "type": "string" },
+    "target": {
+      "oneOf": [
+        { "$ref": "#/$defs/EmailTarget" },
+        { "$ref": "#/$defs/SMSTarget" }
+      ]
+    },
+    "content": {
+      "oneOf": [
+        { "$ref": "#/$defs/TextContent" },
+        { "$ref": "#/$defs/HTMLContent" }
+      ]
+    }
+  },
+  "required": ["id", "target", "content"]
+}

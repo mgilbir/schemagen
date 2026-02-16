@@ -1,0 +1,6 @@
+{{define "alias"}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+type {{.Name}} = {{goType .Underlying}}
+{{- end}}

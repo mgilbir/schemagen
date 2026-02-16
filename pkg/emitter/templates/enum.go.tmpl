@@ -1,0 +1,12 @@
+{{define "enum"}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+type {{.Name}} {{goType .BaseType}}
+
+const (
+{{- range .Values}}
+	{{.Name}} {{$.Name}} = {{enumValue .Value}}
+{{- end}}
+)
+{{- end}}

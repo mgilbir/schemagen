@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Order",
+  "type": "object",
+  "$defs": {
+    "Address": {
+      "type": "object",
+      "properties": {
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "zip": { "type": "string" }
+      },
+      "required": ["street", "city"]
+    },
+    "Item": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "price": { "type": "number" }
+      },
+      "required": ["name", "quantity", "price"]
+    }
+  },
+  "properties": {
+    "order_id": { "type": "string" },
+    "shipping_address": { "$ref": "#/$defs/Address" },
+    "billing_address": { "$ref": "#/$defs/Address" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Item" }
+    }
+  },
+  "required": ["order_id", "shipping_address", "items"]
+}

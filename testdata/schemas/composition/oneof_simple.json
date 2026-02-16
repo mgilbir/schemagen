@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Drawing",
+  "type": "object",
+  "$defs": {
+    "Circle": {
+      "type": "object",
+      "properties": {
+        "radius": { "type": "number" }
+      },
+      "required": ["radius"]
+    },
+    "Rectangle": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      },
+      "required": ["width", "height"]
+    }
+  },
+  "properties": {
+    "name": { "type": "string" },
+    "shape": {
+      "oneOf": [
+        { "$ref": "#/$defs/Circle" },
+        { "$ref": "#/$defs/Rectangle" }
+      ]
+    }
+  },
+  "required": ["name", "shape"]
+}

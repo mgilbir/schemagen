@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrimitiveTypes",
+  "type": "object",
+  "properties": {
+    "str_field": { "type": "string" },
+    "int_field": { "type": "integer" },
+    "num_field": { "type": "number" },
+    "bool_field": { "type": "boolean" },
+    "nullable_str": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "tags": ["go", "json", "schema"],
+  "scores": [98.5, 87.3, 92.1],
+  "metadata": [
+    {"key": "version", "value": "1.0"},
+    {"key": "author", "value": "test"}
+  ]
+}

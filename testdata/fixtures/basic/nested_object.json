@@ -1,0 +1,10 @@
+{
+  "street": "123 Main St",
+  "city": "Springfield",
+  "state": "IL",
+  "zip": "62701",
+  "location": {
+    "latitude": 39.7817,
+    "longitude": -89.6501
+  }
+}

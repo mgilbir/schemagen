@@ -1,0 +1,7 @@
+{{define "typedef"}}
+{{- $w := wrapTypeDef .}}
+{{- if $w.IsStruct}}{{template "struct" $w.AsStruct}}
+{{- else if $w.IsEnum}}{{template "enum" $w.AsEnum}}
+{{- else if $w.IsAlias}}{{template "alias" $w.AsAlias}}
+{{- end}}
+{{- end}}

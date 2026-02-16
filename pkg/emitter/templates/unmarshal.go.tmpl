@@ -1,0 +1,75 @@
+{{define "unmarshal"}}
+{{- $struct := . -}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
+	type Alias {{$struct.Name}}
+	aux := &struct {
+		*Alias
+		{{- range $struct.OneOfs}}
+		{{.FieldName}} json.RawMessage `json:"{{.JSONName}}"`
+		{{- end}}
+	}{
+		Alias: (*Alias)({{$recv}}),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	{{- range $oof := $struct.OneOfs}}
+
+	if len(aux.{{$oof.FieldName}}) > 0 && string(aux.{{$oof.FieldName}}) != "null" {
+		var oneofMatched int
+		var oneofLastErr error
+		{{- range $i, $v := $oof.Variants}}
+
+		// Try variant: {{$v.FieldName}}
+		{{- if $v.RequiredFields}}
+		if oneofHasRequiredFields(aux.{{$oof.FieldName}}, {{requiredFieldsList $v.RequiredFields}}) {
+		{{- end}}
+			var candidate {{goType $v.Type}}
+			if err := json.Unmarshal(aux.{{$oof.FieldName}}, &candidate); err == nil {
+				{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+				oneofMatched++
+			} else {
+				oneofLastErr = err
+			}
+		{{- if $v.RequiredFields}}
+		}
+		{{- end}}
+		{{- end}}
+
+		if oneofMatched == 0 {
+			return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
+		}
+		if oneofMatched > 1 {
+			return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+		}
+	}
+	{{- end}}
+
+	{{- if $struct.AdditionalProperties}}
+	// Capture additional properties not covered by explicit fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	knownFields := map[string]bool{
+		{{- range $struct.Fields}}
+		"{{.JSONName}}": true,
+		{{- end}}
+	}
+	{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+	for k, v := range raw {
+		if !knownFields[k] {
+			var val {{goType $struct.AdditionalProperties.ValueType}}
+			if err := json.Unmarshal(v, &val); err == nil {
+				{{$recv}}.AdditionalProperties[k] = val
+			}
+		}
+	}
+	{{- end}}
+
+	return nil
+}
+{{- end}}
