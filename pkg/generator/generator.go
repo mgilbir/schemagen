@@ -767,13 +767,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	if s.MinLength != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "minLength", Value: *s.MinLength,
+			RuleType: "minLength", Value: s.MinLength.Int(),
 		})
 	}
 	if s.MaxLength != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "maxLength", Value: *s.MaxLength,
+			RuleType: "maxLength", Value: s.MaxLength.Int(),
 		})
 	}
 	if s.Minimum != nil {
@@ -797,13 +797,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	if s.MinItems != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "minItems", Value: *s.MinItems,
+			RuleType: "minItems", Value: s.MinItems.Int(),
 		})
 	}
 	if s.MaxItems != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "maxItems", Value: *s.MaxItems,
+			RuleType: "maxItems", Value: s.MaxItems.Int(),
 		})
 	}
 	return rules

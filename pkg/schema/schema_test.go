@@ -40,7 +40,7 @@ func TestParseSimpleObjectSchema(t *testing.T) {
 	if s.Properties["age"] == nil || len(s.Properties["age"].Type) != 1 || s.Properties["age"].Type[0] != "integer" {
 		t.Errorf("expected age property to be integer")
 	}
-	if len(s.Required) != 1 || s.Required[0] != "name" {
+	if len(s.Required) != 1 || string(s.Required[0]) != "name" {
 		t.Errorf("expected required [name], got %v", s.Required)
 	}
 }
@@ -562,10 +562,10 @@ func TestStringConstraints(t *testing.T) {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 
-	if s.MinLength == nil || *s.MinLength != 1 {
+	if s.MinLength == nil || s.MinLength.Int() != 1 {
 		t.Errorf("expected minLength 1, got %v", s.MinLength)
 	}
-	if s.MaxLength == nil || *s.MaxLength != 255 {
+	if s.MaxLength == nil || s.MaxLength.Int() != 255 {
 		t.Errorf("expected maxLength 255, got %v", s.MaxLength)
 	}
 	if s.Pattern == nil || *s.Pattern != "^[a-z]+$" {
@@ -655,7 +655,11 @@ func TestDraftString(t *testing.T) {
 		draft Draft
 		want  string
 	}{
+		{Draft03, "Draft-03"},
+		{Draft04, "Draft-04"},
+		{Draft06, "Draft-06"},
 		{Draft07, "Draft-07"},
+		{Draft201909, "Draft 2019-09"},
 		{Draft202012, "Draft 2020-12"},
 		{DraftUnknown, "Unknown"},
 	}
