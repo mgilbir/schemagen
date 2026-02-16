@@ -1,24 +1,14 @@
 package tests
 
 // Known failures for external JSON Schema Test Suite tests.
-// Updated after identifier sanitization fixes.
-// CodeGen: 108 known failures (87 compile + 21 remaining emit/identifier)
+// Updated after oneOf compile fixes.
+// CodeGen: 58 known failures (37 compile + 21 remaining emit/identifier)
 // RoundTrip: 275 known failures (after removing 29 now-passing emit entries)
 
 var knownParseFailures = map[string]string{}
 
 var knownCodeGenFailures = map[string]string{
 	// --- draft2019-09 ---
-	"draft2019-09/oneOf/oneOf":                                                                      "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf complex types":                                                        "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with base schema":                                                     "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with boolean schemas, all false":                                      "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with boolean schemas, all true":                                       "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with boolean schemas, more than one true":                             "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with boolean schemas, one true":                                       "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with empty schema":                                                    "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with missing optional property":                                       "compile: generated code does not compile",
-	"draft2019-09/oneOf/oneOf with required":                                                        "compile: generated code does not compile",
 	"draft2019-09/properties/properties with escaped characters":                                    "emit: invalid Go identifier from schema naming",
 	"draft2019-09/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
 	"draft2019-09/ref/URN base URI with URN and anchor ref":                                         "emit: invalid Go identifier from schema naming",
@@ -31,22 +21,10 @@ var knownCodeGenFailures = map[string]string{
 	"draft2019-09/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2019-09/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
 	"draft2019-09/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with oneOf":                                     "compile: generated code does not compile",
-	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs":                       "compile: generated code does not compile",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref":                  "emit: invalid Go identifier from schema naming",
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
 	// --- draft2020-12 ---
-	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference": "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf":                                                                      "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf complex types":                                                        "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with base schema":                                                     "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with boolean schemas, all false":                                      "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with boolean schemas, all true":                                       "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with boolean schemas, more than one true":                             "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with boolean schemas, one true":                                       "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with empty schema":                                                    "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with missing optional property":                                       "compile: generated code does not compile",
-	"draft2020-12/oneOf/oneOf with required":                                                        "compile: generated code does not compile",
+	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference":      "compile: generated code does not compile",
 	"draft2020-12/properties/properties with escaped characters":                                    "emit: invalid Go identifier from schema naming",
 	"draft2020-12/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
 	"draft2020-12/ref/URN base URI with URN and anchor ref":                                         "emit: invalid Go identifier from schema naming",
@@ -59,20 +37,12 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2020-12/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
 	"draft2020-12/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with oneOf":                                     "compile: generated code does not compile",
-	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs":                       "compile: generated code does not compile",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref":                  "emit: invalid Go identifier from schema naming",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
 	// --- draft3 ---
 	"draft3/ref/relative pointer ref to object": "compile: generated code does not compile",
 	"draft3/ref/root pointer ref":               "emit: invalid Go identifier from schema naming",
 	// --- draft4 ---
-	"draft4/oneOf/oneOf":                                            "compile: generated code does not compile",
-	"draft4/oneOf/oneOf complex types":                              "compile: generated code does not compile",
-	"draft4/oneOf/oneOf with base schema":                           "compile: generated code does not compile",
-	"draft4/oneOf/oneOf with empty schema":                          "compile: generated code does not compile",
-	"draft4/oneOf/oneOf with missing optional property":             "compile: generated code does not compile",
-	"draft4/oneOf/oneOf with required":                              "compile: generated code does not compile",
 	"draft4/properties/properties with escaped characters":          "emit: invalid Go identifier from schema naming",
 	"draft4/ref/Recursive references between schemas":               "compile: generated code does not compile",
 	"draft4/ref/root pointer ref":                                   "emit: invalid Go identifier from schema naming",
@@ -81,16 +51,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft4/refRemote/base URI change - change folder in subschema": "compile: generated code does not compile",
 	"draft4/refRemote/root ref in remote ref":                       "compile: generated code does not compile",
 	// --- draft6 ---
-	"draft6/oneOf/oneOf":                                                           "compile: generated code does not compile",
-	"draft6/oneOf/oneOf complex types":                                             "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with base schema":                                          "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with boolean schemas, all false":                           "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with boolean schemas, all true":                            "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with boolean schemas, more than one true":                  "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with boolean schemas, one true":                            "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with empty schema":                                         "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with missing optional property":                            "compile: generated code does not compile",
-	"draft6/oneOf/oneOf with required":                                             "compile: generated code does not compile",
 	"draft6/properties/properties with escaped characters":                         "emit: invalid Go identifier from schema naming",
 	"draft6/ref/Recursive references between schemas":                              "compile: generated code does not compile",
 	"draft6/ref/URN base URI with URN and anchor ref":                              "emit: invalid Go identifier from schema naming",
@@ -102,16 +62,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft6/refRemote/retrieved nested refs resolve relative to their URI not $id": "compile: generated code does not compile",
 	"draft6/refRemote/root ref in remote ref":                                      "compile: generated code does not compile",
 	// --- draft7 ---
-	"draft7/oneOf/oneOf":                                                           "compile: generated code does not compile",
-	"draft7/oneOf/oneOf complex types":                                             "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with base schema":                                          "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with boolean schemas, all false":                           "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with boolean schemas, all true":                            "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with boolean schemas, more than one true":                  "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with boolean schemas, one true":                            "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with empty schema":                                         "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with missing optional property":                            "compile: generated code does not compile",
-	"draft7/oneOf/oneOf with required":                                             "compile: generated code does not compile",
 	"draft7/properties/properties with escaped characters":                         "emit: invalid Go identifier from schema naming",
 	"draft7/ref/Recursive references between schemas":                              "compile: generated code does not compile",
 	"draft7/ref/URN base URI with URN and anchor ref":                              "emit: invalid Go identifier from schema naming",

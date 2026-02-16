@@ -396,17 +396,25 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 	interfaceName := ToOneOfInterfaceName(parentName, goFieldName)
 
 	var variants []OneOfVariant
-	for _, variant := range nonNullVariants {
-		result, err := g.resolveOneOfVariant(variant, parentName, goFieldName)
+	usedNames := make(map[string]int) // track name occurrences for deduplication
+	for i, variant := range nonNullVariants {
+		result, err := g.resolveOneOfVariant(variant, parentName, goFieldName, i)
 		if err != nil {
 			return nil, err
 		}
 
-		wrapperName := ToOneOfWrapperName(parentName, result.Name)
+		// Deduplicate variant names: if we've already seen this name, append an index.
+		name := result.Name
+		if count, exists := usedNames[name]; exists {
+			name = fmt.Sprintf("%s%d", name, count+1)
+		}
+		usedNames[result.Name]++
+
+		wrapperName := ToOneOfWrapperName(parentName, name)
 
 		variants = append(variants, OneOfVariant{
 			WrapperName:    wrapperName,
-			FieldName:      result.Name,
+			FieldName:      name,
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
 		})
@@ -428,7 +436,17 @@ type oneOfVariantResult struct {
 }
 
 // resolveOneOfVariant determines the name, type, and required fields for a oneOf variant.
-func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fieldName string) (oneOfVariantResult, error) {
+// The index parameter is used to disambiguate inline variants with the same structure.
+func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fieldName string, index int) (oneOfVariantResult, error) {
+	// Boolean schemas → treat as any
+	if variant.IsBooleanSchema() {
+		if variant.IsTrueSchema() {
+			return oneOfVariantResult{Name: "Any", Type: &PrimitiveType{Name: "any"}}, nil
+		}
+		// false schema — nothing matches, but include for completeness
+		return oneOfVariantResult{Name: "None", Type: &PrimitiveType{Name: "any"}}, nil
+	}
+
 	// $ref variant → use the referenced type
 	if variant.Ref != "" {
 		goName := refToGoName(variant.Ref)
@@ -449,14 +467,16 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}, nil
 	}
 
-	// Inline object variant → create a named type
+	// Inline object variant → create a named type, disambiguated by index
 	if hasProperties(variant) {
-		variantName := parentName + fieldName + "Variant"
+		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
 		}
-		if err := g.generateTypeDef(variantName, variant); err != nil {
-			return oneOfVariantResult{}, err
+		if !g.generated[variantName] {
+			if err := g.generateTypeDef(variantName, variant); err != nil {
+				return oneOfVariantResult{}, err
+			}
 		}
 		return oneOfVariantResult{
 			Name:           variantName,
@@ -475,7 +495,8 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}
 	}
 
-	return oneOfVariantResult{Name: "Unknown", Type: &PrimitiveType{Name: "any"}}, nil
+	// Constraint-only or empty schema — fall back to any
+	return oneOfVariantResult{Name: "Any", Type: &PrimitiveType{Name: "any"}}, nil
 }
 
 // separateNullFromOneOf splits oneOf variants into non-null variants and a null flag.

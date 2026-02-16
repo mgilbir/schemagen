@@ -133,24 +133,28 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		var oneofLastErr error
 
 		// Try variant: TextContent
-		if oneofHasRequiredFields(aux.Content, "body") {
-			var candidate *TextContent
-			if err := json.Unmarshal(aux.Content, &candidate); err == nil {
-				n.Content = &Notification_TextContent{TextContent: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Content, "body") {
+				var candidate *TextContent
+				if err := json.Unmarshal(aux.Content, &candidate); err == nil {
+					n.Content = &Notification_TextContent{TextContent: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 
 		// Try variant: HTMLContent
-		if oneofHasRequiredFields(aux.Content, "html") {
-			var candidate *HTMLContent
-			if err := json.Unmarshal(aux.Content, &candidate); err == nil {
-				n.Content = &Notification_HTMLContent{HTMLContent: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Content, "html") {
+				var candidate *HTMLContent
+				if err := json.Unmarshal(aux.Content, &candidate); err == nil {
+					n.Content = &Notification_HTMLContent{HTMLContent: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 
@@ -167,24 +171,28 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		var oneofLastErr error
 
 		// Try variant: EmailTarget
-		if oneofHasRequiredFields(aux.Target, "email_address") {
-			var candidate *EmailTarget
-			if err := json.Unmarshal(aux.Target, &candidate); err == nil {
-				n.Target = &Notification_EmailTarget{EmailTarget: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Target, "email_address") {
+				var candidate *EmailTarget
+				if err := json.Unmarshal(aux.Target, &candidate); err == nil {
+					n.Target = &Notification_EmailTarget{EmailTarget: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 
 		// Try variant: SmsTarget
-		if oneofHasRequiredFields(aux.Target, "phone_number") {
-			var candidate *SmsTarget
-			if err := json.Unmarshal(aux.Target, &candidate); err == nil {
-				n.Target = &Notification_SmsTarget{SmsTarget: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Target, "phone_number") {
+				var candidate *SmsTarget
+				if err := json.Unmarshal(aux.Target, &candidate); err == nil {
+					n.Target = &Notification_SmsTarget{SmsTarget: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 

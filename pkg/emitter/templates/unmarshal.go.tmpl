@@ -24,19 +24,21 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- range $i, $v := $oof.Variants}}
 
 		// Try variant: {{$v.FieldName}}
-		{{- if $v.RequiredFields}}
-		if oneofHasRequiredFields(aux.{{$oof.FieldName}}, {{requiredFieldsList $v.RequiredFields}}) {
-		{{- end}}
-			var candidate {{goType $v.Type}}
-			if err := json.Unmarshal(aux.{{$oof.FieldName}}, &candidate); err == nil {
-				{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			{{- if $v.RequiredFields}}
+			if oneofHasRequiredFields(aux.{{$oof.FieldName}}, {{requiredFieldsList $v.RequiredFields}}) {
+			{{- end}}
+				var candidate {{goType $v.Type}}
+				if err := json.Unmarshal(aux.{{$oof.FieldName}}, &candidate); err == nil {
+					{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
+			{{- if $v.RequiredFields}}
 			}
-		{{- if $v.RequiredFields}}
+			{{- end}}
 		}
-		{{- end}}
 		{{- end}}
 
 		if oneofMatched == 0 {

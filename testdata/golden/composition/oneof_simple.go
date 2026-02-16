@@ -81,24 +81,28 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		var oneofLastErr error
 
 		// Try variant: Circle
-		if oneofHasRequiredFields(aux.Shape, "radius") {
-			var candidate *Circle
-			if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
-				d.Shape = &Drawing_Circle{Circle: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Shape, "radius") {
+				var candidate *Circle
+				if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
+					d.Shape = &Drawing_Circle{Circle: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 
 		// Try variant: Rectangle
-		if oneofHasRequiredFields(aux.Shape, "width", "height") {
-			var candidate *Rectangle
-			if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
-				d.Shape = &Drawing_Rectangle{Rectangle: candidate}
-				oneofMatched++
-			} else {
-				oneofLastErr = err
+		{
+			if oneofHasRequiredFields(aux.Shape, "width", "height") {
+				var candidate *Rectangle
+				if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
+					d.Shape = &Drawing_Rectangle{Rectangle: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
 			}
 		}
 
