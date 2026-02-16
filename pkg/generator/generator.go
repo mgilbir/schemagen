@@ -2,6 +2,7 @@ package generator
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -742,11 +743,59 @@ func nonNullType(s *schema.Schema) string {
 }
 
 // refToGoName extracts the Go type name from a $ref string.
-// e.g. "#/$defs/my-type" → "MyType", "#/definitions/Address" → "Address"
+// It handles JSON Pointer refs, URN refs, and URI refs:
+//
+//	"#/$defs/my-type"       → "MyType"
+//	"#/definitions/Address" → "Address"
+//	"#"                     → "Root"
+//	"urn:uuid:dead-beef"    → "DeadBeef" (uses last segment after last colon)
+//	"#/definitions/tilde~0field" → "TildeField" (JSON Pointer unescaping)
+//	"foo%22bar"             → "FooBar" (URL decoding)
 func refToGoName(ref string) string {
-	parts := strings.Split(ref, "/")
-	last := parts[len(parts)-1]
-	return SchemaNameToGoName(last)
+	// Strip fragment from URIs/URNs: "urn:...#something" → use "something"
+	name := ref
+	if idx := strings.LastIndex(ref, "#"); idx >= 0 {
+		fragment := ref[idx+1:]
+		if fragment == "" {
+			// Fragment-only ref "#" — use "Root" as the name.
+			return "Root"
+		}
+		name = fragment
+	}
+
+	// For JSON Pointer paths like "/definitions/foo/bar", take the last segment.
+	if strings.Contains(name, "/") {
+		parts := strings.Split(name, "/")
+		// Find the last non-empty segment.
+		for i := len(parts) - 1; i >= 0; i-- {
+			if parts[i] != "" {
+				name = parts[i]
+				break
+			}
+		}
+		// If all segments are empty, use a fallback.
+		if name == "" || name == ref {
+			return "X"
+		}
+	}
+
+	// For URN refs without fragment (e.g. "urn:uuid:deadbeef-1234"),
+	// take the last colon-separated segment.
+	if strings.Contains(name, ":") {
+		parts := strings.Split(name, ":")
+		name = parts[len(parts)-1]
+	}
+
+	// Apply JSON Pointer unescaping: ~1 → /, ~0 → ~
+	name = strings.ReplaceAll(name, "~1", "/")
+	name = strings.ReplaceAll(name, "~0", "~")
+
+	// Apply URL percent-decoding.
+	if decoded, err := url.PathUnescape(name); err == nil {
+		name = decoded
+	}
+
+	return SchemaNameToGoName(name)
 }
 
 // enumValueSuffix returns a suffix for an enum constant name from the value.

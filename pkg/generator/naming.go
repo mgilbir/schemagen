@@ -37,19 +37,32 @@ var commonAcronyms = map[string]string{
 	"eof":   "EOF",
 }
 
+// goKeywords is the set of Go reserved keywords that cannot be used as identifiers.
+var goKeywords = map[string]bool{
+	"break": true, "case": true, "chan": true, "const": true, "continue": true,
+	"default": true, "defer": true, "else": true, "fallthrough": true, "for": true,
+	"func": true, "go": true, "goto": true, "if": true, "import": true,
+	"interface": true, "map": true, "package": true, "range": true, "return": true,
+	"select": true, "struct": true, "switch": true, "type": true, "var": true,
+}
+
 // splitWords splits a string on underscores, hyphens, and camelCase boundaries.
+// Non-alphanumeric characters (other than _ and -) are treated as word separators
+// and stripped from the output.
 func splitWords(s string) []string {
-	// First, replace underscores and hyphens with spaces so we can split on them.
+	// First, replace separators and non-identifier characters with spaces.
 	var buf strings.Builder
 	runes := []rune(s)
 	for i, r := range runes {
-		if r == '_' || r == '-' {
+		// Treat underscores, hyphens, and any non-letter/non-digit as separators.
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			buf.WriteRune(' ')
 			continue
 		}
 		if i > 0 {
 			prev := runes[i-1]
-			if prev != '_' && prev != '-' {
+			prevIsIdent := unicode.IsLetter(prev) || unicode.IsDigit(prev)
+			if prevIsIdent {
 				// Upper after lower → new word boundary
 				if unicode.IsUpper(r) && unicode.IsLower(prev) {
 					buf.WriteRune(' ')
@@ -81,6 +94,41 @@ func capitalizeWord(word string) string {
 	return string(runes)
 }
 
+// sanitizeGoIdentifier ensures the result is a valid, non-empty Go identifier.
+// It strips any remaining non-identifier characters, ensures the name starts with
+// a letter or underscore, and avoids Go reserved keywords.
+func sanitizeGoIdentifier(name string) string {
+	if name == "" {
+		return "X"
+	}
+
+	// Strip characters that are not valid in Go identifiers.
+	var buf strings.Builder
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			buf.WriteRune(r)
+		}
+	}
+	result := buf.String()
+
+	if result == "" {
+		return "X"
+	}
+
+	// Ensure the first character is a letter or underscore.
+	first := rune(result[0])
+	if unicode.IsDigit(first) {
+		result = "X" + result
+	}
+
+	// Avoid Go reserved keywords.
+	if goKeywords[strings.ToLower(result)] {
+		result = result + "_"
+	}
+
+	return result
+}
+
 // JSONPropertyToGoName converts a JSON property name to a Go exported field name.
 //
 // Examples:
@@ -89,13 +137,15 @@ func capitalizeWord(word string) string {
 //	"firstName"  → "FirstName"
 //	"id"         → "ID"
 //	"api_url"    → "APIURL"
+//	"$ref"       → "Ref"
+//	"foo\"bar"   → "FooBar"
 func JSONPropertyToGoName(name string) string {
 	words := splitWords(name)
 	var result strings.Builder
 	for _, w := range words {
 		result.WriteString(capitalizeWord(w))
 	}
-	return result.String()
+	return sanitizeGoIdentifier(result.String())
 }
 
 // SchemaNameToGoName converts a JSON Schema definition name to a Go type name.

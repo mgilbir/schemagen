@@ -24,6 +24,19 @@ func TestJSONPropertyToGoName(t *testing.T) {
 		{"already_PascalCase", "AlreadyPascalCase"},
 		{"ip_address", "IPAddress"},
 		{"css_class", "CSSClass"},
+		// Special characters stripped
+		{"$ref", "Ref"},
+		{"foo\"bar", "FooBar"},
+		{"foo\\bar", "FooBar"},
+		{"foo\nbar", "FooBar"},
+		{"foo\tbar", "FooBar"},
+		{"foo\rbar", "FooBar"},
+		// Empty input
+		{"", "X"},
+		// All non-identifier chars
+		{"$#%", "X"},
+		// Starts with digit after sanitization
+		{"123abc", "X123abc"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -44,12 +57,72 @@ func TestSchemaNameToGoName(t *testing.T) {
 		{"my_type", "MyType"},
 		{"MyType", "MyType"},
 		{"some-api-thing", "SomeAPIThing"},
+		{"tilde~field", "TildeField"},
+		{"slash/field", "SlashField"},
+		{"percent%field", "PercentField"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			got := SchemaNameToGoName(tt.input)
 			if got != tt.want {
 				t.Errorf("SchemaNameToGoName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRefToGoName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// Standard JSON Pointer refs
+		{"#/$defs/my-type", "MyType"},
+		{"#/definitions/Address", "Address"},
+		{"#/definitions/is-string", "IsString"},
+		// Fragment-only ref
+		{"#", "Root"},
+		// Escaped JSON Pointer segments
+		{"#/definitions/tilde~0field", "TildeField"},
+		{"#/definitions/slash~1field", "SlashField"},
+		// URL-encoded segments
+		{"#/definitions/foo%22bar", "FooBar"},
+		{"#/definitions/percent%25field", "PercentField"},
+		// Empty path segments
+		{"#/definitions//definitions/", "Definitions"},
+		// URN refs
+		{"urn:uuid:deadbeef-1234-ffff-ffff-4321feebdaed", "Deadbeef1234FfffFfff4321feebdaed"},
+		// URN with fragment
+		{"urn:uuid:deadbeef-1234-ff00-00ff-4321feebdaed#something", "Something"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := refToGoName(tt.input)
+			if got != tt.want {
+				t.Errorf("refToGoName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeGoIdentifier(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"ValidName", "ValidName"},
+		{"", "X"},
+		{"123", "X123"},
+		{"$ref", "ref"},
+		{"foo#bar", "foobar"},
+		{"break", "break_"},
+		{"type", "type_"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := sanitizeGoIdentifier(tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeGoIdentifier(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
