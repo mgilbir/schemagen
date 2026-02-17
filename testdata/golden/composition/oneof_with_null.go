@@ -68,7 +68,7 @@ func (d DatabaseConfig) MarshalJSON() ([]byte, error) {
 }
 
 type Config struct {
-	Database             *DatabaseConfig            `json:"database,omitempty"`
+	Database             *DatabaseConfig            `json:"database"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }

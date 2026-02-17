@@ -1,9 +1,9 @@
 package tests
 
 // Known failures for external JSON Schema Test Suite tests.
-// Updated after patternProperties support for round-trip preservation.
+// Updated after remote ref resolution, anyOf null+single-variant, and alias round-trip fixes.
 // CodeGen: 2 known failures
-// RoundTrip: 35 known failures (down from 47, after patternProperties fix)
+// RoundTrip: 16 known failures (down from 35, after remote ref and alias round-trip fixes)
 
 var knownParseFailures = map[string]string{}
 
@@ -16,49 +16,30 @@ var knownCodeGenFailures = map[string]string{
 
 var knownRoundTripFailures = map[string]string{
 	// --- draft2019-09 ---
-	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                               "round-trip: compilation or execution error",
-	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref/single level match":                                                   "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref/two levels, properties match with inner definition":                   "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with nesting/integer now matches as a property value":                                                              "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with nesting/single level match":                                                                                   "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with nesting/two levels, properties match with $recursiveRef":                                                      "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with nesting/two levels, properties match with inner definition":                                                   "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource/leaf node matches: recursion uses the inner schema": "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource/leaf node matches: recursion only uses inner schema":         "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref/single level match":                                                       "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref/two levels, properties match with inner definition":                       "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef without using nesting/single level match":                                                                          "no root struct type in generated code",
-	"draft2019-09/recursiveRef/$recursiveRef without using nesting/two levels, properties match with inner definition":                                          "no root struct type in generated code",
-	"draft2019-09/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                                                         "round-trip: compilation or execution error",
-	"draft2019-09/refRemote/root ref in remote ref/null is valid":                                                                                               "round-trip: compilation or execution error",
+	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft2019-09/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                           "ref alongside sibling keywords",
 
-	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "round-trip: compilation or execution error",
-	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "round-trip: compilation or execution error",
+	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom vocabulary metaschema",
+	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "custom vocabulary metaschema",
 	// --- draft2020-12 ---
-	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: compilation or execution error",
-	"draft2020-12/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                           "round-trip: compilation or execution error",
-	"draft2020-12/refRemote/root ref in remote ref/null is valid":                                                                 "round-trip: compilation or execution error",
+	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft2020-12/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                           "ref alongside sibling keywords",
 
-	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "round-trip: compilation or execution error",
-	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "round-trip: compilation or execution error",
+	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom vocabulary metaschema",
+	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "custom vocabulary metaschema",
 	// --- draft3 ---
-	"draft3/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: compilation or execution error",
-	"draft3/ref/ref overrides any sibling keywords/remote ref valid":                                                        "round-trip: compilation or execution error",
+	"draft3/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft3/ref/ref overrides any sibling keywords/remote ref valid":                                                        "ref overrides sibling keywords",
 
 	// --- draft4 ---
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: compilation or execution error",
-	"draft4/ref/ref overrides any sibling keywords/ref valid":                                                               "round-trip: compilation or execution error",
-	"draft4/refRemote/root ref in remote ref/null is valid":                                                                 "round-trip: compilation or execution error",
+	"draft4/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft4/ref/ref overrides any sibling keywords/ref valid":                                                               "ref overrides sibling keywords",
 
 	// --- draft6 ---
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: compilation or execution error",
-	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                               "round-trip: compilation or execution error",
-	"draft6/refRemote/remote ref with ref to definitions/valid":                                                             "round-trip: compilation or execution error",
-	"draft6/refRemote/root ref in remote ref/null is valid":                                                                 "round-trip: compilation or execution error",
+	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                               "ref overrides sibling keywords",
 
 	// --- draft7 ---
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: compilation or execution error",
-	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                               "round-trip: compilation or execution error",
-	"draft7/refRemote/remote ref with ref to definitions/valid":                                                             "round-trip: compilation or execution error",
-	"draft7/refRemote/root ref in remote ref/null is valid":                                                                 "round-trip: compilation or execution error",
+	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property": "round-trip: array omitempty drops empty []",
+	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                               "ref overrides sibling keywords",
 }

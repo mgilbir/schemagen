@@ -254,6 +254,35 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateAnyOfDef(name, s)
 	}
 
+	// anyOf with null + single non-null variant → nullable alias (e.g., anyOf: [null, string] → *string).
+	// This also handles the pattern where the non-null variant is a $ref to a primitive type.
+	if len(s.AnyOf) > 0 && !hasProperties(s) {
+		nonNull, hasNull := g.separateNullFromOneOf(s.AnyOf)
+		if hasNull && len(nonNull) == 1 {
+			variant := nonNull[0]
+			// If the variant is a $ref, resolve it first so we generate the type
+			// based on the target schema rather than the ref string (avoids name
+			// collisions when the ref target is a remote schema root).
+			effective := variant
+			if effRef := variant.EffectiveRef(); effRef != "" {
+				if resolved := g.resolveRefInContext(effRef, variant); resolved != nil {
+					effective = resolved
+				}
+			}
+			goType := g.resolveType(effective, name)
+			if !goType.IsPointer() {
+				goType = &PointerType{Inner: goType}
+			}
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:        name,
+				Underlying:  goType,
+				Description: s.Description,
+			})
+			return nil
+		}
+	}
+
 	// Object with properties (may also have oneOf fields) → struct
 	if hasProperties(s) || len(s.OneOf) > 0 {
 		return g.generateStructDef(name, s)
@@ -404,6 +433,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		if omitEmpty && isNullOnly(propSchema) {
 			omitEmpty = false
 		}
+		// Suppress omitempty for properties whose schema explicitly includes null
+		// (via type list or anyOf/oneOf composition). These generate pointer types
+		// where omitempty would incorrectly drop JSON null values.
+		// NOTE: This does NOT suppress omitempty for all pointer types — recursive
+		// self-refs also produce pointers but should keep omitempty so that absent
+		// optional fields are omitted rather than emitted as null.
+		if omitEmpty && isNullable(propSchema) {
+			omitEmpty = false
+		}
+		if omitEmpty && g.isNullableComposition(propSchema) {
+			omitEmpty = false
+		}
+		// NOTE: Array/slice types with omitempty will drop empty arrays [] during
+		// round-trip (omitempty treats nil and empty slices the same). A proper fix
+		// requires *[]T (pointer-to-slice) with template updates for len() checks.
+		// This is a known limitation tracked in the external test suite failures.
 		manualJSON := needsManualJSON(propName)
 
 		fields = append(fields, FieldDef{
@@ -528,25 +573,37 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	merged.Required = append(merged.Required, s.Required...)
 
-	// Merge each allOf sub-schema.
-	for _, sub := range s.AllOf {
+	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
+	g.mergeAllOfInto(merged, s.AllOf)
+
+	return g.generateStructDef(name, merged)
+}
+
+// mergeAllOfInto recursively merges properties and required fields from allOf
+// sub-schemas into the target schema. This handles cases like remote schemas
+// that themselves contain allOf with internal $ref chains.
+func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
+	for _, sub := range allOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
 				resolved = r
 			}
 		}
+		// Copy direct properties.
 		for k, v := range resolved.Properties {
-			merged.Properties[k] = v
+			target.Properties[k] = v
 		}
-		merged.Required = append(merged.Required, resolved.Required...)
-		// If the sub-schema itself has a type, propagate it.
-		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
-			merged.Type = resolved.Type
+		target.Required = append(target.Required, resolved.Required...)
+		// Propagate type from sub-schemas if the target doesn't have one.
+		if len(resolved.Type) > 0 && len(target.Type) == 0 {
+			target.Type = resolved.Type
+		}
+		// Recursively merge nested allOf chains.
+		if len(resolved.AllOf) > 0 {
+			g.mergeAllOfInto(target, resolved.AllOf)
 		}
 	}
-
-	return g.generateStructDef(name, merged)
 }
 
 // generateAnyOfDef merges all anyOf sub-schemas into a single struct.
@@ -808,6 +865,31 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		// Multi-variant oneOf is handled by generateStructDef/generateOneOfForProperty
 		// and should not reach here (the caller skips it).
+	}
+
+	// anyOf with null + single variant → pointer to the variant type (same as oneOf pattern above).
+	// Handles patterns like anyOf: [{type: null}, {$ref: "#"}] inside remote schemas
+	// where the ref resolves to a primitive type.
+	if len(s.AnyOf) > 0 {
+		nonNull, hasNull := g.separateNullFromOneOf(s.AnyOf)
+		if hasNull && len(nonNull) == 1 {
+			variant := nonNull[0]
+			// Resolve $ref if present to get the actual target schema.
+			effective := variant
+			if effRef := variant.EffectiveRef(); effRef != "" {
+				if resolved := g.resolveRefInContext(effRef, variant); resolved != nil {
+					effective = resolved
+				}
+			}
+			innerType, err := g.resolvePropertyType(effective, parentName, fieldName, ctxSchema)
+			if err != nil {
+				return nil, err
+			}
+			if !innerType.IsPointer() {
+				return &PointerType{Inner: innerType}, nil
+			}
+			return innerType, nil
+		}
 	}
 
 	// $ref / $recursiveRef / $dynamicRef
@@ -1116,17 +1198,23 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 			}
 
 			// Try external resolver with the absolute URI.
+			// When there's a fragment, first load the document root (without fragment)
+			// so we can register it properly, then resolve the fragment locally.
+			// This ensures ComputeBaseURIs is called on the full document, not a sub-schema.
 			if g.resolver != nil {
-				if s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase); err == nil {
-					// Compute base URIs on the resolved remote schema so its
-					// internal $id scopes and refs work correctly.
-					g.registerRemoteSchema(s, &docURL)
-					if fragment != "" {
-						local := schema.NewLocalResolver(s)
+				if fragment != "" {
+					// Load the document root first.
+					if docSchema, err := g.resolver.ResolveSchema(docKey, ctxBase); err == nil {
+						g.registerRemoteSchema(docSchema, &docURL)
+						local := schema.NewLocalResolver(docSchema)
 						if resolved, err := local.Resolve("#" + fragment); err == nil {
 							return resolved
 						}
 					}
+				}
+				// Fallback: try with the full URI (no fragment, or fragment resolution failed above).
+				if s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase); err == nil {
+					g.registerRemoteSchema(s, &docURL)
 					return s
 				}
 			}
@@ -1360,6 +1448,15 @@ func needsManualJSON(jsonName string) bool {
 	return false
 }
 
+// isArrayType returns true if the GoType is a slice/array type.
+func isArrayType(t GoType) bool {
+	if t == nil {
+		return false
+	}
+	_, ok := t.(*ArrayType)
+	return ok
+}
+
 // isNullOnly returns true if the schema's type is exclusively "null".
 func isNullOnly(s *schema.Schema) bool {
 	if s == nil {
@@ -1430,6 +1527,35 @@ func nonNullType(s *schema.Schema) string {
 		}
 	}
 	return ""
+}
+
+// isNullableComposition checks if a property schema uses anyOf/oneOf with a null
+// variant, indicating the resolved Go type will be a pointer. This is used to
+// determine whether omitempty should be suppressed for lossless null round-tripping.
+// It also follows $ref to check the target schema's composition.
+func (g *Generator) isNullableComposition(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	// Direct anyOf/oneOf with null variant.
+	for _, variants := range [][]*schema.Schema{s.AnyOf, s.OneOf} {
+		_, hasNull := g.separateNullFromOneOf(variants)
+		if hasNull {
+			return true
+		}
+	}
+	// Follow $ref to check the target.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			for _, variants := range [][]*schema.Schema{resolved.AnyOf, resolved.OneOf} {
+				_, hasNull := g.separateNullFromOneOf(variants)
+				if hasNull {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // refToGoName extracts the Go type name from a $ref string.
