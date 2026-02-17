@@ -32,8 +32,10 @@ func allGoldenTests() []goldenTestCase {
 		{"composition/allof_simple", "testdata/schemas/composition/allof_simple.json", "testdata/golden/composition/allof_simple.go"},
 		{"composition/oneof_simple", "testdata/schemas/composition/oneof_simple.json", "testdata/golden/composition/oneof_simple.go"},
 		{"composition/oneof_complex", "testdata/schemas/composition/oneof_complex.json", "testdata/golden/composition/oneof_complex.go"},
+		{"composition/anyof_simple", "testdata/schemas/composition/anyof_simple.json", "testdata/golden/composition/anyof_simple.go"},
 		{"composition/oneof_with_null", "testdata/schemas/composition/oneof_with_null.json", "testdata/golden/composition/oneof_with_null.go"},
 		{"validation/string_constraints", "testdata/schemas/validation/string_constraints.json", "testdata/golden/validation/string_constraints.go"},
+		{"validation/numeric_constraints", "testdata/schemas/validation/numeric_constraints.json", "testdata/golden/validation/numeric_constraints.go"},
 		{"formats/datetime", "testdata/schemas/formats/datetime.json", "testdata/golden/formats/datetime.go"},
 	}
 }

@@ -1,0 +1,7 @@
+{
+  "str_field": "hello",
+  "int_field": 42,
+  "num_field": 3.14,
+  "bool_field": true,
+  "nullable_str": "world"
+}

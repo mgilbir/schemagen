@@ -64,9 +64,49 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/enum/string_enum.json",
 		},
 		{
+			Name:        "basic/primitive_types",
+			SchemaPath:  "testdata/schemas/basic/primitive_types.json",
+			FixturePath: "testdata/fixtures/basic/primitive_types.json",
+		},
+		{
+			Name:        "refs/defs_ref",
+			SchemaPath:  "testdata/schemas/refs/defs_ref.json",
+			FixturePath: "testdata/fixtures/refs/defs_ref.json",
+		},
+		{
+			Name:        "refs/definitions_ref",
+			SchemaPath:  "testdata/schemas/refs/definitions_ref.json",
+			FixturePath: "testdata/fixtures/refs/definitions_ref.json",
+		},
+		{
+			Name:        "composition/anyof_simple",
+			SchemaPath:  "testdata/schemas/composition/anyof_simple.json",
+			FixturePath: "testdata/fixtures/composition/anyof_simple.json",
+		},
+		{
+			Name:        "composition/oneof_complex",
+			SchemaPath:  "testdata/schemas/composition/oneof_complex.json",
+			FixturePath: "testdata/fixtures/composition/oneof_complex.json",
+		},
+		{
+			Name:        "composition/oneof_with_null",
+			SchemaPath:  "testdata/schemas/composition/oneof_with_null.json",
+			FixturePath: "testdata/fixtures/composition/oneof_with_null.json",
+		},
+		{
+			Name:        "composition/oneof_with_null_nil",
+			SchemaPath:  "testdata/schemas/composition/oneof_with_null.json",
+			FixturePath: "testdata/fixtures/composition/oneof_with_null_nil.json",
+		},
+		{
 			Name:        "validation/string_constraints",
 			SchemaPath:  "testdata/schemas/validation/string_constraints.json",
 			FixturePath: "testdata/fixtures/validation/string_constraints.json",
+		},
+		{
+			Name:        "validation/numeric_constraints",
+			SchemaPath:  "testdata/schemas/validation/numeric_constraints.json",
+			FixturePath: "testdata/fixtures/validation/numeric_constraints.json",
 		},
 		{
 			Name:        "formats/datetime",

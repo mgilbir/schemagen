@@ -1,0 +1,24 @@
+{
+  "order_id": "ORD-001",
+  "shipping_address": {
+    "street": "123 Main St",
+    "city": "Springfield",
+    "zip": "62701"
+  },
+  "billing_address": {
+    "street": "456 Oak Ave",
+    "city": "Shelbyville"
+  },
+  "items": [
+    {
+      "name": "Widget",
+      "quantity": 3,
+      "price": 9.99
+    },
+    {
+      "name": "Gadget",
+      "quantity": 1,
+      "price": 24.50
+    }
+  ]
+}

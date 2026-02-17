@@ -1,0 +1,12 @@
+{
+  "name": "Engineering",
+  "members": [
+    {
+      "name": "Alice",
+      "role": "Lead"
+    },
+    {
+      "name": "Bob"
+    }
+  ]
+}

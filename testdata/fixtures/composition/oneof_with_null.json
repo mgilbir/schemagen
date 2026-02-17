@@ -1,0 +1,7 @@
+{
+  "name": "production",
+  "database": {
+    "host": "db.example.com",
+    "port": 5432
+  }
+}

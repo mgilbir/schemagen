@@ -1,0 +1,10 @@
+{
+  "id": "notif-001",
+  "target": {
+    "email_address": "user@example.com"
+  },
+  "content": {
+    "html": "<h1>Hello</h1>",
+    "subject": "Greetings"
+  }
+}
