@@ -362,6 +362,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 
 		omitEmpty := g.config.OmitEmpty && !required
+		// Never use omitempty for null-typed properties — omitempty strips nil values
+		// but {"foo": null} must be preserved in round-trip.
+		if omitEmpty && isNullOnly(propSchema) {
+			omitEmpty = false
+		}
 		manualJSON := needsManualJSON(propName)
 
 		fields = append(fields, FieldDef{
@@ -937,6 +942,14 @@ func needsManualJSON(jsonName string) bool {
 		}
 	}
 	return false
+}
+
+// isNullOnly returns true if the schema's type is exclusively "null".
+func isNullOnly(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	return len(s.Type) == 1 && s.Type[0] == "null"
 }
 
 // ---------- helpers ----------
