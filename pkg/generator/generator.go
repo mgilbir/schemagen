@@ -243,11 +243,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateStructDef(name, s)
 	}
 
-	// Ref only → alias
-	if s.Ref != "" {
-		resolved := g.resolveRef(s.Ref)
+	// Ref only → alias (handles $ref, $recursiveRef, $dynamicRef)
+	if effRef := s.EffectiveRef(); effRef != "" {
+		resolved := g.resolveRef(effRef)
 		if resolved != nil {
-			refName := refToGoName(s.Ref)
+			refName := refToGoName(effRef)
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:        name,
@@ -539,8 +539,8 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// Merge each anyOf sub-schema's properties.
 	for _, sub := range s.AnyOf {
 		resolved := sub
-		if sub.Ref != "" {
-			if r := g.resolveRef(sub.Ref); r != nil {
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRef(effRef); r != nil {
 				resolved = r
 			}
 		}
@@ -642,10 +642,10 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		return oneOfVariantResult{Name: "None", Type: &PrimitiveType{Name: "any"}}, nil
 	}
 
-	// $ref variant → use the referenced type
-	if variant.Ref != "" {
-		goName := refToGoName(variant.Ref)
-		refSchema := g.resolveRef(variant.Ref)
+	// $ref / $recursiveRef / $dynamicRef variant → use the referenced type
+	if effRef := variant.EffectiveRef(); effRef != "" {
+		goName := refToGoName(effRef)
+		refSchema := g.resolveRef(effRef)
 		if refSchema != nil {
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return oneOfVariantResult{}, err
@@ -756,9 +756,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		nonNull, hasNull := g.separateNullFromOneOf(s.OneOf)
 		if hasNull && len(nonNull) == 1 {
 			variant := nonNull[0]
-			if variant.Ref != "" {
-				goName := refToGoName(variant.Ref)
-				if refSchema := g.resolveRef(variant.Ref); refSchema != nil {
+			if effRef := variant.EffectiveRef(); effRef != "" {
+				goName := refToGoName(effRef)
+				if refSchema := g.resolveRef(effRef); refSchema != nil {
 					if err := g.generateTypeDef(goName, refSchema); err != nil {
 						return nil, err
 					}
@@ -779,10 +779,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// and should not reach here (the caller skips it).
 	}
 
-	// $ref
-	if s.Ref != "" {
+	// $ref / $recursiveRef / $dynamicRef
+	if effRef := s.EffectiveRef(); effRef != "" {
 		// Self-references (e.g. $ref: "#" or $ref matching root $id).
-		if g.isSelfRef(s.Ref) {
+		if g.isSelfRef(effRef) {
 			// Only generate *Root if the root schema is explicitly an object type
 			// with properties. Otherwise the root can validate non-object values
 			// (e.g. numbers, booleans) and we should use json.RawMessage.
@@ -791,9 +791,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &PrimitiveType{Name: "json.RawMessage"}, nil
 		}
-		goName := refToGoName(s.Ref)
+		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
-		if refSchema := g.resolveRef(s.Ref); refSchema != nil {
+		if refSchema := g.resolveRef(effRef); refSchema != nil {
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return nil, err
 			}
@@ -843,16 +843,16 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: enumName}
 	}
 
-	// $ref
-	if s.Ref != "" {
-		if g.isSelfRef(s.Ref) {
+	// $ref / $recursiveRef / $dynamicRef
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if g.isSelfRef(effRef) {
 			if g.rootIsObjectType() {
 				return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
 			}
 			return &PrimitiveType{Name: "json.RawMessage"}
 		}
-		goName := refToGoName(s.Ref)
-		if refSchema := g.resolveRef(s.Ref); refSchema != nil {
+		goName := refToGoName(effRef)
+		if refSchema := g.resolveRef(effRef); refSchema != nil {
 			_ = g.generateTypeDef(goName, refSchema)
 		}
 		return &NamedType{Name: goName}
@@ -1044,8 +1044,8 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 		}
 		// Resolve $ref, but skip self-references to avoid misattributing
 		// the root schema's properties to this anyOf variant.
-		if sub.Ref != "" && !g.isSelfRef(sub.Ref) {
-			if r := g.resolveRef(sub.Ref); r != nil {
+		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRef(effRef) {
+			if r := g.resolveRef(effRef); r != nil {
 				if len(r.Properties) > 0 {
 					return true
 				}

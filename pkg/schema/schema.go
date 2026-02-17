@@ -391,6 +391,21 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 	return json.Marshal(schemaAlias(s))
 }
 
+// EffectiveRef returns the effective reference string for this schema.
+// It returns $ref if set, otherwise $recursiveRef (draft 2019-09),
+// otherwise "".
+// Note: $dynamicRef (draft 2020-12) is intentionally excluded because it
+// requires dynamic anchor resolution semantics that differ from simple $ref.
+func (s *Schema) EffectiveRef() string {
+	if s.Ref != "" {
+		return s.Ref
+	}
+	if s.RecursiveRef != "" {
+		return s.RecursiveRef
+	}
+	return ""
+}
+
 // IsBooleanSchema returns true if this schema is a bare true/false.
 func (s *Schema) IsBooleanSchema() bool {
 	return s.BooleanSchema != nil
