@@ -693,6 +693,128 @@ func TestResolverCaching(t *testing.T) {
 	}
 }
 
+func TestResolvePropertiesPointer(t *testing.T) {
+	// Test full JSON Pointer traversal: #/properties/foo
+	foo := &Schema{Type: TypeList{"integer"}}
+	s := &Schema{
+		Properties: map[string]*Schema{
+			"foo": foo,
+		},
+	}
+	r := NewResolver(s)
+
+	resolved, err := r.Resolve("#/properties/foo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != foo {
+		t.Error("expected foo property schema")
+	}
+}
+
+func TestResolveAllOfIndex(t *testing.T) {
+	inner := &Schema{Type: TypeList{"string"}}
+	s := &Schema{
+		AllOf: []*Schema{inner},
+	}
+	r := NewResolver(s)
+
+	resolved, err := r.Resolve("#/allOf/0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != inner {
+		t.Error("expected allOf[0] schema")
+	}
+}
+
+func TestResolveAnchor(t *testing.T) {
+	anchored := &Schema{Type: TypeList{"number"}, Anchor: "myanchor"}
+	s := &Schema{
+		Defs: map[string]*Schema{
+			"foo": anchored,
+		},
+	}
+	r := NewResolver(s)
+
+	resolved, err := r.Resolve("#myanchor")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != anchored {
+		t.Error("expected anchored schema")
+	}
+}
+
+func TestMappingResolver(t *testing.T) {
+	remote := &Schema{Type: TypeList{"integer"}}
+	schemas := map[string]*Schema{
+		"http://example.com/integer.json": remote,
+	}
+	mr := NewMappingResolver(schemas)
+
+	resolved, err := mr.ResolveSchema("http://example.com/integer.json", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != remote {
+		t.Error("expected remote schema")
+	}
+}
+
+func TestMappingResolverWithFragment(t *testing.T) {
+	inner := &Schema{Type: TypeList{"string"}}
+	remote := &Schema{
+		Defs: map[string]*Schema{
+			"name": inner,
+		},
+	}
+	schemas := map[string]*Schema{
+		"http://example.com/schema.json": remote,
+	}
+	mr := NewMappingResolver(schemas)
+
+	resolved, err := mr.ResolveSchema("http://example.com/schema.json#/$defs/name", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != inner {
+		t.Error("expected inner defs schema")
+	}
+}
+
+func TestCompositeResolver(t *testing.T) {
+	// First resolver only knows local refs
+	localSchema := &Schema{Type: TypeList{"object"}}
+	local := NewLocalResolver(localSchema)
+
+	// Second resolver knows remote refs
+	remote := &Schema{Type: TypeList{"integer"}}
+	mapping := NewMappingResolver(map[string]*Schema{
+		"http://example.com/int.json": remote,
+	})
+
+	composite := NewCompositeResolver(local, mapping)
+
+	// Should resolve local ref via first resolver
+	resolved, err := composite.ResolveSchema("#", nil)
+	if err != nil {
+		t.Fatalf("local resolve error: %v", err)
+	}
+	if resolved != localSchema {
+		t.Error("expected local schema")
+	}
+
+	// Should fall through to mapping resolver for remote ref
+	resolved, err = composite.ResolveSchema("http://example.com/int.json", nil)
+	if err != nil {
+		t.Fatalf("remote resolve error: %v", err)
+	}
+	if resolved != remote {
+		t.Error("expected remote schema")
+	}
+}
+
 func TestTypeListMarshalSingle(t *testing.T) {
 	tl := TypeList{"string"}
 	data, err := tl.MarshalJSON()

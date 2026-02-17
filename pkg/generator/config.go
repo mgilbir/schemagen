@@ -1,5 +1,7 @@
 package generator
 
+import "github.com/mgilbir/schemagen/pkg/schema"
+
 // Config holds configuration for code generation.
 type Config struct {
 	PackageName      string // Go package name for generated code
@@ -9,6 +11,7 @@ type Config struct {
 	//                        When false (default), absent additionalProperties follows JSON Schema spec
 	//                        (defaults to true), so an overflow map[string]json.RawMessage is added to
 	//                        capture any extra properties during unmarshal and re-emit them during marshal.
+	Resolver schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
 }
 
 // DefaultConfig returns sensible defaults.

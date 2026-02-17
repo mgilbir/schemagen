@@ -15,9 +15,12 @@ type Generator struct {
 	output       *File
 	generated    map[string]bool // track already-generated type names
 	defs         map[string]*schema.Schema
-	rootTypeName string            // Go type name for the root schema
-	rootID       string            // $id of the root schema (for detecting self-references)
-	anchors      map[string]string // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
+	rootTypeName string                // Go type name for the root schema
+	rootID       string                // $id of the root schema (for detecting self-references)
+	anchors      map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
+	resolver     schema.SchemaResolver // external resolver for non-local refs
+	baseURI      *url.URL              // base URI for the root document (from $id or file path)
+	rootSchema   *schema.Schema        // the root schema for local ref resolution
 }
 
 // New creates a new Generator with the given configuration.
@@ -34,6 +37,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		PackageName: g.config.PackageName,
 	}
 	g.generated = make(map[string]bool)
+	g.rootSchema = s
 
 	// Determine root type name.
 	g.rootTypeName = "Root"
@@ -46,6 +50,16 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	if g.rootID == "" {
 		g.rootID = s.LegacyID
 	}
+
+	// Compute base URI from root $id (used for resolving relative refs).
+	if g.rootID != "" {
+		if u, err := url.Parse(g.rootID); err == nil {
+			g.baseURI = u
+		}
+	}
+
+	// Store the external resolver from config (may be nil).
+	g.resolver = g.config.Resolver
 
 	// Collect definitions ($defs and definitions) and build anchor index.
 	g.defs = make(map[string]*schema.Schema)
@@ -778,24 +792,39 @@ func (g *Generator) isSelfRef(ref string) bool {
 	return false
 }
 
-// resolveRef looks up a $ref path in the collected definitions, anchors, and root schema.
+// resolveRef looks up a $ref path in the collected definitions, anchors, root schema,
+// and finally the external resolver (if configured).
 func (g *Generator) resolveRef(ref string) *schema.Schema {
+	// 1. Direct defs map lookup (handles #/$defs/Foo, #/definitions/Bar).
 	if s, ok := g.defs[ref]; ok {
 		return s
 	}
-	// Check anchor index (handles $id-based and $anchor-based refs).
+	// 2. Check anchor index (handles $id-based and $anchor-based refs).
 	if refPath, ok := g.anchors[ref]; ok {
 		if s, ok2 := g.defs[refPath]; ok2 {
 			return s
 		}
 	}
-	// For URN refs with fragments (e.g. "urn:...#something"), try the fragment as an anchor.
+	// 3. For URN refs with fragments (e.g. "urn:...#something"), try the fragment as an anchor.
 	if idx := strings.LastIndex(ref, "#"); idx > 0 {
 		fragment := ref[idx:]
 		if refPath, ok := g.anchors[fragment]; ok {
 			if s, ok2 := g.defs[refPath]; ok2 {
 				return s
 			}
+		}
+	}
+	// 4. Try local resolution via full JSON Pointer traversal (handles #/properties/foo, etc.).
+	if strings.HasPrefix(ref, "#") && g.rootSchema != nil {
+		local := schema.NewLocalResolver(g.rootSchema)
+		if s, err := local.Resolve(ref); err == nil {
+			return s
+		}
+	}
+	// 5. Try external resolver (handles remote URLs, relative URIs, file paths, etc.).
+	if g.resolver != nil {
+		if s, err := g.resolver.ResolveSchema(ref, g.baseURI); err == nil {
+			return s
 		}
 	}
 	return nil

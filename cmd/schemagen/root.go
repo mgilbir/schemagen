@@ -57,12 +57,18 @@ func newGenerateCmd() *cobra.Command {
 				// 2. Normalize
 				s.Normalize()
 
-				// 3. Create generator with config
+				// 3. Create generator with config, including a file resolver
+				//    rooted at the schema file's directory.
+				absPath, _ := filepath.Abs(schemaPath)
+				schemaDir := filepath.Dir(absPath)
+				resolver := schema.NewFileResolver(schemaDir)
+
 				cfg := generator.Config{
 					PackageName:      pkgName,
 					OutputDir:        outputDir,
 					OmitEmpty:        omitEmpty,
 					StrictProperties: strictProperties,
+					Resolver:         resolver,
 				}
 				gen := generator.New(cfg)
 

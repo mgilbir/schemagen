@@ -18,6 +18,12 @@ import (
 // relative to the tests/ directory where these tests run.
 const jstsBaseDir = "../testdata/external/JSON-Schema-Test-Suite/tests"
 
+// jstsRemotesDir is the path to the remotes directory in the test suite.
+const jstsRemotesDir = "../testdata/external/JSON-Schema-Test-Suite/remotes"
+
+// remoteBaseURL is the base URL that the JSTS expects for remote schemas.
+const remoteBaseURL = "http://localhost:1234"
+
 // allDrafts lists all draft directories in the test suite.
 var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12"}
 
@@ -33,6 +39,56 @@ type jstsTestCase struct {
 	Description string          `json:"description"`
 	Data        json.RawMessage `json:"data"`
 	Valid       bool            `json:"valid"`
+}
+
+// loadRemoteSchemas walks the remotes/ directory and builds a map of URL → *Schema.
+// This allows the generator to resolve $ref values pointing to http://localhost:1234/...
+func loadRemoteSchemas(t *testing.T) map[string]*schema.Schema {
+	t.Helper()
+	schemas := make(map[string]*schema.Schema)
+	err := filepath.Walk(jstsRemotesDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var s schema.Schema
+		if err := json.Unmarshal(data, &s); err != nil {
+			// Skip unparseable schemas (some may be non-schema JSON).
+			return nil
+		}
+		s.Normalize()
+
+		// Build the URL key: remoteBaseURL + relative path from remotes dir.
+		rel, err := filepath.Rel(jstsRemotesDir, path)
+		if err != nil {
+			return err
+		}
+		// Use forward slashes for URL path.
+		urlKey := remoteBaseURL + "/" + filepath.ToSlash(rel)
+		schemas[urlKey] = &s
+		return nil
+	})
+	if err != nil {
+		t.Logf("warning: could not load remote schemas: %v", err)
+	}
+	return schemas
+}
+
+// remotesResolver returns a SchemaResolver for the test suite's remote schemas.
+// Returns nil if remotes can't be loaded.
+func remotesResolver(t *testing.T) schema.SchemaResolver {
+	t.Helper()
+	schemas := loadRemoteSchemas(t)
+	if len(schemas) == 0 {
+		return nil
+	}
+	return schema.NewMappingResolver(schemas)
 }
 
 // requireTestSuite skips the test if the external test suite is not downloaded.
@@ -217,14 +273,14 @@ func tryParse(schemaJSON json.RawMessage) error {
 }
 
 // tryGenerateAndCompile attempts the full pipeline: parse → generate IR → emit → compile.
-func tryGenerateAndCompile(schemaJSON json.RawMessage) error {
+func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -265,14 +321,14 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage) error {
 }
 
 // tryRoundTrip attempts the full round-trip: parse → generate → compile → unmarshal → marshal → compare.
-func tryRoundTrip(schemaJSON, dataJSON json.RawMessage) error {
+func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -357,6 +413,7 @@ func TestExternalParsing(t *testing.T) {
 // TestExternalCodeGen tests that we can generate compilable Go code from object-like schemas.
 func TestExternalCodeGen(t *testing.T) {
 	requireTestSuite(t)
+	resolver := remotesResolver(t)
 
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
@@ -376,7 +433,7 @@ func TestExternalCodeGen(t *testing.T) {
 						}
 						t.Run(group.Description, func(t *testing.T) {
 							key := failureKey(draft, filenameWithoutExt(file), group.Description)
-							err := tryGenerateAndCompile(group.Schema)
+							err := tryGenerateAndCompile(group.Schema, resolver)
 							checkKnownFailure(t, key, err, knownCodeGenFailures)
 						})
 					}
@@ -389,6 +446,7 @@ func TestExternalCodeGen(t *testing.T) {
 // TestExternalRoundTrip tests lossless JSON round-tripping through generated code.
 func TestExternalRoundTrip(t *testing.T) {
 	requireTestSuite(t)
+	resolver := remotesResolver(t)
 
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
@@ -422,7 +480,7 @@ func TestExternalRoundTrip(t *testing.T) {
 							for _, tc := range validObjectTests {
 								t.Run(tc.Description, func(t *testing.T) {
 									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
-									err := tryRoundTrip(group.Schema, tc.Data)
+									err := tryRoundTrip(group.Schema, tc.Data, resolver)
 									checkKnownFailure(t, key, err, knownRoundTripFailures)
 								})
 							}

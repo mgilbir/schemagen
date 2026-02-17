@@ -1,9 +1,9 @@
 package tests
 
 // Known failures for external JSON Schema Test Suite tests.
-// Updated after top-level oneOf marshal/unmarshal and RequiredFields fixes.
-// CodeGen: 37 known failures (all compile errors — ref resolution, remote refs)
-// RoundTrip: 149 known failures (down from 195, after oneOf round-trip fixes)
+// Updated after SchemaResolver interface and remote/local ref resolution.
+// CodeGen: 26 known failures (down from 37, after resolver fixes)
+// RoundTrip: 136 known failures (down from 149, after resolver fixes)
 
 var knownParseFailures = map[string]string{}
 
@@ -11,46 +11,34 @@ var knownCodeGenFailures = map[string]string{
 	// --- draft2019-09 ---
 	"draft2019-09/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
 	"draft2019-09/ref/refs with relative uris and defs":                                             "compile: generated code does not compile",
-	"draft2019-09/ref/relative pointer ref to object":                                               "compile: generated code does not compile",
 	"draft2019-09/ref/relative refs with absolute uris and defs":                                    "compile: generated code does not compile",
 	"draft2019-09/refRemote/base URI change - change folder":                                        "compile: generated code does not compile",
 	"draft2019-09/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2019-09/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
-	"draft2019-09/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
 	// --- draft2020-12 ---
 	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference":      "compile: generated code does not compile",
 	"draft2020-12/ref/Recursive references between schemas":                                         "compile: generated code does not compile",
 	"draft2020-12/ref/refs with relative uris and defs":                                             "compile: generated code does not compile",
-	"draft2020-12/ref/relative pointer ref to object":                                               "compile: generated code does not compile",
 	"draft2020-12/ref/relative refs with absolute uris and defs":                                    "compile: generated code does not compile",
 	"draft2020-12/refRemote/base URI change - change folder":                                        "compile: generated code does not compile",
 	"draft2020-12/refRemote/base URI change - change folder in subschema":                           "compile: generated code does not compile",
 	"draft2020-12/refRemote/retrieved nested refs resolve relative to their URI not $id":            "compile: generated code does not compile",
-	"draft2020-12/refRemote/root ref in remote ref":                                                 "compile: generated code does not compile",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary": "compile: generated code does not compile",
-	// --- draft3 ---
-	"draft3/ref/relative pointer ref to object": "compile: generated code does not compile",
 	// --- draft4 ---
 	"draft4/ref/Recursive references between schemas":               "compile: generated code does not compile",
-	"draft4/ref/relative pointer ref to object":                     "compile: generated code does not compile",
 	"draft4/refRemote/base URI change - change folder":              "compile: generated code does not compile",
 	"draft4/refRemote/base URI change - change folder in subschema": "compile: generated code does not compile",
-	"draft4/refRemote/root ref in remote ref":                       "compile: generated code does not compile",
 	// --- draft6 ---
 	"draft6/ref/Recursive references between schemas":                              "compile: generated code does not compile",
-	"draft6/ref/relative pointer ref to object":                                    "compile: generated code does not compile",
 	"draft6/refRemote/base URI change - change folder":                             "compile: generated code does not compile",
 	"draft6/refRemote/base URI change - change folder in subschema":                "compile: generated code does not compile",
 	"draft6/refRemote/retrieved nested refs resolve relative to their URI not $id": "compile: generated code does not compile",
-	"draft6/refRemote/root ref in remote ref":                                      "compile: generated code does not compile",
 	// --- draft7 ---
 	"draft7/ref/Recursive references between schemas":                              "compile: generated code does not compile",
-	"draft7/ref/relative pointer ref to object":                                    "compile: generated code does not compile",
 	"draft7/refRemote/base URI change - change folder":                             "compile: generated code does not compile",
 	"draft7/refRemote/base URI change - change folder in subschema":                "compile: generated code does not compile",
 	"draft7/refRemote/retrieved nested refs resolve relative to their URI not $id": "compile: generated code does not compile",
-	"draft7/refRemote/root ref in remote ref":                                      "compile: generated code does not compile",
 }
 
 var knownRoundTripFailures = map[string]string{
@@ -79,7 +67,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                                                         "round-trip: compilation or execution error",
 	"draft2019-09/ref/refs with quote/object with numbers is valid":                                                                                             "emit: code generation error",
 	"draft2019-09/ref/refs with relative uris and defs/valid on both fields":                                                                                    "round-trip: compilation or execution error",
-	"draft2019-09/ref/relative pointer ref to object/match":                                                                                                     "round-trip: compilation or execution error",
 	"draft2019-09/ref/relative refs with absolute uris and defs/valid on both fields":                                                                           "round-trip: compilation or execution error",
 	"draft2019-09/ref/root pointer ref/match":                                                                                                                   "emit: code generation error",
 	"draft2019-09/ref/root pointer ref/recursive match":                                                                                                         "emit: code generation error",
@@ -88,7 +75,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/refRemote/base URI change - change folder/number is valid":                                                                                    "round-trip: compilation or execution error",
 	"draft2019-09/refRemote/retrieved nested refs resolve relative to their URI not $id/string is valid":                                                        "round-trip: compilation or execution error",
 	"draft2019-09/refRemote/root ref in remote ref/null is valid":                                                                                               "round-trip: compilation or execution error",
-	"draft2019-09/refRemote/root ref in remote ref/string is valid":                                                                                             "round-trip: compilation or execution error",
 	"draft2019-09/type/object type matches objects/an object is an object":                                                                                      "no root struct type in generated code",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties false/with no unevaluated properties":                                                             "no root struct type in generated code",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with no unevaluated properties":                                                            "no root struct type in generated code",
@@ -109,8 +95,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                  "no root struct type in generated code",
 	"draft2020-12/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                 "no root struct type in generated code",
 	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference/integer property passes":                                    "round-trip: compilation or execution error",
-	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/correct extended schema":                                      "round-trip: compilation or execution error",
-	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/correct extended schema":                                       "round-trip: compilation or execution error",
 	"draft2020-12/properties/properties with escaped characters/object with all numbers is valid":                                                         "emit: code generation error",
 	"draft2020-12/properties/properties with null valued instance properties/allows null values":                                                          "round-trip: compilation or execution error",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                         "round-trip: compilation or execution error",
@@ -119,7 +103,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/ref/ref applies alongside sibling keywords/ref valid, maxItems valid":                                                                   "round-trip: compilation or execution error",
 	"draft2020-12/ref/refs with quote/object with numbers is valid":                                                                                       "emit: code generation error",
 	"draft2020-12/ref/refs with relative uris and defs/valid on both fields":                                                                              "round-trip: compilation or execution error",
-	"draft2020-12/ref/relative pointer ref to object/match":                                                                                               "round-trip: compilation or execution error",
 	"draft2020-12/ref/relative refs with absolute uris and defs/valid on both fields":                                                                     "round-trip: compilation or execution error",
 	"draft2020-12/ref/root pointer ref/match":                                                                                                             "emit: code generation error",
 	"draft2020-12/ref/root pointer ref/recursive match":                                                                                                   "emit: code generation error",
@@ -128,7 +111,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/refRemote/base URI change - change folder/number is valid":                                                                              "round-trip: compilation or execution error",
 	"draft2020-12/refRemote/retrieved nested refs resolve relative to their URI not $id/string is valid":                                                  "round-trip: compilation or execution error",
 	"draft2020-12/refRemote/root ref in remote ref/null is valid":                                                                                         "round-trip: compilation or execution error",
-	"draft2020-12/refRemote/root ref in remote ref/string is valid":                                                                                       "round-trip: compilation or execution error",
 	"draft2020-12/type/object type matches objects/an object is an object":                                                                                "no root struct type in generated code",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "round-trip: compilation or execution error",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "round-trip: compilation or execution error",
@@ -139,7 +121,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft3/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":   "round-trip: compilation or execution error",
 	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty": "round-trip: compilation or execution error",
 	"draft3/ref/ref overrides any sibling keywords/remote ref valid":                                                          "round-trip: compilation or execution error",
-	"draft3/ref/relative pointer ref to object/match":                                                                         "round-trip: compilation or execution error",
 	"draft3/ref/root pointer ref/match":                                                                                       "emit: code generation error",
 	"draft3/ref/root pointer ref/recursive match":                                                                             "emit: code generation error",
 	"draft3/type/object type matches objects/an object is an object":                                                          "no root struct type in generated code",
@@ -155,13 +136,11 @@ var knownRoundTripFailures = map[string]string{
 	"draft4/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
 	"draft4/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 	"draft4/ref/refs with quote/object with numbers is valid":                                                                                      "emit: code generation error",
-	"draft4/ref/relative pointer ref to object/match":                                                                                              "round-trip: compilation or execution error",
 	"draft4/ref/root pointer ref/match":                                                                                                            "emit: code generation error",
 	"draft4/ref/root pointer ref/recursive match":                                                                                                  "emit: code generation error",
 	"draft4/refRemote/base URI change - change folder in subschema/number is valid":                                                                "round-trip: compilation or execution error",
 	"draft4/refRemote/base URI change - change folder/number is valid":                                                                             "round-trip: compilation or execution error",
 	"draft4/refRemote/root ref in remote ref/null is valid":                                                                                        "round-trip: compilation or execution error",
-	"draft4/refRemote/root ref in remote ref/string is valid":                                                                                      "round-trip: compilation or execution error",
 	"draft4/type/object type matches objects/an object is an object":                                                                               "no root struct type in generated code",
 	// --- draft6 ---
 	"draft6/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
@@ -175,7 +154,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
 	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 	"draft6/ref/refs with quote/object with numbers is valid":                                                                                      "emit: code generation error",
-	"draft6/ref/relative pointer ref to object/match":                                                                                              "round-trip: compilation or execution error",
 	"draft6/ref/root pointer ref/match":                                                                                                            "emit: code generation error",
 	"draft6/ref/root pointer ref/recursive match":                                                                                                  "emit: code generation error",
 	"draft6/ref/simple URN base URI with $ref via the URN/valid under the URN IDed schema":                                                         "emit: code generation error",
@@ -184,7 +162,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/refRemote/remote ref with ref to definitions/valid":                                                                                    "round-trip: compilation or execution error",
 	"draft6/refRemote/retrieved nested refs resolve relative to their URI not $id/string is valid":                                                 "round-trip: compilation or execution error",
 	"draft6/refRemote/root ref in remote ref/null is valid":                                                                                        "round-trip: compilation or execution error",
-	"draft6/refRemote/root ref in remote ref/string is valid":                                                                                      "round-trip: compilation or execution error",
 	"draft6/type/object type matches objects/an object is an object":                                                                               "no root struct type in generated code",
 	// --- draft7 ---
 	"draft7/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
@@ -198,7 +175,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
 	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 	"draft7/ref/refs with quote/object with numbers is valid":                                                                                      "emit: code generation error",
-	"draft7/ref/relative pointer ref to object/match":                                                                                              "round-trip: compilation or execution error",
 	"draft7/ref/root pointer ref/match":                                                                                                            "emit: code generation error",
 	"draft7/ref/root pointer ref/recursive match":                                                                                                  "emit: code generation error",
 	"draft7/ref/simple URN base URI with $ref via the URN/valid under the URN IDed schema":                                                         "emit: code generation error",
@@ -207,6 +183,5 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/refRemote/remote ref with ref to definitions/valid":                                                                                    "round-trip: compilation or execution error",
 	"draft7/refRemote/retrieved nested refs resolve relative to their URI not $id/string is valid":                                                 "round-trip: compilation or execution error",
 	"draft7/refRemote/root ref in remote ref/null is valid":                                                                                        "round-trip: compilation or execution error",
-	"draft7/refRemote/root ref in remote ref/string is valid":                                                                                      "round-trip: compilation or execution error",
 	"draft7/type/object type matches objects/an object is an object":                                                                               "no root struct type in generated code",
 }
