@@ -27,23 +27,25 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"bool_field":   true,
-		"int_field":    true,
-		"nullable_str": true,
-		"num_field":    true,
-		"str_field":    true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"bool_field":   true,
+			"int_field":    true,
+			"nullable_str": true,
+			"num_field":    true,
+			"str_field":    true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if p.AdditionalProperties == nil {
+					p.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				p.AdditionalProperties[k] = v
 			}
-			p.AdditionalProperties[k] = v
 		}
 	}
 
@@ -59,9 +61,6 @@ func (p PrimitiveTypes) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(p.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

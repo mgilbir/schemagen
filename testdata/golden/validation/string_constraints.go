@@ -27,22 +27,24 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"age":      true,
-		"bio":      true,
-		"tags":     true,
-		"username": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if u.AdditionalProperties == nil {
-				u.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"age":      true,
+			"bio":      true,
+			"tags":     true,
+			"username": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if u.AdditionalProperties == nil {
+					u.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				u.AdditionalProperties[k] = v
 			}
-			u.AdditionalProperties[k] = v
 		}
 	}
 
@@ -58,9 +60,6 @@ func (u UserProfile) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(u.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

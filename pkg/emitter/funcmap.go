@@ -6,6 +6,8 @@ import (
 	"text/template"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
 // FuncMap returns the template.FuncMap used by the emitter templates.
@@ -33,6 +35,7 @@ func FuncMap() template.FuncMap {
 		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
 		"isRawMessage":       isRawMessageFunc,
 		"goStringLiteral":    goStringLiteralFunc,
+		"hasManualFields":    hasManualFieldsFunc,
 	}
 }
 
@@ -117,6 +120,19 @@ func goStringLiteralFunc(s string) string {
 	// Use %q to get a properly quoted string, then strip the surrounding quotes.
 	q := fmt.Sprintf("%q", s)
 	return q[1 : len(q)-1]
+}
+
+// hasManualFieldsFunc returns true if any FieldDef in the slice has ManualJSON set.
+// Used in templates to add manual field handling in marshal/unmarshal methods.
+func hasManualFieldsFunc(fields any) bool {
+	if fs, ok := fields.([]generator.FieldDef); ok {
+		for _, f := range fs {
+			if f.ManualJSON {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

@@ -23,19 +23,21 @@ func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"name": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"name": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if f.AdditionalProperties == nil {
+					f.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				f.AdditionalProperties[k] = v
 			}
-			f.AdditionalProperties[k] = v
 		}
 	}
 
@@ -51,9 +53,6 @@ func (f FlexibleConfig) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(f.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

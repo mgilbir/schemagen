@@ -24,20 +24,22 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"name": true,
-		"role": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if m.AdditionalProperties == nil {
-				m.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"name": true,
+			"role": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if m.AdditionalProperties == nil {
+					m.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				m.AdditionalProperties[k] = v
 			}
-			m.AdditionalProperties[k] = v
 		}
 	}
 
@@ -53,9 +55,6 @@ func (m Member) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(m.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -85,20 +84,22 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"members": true,
-		"name":    true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if t.AdditionalProperties == nil {
-				t.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"members": true,
+			"name":    true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if t.AdditionalProperties == nil {
+					t.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				t.AdditionalProperties[k] = v
 			}
-			t.AdditionalProperties[k] = v
 		}
 	}
 
@@ -114,9 +115,6 @@ func (t Team) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(t.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

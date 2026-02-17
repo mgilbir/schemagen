@@ -7,7 +7,11 @@ type {{.Name}} struct {
 	{{- if .Description}}
 	// {{.Description}}
 	{{- end}}
-	{{.Name}} {{goType .Type}} `json:"{{goStringLiteral .JSONName}}{{if .OmitEmpty}},omitempty{{end}}"`
+	{{- if .ManualJSON}}
+	{{.Name}} {{goType .Type}} `json:"-"`
+	{{- else}}
+	{{.Name}} {{goType .Type}} `json:"{{.JSONName}}{{if .OmitEmpty}},omitempty{{end}}"`
+	{{- end}}
 {{- end}}
 {{- range .OneOfs}}
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`

@@ -101,6 +101,7 @@ type FieldDef struct {
 	OmitEmpty   bool
 	Required    bool
 	Description string
+	ManualJSON  bool // true if JSONName contains chars that break struct tags (control chars, quotes)
 }
 
 // OneOfDef represents a oneOf group on a struct.

@@ -24,21 +24,23 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"version": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if m.AdditionalProperties == nil {
-				m.AdditionalProperties = make(map[string]string)
-			}
-			var val string
-			if err := json.Unmarshal(v, &val); err == nil {
-				m.AdditionalProperties[k] = val
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"version": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if m.AdditionalProperties == nil {
+					m.AdditionalProperties = make(map[string]string)
+				}
+				var val string
+				if err := json.Unmarshal(v, &val); err == nil {
+					m.AdditionalProperties[k] = val
+				}
 			}
 		}
 	}
@@ -55,9 +57,6 @@ func (m Metadata) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(m.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

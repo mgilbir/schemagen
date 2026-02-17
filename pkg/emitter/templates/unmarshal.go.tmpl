@@ -18,6 +18,25 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
+	{{- if hasManualFields $struct.Fields}}
+
+	// Extract fields with JSON names that cannot be represented in struct tags.
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		{{- range $struct.Fields}}
+		{{- if .ManualJSON}}
+		if v, ok := raw[{{printf "%q" .JSONName}}]; ok {
+			if err := json.Unmarshal(v, &{{$recv}}.{{.Name}}); err != nil {
+				return fmt.Errorf("unmarshaling {{$struct.Name}}.{{.Name}}: %w", err)
+			}
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
 	{{- range $oof := $struct.OneOfs}}
 
 	{
@@ -62,33 +81,35 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 
 	{{- if $struct.AdditionalProperties}}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		{{- range $struct.Fields}}
-		"{{goStringLiteral .JSONName}}": true,
-		{{- end}}
-		{{- range $struct.OneOfs}}
-		{{- if .JSONName}}
-		"{{goStringLiteral .JSONName}}": true,
-		{{- end}}
-		{{- end}}
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if {{$recv}}.AdditionalProperties == nil {
-				{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
-			}
-			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-			{{$recv}}.AdditionalProperties[k] = v
-			{{- else}}
-			var val {{goType $struct.AdditionalProperties.ValueType}}
-			if err := json.Unmarshal(v, &val); err == nil {
-				{{$recv}}.AdditionalProperties[k] = val
-			}
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			{{- range $struct.Fields}}
+			{{printf "%q" .JSONName}}: true,
 			{{- end}}
+			{{- range $struct.OneOfs}}
+			{{- if .JSONName}}
+			{{printf "%q" .JSONName}}: true,
+			{{- end}}
+			{{- end}}
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if {{$recv}}.AdditionalProperties == nil {
+					{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+				}
+				{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
+				{{$recv}}.AdditionalProperties[k] = v
+				{{- else}}
+				var val {{goType $struct.AdditionalProperties.ValueType}}
+				if err := json.Unmarshal(v, &val); err == nil {
+					{{$recv}}.AdditionalProperties[k] = val
+				}
+				{{- end}}
+			}
 		}
 	}
 	{{- end}}

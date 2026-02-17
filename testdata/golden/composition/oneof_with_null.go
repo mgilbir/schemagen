@@ -24,20 +24,22 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"host": true,
-		"port": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"host": true,
+			"port": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if d.AdditionalProperties == nil {
+					d.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				d.AdditionalProperties[k] = v
 			}
-			d.AdditionalProperties[k] = v
 		}
 	}
 
@@ -53,9 +55,6 @@ func (d DatabaseConfig) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(d.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -85,20 +84,22 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"database": true,
-		"name":     true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"database": true,
+			"name":     true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if c.AdditionalProperties == nil {
+					c.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				c.AdditionalProperties[k] = v
 			}
-			c.AdditionalProperties[k] = v
 		}
 	}
 
@@ -114,9 +115,6 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(c.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

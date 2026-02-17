@@ -24,19 +24,21 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"radius": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"radius": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if c.AdditionalProperties == nil {
+					c.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				c.AdditionalProperties[k] = v
 			}
-			c.AdditionalProperties[k] = v
 		}
 	}
 
@@ -52,9 +54,6 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(c.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -84,20 +83,22 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"height": true,
-		"width":  true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"height": true,
+			"width":  true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if r.AdditionalProperties == nil {
+					r.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				r.AdditionalProperties[k] = v
 			}
-			r.AdditionalProperties[k] = v
 		}
 	}
 
@@ -113,9 +114,6 @@ func (r Rectangle) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(r.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
@@ -229,20 +227,22 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		}
 	}
 	// Capture additional properties not covered by explicit fields.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	knownFields := map[string]bool{
-		"name":  true,
-		"shape": true,
-	}
-	for k, v := range raw {
-		if !knownFields[k] {
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"name":  true,
+			"shape": true,
+		}
+		for k, v := range raw {
+			if !knownFields[k] {
+				if d.AdditionalProperties == nil {
+					d.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				d.AdditionalProperties[k] = v
 			}
-			d.AdditionalProperties[k] = v
 		}
 	}
 
@@ -276,9 +276,6 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
-	}
-	if len(d.AdditionalProperties) == 0 {
-		return data, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {

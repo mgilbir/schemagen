@@ -120,6 +120,14 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true
 				needsFmt = true
 			}
+			// Check if any fields need manual JSON handling (control chars in names).
+			for _, f := range sd.Fields {
+				if f.ManualJSON {
+					needsJSON = true
+					needsFmt = true
+					break
+				}
+			}
 			if sd.AdditionalProperties != nil {
 				needsJSON = true
 				// fmt is only needed for non-RawMessage additional properties (typed maps)
@@ -354,6 +362,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 
 		omitEmpty := g.config.OmitEmpty && !required
+		manualJSON := needsManualJSON(propName)
 
 		fields = append(fields, FieldDef{
 			Name:        goFieldName,
@@ -362,6 +371,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 			OmitEmpty:   omitEmpty,
 			Required:    required,
 			Description: propSchema.Description,
+			ManualJSON:  manualJSON,
 		})
 	}
 
@@ -422,6 +432,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 		goFieldName := JSONPropertyToGoName(propName)
 		validations = append(validations, extractValidationRules(goFieldName, propName, propSchema)...)
+	}
+
+	// Enable custom marshal/unmarshal if any field has a JSON name that
+	// cannot be represented in struct tags (control chars, quotes, etc.).
+	for _, f := range fields {
+		if f.ManualJSON {
+			needsMarshal = true
+			needsUnmarshal = true
+			break
+		}
 	}
 
 	structDef := &StructDef{
@@ -897,6 +917,26 @@ func (g *Generator) resolveBaseType(s *schema.Schema) GoType {
 		}
 	}
 	return &PrimitiveType{Name: "string"}
+}
+
+// needsManualJSON returns true if the JSON property name contains characters
+// that cannot be correctly represented in a Go struct tag (backtick-delimited
+// raw string). Specifically: double quotes break tag value parsing, newlines
+// break tag key:value parsing, carriage returns/form feeds are stripped
+// or mishandled by the reflect.StructTag parser, and backticks terminate
+// the raw string literal.
+func needsManualJSON(jsonName string) bool {
+	for _, r := range jsonName {
+		switch r {
+		case '"', '`', '\\', '\n', '\r', '\t', '\f':
+			return true
+		}
+		// Any non-printable control character
+		if r < 0x20 {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------- helpers ----------
