@@ -7,7 +7,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		*Alias
 		{{- range $struct.OneOfs}}
+		{{- if .JSONName}}
 		{{.FieldName}} json.RawMessage `json:"{{.JSONName}}"`
+		{{- end}}
 		{{- end}}
 	}{
 		Alias: (*Alias)({{$recv}}),
@@ -18,34 +20,42 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- range $oof := $struct.OneOfs}}
 
-	if len(aux.{{$oof.FieldName}}) > 0 && string(aux.{{$oof.FieldName}}) != "null" {
-		var oneofMatched int
-		var oneofLastErr error
-		{{- range $i, $v := $oof.Variants}}
+	{
+		{{- if $oof.JSONName}}
+		oneofData := aux.{{$oof.FieldName}}
+		{{- else}}
+		// Top-level oneOf: the entire JSON object is the variant data.
+		oneofData := json.RawMessage(data)
+		{{- end}}
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
+			{{- range $i, $v := $oof.Variants}}
 
-		// Try variant: {{$v.FieldName}}
-		{
-			{{- if $v.RequiredFields}}
-			if oneofHasRequiredFields(aux.{{$oof.FieldName}}, {{requiredFieldsList $v.RequiredFields}}) {
-			{{- end}}
-				var candidate {{goType $v.Type}}
-				if err := json.Unmarshal(aux.{{$oof.FieldName}}, &candidate); err == nil {
-					{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: {{$v.FieldName}}
+			{
+				{{- if $v.RequiredFields}}
+				if oneofHasRequiredFields(oneofData, {{requiredFieldsList $v.RequiredFields}}) {
+				{{- end}}
+					var candidate {{goType $v.Type}}
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
+				{{- if $v.RequiredFields}}
 				}
-			{{- if $v.RequiredFields}}
+				{{- end}}
 			}
 			{{- end}}
-		}
-		{{- end}}
 
-		if oneofMatched == 0 {
-			return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
-		}
-		if oneofMatched > 1 {
-			return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			if oneofMatched == 0 {
+				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
 		}
 	}
 	{{- end}}
@@ -61,7 +71,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		"{{goStringLiteral .JSONName}}": true,
 		{{- end}}
 		{{- range $struct.OneOfs}}
+		{{- if .JSONName}}
 		"{{goStringLiteral .JSONName}}": true,
+		{{- end}}
 		{{- end}}
 	}
 	for k, v := range raw {

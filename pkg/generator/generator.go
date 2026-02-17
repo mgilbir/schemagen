@@ -549,8 +549,9 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}
 	}
 
-	// Constraint-only or empty schema — fall back to any
-	return oneOfVariantResult{Name: "Any", Type: &PrimitiveType{Name: "any"}}, nil
+	// Constraint-only or empty schema — fall back to any, but preserve required fields
+	// for discrimination (e.g. oneOf variants that differ only by required constraints).
+	return oneOfVariantResult{Name: "Any", Type: &PrimitiveType{Name: "any"}, RequiredFields: variant.Required}, nil
 }
 
 // separateNullFromOneOf splits oneOf variants into non-null variants and a null flag.

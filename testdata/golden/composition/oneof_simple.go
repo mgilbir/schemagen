@@ -188,41 +188,44 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if len(aux.Shape) > 0 && string(aux.Shape) != "null" {
-		var oneofMatched int
-		var oneofLastErr error
+	{
+		oneofData := aux.Shape
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
 
-		// Try variant: Circle
-		{
-			if oneofHasRequiredFields(aux.Shape, "radius") {
-				var candidate *Circle
-				if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
-					d.Shape = &Drawing_Circle{Circle: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: Circle
+			{
+				if oneofHasRequiredFields(oneofData, "radius") {
+					var candidate *Circle
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						d.Shape = &Drawing_Circle{Circle: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		// Try variant: Rectangle
-		{
-			if oneofHasRequiredFields(aux.Shape, "width", "height") {
-				var candidate *Rectangle
-				if err := json.Unmarshal(aux.Shape, &candidate); err == nil {
-					d.Shape = &Drawing_Rectangle{Rectangle: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: Rectangle
+			{
+				if oneofHasRequiredFields(oneofData, "width", "height") {
+					var candidate *Rectangle
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						d.Shape = &Drawing_Rectangle{Rectangle: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		if oneofMatched == 0 {
-			return fmt.Errorf("Drawing.Shape: no matching oneOf variant: %w", oneofLastErr)
-		}
-		if oneofMatched > 1 {
-			return fmt.Errorf("Drawing.Shape: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			if oneofMatched == 0 {
+				return fmt.Errorf("Drawing.Shape: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("Drawing.Shape: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
 		}
 	}
 	// Capture additional properties not covered by explicit fields.

@@ -350,79 +350,85 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if len(aux.Content) > 0 && string(aux.Content) != "null" {
-		var oneofMatched int
-		var oneofLastErr error
+	{
+		oneofData := aux.Content
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
 
-		// Try variant: TextContent
-		{
-			if oneofHasRequiredFields(aux.Content, "body") {
-				var candidate *TextContent
-				if err := json.Unmarshal(aux.Content, &candidate); err == nil {
-					n.Content = &Notification_TextContent{TextContent: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: TextContent
+			{
+				if oneofHasRequiredFields(oneofData, "body") {
+					var candidate *TextContent
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						n.Content = &Notification_TextContent{TextContent: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		// Try variant: HTMLContent
-		{
-			if oneofHasRequiredFields(aux.Content, "html") {
-				var candidate *HTMLContent
-				if err := json.Unmarshal(aux.Content, &candidate); err == nil {
-					n.Content = &Notification_HTMLContent{HTMLContent: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: HTMLContent
+			{
+				if oneofHasRequiredFields(oneofData, "html") {
+					var candidate *HTMLContent
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						n.Content = &Notification_HTMLContent{HTMLContent: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		if oneofMatched == 0 {
-			return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofLastErr)
-		}
-		if oneofMatched > 1 {
-			return fmt.Errorf("Notification.Content: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			if oneofMatched == 0 {
+				return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("Notification.Content: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
 		}
 	}
 
-	if len(aux.Target) > 0 && string(aux.Target) != "null" {
-		var oneofMatched int
-		var oneofLastErr error
+	{
+		oneofData := aux.Target
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
 
-		// Try variant: EmailTarget
-		{
-			if oneofHasRequiredFields(aux.Target, "email_address") {
-				var candidate *EmailTarget
-				if err := json.Unmarshal(aux.Target, &candidate); err == nil {
-					n.Target = &Notification_EmailTarget{EmailTarget: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: EmailTarget
+			{
+				if oneofHasRequiredFields(oneofData, "email_address") {
+					var candidate *EmailTarget
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						n.Target = &Notification_EmailTarget{EmailTarget: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		// Try variant: SmsTarget
-		{
-			if oneofHasRequiredFields(aux.Target, "phone_number") {
-				var candidate *SmsTarget
-				if err := json.Unmarshal(aux.Target, &candidate); err == nil {
-					n.Target = &Notification_SmsTarget{SmsTarget: candidate}
-					oneofMatched++
-				} else {
-					oneofLastErr = err
+			// Try variant: SmsTarget
+			{
+				if oneofHasRequiredFields(oneofData, "phone_number") {
+					var candidate *SmsTarget
+					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						n.Target = &Notification_SmsTarget{SmsTarget: candidate}
+						oneofMatched++
+					} else {
+						oneofLastErr = err
+					}
 				}
 			}
-		}
 
-		if oneofMatched == 0 {
-			return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofLastErr)
-		}
-		if oneofMatched > 1 {
-			return fmt.Errorf("Notification.Target: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			if oneofMatched == 0 {
+				return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("Notification.Target: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
 		}
 	}
 	// Capture additional properties not covered by explicit fields.

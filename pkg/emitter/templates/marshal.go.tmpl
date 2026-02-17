@@ -3,6 +3,28 @@
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
+	{{- /* Check if we have any top-level oneOfs (empty JSONName) */}}
+	{{- $hasTopLevelOneOf := false}}
+	{{- range $struct.OneOfs}}
+	{{- if not .JSONName}}{{$hasTopLevelOneOf = true}}{{end}}
+	{{- end}}
+
+	{{- if $hasTopLevelOneOf}}
+	// Top-level oneOf: marshal the selected variant directly as the root object.
+	{{- range $oof := $struct.OneOfs}}
+	{{- if not $oof.JSONName}}
+	if {{$recv}}.{{$oof.FieldName}} != nil {
+		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		{{- range $oof.Variants}}
+		case *{{.WrapperName}}:
+			return json.Marshal(v.{{.FieldName}})
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return []byte("null"), nil
+	{{- else}}
 	type Alias {{$struct.Name}}
 	aux := struct {
 		Alias
@@ -54,6 +76,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 	{{- else}}
 	return json.Marshal(aux)
+	{{- end}}
 	{{- end}}
 }
 {{- end}}
