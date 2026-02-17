@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Measurement",
+  "type": "object",
+  "properties": {
+    "temperature": {
+      "type": "number",
+      "exclusiveMinimum": -273.15,
+      "exclusiveMaximum": 1000
+    },
+    "count": {
+      "type": "integer",
+      "multipleOf": 5
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10,
+      "multipleOf": 0.5
+    }
+  },
+  "required": ["temperature", "count"]
+}

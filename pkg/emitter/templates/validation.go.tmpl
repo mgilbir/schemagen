@@ -25,6 +25,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
+	{{- if eq .RuleType "exclusiveMinimum"}}
+	if float64({{$recv}}.{{.FieldName}}) <= {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v must be greater than {{.Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMaximum"}}
+	if float64({{$recv}}.{{.FieldName}}) >= {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v must be less than {{.Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "multipleOf"}}
+	if math.Mod(float64({{$recv}}.{{.FieldName}}), {{.Value}}) != 0 {
+		return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if matched, _ := regexp.MatchString({{printf "%q" .Value}}, {{$recv}}.{{.FieldName}}); !matched {
 		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern {{printf "%s" .Value}}", {{$recv}}.{{.FieldName}})

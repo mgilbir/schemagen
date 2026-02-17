@@ -126,6 +126,7 @@ func (g *Generator) addRequiredImports() {
 	needsFmt := false
 	needsRegexp := false
 	needsTime := false
+	needsMath := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -154,6 +155,9 @@ func (g *Generator) addRequiredImports() {
 				for _, v := range sd.Validations {
 					if v.RuleType == "pattern" {
 						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
 					}
 				}
 			}
@@ -188,6 +192,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsRegexp {
 		g.output.Imports = append(g.output.Imports, Import{Path: "regexp"})
+	}
+	if needsMath {
+		g.output.Imports = append(g.output.Imports, Import{Path: "math"})
 	}
 	if needsTime {
 		g.output.Imports = append(g.output.Imports, Import{Path: "time"})
@@ -1722,6 +1729,41 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "maxItems", Value: s.MaxItems.Int(),
+		})
+	}
+	// exclusiveMinimum: can be a number (Draft 2020-12) or a boolean (Draft 4).
+	// When boolean and true, the constraint uses the value from Minimum.
+	if s.ExclusiveMinimum != nil {
+		if s.ExclusiveMinimum.Number != nil {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number,
+			})
+		} else if s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool && s.Minimum != nil {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "exclusiveMinimum", Value: *s.Minimum,
+			})
+		}
+	}
+	// exclusiveMaximum: same dual semantics as exclusiveMinimum.
+	if s.ExclusiveMaximum != nil {
+		if s.ExclusiveMaximum.Number != nil {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number,
+			})
+		} else if s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool && s.Maximum != nil {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "exclusiveMaximum", Value: *s.Maximum,
+			})
+		}
+	}
+	if s.MultipleOf != nil {
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "multipleOf", Value: *s.MultipleOf,
 		})
 	}
 	return rules
