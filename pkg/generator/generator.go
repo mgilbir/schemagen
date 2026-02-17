@@ -94,8 +94,9 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		}
 	}
 
-	// Process the root type if it defines an object, has a title, or uses composition.
-	if hasProperties(s) || s.Title != "" || len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+	// Process the root type if it defines an object, has a title, uses composition,
+	// or is explicitly typed as "object" (even without properties — gets overflow map).
+	if hasProperties(s) || s.Title != "" || len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 || primarySchemaType(s) == "object" {
 		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
 			return nil, fmt.Errorf("generating root type: %w", err)
 		}
@@ -276,16 +277,30 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Object with no properties → alias to map[string]any
+	// Object with no properties → struct with overflow map for lossless round-trip.
+	// If additionalProperties is explicitly false, generate an empty struct.
 	if primaryType == "object" {
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name: name,
-			Underlying: &MapType{
-				KeyType:   &PrimitiveType{Name: "string"},
-				ValueType: &PrimitiveType{Name: "any"},
-			},
-			Description: s.Description,
+		var additionalProps *AdditionalPropertiesDef
+		if s.AdditionalProperties != nil && s.AdditionalProperties.Bool != nil && !*s.AdditionalProperties.Bool {
+			// additionalProperties: false → no overflow map
+		} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+			valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
+			additionalProps = &AdditionalPropertiesDef{ValueType: valueType}
+		} else {
+			// Default or additionalProperties: true → json.RawMessage overflow map
+			additionalProps = &AdditionalPropertiesDef{
+				ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			}
+		}
+		needsMarshal := additionalProps != nil
+		needsUnmarshal := additionalProps != nil
+		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
+			Name:                 name,
+			Description:          s.Description,
+			AdditionalProperties: additionalProps,
+			NeedsMarshal:         needsMarshal,
+			NeedsUnmarshal:       needsUnmarshal,
 		})
 		return nil
 	}
