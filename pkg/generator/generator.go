@@ -232,6 +232,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateAllOfDef(name, s)
 	}
 
+	// anyOf without properties → merge all variant properties into one struct,
+	// but only if at least one sub-schema actually contributes properties.
+	if len(s.AnyOf) > 0 && !hasProperties(s) && g.anyOfHasProperties(s) {
+		return g.generateAnyOfDef(name, s)
+	}
+
 	// Object with properties (may also have oneOf fields) → struct
 	if hasProperties(s) || len(s.OneOf) > 0 {
 		return g.generateStructDef(name, s)
@@ -509,6 +515,62 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
 			merged.Type = resolved.Type
 		}
+	}
+
+	return g.generateStructDef(name, merged)
+}
+
+// generateAnyOfDef merges all anyOf sub-schemas into a single struct.
+// Unlike allOf (where all must match), anyOf means "at least one matches".
+// We merge all properties from all variants into one struct, but no field
+// is marked required (since only one variant needs to be satisfied).
+func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
+	merged := &schema.Schema{
+		Title:       s.Title,
+		Description: s.Description,
+		Properties:  make(map[string]*schema.Schema),
+	}
+
+	// Copy any properties from the parent schema itself.
+	for k, v := range s.Properties {
+		merged.Properties[k] = v
+	}
+
+	// Merge each anyOf sub-schema's properties.
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if sub.Ref != "" {
+			if r := g.resolveRef(sub.Ref); r != nil {
+				resolved = r
+			}
+		}
+		for k, v := range resolved.Properties {
+			if _, exists := merged.Properties[k]; !exists {
+				merged.Properties[k] = v
+			}
+		}
+		// Propagate type from sub-schemas if the parent doesn't have one.
+		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
+			merged.Type = resolved.Type
+		}
+	}
+
+	// Don't propagate required — in anyOf, no field is universally required.
+	// Also propagate additionalProperties from the parent if set.
+	merged.AdditionalProperties = s.AdditionalProperties
+
+	// If none of the anyOf variants contributed properties, this is a union of
+	// primitives (e.g. anyOf: [{type:"null"}, {type:"string"}]). Don't generate
+	// a struct — fall back to an alias to `any` so that the value can hold any
+	// of the variant types.
+	if len(merged.Properties) == 0 {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:        name,
+			Underlying:  &PrimitiveType{Name: "any"},
+			Description: s.Description,
+		})
+		return nil
 	}
 
 	return g.generateStructDef(name, merged)
@@ -968,6 +1030,30 @@ func isNullOnly(s *schema.Schema) bool {
 }
 
 // ---------- helpers ----------
+
+// anyOfHasProperties checks whether at least one anyOf sub-schema (after resolving
+// $ref pointers) contributes object properties. If none do, the anyOf is a union of
+// primitives and should not be turned into a merged struct.
+// Self-references ($ref: "#") are excluded because they point back to the root
+// schema and don't represent actual property contributions from the anyOf variant.
+func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
+	for _, sub := range s.AnyOf {
+		// Check direct properties on the sub-schema itself.
+		if len(sub.Properties) > 0 {
+			return true
+		}
+		// Resolve $ref, but skip self-references to avoid misattributing
+		// the root schema's properties to this anyOf variant.
+		if sub.Ref != "" && !g.isSelfRef(sub.Ref) {
+			if r := g.resolveRef(sub.Ref); r != nil {
+				if len(r.Properties) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 // hasProperties returns true if the schema defines any properties.
 func hasProperties(s *schema.Schema) bool {

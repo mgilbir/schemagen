@@ -1,9 +1,9 @@
 package tests
 
 // Known failures for external JSON Schema Test Suite tests.
-// Updated after bare object struct generation fix.
+// Updated after anyOf struct generation fix.
 // CodeGen: 26 known failures
-// RoundTrip: 86 known failures (down from 103, after bare object + unevaluatedProperties fix)
+// RoundTrip: 71 known failures (down from 86, after anyOf complex types fix)
 
 var knownParseFailures = map[string]string{}
 
@@ -43,11 +43,7 @@ var knownCodeGenFailures = map[string]string{
 
 var knownRoundTripFailures = map[string]string{
 	// --- draft2019-09 ---
-	"draft2019-09/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
-	"draft2019-09/anyOf/anyOf complex types/both anyOf valid (complex)":                                                                                  "no root struct type in generated code",
-	"draft2019-09/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                 "no root struct type in generated code",
-	"draft2019-09/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                "no root struct type in generated code",
-
+	"draft2019-09/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties":        "round-trip: compilation or execution error",
 	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                               "round-trip: compilation or execution error",
 	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                             "round-trip: compilation or execution error",
 	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref/single level match":                                                   "no root struct type in generated code",
@@ -77,9 +73,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: valid number":                           "round-trip: compilation or execution error",
 	// --- draft2020-12 ---
 	"draft2020-12/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
-	"draft2020-12/anyOf/anyOf complex types/both anyOf valid (complex)":                                                                                  "no root struct type in generated code",
-	"draft2020-12/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                 "no root struct type in generated code",
-	"draft2020-12/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                "no root struct type in generated code",
 	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference/integer property passes":                                   "round-trip: compilation or execution error",
 
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":   "round-trip: compilation or execution error",
@@ -106,14 +99,10 @@ var knownRoundTripFailures = map[string]string{
 
 	// --- draft4 ---
 	"draft4/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
-	"draft4/anyOf/anyOf complex types/both anyOf valid (complex)":                                                                                  "no root struct type in generated code",
-	"draft4/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                 "no root struct type in generated code",
-	"draft4/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                "no root struct type in generated code",
-
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":   "round-trip: compilation or execution error",
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty": "round-trip: compilation or execution error",
-	"draft4/ref/Recursive references between schemas/valid tree":                                                              "round-trip: compilation or execution error",
-	"draft4/ref/ref overrides any sibling keywords/ref valid":                                                                 "round-trip: compilation or execution error",
+	"draft4/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                        "round-trip: compilation or execution error",
+	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                      "round-trip: compilation or execution error",
+	"draft4/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
+	"draft4/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 
 	"draft4/refRemote/base URI change - change folder in subschema/number is valid": "round-trip: compilation or execution error",
 	"draft4/refRemote/base URI change - change folder/number is valid":              "round-trip: compilation or execution error",
@@ -121,14 +110,10 @@ var knownRoundTripFailures = map[string]string{
 
 	// --- draft6 ---
 	"draft6/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
-	"draft6/anyOf/anyOf complex types/both anyOf valid (complex)":                                                                                  "no root struct type in generated code",
-	"draft6/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                 "no root struct type in generated code",
-	"draft6/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                "no root struct type in generated code",
-
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":   "round-trip: compilation or execution error",
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty": "round-trip: compilation or execution error",
-	"draft6/ref/Recursive references between schemas/valid tree":                                                              "round-trip: compilation or execution error",
-	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                                 "round-trip: compilation or execution error",
+	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                        "round-trip: compilation or execution error",
+	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                      "round-trip: compilation or execution error",
+	"draft6/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
+	"draft6/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 
 	"draft6/refRemote/base URI change - change folder in subschema/number is valid":                "round-trip: compilation or execution error",
 	"draft6/refRemote/base URI change - change folder/number is valid":                             "round-trip: compilation or execution error",
@@ -138,14 +123,10 @@ var knownRoundTripFailures = map[string]string{
 
 	// --- draft7 ---
 	"draft7/additionalProperties/additionalProperties being false does not allow other properties/patternProperties are not additional properties": "round-trip: compilation or execution error",
-	"draft7/anyOf/anyOf complex types/both anyOf valid (complex)":                                                                                  "no root struct type in generated code",
-	"draft7/anyOf/anyOf complex types/first anyOf valid (complex)":                                                                                 "no root struct type in generated code",
-	"draft7/anyOf/anyOf complex types/second anyOf valid (complex)":                                                                                "no root struct type in generated code",
-
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":   "round-trip: compilation or execution error",
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty": "round-trip: compilation or execution error",
-	"draft7/ref/Recursive references between schemas/valid tree":                                                              "round-trip: compilation or execution error",
-	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                                 "round-trip: compilation or execution error",
+	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty ignores property":                        "round-trip: compilation or execution error",
+	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty validates nonproperty":                      "round-trip: compilation or execution error",
+	"draft7/ref/Recursive references between schemas/valid tree":                                                                                   "round-trip: compilation or execution error",
+	"draft7/ref/ref overrides any sibling keywords/ref valid":                                                                                      "round-trip: compilation or execution error",
 
 	"draft7/refRemote/base URI change - change folder in subschema/number is valid":                "round-trip: compilation or execution error",
 	"draft7/refRemote/base URI change - change folder/number is valid":                             "round-trip: compilation or execution error",
