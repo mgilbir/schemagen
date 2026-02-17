@@ -575,14 +575,15 @@ func TestGenerate_ArrayWithItems(t *testing.T) {
 		fieldMap[f.JSONName] = f
 	}
 
+	// Optional array fields with omitempty are wrapped in *[]T to preserve empty arrays.
 	membersField := fieldMap["members"]
-	if membersField.Type.GoTypeName() != "[]string" {
-		t.Errorf("members type = %q, want %q", membersField.Type.GoTypeName(), "[]string")
+	if membersField.Type.GoTypeName() != "*[]string" {
+		t.Errorf("members type = %q, want %q", membersField.Type.GoTypeName(), "*[]string")
 	}
 
 	scoresField := fieldMap["scores"]
-	if scoresField.Type.GoTypeName() != "[]int64" {
-		t.Errorf("scores type = %q, want %q", scoresField.Type.GoTypeName(), "[]int64")
+	if scoresField.Type.GoTypeName() != "*[]int64" {
+		t.Errorf("scores type = %q, want %q", scoresField.Type.GoTypeName(), "*[]int64")
 	}
 }
 

@@ -102,6 +102,7 @@ type ValidationRule struct {
 	JSONName  string // JSON property name (original)
 	RuleType  string // "minLength", "maxLength", "minimum", "maximum", "pattern", "minItems", "maxItems"
 	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern)
+	IsPointer bool   // true if the field is a pointer type (needs nil check + dereference)
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

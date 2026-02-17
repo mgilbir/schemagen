@@ -31,14 +31,26 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && len(*{{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: has %d items, minimum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
+	}
+	{{- else}}
 	if len({{$recv}}.{{.FieldName}}) < {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: has %d items, minimum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && len(*{{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: has %d items, maximum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
+	}
+	{{- else}}
 	if len({{$recv}}.{{.FieldName}}) > {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: has %d items, maximum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
 	}
+	{{- end}}
 	{{- end}}
 	{{- end}}
 	return nil

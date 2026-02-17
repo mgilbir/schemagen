@@ -10,7 +10,7 @@ import (
 type UserProfile struct {
 	Age                  int64                      `json:"age,omitempty"`
 	Bio                  string                     `json:"bio,omitempty"`
-	Tags                 []string                   `json:"tags,omitempty"`
+	Tags                 *[]string                  `json:"tags,omitempty"`
 	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
@@ -83,8 +83,8 @@ func (u UserProfile) Validate() error {
 	if len(u.Bio) > 500 {
 		return fmt.Errorf("bio: length %d exceeds maximum 500", len(u.Bio))
 	}
-	if len(u.Tags) > 10 {
-		return fmt.Errorf("tags: has %d items, maximum is 10", len(u.Tags))
+	if u.Tags != nil && len(*u.Tags) > 10 {
+		return fmt.Errorf("tags: has %d items, maximum is 10", len(*u.Tags))
 	}
 	if len(u.Username) < 3 {
 		return fmt.Errorf("username: length %d is less than minimum 3", len(u.Username))

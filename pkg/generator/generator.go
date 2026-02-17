@@ -445,10 +445,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		if omitEmpty && g.isNullableComposition(propSchema) {
 			omitEmpty = false
 		}
-		// NOTE: Array/slice types with omitempty will drop empty arrays [] during
-		// round-trip (omitempty treats nil and empty slices the same). A proper fix
-		// requires *[]T (pointer-to-slice) with template updates for len() checks.
-		// This is a known limitation tracked in the external test suite failures.
+		// For optional array/slice fields with omitempty, wrap in a pointer (*[]T)
+		// so that absent → nil (omitted) while {"foo": []} → &[]T{} (preserved).
+		// Without this, omitempty treats nil and empty slices identically.
+		// Check both the Go type directly and the resolved schema type, since
+		// $ref properties resolve to NamedType even when the target is an array.
+		if omitEmpty && g.isArrayProperty(goType, propSchema) {
+			goType = &PointerType{Inner: goType}
+		}
 		manualJSON := needsManualJSON(propName)
 
 		fields = append(fields, FieldDef{
@@ -510,7 +514,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		needsUnmarshal = true
 	}
 
-	// Collect validation rules
+	// Collect validation rules.
+	// Build a set of fields that are pointer types so validation rules
+	// for minItems/maxItems can generate nil checks + dereference.
+	pointerFields := make(map[string]bool)
+	for _, f := range fields {
+		if f.Type.IsPointer() {
+			pointerFields[f.Name] = true
+		}
+	}
 	var validations []ValidationRule
 	for _, propName := range propNames {
 		propSchema := s.Properties[propName]
@@ -518,7 +530,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 			continue
 		}
 		goFieldName := JSONPropertyToGoName(propName)
-		validations = append(validations, extractValidationRules(goFieldName, propName, propSchema)...)
+		rules := extractValidationRules(goFieldName, propName, propSchema)
+		for i := range rules {
+			if pointerFields[rules[i].FieldName] {
+				rules[i].IsPointer = true
+			}
+		}
+		validations = append(validations, rules...)
 	}
 
 	// Enable custom marshal/unmarshal if any field has a JSON name that
@@ -1455,6 +1473,30 @@ func isArrayType(t GoType) bool {
 	}
 	_, ok := t.(*ArrayType)
 	return ok
+}
+
+// isArrayProperty returns true if the Go type or the property schema indicates
+// an array type. This handles both direct ArrayType and NamedType aliases to
+// arrays (e.g., when the property uses $ref to an array-typed definition).
+func (g *Generator) isArrayProperty(goType GoType, propSchema *schema.Schema) bool {
+	if isArrayType(goType) {
+		return true
+	}
+	// Check the property schema's type.
+	if propSchema != nil {
+		if primarySchemaType(propSchema) == "array" {
+			return true
+		}
+		// Follow $ref to check the target schema.
+		if effRef := propSchema.EffectiveRef(); effRef != "" {
+			if resolved := g.resolveRefInContext(effRef, propSchema); resolved != nil {
+				if primarySchemaType(resolved) == "array" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // isNullOnly returns true if the schema's type is exclusively "null".

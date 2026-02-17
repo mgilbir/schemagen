@@ -68,9 +68,9 @@ func (a ArrayTypesMetadataItem) MarshalJSON() ([]byte, error) {
 }
 
 type ArrayTypes struct {
-	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitempty"`
-	Scores               []float64                  `json:"scores,omitempty"`
-	Tags                 []string                   `json:"tags,omitempty"`
+	Metadata             *[]ArrayTypesMetadataItem  `json:"metadata,omitempty"`
+	Scores               *[]float64                 `json:"scores,omitempty"`
+	Tags                 *[]string                  `json:"tags,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
