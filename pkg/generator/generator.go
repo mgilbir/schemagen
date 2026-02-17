@@ -157,6 +157,10 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(sd.PatternProperties) > 0 {
+				needsRegexp = true
+				needsJSON = true
+			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -482,12 +486,25 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 	}
 
+	// Collect patternProperties patterns.
+	// These are regex patterns that match additional property keys which should
+	// be preserved through round-trip even when additionalProperties is false.
+	var patternProps []PatternPropertyDef
+	for _, pattern := range sortedKeys(s.PatternProperties) {
+		patternProps = append(patternProps, PatternPropertyDef{Pattern: pattern})
+	}
+	if len(patternProps) > 0 {
+		needsMarshal = true
+		needsUnmarshal = true
+	}
+
 	structDef := &StructDef{
 		Name:                 name,
 		Description:          s.Description,
 		Fields:               fields,
 		OneOfs:               oneOfs,
 		AdditionalProperties: additionalProps,
+		PatternProperties:    patternProps,
 		Validations:          validations,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,

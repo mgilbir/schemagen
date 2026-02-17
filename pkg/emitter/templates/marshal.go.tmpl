@@ -50,7 +50,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 
-	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties}}
+	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties}}
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
@@ -69,6 +69,11 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		obj[{{printf "%q" .JSONName}}] = raw
 	}
 	{{- end}}
+	{{- end}}
+	{{- if $struct.HasPatternProperties}}
+	for k, v := range {{$recv}}.PatternProperties {
+		obj[k] = v
+	}
 	{{- end}}
 	{{- if $struct.AdditionalProperties}}
 	for k, v := range {{$recv}}.AdditionalProperties {

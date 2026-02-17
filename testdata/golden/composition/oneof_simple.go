@@ -23,7 +23,7 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -33,12 +33,13 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 			"radius": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if c.AdditionalProperties == nil {
-					c.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				c.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if c.AdditionalProperties == nil {
+				c.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			c.AdditionalProperties[k] = v
 		}
 	}
 
@@ -82,7 +83,7 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -93,12 +94,13 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 			"width":  true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if r.AdditionalProperties == nil {
-					r.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				r.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if r.AdditionalProperties == nil {
+				r.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			r.AdditionalProperties[k] = v
 		}
 	}
 
@@ -226,7 +228,7 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -237,12 +239,13 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			"shape": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if d.AdditionalProperties == nil {
-					d.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				d.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if d.AdditionalProperties == nil {
+				d.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			d.AdditionalProperties[k] = v
 		}
 	}
 

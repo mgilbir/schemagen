@@ -79,8 +79,8 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if $struct.AdditionalProperties}}
-	// Capture additional properties not covered by explicit fields.
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -96,20 +96,46 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 			{{- end}}
 		}
+		{{- if $struct.HasPatternProperties}}
+		patternRegexps := []*regexp.Regexp{
+			{{- range $struct.PatternProperties}}
+			regexp.MustCompile({{printf "%q" .Pattern}}),
+			{{- end}}
+		}
+		{{- end}}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if {{$recv}}.AdditionalProperties == nil {
-					{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
-				}
-				{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-				{{$recv}}.AdditionalProperties[k] = v
-				{{- else}}
-				var val {{goType $struct.AdditionalProperties.ValueType}}
-				if err := json.Unmarshal(v, &val); err == nil {
-					{{$recv}}.AdditionalProperties[k] = val
-				}
-				{{- end}}
+			if knownFields[k] {
+				continue
 			}
+			{{- if $struct.HasPatternProperties}}
+			matchesPattern := false
+			for _, re := range patternRegexps {
+				if re.MatchString(k) {
+					matchesPattern = true
+					break
+				}
+			}
+			if matchesPattern {
+				if {{$recv}}.PatternProperties == nil {
+					{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
+				}
+				{{$recv}}.PatternProperties[k] = v
+				continue
+			}
+			{{- end}}
+			{{- if $struct.AdditionalProperties}}
+			if {{$recv}}.AdditionalProperties == nil {
+				{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+			}
+			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
+			{{$recv}}.AdditionalProperties[k] = v
+			{{- else}}
+			var val {{goType $struct.AdditionalProperties.ValueType}}
+			if err := json.Unmarshal(v, &val); err == nil {
+				{{$recv}}.AdditionalProperties[k] = val
+			}
+			{{- end}}
+			{{- end}}
 		}
 	}
 	{{- end}}

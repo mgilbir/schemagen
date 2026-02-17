@@ -25,7 +25,7 @@ func (e *Employee) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -38,12 +38,13 @@ func (e *Employee) UnmarshalJSON(data []byte) error {
 			"name":        true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if e.AdditionalProperties == nil {
-					e.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				e.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if e.AdditionalProperties == nil {
+				e.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			e.AdditionalProperties[k] = v
 		}
 	}
 

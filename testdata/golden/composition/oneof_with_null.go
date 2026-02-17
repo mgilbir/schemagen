@@ -23,7 +23,7 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -34,12 +34,13 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 			"port": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if d.AdditionalProperties == nil {
-					d.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				d.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if d.AdditionalProperties == nil {
+				d.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			d.AdditionalProperties[k] = v
 		}
 	}
 
@@ -83,7 +84,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -94,12 +95,13 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			"name":     true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if c.AdditionalProperties == nil {
-					c.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				c.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if c.AdditionalProperties == nil {
+				c.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			c.AdditionalProperties[k] = v
 		}
 	}
 

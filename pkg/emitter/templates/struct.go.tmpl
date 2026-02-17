@@ -19,6 +19,9 @@ type {{.Name}} struct {
 {{- if .AdditionalProperties}}
 	AdditionalProperties map[string]{{goType .AdditionalProperties.ValueType}} `json:"-"`
 {{- end}}
+{{- if .HasPatternProperties}}
+	PatternProperties map[string]json.RawMessage `json:"-"`
+{{- end}}
 }
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}

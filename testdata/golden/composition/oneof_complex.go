@@ -23,7 +23,7 @@ func (e *EmailTarget) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -33,12 +33,13 @@ func (e *EmailTarget) UnmarshalJSON(data []byte) error {
 			"email_address": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if e.AdditionalProperties == nil {
-					e.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				e.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if e.AdditionalProperties == nil {
+				e.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			e.AdditionalProperties[k] = v
 		}
 	}
 
@@ -82,7 +83,7 @@ func (h *HTMLContent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -93,12 +94,13 @@ func (h *HTMLContent) UnmarshalJSON(data []byte) error {
 			"subject": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if h.AdditionalProperties == nil {
-					h.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				h.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if h.AdditionalProperties == nil {
+				h.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			h.AdditionalProperties[k] = v
 		}
 	}
 
@@ -141,7 +143,7 @@ func (s *SmsTarget) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -151,12 +153,13 @@ func (s *SmsTarget) UnmarshalJSON(data []byte) error {
 			"phone_number": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if s.AdditionalProperties == nil {
-					s.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				s.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if s.AdditionalProperties == nil {
+				s.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			s.AdditionalProperties[k] = v
 		}
 	}
 
@@ -199,7 +202,7 @@ func (t *TextContent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -209,12 +212,13 @@ func (t *TextContent) UnmarshalJSON(data []byte) error {
 			"body": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if t.AdditionalProperties == nil {
-					t.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				t.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if t.AdditionalProperties == nil {
+				t.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			t.AdditionalProperties[k] = v
 		}
 	}
 
@@ -427,7 +431,7 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -439,12 +443,13 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			"target":  true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if n.AdditionalProperties == nil {
-					n.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				n.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if n.AdditionalProperties == nil {
+				n.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			n.AdditionalProperties[k] = v
 		}
 	}
 

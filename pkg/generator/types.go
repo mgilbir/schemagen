@@ -72,9 +72,23 @@ type StructDef struct {
 	Fields               []FieldDef
 	OneOfs               []OneOfDef
 	AdditionalProperties *AdditionalPropertiesDef
+	PatternProperties    []PatternPropertyDef
 	Validations          []ValidationRule
 	NeedsMarshal         bool
 	NeedsUnmarshal       bool
+}
+
+// HasPatternProperties returns true if the struct has pattern properties.
+func (d *StructDef) HasPatternProperties() bool {
+	return len(d.PatternProperties) > 0
+}
+
+// PatternPropertyDef describes a patternProperties entry on a struct.
+// Pattern-matched keys are stored in a single overflow map (json.RawMessage values)
+// to preserve them through marshal/unmarshal round-trips. The patterns are used
+// during unmarshal to distinguish pattern-matched keys from truly additional keys.
+type PatternPropertyDef struct {
+	Pattern string // regex pattern (e.g., "^v", "f.o")
 }
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.

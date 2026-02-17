@@ -26,7 +26,7 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -39,12 +39,13 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 			"username": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if u.AdditionalProperties == nil {
-					u.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				u.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if u.AdditionalProperties == nil {
+				u.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			u.AdditionalProperties[k] = v
 		}
 	}
 

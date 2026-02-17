@@ -23,7 +23,7 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -34,12 +34,13 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 			"value": true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if a.AdditionalProperties == nil {
-					a.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				a.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
 		}
 	}
 
@@ -84,7 +85,7 @@ func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional properties not covered by explicit fields.
+	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -96,12 +97,13 @@ func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 			"tags":     true,
 		}
 		for k, v := range raw {
-			if !knownFields[k] {
-				if a.AdditionalProperties == nil {
-					a.AdditionalProperties = make(map[string]json.RawMessage)
-				}
-				a.AdditionalProperties[k] = v
+			if knownFields[k] {
+				continue
 			}
+			if a.AdditionalProperties == nil {
+				a.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			a.AdditionalProperties[k] = v
 		}
 	}
 
