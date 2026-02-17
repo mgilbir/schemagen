@@ -515,10 +515,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 	}
 
 	// Collect validation rules.
-	// Build a set of fields that are pointer types so validation rules
-	// for minItems/maxItems can generate nil checks + dereference.
+	// Build maps of field metadata for filtering and annotating rules.
+	fieldTypes := make(map[string]GoType)
 	pointerFields := make(map[string]bool)
 	for _, f := range fields {
+		fieldTypes[f.Name] = f.Type
 		if f.Type.IsPointer() {
 			pointerFields[f.Name] = true
 		}
@@ -531,12 +532,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 		goFieldName := JSONPropertyToGoName(propName)
 		rules := extractValidationRules(goFieldName, propName, propSchema)
+		// Filter out rules that don't make sense for the Go type (e.g.,
+		// minimum/maximum on an 'any' field can't be compiled).
+		filtered := rules[:0]
 		for i := range rules {
 			if pointerFields[rules[i].FieldName] {
 				rules[i].IsPointer = true
 			}
+			// Skip numeric/string/array validation on untyped 'any' fields.
+			if ft, ok := fieldTypes[rules[i].FieldName]; ok {
+				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" {
+					continue
+				}
+			}
+			filtered = append(filtered, rules[i])
 		}
-		validations = append(validations, rules...)
+		validations = append(validations, filtered...)
 	}
 
 	// Enable custom marshal/unmarshal if any field has a JSON name that
