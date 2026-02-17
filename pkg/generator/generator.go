@@ -937,7 +937,26 @@ func (g *Generator) isSelfRef(ref string) bool {
 	if g.rootID != "" && (ref == g.rootID || strings.TrimSuffix(ref, "#") == g.rootID) {
 		return true
 	}
+	// Try resolving as a relative URI against the base URI.
+	if resolved := g.resolveRelativeURI(ref); resolved != "" {
+		if resolved == g.rootID || strings.TrimSuffix(resolved, "#") == g.rootID {
+			return true
+		}
+	}
 	return false
+}
+
+// resolveRelativeURI resolves a relative URI against the generator's base URI.
+// Returns the resolved absolute URI string, or "" if resolution is not possible.
+func (g *Generator) resolveRelativeURI(ref string) string {
+	if g.baseURI == nil {
+		return ""
+	}
+	refURL, err := url.Parse(ref)
+	if err != nil {
+		return ""
+	}
+	return g.baseURI.ResolveReference(refURL).String()
 }
 
 // resolveRef looks up a $ref path in the collected definitions, anchors, root schema,
@@ -957,6 +976,14 @@ func (g *Generator) resolveRef(ref string) *schema.Schema {
 	if idx := strings.LastIndex(ref, "#"); idx > 0 {
 		fragment := ref[idx:]
 		if refPath, ok := g.anchors[fragment]; ok {
+			if s, ok2 := g.defs[refPath]; ok2 {
+				return s
+			}
+		}
+	}
+	// 3b. Resolve as relative URI against base URI, then check anchors.
+	if resolved := g.resolveRelativeURI(ref); resolved != "" {
+		if refPath, ok := g.anchors[resolved]; ok {
 			if s, ok2 := g.defs[refPath]; ok2 {
 				return s
 			}
