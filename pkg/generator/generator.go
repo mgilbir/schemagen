@@ -140,11 +140,17 @@ func (g *Generator) addRequiredImports() {
 				if usesTimeType(f.Type) {
 					needsTime = true
 				}
+				if usesJSONType(f.Type) {
+					needsJSON = true
+				}
 			}
 		}
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
 				needsTime = true
+			}
+			if usesJSONType(ad.Underlying) {
+				needsJSON = true
 			}
 		}
 	}
@@ -177,6 +183,25 @@ func usesTimeType(t GoType) bool {
 		return usesTimeType(v.ItemType)
 	case *MapType:
 		return usesTimeType(v.KeyType) || usesTimeType(v.ValueType)
+	}
+	return false
+}
+
+// usesJSONType returns true if the GoType references a type from encoding/json
+// (e.g. json.RawMessage).
+func usesJSONType(t GoType) bool {
+	if t == nil {
+		return false
+	}
+	switch v := t.(type) {
+	case *PrimitiveType:
+		return v.Name == "json.RawMessage"
+	case *PointerType:
+		return usesJSONType(v.Inner)
+	case *ArrayType:
+		return usesJSONType(v.ItemType)
+	case *MapType:
+		return usesJSONType(v.KeyType) || usesJSONType(v.ValueType)
 	}
 	return false
 }
@@ -654,9 +679,15 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// $ref
 	if s.Ref != "" {
-		// Self-references (e.g. $ref: "#" or $ref matching root $id) use pointer to root type.
+		// Self-references (e.g. $ref: "#" or $ref matching root $id).
 		if g.isSelfRef(s.Ref) {
-			return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}, nil
+			// Only generate *Root if the root schema is explicitly an object type
+			// with properties. Otherwise the root can validate non-object values
+			// (e.g. numbers, booleans) and we should use json.RawMessage.
+			if g.rootIsObjectType() {
+				return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}, nil
+			}
+			return &PrimitiveType{Name: "json.RawMessage"}, nil
 		}
 		goName := refToGoName(s.Ref)
 		// Ensure the referenced type gets generated.
@@ -713,7 +744,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// $ref
 	if s.Ref != "" {
 		if g.isSelfRef(s.Ref) {
-			return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
+			if g.rootIsObjectType() {
+				return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
+			}
+			return &PrimitiveType{Name: "json.RawMessage"}
 		}
 		goName := refToGoName(s.Ref)
 		if refSchema := g.resolveRef(s.Ref); refSchema != nil {
@@ -779,6 +813,18 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 	if def.Anchor != "" {
 		g.anchors["#"+def.Anchor] = refPath
 	}
+}
+
+// rootIsObjectType returns true if the root schema is explicitly typed as an object
+// (has type: "object"). Used to decide whether a self-reference should generate
+// *Root (for object schemas) or json.RawMessage (for general schemas).
+// Note: having properties alone is not sufficient — without explicit type: "object",
+// the schema can validate non-object values (booleans, numbers, arrays, etc.).
+func (g *Generator) rootIsObjectType() bool {
+	if g.rootSchema == nil {
+		return false
+	}
+	return primarySchemaType(g.rootSchema) == "object"
 }
 
 // isSelfRef returns true if ref points to the root schema itself.
