@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 )
 
 // FlexInt is an integer type that tolerates float-encoded integers in JSON (e.g. 2.0).
@@ -354,6 +355,17 @@ type Schema struct {
 
 	// DetectedDraft is set during parsing to record which draft was detected/used.
 	DetectedDraft Draft `json:"-"`
+
+	// BaseURI is the effective base URI for resolving relative $ref values
+	// within this schema. It is computed by ComputeBaseURIs and accounts for
+	// nested $id declarations that change the resolution scope.
+	BaseURI *url.URL `json:"-"`
+
+	// DocumentRoot points to the schema node that serves as the "document root"
+	// for JSON Pointer fragment resolution (e.g. $ref: "#/definitions/foo").
+	// A new document root is established whenever a subschema declares its own $id.
+	// If nil, the top-level schema is the document root.
+	DocumentRoot *Schema `json:"-"`
 }
 
 // UnmarshalJSON implements custom unmarshaling for Schema to handle boolean schemas.
@@ -389,6 +401,110 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 	}
 	type schemaAlias Schema
 	return json.Marshal(schemaAlias(s))
+}
+
+// ComputeBaseURIs walks the schema tree and sets BaseURI and DocumentRoot on
+// every node, accounting for nested $id declarations that change the resolution scope.
+// The parentBaseURI is the base URI inherited from the parent (may be nil for the root).
+// The documentRoot is the schema node that serves as the current document root for
+// fragment resolution (initially the schema itself).
+func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
+	if s == nil || s.IsBooleanSchema() {
+		return
+	}
+
+	currentBase := parentBaseURI
+	currentDocRoot := documentRoot
+
+	// If this schema declares $id, it establishes a new base URI and document root.
+	schemaID := s.ID
+	if schemaID == "" {
+		schemaID = s.LegacyID
+	}
+	if schemaID != "" {
+		if idURL, err := url.Parse(schemaID); err == nil {
+			if currentBase != nil {
+				currentBase = currentBase.ResolveReference(idURL)
+			} else {
+				currentBase = idURL
+			}
+			// A schema with $id becomes the document root for its scope.
+			currentDocRoot = s
+		}
+	}
+
+	s.BaseURI = currentBase
+	s.DocumentRoot = currentDocRoot
+
+	// Recurse into all child schemas.
+	for _, sub := range s.Properties {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.PatternProperties {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.Definitions {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.Defs {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.AllOf {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.AnyOf {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.OneOf {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Not != nil {
+		s.Not.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Items != nil && s.Items.Schema != nil {
+		s.Items.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Items != nil {
+		for _, sub := range s.Items.Schemas {
+			sub.ComputeBaseURIs(currentBase, currentDocRoot)
+		}
+	}
+	for _, sub := range s.PrefixItems {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		s.AdditionalProperties.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
+		s.AdditionalItems.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Contains != nil {
+		s.Contains.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.If != nil {
+		s.If.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Then != nil {
+		s.Then.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.Else != nil {
+		s.Else.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.PropertyNames != nil {
+		s.PropertyNames.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.UnevaluatedItems != nil {
+		s.UnevaluatedItems.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.UnevaluatedProperties != nil {
+		s.UnevaluatedProperties.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	if s.ContentSchema != nil {
+		s.ContentSchema.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.DependentSchemas {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
 }
 
 // EffectiveRef returns the effective reference string for this schema.

@@ -21,6 +21,11 @@ type Generator struct {
 	resolver     schema.SchemaResolver // external resolver for non-local refs
 	baseURI      *url.URL              // base URI for the root document (from $id or file path)
 	rootSchema   *schema.Schema        // the root schema for local ref resolution
+
+	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
+	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
+	// within it resolves against that subschema, not the top-level root.
+	documentRoots map[string]*schema.Schema
 }
 
 // New creates a new Generator with the given configuration.
@@ -57,6 +62,13 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 			g.baseURI = u
 		}
 	}
+
+	// Compute effective base URIs and document roots for all schema nodes.
+	// This enables scoped $id resolution: subschemas with $id change the
+	// base URI for relative refs within their scope.
+	s.ComputeBaseURIs(g.baseURI, s)
+	g.documentRoots = make(map[string]*schema.Schema)
+	g.buildDocumentRoots(s)
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
@@ -245,9 +257,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Ref only → alias (handles $ref, $recursiveRef, $dynamicRef)
 	if effRef := s.EffectiveRef(); effRef != "" {
-		resolved := g.resolveRef(effRef)
+		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
-			refName := refToGoName(effRef)
+			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:        name,
@@ -377,7 +389,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 			}
 		}
 
-		goType, err := g.resolvePropertyType(propSchema, name, goFieldName)
+		goType, err := g.resolvePropertyType(propSchema, name, goFieldName, s)
 		if err != nil {
 			return fmt.Errorf("property %s: %w", propName, err)
 		}
@@ -502,8 +514,8 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge each allOf sub-schema.
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if sub.Ref != "" {
-			if r := g.resolveRef(sub.Ref); r != nil {
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
 				resolved = r
 			}
 		}
@@ -540,7 +552,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	for _, sub := range s.AnyOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRef(effRef); r != nil {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
 				resolved = r
 			}
 		}
@@ -645,8 +657,9 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// $ref / $recursiveRef / $dynamicRef variant → use the referenced type
 	if effRef := variant.EffectiveRef(); effRef != "" {
 		goName := refToGoName(effRef)
-		refSchema := g.resolveRef(effRef)
+		refSchema := g.resolveRefInContext(effRef, variant)
 		if refSchema != nil {
+			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return oneOfVariantResult{}, err
 			}
@@ -736,8 +749,9 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 }
 
 // resolvePropertyType determines the GoType for a property schema, creating
-// additional TypeDefs for nested objects.
-func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName string) (GoType, error) {
+// additional TypeDefs for nested objects. The ctxSchema is the parent schema
+// that contains this property, used for scoped $ref resolution.
+func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName string, ctxSchema *schema.Schema) (GoType, error) {
 	if s == nil {
 		return &PrimitiveType{Name: "any"}, nil
 	}
@@ -758,7 +772,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			variant := nonNull[0]
 			if effRef := variant.EffectiveRef(); effRef != "" {
 				goName := refToGoName(effRef)
-				if refSchema := g.resolveRef(effRef); refSchema != nil {
+				if refSchema := g.resolveRefInContext(effRef, variant); refSchema != nil {
 					if err := g.generateTypeDef(goName, refSchema); err != nil {
 						return nil, err
 					}
@@ -766,7 +780,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
 			// Inline variant
-			innerType, err := g.resolvePropertyType(variant, parentName, fieldName)
+			innerType, err := g.resolvePropertyType(variant, parentName, fieldName, ctxSchema)
 			if err != nil {
 				return nil, err
 			}
@@ -782,7 +796,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// $ref / $recursiveRef / $dynamicRef
 	if effRef := s.EffectiveRef(); effRef != "" {
 		// Self-references (e.g. $ref: "#" or $ref matching root $id).
-		if g.isSelfRef(effRef) {
+		if g.isSelfRefInContext(effRef, s) {
 			// Only generate *Root if the root schema is explicitly an object type
 			// with properties. Otherwise the root can validate non-object values
 			// (e.g. numbers, booleans) and we should use json.RawMessage.
@@ -793,9 +807,14 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
-		if refSchema := g.resolveRef(effRef); refSchema != nil {
+		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return nil, err
+			}
+			// If the ref resolves to its own enclosing document root, use a pointer.
+			if g.isScopedSelfRef(effRef, s, refSchema) {
+				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
 		}
 		return &NamedType{Name: goName}, nil
@@ -845,15 +864,25 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// $ref / $recursiveRef / $dynamicRef
 	if effRef := s.EffectiveRef(); effRef != "" {
-		if g.isSelfRef(effRef) {
+		if g.isSelfRefInContext(effRef, s) {
 			if g.rootIsObjectType() {
 				return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
 			}
 			return &PrimitiveType{Name: "json.RawMessage"}
 		}
 		goName := refToGoName(effRef)
-		if refSchema := g.resolveRef(effRef); refSchema != nil {
+		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+			// If the ref resolved to a scoped document root (not the main root),
+			// derive the Go name from that schema rather than the raw ref string.
+			// This handles $ref: "#" inside a sub-schema with its own $id.
+			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			_ = g.generateTypeDef(goName, refSchema)
+			// If the ref resolves to its own enclosing document root, it's a
+			// local self-reference within a scoped $id context. Use a pointer
+			// to break the Go recursive type cycle.
+			if g.isScopedSelfRef(effRef, s, refSchema) {
+				return &PointerType{Inner: &NamedType{Name: goName}}
+			}
 		}
 		return &NamedType{Name: goName}
 	}
@@ -904,64 +933,108 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	return &PrimitiveType{Name: "any"}
 }
 
-// indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
-func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
-	if def.ID != "" {
-		g.anchors[def.ID] = refPath
+// buildDocumentRoots walks the schema tree and registers every node that declares
+// an $id into g.documentRoots, keyed by its canonical (fully-resolved) URI.
+// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
+// within it resolves against that subschema, not the top-level root.
+func (g *Generator) buildDocumentRoots(s *schema.Schema) {
+	if s == nil || s.IsBooleanSchema() {
+		return
 	}
-	if def.LegacyID != "" {
-		g.anchors[def.LegacyID] = refPath
+	// If this schema has a computed BaseURI and is its own DocumentRoot, register it.
+	if s.BaseURI != nil && s.DocumentRoot == s {
+		key := s.BaseURI.String()
+		// Strip trailing fragment "#" for consistent lookups.
+		key = strings.TrimSuffix(key, "#")
+		g.documentRoots[key] = s
 	}
-	if def.Anchor != "" {
-		g.anchors["#"+def.Anchor] = refPath
+	// Recurse into all child schemas.
+	for _, sub := range s.Properties {
+		g.buildDocumentRoots(sub)
 	}
-}
-
-// rootIsObjectType returns true if the root schema is explicitly typed as an object
-// (has type: "object"). Used to decide whether a self-reference should generate
-// *Root (for object schemas) or json.RawMessage (for general schemas).
-// Note: having properties alone is not sufficient — without explicit type: "object",
-// the schema can validate non-object values (booleans, numbers, arrays, etc.).
-func (g *Generator) rootIsObjectType() bool {
-	if g.rootSchema == nil {
-		return false
+	for _, sub := range s.PatternProperties {
+		g.buildDocumentRoots(sub)
 	}
-	return primarySchemaType(g.rootSchema) == "object"
-}
-
-// isSelfRef returns true if ref points to the root schema itself.
-func (g *Generator) isSelfRef(ref string) bool {
-	if ref == "#" {
-		return true
+	for _, sub := range s.Definitions {
+		g.buildDocumentRoots(sub)
 	}
-	if g.rootID != "" && (ref == g.rootID || strings.TrimSuffix(ref, "#") == g.rootID) {
-		return true
+	for _, sub := range s.Defs {
+		g.buildDocumentRoots(sub)
 	}
-	// Try resolving as a relative URI against the base URI.
-	if resolved := g.resolveRelativeURI(ref); resolved != "" {
-		if resolved == g.rootID || strings.TrimSuffix(resolved, "#") == g.rootID {
-			return true
+	for _, sub := range s.AllOf {
+		g.buildDocumentRoots(sub)
+	}
+	for _, sub := range s.AnyOf {
+		g.buildDocumentRoots(sub)
+	}
+	for _, sub := range s.OneOf {
+		g.buildDocumentRoots(sub)
+	}
+	if s.Not != nil {
+		g.buildDocumentRoots(s.Not)
+	}
+	if s.Items != nil && s.Items.Schema != nil {
+		g.buildDocumentRoots(s.Items.Schema)
+	}
+	if s.Items != nil {
+		for _, sub := range s.Items.Schemas {
+			g.buildDocumentRoots(sub)
 		}
 	}
-	return false
+	for _, sub := range s.PrefixItems {
+		g.buildDocumentRoots(sub)
+	}
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		g.buildDocumentRoots(s.AdditionalProperties.Schema)
+	}
+	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
+		g.buildDocumentRoots(s.AdditionalItems.Schema)
+	}
+	if s.Contains != nil {
+		g.buildDocumentRoots(s.Contains)
+	}
+	if s.If != nil {
+		g.buildDocumentRoots(s.If)
+	}
+	if s.Then != nil {
+		g.buildDocumentRoots(s.Then)
+	}
+	if s.Else != nil {
+		g.buildDocumentRoots(s.Else)
+	}
+	if s.PropertyNames != nil {
+		g.buildDocumentRoots(s.PropertyNames)
+	}
+	if s.UnevaluatedItems != nil {
+		g.buildDocumentRoots(s.UnevaluatedItems)
+	}
+	if s.UnevaluatedProperties != nil {
+		g.buildDocumentRoots(s.UnevaluatedProperties)
+	}
+	if s.ContentSchema != nil {
+		g.buildDocumentRoots(s.ContentSchema)
+	}
+	for _, sub := range s.DependentSchemas {
+		g.buildDocumentRoots(sub)
+	}
 }
 
-// resolveRelativeURI resolves a relative URI against the generator's base URI.
-// Returns the resolved absolute URI string, or "" if resolution is not possible.
-func (g *Generator) resolveRelativeURI(ref string) string {
-	if g.baseURI == nil {
-		return ""
+// resolveRefInContext resolves a $ref string using the given context schema's
+// BaseURI and DocumentRoot for scoped resolution. This handles the case where
+// a subschema with $id changes the base URI and document root for fragment resolution.
+func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
+	// Determine the effective base URI and document root from context.
+	ctxBase := g.baseURI
+	ctxDocRoot := g.rootSchema
+	if ctx != nil {
+		if ctx.BaseURI != nil {
+			ctxBase = ctx.BaseURI
+		}
+		if ctx.DocumentRoot != nil {
+			ctxDocRoot = ctx.DocumentRoot
+		}
 	}
-	refURL, err := url.Parse(ref)
-	if err != nil {
-		return ""
-	}
-	return g.baseURI.ResolveReference(refURL).String()
-}
 
-// resolveRef looks up a $ref path in the collected definitions, anchors, root schema,
-// and finally the external resolver (if configured).
-func (g *Generator) resolveRef(ref string) *schema.Schema {
 	// 1. Direct defs map lookup (handles #/$defs/Foo, #/definitions/Bar).
 	if s, ok := g.defs[ref]; ok {
 		return s
@@ -981,28 +1054,250 @@ func (g *Generator) resolveRef(ref string) *schema.Schema {
 			}
 		}
 	}
-	// 3b. Resolve as relative URI against base URI, then check anchors.
-	if resolved := g.resolveRelativeURI(ref); resolved != "" {
+	// 3b. Resolve as relative URI against context base URI, then check anchors and document roots.
+	if resolved := resolveRelativeURIAgainst(ref, ctxBase); resolved != "" {
 		if refPath, ok := g.anchors[resolved]; ok {
 			if s, ok2 := g.defs[refPath]; ok2 {
 				return s
 			}
 		}
+		// Check document roots by canonical URI.
+		resolvedClean := strings.TrimSuffix(resolved, "#")
+		if s, ok := g.documentRoots[resolvedClean]; ok {
+			return s
+		}
 	}
-	// 4. Try local resolution via full JSON Pointer traversal (handles #/properties/foo, etc.).
-	if strings.HasPrefix(ref, "#") && g.rootSchema != nil {
-		local := schema.NewLocalResolver(g.rootSchema)
+	// 4. Fragment-only refs: use the context document root for JSON Pointer traversal.
+	if strings.HasPrefix(ref, "#") && ctxDocRoot != nil {
+		local := schema.NewLocalResolver(ctxDocRoot)
 		if s, err := local.Resolve(ref); err == nil {
 			return s
 		}
 	}
-	// 5. Try external resolver (handles remote URLs, relative URIs, file paths, etc.).
+	// 5. Try resolving as absolute/relative URI against context base, then delegate
+	//    to the external resolver. For refs with fragments (e.g., "name-defs.json#/$defs/orNull"),
+	//    first check document roots for the document part, then resolve the fragment within it.
+	if ctxBase != nil {
+		refURL, err := url.Parse(ref)
+		if err == nil {
+			absURL := ctxBase.ResolveReference(refURL)
+			fragment := absURL.Fragment
+			docURL := *absURL
+			docURL.Fragment = ""
+			docKey := docURL.String()
+
+			// Check document roots first.
+			if docSchema, ok := g.documentRoots[docKey]; ok {
+				if fragment != "" {
+					local := schema.NewLocalResolver(docSchema)
+					if s, err := local.Resolve("#" + fragment); err == nil {
+						return s
+					}
+				} else {
+					return docSchema
+				}
+			}
+
+			// Try external resolver with the absolute URI.
+			if g.resolver != nil {
+				if s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase); err == nil {
+					// Compute base URIs on the resolved remote schema so its
+					// internal $id scopes and refs work correctly.
+					g.registerRemoteSchema(s, &docURL)
+					if fragment != "" {
+						local := schema.NewLocalResolver(s)
+						if resolved, err := local.Resolve("#" + fragment); err == nil {
+							return resolved
+						}
+					}
+					return s
+				}
+			}
+		}
+	}
+	// 6. Try external resolver with the raw ref (handles absolute URIs, etc.).
 	if g.resolver != nil {
-		if s, err := g.resolver.ResolveSchema(ref, g.baseURI); err == nil {
+		if s, err := g.resolver.ResolveSchema(ref, ctxBase); err == nil {
 			return s
 		}
 	}
 	return nil
+}
+
+// registerRemoteSchema computes base URIs for a remotely-resolved schema and
+// indexes its $id-bearing nodes into g.documentRoots so that subsequent refs
+// (including fragment-only refs like "#" within the remote document) resolve correctly.
+func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
+	if s == nil {
+		return
+	}
+	s.ComputeBaseURIs(docURI, s)
+	g.buildDocumentRoots(s)
+}
+
+// indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
+// It stores both the raw $id value and the canonicalized (resolved against base URI)
+// form so that both relative and absolute lookups succeed.
+func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
+	if def.ID != "" {
+		g.anchors[def.ID] = refPath
+		// Also store the canonicalized URI (resolved against base URI).
+		if resolved := g.resolveRelativeURI(def.ID); resolved != "" && resolved != def.ID {
+			g.anchors[resolved] = refPath
+		}
+	}
+	if def.LegacyID != "" {
+		g.anchors[def.LegacyID] = refPath
+		if resolved := g.resolveRelativeURI(def.LegacyID); resolved != "" && resolved != def.LegacyID {
+			g.anchors[resolved] = refPath
+		}
+	}
+	if def.Anchor != "" {
+		g.anchors["#"+def.Anchor] = refPath
+	}
+}
+
+// isScopedSelfRef returns true if the given ref, resolved from the context schema,
+// points to the context schema's own document root (creating a recursive cycle).
+// This is used to detect cases like $ref: "#" inside a sub-schema with $id
+// that should generate a pointer type to break Go's recursive type restriction.
+func (g *Generator) isScopedSelfRef(ref string, ctx *schema.Schema, resolved *schema.Schema) bool {
+	if ctx == nil || resolved == nil {
+		return false
+	}
+	// If the resolved schema is the context's own document root, it's a scoped self-ref.
+	if ctx.DocumentRoot != nil && resolved == ctx.DocumentRoot {
+		return true
+	}
+	return false
+}
+
+// goNameForResolvedRef determines the Go type name for a resolved $ref.
+// If the ref is a fragment-only ref (like "#") and the resolved schema is a scoped
+// document root different from the main root, the name is derived from the resolved
+// schema's title or $id rather than the raw ref string. This ensures that
+// "$ref: '#'" inside a sub-schema with its own $id gets a meaningful Go name
+// (e.g., "Tree") rather than the default "Root".
+func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fallback string) string {
+	if resolved == nil {
+		return fallback
+	}
+	// Only re-derive the name when the ref would produce a misleading name.
+	// This happens primarily for fragment-only refs like "#" or "#/..." that
+	// resolved to a scoped document root (not the main root).
+	if resolved == g.rootSchema {
+		return fallback
+	}
+	// Check if the resolved schema is a known document root with its own $id.
+	if resolved.DocumentRoot == resolved {
+		// Use the title if available.
+		if resolved.Title != "" {
+			return SchemaNameToGoName(resolved.Title)
+		}
+		// Use the last segment of the $id.
+		schemaID := resolved.ID
+		if schemaID == "" {
+			schemaID = resolved.LegacyID
+		}
+		if schemaID != "" {
+			return SchemaNameToGoName(lastPathSegment(schemaID))
+		}
+	}
+	return fallback
+}
+
+// lastPathSegment extracts the last meaningful segment from a URI path.
+// e.g., "http://example.com/foo/bar" → "bar", "./tree" → "tree",
+// "baseUriChangeFolder/" → "baseUriChangeFolder"
+func lastPathSegment(uri string) string {
+	// Strip fragment.
+	if idx := strings.LastIndex(uri, "#"); idx >= 0 {
+		uri = uri[:idx]
+	}
+	// Strip query.
+	if idx := strings.LastIndex(uri, "?"); idx >= 0 {
+		uri = uri[:idx]
+	}
+	// Strip trailing slash.
+	uri = strings.TrimSuffix(uri, "/")
+	// Get last path segment.
+	if idx := strings.LastIndex(uri, "/"); idx >= 0 {
+		return uri[idx+1:]
+	}
+	// No slash — might be scheme-less relative ref like "./tree".
+	uri = strings.TrimPrefix(uri, "./")
+	return uri
+}
+
+// rootIsObjectType returns true if the root schema is explicitly typed as an object
+// (has type: "object"). Used to decide whether a self-reference should generate
+// *Root (for object schemas) or json.RawMessage (for general schemas).
+// Note: having properties alone is not sufficient — without explicit type: "object",
+// the schema can validate non-object values (booleans, numbers, arrays, etc.).
+func (g *Generator) rootIsObjectType() bool {
+	if g.rootSchema == nil {
+		return false
+	}
+	return primarySchemaType(g.rootSchema) == "object"
+}
+
+// isSelfRef returns true if ref points to the root schema itself.
+func (g *Generator) isSelfRef(ref string) bool {
+	return g.isSelfRefInContext(ref, g.rootSchema)
+}
+
+// isSelfRefInContext returns true if ref points to the root schema itself,
+// resolving relative refs against the given context schema's base URI.
+func (g *Generator) isSelfRefInContext(ref string, ctx *schema.Schema) bool {
+	if ref == "#" {
+		// "#" in a scoped context points to the context's document root,
+		// which is only the top-level root if the context IS the root or
+		// the context has no $id of its own.
+		if ctx != nil && ctx.DocumentRoot != nil && ctx.DocumentRoot != g.rootSchema {
+			return false
+		}
+		return true
+	}
+	if g.rootID != "" && (ref == g.rootID || strings.TrimSuffix(ref, "#") == g.rootID) {
+		return true
+	}
+	// Try resolving as a relative URI against the context's base URI.
+	ctxBase := g.baseURI
+	if ctx != nil && ctx.BaseURI != nil {
+		ctxBase = ctx.BaseURI
+	}
+	if resolved := resolveRelativeURIAgainst(ref, ctxBase); resolved != "" {
+		if resolved == g.rootID || strings.TrimSuffix(resolved, "#") == g.rootID {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveRelativeURI resolves a relative URI against the generator's base URI.
+// Returns the resolved absolute URI string, or "" if resolution is not possible.
+func (g *Generator) resolveRelativeURI(ref string) string {
+	return resolveRelativeURIAgainst(ref, g.baseURI)
+}
+
+// resolveRelativeURIAgainst resolves a relative URI against the given base URI.
+// Returns the resolved absolute URI string, or "" if resolution is not possible.
+func resolveRelativeURIAgainst(ref string, base *url.URL) string {
+	if base == nil {
+		return ""
+	}
+	refURL, err := url.Parse(ref)
+	if err != nil {
+		return ""
+	}
+	return base.ResolveReference(refURL).String()
+}
+
+// resolveRef looks up a $ref path using the root schema as context.
+// This is a convenience wrapper around resolveRefInContext for callers that
+// don't have a scoped context schema available.
+func (g *Generator) resolveRef(ref string) *schema.Schema {
+	return g.resolveRefInContext(ref, g.rootSchema)
 }
 
 // resolveBaseType determines the Go base type for an enum.
@@ -1071,8 +1366,8 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 		}
 		// Resolve $ref, but skip self-references to avoid misattributing
 		// the root schema's properties to this anyOf variant.
-		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRef(effRef) {
-			if r := g.resolveRef(effRef); r != nil {
+		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
 				if len(r.Properties) > 0 {
 					return true
 				}
