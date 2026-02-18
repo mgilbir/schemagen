@@ -106,12 +106,11 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		}
 	}
 
-	// Process the root type if it defines an object, has a title, uses composition,
-	// or is explicitly typed as "object" (even without properties — gets overflow map).
-	if hasProperties(s) || s.Title != "" || len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 || primarySchemaType(s) == "object" {
-		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
-			return nil, fmt.Errorf("generating root type: %w", err)
-		}
+	// Process the root type. This handles objects, compositions, primitive types
+	// with validation constraints, enums, arrays, and any other schema that can
+	// produce a Go type definition.
+	if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
+		return nil, fmt.Errorf("generating root type: %w", err)
 	}
 
 	// Add imports based on what was generated.
@@ -180,6 +179,17 @@ func (g *Generator) addRequiredImports() {
 			}
 			if usesJSONType(ad.Underlying) {
 				needsJSON = true
+			}
+			if len(ad.Validations) > 0 {
+				needsFmt = true
+				for _, v := range ad.Validations {
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
 			}
 		}
 	}
@@ -310,27 +320,31 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// Simple primitive type → alias
+	// Simple primitive type → alias (or defined type if it has validation constraints)
 	primaryType := primarySchemaType(s)
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
+		rules := extractAliasValidationRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
 			Underlying:  goType,
 			Description: s.Description,
+			Validations: rules,
 		})
 		return nil
 	}
 
-	// Array type → alias
+	// Array type → alias (or defined type if it has validation constraints)
 	if primaryType == "array" {
 		goType := g.resolveType(s, name)
+		rules := extractAliasValidationRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
 			Underlying:  goType,
 			Description: s.Description,
+			Validations: rules,
 		})
 		return nil
 	}
@@ -364,11 +378,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Fallback: alias to any
+	goType := &PrimitiveType{Name: "any"}
+	rules := extractAliasValidationRules(s, goType)
 	g.generated[name] = true
 	g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 		Name:        name,
-		Underlying:  &PrimitiveType{Name: "any"},
+		Underlying:  goType,
 		Description: s.Description,
+		Validations: rules,
 	})
 	return nil
 }
@@ -1765,6 +1782,23 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "multipleOf", Value: *s.MultipleOf,
 		})
+	}
+	return rules
+}
+
+// extractAliasValidationRules extracts validation rules applicable to a
+// top-level type alias (defined type). Unlike struct field validation, the
+// receiver IS the value, so FieldName and JSONName are empty — the template
+// uses the receiver name directly.
+// Returns nil if the Go type is "any" (untyped schemas can't be validated).
+func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
+	// Skip validation on untyped "any" fields — can't compile numeric/string checks.
+	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+		return nil
+	}
+	rules := extractValidationRules("", "", s)
+	if len(rules) == 0 {
+		return nil
 	}
 	return rules
 }

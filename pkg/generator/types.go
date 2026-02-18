@@ -153,10 +153,14 @@ type EnumValue struct {
 }
 
 // AliasDef represents a type alias.
+// When Validations is non-empty the emitter produces a defined type
+// (`type Name underlying`) instead of a Go type alias (`type Name = underlying`)
+// so that a Validate() method can be attached.
 type AliasDef struct {
 	Name        string
 	Underlying  GoType
 	Description string
+	Validations []ValidationRule
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }

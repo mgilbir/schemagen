@@ -2,5 +2,71 @@
 {{- if .Description}}
 // {{.Name}} - {{.Description}}
 {{- end}}
+{{- if .Validations}}
+type {{.Name}} {{goType .Underlying}}
+{{template "alias_validate" .}}
+{{- else}}
 type {{.Name}} = {{goType .Underlying}}
+{{- end}}
+{{- end}}
+
+{{define "alias_validate"}}
+{{- $recv := receiverName .Name -}}
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	{{- range .Validations}}
+	{{- if eq .RuleType "minLength"}}
+	if len({{$recv}}) < {{.Value}} {
+		return fmt.Errorf("value: length %d is less than minimum {{.Value}}", len({{$recv}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxLength"}}
+	if len({{$recv}}) > {{.Value}} {
+		return fmt.Errorf("value: length %d exceeds maximum {{.Value}}", len({{$recv}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "minimum"}}
+	if float64({{$recv}}) < {{.Value}} {
+		return fmt.Errorf("value: %v is less than minimum {{.Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "maximum"}}
+	if float64({{$recv}}) > {{.Value}} {
+		return fmt.Errorf("value: %v exceeds maximum {{.Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMinimum"}}
+	if float64({{$recv}}) <= {{.Value}} {
+		return fmt.Errorf("value: %v must be greater than {{.Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMaximum"}}
+	if float64({{$recv}}) >= {{.Value}} {
+		return fmt.Errorf("value: %v must be less than {{.Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "multipleOf"}}
+	if math.Mod(float64({{$recv}}), {{.Value}}) != 0 {
+		return fmt.Errorf("value: %v is not a multiple of {{.Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "pattern"}}
+	if matched, _ := regexp.MatchString({{printf "%q" .Value}}, string({{$recv}})); !matched {
+		return fmt.Errorf("value: %q does not match pattern {{printf "%s" .Value}}", {{$recv}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "minItems"}}
+	if len({{$recv}}) < {{.Value}} {
+		return fmt.Errorf("value: has %d items, minimum is {{.Value}}", len({{$recv}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxItems"}}
+	if len({{$recv}}) > {{.Value}} {
+		return fmt.Errorf("value: has %d items, maximum is {{.Value}}", len({{$recv}}))
+	}
+	{{- end}}
+	{{- end}}
+	return nil
+}
 {{- end}}
