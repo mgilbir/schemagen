@@ -432,7 +432,6 @@ func generateValidateMain(rootType string) string {
 	return fmt.Sprintf(`package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -447,16 +446,10 @@ func main() {
 
 	var obj %s
 	if err := json.Unmarshal(data, &obj); err != nil {
-		// Unmarshal errors on JSON objects are validation failures
-		// (e.g., missing required fields). Non-object data that fails
-		// unmarshal into a struct is a type mismatch.
-		trimmed := bytes.TrimSpace(data)
-		if len(trimmed) > 0 && trimmed[0] == '{' {
-			fmt.Printf("INVALID: %%v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
-			os.Exit(1)
-		}
+		// Any unmarshal error is a type mismatch: the JSON data doesn't
+		// fit the generated Go type. This is equivalent to a JSON Schema
+		// validation failure (wrong type, missing required field, etc.).
+		fmt.Printf("INVALID: unmarshal: %%v\n", err)
 		return
 	}
 
