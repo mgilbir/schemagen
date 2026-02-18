@@ -24,6 +24,28 @@ const jstsRemotesDir = "../testdata/external/JSON-Schema-Test-Suite/remotes"
 // remoteBaseURL is the base URL that the JSTS expects for remote schemas.
 const remoteBaseURL = "http://localhost:1234"
 
+// goecma262 module metadata for temp go.mod files.
+const (
+	goecma262Version = "v0.0.0-20260218123409-a49011984fdd"
+	goecma262H1      = "h1:p6yhBuzwvX1yfW1+St8mOgVoGO1YDM//eC4bSubguI8="
+	goecma262GoMod   = "h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI="
+)
+
+// writeTestGoMod writes a go.mod and go.sum in dir that includes the goecma262 dependency.
+// moduleName is the module name for the temp project (e.g. "compile_test", "roundtrip_test").
+func writeTestGoMod(dir, moduleName string) error {
+	goMod := fmt.Sprintf("module %s\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 %s\n", moduleName, goecma262Version)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		return fmt.Errorf("write go.mod: %w", err)
+	}
+	goSum := fmt.Sprintf("github.com/mgilbir/goecma262 %s %s\ngithub.com/mgilbir/goecma262 %s/go.mod %s\n",
+		goecma262Version, goecma262H1, goecma262Version, goecma262GoMod)
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte(goSum), 0o644); err != nil {
+		return fmt.Errorf("write go.sum: %w", err)
+	}
+	return nil
+}
+
 // allDrafts lists all draft directories in the test suite.
 var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12"}
 
@@ -315,8 +337,8 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write types: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module compile_test\n\ngo 1.22\n"), 0o644); err != nil {
-		return fmt.Errorf("write go.mod: %w", err)
+	if err := writeTestGoMod(tmpDir, "compile_test"); err != nil {
+		return err
 	}
 
 	cmd := exec.Command("go", "build", ".")
@@ -373,8 +395,8 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateRoundTripMain(rootType)), 0o644); err != nil {
 		return fmt.Errorf("write main: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module roundtrip_test\n\ngo 1.22\n"), 0o644); err != nil {
-		return fmt.Errorf("write go.mod: %w", err)
+	if err := writeTestGoMod(tmpDir, "roundtrip_test"); err != nil {
+		return err
 	}
 
 	cmd := exec.Command("go", "run", ".")
@@ -504,8 +526,8 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateValidateMain(rootType)), 0o644); err != nil {
 		return fmt.Errorf("write main: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module validate_test\n\ngo 1.22\n"), 0o644); err != nil {
-		return fmt.Errorf("write go.mod: %w", err)
+	if err := writeTestGoMod(tmpDir, "validate_test"); err != nil {
+		return err
 	}
 
 	cmd := exec.Command("go", "run", ".")

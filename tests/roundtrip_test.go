@@ -155,9 +155,8 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatalf("writing main.go: %v", err)
 			}
 
-			// Write go.mod
-			goMod := "module roundtrip_test\n\ngo 1.22\n"
-			if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+			// Write go.mod + go.sum (with goecma262 dependency for generated code)
+			if err := writeTestGoMod(tmpDir, "roundtrip_test"); err != nil {
 				t.Fatalf("writing go.mod: %v", err)
 			}
 
@@ -191,9 +190,8 @@ func TestCompile(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Write go.mod
-	goMod := "module compile_test\n\ngo 1.22\n"
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+	// Write go.mod + go.sum (with goecma262 dependency for generated code)
+	if err := writeTestGoMod(tmpDir, "compile_test"); err != nil {
 		t.Fatalf("writing go.mod: %v", err)
 	}
 
@@ -250,8 +248,7 @@ func TestCompile(t *testing.T) {
 			t.Run(dir+"/"+entry.Name(), func(t *testing.T) {
 				singleTmpDir := t.TempDir()
 
-				goMod := "module compile_test\n\ngo 1.22\n"
-				if err := os.WriteFile(filepath.Join(singleTmpDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+				if err := writeTestGoMod(singleTmpDir, "compile_test"); err != nil {
 					t.Fatalf("writing go.mod: %v", err)
 				}
 
