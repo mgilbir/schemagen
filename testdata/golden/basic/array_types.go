@@ -141,3 +141,8 @@ func (a ArrayTypes) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(obj)
 }
+
+// Validate checks ArrayTypes against its JSON Schema constraints.
+func (a ArrayTypes) Validate() error {
+	return nil
+}

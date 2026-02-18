@@ -71,3 +71,8 @@ func (p PrimitiveTypes) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(obj)
 }
+
+// Validate checks PrimitiveTypes against its JSON Schema constraints.
+func (p PrimitiveTypes) Validate() error {
+	return nil
+}

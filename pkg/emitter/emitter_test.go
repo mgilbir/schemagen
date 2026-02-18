@@ -189,8 +189,8 @@ func TestEmitAliasDef(t *testing.T) {
 
 	src := string(out)
 
-	if !strings.Contains(src, "type Metadata = map[string]any") {
-		t.Errorf("expected 'type Metadata = map[string]any', got:\n%s", src)
+	if !strings.Contains(src, "type Metadata map[string]any") {
+		t.Errorf("expected 'type Metadata map[string]any', got:\n%s", src)
 	}
 
 	if !strings.Contains(src, "// Metadata - Arbitrary metadata.") {
@@ -255,8 +255,8 @@ func TestEmitMultipleTypeDefs(t *testing.T) {
 	if !strings.Contains(src, "type LogLevel string") {
 		t.Error("expected LogLevel enum")
 	}
-	if !strings.Contains(src, "type Tags = []string") {
-		t.Error("expected Tags alias")
+	if !strings.Contains(src, "type Tags []string") {
+		t.Error("expected Tags defined type")
 	}
 
 	// Imports

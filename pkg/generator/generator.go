@@ -113,6 +113,9 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		return nil, fmt.Errorf("generating root type: %w", err)
 	}
 
+	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
+	g.resolveAliasMethodability()
+
 	// Add imports based on what was generated.
 	g.addRequiredImports()
 
@@ -213,6 +216,46 @@ func (g *Generator) addRequiredImports() {
 	if needsTime {
 		g.output.Imports = append(g.output.Imports, Import{Path: "time"})
 	}
+}
+
+// resolveAliasMethodability walks all AliasDefs and sets NoMethods=true
+// for any whose underlying type chain resolves to a pointer or interface.
+// This handles cases like `type Root Bool` where Bool is `type Bool any` —
+// Go does not allow methods on types whose ultimate underlying type is
+// a pointer or interface type.
+func (g *Generator) resolveAliasMethodability() {
+	// Build a map of type name → AliasDef for cross-referencing.
+	aliases := make(map[string]*AliasDef)
+	for _, td := range g.output.TypeDefs {
+		if ad, ok := td.(*AliasDef); ok {
+			aliases[ad.Name] = ad
+		}
+	}
+
+	// For each alias, walk the underlying type chain to check if it
+	// ultimately resolves to a pointer or interface.
+	for _, ad := range aliases {
+		if !canHaveMethodsResolved(ad.Underlying, aliases) {
+			ad.NoMethods = true
+		}
+	}
+}
+
+// canHaveMethodsResolved checks if a GoType can be used as a method receiver,
+// following NamedType references through the alias map.
+func canHaveMethodsResolved(t GoType, aliases map[string]*AliasDef) bool {
+	if t.IsPointer() {
+		return false
+	}
+	if pt, ok := t.(*PrimitiveType); ok && pt.Name == "any" {
+		return false
+	}
+	if nt, ok := t.(*NamedType); ok {
+		if ref, exists := aliases[nt.Name]; exists {
+			return canHaveMethodsResolved(ref.Underlying, aliases)
+		}
+	}
+	return true
 }
 
 // usesTimeType returns true if the GoType references time.Time.

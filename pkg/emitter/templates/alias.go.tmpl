@@ -2,11 +2,9 @@
 {{- if .Description}}
 // {{.Name}} - {{.Description}}
 {{- end}}
-{{- if .Validations}}
 type {{.Name}} {{goType .Underlying}}
+{{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
-{{- else}}
-type {{.Name}} = {{goType .Underlying}}
 {{- end}}
 {{- end}}
 

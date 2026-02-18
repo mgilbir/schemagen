@@ -9,4 +9,10 @@ const (
 	{{.Name}} {{$.Name}} = {{enumValue .Value}}
 {{- end}}
 )
+{{- $recv := receiverName .Name}}
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	return nil
+}
 {{- end}}

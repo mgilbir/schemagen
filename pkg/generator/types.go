@@ -158,19 +158,27 @@ type EnumValue struct {
 	Value any    // actual value (string or int)
 }
 
-// AliasDef represents a type alias.
-// When Validations is non-empty the emitter produces a defined type
-// (`type Name underlying`) instead of a Go type alias (`type Name = underlying`)
-// so that a Validate() method can be attached.
+// AliasDef represents a defined type (type Name Underlying).
+// A Validate() method is always emitted. For types whose underlying
+// is a pointer or interface (e.g., *T or any), Validate() cannot be
+// attached — CanHaveMethods() returns false and the template skips it.
 type AliasDef struct {
 	Name        string
 	Underlying  GoType
 	Description string
 	Validations []ValidationRule
+	NoMethods   bool // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }
 func (d *AliasDef) typeDef()         {}
+
+// CanHaveMethods returns true if this defined type can have methods attached.
+// The NoMethods flag is set by resolveAliasMethodability() after generation,
+// which walks the full type chain to detect pointer or interface underlying types.
+func (d *AliasDef) CanHaveMethods() bool {
+	return !d.NoMethods
+}
 
 // ---------- File ----------
 

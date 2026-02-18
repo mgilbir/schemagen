@@ -33,7 +33,5 @@ type {{.Name}} struct {
 {{- if .NeedsMarshal}}
 {{template "marshal" .}}
 {{- end}}
-{{- if or .Validations .HasRequiredFields}}
 {{template "validate" .}}
-{{- end}}
 {{- end}}

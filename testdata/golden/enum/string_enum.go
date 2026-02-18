@@ -15,6 +15,11 @@ const (
 	TaskPriorityHigh   TaskPriority = "high"
 )
 
+// Validate checks TaskPriority against its JSON Schema constraints.
+func (t TaskPriority) Validate() error {
+	return nil
+}
+
 type TaskStatus string
 
 const (
@@ -23,6 +28,11 @@ const (
 	TaskStatusCompleted  TaskStatus = "completed"
 	TaskStatusCancelled  TaskStatus = "cancelled"
 )
+
+// Validate checks TaskStatus against its JSON Schema constraints.
+func (t TaskStatus) Validate() error {
+	return nil
+}
 
 type Task struct {
 	Priority             TaskPriority               `json:"priority,omitempty"`
