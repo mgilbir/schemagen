@@ -15,13 +15,13 @@ type {{.Name}} {{goType .Underlying}}
 func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
-	if len({{$recv}}) < {{.Value}} {
-		return fmt.Errorf("value: length %d is less than minimum {{.Value}}", len({{$recv}}))
+	if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} {
+		return fmt.Errorf("value: length %d is less than minimum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
-	if len({{$recv}}) > {{.Value}} {
-		return fmt.Errorf("value: length %d exceeds maximum {{.Value}}", len({{$recv}}))
+	if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} {
+		return fmt.Errorf("value: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}

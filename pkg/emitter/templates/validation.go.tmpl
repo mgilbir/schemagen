@@ -6,13 +6,13 @@
 func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- range $struct.Validations}}
 	{{- if eq .RuleType "minLength"}}
-	if len({{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$recv}}.{{.FieldName}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
-	if len({{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", len({{$recv}}.{{.FieldName}}))
+	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$recv}}.{{.FieldName}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}

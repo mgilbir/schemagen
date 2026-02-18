@@ -661,13 +661,13 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 837 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 825 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
 //   - required: non-object data incompatible with generated struct (20)
 //   - patternProperties validation: sub-schema constraints on pattern-matched keys not validated (18)
-//   - minLength/maxLength counts bytes not Unicode graphemes (12)
+//   - (minLength/maxLength Unicode grapheme counting — FIXED)
 //   - multipleOf floating point precision with math.Mod (11)
 //   - enum property validation not implemented (10)
 //   - default keyword: valid data omits field, zero-value fails minLength (6)
@@ -837,21 +837,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-
-	// minLength/maxLength counts bytes not Unicode graphemes
-	// Go len() counts bytes, but JSON Schema specifies character (grapheme) counting
-	"draft3/maxLength/maxLength validation/two graphemes is long enough":          "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft3/minLength/minLength validation/one grapheme is not long enough":       "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft4/maxLength/maxLength validation/two graphemes is long enough":          "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft4/minLength/minLength validation/one grapheme is not long enough":       "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft6/maxLength/maxLength validation/two graphemes is long enough":          "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft6/minLength/minLength validation/one grapheme is not long enough":       "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft7/maxLength/maxLength validation/two graphemes is long enough":          "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft7/minLength/minLength validation/one grapheme is not long enough":       "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft2019-09/maxLength/maxLength validation/two graphemes is long enough":    "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft2019-09/minLength/minLength validation/one grapheme is not long enough": "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft2020-12/maxLength/maxLength validation/two graphemes is long enough":    "minLength/maxLength counts bytes not Unicode graphemes",
-	"draft2020-12/minLength/minLength validation/one grapheme is not long enough": "minLength/maxLength counts bytes not Unicode graphemes",
 
 	// multipleOf floating point precision — math.Mod(0.0075, 0.0001) != 0 due to IEEE 754
 	"draft3/divisibleBy/by small number/0.0075 is divisible by 0.0001":     "multipleOf floating point precision with math.Mod",

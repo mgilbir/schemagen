@@ -129,6 +129,7 @@ func (g *Generator) addRequiredImports() {
 	needsRegexp := false
 	needsTime := false
 	needsMath := false
+	needsUTF8 := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -168,6 +169,9 @@ func (g *Generator) addRequiredImports() {
 					if v.RuleType == "uniqueItems" {
 						needsJSON = true
 					}
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
 				}
 			}
 			if len(sd.PatternProperties) > 0 {
@@ -205,6 +209,9 @@ func (g *Generator) addRequiredImports() {
 					if v.RuleType == "uniqueItems" {
 						needsJSON = true
 					}
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
 				}
 			}
 		}
@@ -225,6 +232,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsTime {
 		g.output.Imports = append(g.output.Imports, Import{Path: "time"})
+	}
+	if needsUTF8 {
+		g.output.Imports = append(g.output.Imports, Import{Path: "unicode/utf8"})
 	}
 }
 

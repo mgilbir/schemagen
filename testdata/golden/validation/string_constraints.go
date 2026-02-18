@@ -5,6 +5,7 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 )
 
 type UserProfile struct {
@@ -87,17 +88,17 @@ func (u UserProfile) Validate() error {
 	if float64(u.Age) > 150 {
 		return fmt.Errorf("age: value %v exceeds maximum 150", u.Age)
 	}
-	if len(u.Bio) > 500 {
-		return fmt.Errorf("bio: length %d exceeds maximum 500", len(u.Bio))
+	if utf8.RuneCountInString(u.Bio) > 500 {
+		return fmt.Errorf("bio: length %d exceeds maximum 500", utf8.RuneCountInString(u.Bio))
 	}
 	if u.Tags != nil && len(*u.Tags) > 10 {
 		return fmt.Errorf("tags: has %d items, maximum is 10", len(*u.Tags))
 	}
-	if len(u.Username) < 3 {
-		return fmt.Errorf("username: length %d is less than minimum 3", len(u.Username))
+	if utf8.RuneCountInString(u.Username) < 3 {
+		return fmt.Errorf("username: length %d is less than minimum 3", utf8.RuneCountInString(u.Username))
 	}
-	if len(u.Username) > 50 {
-		return fmt.Errorf("username: length %d exceeds maximum 50", len(u.Username))
+	if utf8.RuneCountInString(u.Username) > 50 {
+		return fmt.Errorf("username: length %d exceeds maximum 50", utf8.RuneCountInString(u.Username))
 	}
 	return nil
 }
