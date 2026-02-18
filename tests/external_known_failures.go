@@ -701,7 +701,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 202 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 192 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -867,18 +867,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-
-	// ECMA-262 \p{digit} Unicode property: goecma262 doesn't support \p{} without 'u' flag
-	"draft4/optional/ecmascript-regex/pattern with non-ASCII digits/ascii digits":                                                   "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft4/optional/ecmascript-regex/pattern with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft6/optional/ecmascript-regex/pattern with non-ASCII digits/ascii digits":                                                   "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft6/optional/ecmascript-regex/pattern with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft7/optional/ecmascript-regex/pattern with non-ASCII digits/ascii digits":                                                   "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft7/optional/ecmascript-regex/pattern with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft2019-09/optional/ecmascript-regex/pattern with non-ASCII digits/ascii digits":                                             "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft2019-09/optional/ecmascript-regex/pattern with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)": "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft2020-12/optional/ecmascript-regex/pattern with non-ASCII digits/ascii digits":                                             "ECMA-262 \\p{digit} Unicode property not supported without u flag",
-	"draft2020-12/optional/ecmascript-regex/pattern with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)": "ECMA-262 \\p{digit} Unicode property not supported without u flag",
 
 	// minLength/maxLength counts bytes not Unicode graphemes
 	// Go len() counts bytes, but JSON Schema specifies character (grapheme) counting

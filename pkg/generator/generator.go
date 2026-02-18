@@ -205,6 +205,7 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsRegexp {
 		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/goecma262", Alias: "ecma262"})
+		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/goecma262/flags", Alias: "ecmaflags"})
 	}
 	if needsMath {
 		g.output.Imports = append(g.output.Imports, Import{Path: "math"})

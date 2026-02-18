@@ -41,7 +41,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, 0, {{$recv}}.{{.FieldName}}); !matched {
+	if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, {{$recv}}.{{.FieldName}}); !matched {
 		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$recv}}.{{.FieldName}}, {{printf "%q" .Value}})
 	}
 	{{- end}}

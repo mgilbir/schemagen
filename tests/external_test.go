@@ -26,8 +26,8 @@ const remoteBaseURL = "http://localhost:1234"
 
 // goecma262 module metadata for temp go.mod files.
 const (
-	goecma262Version = "v0.0.0-20260218123409-a49011984fdd"
-	goecma262H1      = "h1:p6yhBuzwvX1yfW1+St8mOgVoGO1YDM//eC4bSubguI8="
+	goecma262Version = "v0.0.0-20260218144334-e8c720bfd7f5"
+	goecma262H1      = "h1:BKBtM/ZmBzuEuIg9dduuBObScmC01VjRuiMemHJTV2o="
 	goecma262GoMod   = "h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI="
 )
 
