@@ -701,7 +701,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 884 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 861 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -1185,33 +1185,6 @@ var knownValidationFailures = map[string]string{
 	"draft3/extends/multiple extends/mismatch both":           "extends validation not implemented",
 	"draft3/extends/multiple extends/mismatch first extends":  "extends validation not implemented",
 	"draft3/extends/multiple extends/mismatch second extends": "extends validation not implemented",
-
-	// maxProperties validation not implemented (14 entries)
-	"draft2019-09/maxProperties/maxProperties = 0 means the object is empty/one property is invalid": "maxProperties validation not implemented",
-	"draft2019-09/maxProperties/maxProperties validation with a decimal/too long is invalid":         "maxProperties validation not implemented",
-	"draft2019-09/maxProperties/maxProperties validation/too long is invalid":                        "maxProperties validation not implemented",
-	"draft2020-12/maxProperties/maxProperties = 0 means the object is empty/one property is invalid": "maxProperties validation not implemented",
-	"draft2020-12/maxProperties/maxProperties validation with a decimal/too long is invalid":         "maxProperties validation not implemented",
-	"draft2020-12/maxProperties/maxProperties validation/too long is invalid":                        "maxProperties validation not implemented",
-	"draft4/maxProperties/maxProperties = 0 means the object is empty/one property is invalid":       "maxProperties validation not implemented",
-	"draft4/maxProperties/maxProperties validation/too long is invalid":                              "maxProperties validation not implemented",
-	"draft6/maxProperties/maxProperties = 0 means the object is empty/one property is invalid":       "maxProperties validation not implemented",
-	"draft6/maxProperties/maxProperties validation with a decimal/too long is invalid":               "maxProperties validation not implemented",
-	"draft6/maxProperties/maxProperties validation/too long is invalid":                              "maxProperties validation not implemented",
-	"draft7/maxProperties/maxProperties = 0 means the object is empty/one property is invalid":       "maxProperties validation not implemented",
-	"draft7/maxProperties/maxProperties validation with a decimal/too long is invalid":               "maxProperties validation not implemented",
-	"draft7/maxProperties/maxProperties validation/too long is invalid":                              "maxProperties validation not implemented",
-
-	// minProperties validation not implemented (9 entries)
-	"draft2019-09/minProperties/minProperties validation with a decimal/too short is invalid": "minProperties validation not implemented",
-	"draft2019-09/minProperties/minProperties validation/too short is invalid":                "minProperties validation not implemented",
-	"draft2020-12/minProperties/minProperties validation with a decimal/too short is invalid": "minProperties validation not implemented",
-	"draft2020-12/minProperties/minProperties validation/too short is invalid":                "minProperties validation not implemented",
-	"draft4/minProperties/minProperties validation/too short is invalid":                      "minProperties validation not implemented",
-	"draft6/minProperties/minProperties validation with a decimal/too short is invalid":       "minProperties validation not implemented",
-	"draft6/minProperties/minProperties validation/too short is invalid":                      "minProperties validation not implemented",
-	"draft7/minProperties/minProperties validation with a decimal/too short is invalid":       "minProperties validation not implemented",
-	"draft7/minProperties/minProperties validation/too short is invalid":                      "minProperties validation not implemented",
 
 	// not validation not implemented (5 entries)
 	"draft2019-09/not/forbidden property/property present": "not validation not implemented",

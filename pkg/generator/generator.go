@@ -427,10 +427,22 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 		needsMarshal := additionalProps != nil
 		needsUnmarshal := additionalProps != nil
+		var validations []ValidationRule
+		if s.MaxProperties != nil {
+			validations = append(validations, ValidationRule{
+				RuleType: "maxProperties", Value: s.MaxProperties.Int(),
+			})
+		}
+		if s.MinProperties != nil {
+			validations = append(validations, ValidationRule{
+				RuleType: "minProperties", Value: s.MinProperties.Int(),
+			})
+		}
 		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 			Name:                 name,
 			Description:          s.Description,
 			AdditionalProperties: additionalProps,
+			Validations:          validations,
 			NeedsMarshal:         needsMarshal,
 			NeedsUnmarshal:       needsUnmarshal,
 		})
@@ -664,6 +676,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 	if len(patternProps) > 0 {
 		needsMarshal = true
 		needsUnmarshal = true
+	}
+
+	// Add struct-level property count validations.
+	if s.MaxProperties != nil {
+		validations = append(validations, ValidationRule{
+			RuleType: "maxProperties", Value: s.MaxProperties.Int(),
+		})
+	}
+	if s.MinProperties != nil {
+		validations = append(validations, ValidationRule{
+			RuleType: "minProperties", Value: s.MinProperties.Int(),
+		})
 	}
 
 	// Enable custom unmarshal if there are required fields (to track key presence).

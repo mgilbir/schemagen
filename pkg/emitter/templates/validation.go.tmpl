@@ -88,6 +88,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if eq .RuleType "maxProperties"}}
+	if len({{$recv}}.AdditionalProperties) > {{.Value}} {
+		return fmt.Errorf("too many properties: %d exceeds maximum {{.Value}}", len({{$recv}}.AdditionalProperties))
+	}
+	{{- end}}
+	{{- if eq .RuleType "minProperties"}}
+	if len({{$recv}}.AdditionalProperties) < {{.Value}} {
+		return fmt.Errorf("too few properties: %d is less than minimum {{.Value}}", len({{$recv}}.AdditionalProperties))
+	}
+	{{- end}}
 	{{- end}}
 	return nil
 }
