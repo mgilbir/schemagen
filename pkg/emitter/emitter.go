@@ -73,6 +73,9 @@ func (d fileData) HasValidation() bool {
 			if len(s.Validations) > 0 || s.HasRequiredFields() {
 				return true
 			}
+			if s.AdditionalProperties != nil && s.AdditionalProperties.Forbidden {
+				return true
+			}
 		}
 		if a, ok := td.Def.(*generator.AliasDef); ok && len(a.Validations) > 0 {
 			return true

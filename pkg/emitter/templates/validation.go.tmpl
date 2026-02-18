@@ -89,15 +89,28 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxProperties"}}
-	if len({{$recv}}.AdditionalProperties) > {{.Value}} {
-		return fmt.Errorf("too many properties: %d exceeds maximum {{.Value}}", len({{$recv}}.AdditionalProperties))
+	{
+		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
+		if totalProps > {{.Value}} {
+			return fmt.Errorf("too many properties: %d exceeds maximum {{.Value}}", totalProps)
+		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "minProperties"}}
-	if len({{$recv}}.AdditionalProperties) < {{.Value}} {
-		return fmt.Errorf("too few properties: %d is less than minimum {{.Value}}", len({{$recv}}.AdditionalProperties))
+	{
+		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
+		if totalProps < {{.Value}} {
+			return fmt.Errorf("too few properties: %d is less than minimum {{.Value}}", totalProps)
+		}
 	}
 	{{- end}}
+	{{- end}}
+	{{- if and $struct.AdditionalProperties $struct.AdditionalProperties.Forbidden}}
+	if len({{$recv}}.AdditionalProperties) > 0 {
+		for k := range {{$recv}}.AdditionalProperties {
+			return fmt.Errorf("additional property %q is not allowed", k)
+		}
+	}
 	{{- end}}
 	return nil
 }

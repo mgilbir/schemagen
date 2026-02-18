@@ -146,9 +146,10 @@ func (g *Generator) addRequiredImports() {
 			}
 			if sd.AdditionalProperties != nil {
 				needsJSON = true
-				// fmt is only needed for non-RawMessage additional properties (typed maps)
-				// because the marshal template uses fmt.Errorf for marshaling errors.
-				if sd.AdditionalProperties.ValueType.GoTypeName() != "json.RawMessage" {
+				// fmt is needed for non-RawMessage additional properties (typed maps)
+				// because the marshal template uses fmt.Errorf for marshaling errors,
+				// and for forbidden additional properties validation.
+				if sd.AdditionalProperties.ValueType.GoTypeName() != "json.RawMessage" || sd.AdditionalProperties.Forbidden {
 					needsFmt = true
 				}
 			}
@@ -410,12 +411,17 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Object with no properties → struct with overflow map for lossless round-trip.
-	// If additionalProperties is explicitly false, generate an empty struct.
+	// If additionalProperties is explicitly false, still generate overflow map to capture
+	// unknown keys for validation rejection.
 	if primaryType == "object" {
 		g.generated[name] = true
 		var additionalProps *AdditionalPropertiesDef
 		if s.AdditionalProperties != nil && s.AdditionalProperties.Bool != nil && !*s.AdditionalProperties.Bool {
-			// additionalProperties: false → no overflow map
+			// additionalProperties: false → overflow map with Forbidden flag for validation
+			additionalProps = &AdditionalPropertiesDef{
+				ValueType: &PrimitiveType{Name: "json.RawMessage"},
+				Forbidden: true,
+			}
 		} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
 			valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 			additionalProps = &AdditionalPropertiesDef{ValueType: valueType}
@@ -588,8 +594,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 				}
 				needsMarshal = true
 				needsUnmarshal = true
+			} else {
+				// additionalProperties: false → still generate overflow map to capture
+				// unknown keys, but mark as forbidden so Validate() rejects them.
+				additionalProps = &AdditionalPropertiesDef{
+					ValueType: &PrimitiveType{Name: "json.RawMessage"},
+					Forbidden: true,
+				}
+				needsMarshal = true
+				needsUnmarshal = true
 			}
-			// additionalProperties: false → no overflow map (strict)
 		} else if s.AdditionalProperties.Schema != nil {
 			valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 			additionalProps = &AdditionalPropertiesDef{

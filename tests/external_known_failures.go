@@ -129,7 +129,7 @@ var knownCodeGenFailures = map[string]string{
 	"draft7/refRemote/remote ref":                                              "remote ref resolution edge case",
 }
 
-// RoundTrip: 558 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 518 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/additionalProperties/additionalProperties being false does not allow other properties/ignores arrays":                                 "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/additionalProperties/additionalProperties being false does not allow other properties/ignores other non-objects":                      "non-structural schema: data shape incompatible with generated type",
@@ -172,14 +172,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item is a string is valid":                            "cross-draft $ref resolution not supported",
-	"draft2019-09/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                    "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":          "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                 "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                       "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":           "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":      "ECMA-262 regex pattern in patternProperties",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":     "ECMA-262 regex pattern in patternProperties",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/id/$id inside an enum is not a real identifier/exact match to enum, and type matches":                                        "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/id/$id inside an enum is not a real identifier/match $ref to $id":                                                            "special characters in enum/ref produce invalid Go code",
@@ -274,14 +266,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/optional/bignum/integer/a bignum is an integer":                                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/cross-draft/refs to historic drafts are processed as historic drafts/first item not a string is valid":                               "cross-draft $ref resolution not supported",
-	"draft2020-12/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                            "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":                  "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                         "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                               "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":                   "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                        "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":              "ECMA-262 regex pattern in patternProperties",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":             "ECMA-262 regex pattern in patternProperties",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/id/$id inside an enum is not a real identifier/exact match to enum, and type matches":                                                "special characters in enum/ref produce invalid Go code",
 	"draft2020-12/optional/id/$id inside an enum is not a real identifier/match $ref to $id":                                                                    "special characters in enum/ref produce invalid Go code",
@@ -377,14 +361,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft4/oneOf/oneOf/second oneOf valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft4/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                    "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":          "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                 "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                       "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":           "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":      "ECMA-262 regex pattern in patternProperties",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":     "ECMA-262 regex pattern in patternProperties",
 	"draft4/optional/id/id inside an enum is not a real identifier/exact match to enum, and type matches":                                         "special characters in enum/ref produce invalid Go code",
 	"draft4/optional/id/id inside an enum is not a real identifier/match $ref to id":                                                              "special characters in enum/ref produce invalid Go code",
 	"draft4/properties/object properties validation/ignores arrays":                                                                               "non-structural schema: data shape incompatible with generated type",
@@ -444,14 +420,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/oneOf/oneOf/second oneOf valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft6/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                    "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":          "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                 "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                       "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":           "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":      "ECMA-262 regex pattern in patternProperties",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":     "ECMA-262 regex pattern in patternProperties",
 	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/id/id inside an enum is not a real identifier/exact match to enum, and type matches":                                         "special characters in enum/ref produce invalid Go code",
 	"draft6/optional/id/id inside an enum is not a real identifier/match $ref to id":                                                              "special characters in enum/ref produce invalid Go code",
@@ -520,14 +488,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/oneOf/oneOf/second oneOf valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft7/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                    "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":          "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                 "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                       "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":           "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":      "ECMA-262 regex pattern in patternProperties",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":     "ECMA-262 regex pattern in patternProperties",
 	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/id/id inside an enum is not a real identifier/exact match to enum, and type matches":                                         "special characters in enum/ref produce invalid Go code",
 	"draft7/optional/id/id inside an enum is not a real identifier/match $ref to id":                                                              "special characters in enum/ref produce invalid Go code",
@@ -701,7 +661,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 861 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 837 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -722,9 +682,9 @@ var knownParseFailures = map[string]string{}
 //   - uniqueItems validation not implemented (12 remaining — additionalItems interaction)
 //   - unevaluatedProperties validation not implemented (82)
 //   - type-only validation not implemented (48)
-//   - ECMA-262 regex validation in generated code edge case (45)
-//   - $ref sibling keyword validation not implemented (26)
-//   - additionalProperties validation not implemented (24)
+//   - ECMA-262 regex patternProperties mismatch at unmarshal time (40)
+//   - $ref sibling keyword validation not implemented (20)
+//   - additionalProperties remaining: allOf interaction + schema validation (12)
 //   - enum validation not implemented for this schema shape (18)
 //   - maxProperties validation not implemented (14)
 //   - property-level validation not implemented for this schema shape (13)
@@ -732,7 +692,7 @@ var knownParseFailures = map[string]string{}
 //   - minProperties validation not implemented (9)
 //   - dependencies validation not implemented (6)
 //   - extends / anyOf / not / dependentSchemas / other (22)
-//   - $recursiveRef / cross-draft / required with composition (4)
+//   - $recursiveRef / cross-draft / required with composition (3)
 var knownValidationFailures = map[string]string{
 	// default keyword — Validate() doesn't consider default values; zero-value fails minLength
 	"draft3/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
@@ -972,110 +932,87 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
-	// $recursiveRef validation not implemented (2 entries)
-	"draft2019-09/recursiveRef/$recursiveRef without $recursiveAnchor works like $ref/mismatch":           "$recursiveRef validation not implemented",
+	// $recursiveRef validation not implemented (1 entry)
 	"draft2019-09/recursiveRef/$recursiveRef without $recursiveAnchor works like $ref/recursive mismatch": "$recursiveRef validation not implemented",
 
-	// $ref sibling keyword validation not implemented (26 entries)
+	// $ref sibling keyword validation not implemented (20 entries)
 	"draft2019-09/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2019-09/ref/root pointer ref/mismatch":                                                                                    "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/root pointer ref/recursive mismatch":                                                                          "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2020-12/ref/root pointer ref/mismatch":                                                                                    "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/root pointer ref/recursive mismatch":                                                                          "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
-	"draft3/ref/root pointer ref/mismatch":                                                                                          "$ref sibling keyword validation not implemented",
 	"draft3/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
-	"draft4/ref/root pointer ref/mismatch":                                                                                          "$ref sibling keyword validation not implemented",
 	"draft4/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft6/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
 	"draft6/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft6/ref/root pointer ref/mismatch":                                                                                          "$ref sibling keyword validation not implemented",
 	"draft6/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft6/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
 	"draft7/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
 	"draft7/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft7/ref/root pointer ref/mismatch":                                                                                          "$ref sibling keyword validation not implemented",
 	"draft7/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft7/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
 
-	// ECMA-262 regex validation in generated code edge case (45 entries)
-	"draft2019-09/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii non-digits":                                         "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)": "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/literal unicode character in json string":         "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode character in hex format in string":        "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode matching is case-sensitive":               "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with ASCII ranges/literal unicode character in json string":                                        "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with ASCII ranges/unicode character in hex format in string":                                       "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii non-digits":                                                            "ECMA-262 regex validation in generated code edge case",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode matching is case-sensitive":                     "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii non-digits":                                         "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)": "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/literal unicode character in json string":         "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode character in hex format in string":        "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode matching is case-sensitive":               "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with ASCII ranges/literal unicode character in json string":                                        "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with ASCII ranges/unicode character in hex format in string":                                       "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii non-digits":                                                            "ECMA-262 regex validation in generated code edge case",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode matching is case-sensitive":                     "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii non-digits":                                               "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/literal unicode character in json string":               "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode character in hex format in string":              "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode matching is case-sensitive":                     "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/patternProperties with ASCII ranges/literal unicode character in json string":                                              "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/patternProperties with ASCII ranges/unicode character in hex format in string":                                             "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii non-digits":                                                                  "ECMA-262 regex validation in generated code edge case",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode matching is case-sensitive":                           "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii non-digits":                                               "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/literal unicode character in json string":               "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode character in hex format in string":              "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode matching is case-sensitive":                     "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/patternProperties with ASCII ranges/literal unicode character in json string":                                              "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/patternProperties with ASCII ranges/unicode character in hex format in string":                                             "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii non-digits":                                                                  "ECMA-262 regex validation in generated code edge case",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode matching is case-sensitive":                           "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii non-digits":                                               "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/literal unicode character in json string":               "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode character in hex format in string":              "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/unicode matching is case-sensitive":                     "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/patternProperties with ASCII ranges/literal unicode character in json string":                                              "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/patternProperties with ASCII ranges/unicode character in hex format in string":                                             "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii non-digits":                                                                  "ECMA-262 regex validation in generated code edge case",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode matching is case-sensitive":                           "ECMA-262 regex validation in generated code edge case",
+	// ECMA-262 regex patternProperties mismatch: key should match pattern but doesn't during unmarshal,
+	// ends up in overflow map and gets rejected by additionalProperties: false (40 entries)
+	"draft2019-09/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":      "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                             "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":  "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string": "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":      "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                             "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":  "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string": "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
+	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
 
-	// additionalProperties validation not implemented (24 entries)
-	"draft2019-09/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":      "additionalProperties validation not implemented",
-	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":          "additionalProperties validation not implemented",
-	"draft2019-09/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                              "additionalProperties validation not implemented",
-	"draft2019-09/additionalProperties/dependentSchemas with additionalProperties/additionalProperties can't see bar":                           "additionalProperties validation not implemented",
-	"draft2019-09/additionalProperties/dependentSchemas with additionalProperties/additionalProperties can't see bar even when foo2 is present": "additionalProperties validation not implemented",
-	"draft2019-09/additionalProperties/dependentSchemas with additionalProperties/additionalProperties doesn't consider dependentSchemas":       "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":      "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":          "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                              "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/dependentSchemas with additionalProperties/additionalProperties can't see bar":                           "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/dependentSchemas with additionalProperties/additionalProperties can't see bar even when foo2 is present": "additionalProperties validation not implemented",
-	"draft2020-12/additionalProperties/dependentSchemas with additionalProperties/additionalProperties doesn't consider dependentSchemas":       "additionalProperties validation not implemented",
-	"draft3/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":            "additionalProperties validation not implemented",
-	"draft3/additionalProperties/additionalProperties does not look in applicators/properties defined in extends are not examined":              "additionalProperties validation not implemented",
-	"draft3/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                                    "additionalProperties validation not implemented",
-	"draft4/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":            "additionalProperties validation not implemented",
-	"draft4/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":                "additionalProperties validation not implemented",
-	"draft4/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                                    "additionalProperties validation not implemented",
-	"draft6/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":            "additionalProperties validation not implemented",
-	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":                "additionalProperties validation not implemented",
-	"draft6/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                                    "additionalProperties validation not implemented",
-	"draft7/additionalProperties/additionalProperties being false does not allow other properties/an additional property is invalid":            "additionalProperties validation not implemented",
-	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":                "additionalProperties validation not implemented",
-	"draft7/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                                    "additionalProperties validation not implemented",
+	// additionalProperties validation remaining (12 entries — allOf interaction + schema validation)
+	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
+	"draft2019-09/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                     "additionalProperties schema validation not implemented",
+	"draft2020-12/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
+	"draft2020-12/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                     "additionalProperties schema validation not implemented",
+	"draft3/additionalProperties/additionalProperties does not look in applicators/properties defined in extends are not examined":     "additionalProperties: extends properties not considered",
+	"draft3/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
+	"draft4/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
+	"draft4/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
+	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
+	"draft6/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
+	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
+	"draft7/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
 
 	// anyOf validation not implemented (5 entries)
 	"draft2019-09/anyOf/anyOf with base schema/both anyOf invalid": "anyOf validation not implemented",
@@ -1174,10 +1111,10 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches root": "dependentSchemas validation not implemented",
 
 	// enum validation not implemented for this schema shape (18 entries)
-	"draft3/enum/enums in properties/missing all properties is invalid":                                                                                "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/missing required property is invalid":                                                                             "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/wrong bar value":                                                                                                  "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/wrong foo value":                                                                                                  "enum validation not implemented for this schema shape",
+	"draft3/enum/enums in properties/missing all properties is invalid":    "enum validation not implemented for this schema shape",
+	"draft3/enum/enums in properties/missing required property is invalid": "enum validation not implemented for this schema shape",
+	"draft3/enum/enums in properties/wrong bar value":                      "enum validation not implemented for this schema shape",
+	"draft3/enum/enums in properties/wrong foo value":                      "enum validation not implemented for this schema shape",
 
 	// extends validation not implemented (5 entries)
 	"draft3/extends/extends/mismatch extended":                "extends validation not implemented",

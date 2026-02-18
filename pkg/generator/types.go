@@ -100,6 +100,7 @@ type PatternPropertyDef struct {
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.
 type AdditionalPropertiesDef struct {
 	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
+	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
 }
 
 // ValidationRule describes a validation constraint on a struct field.
