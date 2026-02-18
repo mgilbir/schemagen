@@ -64,6 +64,22 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("value: has %d items, maximum is {{.Value}}", len({{$recv}}))
 	}
 	{{- end}}
+	{{- if eq .RuleType "uniqueItems"}}
+	{
+		seen := make(map[string]bool, len({{$recv}}))
+		for i, item := range {{$recv}} {
+			b, err := json.Marshal(item)
+			if err != nil {
+				return fmt.Errorf("value: uniqueItems check: marshal error at index %d: %w", i, err)
+			}
+			key := string(b)
+			if seen[key] {
+				return fmt.Errorf("value: items are not unique (duplicate at index %d)", i)
+			}
+			seen[key] = true
+		}
+	}
+	{{- end}}
 	{{- end}}
 	return nil
 }

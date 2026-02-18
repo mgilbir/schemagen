@@ -164,6 +164,9 @@ func (g *Generator) addRequiredImports() {
 					if v.RuleType == "multipleOf" {
 						needsMath = true
 					}
+					if v.RuleType == "uniqueItems" {
+						needsJSON = true
+					}
 				}
 			}
 			if len(sd.PatternProperties) > 0 {
@@ -194,6 +197,9 @@ func (g *Generator) addRequiredImports() {
 					}
 					if v.RuleType == "multipleOf" {
 						needsMath = true
+					}
+					if v.RuleType == "uniqueItems" {
+						needsJSON = true
 					}
 				}
 			}
@@ -1878,6 +1884,12 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "multipleOf", Value: *s.MultipleOf,
+		})
+	}
+	if s.UniqueItems != nil && *s.UniqueItems {
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "uniqueItems", Value: true,
 		})
 	}
 	return rules

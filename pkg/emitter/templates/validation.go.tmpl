@@ -67,6 +67,27 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if eq .RuleType "uniqueItems"}}
+	{
+		{{- if .IsPointer}}
+		arr := *{{$recv}}.{{.FieldName}}
+		{{- else}}
+		arr := {{$recv}}.{{.FieldName}}
+		{{- end}}
+		seen := make(map[string]bool, len(arr))
+		for i, item := range arr {
+			b, err := json.Marshal(item)
+			if err != nil {
+				return fmt.Errorf("{{.JSONName}}: uniqueItems check: marshal error at index %d: %w", i, err)
+			}
+			key := string(b)
+			if seen[key] {
+				return fmt.Errorf("{{.JSONName}}: items are not unique (duplicate at index %d)", i)
+			}
+			seen[key] = true
+		}
+	}
+	{{- end}}
 	{{- end}}
 	return nil
 }

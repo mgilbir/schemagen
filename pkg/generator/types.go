@@ -106,8 +106,8 @@ type AdditionalPropertiesDef struct {
 type ValidationRule struct {
 	FieldName string // Go field name (PascalCase)
 	JSONName  string // JSON property name (original)
-	RuleType  string // "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "minItems", "maxItems", "required"
-	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern)
+	RuleType  string // "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "minItems", "maxItems", "uniqueItems", "required"
+	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern, bool for uniqueItems)
 	IsPointer bool   // true if the field is a pointer type (needs nil check + dereference)
 }
 
