@@ -23,11 +23,18 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"radius"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"radius": true,
@@ -66,6 +73,11 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks Circle against its JSON Schema constraints.
+func (c Circle) Validate() error {
+	return nil
+}
+
 type Rectangle struct {
 	Height               float64                    `json:"height"`
 	Width                float64                    `json:"width"`
@@ -83,11 +95,18 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"height", "width"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"height": true,
@@ -125,6 +144,11 @@ func (r Rectangle) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Rectangle against its JSON Schema constraints.
+func (r Rectangle) Validate() error {
+	return nil
 }
 
 type Drawing struct {
@@ -228,11 +252,18 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"name"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"name":  true,
@@ -288,6 +319,11 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Drawing against its JSON Schema constraints.
+func (d Drawing) Validate() error {
+	return nil
 }
 
 // oneofHasRequiredFields checks if a JSON object contains all the specified field names.

@@ -69,8 +69,10 @@ func (d fileData) HasOneOf() bool {
 // HasValidation returns true if any type in the file has validation rules.
 func (d fileData) HasValidation() bool {
 	for _, td := range d.TypeDefs {
-		if s, ok := td.Def.(*generator.StructDef); ok && len(s.Validations) > 0 {
-			return true
+		if s, ok := td.Def.(*generator.StructDef); ok {
+			if len(s.Validations) > 0 || s.HasRequiredFields() {
+				return true
+			}
 		}
 		if a, ok := td.Def.(*generator.AliasDef); ok && len(a.Validations) > 0 {
 			return true

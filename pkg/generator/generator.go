@@ -149,7 +149,10 @@ func (g *Generator) addRequiredImports() {
 					needsFmt = true
 				}
 			}
-			if len(sd.Validations) > 0 {
+			if sd.HasRequiredFields() {
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal + json.RawMessage
+			}
+			if len(sd.Validations) > 0 || sd.HasRequiredFields() {
 				needsFmt = true
 				for _, v := range sd.Validations {
 					if v.RuleType == "pattern" {
@@ -553,12 +556,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		}
 	}
 	var validations []ValidationRule
+
+	// Collect required JSON property names for presence-based validation.
+	// These are checked via the _present set populated during UnmarshalJSON.
+	var requiredJSON []string
+	for _, f := range fields {
+		if f.Required {
+			requiredJSON = append(requiredJSON, f.JSONName)
+		}
+	}
+
 	for _, propName := range propNames {
 		propSchema := s.Properties[propName]
 		if propSchema == nil {
 			continue
 		}
-		goFieldName := JSONPropertyToGoName(propName)
+		goFieldName := goFieldNames[propName]
 		rules := extractValidationRules(goFieldName, propName, propSchema)
 		// Filter out rules that don't make sense for the Go type (e.g.,
 		// minimum/maximum on an 'any' field can't be compiled).
@@ -600,6 +613,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		needsUnmarshal = true
 	}
 
+	// Enable custom unmarshal if there are required fields (to track key presence).
+	if len(requiredJSON) > 0 {
+		needsUnmarshal = true
+	}
+
 	structDef := &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -608,6 +626,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		AdditionalProperties: additionalProps,
 		PatternProperties:    patternProps,
 		Validations:          validations,
+		RequiredJSON:         requiredJSON,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
 	}
@@ -1818,6 +1837,25 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		})
 	}
 	return rules
+}
+
+// isNilCheckable returns true if a Go type can be compared to nil.
+// This includes pointers, interfaces (including 'any'), slices, and maps.
+func isNilCheckable(t GoType) bool {
+	switch v := t.(type) {
+	case *PointerType:
+		return true
+	case *PrimitiveType:
+		return v.Name == "any" || v.Name == "json.RawMessage"
+	case *ArrayType:
+		return true
+	case *MapType:
+		return true
+	case *NamedType:
+		return v.Pointer
+	default:
+		return false
+	}
 }
 
 // extractAliasValidationRules extracts validation rules applicable to a

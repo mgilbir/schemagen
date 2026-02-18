@@ -23,11 +23,18 @@ func (e *EmailTarget) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"email_address"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"email_address": true,
@@ -66,6 +73,11 @@ func (e EmailTarget) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks EmailTarget against its JSON Schema constraints.
+func (e EmailTarget) Validate() error {
+	return nil
+}
+
 type HTMLContent struct {
 	HTML                 string                     `json:"html"`
 	Subject              string                     `json:"subject,omitempty"`
@@ -83,11 +95,18 @@ func (h *HTMLContent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"html"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"html":    true,
@@ -127,6 +146,11 @@ func (h HTMLContent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks HTMLContent against its JSON Schema constraints.
+func (h HTMLContent) Validate() error {
+	return nil
+}
+
 type SmsTarget struct {
 	PhoneNumber          string                     `json:"phone_number"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -143,11 +167,18 @@ func (s *SmsTarget) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"phone_number"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"phone_number": true,
@@ -186,6 +217,11 @@ func (s SmsTarget) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks SmsTarget against its JSON Schema constraints.
+func (s SmsTarget) Validate() error {
+	return nil
+}
+
 type TextContent struct {
 	Body                 string                     `json:"body"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -202,11 +238,18 @@ func (t *TextContent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"body"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"body": true,
@@ -243,6 +286,11 @@ func (t TextContent) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks TextContent against its JSON Schema constraints.
+func (t TextContent) Validate() error {
+	return nil
 }
 
 type Notification struct {
@@ -431,11 +479,18 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"id"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"id":      true,
@@ -510,6 +565,11 @@ func (n Notification) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Notification against its JSON Schema constraints.
+func (n Notification) Validate() error {
+	return nil
 }
 
 // oneofHasRequiredFields checks if a JSON object contains all the specified field names.

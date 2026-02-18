@@ -886,17 +886,19 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 163 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 192 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
+//   - required: non-object data incompatible with generated struct (20)
 //   - patternProperties validation: sub-schema constraints on pattern-matched keys not validated (18)
 //   - minLength/maxLength counts bytes not Unicode graphemes (12)
-//   - $ref overrides sibling keywords: draft3-7 $ref should suppress sibling constraints (6)
 //   - multipleOf floating point precision with math.Mod (11)
+//   - enum property validation not implemented (10)
 //   - default keyword: valid data omits field, zero-value fails minLength (6)
 //   - multipleOf float overflow: math.Mod with extreme values causes runtime error (5)
-//   - $ref sibling maxItems false positive: sibling maxItems emitted despite $ref override (4)
+//   - $dynamicRef with required: $dynamicRef not implemented (5)
+//   - $ref overrides sibling maxItems: draft3-7 $ref should suppress sibling maxItems (4)
 //   - $id/$ref evaluation order edge case (4)
 //   - float-overflow optional test: same runtime error on extreme float values (4)
 //   - custom metaschema vocabulary not supported (2)
@@ -950,19 +952,12 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":   "patternProperties sub-schema validation not implemented",
 
-	// $ref overrides sibling keywords (draft3-7) / applies alongside (2019-09+)
+	// $ref overrides sibling keywords (draft3-7) — maxItems test
 	// In draft3-7, $ref should suppress sibling validation keywords like maxItems
-	"draft3/ref/ref overrides any sibling keywords/ref invalid":                        "$ref should override sibling keywords in draft3-7",
 	"draft3/ref/ref overrides any sibling keywords/remote ref valid, maxItems ignored": "$ref should override sibling maxItems in draft3-7",
-	"draft4/ref/ref overrides any sibling keywords/ref invalid":                        "$ref should override sibling keywords in draft3-7",
 	"draft4/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
-	"draft6/ref/ref overrides any sibling keywords/ref invalid":                        "$ref should override sibling keywords in draft3-7",
 	"draft6/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
-	"draft7/ref/ref overrides any sibling keywords/ref invalid":                        "$ref should override sibling keywords in draft3-7",
 	"draft7/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
-	// In draft2019-09+, $ref applies alongside sibling keywords
-	"draft2019-09/ref/ref applies alongside sibling keywords/ref invalid": "$ref alongside siblings: validation interaction not correct",
-	"draft2020-12/ref/ref applies alongside sibling keywords/ref invalid": "$ref alongside siblings: validation interaction not correct",
 
 	// type-inferred schema: data type incompatible with inferred Go type
 	// When a schema has constraints but no explicit "type", we infer the type from constraints.
@@ -1094,6 +1089,50 @@ var knownValidationFailures = map[string]string{
 	// type-inferred schema: no $schema to guide validation
 	"draft2019-09/optional/no-schema/validation without $schema/a non-string is valid": "type-inferred schema: no $schema to guide validation",
 	"draft2020-12/optional/no-schema/validation without $schema/a non-string is valid": "type-inferred schema: no $schema to guide validation",
+
+	// required: non-object data can't unmarshal into a Go struct
+	// JSON Schema says required only applies to objects, but non-object data
+	// (arrays, strings, numbers, booleans) fails to unmarshal into a struct.
+	"draft4/required/required validation/ignores arrays":                  "required: non-object data incompatible with generated struct",
+	"draft4/required/required validation/ignores boolean":                 "required: non-object data incompatible with generated struct",
+	"draft4/required/required validation/ignores other non-objects":       "required: non-object data incompatible with generated struct",
+	"draft4/required/required validation/ignores strings":                 "required: non-object data incompatible with generated struct",
+	"draft6/required/required validation/ignores arrays":                  "required: non-object data incompatible with generated struct",
+	"draft6/required/required validation/ignores boolean":                 "required: non-object data incompatible with generated struct",
+	"draft6/required/required validation/ignores other non-objects":       "required: non-object data incompatible with generated struct",
+	"draft6/required/required validation/ignores strings":                 "required: non-object data incompatible with generated struct",
+	"draft7/required/required validation/ignores arrays":                  "required: non-object data incompatible with generated struct",
+	"draft7/required/required validation/ignores boolean":                 "required: non-object data incompatible with generated struct",
+	"draft7/required/required validation/ignores other non-objects":       "required: non-object data incompatible with generated struct",
+	"draft7/required/required validation/ignores strings":                 "required: non-object data incompatible with generated struct",
+	"draft2019-09/required/required validation/ignores arrays":            "required: non-object data incompatible with generated struct",
+	"draft2019-09/required/required validation/ignores boolean":           "required: non-object data incompatible with generated struct",
+	"draft2019-09/required/required validation/ignores other non-objects": "required: non-object data incompatible with generated struct",
+	"draft2019-09/required/required validation/ignores strings":           "required: non-object data incompatible with generated struct",
+	"draft2020-12/required/required validation/ignores arrays":            "required: non-object data incompatible with generated struct",
+	"draft2020-12/required/required validation/ignores boolean":           "required: non-object data incompatible with generated struct",
+	"draft2020-12/required/required validation/ignores other non-objects": "required: non-object data incompatible with generated struct",
+	"draft2020-12/required/required validation/ignores strings":           "required: non-object data incompatible with generated struct",
+
+	// enum in properties: enum validation on struct fields not implemented
+	// Required check now exposes schemas where enum properties need validation.
+	"draft4/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
+	"draft4/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
+	"draft6/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
+	"draft6/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
+	"draft7/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
+	"draft7/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
+	"draft2019-09/enum/enums in properties/wrong bar value": "enum property validation not implemented",
+	"draft2019-09/enum/enums in properties/wrong foo value": "enum property validation not implemented",
+	"draft2020-12/enum/enums in properties/wrong bar value": "enum property validation not implemented",
+	"draft2020-12/enum/enums in properties/wrong foo value": "enum property validation not implemented",
+
+	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not implemented
+	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/correct extended schema":       "$dynamicRef with required: $dynamicRef not implemented",
+	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect extended schema":     "$dynamicRef with required: $dynamicRef not implemented",
+	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema":       "$dynamicRef with required: $dynamicRef not implemented",
+	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/incorrect extended schema": "$dynamicRef with required: $dynamicRef not implemented",
+	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/incorrect extended schema":  "$dynamicRef with required: $dynamicRef not implemented",
 }
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order

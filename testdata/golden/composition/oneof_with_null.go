@@ -4,6 +4,7 @@ package testpkg
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type DatabaseConfig struct {
@@ -23,11 +24,18 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"host"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"host": true,
@@ -67,6 +75,11 @@ func (d DatabaseConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks DatabaseConfig against its JSON Schema constraints.
+func (d DatabaseConfig) Validate() error {
+	return nil
+}
+
 type Config struct {
 	Database             *DatabaseConfig            `json:"database"`
 	Name                 string                     `json:"name"`
@@ -84,11 +97,18 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"name"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"database": true,
@@ -126,4 +146,9 @@ func (c Config) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Config against its JSON Schema constraints.
+func (c Config) Validate() error {
+	return nil
 }

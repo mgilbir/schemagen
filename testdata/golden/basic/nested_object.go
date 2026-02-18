@@ -4,6 +4,7 @@ package testpkg
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type AddressLocation struct {
@@ -23,11 +24,18 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"latitude", "longitude"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"latitude":  true,
@@ -67,6 +75,11 @@ func (a AddressLocation) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks AddressLocation against its JSON Schema constraints.
+func (a AddressLocation) Validate() error {
+	return nil
+}
+
 type Address struct {
 	City                 string                     `json:"city"`
 	Location             AddressLocation            `json:"location,omitempty"`
@@ -87,11 +100,18 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"city", "street"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"city":     true,
@@ -132,4 +152,9 @@ func (a Address) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Address against its JSON Schema constraints.
+func (a Address) Validate() error {
+	return nil
 }

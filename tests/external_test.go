@@ -391,7 +391,14 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 
 // hasValidateMethod checks if generated Go code contains a Validate() method.
 func hasValidateMethod(code string) bool {
-	return strings.Contains(code, "func (") && strings.Contains(code, ") Validate() error {")
+	// Check that the root type (identified by extractRootTypeNameFromCode) has a Validate() method.
+	rootType := extractRootTypeNameFromCode(code)
+	if rootType == "" {
+		return false
+	}
+	// Look for "func (<recv> <RootType>) Validate() error {" pattern.
+	// The receiver is typically a single lowercase letter.
+	return strings.Contains(code, rootType+") Validate() error {")
 }
 
 // generateValidateMain creates a Go main() that:
@@ -403,6 +410,7 @@ func generateValidateMain(rootType string) string {
 	return fmt.Sprintf(`package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -417,8 +425,17 @@ func main() {
 
 	var obj %s
 	if err := json.Unmarshal(data, &obj); err != nil {
-		fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
-		os.Exit(1)
+		// Unmarshal errors on JSON objects are validation failures
+		// (e.g., missing required fields). Non-object data that fails
+		// unmarshal into a struct is a type mismatch.
+		trimmed := bytes.TrimSpace(data)
+		if len(trimmed) > 0 && trimmed[0] == '{' {
+			fmt.Printf("INVALID: %%v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if err := obj.Validate(); err != nil {

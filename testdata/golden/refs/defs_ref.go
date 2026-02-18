@@ -4,6 +4,7 @@ package testpkg
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type Address struct {
@@ -24,11 +25,18 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"city", "street"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"city":   true,
@@ -69,6 +77,11 @@ func (a Address) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks Address against its JSON Schema constraints.
+func (a Address) Validate() error {
+	return nil
+}
+
 type Item struct {
 	Name                 string                     `json:"name"`
 	Price                float64                    `json:"price"`
@@ -87,11 +100,18 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"name", "price", "quantity"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"name":     true,
@@ -132,6 +152,11 @@ func (i Item) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
+// Validate checks Item against its JSON Schema constraints.
+func (i Item) Validate() error {
+	return nil
+}
+
 type Order struct {
 	BillingAddress       Address                    `json:"billing_address,omitempty"`
 	Items                []Item                     `json:"items"`
@@ -151,11 +176,18 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{"items", "order_id", "shipping_address"} {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
 		}
 		knownFields := map[string]bool{
 			"billing_address":  true,
@@ -195,4 +227,9 @@ func (o Order) MarshalJSON() ([]byte, error) {
 		obj[k] = v
 	}
 	return json.Marshal(obj)
+}
+
+// Validate checks Order against its JSON Schema constraints.
+func (o Order) Validate() error {
+	return nil
 }

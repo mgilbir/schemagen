@@ -79,13 +79,23 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
-	// Capture additional and pattern-matched properties not covered by explicit fields.
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields}}
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		{{- if $struct.HasRequiredFields}}
+		// Check required JSON properties are present (only for JSON objects, not null).
+		if raw != nil {
+			for _, req := range []string{ {{- range $i, $r := $struct.RequiredJSON}}{{if $i}}, {{end}}{{printf "%q" $r}}{{- end -}} } {
+				if _, ok := raw[req]; !ok {
+					return fmt.Errorf("%s: required property is missing", req)
+				}
+			}
+		}
+		{{- end}}
+		{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
 		knownFields := map[string]bool{
 			{{- range $struct.Fields}}
 			{{printf "%q" .JSONName}}: true,
@@ -137,6 +147,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 			{{- end}}
 		}
+		{{- end}}
 	}
 	{{- end}}
 
