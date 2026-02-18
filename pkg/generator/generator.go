@@ -321,7 +321,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Simple primitive type → alias (or defined type if it has validation constraints)
+	// When no explicit type is declared, infer from constraint keywords.
 	primaryType := primarySchemaType(s)
+	if primaryType == "" {
+		primaryType = inferTypeFromConstraints(s)
+	}
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
@@ -1040,6 +1044,9 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	}
 
 	primaryType := primarySchemaType(s)
+	if primaryType == "" {
+		primaryType = inferTypeFromConstraints(s)
+	}
 
 	// Nullable types
 	if isNullable(s) {
@@ -1582,6 +1589,33 @@ func primarySchemaType(s *schema.Schema) string {
 	}
 	if len(s.Type) > 0 {
 		return s.Type[0]
+	}
+	return ""
+}
+
+// inferTypeFromConstraints infers a JSON Schema type from the validation
+// keywords present in a schema that has no explicit "type" field. This enables
+// generating typed code (and Validate() methods) for constraint-only schemas
+// like {"minimum": 5} or {"minLength": 2, "pattern": "^a"}.
+//
+// Returns "" if the type cannot be inferred.
+func inferTypeFromConstraints(s *schema.Schema) string {
+	// Numeric constraints → number
+	if s.Minimum != nil || s.Maximum != nil || s.MultipleOf != nil ||
+		s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil {
+		return "number"
+	}
+	// String constraints → string
+	if s.MinLength != nil || s.MaxLength != nil || s.Pattern != nil {
+		return "string"
+	}
+	// Array constraints → array
+	if s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil {
+		return "array"
+	}
+	// Object constraints → object
+	if s.MinProperties != nil || s.MaxProperties != nil {
+		return "object"
 	}
 	return ""
 }

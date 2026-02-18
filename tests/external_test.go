@@ -389,6 +389,128 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	return nil
 }
 
+// hasValidateMethod checks if generated Go code contains a Validate() method.
+func hasValidateMethod(code string) bool {
+	return strings.Contains(code, "func (") && strings.Contains(code, ") Validate() error {")
+}
+
+// generateValidateMain creates a Go main() that:
+// 1. Reads fixture.json
+// 2. Unmarshals into the generated type
+// 3. Calls Validate()
+// 4. Prints "VALID" if no error, "INVALID: <message>" if error
+func generateValidateMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	data, err := os.ReadFile("fixture.json")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "reading fixture: %%v\n", err)
+		os.Exit(1)
+	}
+
+	var obj %s
+	if err := json.Unmarshal(data, &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	if err := obj.Validate(); err != nil {
+		fmt.Printf("INVALID: %%v\n", err)
+	} else {
+		fmt.Println("VALID")
+	}
+}
+`, rootType)
+}
+
+// tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
+// only if it contains a Validate() method. Returns ("", nil) if no Validate() method
+// is found (not an error, just a skip condition).
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver) (string, error) {
+	var s schema.Schema
+	if err := json.Unmarshal(schemaJSON, &s); err != nil {
+		return "", fmt.Errorf("parse: %w", err)
+	}
+	s.Normalize()
+
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	gen := generator.New(cfg)
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		return "", fmt.Errorf("generate: %w", err)
+	}
+
+	em, err := emitter.New()
+	if err != nil {
+		return "", fmt.Errorf("emitter: %w", err)
+	}
+	src, err := em.Emit(ir)
+	if err != nil {
+		return "", fmt.Errorf("emit: %w", err)
+	}
+
+	code := string(src)
+	if !hasValidateMethod(code) {
+		return "", nil // no validation to test
+	}
+	return code, nil
+}
+
+// tryValidation runs a validation test using pre-generated code.
+// The code must already have a Validate() method.
+func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) error {
+	rootType := extractRootTypeNameFromCode(code)
+	if rootType == "" {
+		return fmt.Errorf("could not find root type in generated code")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "schemagen-val-*")
+	if err != nil {
+		return fmt.Errorf("tmpdir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	mainContent := strings.Replace(code, "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(mainContent), 0o644); err != nil {
+		return fmt.Errorf("write types: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
+		return fmt.Errorf("write fixture: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateValidateMain(rootType)), 0o644); err != nil {
+		return fmt.Errorf("write main: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module validate_test\n\ngo 1.22\n"), 0o644); err != nil {
+		return fmt.Errorf("write go.mod: %w", err)
+	}
+
+	cmd := exec.Command("go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("run: %s\n%s", err, string(output))
+	}
+
+	result := strings.TrimSpace(string(output))
+	if expectValid {
+		if result != "VALID" {
+			return fmt.Errorf("expected VALID but got: %s", result)
+		}
+	} else {
+		if !strings.HasPrefix(result, "INVALID:") {
+			return fmt.Errorf("expected INVALID but got: %s", result)
+		}
+	}
+	return nil
+}
+
 // TestExternalParsing tests that we can parse every schema in the external test suite.
 func TestExternalParsing(t *testing.T) {
 	requireTestSuite(t)
@@ -498,4 +620,72 @@ func TestExternalRoundTrip(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestExternalValidation tests that generated Validate() methods correctly accept
+// valid data and reject invalid data according to the JSON Schema.
+//
+// Test structure:
+//   - Schemas that fail code generation or don't produce a Validate() method are
+//     logged as skips (these are tracked by TestExternalCodeGen or are inherently
+//     non-validatable schema types like composition-only, format-only, etc.).
+//   - Schemas that DO produce a Validate() method are tested per-case, with
+//     both valid and invalid data. Only these per-case results use the
+//     knownValidationFailures bidirectional checking.
+//
+// The test logs group-level skip counts so the gap is visible, not hidden.
+func TestExternalValidation(t *testing.T) {
+	requireTestSuite(t)
+	resolver := remotesResolver(t)
+
+	var totalGroups, skippedCG, skippedNoValidate, testedGroups int
+
+	for _, draft := range allDrafts {
+		t.Run(draft, func(t *testing.T) {
+			draftDir := filepath.Join(jstsBaseDir, draft)
+			if _, err := os.Stat(draftDir); os.IsNotExist(err) {
+				t.Skipf("draft directory %s not found", draft)
+				return
+			}
+
+			files := listJSONFiles(t, draftDir)
+			for _, file := range files {
+				t.Run(filenameWithoutExt(file), func(t *testing.T) {
+					groups := loadTestGroups(t, filepath.Join(draftDir, file))
+					for _, group := range groups {
+						if !isCodeGenSuitable(group.Schema) {
+							continue
+						}
+						totalGroups++
+
+						// Generate code once per group.
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver)
+
+						if cgErr != nil {
+							skippedCG++
+							continue
+						}
+						if code == "" {
+							skippedNoValidate++
+							continue
+						}
+
+						testedGroups++
+						t.Run(group.Description, func(t *testing.T) {
+							for _, tc := range group.Tests {
+								t.Run(tc.Description, func(t *testing.T) {
+									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
+									err := tryValidation(code, tc.Data, tc.Valid)
+									checkKnownFailure(t, key, err, knownValidationFailures)
+								})
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+
+	t.Logf("Validation coverage: %d/%d groups tested (%d skipped: %d codegen failures, %d no Validate() method)",
+		testedGroups, totalGroups, skippedCG+skippedNoValidate, skippedCG, skippedNoValidate)
 }
