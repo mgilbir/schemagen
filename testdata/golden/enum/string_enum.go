@@ -17,7 +17,12 @@ const (
 
 // Validate checks TaskPriority against its JSON Schema constraints.
 func (t TaskPriority) Validate() error {
-	return nil
+	switch t {
+	case TaskPriorityLow, TaskPriorityMedium, TaskPriorityHigh:
+		return nil
+	default:
+		return fmt.Errorf("invalid TaskPriority value: %v", t)
+	}
 }
 
 type TaskStatus string
@@ -31,7 +36,12 @@ const (
 
 // Validate checks TaskStatus against its JSON Schema constraints.
 func (t TaskStatus) Validate() error {
-	return nil
+	switch t {
+	case TaskStatusPending, TaskStatusInProgress, TaskStatusCompleted, TaskStatusCancelled:
+		return nil
+	default:
+		return fmt.Errorf("invalid TaskStatus value: %v", t)
+	}
 }
 
 type Task struct {

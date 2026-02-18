@@ -701,7 +701,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 898 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 884 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -1174,24 +1174,10 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches root": "dependentSchemas validation not implemented",
 
 	// enum validation not implemented for this schema shape (18 entries)
-	"draft2019-09/enum/nul characters in strings/do not match string lacking nul":                                                                      "enum validation not implemented for this schema shape",
-	"draft2019-09/enum/simple enum validation/something else is invalid":                                                                               "enum validation not implemented for this schema shape",
-	"draft2020-12/enum/nul characters in strings/do not match string lacking nul":                                                                      "enum validation not implemented for this schema shape",
-	"draft2020-12/enum/simple enum validation/something else is invalid":                                                                               "enum validation not implemented for this schema shape",
 	"draft3/enum/enums in properties/missing all properties is invalid":                                                                                "enum validation not implemented for this schema shape",
 	"draft3/enum/enums in properties/missing required property is invalid":                                                                             "enum validation not implemented for this schema shape",
 	"draft3/enum/enums in properties/wrong bar value":                                                                                                  "enum validation not implemented for this schema shape",
 	"draft3/enum/enums in properties/wrong foo value":                                                                                                  "enum validation not implemented for this schema shape",
-	"draft3/enum/nul characters in strings/do not match string lacking nul":                                                                            "enum validation not implemented for this schema shape",
-	"draft3/enum/simple enum validation/something else is invalid":                                                                                     "enum validation not implemented for this schema shape",
-	"draft4/enum/characters with the same visual representation but different codepoint/character looks the same but uses a different codepoint":       "enum validation not implemented for this schema shape",
-	"draft4/enum/characters with the same visual representation, but different number of codepoints/character looks the same but uses combining marks": "enum validation not implemented for this schema shape",
-	"draft4/enum/nul characters in strings/do not match string lacking nul":                                                                            "enum validation not implemented for this schema shape",
-	"draft4/enum/simple enum validation/something else is invalid":                                                                                     "enum validation not implemented for this schema shape",
-	"draft6/enum/nul characters in strings/do not match string lacking nul":                                                                            "enum validation not implemented for this schema shape",
-	"draft6/enum/simple enum validation/something else is invalid":                                                                                     "enum validation not implemented for this schema shape",
-	"draft7/enum/nul characters in strings/do not match string lacking nul":                                                                            "enum validation not implemented for this schema shape",
-	"draft7/enum/simple enum validation/something else is invalid":                                                                                     "enum validation not implemented for this schema shape",
 
 	// extends validation not implemented (5 entries)
 	"draft3/extends/extends/mismatch extended":                "extends validation not implemented",

@@ -182,6 +182,9 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if _, ok := td.(*EnumDef); ok {
+			needsFmt = true // Validate() uses fmt.Errorf for invalid enum values
+		}
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
 				needsTime = true

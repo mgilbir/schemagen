@@ -13,6 +13,11 @@ const (
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
-	return nil
+	switch {{$recv}} {
+	case {{range $i, $v := .Values}}{{if $i}}, {{end}}{{$v.Name}}{{end}}:
+		return nil
+	default:
+		return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
+	}
 }
 {{- end}}
