@@ -321,7 +321,23 @@ func extractRootTypeName(t *testing.T, code string) string {
 	}
 
 	if lastType == "" {
-		t.Fatal("could not find root struct type in generated code")
+		// Final fallback: look for type aliases (e.g., "type Root = any" or "type Root string").
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "type ") {
+				parts := strings.Fields(trimmed)
+				if len(parts) >= 2 {
+					lastType = parts[1]
+					if parts[1] == "Root" {
+						return "Root"
+					}
+				}
+			}
+		}
+	}
+
+	if lastType == "" {
+		t.Fatal("could not find root type in generated code")
 	}
 	return lastType
 }
@@ -363,8 +379,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Compare semantically: unmarshal both into map[string]any
-	var original, result map[string]any
+	// Compare semantically: unmarshal both into any (handles objects, arrays, primitives)
+	var original, result any
 	if err := json.Unmarshal(data, &original); err != nil {
 		fmt.Fprintf(os.Stderr, "unmarshal original: %%v\n", err)
 		os.Exit(1)
