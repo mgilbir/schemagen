@@ -661,14 +661,14 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 825 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 814 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
 //   - required: non-object data incompatible with generated struct (20)
 //   - patternProperties validation: sub-schema constraints on pattern-matched keys not validated (18)
 //   - (minLength/maxLength Unicode grapheme counting — FIXED)
-//   - multipleOf floating point precision with math.Mod (11)
+//   - (multipleOf floating point precision — FIXED)
 //   - enum property validation not implemented (10)
 //   - default keyword: valid data omits field, zero-value fails minLength (6)
 //   - multipleOf float overflow: math.Mod with extreme values causes runtime error (5)
@@ -701,13 +701,6 @@ var knownValidationFailures = map[string]string{
 	"draft7/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
 	"draft2019-09/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
 	"draft2020-12/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
-
-	// multipleOf floating point precision — math.Mod(12391239123, 1e-08) != 0 due to IEEE 754
-	"draft4/multipleOf/small multiple of large integer/any integer is a multiple of 1e-8":       "multipleOf floating point precision with math.Mod",
-	"draft6/multipleOf/small multiple of large integer/any integer is a multiple of 1e-8":       "multipleOf floating point precision with math.Mod",
-	"draft7/multipleOf/small multiple of large integer/any integer is a multiple of 1e-8":       "multipleOf floating point precision with math.Mod",
-	"draft2019-09/multipleOf/small multiple of large integer/any integer is a multiple of 1e-8": "multipleOf floating point precision with math.Mod",
-	"draft2020-12/multipleOf/small multiple of large integer/any integer is a multiple of 1e-8": "multipleOf floating point precision with math.Mod",
 
 	// multipleOf float overflow — extreme multipleOf values cause runtime panic/error
 
@@ -837,14 +830,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
 	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-
-	// multipleOf floating point precision — math.Mod(0.0075, 0.0001) != 0 due to IEEE 754
-	"draft3/divisibleBy/by small number/0.0075 is divisible by 0.0001":     "multipleOf floating point precision with math.Mod",
-	"draft4/multipleOf/by small number/0.0075 is multiple of 0.0001":       "multipleOf floating point precision with math.Mod",
-	"draft6/multipleOf/by small number/0.0075 is multiple of 0.0001":       "multipleOf floating point precision with math.Mod",
-	"draft7/multipleOf/by small number/0.0075 is multiple of 0.0001":       "multipleOf floating point precision with math.Mod",
-	"draft2019-09/multipleOf/by small number/0.0075 is multiple of 0.0001": "multipleOf floating point precision with math.Mod",
-	"draft2020-12/multipleOf/by small number/0.0075 is multiple of 0.0001": "multipleOf floating point precision with math.Mod",
 
 	// $id/$ref evaluation order — codegen resolves $id and $ref in wrong order
 	"draft2019-09/ref/order of evaluation: $id and $ref/data is valid against first definition":   "$id/$ref evaluation order edge case",

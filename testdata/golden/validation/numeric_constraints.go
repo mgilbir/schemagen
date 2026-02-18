@@ -80,8 +80,11 @@ func (m Measurement) MarshalJSON() ([]byte, error) {
 
 // Validate checks Measurement against its JSON Schema constraints.
 func (m Measurement) Validate() error {
-	if math.Mod(float64(m.Count), 5) != 0 {
-		return fmt.Errorf("count: value %v is not a multiple of 5", m.Count)
+	{
+		q := float64(m.Count) / 5
+		if math.Abs(q-math.Round(q)) > 1e-9 {
+			return fmt.Errorf("count: value %v is not a multiple of 5", m.Count)
+		}
 	}
 	if float64(m.Rating) < 0 {
 		return fmt.Errorf("rating: value %v is less than minimum 0", m.Rating)
@@ -89,8 +92,11 @@ func (m Measurement) Validate() error {
 	if float64(m.Rating) > 10 {
 		return fmt.Errorf("rating: value %v exceeds maximum 10", m.Rating)
 	}
-	if math.Mod(float64(m.Rating), 0.5) != 0 {
-		return fmt.Errorf("rating: value %v is not a multiple of 0.5", m.Rating)
+	{
+		q := float64(m.Rating) / 0.5
+		if math.Abs(q-math.Round(q)) > 1e-9 {
+			return fmt.Errorf("rating: value %v is not a multiple of 0.5", m.Rating)
+		}
 	}
 	if float64(m.Temperature) <= -273.15 {
 		return fmt.Errorf("temperature: value %v must be greater than -273.15", m.Temperature)

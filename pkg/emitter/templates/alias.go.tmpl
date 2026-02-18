@@ -45,8 +45,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	if math.Mod(float64({{$recv}}), {{.Value}}) != 0 {
-		return fmt.Errorf("value: %v is not a multiple of {{.Value}}", {{$recv}})
+	{
+		q := float64({{$recv}}) / {{.Value}}
+		if math.Abs(q - math.Round(q)) > 1e-9 {
+			return fmt.Errorf("value: %v is not a multiple of {{.Value}}", {{$recv}})
+		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}

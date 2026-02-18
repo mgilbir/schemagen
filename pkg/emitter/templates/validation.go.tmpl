@@ -36,8 +36,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	if math.Mod(float64({{$recv}}.{{.FieldName}}), {{.Value}}) != 0 {
-		return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
+	{
+		q := float64({{$recv}}.{{.FieldName}}) / {{.Value}}
+		if math.Abs(q - math.Round(q)) > 1e-9 {
+			return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
+		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
