@@ -49,6 +49,26 @@ func writeTestGoMod(dir, moduleName string) error {
 // allDrafts lists all draft directories in the test suite.
 var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12"}
 
+// draftFromDir maps a test-suite directory name to a schema.Draft constant.
+func draftFromDir(dir string) schema.Draft {
+	switch dir {
+	case "draft3":
+		return schema.Draft03
+	case "draft4":
+		return schema.Draft04
+	case "draft6":
+		return schema.Draft06
+	case "draft7":
+		return schema.Draft07
+	case "draft2019-09":
+		return schema.Draft201909
+	case "draft2020-12":
+		return schema.Draft202012
+	default:
+		return schema.DraftUnknown
+	}
+}
+
 // jstsTestGroup represents a single test group from the JSTS.
 type jstsTestGroup struct {
 	Description string          `json:"description"`
@@ -465,14 +485,14 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft) (string, error) {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return "", fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -691,7 +711,7 @@ func TestExternalValidation(t *testing.T) {
 						totalGroups++
 
 						// Generate code once per group.
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver)
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft))
 
 						if cgErr != nil {
 							skippedCG++

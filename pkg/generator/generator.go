@@ -21,6 +21,7 @@ type Generator struct {
 	resolver     schema.SchemaResolver // external resolver for non-local refs
 	baseURI      *url.URL              // base URI for the root document (from $id or file path)
 	rootSchema   *schema.Schema        // the root schema for local ref resolution
+	draft        schema.Draft          // detected draft version of the root schema
 
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
@@ -43,6 +44,11 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	}
 	g.generated = make(map[string]bool)
 	g.rootSchema = s
+	if g.config.Draft != schema.DraftUnknown {
+		g.draft = g.config.Draft
+	} else {
+		g.draft = schema.DetectDraft(s)
+	}
 
 	// Determine root type name.
 	g.rootTypeName = "Root"
@@ -115,6 +121,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 
 	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
 	g.resolveAliasMethodability()
+
+	// Populate ValidatableFields on structs — identify fields whose types have Validate().
+	// Must run after resolveAliasMethodability so we know which types actually have methods.
+	g.populateValidatableFields()
 
 	// Add imports based on what was generated.
 	g.addRequiredImports()
@@ -678,6 +688,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 			continue
 		}
 		goFieldName := goFieldNames[propName]
+		// In draft3-7, $ref overrides all sibling keywords — skip validation
+		// rules from the property schema when it has a $ref.
+		if propSchema.EffectiveRef() != "" && g.refOverridesSiblings() {
+			continue
+		}
 		rules := extractValidationRules(goFieldName, propName, propSchema)
 		// Filter out rules that don't make sense for the Go type (e.g.,
 		// minimum/maximum on an 'any' field can't be compiled).
@@ -1891,6 +1906,120 @@ func enumValueSuffix(v any) string {
 		return fmt.Sprintf("%v", val)
 	default:
 		return fmt.Sprintf("%v", val)
+	}
+}
+
+// populateValidatableFields is a post-pass that identifies struct fields whose
+// types have Validate() methods and adds them to StructDef.ValidatableFields.
+// Must run after resolveAliasMethodability so NoMethods flags are set.
+func (g *Generator) populateValidatableFields() {
+	// Build set of type names that have Validate() methods.
+	validatableTypes := make(map[string]bool)
+	for _, td := range g.output.TypeDefs {
+		switch d := td.(type) {
+		case *EnumDef:
+			validatableTypes[d.Name] = true
+		case *StructDef:
+			validatableTypes[d.Name] = true
+		case *AliasDef:
+			if d.CanHaveMethods() {
+				validatableTypes[d.Name] = true
+			}
+		}
+	}
+
+	// For each struct, check its fields.
+	for _, td := range g.output.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for _, f := range sd.Fields {
+			typeName := namedTypeName(f.Type)
+			if typeName == "" || !validatableTypes[typeName] {
+				continue
+			}
+			zeroLit := g.zeroLiteralForType(f.Type)
+			sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+				FieldName:   f.Name,
+				GoType:      f.Type,
+				IsPointer:   f.Type.IsPointer(),
+				OmitEmpty:   f.OmitEmpty,
+				ZeroLiteral: zeroLit,
+			})
+		}
+	}
+}
+
+// namedTypeName extracts the type name from a GoType if it's a NamedType
+// (possibly wrapped in a PointerType). Returns "" otherwise.
+func namedTypeName(t GoType) string {
+	switch v := t.(type) {
+	case *NamedType:
+		return v.Name
+	case *PointerType:
+		return namedTypeName(v.Inner)
+	default:
+		return ""
+	}
+}
+
+// zeroLiteralForType returns the Go zero value literal for a given type.
+// For named types, it looks up the generated type definition to find the underlying type.
+func (g *Generator) zeroLiteralForType(t GoType) string {
+	switch v := t.(type) {
+	case *PointerType:
+		return "nil"
+	case *PrimitiveType:
+		return zeroForPrimitive(v.Name)
+	case *NamedType:
+		// Look up the generated type to find the underlying type.
+		for _, td := range g.output.TypeDefs {
+			if td.TypeName() == v.Name {
+				switch d := td.(type) {
+				case *EnumDef:
+					return zeroForPrimitive(d.BaseType.GoTypeName())
+				case *AliasDef:
+					return zeroForPrimitive(d.Underlying.GoTypeName())
+				case *StructDef:
+					// Structs don't have a meaningful zero literal for comparison.
+					return ""
+				}
+			}
+		}
+		return `""`
+	default:
+		return `""`
+	}
+}
+
+// zeroForPrimitive returns the Go zero literal for a primitive type name.
+func zeroForPrimitive(name string) string {
+	switch name {
+	case "string":
+		return `""`
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return "0"
+	case "bool":
+		return "false"
+	default:
+		return `""`
+	}
+}
+
+// refOverridesSiblings returns true if the current draft treats $ref as
+// overriding all sibling keywords. In draft3 through draft7, $ref causes
+// all sibling keywords to be ignored. Starting with draft 2019-09,
+// $ref is just another applicator and sibling keywords apply normally.
+func (g *Generator) refOverridesSiblings() bool {
+	switch g.draft {
+	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
+		return true
+	default:
+		// DraftUnknown: be conservative and assume modern behavior.
+		return false
 	}
 }
 

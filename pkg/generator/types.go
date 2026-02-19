@@ -74,10 +74,21 @@ type StructDef struct {
 	AdditionalProperties *AdditionalPropertiesDef
 	PatternProperties    []PatternPropertyDef
 	Validations          []ValidationRule
-	RequiredJSON         []string // JSON property names that must be present (for required validation)
+	ValidatableFields    []ValidatableFieldDef // fields whose types have their own Validate() method
+	RequiredJSON         []string              // JSON property names that must be present (for required validation)
 	NeedsMarshal         bool
 	NeedsUnmarshal       bool
 	NeedsNullCheck       bool // true when the schema's type does not include "null" — reject null JSON data
+}
+
+// ValidatableFieldDef describes a struct field whose type has a Validate() method
+// that should be called from the parent struct's Validate().
+type ValidatableFieldDef struct {
+	FieldName   string // Go field name (PascalCase)
+	GoType      GoType // the Go type of the field (for zero-value comparison)
+	IsPointer   bool   // true if the field is a pointer type (needs nil check)
+	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
+	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
 }
 
 // HasRequiredFields returns true if the struct has required field validation.

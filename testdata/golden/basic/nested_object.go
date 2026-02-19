@@ -162,5 +162,8 @@ func (a Address) MarshalJSON() ([]byte, error) {
 
 // Validate checks Address against its JSON Schema constraints.
 func (a Address) Validate() error {
+	if err := a.Location.Validate(); err != nil {
+		return err
+	}
 	return nil
 }

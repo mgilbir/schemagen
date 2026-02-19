@@ -240,5 +240,11 @@ func (o Order) MarshalJSON() ([]byte, error) {
 
 // Validate checks Order against its JSON Schema constraints.
 func (o Order) Validate() error {
+	if err := o.BillingAddress.Validate(); err != nil {
+		return err
+	}
+	if err := o.ShippingAddress.Validate(); err != nil {
+		return err
+	}
 	return nil
 }

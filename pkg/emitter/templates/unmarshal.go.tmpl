@@ -146,9 +146,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{$recv}}.AdditionalProperties[k] = v
 			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
-			if err := json.Unmarshal(v, &val); err == nil {
-				{{$recv}}.AdditionalProperties[k] = val
+			if err := json.Unmarshal(v, &val); err != nil {
+				return fmt.Errorf("additionalProperties[%s]: %w", k, err)
 			}
+			{{$recv}}.AdditionalProperties[k] = val
 			{{- end}}
 			{{- end}}
 		}

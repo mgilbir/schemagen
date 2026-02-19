@@ -115,6 +115,25 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- range $struct.ValidatableFields}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil {
+		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+			return err
+		}
+	}
+	{{- else if and .OmitEmpty .ZeroLiteral}}
+	if {{$recv}}.{{.FieldName}} != {{.ZeroLiteral}} {
+		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+			return err
+		}
+	}
+	{{- else}}
+	if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		return err
+	}
+	{{- end}}
+	{{- end}}
 	return nil
 }
 {{- end}}

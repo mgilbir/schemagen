@@ -661,7 +661,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 766 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 738 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -669,13 +669,13 @@ var knownParseFailures = map[string]string{}
 //   - patternProperties validation: sub-schema constraints on pattern-matched keys not validated (18)
 //   - (minLength/maxLength Unicode grapheme counting — FIXED)
 //   - (multipleOf floating point precision — FIXED)
-//   - enum property validation not implemented (10)
+//   - (enum property validation — FIXED via validatable field dispatch)
 //   - default keyword: valid data omits field, zero-value fails minLength (6)
-//   - multipleOf float overflow: math.Mod with extreme values causes runtime error (5)
+//   - (multipleOf float overflow — FIXED via quotient rounding)
 //   - $dynamicRef with required: $dynamicRef not implemented (5)
-//   - $ref overrides sibling maxItems: draft3-7 $ref should suppress sibling maxItems (4)
+//   - ($ref overrides sibling maxItems — FIXED)
 //   - $id/$ref evaluation order edge case (4)
-//   - float-overflow optional test: same runtime error on extreme float values (4)
+//   - float-overflow optional test: 1e308 overflows int64 Go type (4)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
 //   - codegen produces code that fails to compile for validation binary (70)
@@ -684,8 +684,8 @@ var knownParseFailures = map[string]string{}
 //   - (type-only null validation — FIXED)
 //   - ECMA-262 regex patternProperties mismatch at unmarshal time (40)
 //   - $ref sibling keyword validation not implemented (20)
-//   - additionalProperties remaining: allOf interaction + schema validation (12)
-//   - enum validation not implemented for this schema shape (18)
+//   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
+//   - enum on struct fields: draft3 required-as-boolean not checked (2)
 //   - maxProperties validation not implemented (14)
 //   - property-level validation not implemented for this schema shape (13)
 //   - $dynamicRef/$dynamicAnchor not implemented (11)
@@ -702,40 +702,26 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
 	"draft2020-12/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
 
-	// multipleOf float overflow — extreme multipleOf values cause runtime panic/error
-
-	// float-overflow optional test — same runtime error on extreme float values
-	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "float overflow in multipleOf causes runtime error",
-	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "float overflow in multipleOf causes runtime error",
-	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "float overflow in multipleOf causes runtime error",
-	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "float overflow in multipleOf causes runtime error",
+	// float-overflow optional test — 1e308 can't be unmarshaled into int64 Go type
+	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "1e308 overflows int64 Go type",
+	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "1e308 overflows int64 Go type",
+	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
+	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
 
 	// patternProperties validation — sub-schema constraints on pattern-matched keys not validated
 	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft3/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":         "patternProperties sub-schema validation not implemented",
 	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":         "patternProperties sub-schema validation not implemented",
 	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":         "patternProperties sub-schema validation not implemented",
 	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":         "patternProperties sub-schema validation not implemented",
 	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":    "patternProperties sub-schema validation not implemented",
 	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
-	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":   "patternProperties sub-schema validation not implemented",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":    "patternProperties sub-schema validation not implemented",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
-	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/additionalProperty invalidates others":   "patternProperties sub-schema validation not implemented",
-
-	// $ref overrides sibling keywords (draft3-7) — maxItems test
-	// In draft3-7, $ref should suppress sibling validation keywords like maxItems
-	"draft3/ref/ref overrides any sibling keywords/remote ref valid, maxItems ignored": "$ref should override sibling maxItems in draft3-7",
-	"draft4/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
-	"draft6/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
-	"draft7/ref/ref overrides any sibling keywords/ref valid, maxItems ignored":        "$ref should override sibling maxItems in draft3-7",
+	// (additionalProperty invalidates others — FIXED via schema validation on overflow map)
 
 	// type-inferred schema: data type incompatible with inferred Go type
 	// When a schema has constraints but no explicit "type", we infer the type from constraints.
@@ -869,18 +855,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/required/required validation/ignores other non-objects": "required: non-object data incompatible with generated struct",
 	"draft2020-12/required/required validation/ignores strings":           "required: non-object data incompatible with generated struct",
 
-	// enum in properties: enum validation on struct fields not implemented
-	// Required check now exposes schemas where enum properties need validation.
-	"draft4/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
-	"draft4/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
-	"draft6/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
-	"draft6/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
-	"draft7/enum/enums in properties/wrong bar value":       "enum property validation not implemented",
-	"draft7/enum/enums in properties/wrong foo value":       "enum property validation not implemented",
-	"draft2019-09/enum/enums in properties/wrong bar value": "enum property validation not implemented",
-	"draft2019-09/enum/enums in properties/wrong foo value": "enum property validation not implemented",
-	"draft2020-12/enum/enums in properties/wrong bar value": "enum property validation not implemented",
-	"draft2020-12/enum/enums in properties/wrong foo value": "enum property validation not implemented",
+	// (enum in properties — FIXED via validatable field dispatch)
 
 	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not implemented
 	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/correct extended schema":       "$dynamicRef with required: $dynamicRef not implemented",
@@ -970,19 +945,13 @@ var knownValidationFailures = map[string]string{
 	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
 	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
 
-	// additionalProperties validation remaining (12 entries — allOf interaction + schema validation)
+	// additionalProperties validation remaining (6 entries — allOf interaction)
 	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
-	"draft2019-09/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                     "additionalProperties schema validation not implemented",
 	"draft2020-12/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
-	"draft2020-12/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                     "additionalProperties schema validation not implemented",
 	"draft3/additionalProperties/additionalProperties does not look in applicators/properties defined in extends are not examined":     "additionalProperties: extends properties not considered",
-	"draft3/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
 	"draft4/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-	"draft4/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
 	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-	"draft6/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
 	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-	"draft7/additionalProperties/additionalProperties with schema/an additional invalid property is invalid":                           "additionalProperties schema validation not implemented",
 
 	// anyOf validation not implemented (5 entries)
 	"draft2019-09/anyOf/anyOf with base schema/both anyOf invalid": "anyOf validation not implemented",
@@ -1080,11 +1049,9 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches both": "dependentSchemas validation not implemented",
 	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches root": "dependentSchemas validation not implemented",
 
-	// enum validation not implemented for this schema shape (18 entries)
-	"draft3/enum/enums in properties/missing all properties is invalid":    "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/missing required property is invalid": "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/wrong bar value":                      "enum validation not implemented for this schema shape",
-	"draft3/enum/enums in properties/wrong foo value":                      "enum validation not implemented for this schema shape",
+	// enum validation not implemented for this schema shape (2 remaining — draft3 required)
+	"draft3/enum/enums in properties/missing all properties is invalid":    "draft3 required-as-boolean not checked at validation time",
+	"draft3/enum/enums in properties/missing required property is invalid": "draft3 required-as-boolean not checked at validation time",
 
 	// extends validation not implemented (5 entries)
 	"draft3/extends/extends/mismatch extended":                "extends validation not implemented",

@@ -156,5 +156,10 @@ func (c Config) MarshalJSON() ([]byte, error) {
 
 // Validate checks Config against its JSON Schema constraints.
 func (c Config) Validate() error {
+	if c.Database != nil {
+		if err := c.Database.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }

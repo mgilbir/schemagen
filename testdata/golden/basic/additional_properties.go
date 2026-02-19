@@ -50,9 +50,10 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 				m.AdditionalProperties = make(map[string]string)
 			}
 			var val string
-			if err := json.Unmarshal(v, &val); err == nil {
-				m.AdditionalProperties[k] = val
+			if err := json.Unmarshal(v, &val); err != nil {
+				return fmt.Errorf("additionalProperties[%s]: %w", k, err)
 			}
+			m.AdditionalProperties[k] = val
 		}
 	}
 

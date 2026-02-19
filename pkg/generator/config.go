@@ -12,6 +12,7 @@ type Config struct {
 	//                        (defaults to true), so an overflow map[string]json.RawMessage is added to
 	//                        capture any extra properties during unmarshal and re-emit them during marshal.
 	Resolver schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
+	Draft    schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI.
 }
 
 // DefaultConfig returns sensible defaults.
