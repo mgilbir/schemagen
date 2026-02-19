@@ -392,7 +392,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Object with properties (may also have oneOf fields) → struct
 	if hasProperties(s) || len(s.OneOf) > 0 {
-		return g.generateStructDef(name, s)
+		// Only accept non-object data for schemas with object keywords (properties)
+		// but without oneOf (which is type-agnostic and should validate all types).
+		canAcceptNonObject := hasProperties(s) && len(s.OneOf) == 0
+		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
 	// Ref only → alias (handles $ref, $recursiveRef, $dynamicRef)
@@ -467,8 +470,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			}
 		}
 		needsNullCheck := !schemaAllowsNull(s)
+		acceptNonObject := !schemaHasExplicitType(s, "object")
 		needsMarshal := additionalProps != nil
-		needsUnmarshal := additionalProps != nil || needsNullCheck
+		needsUnmarshal := additionalProps != nil || needsNullCheck || acceptNonObject
 		var validations []ValidationRule
 		if s.MaxProperties != nil {
 			validations = append(validations, ValidationRule{
@@ -488,6 +492,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			NeedsMarshal:         needsMarshal,
 			NeedsUnmarshal:       needsUnmarshal,
 			NeedsNullCheck:       needsNullCheck,
+			AcceptNonObject:      acceptNonObject,
 		})
 		return nil
 	}
@@ -507,7 +512,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 // generateStructDef produces a StructDef from an object schema.
 // It also handles oneOf properties within the struct.
-func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
+// When acceptNonObject is true and the schema has no explicit "type":"object",
+// non-object JSON data (numbers, strings, arrays) is silently accepted rather
+// than causing an unmarshal error. This should only be true for schemas whose
+// constraints are purely object-specific (properties, additionalProperties, etc.)
+// and NOT for schemas generated from applicator merging (allOf, anyOf).
+func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonObject bool) error {
 	g.generated[name] = true
 
 	requiredSet := make(map[string]bool, len(s.Required))
@@ -756,6 +766,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		needsUnmarshal = true
 	}
 
+	// When the caller flags acceptNonObject and the schema has no explicit
+	// "type":"object", non-object JSON data is silently accepted.
+	acceptNonObj := acceptNonObject && !schemaHasExplicitType(s, "object")
+	if acceptNonObj {
+		needsUnmarshal = true
+	}
+
 	structDef := &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -768,6 +785,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
 		NeedsNullCheck:       needsNullCheck,
+		AcceptNonObject:      acceptNonObj,
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, structDef)
 	return nil
@@ -791,7 +809,8 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
 	g.mergeAllOfInto(merged, s.AllOf)
 
-	return g.generateStructDef(name, merged)
+	// allOf is type-agnostic: don't silently accept non-object data.
+	return g.generateStructDef(name, merged, false)
 }
 
 // mergeAllOfInto recursively merges properties and required fields from allOf
@@ -874,7 +893,8 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	return g.generateStructDef(name, merged)
+	// anyOf is type-agnostic: don't silently accept non-object data.
+	return g.generateStructDef(name, merged, false)
 }
 
 // generateOneOfForProperty creates a OneOfDef for a property with oneOf variants.
@@ -1790,6 +1810,18 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 		return "object"
 	}
 	return ""
+}
+
+// schemaHasExplicitType returns true if the schema declares an explicit "type"
+// field that includes the given type name. When the type list is empty (no
+// explicit type), the schema is permissive — it accepts any JSON value type.
+func schemaHasExplicitType(s *schema.Schema, typeName string) bool {
+	for _, t := range s.Type {
+		if t == typeName {
+			return true
+		}
+	}
+	return false
 }
 
 // isNullable returns true if the schema's type list includes "null".

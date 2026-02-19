@@ -22,6 +22,9 @@ type {{.Name}} struct {
 {{- if .HasPatternProperties}}
 	PatternProperties map[string]json.RawMessage `json:"-"`
 {{- end}}
+{{- if .AcceptNonObject}}
+	_nonObject bool // set by UnmarshalJSON when the JSON data is not an object
+{{- end}}
 }
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}

@@ -8,6 +8,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("null is not allowed for type {{$struct.Name}}")
 	}
 	{{- end}}
+	{{- if $struct.AcceptNonObject}}
+	// Schema has no explicit "type":"object" — object constraints are type-conditional.
+	// Non-object JSON data is silently accepted (returns zero-value struct).
+	if len(data) == 0 || (data[0] != '{' && string(data) != "null") {
+		{{$recv}}._nonObject = true
+		return nil
+	}
+	{{- end}}
 	type Alias {{$struct.Name}}
 	aux := &struct {
 		*Alias

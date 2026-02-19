@@ -79,6 +79,7 @@ type StructDef struct {
 	NeedsMarshal         bool
 	NeedsUnmarshal       bool
 	NeedsNullCheck       bool // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonObject      bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
 }
 
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
@@ -176,12 +177,13 @@ type EnumValue struct {
 // is a pointer or interface (e.g., *T or any), Validate() cannot be
 // attached — CanHaveMethods() returns false and the template skips it.
 type AliasDef struct {
-	Name           string
-	Underlying     GoType
-	Description    string
-	Validations    []ValidationRule
-	NoMethods      bool // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
-	NeedsNullCheck bool // true when the schema's type does not include "null" — reject null JSON data
+	Name              string
+	Underlying        GoType
+	Description       string
+	Validations       []ValidationRule
+	NoMethods         bool // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
+	NeedsNullCheck    bool // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }

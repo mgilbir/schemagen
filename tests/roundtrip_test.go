@@ -1,12 +1,14 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // roundTripTestCase defines a round-trip test: schema + fixture JSON.
@@ -161,7 +163,9 @@ func TestRoundTrip(t *testing.T) {
 			}
 
 			// 5. Build and run the test program
-			cmd := exec.Command("go", "run", ".")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "go", "run", ".")
 			cmd.Dir = tmpDir
 			output, err := cmd.CombinedOutput()
 			if err != nil {
@@ -262,7 +266,9 @@ func TestCompile(t *testing.T) {
 					t.Fatalf("writing file: %v", err)
 				}
 
-				cmd := exec.Command("go", "build", ".")
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, "go", "build", ".")
 				cmd.Dir = singleTmpDir
 				output, err := cmd.CombinedOutput()
 				if err != nil {

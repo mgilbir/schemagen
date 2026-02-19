@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
@@ -361,7 +363,9 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 		return err
 	}
 
-	cmd := exec.Command("go", "build", ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "build", ".")
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -419,7 +423,9 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 		return err
 	}
 
-	cmd := exec.Command("go", "run", ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -543,7 +549,9 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 		return err
 	}
 
-	cmd := exec.Command("go", "run", ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

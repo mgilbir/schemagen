@@ -4,6 +4,12 @@
 
 // Validate checks {{$struct.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{$struct.Name}}) Validate() error {
+	{{- if $struct.AcceptNonObject}}
+	// Non-object data was silently accepted — all object constraints are skipped.
+	if {{$recv}}._nonObject {
+		return nil
+	}
+	{{- end}}
 	{{- range $struct.Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) < {{.Value}} {
