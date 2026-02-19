@@ -286,8 +286,14 @@ func (g *Generator) resolveAliasMethodability() {
 }
 
 // canHaveMethodsResolved checks if a GoType can be used as a method receiver,
-// following NamedType references through the alias map.
+// following NamedType references through the alias map. The visited set
+// prevents infinite recursion on self-referencing alias cycles.
 func canHaveMethodsResolved(t GoType, aliases map[string]*AliasDef) bool {
+	visited := make(map[string]bool)
+	return canHaveMethodsResolvedImpl(t, aliases, visited)
+}
+
+func canHaveMethodsResolvedImpl(t GoType, aliases map[string]*AliasDef, visited map[string]bool) bool {
 	if t.IsPointer() {
 		return false
 	}
@@ -295,8 +301,12 @@ func canHaveMethodsResolved(t GoType, aliases map[string]*AliasDef) bool {
 		return false
 	}
 	if nt, ok := t.(*NamedType); ok {
+		if visited[nt.Name] {
+			return true // cycle detected — assume safe
+		}
+		visited[nt.Name] = true
 		if ref, exists := aliases[nt.Name]; exists {
-			return canHaveMethodsResolved(ref.Underlying, aliases)
+			return canHaveMethodsResolvedImpl(ref.Underlying, aliases, visited)
 		}
 	}
 	return true
