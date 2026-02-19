@@ -513,7 +513,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 		needsNullCheck := !schemaAllowsNull(s)
 		acceptNonObject := !schemaHasExplicitType(s, "object")
-		needsMarshal := additionalProps != nil
+		needsMarshal := additionalProps != nil || acceptNonObject
 		needsUnmarshal := additionalProps != nil || needsNullCheck || acceptNonObject
 		var validations []ValidationRule
 		if s.MaxProperties != nil {
@@ -850,6 +850,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	acceptNonObj := acceptNonObject && !schemaHasExplicitType(s, "object")
 	if acceptNonObj {
 		needsUnmarshal = true
+		needsMarshal = true // must preserve raw non-object data for roundtrip
 	}
 
 	structDef := &StructDef{

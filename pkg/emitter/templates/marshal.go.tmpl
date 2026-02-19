@@ -3,6 +3,15 @@
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
+	{{- if $struct.AcceptNonObject}}
+	// Non-object data was silently accepted — return the original raw bytes.
+	if {{$recv}}._nonObject {
+		if len({{$recv}}._rawNonObject) > 0 {
+			return {{$recv}}._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
+	{{- end}}
 	{{- /* Check if we have any top-level oneOfs (empty JSONName) */}}
 	{{- $hasTopLevelOneOf := false}}
 	{{- range $struct.OneOfs}}
