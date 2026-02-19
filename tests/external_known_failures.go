@@ -577,7 +577,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 579 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 573 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -622,17 +622,11 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
 
 	// patternProperties validation — sub-schema constraints on pattern-matched keys not validated
-	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":          "patternProperties sub-schema validation not implemented",
 	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":    "patternProperties sub-schema validation not implemented",
 	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
-	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates property":    "patternProperties sub-schema validation not implemented",
 	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
 	// (additionalProperty invalidates others — FIXED via schema validation on overflow map)
 

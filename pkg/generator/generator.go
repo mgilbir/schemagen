@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -708,6 +709,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			continue
 		}
 		rules := extractValidationRules(goFieldName, propName, propSchema)
+		// Also apply constraints from patternProperties whose pattern matches this property name.
+		for pattern, patSchema := range s.PatternProperties {
+			if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
+				rules = append(rules, extractValidationRules(goFieldName, propName, patSchema)...)
+			}
+		}
 		// Filter out rules that don't make sense for the Go type (e.g.,
 		// minimum/maximum on an 'any' field can't be compiled).
 		filtered := rules[:0]
