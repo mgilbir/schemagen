@@ -73,6 +73,7 @@ type StructDef struct {
 	OneOfs               []OneOfDef
 	AdditionalProperties *AdditionalPropertiesDef
 	PatternProperties    []PatternPropertyDef
+	DependentSchemas     []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
 	Validations          []ValidationRule
 	ValidatableFields    []ValidatableFieldDef // fields whose types have their own Validate() method
 	RequiredJSON         []string              // JSON property names that must be present (for required validation)
@@ -80,6 +81,14 @@ type StructDef struct {
 	NeedsUnmarshal       bool
 	NeedsNullCheck       bool // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonObject      bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+}
+
+// DependentSchemaConstraint describes a dependentSchemas entry where the sub-schema
+// has additionalProperties: false. When the trigger key is present in the JSON object,
+// only the keys listed in AllowedKeys are valid.
+type DependentSchemaConstraint struct {
+	TriggerKey  string   // JSON property name that activates the constraint
+	AllowedKeys []string // set of JSON property names allowed by the dependent sub-schema
 }
 
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
@@ -100,6 +109,11 @@ func (d *StructDef) HasRequiredFields() bool {
 // HasPatternProperties returns true if the struct has pattern properties.
 func (d *StructDef) HasPatternProperties() bool {
 	return len(d.PatternProperties) > 0
+}
+
+// HasDependentSchemas returns true if the struct has dependent schema constraints.
+func (d *StructDef) HasDependentSchemas() bool {
+	return len(d.DependentSchemas) > 0
 }
 
 // PatternPropertyDef describes a patternProperties entry on a struct.

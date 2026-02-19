@@ -546,7 +546,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 525 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 515 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -572,7 +572,7 @@ var knownParseFailures = map[string]string{}
 //   - enum on struct fields: draft3 required-as-boolean not checked (2)
 //   - property-level validation not implemented for this schema shape (13)
 //   - $dynamicRef/$dynamicAnchor not implemented (11)
-//   - dependencies validation not implemented (6)
+//   - (dependencies/dependentSchemas: fixed)
 //   - extends / anyOf / not / dependentSchemas / other (22)
 //   - $recursiveRef / cross-draft / required with composition (3)
 var knownValidationFailures = map[string]string{
@@ -830,20 +830,6 @@ var knownValidationFailures = map[string]string{
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
-
-	// dependencies validation not implemented (6 entries)
-	"draft4/dependencies/dependent subschema incompatible with root/matches both": "dependencies validation not implemented",
-	"draft4/dependencies/dependent subschema incompatible with root/matches root": "dependencies validation not implemented",
-	"draft6/dependencies/dependent subschema incompatible with root/matches both": "dependencies validation not implemented",
-	"draft6/dependencies/dependent subschema incompatible with root/matches root": "dependencies validation not implemented",
-	"draft7/dependencies/dependent subschema incompatible with root/matches both": "dependencies validation not implemented",
-	"draft7/dependencies/dependent subschema incompatible with root/matches root": "dependencies validation not implemented",
-
-	// dependentSchemas validation not implemented (4 entries)
-	"draft2019-09/dependentSchemas/dependent subschema incompatible with root/matches both": "dependentSchemas validation not implemented",
-	"draft2019-09/dependentSchemas/dependent subschema incompatible with root/matches root": "dependentSchemas validation not implemented",
-	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches both": "dependentSchemas validation not implemented",
-	"draft2020-12/dependentSchemas/dependent subschema incompatible with root/matches root": "dependentSchemas validation not implemented",
 
 	// enum validation not implemented for this schema shape (2 remaining — draft3 required)
 	"draft3/enum/enums in properties/missing all properties is invalid":    "draft3 required-as-boolean not checked at validation time",

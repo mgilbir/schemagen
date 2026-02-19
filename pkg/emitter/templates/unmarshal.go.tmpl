@@ -164,6 +164,20 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 	}
 	{{- end}}
+	{{- if $struct.HasDependentSchemas}}
+
+	// Capture all JSON keys for dependentSchemas validation.
+	{
+		var depRaw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &depRaw); err != nil {
+			return err
+		}
+		{{$recv}}._jsonKeys = make(map[string]bool, len(depRaw))
+		for k := range depRaw {
+			{{$recv}}._jsonKeys[k] = true
+		}
+	}
+	{{- end}}
 
 	return nil
 }

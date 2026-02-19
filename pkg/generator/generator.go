@@ -198,6 +198,10 @@ func (g *Generator) addRequiredImports() {
 				needsRegexp = true
 				needsJSON = true
 			}
+			if len(sd.DependentSchemas) > 0 {
+				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -801,6 +805,28 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		})
 	}
 
+	// Extract dependent schema constraints (dependentSchemas where the sub-schema
+	// has additionalProperties: false — we emit validation that checks the JSON keys).
+	var depSchemas []DependentSchemaConstraint
+	for trigger, depSchema := range s.DependentSchemas {
+		if depSchema.AdditionalProperties != nil &&
+			depSchema.AdditionalProperties.Bool != nil &&
+			!*depSchema.AdditionalProperties.Bool {
+			allowed := sortedKeys(depSchema.Properties)
+			depSchemas = append(depSchemas, DependentSchemaConstraint{
+				TriggerKey:  trigger,
+				AllowedKeys: allowed,
+			})
+		}
+	}
+	// Sort for deterministic output.
+	sort.Slice(depSchemas, func(i, j int) bool {
+		return depSchemas[i].TriggerKey < depSchemas[j].TriggerKey
+	})
+	if len(depSchemas) > 0 {
+		needsUnmarshal = true // need to capture _jsonKeys
+	}
+
 	// Enable custom unmarshal if there are required fields (to track key presence).
 	if len(requiredJSON) > 0 {
 		needsUnmarshal = true
@@ -825,6 +851,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		OneOfs:               oneOfs,
 		AdditionalProperties: additionalProps,
 		PatternProperties:    patternProps,
+		DependentSchemas:     depSchemas,
 		Validations:          validations,
 		RequiredJSON:         requiredJSON,
 		NeedsMarshal:         needsMarshal,

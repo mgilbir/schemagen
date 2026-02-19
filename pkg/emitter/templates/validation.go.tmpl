@@ -145,6 +145,19 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasDependentSchemas}}
+	// dependentSchemas: when a trigger key is present, only the allowed keys are valid.
+	{{- range $struct.DependentSchemas}}
+	if {{$recv}}._jsonKeys[{{printf "%q" .TriggerKey}}] {
+		allowedKeys := map[string]bool{ {{- range .AllowedKeys}}{{printf "%q" .}}: true, {{end -}} }
+		for k := range {{$recv}}._jsonKeys {
+			if !allowedKeys[k] {
+				return fmt.Errorf("dependentSchema %q: property %q is not allowed", {{printf "%q" .TriggerKey}}, k)
+			}
+		}
+	}
+	{{- end}}
+	{{- end}}
 	return nil
 }
 {{- end}}

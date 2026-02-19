@@ -25,6 +25,9 @@ type {{.Name}} struct {
 {{- if .AcceptNonObject}}
 	_nonObject bool // set by UnmarshalJSON when the JSON data is not an object
 {{- end}}
+{{- if .HasDependentSchemas}}
+	_jsonKeys map[string]bool // set by UnmarshalJSON for dependentSchemas validation
+{{- end}}
 }
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}
