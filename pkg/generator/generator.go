@@ -722,9 +722,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			if pointerFields[rules[i].FieldName] {
 				rules[i].IsPointer = true
 			}
-			// Skip numeric/string/array validation on untyped 'any' fields.
+			// Skip numeric/string/array validation on untyped 'any' fields,
+			// but keep structural rules like "forbidden" that apply to all types.
 			if ft, ok := fieldTypes[rules[i].FieldName]; ok {
-				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" {
+				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" && rules[i].RuleType != "forbidden" {
 					continue
 				}
 			}
@@ -2165,7 +2166,28 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			RuleType: "uniqueItems", Value: true,
 		})
 	}
+	// not: {} (empty schema) means "forbidden property" — no value can match.
+	if s.Not != nil && isAcceptAllSchema(s.Not) {
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "forbidden", Value: true,
+		})
+	}
 	return rules
+}
+
+// isAcceptAllSchema returns true if the schema matches all values (empty schema or boolean true).
+func isAcceptAllSchema(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	// An empty schema (no constraints) matches everything.
+	return len(s.Type) == 0 && len(s.Properties) == 0 && s.Not == nil &&
+		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
+		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
+		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
+		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
+		len(s.Required) == 0 && s.AdditionalProperties == nil
 }
 
 // isNilCheckable returns true if a Go type can be compared to nil.

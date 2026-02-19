@@ -97,6 +97,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if eq .RuleType "forbidden"}}
+	if {{$recv}}.{{.FieldName}} != nil {
+		return fmt.Errorf("{{.JSONName}}: property is forbidden (not: {})")
+	}
+	{{- end}}
 	{{- if eq .RuleType "maxProperties"}}
 	{
 		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
