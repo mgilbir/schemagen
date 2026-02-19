@@ -546,7 +546,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 536 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 525 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -563,7 +563,7 @@ var knownParseFailures = map[string]string{}
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
 //   - codegen produces code that fails to compile for validation binary (37)
-//   - uniqueItems validation not implemented (12 remaining — additionalItems interaction)
+//   - (uniqueItems/additionalItems interaction: fixed)
 //   - unevaluatedProperties validation not implemented (82)
 //   - (type-only null validation — FIXED)
 //   - ECMA-262 regex patternProperties mismatch at unmarshal time (40)
@@ -695,6 +695,7 @@ var knownValidationFailures = map[string]string{
 
 	// $id/$ref evaluation order — codegen resolves $id and $ref in wrong order
 	"draft2019-09/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
+	"draft2020-12/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
 
 	// custom metaschema vocabulary not supported — vocabulary that disables validation
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom metaschema vocabulary not supported",
@@ -964,20 +965,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with nested properties/with additional properties":                                                          "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
-
-	// uniqueItems validation not implemented (112 entries)
-	"draft2019-09/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
-	"draft2019-09/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique": "uniqueItems validation not implemented",
-	"draft2020-12/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
-	"draft2020-12/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique": "uniqueItems validation not implemented",
-	"draft3/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":             "uniqueItems validation not implemented",
-	"draft3/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
-	"draft4/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":             "uniqueItems validation not implemented",
-	"draft4/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
-	"draft6/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":             "uniqueItems validation not implemented",
-	"draft6/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
-	"draft7/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":             "uniqueItems validation not implemented",
-	"draft7/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
 
 	// codegen produces code that fails to compile for validation binary (43 additional entries)
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",

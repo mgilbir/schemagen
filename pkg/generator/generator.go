@@ -2158,6 +2158,23 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			RuleType: "maxItems", Value: s.MaxItems.Int(),
 		})
 	}
+	// additionalItems: false with tuple-form items → implicit maxItems = tuple length.
+	// Draft 2020-12 uses prefixItems + items:false instead.
+	if s.MaxItems == nil && s.AdditionalItems != nil && s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
+		if s.Items != nil && len(s.Items.Schemas) > 0 {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "maxItems", Value: len(s.Items.Schemas),
+			})
+		}
+	}
+	// Draft 2020-12: prefixItems + items:false → implicit maxItems = len(prefixItems).
+	if s.MaxItems == nil && len(s.PrefixItems) > 0 && s.Items != nil && s.Items.Schema != nil && s.Items.Schema.IsFalseSchema() {
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "maxItems", Value: len(s.PrefixItems),
+		})
+	}
 	// exclusiveMinimum: can be a number (Draft 2020-12) or a boolean (Draft 4).
 	// When boolean and true, the constraint uses the value from Minimum.
 	if s.ExclusiveMinimum != nil {
