@@ -1120,12 +1120,25 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	baseType := g.resolveBaseType(s)
 
 	var values []EnumValue
+	// First pass: compute raw constant names.
 	for _, v := range s.Enum {
 		constName := name + enumValueSuffix(v)
 		values = append(values, EnumValue{
 			Name:  constName,
 			Value: v,
 		})
+	}
+	// Second pass: deduplicate collisions by appending numeric suffix.
+	nameCount := make(map[string]int, len(values))
+	for _, ev := range values {
+		nameCount[ev.Name]++
+	}
+	nameSeen := make(map[string]int, len(values))
+	for i, ev := range values {
+		nameSeen[ev.Name]++
+		if nameCount[ev.Name] > 1 {
+			values[i].Name = fmt.Sprintf("%s%d", ev.Name, nameSeen[ev.Name])
+		}
 	}
 
 	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{

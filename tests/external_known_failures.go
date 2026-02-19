@@ -4,13 +4,12 @@ package tests
 // These are categorized by root cause. Bidirectional checking ensures
 // that if a known failure starts passing, the test will error (remove from list).
 
-// CodeGen: 60 known failures (2 flaky entries removed — non-deterministic map iteration)
+// CodeGen: 55 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownCodeGenFailures = map[string]string{
 	"draft2019-09/enum/enum with [0] does not match [false]":                                                       "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [1] does not match [true]":                                                        "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [false] does not match [0]":                                                       "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [true] does not match [1]":                                                        "heterogeneous enum produces invalid Go type",
-	"draft2019-09/enum/enum with escaped characters":                                                               "enum with escaped characters not supported",
 	"draft2019-09/enum/heterogeneous enum validation":                                                              "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/heterogeneous enum-with-null validation":                                                    "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/anchor/$anchor inside an enum is not a real identifier":                                 "special characters in enum/ref produce invalid Go code",
@@ -27,7 +26,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/enum/enum with [1] does not match [true]":                                                                   "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [false] does not match [0]":                                                                  "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [true] does not match [1]":                                                                   "heterogeneous enum produces invalid Go type",
-	"draft2020-12/enum/enum with escaped characters":                                                                          "enum with escaped characters not supported",
 	"draft2020-12/enum/heterogeneous enum validation":                                                                         "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/heterogeneous enum-with-null validation":                                                               "special characters in enum/ref produce invalid Go code",
 	"draft2020-12/optional/anchor/$anchor inside an enum is not a real identifier":                                            "special characters in enum/ref produce invalid Go code",
@@ -44,7 +42,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft4/enum/enum with [1] does not match [true]":                                                                         "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [false] does not match [0]":                                                                        "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [true] does not match [1]":                                                                         "heterogeneous enum produces invalid Go type",
-	"draft4/enum/enum with escaped characters":                                                                                "enum with escaped characters not supported",
 	"draft4/enum/heterogeneous enum validation":                                                                               "heterogeneous enum produces invalid Go type",
 	"draft4/enum/heterogeneous enum-with-null validation":                                                                     "special characters in enum/ref produce invalid Go code",
 	"draft4/optional/id/id inside an enum is not a real identifier":                                                           "special characters in enum/ref produce invalid Go code",
@@ -53,7 +50,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft6/enum/enum with [1] does not match [true]":                                                                         "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [false] does not match [0]":                                                                        "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [true] does not match [1]":                                                                         "heterogeneous enum produces invalid Go type",
-	"draft6/enum/enum with escaped characters":                                                                                "enum with escaped characters not supported",
 	"draft6/enum/heterogeneous enum validation":                                                                               "heterogeneous enum produces invalid Go type",
 	"draft6/enum/heterogeneous enum-with-null validation":                                                                     "special characters in enum/ref produce invalid Go code",
 	"draft6/optional/id/id inside an enum is not a real identifier":                                                           "special characters in enum/ref produce invalid Go code",
@@ -62,14 +58,13 @@ var knownCodeGenFailures = map[string]string{
 	"draft7/enum/enum with [1] does not match [true]":                                                                         "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [false] does not match [0]":                                                                        "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [true] does not match [1]":                                                                         "heterogeneous enum produces invalid Go type",
-	"draft7/enum/enum with escaped characters":                                                                                "enum with escaped characters not supported",
 	"draft7/enum/heterogeneous enum validation":                                                                               "heterogeneous enum produces invalid Go type",
 	"draft7/enum/heterogeneous enum-with-null validation":                                                                     "special characters in enum/ref produce invalid Go code",
 	"draft7/optional/id/id inside an enum is not a real identifier":                                                           "special characters in enum/ref produce invalid Go code",
 	"draft7/ref/naive replacement of $ref with its destination is not correct":                                                "special characters in enum/ref produce invalid Go code",
 }
 
-// RoundTrip: 461 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 451 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
@@ -86,8 +81,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/enum/enum with [1] does not match [true]/[1] is valid":                                                                                "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [false] does not match [0]/[false] is valid":                                                                           "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [true] does not match [1]/[true] is valid":                                                                             "heterogeneous enum produces invalid Go type",
-	"draft2019-09/enum/enum with escaped characters/member 1 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/enum/enum with escaped characters/member 2 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/enum/heterogeneous enum validation/one of the enum is valid":                                                                          "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/heterogeneous enum validation/valid object matches":                                                                              "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/heterogeneous enum-with-null validation/null is valid":                                                                           "special characters in enum/ref produce invalid Go code",
@@ -146,8 +139,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/enum/enum with [1] does not match [true]/[1] is valid":                                                                                        "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [false] does not match [0]/[false] is valid":                                                                                   "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [true] does not match [1]/[true] is valid":                                                                                     "heterogeneous enum produces invalid Go type",
-	"draft2020-12/enum/enum with escaped characters/member 1 is valid":                                                                                          "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/enum/enum with escaped characters/member 2 is valid":                                                                                          "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/enum/heterogeneous enum validation/one of the enum is valid":                                                                                  "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/heterogeneous enum validation/valid object matches":                                                                                      "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/heterogeneous enum-with-null validation/null is valid":                                                                                   "special characters in enum/ref produce invalid Go code",
@@ -214,8 +205,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft4/enum/enum with [1] does not match [true]/[1] is valid":                                                                                "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [false] does not match [0]/[false] is valid":                                                                           "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [true] does not match [1]/[true] is valid":                                                                             "heterogeneous enum produces invalid Go type",
-	"draft4/enum/enum with escaped characters/member 1 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft4/enum/enum with escaped characters/member 2 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
 	"draft4/enum/heterogeneous enum validation/one of the enum is valid":                                                                          "heterogeneous enum produces invalid Go type",
 	"draft4/enum/heterogeneous enum validation/valid object matches":                                                                              "heterogeneous enum produces invalid Go type",
 	"draft4/enum/heterogeneous enum-with-null validation/null is valid":                                                                           "special characters in enum/ref produce invalid Go code",
@@ -257,8 +246,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/enum/enum with [1] does not match [true]/[1] is valid":                                                                                "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [false] does not match [0]/[false] is valid":                                                                           "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [true] does not match [1]/[true] is valid":                                                                             "heterogeneous enum produces invalid Go type",
-	"draft6/enum/enum with escaped characters/member 1 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft6/enum/enum with escaped characters/member 2 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
 	"draft6/enum/heterogeneous enum validation/one of the enum is valid":                                                                          "heterogeneous enum produces invalid Go type",
 	"draft6/enum/heterogeneous enum validation/valid object matches":                                                                              "heterogeneous enum produces invalid Go type",
 	"draft6/enum/heterogeneous enum-with-null validation/null is valid":                                                                           "special characters in enum/ref produce invalid Go code",
@@ -307,8 +294,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/enum/enum with [1] does not match [true]/[1] is valid":                                                                                "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [false] does not match [0]/[false] is valid":                                                                           "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [true] does not match [1]/[true] is valid":                                                                             "heterogeneous enum produces invalid Go type",
-	"draft7/enum/enum with escaped characters/member 1 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft7/enum/enum with escaped characters/member 2 is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
 	"draft7/enum/heterogeneous enum validation/one of the enum is valid":                                                                          "heterogeneous enum produces invalid Go type",
 	"draft7/enum/heterogeneous enum validation/valid object matches":                                                                              "heterogeneous enum produces invalid Go type",
 	"draft7/enum/heterogeneous enum-with-null validation/null is valid":                                                                           "special characters in enum/ref produce invalid Go code",
@@ -546,7 +531,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 500 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 485 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -562,7 +547,7 @@ var knownParseFailures = map[string]string{}
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
-//   - codegen produces code that fails to compile for validation binary (37)
+//   - codegen produces code that fails to compile for validation binary (38)
 //   - (uniqueItems/additionalItems interaction: fixed)
 //   - unevaluatedProperties validation not implemented (82)
 //   - (type-only null validation — FIXED)
@@ -801,8 +786,7 @@ var knownValidationFailures = map[string]string{
 	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 
-	// codegen produces code that fails to compile for validation binary (37 entries)
-	"draft2019-09/enum/enum with escaped characters/another string is invalid":                                                                                           "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (19 entries)
 	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item not a string is invalid":                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
@@ -813,18 +797,14 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/enum/enum with escaped characters/another string is invalid":                                                                                           "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
 
-	"draft4/enum/enum with escaped characters/another string is invalid":                 "codegen produces code that fails to compile for validation binary",
 	"draft4/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
-	"draft6/enum/enum with escaped characters/another string is invalid":                 "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/$ref to $ref finds location-independent $id/non-number is invalid": "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
-	"draft7/enum/enum with escaped characters/another string is invalid":                 "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/$ref to $ref finds location-independent $id/non-number is invalid": "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
 
@@ -937,10 +917,8 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
 
-	// codegen produces code that fails to compile for validation binary (43 additional entries)
+	// codegen produces code that fails to compile for validation binary (19 additional entries)
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/enum/enum with escaped characters/member 1 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/enum/enum with escaped characters/member 2 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item is a string is valid":                                    "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
@@ -950,22 +928,14 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/enum/enum with escaped characters/member 1 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/enum/enum with escaped characters/member 2 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
 
-	"draft4/enum/enum with escaped characters/member 1 is valid":                      "codegen produces code that fails to compile for validation binary",
-	"draft4/enum/enum with escaped characters/member 2 is valid":                      "codegen produces code that fails to compile for validation binary",
 	"draft4/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
-	"draft6/enum/enum with escaped characters/member 1 is valid":                      "codegen produces code that fails to compile for validation binary",
-	"draft6/enum/enum with escaped characters/member 2 is valid":                      "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/$ref to $ref finds location-independent $id/number is valid":    "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
-	"draft7/enum/enum with escaped characters/member 1 is valid":                      "codegen produces code that fails to compile for validation binary",
-	"draft7/enum/enum with escaped characters/member 2 is valid":                      "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/$ref to $ref finds location-independent $id/number is valid":    "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
 
