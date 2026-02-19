@@ -424,6 +424,18 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
+	// oneOf without properties in parent or any variant → alias to `any`
+	// (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]} can hold any JSON value)
+	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:        name,
+			Underlying:  &PrimitiveType{Name: "any"},
+			Description: s.Description,
+		})
+		return nil
+	}
+
 	// Object with properties (may also have oneOf fields) → struct
 	if hasProperties(s) || len(s.OneOf) > 0 {
 		// Only accept non-object data for schemas with object keywords (properties)
@@ -873,6 +885,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 }
 
 // generateAllOfDef merges all allOf sub-schemas into a single struct.
+// When no sub-schema contributes properties, it generates an alias type
+// instead of an empty struct, using the inferred type from constraints.
 func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge all properties and required fields from allOf sub-schemas.
 	merged := &schema.Schema{
@@ -890,13 +904,49 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
 	g.mergeAllOfInto(merged, s.AllOf)
 
+	// If no sub-schema contributed properties, don't generate an empty struct.
+	// Instead, infer the type from constraints and generate an alias.
+	if len(merged.Properties) == 0 {
+		primaryType := primarySchemaType(merged)
+		if primaryType == "" {
+			primaryType = inferTypeFromConstraints(merged)
+		}
+		if primaryType != "" && primaryType != "object" {
+			goType := g.resolveType(merged, name)
+			rules := extractAliasValidationRules(merged, goType)
+			// Carry through anyOf/oneOf variant rules from the parent schema,
+			// since these are siblings of allOf and must also be validated.
+			anyOfVariants := extractAnyOfVariantRules(s, goType)
+			oneOfVariants := extractOneOfVariantRules(s, goType)
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(merged),
+			})
+			return nil
+		}
+		// No type inferrable → alias to `any` (permissive fallback).
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:        name,
+			Underlying:  &PrimitiveType{Name: "any"},
+			Description: s.Description,
+		})
+		return nil
+	}
+
 	// allOf is type-agnostic: don't silently accept non-object data.
 	return g.generateStructDef(name, merged, false)
 }
 
-// mergeAllOfInto recursively merges properties and required fields from allOf
-// sub-schemas into the target schema. This handles cases like remote schemas
-// that themselves contain allOf with internal $ref chains.
+// mergeAllOfInto recursively merges properties, required fields, and validation
+// constraints from allOf sub-schemas into the target schema. This handles cases
+// like remote schemas that themselves contain allOf with internal $ref chains.
 func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
 	for _, sub := range allOf {
 		resolved := sub
@@ -914,10 +964,61 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
 		}
+		// Propagate validation constraints (use tightest / first-set-wins).
+		mergeConstraints(target, resolved)
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)
 		}
+	}
+}
+
+// mergeConstraints propagates validation constraint fields from src into dst,
+// using "first set wins" semantics so that the earliest sub-schema's value is
+// kept when multiple sub-schemas define the same constraint.
+func mergeConstraints(dst, src *schema.Schema) {
+	// Numeric constraints
+	if dst.Minimum == nil && src.Minimum != nil {
+		dst.Minimum = src.Minimum
+	}
+	if dst.Maximum == nil && src.Maximum != nil {
+		dst.Maximum = src.Maximum
+	}
+	if dst.ExclusiveMinimum == nil && src.ExclusiveMinimum != nil {
+		dst.ExclusiveMinimum = src.ExclusiveMinimum
+	}
+	if dst.ExclusiveMaximum == nil && src.ExclusiveMaximum != nil {
+		dst.ExclusiveMaximum = src.ExclusiveMaximum
+	}
+	if dst.MultipleOf == nil && src.MultipleOf != nil {
+		dst.MultipleOf = src.MultipleOf
+	}
+	// String constraints
+	if dst.MinLength == nil && src.MinLength != nil {
+		dst.MinLength = src.MinLength
+	}
+	if dst.MaxLength == nil && src.MaxLength != nil {
+		dst.MaxLength = src.MaxLength
+	}
+	if dst.Pattern == nil && src.Pattern != nil {
+		dst.Pattern = src.Pattern
+	}
+	// Array constraints
+	if dst.MinItems == nil && src.MinItems != nil {
+		dst.MinItems = src.MinItems
+	}
+	if dst.MaxItems == nil && src.MaxItems != nil {
+		dst.MaxItems = src.MaxItems
+	}
+	if dst.UniqueItems == nil && src.UniqueItems != nil {
+		dst.UniqueItems = src.UniqueItems
+	}
+	// Object constraints
+	if dst.MinProperties == nil && src.MinProperties != nil {
+		dst.MinProperties = src.MinProperties
+	}
+	if dst.MaxProperties == nil && src.MaxProperties != nil {
+		dst.MaxProperties = src.MaxProperties
 	}
 }
 
@@ -1865,6 +1966,23 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	return false
 }
 
+// oneOfHasProperties returns true if any oneOf variant has properties.
+func (g *Generator) oneOfHasProperties(s *schema.Schema) bool {
+	for _, sub := range s.OneOf {
+		if len(sub.Properties) > 0 {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if len(r.Properties) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // hasProperties returns true if the schema defines any properties.
 func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
@@ -2356,6 +2474,32 @@ func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRul
 	var variants [][]ValidationRule
 	hasRules := false
 	for _, variant := range s.AnyOf {
+		rules := extractValidationRules("", "", variant)
+		variants = append(variants, rules)
+		if len(rules) > 0 {
+			hasRules = true
+		}
+	}
+	if !hasRules {
+		return nil
+	}
+	return variants
+}
+
+// extractOneOfVariantRules extracts validation rules from each oneOf sub-schema.
+// Each inner slice represents one variant's constraint set.
+// Returns nil when the schema has no oneOf or when all variants yield empty rules.
+func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
+	if len(s.OneOf) == 0 {
+		return nil
+	}
+	// Skip for untyped "any" — can't compile checks.
+	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+		return nil
+	}
+	var variants [][]ValidationRule
+	hasRules := false
+	for _, variant := range s.OneOf {
 		rules := extractValidationRules("", "", variant)
 		variants = append(variants, rules)
 		if len(rules) > 0 {

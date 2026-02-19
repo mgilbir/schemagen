@@ -196,6 +196,7 @@ type AliasDef struct {
 	Description       string
 	Validations       []ValidationRule
 	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
+	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data
