@@ -740,6 +740,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			continue
 		}
 		goFieldName := goFieldNames[propName]
+		// Boolean schema false → property is forbidden (any value is invalid).
+		if propSchema.IsFalseSchema() {
+			validations = append(validations, ValidationRule{
+				FieldName: goFieldName, JSONName: propName,
+				RuleType: "forbidden", Value: true,
+			})
+			continue
+		}
 		// In draft3-7, $ref overrides all sibling keywords — skip validation
 		// rules from the property schema when it has a $ref.
 		if propSchema.EffectiveRef() != "" && g.refOverridesSiblings() {
@@ -1315,10 +1323,15 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &PointerType{Inner: baseType}
 	}
 
-	// Object with properties → nested struct
+	// Object with properties → nested struct (explicit type:"object" or inferred from properties keyword)
 	if primaryType == "object" && hasProperties(s) {
 		_ = g.generateTypeDef(contextName, s)
 		return &NamedType{Name: contextName}
+	}
+	// Properties without explicit type → pointer to struct (nil when absent, enabling omitempty)
+	if primaryType == "" && hasProperties(s) {
+		_ = g.generateTypeDef(contextName, s)
+		return &PointerType{Inner: &NamedType{Name: contextName}}
 	}
 
 	// Array with items

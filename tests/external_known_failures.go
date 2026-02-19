@@ -546,7 +546,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 515 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 500 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -843,21 +843,6 @@ var knownValidationFailures = map[string]string{
 	"draft3/extends/multiple extends/mismatch second extends": "extends validation not implemented",
 
 	// not validation not implemented (5 entries)
-
-	// property-level validation not implemented for this schema shape (13 entries)
-	"draft2019-09/properties/properties whose names are Javascript object property names/toString not valid": "property-level validation not implemented for this schema shape",
-	"draft2019-09/properties/properties with boolean schema/both properties present is invalid":              "property-level validation not implemented for this schema shape",
-	"draft2019-09/properties/properties with boolean schema/only 'false' property present is invalid":        "property-level validation not implemented for this schema shape",
-	"draft2020-12/properties/properties whose names are Javascript object property names/toString not valid": "property-level validation not implemented for this schema shape",
-	"draft2020-12/properties/properties with boolean schema/both properties present is invalid":              "property-level validation not implemented for this schema shape",
-	"draft2020-12/properties/properties with boolean schema/only 'false' property present is invalid":        "property-level validation not implemented for this schema shape",
-	"draft4/properties/properties whose names are Javascript object property names/toString not valid":       "property-level validation not implemented for this schema shape",
-	"draft6/properties/properties whose names are Javascript object property names/toString not valid":       "property-level validation not implemented for this schema shape",
-	"draft6/properties/properties with boolean schema/both properties present is invalid":                    "property-level validation not implemented for this schema shape",
-	"draft6/properties/properties with boolean schema/only 'false' property present is invalid":              "property-level validation not implemented for this schema shape",
-	"draft7/properties/properties whose names are Javascript object property names/toString not valid":       "property-level validation not implemented for this schema shape",
-	"draft7/properties/properties with boolean schema/both properties present is invalid":                    "property-level validation not implemented for this schema shape",
-	"draft7/properties/properties with boolean schema/only 'false' property present is invalid":              "property-level validation not implemented for this schema shape",
 
 	// required with composition validation not implemented (1 entries)
 	"draft3/required/required validation/non-present required property is invalid": "required with composition validation not implemented",
