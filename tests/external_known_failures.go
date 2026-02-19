@@ -64,7 +64,7 @@ var knownCodeGenFailures = map[string]string{
 	"draft7/ref/naive replacement of $ref with its destination is not correct":                                                "special characters in enum/ref produce invalid Go code",
 }
 
-// RoundTrip: 451 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 434 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
@@ -111,9 +111,6 @@ var knownRoundTripFailures = map[string]string{
 
 	"draft2019-09/required/required validation/ignores null":                                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/type/integer type matches integers/a float with zero fractional part is an integer":                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/type/multiple types can be specified in an array/a string is valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/type/type: array or object/object is valid":                                                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/type/type: array, object or null/object is valid":                                                                                             "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with boolean schemas/with no unevaluated items":                                                             "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/all valid under unevaluatedItems":                                   "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items and additionalItems/with additional items":                                                "non-structural schema: data shape incompatible with generated type",
@@ -170,9 +167,6 @@ var knownRoundTripFailures = map[string]string{
 
 	"draft2020-12/required/required validation/ignores null":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/type/integer type matches integers/a float with zero fractional part is an integer":                                             "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/type/multiple types can be specified in an array/a string is valid":                                                             "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/type/type: array or object/object is valid":                                                                                     "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/type/type: array, object or null/object is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/5 not evaluated, passes unevaluatedItems":                 "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with boolean schemas/with no unevaluated items":                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with nested prefixItems and items/with additional items":                                      "non-structural schema: data shape incompatible with generated type",
@@ -190,8 +184,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft3/ref/$ref prevents a sibling id from changing the base uri/$ref resolves to /definitions/base_foo, data validates":                     "non-structural schema: data shape incompatible with generated type",
 	"draft3/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft3/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft3/type/types can include schemas/an object is valid":                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft4/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft4/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft4/allOf/allOf with one empty schema/any data is valid":                                                                                  "non-structural schema: data shape incompatible with generated type",
@@ -229,9 +221,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft4/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
 	"draft4/ref/nested refs/nested ref valid":                                                                                                     "non-structural schema: data shape incompatible with generated type",
 	"draft4/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft4/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft4/type/type: array or object/object is valid":                                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft4/type/type: array, object or null/object is valid":                                                                                     "non-structural schema: data shape incompatible with generated type",
 	"draft6/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft6/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft6/allOf/allOf with boolean schemas, all true/any value is valid":                                                                        "non-structural schema: data shape incompatible with generated type",
@@ -277,9 +266,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/ref/ref with absolute-path-reference/a string is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft6/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft6/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft6/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft6/type/type: array or object/object is valid":                                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft6/type/type: array, object or null/object is valid":                                                                                     "non-structural schema: data shape incompatible with generated type",
 	"draft7/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft7/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft7/allOf/allOf with boolean schemas, all true/any value is valid":                                                                        "non-structural schema: data shape incompatible with generated type",
@@ -329,9 +315,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/ref/ref with absolute-path-reference/a string is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft7/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft7/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft7/type/type: array or object/object is valid":                                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft7/type/type: array, object or null/object is valid":                                                                                     "non-structural schema: data shape incompatible with generated type",
 
 	// Type-inferred schemas: constraint-only schemas (no "type" field) now infer a Go type
 	// from the constraint keywords. JSTS tests these with incompatible data types (e.g.,
@@ -531,7 +514,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 485 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 461 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -547,7 +530,7 @@ var knownParseFailures = map[string]string{}
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
-//   - codegen produces code that fails to compile for validation binary (38)
+//   - codegen produces code that fails to compile for validation binary (23)
 //   - (uniqueItems/additionalItems interaction: fixed)
 //   - unevaluatedProperties validation not implemented (82)
 //   - (type-only null validation — FIXED)
@@ -786,13 +769,16 @@ var knownValidationFailures = map[string]string{
 	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 
-	// codegen produces code that fails to compile for validation binary (19 entries)
-	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item not a string is invalid":                                          "codegen produces code that fails to compile for validation binary",
+	// $anchor/$recursiveRef resolution edge cases (3 entries)
+	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1": "$anchor resolution produces wrong unmarshal type",
+	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root":                "$recursiveRef validation not implemented",
+	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1": "$anchor resolution produces wrong unmarshal type",
+
+	// codegen produces code that fails to compile for validation binary (12 entries)
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root":                                                                                        "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length":      "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid": "codegen produces code that fails to compile for validation binary",
@@ -801,12 +787,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
-
-	"draft4/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/$ref to $ref finds location-independent $id/non-number is invalid": "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/$ref to $ref finds location-independent $id/non-number is invalid": "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/Location-independent identifier in remote ref/string is invalid":   "codegen produces code that fails to compile for validation binary",
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
@@ -917,14 +897,11 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
 
-	// codegen produces code that fails to compile for validation binary (19 additional entries)
-	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item is a string is valid":                                    "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (11 additional entries)
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
@@ -932,12 +909,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
-
-	"draft4/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/$ref to $ref finds location-independent $id/number is valid":    "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/$ref to $ref finds location-independent $id/number is valid":    "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/Location-independent identifier in remote ref/integer is valid": "codegen produces code that fails to compile for validation binary",
 
 	// non-object data: cannot unmarshal array into generated Go type (27 additional entries)
 	"draft2019-09/items/items and subitems/fewer items is valid":                                                                  "non-object data: cannot unmarshal array into generated Go type",
@@ -1066,21 +1037,17 @@ var knownValidationFailures = map[string]string{
 	"draft7/ref/ref to then/an integer is valid":                                                                               "non-object data: cannot unmarshal number into generated Go type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":                                "non-object data: cannot unmarshal number into generated Go type",
 
-	// non-object data: cannot unmarshal string into generated Go type (30 additional entries)
+	// non-object data: cannot unmarshal string into generated Go type (24 additional entries)
 	"draft2019-09/allOf/allOf with boolean schemas, all true/any value is valid":                                              "non-object data: cannot unmarshal string into generated Go type",
 	"draft2019-09/oneOf/oneOf with base schema/one oneOf valid":                                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft2019-09/oneOf/oneOf with boolean schemas, one true/any value is valid":                                              "non-object data: cannot unmarshal string into generated Go type",
 	"draft2019-09/oneOf/oneOf with empty schema/one valid - valid":                                                            "non-object data: cannot unmarshal string into generated Go type",
-	"draft2019-09/type/multiple types can be specified in an array/a string is valid":                                         "non-object data: cannot unmarshal string into generated Go type",
 	"draft2020-12/allOf/allOf with boolean schemas, all true/any value is valid":                                              "non-object data: cannot unmarshal string into generated Go type",
 	"draft2020-12/oneOf/oneOf with base schema/one oneOf valid":                                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft2020-12/oneOf/oneOf with boolean schemas, one true/any value is valid":                                              "non-object data: cannot unmarshal string into generated Go type",
 	"draft2020-12/oneOf/oneOf with empty schema/one valid - valid":                                                            "non-object data: cannot unmarshal string into generated Go type",
-	"draft2020-12/type/multiple types can be specified in an array/a string is valid":                                         "non-object data: cannot unmarshal string into generated Go type",
-	"draft3/type/multiple types can be specified in an array/a string is valid":                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft4/oneOf/oneOf with base schema/one oneOf valid":                                                                     "non-object data: cannot unmarshal string into generated Go type",
 	"draft4/oneOf/oneOf with empty schema/one valid - valid":                                                                  "non-object data: cannot unmarshal string into generated Go type",
-	"draft4/type/multiple types can be specified in an array/a string is valid":                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft6/allOf/allOf with boolean schemas, all true/any value is valid":                                                    "non-object data: cannot unmarshal string into generated Go type",
 	"draft6/oneOf/oneOf with base schema/one oneOf valid":                                                                     "non-object data: cannot unmarshal string into generated Go type",
 	"draft6/oneOf/oneOf with boolean schemas, one true/any value is valid":                                                    "non-object data: cannot unmarshal string into generated Go type",
@@ -1089,23 +1056,15 @@ var knownValidationFailures = map[string]string{
 	"draft6/optional/id/non-schema object containing an $id property/skip traversing definition for a valid result":           "non-object data: cannot unmarshal string into generated Go type",
 	"draft6/ref/$ref to boolean schema true/any value is valid":                                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft6/ref/ref with absolute-path-reference/a string is valid":                                                           "non-object data: cannot unmarshal string into generated Go type",
-	"draft6/type/multiple types can be specified in an array/a string is valid":                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/allOf/allOf with boolean schemas, all true/any value is valid":                                                    "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/oneOf/oneOf with base schema/one oneOf valid":                                                                     "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/oneOf/oneOf with boolean schemas, one true/any value is valid":                                                    "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/oneOf/oneOf with empty schema/one valid - valid":                                                                  "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/ref/$ref to boolean schema true/any value is valid":                                                               "non-object data: cannot unmarshal string into generated Go type",
 	"draft7/ref/ref with absolute-path-reference/a string is valid":                                                           "non-object data: cannot unmarshal string into generated Go type",
-	"draft7/type/multiple types can be specified in an array/a string is valid":                                               "non-object data: cannot unmarshal string into generated Go type",
 
-	// over-strict validation: valid data rejected (7 additional entries)
-	"draft2019-09/type/type: array or object/object is valid":                          "over-strict validation: valid data rejected",
-	"draft2020-12/type/type: array or object/object is valid":                          "over-strict validation: valid data rejected",
+	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
-	"draft3/type/types can include schemas/an object is valid":                         "over-strict validation: valid data rejected",
-	"draft4/type/type: array or object/object is valid":                                "over-strict validation: valid data rejected",
-	"draft6/type/type: array or object/object is valid":                                "over-strict validation: valid data rejected",
-	"draft7/type/type: array or object/object is valid":                                "over-strict validation: valid data rejected",
 }
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order

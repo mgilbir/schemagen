@@ -1885,11 +1885,23 @@ func schemaAllowsNull(s *schema.Schema) bool {
 }
 
 func primarySchemaType(s *schema.Schema) string {
+	// Count distinct non-null types. If there are multiple incompatible types
+	// (e.g., ["array", "object"] or ["integer", "string"]), return "" so that
+	// resolveType falls back to `any` — Go can't represent a union type.
+	var nonNull []string
 	for _, t := range s.Type {
 		if t != "null" {
-			return t
+			nonNull = append(nonNull, t)
 		}
 	}
+	if len(nonNull) == 1 {
+		return nonNull[0]
+	}
+	if len(nonNull) > 1 {
+		// Multiple incompatible types — no single Go type can represent this.
+		return ""
+	}
+	// Only "null" type(s) or empty.
 	if len(s.Type) > 0 {
 		return s.Type[0]
 	}
