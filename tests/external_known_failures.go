@@ -4,12 +4,8 @@ package tests
 // These are categorized by root cause. Bidirectional checking ensures
 // that if a known failure starts passing, the test will error (remove from list).
 
-// CodeGen: 119 known failures (2 flaky entries removed — non-deterministic map iteration)
+// CodeGen: 75 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownCodeGenFailures = map[string]string{
-	"draft2019-09/anchor/Location-independent identifier":                                                          "remote ref resolution edge case",
-	"draft2019-09/anchor/Location-independent identifier with absolute URI":                                        "remote ref resolution edge case",
-	"draft2019-09/anchor/Location-independent identifier with base URI change in subschema":                        "remote ref resolution edge case",
-	"draft2019-09/anchor/same $anchor with different base uri":                                                     "$anchor resolution not fully implemented",
 	"draft2019-09/enum/enum with [0] does not match [false]":                                                       "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [1] does not match [true]":                                                        "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [false] does not match [0]":                                                       "heterogeneous enum produces invalid Go type",
@@ -18,38 +14,15 @@ var knownCodeGenFailures = map[string]string{
 	"draft2019-09/enum/heterogeneous enum validation":                                                              "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/heterogeneous enum-with-null validation":                                                    "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/anchor/$anchor inside an enum is not a real identifier":                                 "special characters in enum/ref produce invalid Go code",
-	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts":                       "cross-draft $ref resolution not supported",
 	"draft2019-09/optional/id/$id inside an enum is not a real identifier":                                         "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword ":                             "$ref to unknown keyword locations not supported",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref":             "$ref to unknown keyword locations not supported",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema":                  "$ref to unknown keyword locations not supported",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref": "$ref to unknown keyword locations not supported",
-	"draft2019-09/ref/$ref with $recursiveAnchor":                                                                  "$recursiveAnchor not fully implemented",
-	"draft2019-09/ref/URN ref with nested pointer ref":                                                             "URN-based $ref not supported",
 	"draft2019-09/ref/naive replacement of $ref with its destination is not correct":                               "special characters in enum/ref produce invalid Go code",
 
-	"draft2019-09/ref/order of evaluation: $id and $ref":                                                                      "$id and $ref evaluation order edge case",
-	"draft2019-09/ref/order of evaluation: $id and $ref on nested schema":                                                     "$id and $ref evaluation order edge case",
-	"draft2019-09/ref/ref with absolute-path-reference":                                                                       "absolute-path $ref not supported",
-	"draft2019-09/refRemote/$ref to $ref finds detached $anchor":                                                              "$anchor resolution not fully implemented",
-	"draft2019-09/refRemote/Location-independent identifier in remote ref":                                                    "remote ref resolution edge case",
-	"draft2019-09/refRemote/anchor within remote ref":                                                                         "remote ref resolution edge case",
-	"draft2019-09/refRemote/fragment within remote ref":                                                                       "remote ref resolution edge case",
-	"draft2019-09/refRemote/ref within remote ref":                                                                            "remote ref resolution edge case",
-	"draft2019-09/refRemote/remote HTTP ref with different $id":                                                               "remote ref resolution edge case",
-	"draft2019-09/refRemote/remote HTTP ref with different URN $id":                                                           "remote ref resolution edge case",
-	"draft2019-09/refRemote/remote HTTP ref with nested absolute ref":                                                         "remote ref resolution edge case",
-	"draft2019-09/refRemote/remote ref":                                                                                       "remote ref resolution edge case",
-	"draft2019-09/refRemote/remote ref with ref to defs":                                                                      "remote ref resolution edge case",
-	"draft2020-12/anchor/Location-independent identifier":                                                                     "remote ref resolution edge case",
-	"draft2020-12/anchor/Location-independent identifier with absolute URI":                                                   "remote ref resolution edge case",
-	"draft2020-12/anchor/Location-independent identifier with base URI change in subschema":                                   "remote ref resolution edge case",
-	"draft2020-12/anchor/same $anchor with different base uri":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered":                     "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor":                                               "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties":                                        "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link":                                      "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/enum/enum with [0] does not match [false]":                                                                  "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [1] does not match [true]":                                                                   "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [false] does not match [0]":                                                                  "heterogeneous enum produces invalid Go type",
@@ -83,9 +56,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft3/enum/heterogeneous enum validation":                                "heterogeneous enum produces invalid Go type",
 	"draft3/enum/heterogeneous enum-with-null validation":                      "special characters in enum/ref produce invalid Go code",
 	"draft3/ref/naive replacement of $ref with its destination is not correct": "special characters in enum/ref produce invalid Go code",
-	"draft3/refRemote/fragment within remote ref":                              "remote ref resolution edge case",
-	"draft3/refRemote/ref within remote ref":                                   "remote ref resolution edge case",
-	"draft3/refRemote/remote ref":                                              "remote ref resolution edge case",
 	"draft4/enum/enum with [0] does not match [false]":                         "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [1] does not match [true]":                          "heterogeneous enum produces invalid Go type",
 	"draft4/enum/enum with [false] does not match [0]":                         "heterogeneous enum produces invalid Go type",
@@ -95,10 +65,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft4/enum/heterogeneous enum-with-null validation":                      "special characters in enum/ref produce invalid Go code",
 	"draft4/optional/id/id inside an enum is not a real identifier":            "special characters in enum/ref produce invalid Go code",
 	"draft4/ref/naive replacement of $ref with its destination is not correct": "special characters in enum/ref produce invalid Go code",
-	"draft4/refRemote/Location-independent identifier in remote ref":           "remote ref resolution edge case",
-	"draft4/refRemote/fragment within remote ref":                              "remote ref resolution edge case",
-	"draft4/refRemote/ref within remote ref":                                   "remote ref resolution edge case",
-	"draft4/refRemote/remote ref":                                              "remote ref resolution edge case",
 	"draft6/enum/enum with [0] does not match [false]":                         "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [1] does not match [true]":                          "heterogeneous enum produces invalid Go type",
 	"draft6/enum/enum with [false] does not match [0]":                         "heterogeneous enum produces invalid Go type",
@@ -108,11 +74,6 @@ var knownCodeGenFailures = map[string]string{
 	"draft6/enum/heterogeneous enum-with-null validation":                      "special characters in enum/ref produce invalid Go code",
 	"draft6/optional/id/id inside an enum is not a real identifier":            "special characters in enum/ref produce invalid Go code",
 	"draft6/ref/naive replacement of $ref with its destination is not correct": "special characters in enum/ref produce invalid Go code",
-	"draft6/refRemote/$ref to $ref finds location-independent $id":             "remote ref resolution edge case",
-	"draft6/refRemote/Location-independent identifier in remote ref":           "remote ref resolution edge case",
-	"draft6/refRemote/fragment within remote ref":                              "remote ref resolution edge case",
-	"draft6/refRemote/ref within remote ref":                                   "remote ref resolution edge case",
-	"draft6/refRemote/remote ref":                                              "remote ref resolution edge case",
 	"draft7/enum/enum with [0] does not match [false]":                         "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [1] does not match [true]":                          "heterogeneous enum produces invalid Go type",
 	"draft7/enum/enum with [false] does not match [0]":                         "heterogeneous enum produces invalid Go type",
@@ -122,14 +83,9 @@ var knownCodeGenFailures = map[string]string{
 	"draft7/enum/heterogeneous enum-with-null validation":                      "special characters in enum/ref produce invalid Go code",
 	"draft7/optional/id/id inside an enum is not a real identifier":            "special characters in enum/ref produce invalid Go code",
 	"draft7/ref/naive replacement of $ref with its destination is not correct": "special characters in enum/ref produce invalid Go code",
-	"draft7/refRemote/$ref to $ref finds location-independent $id":             "remote ref resolution edge case",
-	"draft7/refRemote/Location-independent identifier in remote ref":           "remote ref resolution edge case",
-	"draft7/refRemote/fragment within remote ref":                              "remote ref resolution edge case",
-	"draft7/refRemote/ref within remote ref":                                   "remote ref resolution edge case",
-	"draft7/refRemote/remote ref":                                              "remote ref resolution edge case",
 }
 
-// RoundTrip: 518 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 476 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/allOf/allOf combined with anyOf, oneOf/allOf: true, anyOf: true, oneOf: true":                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/allOf/allOf simple types/valid":                                                                                                       "non-structural schema: data shape incompatible with generated type",
@@ -139,9 +95,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/allOf/allOf with the last empty schema/number is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/allOf/allOf with two empty schemas/any data is valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/allOf/nested allOf, to check validation semantics/null is valid":                                                                      "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/anchor/Location-independent identifier with absolute URI/match":                                                                       "$anchor resolution not fully implemented",
-	"draft2019-09/anchor/Location-independent identifier with base URI change in subschema/match":                                                       "$anchor resolution not fully implemented",
-	"draft2019-09/anchor/Location-independent identifier/match":                                                                                         "$anchor resolution not fully implemented",
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
 	"draft2019-09/enum/enum with [0] does not match [false]/[0.0] is valid":                                                                             "heterogeneous enum produces invalid Go type",
 	"draft2019-09/enum/enum with [0] does not match [false]/[0] is valid":                                                                               "heterogeneous enum produces invalid Go type",
@@ -168,7 +121,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/optional/anchor/$anchor inside an enum is not a real identifier/match $ref to $anchor":                                                "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item is a string is valid":                            "cross-draft $ref resolution not supported",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/id/$id inside an enum is not a real identifier/exact match to enum, and type matches":                                        "special characters in enum/ref produce invalid Go code",
 	"draft2019-09/optional/id/$id inside an enum is not a real identifier/match $ref to $id":                                                            "special characters in enum/ref produce invalid Go code",
@@ -177,24 +129,9 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                "$ref to unknown keyword locations not supported",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                 "$ref to unknown keyword locations not supported",
 	"draft2019-09/ref/$id must be resolved against nearest parent, not just immediate parent/number is valid":                                           "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/ref/$ref with $recursiveAnchor/extra items allowed for inner arrays":                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/ref/URN ref with nested pointer ref/a string is valid":                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/ref/empty tokens in $ref json-pointer/number is valid":                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
 
-	"draft2019-09/ref/order of evaluation: $id and $ref on nested schema/data is valid against nested sibling":                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/ref/order of evaluation: $id and $ref/data is valid against first definition":                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/ref/ref with absolute-path-reference/a string is valid":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/$ref to $ref finds detached $anchor/number is valid":                                                                                "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/Location-independent identifier in remote ref/integer is valid":                                                                     "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/anchor within remote ref/remote anchor valid":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/fragment within remote ref/remote fragment valid":                                                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/ref within remote ref/ref within ref valid":                                                                                         "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/remote HTTP ref with different $id/string is valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/remote HTTP ref with different URN $id/string is valid":                                                                             "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/remote HTTP ref with nested absolute ref/string is valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/remote ref with ref to defs/valid":                                                                                                  "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/refRemote/remote ref/remote ref valid":                                                                                                        "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/required/required validation/ignores null":                                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/type/integer type matches integers/a float with zero fractional part is an integer":                                                           "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/type/multiple types can be specified in an array/a string is valid":                                                                           "non-structural schema: data shape incompatible with generated type",
@@ -216,15 +153,9 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/allOf/allOf with the last empty schema/number is valid":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/allOf/allOf with two empty schemas/any data is valid":                                                                                         "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/allOf/nested allOf, to check validation semantics/null is valid":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/anchor/Location-independent identifier with absolute URI/match":                                                                               "$anchor resolution not fully implemented",
-	"draft2020-12/anchor/Location-independent identifier with base URI change in subschema/match":                                                               "$anchor resolution not fully implemented",
-	"draft2020-12/anchor/Location-independent identifier/match":                                                                                                 "$anchor resolution not fully implemented",
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with correct field":                                              "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/correct extended schema":                                                "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/enum/enum with [0] does not match [false]/[0.0] is valid":                                                                                     "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [0] does not match [false]/[0] is valid":                                                                                       "heterogeneous enum produces invalid Go type",
 	"draft2020-12/enum/enum with [1] does not match [true]/[1.0] is valid":                                                                                      "heterogeneous enum produces invalid Go type",
@@ -298,9 +229,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft3/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft3/ref/$ref prevents a sibling id from changing the base uri/$ref resolves to /definitions/base_foo, data validates":                     "non-structural schema: data shape incompatible with generated type",
 	"draft3/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
-	"draft3/refRemote/fragment within remote ref/remote fragment valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft3/refRemote/ref within remote ref/ref within ref valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft3/refRemote/remote ref/remote ref valid":                                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/types can include schemas/an object is valid":                                                                                    "non-structural schema: data shape incompatible with generated type",
@@ -342,10 +270,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft4/ref/id with file URI still resolves pointers - windows/number is valid":                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft4/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
 	"draft4/ref/nested refs/nested ref valid":                                                                                                     "non-structural schema: data shape incompatible with generated type",
-	"draft4/refRemote/Location-independent identifier in remote ref/integer is valid":                                                             "non-structural schema: data shape incompatible with generated type",
-	"draft4/refRemote/fragment within remote ref/remote fragment valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft4/refRemote/ref within remote ref/ref within ref valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft4/refRemote/remote ref/remote ref valid":                                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft4/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft4/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
 	"draft4/type/type: array or object/object is valid":                                                                                           "non-structural schema: data shape incompatible with generated type",
@@ -395,11 +319,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft6/ref/naive replacement of $ref with its destination is not correct/match the enum exactly":                                             "special characters in enum/ref produce invalid Go code",
 	"draft6/ref/nested refs/nested ref valid":                                                                                                     "non-structural schema: data shape incompatible with generated type",
 	"draft6/ref/ref with absolute-path-reference/a string is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
-	"draft6/refRemote/$ref to $ref finds location-independent $id/number is valid":                                                                "non-structural schema: data shape incompatible with generated type",
-	"draft6/refRemote/Location-independent identifier in remote ref/integer is valid":                                                             "non-structural schema: data shape incompatible with generated type",
-	"draft6/refRemote/fragment within remote ref/remote fragment valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft6/refRemote/ref within remote ref/ref within ref valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft6/refRemote/remote ref/remote ref valid":                                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft6/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft6/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
 	"draft6/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
@@ -454,11 +373,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft7/ref/ref to if/an integer is valid":                                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft7/ref/ref to then/an integer is valid":                                                                                                  "non-structural schema: data shape incompatible with generated type",
 	"draft7/ref/ref with absolute-path-reference/a string is valid":                                                                               "non-structural schema: data shape incompatible with generated type",
-	"draft7/refRemote/$ref to $ref finds location-independent $id/number is valid":                                                                "non-structural schema: data shape incompatible with generated type",
-	"draft7/refRemote/Location-independent identifier in remote ref/integer is valid":                                                             "non-structural schema: data shape incompatible with generated type",
-	"draft7/refRemote/fragment within remote ref/remote fragment valid":                                                                           "non-structural schema: data shape incompatible with generated type",
-	"draft7/refRemote/ref within remote ref/ref within ref valid":                                                                                 "non-structural schema: data shape incompatible with generated type",
-	"draft7/refRemote/remote ref/remote ref valid":                                                                                                "non-structural schema: data shape incompatible with generated type",
 	"draft7/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
 	"draft7/type/multiple types can be specified in an array/a string is valid":                                                                   "non-structural schema: data shape incompatible with generated type",
@@ -663,7 +577,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 648 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 579 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -673,13 +587,13 @@ var knownParseFailures = map[string]string{}
 //   - (enum property validation — FIXED via validatable field dispatch)
 //   - default keyword: valid data omits field, zero-value fails minLength (6)
 //   - (multipleOf float overflow — FIXED via quotient rounding)
-//   - $dynamicRef with required: $dynamicRef not implemented (5)
+//   - $dynamicRef with required: $dynamicRef not implemented (3)
 //   - ($ref overrides sibling maxItems — FIXED)
-//   - $id/$ref evaluation order edge case (4)
+//   - $id/$ref evaluation order edge case (3)
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
-//   - codegen produces code that fails to compile for validation binary (70)
+//   - codegen produces code that fails to compile for validation binary (37)
 //   - uniqueItems validation not implemented (12 remaining — additionalItems interaction)
 //   - unevaluatedProperties validation not implemented (82)
 //   - (type-only null validation — FIXED)
@@ -817,7 +731,6 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
 
 	// $id/$ref evaluation order — codegen resolves $id and $ref in wrong order
-	"draft2019-09/ref/order of evaluation: $id and $ref/data is valid against first definition":   "$id/$ref evaluation order edge case",
 	"draft2019-09/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
 	"draft2020-12/ref/order of evaluation: $id and $ref/data is valid against first definition":   "$id/$ref evaluation order edge case",
 	"draft2020-12/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
@@ -833,9 +746,7 @@ var knownValidationFailures = map[string]string{
 	// (enum in properties — FIXED via validatable field dispatch)
 
 	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not implemented
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/correct extended schema":       "$dynamicRef with required: $dynamicRef not implemented",
 	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect extended schema":     "$dynamicRef with required: $dynamicRef not implemented",
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema":       "$dynamicRef with required: $dynamicRef not implemented",
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/incorrect extended schema": "$dynamicRef with required: $dynamicRef not implemented",
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/incorrect extended schema":  "$dynamicRef with required: $dynamicRef not implemented",
 
@@ -935,11 +846,7 @@ var knownValidationFailures = map[string]string{
 	"draft6/anyOf/anyOf with base schema/both anyOf invalid":       "anyOf validation not implemented",
 	"draft7/anyOf/anyOf with base schema/both anyOf invalid":       "anyOf validation not implemented",
 
-	// codegen produces code that fails to compile for validation binary (70 entries)
-	"draft2019-09/anchor/Location-independent identifier with absolute URI/mismatch":                                                                                     "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/anchor/Location-independent identifier with base URI change in subschema/mismatch":                                                                     "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/anchor/Location-independent identifier/mismatch":                                                                                                       "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/anchor/same $anchor with different base uri/$ref does not resolve to /$defs/A/allOf/0":                                                                 "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (37 entries)
 	"draft2019-09/enum/enum with escaped characters/another string is invalid":                                                                                           "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/cross-draft/refs to future drafts are processed as future drafts/first item not a string is invalid":                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
@@ -947,23 +854,6 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root":                                                                                        "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/URN ref with nested pointer ref/a non-string is invalid":                                                                                           "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/order of evaluation: $id and $ref on nested schema/data is invalid against nested sibling":                                                         "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/ref with absolute-path-reference/an integer is invalid":                                                                                            "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/$ref to $ref finds detached $anchor/non-number is invalid":                                                                                   "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/Location-independent identifier in remote ref/string is invalid":                                                                             "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/anchor within remote ref/remote anchor invalid":                                                                                              "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/fragment within remote ref/remote fragment invalid":                                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/ref within remote ref/ref within ref invalid":                                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with different $id/number is invalid":                                                                                        "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with different URN $id/number is invalid":                                                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with nested absolute ref/number is invalid":                                                                                  "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote ref with ref to defs/invalid":                                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote ref/remote ref invalid":                                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier with absolute URI/mismatch":                                                                                     "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier with base URI change in subschema/mismatch":                                                                     "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier/mismatch":                                                                                                       "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref does not resolve to /$defs/A/allOf/0":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length":      "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid": "codegen produces code that fails to compile for validation binary",
@@ -986,26 +876,14 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/refRemote/remote HTTP ref with nested absolute ref/number is invalid":                                                                                  "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/refRemote/remote ref with ref to defs/invalid":                                                                                                         "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/refRemote/remote ref/remote ref invalid":                                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/fragment within remote ref/remote fragment invalid":                                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/ref within remote ref/ref within ref invalid":                                                                                                      "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/remote ref/remote ref invalid":                                                                                                                     "codegen produces code that fails to compile for validation binary",
 	"draft4/enum/enum with escaped characters/another string is invalid":                                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft4/refRemote/Location-independent identifier in remote ref/string is invalid":                                                                                   "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/fragment within remote ref/remote fragment invalid":                                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/ref within remote ref/ref within ref invalid":                                                                                                      "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/remote ref/remote ref invalid":                                                                                                                     "codegen produces code that fails to compile for validation binary",
 	"draft6/enum/enum with escaped characters/another string is invalid":                                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/$ref to $ref finds location-independent $id/non-number is invalid":                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/Location-independent identifier in remote ref/string is invalid":                                                                                   "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/fragment within remote ref/remote fragment invalid":                                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/ref within remote ref/ref within ref invalid":                                                                                                      "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/remote ref/remote ref invalid":                                                                                                                     "codegen produces code that fails to compile for validation binary",
 	"draft7/enum/enum with escaped characters/another string is invalid":                                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/$ref to $ref finds location-independent $id/non-number is invalid":                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/Location-independent identifier in remote ref/string is invalid":                                                                                   "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/fragment within remote ref/remote fragment invalid":                                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/ref within remote ref/ref within ref invalid":                                                                                                      "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/remote ref/remote ref invalid":                                                                                                                     "codegen produces code that fails to compile for validation binary",
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
@@ -1164,10 +1042,7 @@ var knownValidationFailures = map[string]string{
 	"draft7/uniqueItems/uniqueItems with an array of items and additionalItems=false/extra items are invalid even if unique":             "uniqueItems validation not implemented",
 	"draft7/uniqueItems/uniqueItems=false with an array of items and additionalItems=false/extra items are invalid even if unique":       "uniqueItems validation not implemented",
 
-	// codegen produces code that fails to compile for validation binary (76 additional entries)
-	"draft2019-09/anchor/Location-independent identifier with absolute URI/match":                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/anchor/Location-independent identifier with base URI change in subschema/match":                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/anchor/Location-independent identifier/match":                                                                                                 "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (43 additional entries)
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/enum/enum with escaped characters/member 1 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/enum/enum with escaped characters/member 2 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
@@ -1176,28 +1051,10 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
 	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/$ref with $recursiveAnchor/extra items allowed for inner arrays":                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/URN ref with nested pointer ref/a string is valid":                                                                                        "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/order of evaluation: $id and $ref on nested schema/data is valid against nested sibling":                                                  "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/ref/ref with absolute-path-reference/a string is valid":                                                                                       "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/$ref to $ref finds detached $anchor/number is valid":                                                                                "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/Location-independent identifier in remote ref/integer is valid":                                                                     "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/anchor within remote ref/remote anchor valid":                                                                                       "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/fragment within remote ref/remote fragment valid":                                                                                   "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/ref within remote ref/ref within ref valid":                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with different $id/string is valid":                                                                                 "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with different URN $id/string is valid":                                                                             "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote HTTP ref with nested absolute ref/string is valid":                                                                           "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote ref with ref to defs/valid":                                                                                                  "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/refRemote/remote ref/remote ref valid":                                                                                                        "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier with absolute URI/match":                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier with base URI change in subschema/match":                                                               "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/anchor/Location-independent identifier/match":                                                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with correct field":                                              "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/enum/enum with escaped characters/member 1 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/enum/enum with escaped characters/member 2 is valid":                                                                                          "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/optional/cross-draft/refs to historic drafts are processed as historic drafts/first item not a string is valid":                               "codegen produces code that fails to compile for validation binary",
@@ -1218,29 +1075,17 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/refRemote/remote HTTP ref with nested absolute ref/string is valid":                                                                           "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/refRemote/remote ref with ref to defs/valid":                                                                                                  "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/refRemote/remote ref/remote ref valid":                                                                                                        "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/fragment within remote ref/remote fragment valid":                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/ref within remote ref/ref within ref valid":                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft3/refRemote/remote ref/remote ref valid":                                                                                                              "codegen produces code that fails to compile for validation binary",
 	"draft4/enum/enum with escaped characters/member 1 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft4/enum/enum with escaped characters/member 2 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft4/refRemote/Location-independent identifier in remote ref/integer is valid":                                                                           "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/fragment within remote ref/remote fragment valid":                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/ref within remote ref/ref within ref valid":                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft4/refRemote/remote ref/remote ref valid":                                                                                                              "codegen produces code that fails to compile for validation binary",
 	"draft6/enum/enum with escaped characters/member 1 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft6/enum/enum with escaped characters/member 2 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/$ref to $ref finds location-independent $id/number is valid":                                                                              "codegen produces code that fails to compile for validation binary",
 	"draft6/refRemote/Location-independent identifier in remote ref/integer is valid":                                                                           "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/fragment within remote ref/remote fragment valid":                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/ref within remote ref/ref within ref valid":                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft6/refRemote/remote ref/remote ref valid":                                                                                                              "codegen produces code that fails to compile for validation binary",
 	"draft7/enum/enum with escaped characters/member 1 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft7/enum/enum with escaped characters/member 2 is valid":                                                                                                "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/$ref to $ref finds location-independent $id/number is valid":                                                                              "codegen produces code that fails to compile for validation binary",
 	"draft7/refRemote/Location-independent identifier in remote ref/integer is valid":                                                                           "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/fragment within remote ref/remote fragment valid":                                                                                         "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/ref within remote ref/ref within ref valid":                                                                                               "codegen produces code that fails to compile for validation binary",
-	"draft7/refRemote/remote ref/remote ref valid":                                                                                                              "codegen produces code that fails to compile for validation binary",
 
 	// non-object data: cannot unmarshal array into generated Go type (27 additional entries)
 	"draft2019-09/items/items and subitems/fewer items is valid":                                                                  "non-object data: cannot unmarshal array into generated Go type",

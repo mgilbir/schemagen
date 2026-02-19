@@ -403,6 +403,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
 			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
+			// Generate the referenced type definition (e.g., for remote $ref targets).
+			if err := g.generateTypeDef(refName, resolved); err != nil {
+				return err
+			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:        name,
@@ -1461,6 +1465,19 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 	// 6. Try external resolver with the raw ref (handles absolute URIs, etc.).
 	if g.resolver != nil {
 		if s, err := g.resolver.ResolveSchema(ref, ctxBase); err == nil {
+			// Register the remote schema so its internal $ref chains resolve.
+			if refURL, parseErr := url.Parse(ref); parseErr == nil {
+				frag := refURL.Fragment
+				refURL.Fragment = ""
+				g.registerRemoteSchema(s, refURL)
+				// If there was a fragment, resolve it within the now-registered schema.
+				if frag != "" {
+					local := schema.NewLocalResolver(s)
+					if resolved, localErr := local.ResolveSchema("#"+frag, refURL); localErr == nil {
+						return resolved
+					}
+				}
+			}
 			return s
 		}
 	}
