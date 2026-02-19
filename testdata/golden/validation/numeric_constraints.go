@@ -16,6 +16,9 @@ type Measurement struct {
 }
 
 func (m *Measurement) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Measurement")
+	}
 	type Alias Measurement
 	aux := &struct {
 		*Alias

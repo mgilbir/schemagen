@@ -13,6 +13,9 @@ type FlexibleConfig struct {
 }
 
 func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type FlexibleConfig")
+	}
 	type Alias FlexibleConfig
 	aux := &struct {
 		*Alias

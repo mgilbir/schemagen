@@ -3,6 +3,11 @@
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
+	{{- if $struct.NeedsNullCheck}}
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type {{$struct.Name}}")
+	}
+	{{- end}}
 	type Alias {{$struct.Name}}
 	aux := &struct {
 		*Alias

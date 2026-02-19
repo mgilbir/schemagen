@@ -16,6 +16,9 @@ type Employee struct {
 }
 
 func (e *Employee) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Employee")
+	}
 	type Alias Employee
 	aux := &struct {
 		*Alias

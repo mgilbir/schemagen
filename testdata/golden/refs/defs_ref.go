@@ -15,6 +15,9 @@ type Address struct {
 }
 
 func (a *Address) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Address")
+	}
 	type Alias Address
 	aux := &struct {
 		*Alias
@@ -90,6 +93,9 @@ type Item struct {
 }
 
 func (i *Item) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Item")
+	}
 	type Alias Item
 	aux := &struct {
 		*Alias
@@ -166,6 +172,9 @@ type Order struct {
 }
 
 func (o *Order) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Order")
+	}
 	type Alias Order
 	aux := &struct {
 		*Alias

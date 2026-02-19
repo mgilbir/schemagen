@@ -4,6 +4,7 @@ package testpkg
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type PrimitiveTypes struct {
@@ -16,6 +17,9 @@ type PrimitiveTypes struct {
 }
 
 func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type PrimitiveTypes")
+	}
 	type Alias PrimitiveTypes
 	aux := &struct {
 		*Alias

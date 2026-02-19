@@ -13,6 +13,9 @@ type Metadata struct {
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Metadata")
+	}
 	type Alias Metadata
 	aux := &struct {
 		*Alias

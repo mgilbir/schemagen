@@ -14,6 +14,9 @@ type DatabaseConfig struct {
 }
 
 func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type DatabaseConfig")
+	}
 	type Alias DatabaseConfig
 	aux := &struct {
 		*Alias
@@ -87,6 +90,9 @@ type Config struct {
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Config")
+	}
 	type Alias Config
 	aux := &struct {
 		*Alias

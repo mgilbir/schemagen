@@ -14,6 +14,9 @@ type Member struct {
 }
 
 func (m *Member) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Member")
+	}
 	type Alias Member
 	aux := &struct {
 		*Alias
@@ -87,6 +90,9 @@ type Team struct {
 }
 
 func (t *Team) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Team")
+	}
 	type Alias Team
 	aux := &struct {
 		*Alias

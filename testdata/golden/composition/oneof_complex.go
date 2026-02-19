@@ -13,6 +13,9 @@ type EmailTarget struct {
 }
 
 func (e *EmailTarget) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type EmailTarget")
+	}
 	type Alias EmailTarget
 	aux := &struct {
 		*Alias
@@ -85,6 +88,9 @@ type HTMLContent struct {
 }
 
 func (h *HTMLContent) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type HTMLContent")
+	}
 	type Alias HTMLContent
 	aux := &struct {
 		*Alias
@@ -157,6 +163,9 @@ type SmsTarget struct {
 }
 
 func (s *SmsTarget) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type SmsTarget")
+	}
 	type Alias SmsTarget
 	aux := &struct {
 		*Alias
@@ -228,6 +237,9 @@ type TextContent struct {
 }
 
 func (t *TextContent) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type TextContent")
+	}
 	type Alias TextContent
 	aux := &struct {
 		*Alias
@@ -385,6 +397,9 @@ func (n *Notification) GetSmsTarget() *SmsTarget {
 }
 
 func (n *Notification) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Notification")
+	}
 	type Alias Notification
 	aux := &struct {
 		*Alias

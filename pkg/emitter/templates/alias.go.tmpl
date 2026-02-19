@@ -3,9 +3,24 @@
 // {{.Name}} - {{.Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
+{{- if and .CanHaveMethods .NeedsNullCheck}}
+{{template "alias_unmarshal" .}}
+{{- end}}
 {{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
 {{- end}}
+{{- end}}
+
+{{define "alias_unmarshal"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type {{.Name}}")
+	}
+	type Alias {{.Name}}
+	return json.Unmarshal(data, (*Alias)({{$recv}}))
+}
 {{- end}}
 
 {{define "alias_validate"}}

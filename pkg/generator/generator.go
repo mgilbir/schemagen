@@ -133,6 +133,15 @@ func (g *Generator) addRequiredImports() {
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
+			if sd.NeedsUnmarshal {
+				needsJSON = true // UnmarshalJSON always uses json.Unmarshal
+			}
+			if sd.NeedsMarshal {
+				needsJSON = true // MarshalJSON always uses json.Marshal
+			}
+			if sd.NeedsNullCheck {
+				needsFmt = true // UnmarshalJSON uses fmt.Errorf for null rejection
+			}
 			if len(sd.OneOfs) > 0 {
 				needsJSON = true
 				needsFmt = true
@@ -196,6 +205,10 @@ func (g *Generator) addRequiredImports() {
 			}
 			if usesJSONType(ad.Underlying) {
 				needsJSON = true
+			}
+			if ad.NeedsNullCheck && ad.CanHaveMethods() {
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal
+				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
 			}
 			if len(ad.Validations) > 0 {
 				needsFmt = true
@@ -398,10 +411,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		rules := extractAliasValidationRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:        name,
-			Underlying:  goType,
-			Description: s.Description,
-			Validations: rules,
+			Name:           name,
+			Underlying:     goType,
+			Description:    s.Description,
+			Validations:    rules,
+			NeedsNullCheck: !schemaAllowsNull(s),
 		})
 		return nil
 	}
@@ -412,10 +426,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		rules := extractAliasValidationRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:        name,
-			Underlying:  goType,
-			Description: s.Description,
-			Validations: rules,
+			Name:           name,
+			Underlying:     goType,
+			Description:    s.Description,
+			Validations:    rules,
+			NeedsNullCheck: !schemaAllowsNull(s),
 		})
 		return nil
 	}
@@ -441,8 +456,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				ValueType: &PrimitiveType{Name: "json.RawMessage"},
 			}
 		}
+		needsNullCheck := !schemaAllowsNull(s)
 		needsMarshal := additionalProps != nil
-		needsUnmarshal := additionalProps != nil
+		needsUnmarshal := additionalProps != nil || needsNullCheck
 		var validations []ValidationRule
 		if s.MaxProperties != nil {
 			validations = append(validations, ValidationRule{
@@ -461,6 +477,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			Validations:          validations,
 			NeedsMarshal:         needsMarshal,
 			NeedsUnmarshal:       needsUnmarshal,
+			NeedsNullCheck:       needsNullCheck,
 		})
 		return nil
 	}
@@ -719,6 +736,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		needsUnmarshal = true
 	}
 
+	needsNullCheck := !schemaAllowsNull(s)
+	if needsNullCheck {
+		needsUnmarshal = true
+	}
+
 	structDef := &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -730,6 +752,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema) error {
 		RequiredJSON:         requiredJSON,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
+		NeedsNullCheck:       needsNullCheck,
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, structDef)
 	return nil
@@ -1701,6 +1724,20 @@ func hasProperties(s *schema.Schema) bool {
 }
 
 // primarySchemaType returns the primary (first non-null) type from the type list.
+// schemaAllowsNull returns true if the schema's type list includes "null"
+// or if there is no explicit type (which means any type is allowed).
+func schemaAllowsNull(s *schema.Schema) bool {
+	if len(s.Type) == 0 {
+		return true // no explicit type constraint — any type allowed
+	}
+	for _, t := range s.Type {
+		if t == "null" {
+			return true
+		}
+	}
+	return false
+}
+
 func primarySchemaType(s *schema.Schema) string {
 	for _, t := range s.Type {
 		if t != "null" {

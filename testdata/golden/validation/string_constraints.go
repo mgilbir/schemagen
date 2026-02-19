@@ -17,6 +17,9 @@ type UserProfile struct {
 }
 
 func (u *UserProfile) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type UserProfile")
+	}
 	type Alias UserProfile
 	aux := &struct {
 		*Alias

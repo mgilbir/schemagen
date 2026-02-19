@@ -14,6 +14,9 @@ type SearchResult struct {
 }
 
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type SearchResult")
+	}
 	type Alias SearchResult
 	aux := &struct {
 		*Alias

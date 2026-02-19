@@ -13,6 +13,9 @@ type Circle struct {
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Circle")
+	}
 	type Alias Circle
 	aux := &struct {
 		*Alias
@@ -85,6 +88,9 @@ type Rectangle struct {
 }
 
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Rectangle")
+	}
 	type Alias Rectangle
 	aux := &struct {
 		*Alias
@@ -200,6 +206,9 @@ func (d *Drawing) GetRectangle() *Rectangle {
 }
 
 func (d *Drawing) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Drawing")
+	}
 	type Alias Drawing
 	aux := &struct {
 		*Alias

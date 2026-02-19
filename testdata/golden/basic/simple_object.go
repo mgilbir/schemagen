@@ -20,6 +20,9 @@ type Person struct {
 }
 
 func (p *Person) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Person")
+	}
 	type Alias Person
 	aux := &struct {
 		*Alias

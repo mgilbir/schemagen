@@ -52,6 +52,9 @@ type Task struct {
 }
 
 func (t *Task) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Task")
+	}
 	type Alias Task
 	aux := &struct {
 		*Alias

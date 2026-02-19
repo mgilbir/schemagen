@@ -17,6 +17,9 @@ type Event struct {
 }
 
 func (e *Event) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Event")
+	}
 	type Alias Event
 	aux := &struct {
 		*Alias

@@ -661,7 +661,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 814 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 766 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -681,7 +681,7 @@ var knownParseFailures = map[string]string{}
 //   - codegen produces code that fails to compile for validation binary (70)
 //   - uniqueItems validation not implemented (12 remaining — additionalItems interaction)
 //   - unevaluatedProperties validation not implemented (82)
-//   - type-only validation not implemented (48)
+//   - (type-only null validation — FIXED)
 //   - ECMA-262 regex patternProperties mismatch at unmarshal time (40)
 //   - $ref sibling keyword validation not implemented (20)
 //   - additionalProperties remaining: allOf interaction + schema validation (12)
@@ -1117,56 +1117,6 @@ var knownValidationFailures = map[string]string{
 
 	// required with composition validation not implemented (1 entries)
 	"draft3/required/required validation/non-present required property is invalid": "required with composition validation not implemented",
-
-	// type-only validation not implemented (48 entries)
-	"draft2019-09/type/array type matches arrays/null is not an array":              "type-only validation not implemented",
-	"draft2019-09/type/boolean type matches booleans/null is not a boolean":         "type-only validation not implemented",
-	"draft2019-09/type/integer type matches integers/null is not an integer":        "type-only validation not implemented",
-	"draft2019-09/type/multiple types can be specified in an array/null is invalid": "type-only validation not implemented",
-	"draft2019-09/type/number type matches numbers/null is not a number":            "type-only validation not implemented",
-	"draft2019-09/type/object type matches objects/null is not an object":           "type-only validation not implemented",
-	"draft2019-09/type/string type matches strings/null is not a string":            "type-only validation not implemented",
-	"draft2019-09/type/type: array or object/null is invalid":                       "type-only validation not implemented",
-	"draft2020-12/type/array type matches arrays/null is not an array":              "type-only validation not implemented",
-	"draft2020-12/type/boolean type matches booleans/null is not a boolean":         "type-only validation not implemented",
-	"draft2020-12/type/integer type matches integers/null is not an integer":        "type-only validation not implemented",
-	"draft2020-12/type/multiple types can be specified in an array/null is invalid": "type-only validation not implemented",
-	"draft2020-12/type/number type matches numbers/null is not a number":            "type-only validation not implemented",
-	"draft2020-12/type/object type matches objects/null is not an object":           "type-only validation not implemented",
-	"draft2020-12/type/string type matches strings/null is not a string":            "type-only validation not implemented",
-	"draft2020-12/type/type: array or object/null is invalid":                       "type-only validation not implemented",
-	"draft3/type/array type matches arrays/null is not an array":                    "type-only validation not implemented",
-	"draft3/type/boolean type matches booleans/null is not a boolean":               "type-only validation not implemented",
-	"draft3/type/integer type matches integers/null is not an integer":              "type-only validation not implemented",
-	"draft3/type/multiple types can be specified in an array/null is invalid":       "type-only validation not implemented",
-	"draft3/type/number type matches numbers/null is not a number":                  "type-only validation not implemented",
-	"draft3/type/object type matches objects/null is not an object":                 "type-only validation not implemented",
-	"draft3/type/string type matches strings/null is not a string":                  "type-only validation not implemented",
-	"draft3/type/types can include schemas/null is invalid":                         "type-only validation not implemented",
-	"draft4/type/array type matches arrays/null is not an array":                    "type-only validation not implemented",
-	"draft4/type/boolean type matches booleans/null is not a boolean":               "type-only validation not implemented",
-	"draft4/type/integer type matches integers/null is not an integer":              "type-only validation not implemented",
-	"draft4/type/multiple types can be specified in an array/null is invalid":       "type-only validation not implemented",
-	"draft4/type/number type matches numbers/null is not a number":                  "type-only validation not implemented",
-	"draft4/type/object type matches objects/null is not an object":                 "type-only validation not implemented",
-	"draft4/type/string type matches strings/null is not a string":                  "type-only validation not implemented",
-	"draft4/type/type: array or object/null is invalid":                             "type-only validation not implemented",
-	"draft6/type/array type matches arrays/null is not an array":                    "type-only validation not implemented",
-	"draft6/type/boolean type matches booleans/null is not a boolean":               "type-only validation not implemented",
-	"draft6/type/integer type matches integers/null is not an integer":              "type-only validation not implemented",
-	"draft6/type/multiple types can be specified in an array/null is invalid":       "type-only validation not implemented",
-	"draft6/type/number type matches numbers/null is not a number":                  "type-only validation not implemented",
-	"draft6/type/object type matches objects/null is not an object":                 "type-only validation not implemented",
-	"draft6/type/string type matches strings/null is not a string":                  "type-only validation not implemented",
-	"draft6/type/type: array or object/null is invalid":                             "type-only validation not implemented",
-	"draft7/type/array type matches arrays/null is not an array":                    "type-only validation not implemented",
-	"draft7/type/boolean type matches booleans/null is not a boolean":               "type-only validation not implemented",
-	"draft7/type/integer type matches integers/null is not an integer":              "type-only validation not implemented",
-	"draft7/type/multiple types can be specified in an array/null is invalid":       "type-only validation not implemented",
-	"draft7/type/number type matches numbers/null is not a number":                  "type-only validation not implemented",
-	"draft7/type/object type matches objects/null is not an object":                 "type-only validation not implemented",
-	"draft7/type/string type matches strings/null is not a string":                  "type-only validation not implemented",
-	"draft7/type/type: array or object/null is invalid":                             "type-only validation not implemented",
 
 	// unevaluatedItems validation not implemented (4 entries)
 	"draft2019-09/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
