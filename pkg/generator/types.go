@@ -181,9 +181,10 @@ type AliasDef struct {
 	Underlying        GoType
 	Description       string
 	Validations       []ValidationRule
-	NoMethods         bool // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
-	NeedsNullCheck    bool // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
+	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
+	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
+	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }

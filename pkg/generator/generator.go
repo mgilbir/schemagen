@@ -238,6 +238,25 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(ad.AnyOfVariants) > 0 {
+				needsFmt = true // anyOf error message uses fmt.Errorf
+				for _, variant := range ad.AnyOfVariants {
+					for _, v := range variant {
+						if v.RuleType == "pattern" {
+							needsRegexp = true
+						}
+						if v.RuleType == "multipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "uniqueItems" {
+							needsJSON = true
+						}
+						if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+							needsUTF8 = true
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -437,12 +456,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
+		anyOfVariants := extractAnyOfVariantRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:           name,
 			Underlying:     goType,
 			Description:    s.Description,
 			Validations:    rules,
+			AnyOfVariants:  anyOfVariants,
 			NeedsNullCheck: !schemaAllowsNull(s),
 		})
 		return nil
@@ -452,12 +473,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if primaryType == "array" {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
+		anyOfVariants := extractAnyOfVariantRules(s, goType)
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:           name,
 			Underlying:     goType,
 			Description:    s.Description,
 			Validations:    rules,
+			AnyOfVariants:  anyOfVariants,
 			NeedsNullCheck: !schemaAllowsNull(s),
 		})
 		return nil
@@ -2234,6 +2257,32 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 		return nil
 	}
 	return rules
+}
+
+// extractAnyOfVariantRules extracts validation rules from each anyOf sub-schema.
+// Each inner slice represents one variant's constraint set.
+// Returns nil when the schema has no anyOf or when all variants yield empty rules.
+func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
+	if len(s.AnyOf) == 0 {
+		return nil
+	}
+	// Skip for untyped "any" — can't compile checks.
+	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+		return nil
+	}
+	var variants [][]ValidationRule
+	hasRules := false
+	for _, variant := range s.AnyOf {
+		rules := extractValidationRules("", "", variant)
+		variants = append(variants, rules)
+		if len(rules) > 0 {
+			hasRules = true
+		}
+	}
+	if !hasRules {
+		return nil
+	}
+	return variants
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

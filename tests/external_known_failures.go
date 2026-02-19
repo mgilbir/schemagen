@@ -546,7 +546,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 541 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 536 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -799,13 +799,6 @@ var knownValidationFailures = map[string]string{
 	"draft4/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
 	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-
-	// anyOf validation not implemented (5 entries)
-	"draft2019-09/anyOf/anyOf with base schema/both anyOf invalid": "anyOf validation not implemented",
-	"draft2020-12/anyOf/anyOf with base schema/both anyOf invalid": "anyOf validation not implemented",
-	"draft4/anyOf/anyOf with base schema/both anyOf invalid":       "anyOf validation not implemented",
-	"draft6/anyOf/anyOf with base schema/both anyOf invalid":       "anyOf validation not implemented",
-	"draft7/anyOf/anyOf with base schema/both anyOf invalid":       "anyOf validation not implemented",
 
 	// codegen produces code that fails to compile for validation binary (37 entries)
 	"draft2019-09/enum/enum with escaped characters/another string is invalid":                                                                                           "codegen produces code that fails to compile for validation binary",
