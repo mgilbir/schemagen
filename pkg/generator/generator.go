@@ -142,6 +142,7 @@ func (g *Generator) addRequiredImports() {
 	needsTime := false
 	needsMath := false
 	needsUTF8 := false
+	needsBytes := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -198,6 +199,24 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.PatternProperties) > 0 {
 				needsRegexp = true
 				needsJSON = true
+			}
+			if sd.HasPatternPropertyValidation() {
+				needsFmt = true
+				for _, pp := range sd.PatternProperties {
+					for _, v := range pp.Validations {
+						if v.RuleType == "ppType" {
+							needsBytes = true
+						}
+						if v.RuleType == "ppMultipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "ppMinimum" || v.RuleType == "ppMaximum" ||
+							v.RuleType == "ppExclusiveMinimum" || v.RuleType == "ppExclusiveMaximum" ||
+							v.RuleType == "ppMultipleOf" {
+							needsJSON = true
+						}
+					}
+				}
 			}
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
@@ -286,6 +305,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsUTF8 {
 		g.output.Imports = append(g.output.Imports, Import{Path: "unicode/utf8"})
+	}
+	if needsBytes {
+		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
 	}
 }
 
@@ -440,11 +462,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Object with properties (may also have oneOf fields) → struct
-	if hasProperties(s) || len(s.OneOf) > 0 {
-		// Only accept non-object data for schemas with object keywords (properties)
+	// Object with properties, patternProperties, or oneOf fields → struct
+	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 {
+		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
-		canAcceptNonObject := hasProperties(s) && len(s.OneOf) == 0
+		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0) && len(s.OneOf) == 0
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
@@ -717,11 +739,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			needsMarshal = true
 			needsUnmarshal = true
 		}
-	} else if !g.config.StrictProperties && len(fields) > 0 {
+	} else if !g.config.StrictProperties && (len(fields) > 0 || len(s.PatternProperties) > 0) {
 		// No additionalProperties specified: per JSON Schema spec, defaults to true.
 		// In non-strict mode, add an overflow map to preserve extra properties.
-		// Only add when there are declared fields (otherwise it's a bare object schema
-		// and we're not generating anything useful yet).
+		// Add when there are declared fields or patternProperties (so non-pattern-matched
+		// keys are preserved through round-trip).
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
 		}
@@ -810,7 +832,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// be preserved through round-trip even when additionalProperties is false.
 	var patternProps []PatternPropertyDef
 	for _, pattern := range sortedKeys(s.PatternProperties) {
-		patternProps = append(patternProps, PatternPropertyDef{Pattern: pattern})
+		ppSchema := s.PatternProperties[pattern]
+		ppDef := PatternPropertyDef{Pattern: pattern}
+		if ppSchema.IsFalseSchema() {
+			ppDef.IsForbidden = true
+		} else if ppSchema.IsBooleanSchema() {
+			// boolean true → no constraints
+		} else {
+			ppDef.Validations = extractPatternPropertyValidationRules(ppSchema)
+		}
+		patternProps = append(patternProps, ppDef)
 	}
 	if len(patternProps) > 0 {
 		needsMarshal = true
@@ -2612,6 +2643,58 @@ func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRul
 		return nil
 	}
 	return variants
+}
+
+// extractPatternPropertyValidationRules extracts validation rules from a
+// patternProperties sub-schema. These rules are checked at runtime against
+// json.RawMessage values, so we include a "type" rule when the sub-schema
+// specifies a type constraint.
+func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
+	var rules []ValidationRule
+	// Type constraint — checked by inspecting the raw JSON value at runtime.
+	if len(s.Type) > 0 {
+		// Collect all allowed types (e.g., ["string", "null"]).
+		var types []string
+		for _, t := range s.Type {
+			types = append(types, t)
+		}
+		if len(types) == 1 {
+			rules = append(rules, ValidationRule{
+				RuleType: "ppType", Value: types[0],
+			})
+		} else if len(types) > 1 {
+			rules = append(rules, ValidationRule{
+				RuleType: "ppType", Value: types,
+			})
+		}
+	}
+	// Numeric constraints.
+	if s.Minimum != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMinimum", Value: *s.Minimum})
+	}
+	if s.Maximum != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMaximum", Value: *s.Maximum})
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+	}
+	if s.MultipleOf != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMultipleOf", Value: *s.MultipleOf})
+	}
+	// String constraints.
+	if s.MinLength != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMinLength", Value: s.MinLength.Int()})
+	}
+	if s.MaxLength != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMaxLength", Value: s.MaxLength.Int()})
+	}
+	if s.Pattern != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppPattern", Value: *s.Pattern})
+	}
+	return rules
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

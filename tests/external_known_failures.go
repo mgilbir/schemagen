@@ -161,7 +161,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 416 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 377 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -179,9 +179,9 @@ var knownParseFailures = map[string]string{}
 //   - type-inferred schema: no $schema to guide validation (2)
 //   - codegen produces code that fails to compile for validation binary (23)
 //   - (uniqueItems/additionalItems interaction: fixed)
-//   - unevaluatedProperties validation not implemented (82)
+//   - unevaluatedProperties validation not implemented (84)
 //   - (type-only null validation — FIXED)
-//   - ECMA-262 regex patternProperties mismatch at unmarshal time (40)
+//   - (ECMA-262 regex patternProperties mismatch: FIXED)
 //   - $ref sibling keyword validation not implemented (20)
 //   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
 //   - enum on struct fields: draft3 required-as-boolean not checked (2)
@@ -365,49 +365,6 @@ var knownValidationFailures = map[string]string{
 	"draft7/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft7/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
 
-	// ECMA-262 regex patternProperties mismatch: key should match pattern but doesn't during unmarshal,
-	// ends up in overflow map and gets rejected by additionalProperties: false (40 entries)
-	"draft2019-09/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":      "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                             "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":  "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2019-09/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string": "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":      "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                             "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":  "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft2020-12/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string": "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft4/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft6/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/\\d in patternProperties matches [0-9], not unicode digits/ascii digits":                                      "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/\\w in patternProperties matches [A-Za-z0-9_], not unicode letters/ascii character in json string":            "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patternProperties with ASCII ranges/ascii characters match":                                                   "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/ascii digits":                                                         "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patternProperties with non-ASCII digits/non-ascii digits (BENGALI DIGIT FOUR, BENGALI DIGIT TWO)":             "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/ascii character in json string":                  "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/literal unicode character in json string":        "ECMA-262 regex patternProperties mismatch at unmarshal time",
-	"draft7/optional/ecmascript-regex/patterns always use unicode semantics with patternProperties/unicode character in hex format in string":       "ECMA-262 regex patternProperties mismatch at unmarshal time",
-
 	// additionalProperties validation remaining (6 entries — allOf interaction)
 	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
 	"draft2020-12/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
@@ -534,6 +491,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                                                                      "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":                                                               "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $ref/with unevaluated properties":                                                                      "unevaluatedProperties validation not implemented",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with adjacent patternProperties/with unevaluated properties":                                                "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with adjacent properties/with unevaluated properties":                                                       "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                                                 "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                                                   "unevaluatedProperties validation not implemented",

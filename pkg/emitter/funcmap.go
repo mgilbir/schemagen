@@ -37,6 +37,7 @@ func FuncMap() template.FuncMap {
 		"goStringLiteral":    goStringLiteralFunc,
 		"goStringQuote":      goStringQuoteFunc,
 		"hasManualFields":    hasManualFieldsFunc,
+		"ppTypeValue":        ppTypeValueFunc,
 	}
 }
 
@@ -140,6 +141,23 @@ func hasManualFieldsFunc(fields any) bool {
 		}
 	}
 	return false
+}
+
+// ppTypeValueFunc extracts the type name from a patternProperties "ppType" validation
+// rule value. The value can be a single string or a []string for multi-type.
+// Returns the first (or only) type name as a string.
+func ppTypeValueFunc(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case []string:
+		if len(val) > 0 {
+			return val[0]
+		}
+		return "any"
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

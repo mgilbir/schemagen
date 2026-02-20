@@ -126,6 +126,107 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if $struct.HasPatternPropertyValidation}}
+	// patternProperties validation: check matched values against sub-schema constraints.
+	if len({{$recv}}.PatternProperties) > 0 {
+		ppRegexps := []*ecma262.Regexp{
+			{{- range $struct.PatternProperties}}
+			ecma262.MustCompile({{printf "%q" .Pattern}}, ecmaflags.Unicode),
+			{{- end}}
+		}
+		for k, v := range {{$recv}}.PatternProperties {
+			_ = v
+			{{- range $i, $pp := $struct.PatternProperties}}
+			{{- if or $pp.IsForbidden (gt (len $pp.Validations) 0)}}
+			if ppRegexps[{{$i}}].MatchString(k) {
+				{{- if $pp.IsForbidden}}
+				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, {{printf "%q" $pp.Pattern}})
+				{{- end}}
+				{{- range $pp.Validations}}
+				{{- if eq .RuleType "ppType"}}
+				{
+					b := bytes.TrimSpace(v)
+					var jt string
+					if len(b) == 0 {
+						jt = "unknown"
+					} else {
+						switch b[0] {
+						case '"': jt = "string"
+						case '{': jt = "object"
+						case '[': jt = "array"
+						case 't', 'f': jt = "boolean"
+						case 'n': jt = "null"
+						default:
+							jt = "number"
+							// Check if it's an integer (no '.' or 'e'/'E')
+							isInt := true
+							for _, c := range b {
+								if c == '.' || c == 'e' || c == 'E' {
+									isInt = false
+									break
+								}
+							}
+							if isInt {
+								jt = "integer"
+							}
+						}
+					}
+					{{- $want := ppTypeValue .Value}}
+					{{- if eq $want "integer"}}
+					if jt != "integer" {
+						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, k)
+					}
+					{{- else if eq $want "number"}}
+					if jt != "integer" && jt != "number" {
+						return fmt.Errorf("patternProperties %s: key %q value must be number", {{printf "%q" $pp.Pattern}}, k)
+					}
+					{{- else}}
+					if jt != {{printf "%q" $want}} {
+						return fmt.Errorf("patternProperties %s: key %q value must be {{$want}}", {{printf "%q" $pp.Pattern}}, k)
+					}
+					{{- end}}
+				}
+				{{- end}}
+				{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
+				{
+					var num float64
+					if err := json.Unmarshal(v, &num); err == nil {
+						{{- if eq .RuleType "ppMinimum"}}
+						if num < {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q value %v is less than minimum {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppMaximum"}}
+						if num > {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q value %v exceeds maximum {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppExclusiveMinimum"}}
+						if num <= {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q value %v must be greater than {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppExclusiveMaximum"}}
+						if num >= {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q value %v must be less than {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppMultipleOf"}}
+						q := num / {{.Value}}
+						if math.Abs(q - math.Round(q)) > 1e-9 {
+							return fmt.Errorf("patternProperties %s: key %q value %v is not a multiple of {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						}
+						{{- end}}
+					}
+				}
+				{{- end}}
+				{{- end}}
+			}
+			{{- end}}
+			{{- end}}
+		}
+	}
+	{{- end}}
 	{{- range $struct.ValidatableFields}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {

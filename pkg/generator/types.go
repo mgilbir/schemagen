@@ -111,6 +111,17 @@ func (d *StructDef) HasPatternProperties() bool {
 	return len(d.PatternProperties) > 0
 }
 
+// HasPatternPropertyValidation returns true if any pattern property has validation
+// constraints (IsForbidden or Validations) that need to be checked in Validate().
+func (d *StructDef) HasPatternPropertyValidation() bool {
+	for _, pp := range d.PatternProperties {
+		if pp.IsForbidden || len(pp.Validations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // HasDependentSchemas returns true if the struct has dependent schema constraints.
 func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
@@ -121,7 +132,9 @@ func (d *StructDef) HasDependentSchemas() bool {
 // to preserve them through marshal/unmarshal round-trips. The patterns are used
 // during unmarshal to distinguish pattern-matched keys from truly additional keys.
 type PatternPropertyDef struct {
-	Pattern string // regex pattern (e.g., "^v", "f.o")
+	Pattern     string           // regex pattern (e.g., "^v", "f.o")
+	IsForbidden bool             // true when sub-schema is boolean false (matching keys rejected)
+	Validations []ValidationRule // constraints on matched values (type, minimum, etc.)
 }
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.
