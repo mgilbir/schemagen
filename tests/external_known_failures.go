@@ -4,22 +4,13 @@ package tests
 // These are categorized by root cause. Bidirectional checking ensures
 // that if a known failure starts passing, the test will error (remove from list).
 
-// CodeGen: 10 known failures (2 flaky entries removed — non-deterministic map iteration)
+// CodeGen: 2 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownCodeGenFailures = map[string]string{
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword ":                             "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref":             "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema":                  "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref": "$ref to unknown keyword locations not supported",
-
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered":                     "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword ":                                        "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref":                        "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema":                             "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref":            "$ref to unknown keyword locations not supported",
 }
 
-// RoundTrip: 145 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 137 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
 	"draft2019-09/items/items and subitems/fewer items is valid":                                                                                        "non-structural schema: data shape incompatible with generated type",
@@ -27,10 +18,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                            "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                            "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                "$ref to unknown keyword locations not supported",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                 "$ref to unknown keyword locations not supported",
 
 	"draft2019-09/required/required validation/ignores null":                                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/type/integer type matches integers/a float with zero fractional part is an integer":                                                           "non-structural schema: data shape incompatible with generated type",
@@ -42,10 +29,6 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/optional/bignum/integer/a bignum is an integer":                                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "$ref to unknown keyword locations not supported",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "$ref to unknown keyword locations not supported",
 
 	"draft2020-12/required/required validation/ignores null":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/type/integer type matches integers/a float with zero fractional part is an integer":                                             "non-structural schema: data shape incompatible with generated type",
@@ -178,7 +161,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 413 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 416 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
@@ -562,17 +545,9 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
 
 	// codegen produces code that fails to compile for validation binary (11 additional entries)
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /match":                                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/match":                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/match":                                        "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/match":                                                         "codegen produces code that fails to compile for validation binary",
 
 	// non-object data: cannot unmarshal array into generated Go type (27 additional entries)
 	"draft2019-09/items/items and subitems/fewer items is valid":                                                                  "non-object data: cannot unmarshal array into generated Go type",
@@ -679,6 +654,19 @@ var knownValidationFailures = map[string]string{
 
 	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
+
+	// $ref with percent-encoding/JSON Pointer escaping resolves to any instead of target type (11 entries)
+	"draft3/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
+	"draft4/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
+	"draft4/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
+	"draft6/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
+	"draft6/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
+	"draft7/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
+	"draft7/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
+	"draft2019-09/ref/escaped pointer ref/percent invalid":            "$ref percent-encoding not resolved: falls back to any",
+	"draft2019-09/ref/refs with quote/object with strings is invalid": "$ref percent-encoding not resolved: falls back to any",
+	"draft2020-12/ref/escaped pointer ref/percent invalid":            "$ref percent-encoding not resolved: falls back to any",
+	"draft2020-12/ref/refs with quote/object with strings is invalid": "$ref percent-encoding not resolved: falls back to any",
 }
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order

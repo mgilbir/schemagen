@@ -1421,7 +1421,8 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
-		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+		refSchema := g.resolveRefInContext(effRef, s)
+		if refSchema != nil {
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return nil, err
@@ -1430,6 +1431,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if g.isScopedSelfRef(effRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
+		} else {
+			// Ref target could not be resolved (e.g. points to an unknown keyword).
+			// Fall back to any to produce compilable code.
+			return &PrimitiveType{Name: "any"}, nil
 		}
 		return &NamedType{Name: goName}, nil
 	}
