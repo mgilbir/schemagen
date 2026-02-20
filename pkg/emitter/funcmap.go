@@ -35,6 +35,7 @@ func FuncMap() template.FuncMap {
 		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
 		"isRawMessage":       isRawMessageFunc,
 		"goStringLiteral":    goStringLiteralFunc,
+		"goStringQuote":      goStringQuoteFunc,
 		"hasManualFields":    hasManualFieldsFunc,
 	}
 }
@@ -120,6 +121,12 @@ func goStringLiteralFunc(s string) string {
 	// Use %q to get a properly quoted string, then strip the surrounding quotes.
 	q := fmt.Sprintf("%q", s)
 	return q[1 : len(q)-1]
+}
+
+// goStringQuoteFunc returns a Go quoted string literal (with surrounding quotes).
+// This is useful in templates where backtick strings can't be used.
+func goStringQuoteFunc(s string) string {
+	return fmt.Sprintf("%q", s)
 }
 
 // hasManualFieldsFunc returns true if any FieldDef in the slice has ManualJSON set.

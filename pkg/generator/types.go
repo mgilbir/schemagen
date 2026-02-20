@@ -175,6 +175,7 @@ type EnumDef struct {
 	BaseType    GoType
 	Values      []EnumValue
 	Description string
+	IsRaw       bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
 }
 
 func (d *EnumDef) TypeName() string { return d.Name }
@@ -182,8 +183,9 @@ func (d *EnumDef) typeDef()         {}
 
 // EnumValue represents one enum constant.
 type EnumValue struct {
-	Name  string // Go constant name
-	Value any    // actual value (string or int)
+	Name    string // Go constant name
+	Value   any    // actual value (string or int)
+	RawJSON string // JSON-encoded form (only set when EnumDef.IsRaw is true)
 }
 
 // AliasDef represents a defined type (type Name Underlying).

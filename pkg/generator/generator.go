@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -211,8 +212,11 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
-		if _, ok := td.(*EnumDef); ok {
+		if ed, ok := td.(*EnumDef); ok {
 			needsFmt = true // Validate() uses fmt.Errorf for invalid enum values
+			if ed.IsRaw {
+				needsJSON = true // raw enums use json.RawMessage + UnmarshalJSON/MarshalJSON
+			}
 		}
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
@@ -1219,6 +1223,12 @@ func (g *Generator) separateNullFromOneOf(variants []*schema.Schema) ([]*schema.
 func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	g.generated[name] = true
 
+	// Check if the enum contains non-primitive or mixed-type values.
+	// If so, generate a json.RawMessage-based "raw" enum instead of const-based.
+	if isHeterogeneousEnum(s.Enum) {
+		return g.generateRawEnumDef(name, s)
+	}
+
 	baseType := g.resolveBaseType(s)
 
 	var values []EnumValue
@@ -1248,6 +1258,81 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		BaseType:    baseType,
 		Values:      values,
 		Description: s.Description,
+	})
+	return nil
+}
+
+// isHeterogeneousEnum returns true if the enum values contain non-primitive
+// types (arrays, objects, null) or a mix of different primitive types.
+// Such enums cannot be represented as Go typed constants.
+func isHeterogeneousEnum(values []any) bool {
+	if len(values) == 0 {
+		return false
+	}
+	var seenType string
+	for _, v := range values {
+		switch v.(type) {
+		case string:
+			if seenType == "" {
+				seenType = "string"
+			} else if seenType != "string" {
+				return true
+			}
+		case float64:
+			if seenType == "" {
+				seenType = "float64"
+			} else if seenType != "float64" {
+				return true
+			}
+		case bool:
+			if seenType == "" {
+				seenType = "bool"
+			} else if seenType != "bool" {
+				return true
+			}
+		default:
+			// nil (null), []any (array), map[string]any (object)
+			return true
+		}
+	}
+	return false
+}
+
+// generateRawEnumDef generates a json.RawMessage-based enum for heterogeneous
+// enum values that cannot be represented as Go typed constants.
+func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
+	var values []EnumValue
+	for _, v := range s.Enum {
+		constName := name + enumValueSuffix(v)
+		rawBytes, err := json.Marshal(v)
+		if err != nil {
+			rawBytes = []byte(fmt.Sprintf("%v", v))
+		}
+		values = append(values, EnumValue{
+			Name:    constName,
+			Value:   v,
+			RawJSON: string(rawBytes),
+		})
+	}
+	// Deduplicate collision names.
+	nameCount := make(map[string]int, len(values))
+	for _, ev := range values {
+		nameCount[ev.Name]++
+	}
+	nameSeen := make(map[string]int, len(values))
+	for i, ev := range values {
+		nameSeen[ev.Name]++
+		if nameCount[ev.Name] > 1 {
+			values[i].Name = fmt.Sprintf("%s%d", ev.Name, nameSeen[ev.Name])
+		}
+	}
+
+	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
+		Name:        name,
+		BaseType:    &PrimitiveType{Name: "json.RawMessage"},
+		Values:      values,
+		Description: s.Description,
+		IsRaw:       true,
 	})
 	return nil
 }
@@ -2178,8 +2263,20 @@ func enumValueSuffix(v any) string {
 		return SchemaNameToGoName(val)
 	case float64:
 		return fmt.Sprintf("%v", val)
+	case bool:
+		if val {
+			return "True"
+		}
+		return "False"
+	case nil:
+		return "Null"
 	default:
-		return fmt.Sprintf("%v", val)
+		// For objects/arrays, serialize to JSON and sanitize for Go identifier.
+		raw, err := json.Marshal(val)
+		if err != nil {
+			return "Value"
+		}
+		return SchemaNameToGoName(string(raw))
 	}
 }
 
