@@ -99,6 +99,9 @@ func (s *Schema) Normalize() {
 		s.normalizeExtends()
 	}
 
+	// Draft 3: convert per-property "required": true to parent Required array.
+	s.normalizeDraft3Required()
+
 	// Draft 3: convert "divisibleBy" to "multipleOf".
 	if s.DivisibleBy != nil && s.MultipleOf == nil {
 		s.MultipleOf = s.DivisibleBy
@@ -111,6 +114,17 @@ func (s *Schema) Normalize() {
 
 	// Recursively normalize nested schemas.
 	s.normalizeChildren()
+}
+
+// normalizeDraft3Required converts Draft 3's per-property "required": true
+// to the parent schema's Required array (Draft 4+ format).
+func (s *Schema) normalizeDraft3Required() {
+	for name, prop := range s.Properties {
+		if prop != nil && prop.Required.IsDraft3Required() {
+			s.Required = append(s.Required, name)
+			prop.Required = nil // clear the sentinel
+		}
+	}
 }
 
 // normalizeExtends converts Draft 3's "extends" to allOf.

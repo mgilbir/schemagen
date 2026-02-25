@@ -222,7 +222,18 @@ func (s SchemaOrSchemaArray) MarshalJSON() ([]byte, error) {
 // in Draft 4+ but a boolean in Draft 3 (on individual properties).
 // When parsed as a boolean (Draft 3), it is stored as an empty list — the
 // Normalize() function on the parent schema handles the conversion.
+// draft3RequiredSentinel is a sentinel value stored in RequiredList when
+// Draft 3's "required": true is encountered on a property sub-schema.
+// Normalize() converts these to the parent's Required array.
+const draft3RequiredSentinel = "\x00__draft3_required_true__"
+
 type RequiredList []string
+
+// IsDraft3Required returns true if this list contains the draft3 sentinel,
+// meaning the property had "required": true in Draft 3 format.
+func (r RequiredList) IsDraft3Required() bool {
+	return len(r) == 1 && r[0] == draft3RequiredSentinel
+}
 
 func (r *RequiredList) UnmarshalJSON(data []byte) error {
 	// Try array of strings first (Draft 4+).
@@ -233,11 +244,15 @@ func (r *RequiredList) UnmarshalJSON(data []byte) error {
 	}
 
 	// Try boolean (Draft 3: "required": true on individual properties).
-	// We accept it without error but store nothing — the parent Schema's
-	// RequiredBool field captures the boolean value via raw JSON parsing.
+	// Store a sentinel value so Normalize() can detect and convert to
+	// the parent schema's Required array.
 	var b bool
 	if err := json.Unmarshal(data, &b); err == nil {
-		*r = RequiredList{}
+		if b {
+			*r = RequiredList{draft3RequiredSentinel}
+		} else {
+			*r = RequiredList{}
+		}
 		return nil
 	}
 

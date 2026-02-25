@@ -184,12 +184,12 @@ var knownParseFailures = map[string]string{}
 //   - (ECMA-262 regex patternProperties mismatch: FIXED)
 //   - $ref sibling keyword validation not implemented (14)
 //   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
-//   - enum on struct fields: draft3 required-as-boolean not checked (2)
+//   - (enum on struct fields: draft3 required-as-boolean — FIXED)
 //   - property-level validation not implemented for this schema shape (13)
 //   - $dynamicRef/$dynamicAnchor not implemented (11)
 //   - (dependencies/dependentSchemas: fixed)
 //   - extends / anyOf / not / dependentSchemas / other (22)
-//   - $recursiveRef / cross-draft / required with composition (2)
+//   - $recursiveRef / cross-draft (1)
 var knownValidationFailures = map[string]string{
 	// default keyword — Validate() doesn't consider default values; zero-value fails minLength
 	"draft3/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
@@ -382,19 +382,12 @@ var knownValidationFailures = map[string]string{
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
 
-	// enum validation not implemented for this schema shape (2 remaining — draft3 required)
-	"draft3/enum/enums in properties/missing all properties is invalid":    "draft3 required-as-boolean not checked at validation time",
-	"draft3/enum/enums in properties/missing required property is invalid": "draft3 required-as-boolean not checked at validation time",
+	// (draft3 enum required-as-boolean — FIXED via draft3 required normalization)
 
-	// extends validation not implemented (5 entries)
-	"draft3/extends/extends/mismatch extended":                "extends validation not implemented",
-	"draft3/extends/extends/mismatch extends":                 "extends validation not implemented",
-	"draft3/extends/multiple extends/mismatch both":           "extends validation not implemented",
-	"draft3/extends/multiple extends/mismatch first extends":  "extends validation not implemented",
-	"draft3/extends/multiple extends/mismatch second extends": "extends validation not implemented",
+	// (extends validation — FIXED via draft3 required normalization + extends→allOf)
 
 	// required with composition validation not implemented (1 entries)
-	"draft3/required/required validation/non-present required property is invalid": "required with composition validation not implemented",
+	// (draft3/required — FIXED via draft3 required normalization)
 
 	// unevaluatedItems validation not implemented (4 entries)
 	"draft2019-09/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
