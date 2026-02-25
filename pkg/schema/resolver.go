@@ -91,8 +91,13 @@ func (r *LocalResolver) resolve(ref string) (*Schema, error) {
 	// JSON Pointer: "#/path/to/thing"
 	path := strings.TrimPrefix(ref, "#/")
 	parts := strings.Split(path, "/")
-	// Unescape JSON Pointer tokens (RFC 6901)
+	// Per RFC 6901 §6: when JSON Pointer is used as a URI fragment,
+	// first percent-decode each segment (RFC 3986 §3.5), then apply
+	// JSON Pointer unescaping (~1 → /, ~0 → ~).
 	for i, p := range parts {
+		if decoded, err := url.PathUnescape(p); err == nil {
+			p = decoded
+		}
 		parts[i] = unescapeJSONPointer(p)
 	}
 

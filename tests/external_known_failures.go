@@ -598,18 +598,7 @@ var knownValidationFailures = map[string]string{
 	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
 
-	// $ref with percent-encoding/JSON Pointer escaping resolves to any instead of target type (11 entries)
-	"draft3/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
-	"draft4/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
-	"draft4/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
-	"draft6/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
-	"draft6/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
-	"draft7/ref/escaped pointer ref/percent invalid":                  "$ref percent-encoding not resolved: falls back to any",
-	"draft7/ref/refs with quote/object with strings is invalid":       "$ref percent-encoding not resolved: falls back to any",
-	"draft2019-09/ref/escaped pointer ref/percent invalid":            "$ref percent-encoding not resolved: falls back to any",
-	"draft2019-09/ref/refs with quote/object with strings is invalid": "$ref percent-encoding not resolved: falls back to any",
-	"draft2020-12/ref/escaped pointer ref/percent invalid":            "$ref percent-encoding not resolved: falls back to any",
-	"draft2020-12/ref/refs with quote/object with strings is invalid": "$ref percent-encoding not resolved: falls back to any",
+	// ($ref percent-encoding — FIXED via URI fragment percent-decoding in LocalResolver)
 }
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order
