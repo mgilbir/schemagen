@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -141,6 +142,7 @@ func (g *Generator) addRequiredImports() {
 	needsTime := false
 	needsMath := false
 	needsUTF8 := false
+	needsBytes := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -198,6 +200,24 @@ func (g *Generator) addRequiredImports() {
 				needsRegexp = true
 				needsJSON = true
 			}
+			if sd.HasPatternPropertyValidation() {
+				needsFmt = true
+				for _, pp := range sd.PatternProperties {
+					for _, v := range pp.Validations {
+						if v.RuleType == "ppType" {
+							needsBytes = true
+						}
+						if v.RuleType == "ppMultipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "ppMinimum" || v.RuleType == "ppMaximum" ||
+							v.RuleType == "ppExclusiveMinimum" || v.RuleType == "ppExclusiveMaximum" ||
+							v.RuleType == "ppMultipleOf" {
+							needsJSON = true
+						}
+					}
+				}
+			}
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
@@ -211,8 +231,11 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
-		if _, ok := td.(*EnumDef); ok {
+		if ed, ok := td.(*EnumDef); ok {
 			needsFmt = true // Validate() uses fmt.Errorf for invalid enum values
+			if ed.IsRaw {
+				needsJSON = true // raw enums use json.RawMessage + UnmarshalJSON/MarshalJSON
+			}
 		}
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
@@ -282,6 +305,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsUTF8 {
 		g.output.Imports = append(g.output.Imports, Import{Path: "unicode/utf8"})
+	}
+	if needsBytes {
+		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
 	}
 }
 
@@ -424,11 +450,23 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// Object with properties (may also have oneOf fields) → struct
-	if hasProperties(s) || len(s.OneOf) > 0 {
-		// Only accept non-object data for schemas with object keywords (properties)
+	// oneOf without properties in parent or any variant → alias to `any`
+	// (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]} can hold any JSON value)
+	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:        name,
+			Underlying:  &PrimitiveType{Name: "any"},
+			Description: s.Description,
+		})
+		return nil
+	}
+
+	// Object with properties, patternProperties, or oneOf fields → struct
+	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 {
+		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
-		canAcceptNonObject := hasProperties(s) && len(s.OneOf) == 0
+		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0) && len(s.OneOf) == 0
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
@@ -513,7 +551,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 		needsNullCheck := !schemaAllowsNull(s)
 		acceptNonObject := !schemaHasExplicitType(s, "object")
-		needsMarshal := additionalProps != nil
+		needsMarshal := additionalProps != nil || acceptNonObject
 		needsUnmarshal := additionalProps != nil || needsNullCheck || acceptNonObject
 		var validations []ValidationRule
 		if s.MaxProperties != nil {
@@ -701,11 +739,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			needsMarshal = true
 			needsUnmarshal = true
 		}
-	} else if !g.config.StrictProperties && len(fields) > 0 {
+	} else if !g.config.StrictProperties && (len(fields) > 0 || len(s.PatternProperties) > 0) {
 		// No additionalProperties specified: per JSON Schema spec, defaults to true.
 		// In non-strict mode, add an overflow map to preserve extra properties.
-		// Only add when there are declared fields (otherwise it's a bare object schema
-		// and we're not generating anything useful yet).
+		// Add when there are declared fields or patternProperties (so non-pattern-matched
+		// keys are preserved through round-trip).
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
 		}
@@ -794,7 +832,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// be preserved through round-trip even when additionalProperties is false.
 	var patternProps []PatternPropertyDef
 	for _, pattern := range sortedKeys(s.PatternProperties) {
-		patternProps = append(patternProps, PatternPropertyDef{Pattern: pattern})
+		ppSchema := s.PatternProperties[pattern]
+		ppDef := PatternPropertyDef{Pattern: pattern}
+		if ppSchema.IsFalseSchema() {
+			ppDef.IsForbidden = true
+		} else if ppSchema.IsBooleanSchema() {
+			// boolean true → no constraints
+		} else {
+			ppDef.Validations = extractPatternPropertyValidationRules(ppSchema)
+		}
+		patternProps = append(patternProps, ppDef)
 	}
 	if len(patternProps) > 0 {
 		needsMarshal = true
@@ -850,6 +897,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	acceptNonObj := acceptNonObject && !schemaHasExplicitType(s, "object")
 	if acceptNonObj {
 		needsUnmarshal = true
+		needsMarshal = true // must preserve raw non-object data for roundtrip
 	}
 
 	structDef := &StructDef{
@@ -872,6 +920,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 }
 
 // generateAllOfDef merges all allOf sub-schemas into a single struct.
+// When no sub-schema contributes properties, it generates an alias type
+// instead of an empty struct, using the inferred type from constraints.
 func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge all properties and required fields from allOf sub-schemas.
 	merged := &schema.Schema{
@@ -889,13 +939,49 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
 	g.mergeAllOfInto(merged, s.AllOf)
 
+	// If no sub-schema contributed properties, don't generate an empty struct.
+	// Instead, infer the type from constraints and generate an alias.
+	if len(merged.Properties) == 0 {
+		primaryType := primarySchemaType(merged)
+		if primaryType == "" {
+			primaryType = inferTypeFromConstraints(merged)
+		}
+		if primaryType != "" && primaryType != "object" {
+			goType := g.resolveType(merged, name)
+			rules := extractAliasValidationRules(merged, goType)
+			// Carry through anyOf/oneOf variant rules from the parent schema,
+			// since these are siblings of allOf and must also be validated.
+			anyOfVariants := extractAnyOfVariantRules(s, goType)
+			oneOfVariants := extractOneOfVariantRules(s, goType)
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(merged),
+			})
+			return nil
+		}
+		// No type inferrable → alias to `any` (permissive fallback).
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:        name,
+			Underlying:  &PrimitiveType{Name: "any"},
+			Description: s.Description,
+		})
+		return nil
+	}
+
 	// allOf is type-agnostic: don't silently accept non-object data.
 	return g.generateStructDef(name, merged, false)
 }
 
-// mergeAllOfInto recursively merges properties and required fields from allOf
-// sub-schemas into the target schema. This handles cases like remote schemas
-// that themselves contain allOf with internal $ref chains.
+// mergeAllOfInto recursively merges properties, required fields, and validation
+// constraints from allOf sub-schemas into the target schema. This handles cases
+// like remote schemas that themselves contain allOf with internal $ref chains.
 func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
 	for _, sub := range allOf {
 		resolved := sub
@@ -913,10 +999,61 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
 		}
+		// Propagate validation constraints (use tightest / first-set-wins).
+		mergeConstraints(target, resolved)
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)
 		}
+	}
+}
+
+// mergeConstraints propagates validation constraint fields from src into dst,
+// using "first set wins" semantics so that the earliest sub-schema's value is
+// kept when multiple sub-schemas define the same constraint.
+func mergeConstraints(dst, src *schema.Schema) {
+	// Numeric constraints
+	if dst.Minimum == nil && src.Minimum != nil {
+		dst.Minimum = src.Minimum
+	}
+	if dst.Maximum == nil && src.Maximum != nil {
+		dst.Maximum = src.Maximum
+	}
+	if dst.ExclusiveMinimum == nil && src.ExclusiveMinimum != nil {
+		dst.ExclusiveMinimum = src.ExclusiveMinimum
+	}
+	if dst.ExclusiveMaximum == nil && src.ExclusiveMaximum != nil {
+		dst.ExclusiveMaximum = src.ExclusiveMaximum
+	}
+	if dst.MultipleOf == nil && src.MultipleOf != nil {
+		dst.MultipleOf = src.MultipleOf
+	}
+	// String constraints
+	if dst.MinLength == nil && src.MinLength != nil {
+		dst.MinLength = src.MinLength
+	}
+	if dst.MaxLength == nil && src.MaxLength != nil {
+		dst.MaxLength = src.MaxLength
+	}
+	if dst.Pattern == nil && src.Pattern != nil {
+		dst.Pattern = src.Pattern
+	}
+	// Array constraints
+	if dst.MinItems == nil && src.MinItems != nil {
+		dst.MinItems = src.MinItems
+	}
+	if dst.MaxItems == nil && src.MaxItems != nil {
+		dst.MaxItems = src.MaxItems
+	}
+	if dst.UniqueItems == nil && src.UniqueItems != nil {
+		dst.UniqueItems = src.UniqueItems
+	}
+	// Object constraints
+	if dst.MinProperties == nil && src.MinProperties != nil {
+		dst.MinProperties = src.MinProperties
+	}
+	if dst.MaxProperties == nil && src.MaxProperties != nil {
+		dst.MaxProperties = src.MaxProperties
 	}
 }
 
@@ -1117,6 +1254,12 @@ func (g *Generator) separateNullFromOneOf(variants []*schema.Schema) ([]*schema.
 func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	g.generated[name] = true
 
+	// Check if the enum contains non-primitive or mixed-type values.
+	// If so, generate a json.RawMessage-based "raw" enum instead of const-based.
+	if isHeterogeneousEnum(s.Enum) {
+		return g.generateRawEnumDef(name, s)
+	}
+
 	baseType := g.resolveBaseType(s)
 
 	var values []EnumValue
@@ -1146,6 +1289,81 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		BaseType:    baseType,
 		Values:      values,
 		Description: s.Description,
+	})
+	return nil
+}
+
+// isHeterogeneousEnum returns true if the enum values contain non-primitive
+// types (arrays, objects, null) or a mix of different primitive types.
+// Such enums cannot be represented as Go typed constants.
+func isHeterogeneousEnum(values []any) bool {
+	if len(values) == 0 {
+		return false
+	}
+	var seenType string
+	for _, v := range values {
+		switch v.(type) {
+		case string:
+			if seenType == "" {
+				seenType = "string"
+			} else if seenType != "string" {
+				return true
+			}
+		case float64:
+			if seenType == "" {
+				seenType = "float64"
+			} else if seenType != "float64" {
+				return true
+			}
+		case bool:
+			if seenType == "" {
+				seenType = "bool"
+			} else if seenType != "bool" {
+				return true
+			}
+		default:
+			// nil (null), []any (array), map[string]any (object)
+			return true
+		}
+	}
+	return false
+}
+
+// generateRawEnumDef generates a json.RawMessage-based enum for heterogeneous
+// enum values that cannot be represented as Go typed constants.
+func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
+	var values []EnumValue
+	for _, v := range s.Enum {
+		constName := name + enumValueSuffix(v)
+		rawBytes, err := json.Marshal(v)
+		if err != nil {
+			rawBytes = []byte(fmt.Sprintf("%v", v))
+		}
+		values = append(values, EnumValue{
+			Name:    constName,
+			Value:   v,
+			RawJSON: string(rawBytes),
+		})
+	}
+	// Deduplicate collision names.
+	nameCount := make(map[string]int, len(values))
+	for _, ev := range values {
+		nameCount[ev.Name]++
+	}
+	nameSeen := make(map[string]int, len(values))
+	for i, ev := range values {
+		nameSeen[ev.Name]++
+		if nameCount[ev.Name] > 1 {
+			values[i].Name = fmt.Sprintf("%s%d", ev.Name, nameSeen[ev.Name])
+		}
+	}
+
+	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
+		Name:        name,
+		BaseType:    &PrimitiveType{Name: "json.RawMessage"},
+		Values:      values,
+		Description: s.Description,
+		IsRaw:       true,
 	})
 	return nil
 }
@@ -1234,7 +1452,8 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
-		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+		refSchema := g.resolveRefInContext(effRef, s)
+		if refSchema != nil {
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return nil, err
@@ -1243,6 +1462,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if g.isScopedSelfRef(effRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
+		} else {
+			// Ref target could not be resolved (e.g. points to an unknown keyword).
+			// Fall back to any to produce compilable code.
+			return &PrimitiveType{Name: "any"}, nil
 		}
 		return &NamedType{Name: goName}, nil
 	}
@@ -1864,6 +2087,23 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	return false
 }
 
+// oneOfHasProperties returns true if any oneOf variant has properties.
+func (g *Generator) oneOfHasProperties(s *schema.Schema) bool {
+	for _, sub := range s.OneOf {
+		if len(sub.Properties) > 0 {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if len(r.Properties) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // hasProperties returns true if the schema defines any properties.
 func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
@@ -2059,8 +2299,20 @@ func enumValueSuffix(v any) string {
 		return SchemaNameToGoName(val)
 	case float64:
 		return fmt.Sprintf("%v", val)
+	case bool:
+		if val {
+			return "True"
+		}
+		return "False"
+	case nil:
+		return "Null"
 	default:
-		return fmt.Sprintf("%v", val)
+		// For objects/arrays, serialize to JSON and sanitize for Go identifier.
+		raw, err := json.Marshal(val)
+		if err != nil {
+			return "Value"
+		}
+		return SchemaNameToGoName(string(raw))
 	}
 }
 
@@ -2365,6 +2617,84 @@ func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRul
 		return nil
 	}
 	return variants
+}
+
+// extractOneOfVariantRules extracts validation rules from each oneOf sub-schema.
+// Each inner slice represents one variant's constraint set.
+// Returns nil when the schema has no oneOf or when all variants yield empty rules.
+func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
+	if len(s.OneOf) == 0 {
+		return nil
+	}
+	// Skip for untyped "any" — can't compile checks.
+	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+		return nil
+	}
+	var variants [][]ValidationRule
+	hasRules := false
+	for _, variant := range s.OneOf {
+		rules := extractValidationRules("", "", variant)
+		variants = append(variants, rules)
+		if len(rules) > 0 {
+			hasRules = true
+		}
+	}
+	if !hasRules {
+		return nil
+	}
+	return variants
+}
+
+// extractPatternPropertyValidationRules extracts validation rules from a
+// patternProperties sub-schema. These rules are checked at runtime against
+// json.RawMessage values, so we include a "type" rule when the sub-schema
+// specifies a type constraint.
+func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
+	var rules []ValidationRule
+	// Type constraint — checked by inspecting the raw JSON value at runtime.
+	if len(s.Type) > 0 {
+		// Collect all allowed types (e.g., ["string", "null"]).
+		var types []string
+		for _, t := range s.Type {
+			types = append(types, t)
+		}
+		if len(types) == 1 {
+			rules = append(rules, ValidationRule{
+				RuleType: "ppType", Value: types[0],
+			})
+		} else if len(types) > 1 {
+			rules = append(rules, ValidationRule{
+				RuleType: "ppType", Value: types,
+			})
+		}
+	}
+	// Numeric constraints.
+	if s.Minimum != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMinimum", Value: *s.Minimum})
+	}
+	if s.Maximum != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMaximum", Value: *s.Maximum})
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+	}
+	if s.MultipleOf != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMultipleOf", Value: *s.MultipleOf})
+	}
+	// String constraints.
+	if s.MinLength != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMinLength", Value: s.MinLength.Int()})
+	}
+	if s.MaxLength != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMaxLength", Value: s.MaxLength.Int()})
+	}
+	if s.Pattern != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppPattern", Value: *s.Pattern})
+	}
+	return rules
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

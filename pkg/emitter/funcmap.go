@@ -35,7 +35,9 @@ func FuncMap() template.FuncMap {
 		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
 		"isRawMessage":       isRawMessageFunc,
 		"goStringLiteral":    goStringLiteralFunc,
+		"goStringQuote":      goStringQuoteFunc,
 		"hasManualFields":    hasManualFieldsFunc,
+		"ppTypeValue":        ppTypeValueFunc,
 	}
 }
 
@@ -122,6 +124,12 @@ func goStringLiteralFunc(s string) string {
 	return q[1 : len(q)-1]
 }
 
+// goStringQuoteFunc returns a Go quoted string literal (with surrounding quotes).
+// This is useful in templates where backtick strings can't be used.
+func goStringQuoteFunc(s string) string {
+	return fmt.Sprintf("%q", s)
+}
+
 // hasManualFieldsFunc returns true if any FieldDef in the slice has ManualJSON set.
 // Used in templates to add manual field handling in marshal/unmarshal methods.
 func hasManualFieldsFunc(fields any) bool {
@@ -133,6 +141,23 @@ func hasManualFieldsFunc(fields any) bool {
 		}
 	}
 	return false
+}
+
+// ppTypeValueFunc extracts the type name from a patternProperties "ppType" validation
+// rule value. The value can be a single string or a []string for multi-type.
+// Returns the first (or only) type name as a string.
+func ppTypeValueFunc(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case []string:
+		if len(val) > 0 {
+			return val[0]
+		}
+		return "any"
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

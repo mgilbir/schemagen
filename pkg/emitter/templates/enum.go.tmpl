@@ -1,4 +1,10 @@
 {{define "enum"}}
+{{- if .IsRaw}}{{template "enum_raw" .}}
+{{- else}}{{template "enum_const" .}}
+{{- end}}
+{{- end}}
+
+{{define "enum_const"}}
 {{- if .Description}}
 // {{.Name}} - {{.Description}}
 {{- end}}
@@ -19,5 +25,52 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	default:
 		return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
 	}
+}
+{{- end}}
+
+{{define "enum_raw"}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+type {{.Name}} json.RawMessage
+{{- $recv := receiverName .Name}}
+{{- $allowedVar := lowerFirst .Name | printf "%sAllowedJSON"}}
+
+var {{$allowedVar}} = []string{
+{{- range .Values}}
+	{{goStringQuote .RawJSON}},
+{{- end}}
+}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	*{{$recv}} = {{.Name}}(data)
+	return nil
+}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if len({{$recv}}) == 0 {
+		return []byte("null"), nil
+	}
+	return json.RawMessage({{$recv}}).MarshalJSON()
+}
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
+	var tmp any
+	if err := json.Unmarshal([]byte({{$recv}}), &tmp); err != nil {
+		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
+	}
+	canonical, err := json.Marshal(tmp)
+	if err != nil {
+		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
+	}
+	s := string(canonical)
+	for _, allowed := range {{$allowedVar}} {
+		if s == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid {{.Name}} value: %s", s)
 }
 {{- end}}

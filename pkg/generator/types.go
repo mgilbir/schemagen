@@ -111,6 +111,17 @@ func (d *StructDef) HasPatternProperties() bool {
 	return len(d.PatternProperties) > 0
 }
 
+// HasPatternPropertyValidation returns true if any pattern property has validation
+// constraints (IsForbidden or Validations) that need to be checked in Validate().
+func (d *StructDef) HasPatternPropertyValidation() bool {
+	for _, pp := range d.PatternProperties {
+		if pp.IsForbidden || len(pp.Validations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // HasDependentSchemas returns true if the struct has dependent schema constraints.
 func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
@@ -121,7 +132,9 @@ func (d *StructDef) HasDependentSchemas() bool {
 // to preserve them through marshal/unmarshal round-trips. The patterns are used
 // during unmarshal to distinguish pattern-matched keys from truly additional keys.
 type PatternPropertyDef struct {
-	Pattern string // regex pattern (e.g., "^v", "f.o")
+	Pattern     string           // regex pattern (e.g., "^v", "f.o")
+	IsForbidden bool             // true when sub-schema is boolean false (matching keys rejected)
+	Validations []ValidationRule // constraints on matched values (type, minimum, etc.)
 }
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.
@@ -175,6 +188,7 @@ type EnumDef struct {
 	BaseType    GoType
 	Values      []EnumValue
 	Description string
+	IsRaw       bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
 }
 
 func (d *EnumDef) TypeName() string { return d.Name }
@@ -182,8 +196,9 @@ func (d *EnumDef) typeDef()         {}
 
 // EnumValue represents one enum constant.
 type EnumValue struct {
-	Name  string // Go constant name
-	Value any    // actual value (string or int)
+	Name    string // Go constant name
+	Value   any    // actual value (string or int)
+	RawJSON string // JSON-encoded form (only set when EnumDef.IsRaw is true)
 }
 
 // AliasDef represents a defined type (type Name Underlying).
@@ -196,6 +211,7 @@ type AliasDef struct {
 	Description       string
 	Validations       []ValidationRule
 	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
+	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data

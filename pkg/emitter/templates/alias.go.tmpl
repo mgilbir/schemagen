@@ -149,6 +149,56 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if .OneOfVariants}}
+	// oneOf: exactly one variant must be satisfied.
+	{
+		oneOfCount := 0
+		{{- range $vi, $variant := .OneOfVariants}}
+		{
+			variantValid := true
+			{{- range $variant}}
+			{{- if eq .RuleType "minLength"}}
+			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "maxLength"}}
+			if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "minimum"}}
+			if float64({{$recv}}) < {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "maximum"}}
+			if float64({{$recv}}) > {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "exclusiveMinimum"}}
+			if float64({{$recv}}) <= {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "exclusiveMaximum"}}
+			if float64({{$recv}}) >= {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "multipleOf"}}
+			{
+				q := float64({{$recv}}) / {{.Value}}
+				if math.Abs(q - math.Round(q)) > 1e-9 { variantValid = false }
+			}
+			{{- end}}
+			{{- if eq .RuleType "pattern"}}
+			if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "minItems"}}
+			if len({{$recv}}) < {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- if eq .RuleType "maxItems"}}
+			if len({{$recv}}) > {{.Value}} { variantValid = false }
+			{{- end}}
+			{{- end}}
+			if variantValid { oneOfCount++ }
+		}
+		{{- end}}
+		if oneOfCount != 1 {
+			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+		}
+	}
+	{{- end}}
 	return nil
 }
 {{- end}}

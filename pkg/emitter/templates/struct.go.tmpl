@@ -23,7 +23,8 @@ type {{.Name}} struct {
 	PatternProperties map[string]json.RawMessage `json:"-"`
 {{- end}}
 {{- if .AcceptNonObject}}
-	_nonObject bool // set by UnmarshalJSON when the JSON data is not an object
+	_nonObject    bool            // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject json.RawMessage // raw bytes of non-object data for lossless roundtrip
 {{- end}}
 {{- if .HasDependentSchemas}}
 	_jsonKeys map[string]bool // set by UnmarshalJSON for dependentSchemas validation
