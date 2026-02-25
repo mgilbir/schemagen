@@ -220,6 +220,51 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					}
 				}
 				{{- end}}
+				{{- if or (eq .RuleType "ppMinItems") (eq .RuleType "ppMaxItems")}}
+				{
+					var arr []json.RawMessage
+					if err := json.Unmarshal(v, &arr); err == nil {
+						{{- if eq .RuleType "ppMinItems"}}
+						if len(arr) < {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q array length %d is less than minItems {{.Value}}", {{printf "%q" $pp.Pattern}}, k, len(arr))
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppMaxItems"}}
+						if len(arr) > {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q array length %d exceeds maxItems {{.Value}}", {{printf "%q" $pp.Pattern}}, k, len(arr))
+						}
+						{{- end}}
+					}
+				}
+				{{- end}}
+				{{- if or (eq .RuleType "ppMinLength") (eq .RuleType "ppMaxLength")}}
+				{
+					var s string
+					if err := json.Unmarshal(v, &s); err == nil {
+						{{- if eq .RuleType "ppMinLength"}}
+						if utf8.RuneCountInString(s) < {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+						}
+						{{- end}}
+						{{- if eq .RuleType "ppMaxLength"}}
+						if utf8.RuneCountInString(s) > {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q string length exceeds maxLength {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+						}
+						{{- end}}
+					}
+				}
+				{{- end}}
+				{{- if eq .RuleType "ppPattern"}}
+				{
+					var s string
+					if err := json.Unmarshal(v, &s); err == nil {
+						re := regexp.MustCompile({{printf "%q" .Value}})
+						if !re.MatchString(s) {
+							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+						}
+					}
+				}
+				{{- end}}
 				{{- end}}
 			}
 			{{- end}}

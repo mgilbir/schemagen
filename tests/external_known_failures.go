@@ -165,7 +165,7 @@ var knownParseFailures = map[string]string{}
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
-//   - patternProperties validation: sub-schema constraints on pattern-matched keys not validated (18)
+//   - (patternProperties validation: sub-schema constraints — FIXED)
 //   - (minLength/maxLength Unicode grapheme counting — FIXED)
 //   - (multipleOf floating point precision — FIXED)
 //   - (enum property validation — FIXED via validatable field dispatch)
@@ -205,13 +205,7 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
 
-	// patternProperties validation — sub-schema constraints on pattern-matched keys not validated
-	"draft3/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft4/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft6/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft7/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty":       "patternProperties sub-schema validation not implemented",
-	"draft2019-09/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
-	"draft2020-12/properties/properties, patternProperties, additionalProperties interaction/patternProperty invalidates nonproperty": "patternProperties sub-schema validation not implemented",
+	// (patternProperties sub-schema validation — FIXED via ppMinItems/ppMaxItems/ppMinLength/ppMaxLength/ppPattern)
 	// (additionalProperty invalidates others — FIXED via schema validation on overflow map)
 
 	// type-inferred schema: data type incompatible with inferred Go type

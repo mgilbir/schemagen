@@ -212,8 +212,16 @@ func (g *Generator) addRequiredImports() {
 						}
 						if v.RuleType == "ppMinimum" || v.RuleType == "ppMaximum" ||
 							v.RuleType == "ppExclusiveMinimum" || v.RuleType == "ppExclusiveMaximum" ||
-							v.RuleType == "ppMultipleOf" {
+							v.RuleType == "ppMultipleOf" ||
+							v.RuleType == "ppMinItems" || v.RuleType == "ppMaxItems" ||
+							v.RuleType == "ppMinLength" || v.RuleType == "ppMaxLength" {
 							needsJSON = true
+						}
+						if v.RuleType == "ppMinLength" || v.RuleType == "ppMaxLength" {
+							needsUTF8 = true
+						}
+						if v.RuleType == "ppPattern" {
+							needsRegexp = true
 						}
 					}
 				}
@@ -2698,6 +2706,13 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	}
 	if s.Pattern != nil {
 		rules = append(rules, ValidationRule{RuleType: "ppPattern", Value: *s.Pattern})
+	}
+	// Array constraints.
+	if s.MinItems != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMinItems", Value: s.MinItems.Int()})
+	}
+	if s.MaxItems != nil {
+		rules = append(rules, ValidationRule{RuleType: "ppMaxItems", Value: s.MaxItems.Int()})
 	}
 	return rules
 }
