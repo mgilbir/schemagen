@@ -182,14 +182,14 @@ var knownParseFailures = map[string]string{}
 //   - unevaluatedProperties validation not implemented (84)
 //   - (type-only null validation — FIXED)
 //   - (ECMA-262 regex patternProperties mismatch: FIXED)
-//   - $ref sibling keyword validation not implemented (20)
+//   - $ref sibling keyword validation not implemented (14)
 //   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
 //   - enum on struct fields: draft3 required-as-boolean not checked (2)
 //   - property-level validation not implemented for this schema shape (13)
 //   - $dynamicRef/$dynamicAnchor not implemented (11)
 //   - (dependencies/dependentSchemas: fixed)
 //   - extends / anyOf / not / dependentSchemas / other (22)
-//   - $recursiveRef / cross-draft / required with composition (3)
+//   - $recursiveRef / cross-draft / required with composition (2)
 var knownValidationFailures = map[string]string{
 	// default keyword — Validate() doesn't consider default values; zero-value fails minLength
 	"draft3/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
@@ -340,29 +340,20 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
-	// $recursiveRef validation not implemented (1 entry)
-	"draft2019-09/recursiveRef/$recursiveRef without $recursiveAnchor works like $ref/recursive mismatch": "$recursiveRef validation not implemented",
-
-	// $ref sibling keyword validation not implemented (20 entries)
+	// $ref sibling keyword validation not implemented (14 entries)
 	"draft2019-09/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2019-09/ref/root pointer ref/recursive mismatch":                                                                          "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2020-12/ref/root pointer ref/recursive mismatch":                                                                          "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
-	"draft3/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
-	"draft4/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft6/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
 	"draft6/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft6/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft6/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
 	"draft7/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
 	"draft7/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft7/ref/root pointer ref/recursive mismatch":                                                                                "$ref sibling keyword validation not implemented",
 	"draft7/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
 
 	// additionalProperties validation remaining (6 entries — allOf interaction)

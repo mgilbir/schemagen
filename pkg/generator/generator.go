@@ -1915,7 +1915,12 @@ func (g *Generator) rootIsObjectType() bool {
 	if g.rootSchema == nil {
 		return false
 	}
-	return primarySchemaType(g.rootSchema) == "object"
+	if primarySchemaType(g.rootSchema) == "object" {
+		return true
+	}
+	// Schemas with properties or patternProperties are implicitly object types,
+	// even without an explicit "type": "object".
+	return hasProperties(g.rootSchema) || len(g.rootSchema.PatternProperties) > 0
 }
 
 // isSelfRef returns true if ref points to the root schema itself.
