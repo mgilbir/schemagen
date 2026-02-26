@@ -79,6 +79,7 @@ type StructDef struct {
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
+	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
 	NeedsNullCheck        bool // true when the schema's type does not include "null" — reject null JSON data
@@ -106,6 +107,13 @@ type ValidatableFieldDef struct {
 // HasRequiredFields returns true if the struct has required field validation.
 func (d *StructDef) HasRequiredFields() bool {
 	return len(d.RequiredJSON) > 0
+}
+
+// HasOwnPropertyNames returns true if the struct tracks own (non-merged) property names
+// for additionalProperties scope isolation (e.g., allOf merges). A non-nil but empty
+// slice means "no own properties" — all properties came from allOf sub-schemas.
+func (d *StructDef) HasOwnPropertyNames() bool {
+	return d.OwnPropertyNames != nil
 }
 
 // HasPatternProperties returns true if the struct has pattern properties.

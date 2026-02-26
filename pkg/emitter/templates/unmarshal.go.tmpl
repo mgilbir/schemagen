@@ -121,8 +121,17 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
 		knownFields := map[string]bool{
+			{{- if $struct.HasOwnPropertyNames}}
+			{{- /* Only parent-level properties are "known" for additionalProperties routing.
+			       Properties merged from allOf sub-schemas are NOT known — they must be
+			       routed to additionalProperties per the JSON Schema spec (section 10.2). */}}
+			{{- range $struct.OwnPropertyNames}}
+			{{printf "%q" .}}: true,
+			{{- end}}
+			{{- else}}
 			{{- range $struct.Fields}}
 			{{printf "%q" .JSONName}}: true,
+			{{- end}}
 			{{- end}}
 			{{- range $struct.OneOfs}}
 			{{- if .JSONName}}

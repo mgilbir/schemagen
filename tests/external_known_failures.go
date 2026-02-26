@@ -147,7 +147,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 226 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 220 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -161,7 +161,6 @@ var knownParseFailures = map[string]string{}
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - codegen produces code that fails to compile for validation binary (6)
-//   - additionalProperties: allOf interaction (6)
 //   - unevaluatedProperties: schema-valued constraint not yet validated (4)
 //   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
@@ -330,13 +329,7 @@ var knownValidationFailures = map[string]string{
 	"draft7/ref/relative refs with absolute uris and defs/invalid on inner field": "$ref sibling keyword validation not implemented",
 	// (draft7 URN base URI with $ref — FIXED via non-object validation)
 
-	// additionalProperties validation remaining (6 entries — allOf interaction)
-	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
-	"draft2020-12/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",
-	"draft3/additionalProperties/additionalProperties does not look in applicators/properties defined in extends are not examined":     "additionalProperties: extends properties not considered",
-	"draft4/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-	"draft6/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
-	"draft7/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined":       "additionalProperties: allOf properties not considered",
+	// (additionalProperties: allOf interaction — FIXED via OwnPropertyNames scope isolation)
 
 	// $anchor/$recursiveRef resolution edge cases (5 entries)
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":         "$anchor resolution produces wrong unmarshal type",

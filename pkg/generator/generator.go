@@ -1137,7 +1137,29 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 
 	// allOf is type-agnostic: don't silently accept non-object data.
-	return g.generateStructDef(name, merged, false)
+	if err := g.generateStructDef(name, merged, false); err != nil {
+		return err
+	}
+
+	// Per JSON Schema spec, additionalProperties only considers properties defined
+	// directly on the same schema — NOT properties from allOf/anyOf sub-schemas.
+	// When the parent has additionalProperties and allOf contributed extra properties,
+	// record the parent's own property names so the unmarshal template routes
+	// allOf-contributed properties into the additionalProperties overflow map.
+	if s.AdditionalProperties != nil && len(s.Properties) < len(merged.Properties) {
+		ownNames := make([]string, 0, len(s.Properties))
+		for k := range s.Properties {
+			ownNames = append(ownNames, k)
+		}
+		sort.Strings(ownNames)
+		// Find the StructDef we just appended and set OwnPropertyNames.
+		if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
+			if sd, ok := last.(*StructDef); ok {
+				sd.OwnPropertyNames = ownNames
+			}
+		}
+	}
+	return nil
 }
 
 // mergeAllOfInto recursively merges properties, required fields, and validation
