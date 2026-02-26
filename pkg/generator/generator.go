@@ -347,6 +347,47 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if iad, ok := td.(*InferredAliasDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors, String()
+			for _, v := range iad.Validations {
+				if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+					needsUTF8 = true
+				}
+				if v.RuleType == "pattern" {
+					needsRegexp = true
+				}
+				if v.RuleType == "multipleOf" {
+					needsMath = true
+				}
+			}
+			for _, variant := range iad.AnyOfVariants {
+				for _, v := range variant {
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+			for _, variant := range iad.OneOfVariants {
+				for _, v := range variant {
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+		}
 	}
 
 	if needsJSON {
@@ -371,6 +412,17 @@ func (g *Generator) addRequiredImports() {
 	if needsBytes {
 		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
 	}
+}
+
+// isInferredAlias returns true if a type name was generated as an InferredAliasDef.
+func (g *Generator) isInferredAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*InferredAliasDef)
+			return ok
+		}
+	}
+	return false
 }
 
 // resolveAliasMethodability walks all AliasDefs and sets NoMethods=true
@@ -541,6 +593,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
 			}
+			// If the ref target was generated as InferredAliasDef (a wrapper struct),
+			// creating `type Root Target` would not inherit methods. Instead, generate
+			// Root directly from the resolved schema so it gets its own methods.
+			if g.isInferredAlias(refName) {
+				return g.generateTypeDef(name, resolved)
+			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:        name,
@@ -554,22 +612,42 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// Simple primitive type → alias (or defined type if it has validation constraints)
 	// When no explicit type is declared, infer from constraint keywords.
 	primaryType := primarySchemaType(s)
+	isInferred := false
 	if primaryType == "" {
 		primaryType = inferTypeFromConstraints(s)
+		if primaryType != "" {
+			isInferred = true
+		}
 	}
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
 		anyOfVariants := extractAnyOfVariantRules(s, goType)
+		oneOfVariants := extractOneOfVariantRules(s, goType)
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:           name,
-			Underlying:     goType,
-			Description:    s.Description,
-			Validations:    rules,
-			AnyOfVariants:  anyOfVariants,
-			NeedsNullCheck: !schemaAllowsNull(s),
-		})
+		if isInferred {
+			// Type was inferred from constraints — generate wrapper struct that
+			// accepts any JSON value but validates only matching types.
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:             name,
+				Description:      s.Description,
+				InferredGoType:   goType,
+				InferredJSONType: primaryType,
+				Validations:      rules,
+				AnyOfVariants:    anyOfVariants,
+				OneOfVariants:    oneOfVariants,
+				NeedsNullCheck:   !schemaAllowsNull(s),
+			})
+		} else {
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(s),
+			})
+		}
 		return nil
 	}
 
@@ -582,16 +660,29 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
 		// will short-circuit and not cause infinite recursion.
 		g.generated[name] = true
-		tupleItems := g.buildTupleItemDefs(s, name)
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:           name,
-			Underlying:     goType,
-			Description:    s.Description,
-			Validations:    rules,
-			AnyOfVariants:  anyOfVariants,
-			TupleItems:     tupleItems,
-			NeedsNullCheck: !schemaAllowsNull(s),
-		})
+		if isInferred {
+			// Inferred array type — wrapper struct for non-array fallback.
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:             name,
+				Description:      s.Description,
+				InferredGoType:   goType,
+				InferredJSONType: primaryType,
+				Validations:      rules,
+				AnyOfVariants:    anyOfVariants,
+				NeedsNullCheck:   !schemaAllowsNull(s),
+			})
+		} else {
+			tupleItems := g.buildTupleItemDefs(s, name)
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				TupleItems:     tupleItems,
+				NeedsNullCheck: !schemaAllowsNull(s),
+			})
+		}
 		return nil
 	}
 
@@ -2548,6 +2639,8 @@ func (g *Generator) populateValidatableFields() {
 			if d.CanHaveMethods() {
 				validatableTypes[d.Name] = true
 			}
+		case *InferredAliasDef:
+			validatableTypes[d.Name] = true // wrapper struct always has Validate()
 		}
 	}
 
@@ -2606,6 +2699,9 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 					return zeroForPrimitive(d.Underlying.GoTypeName())
 				case *StructDef:
 					// Structs don't have a meaningful zero literal for comparison.
+					return ""
+				case *InferredAliasDef:
+					// InferredAliasDef is a wrapper struct — no meaningful zero literal.
 					return ""
 				}
 			}

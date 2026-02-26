@@ -10,7 +10,7 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
 }
 
-// RoundTrip: 120 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 22 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
@@ -40,135 +40,35 @@ var knownRoundTripFailures = map[string]string{
 	// from the constraint keywords. JSTS tests these with incompatible data types (e.g.,
 	// {"minimum": 5} with data "hello") which are "valid" per JSON Schema but can't
 	// unmarshal into the inferred Go type (float64).
-	"draft3/divisibleBy/by int/ignores non-numbers":                                      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maximum/maximum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores null":                                     "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maximum/maximum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores null":                                     "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores null":                                     "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores null":                                     "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maxItems/maxItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maxLength/maxLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maximum/maximum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minItems/minItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minLength/minLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minimum/minimum validation with signed integer/ignores non-numbers":    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minimum/minimum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/multipleOf/by int/ignores non-numbers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/optional/no-schema/validation without $schema/a non-string is valid":   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores booleans":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores null":                               "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maxItems/maxItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maxLength/maxLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maximum/maximum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minItems/minItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minLength/minLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minimum/minimum validation with signed integer/ignores non-numbers":    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minimum/minimum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/multipleOf/by int/ignores non-numbers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/optional/no-schema/validation without $schema/a non-string is valid":   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores booleans":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores null":                               "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
 }
 
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 214 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 121 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
-//   - type-inferred schema: data type incompatible with inferred Go type (89)
 //   - unevaluatedProperties: cousin isolation requires per-branch annotation tracking (24)
-//   - non-object data: cannot unmarshal number into generated Go type (12)
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
+//   - non-object data: cannot unmarshal number into generated Go type (12)
 //   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - codegen produces code that fails to compile for validation binary (6)
+//   - $anchor resolution edge cases (5)
 //   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
-//   - $anchor resolution edge cases (4)
 //   - $dynamicRef with required: $dynamicRef not implemented (3)
-//   - $id/$ref evaluation order edge case (2)
 //   - custom metaschema vocabulary not supported (2)
-//   - type-inferred schema: no $schema to guide validation (2)
 //   - $recursiveRef not implemented (2)
+//   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
 //   - unevaluatedProperties: $dynamicRef not implemented (1)
 //   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
-//   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
 
@@ -185,112 +85,13 @@ var knownValidationFailures = map[string]string{
 
 	// (patternProperties sub-schema validation — FIXED via ppMinItems/ppMaxItems/ppMinLength/ppMaxLength/ppPattern)
 	// (additionalProperty invalidates others — FIXED via schema validation on overflow map)
-
-	// type-inferred schema: data type incompatible with inferred Go type
-	// When a schema has constraints but no explicit "type", we infer the type from constraints.
-	// This means data of a different type (which JSON Schema says should "ignore" the constraint)
-	// fails to unmarshal into the inferred Go type.
-	"draft3/divisibleBy/by int/ignores non-numbers":                                      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maximum/maximum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft3/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maximum/maximum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation (explicit false exclusivity)/ignores non-numbers": "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft4/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft6/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maximum/maximum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maxItems/maxItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/maxLength/maxLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minimum/minimum validation/ignores non-numbers":                              "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minimum/minimum validation with signed integer/ignores non-numbers":          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minItems/minItems validation/ignores non-arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/minLength/minLength validation/ignores non-strings":                          "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/multipleOf/by int/ignores non-numbers":                                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores arrays":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores booleans":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores floats":                                   "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores integers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft7/pattern/pattern validation/ignores objects":                                  "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maximum/maximum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maxItems/maxItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/maxLength/maxLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minimum/minimum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minimum/minimum validation with signed integer/ignores non-numbers":    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minItems/minItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/minLength/minLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/multipleOf/by int/ignores non-numbers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores booleans":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2019-09/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/exclusiveMaximum/exclusiveMaximum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/exclusiveMinimum/exclusiveMinimum validation/ignores non-numbers":      "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maximum/maximum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maxItems/maxItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/maxLength/maxLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minimum/minimum validation/ignores non-numbers":                        "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minimum/minimum validation with signed integer/ignores non-numbers":    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minItems/minItems validation/ignores non-arrays":                       "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/minLength/minLength validation/ignores non-strings":                    "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/multipleOf/by int/ignores non-numbers":                                 "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores arrays":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores booleans":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores floats":                             "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores integers":                           "type-inferred schema: data type incompatible with inferred Go type",
-	"draft2020-12/pattern/pattern validation/ignores objects":                            "type-inferred schema: data type incompatible with inferred Go type",
-
-	// $id/$ref evaluation order — codegen resolves $id and $ref in wrong order
-	"draft2019-09/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
-	"draft2020-12/ref/order of evaluation: $id and $ref/data is invalid against first definition": "$id/$ref evaluation order edge case",
+	// (type-inferred schema — FIXED via InferredAliasDef wrapper struct)
+	// ($id/$ref evaluation order — FIXED via InferredAliasDef ref handling)
+	// (no $schema validation — FIXED via InferredAliasDef wrapper struct)
 
 	// custom metaschema vocabulary not supported — vocabulary that disables validation
 	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom metaschema vocabulary not supported",
 	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom metaschema vocabulary not supported",
-
-	// type-inferred schema: no $schema to guide validation
-	"draft2019-09/optional/no-schema/validation without $schema/a non-string is valid": "type-inferred schema: no $schema to guide validation",
-	"draft2020-12/optional/no-schema/validation without $schema/a non-string is valid": "type-inferred schema: no $schema to guide validation",
 
 	// (enum in properties — FIXED via validatable field dispatch)
 

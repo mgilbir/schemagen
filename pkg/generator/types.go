@@ -298,6 +298,58 @@ func (d *AliasDef) HasTupleItems() bool {
 	return len(d.TupleItems) > 0
 }
 
+// InferredAliasDef represents a type where the Go type was inferred from
+// constraint keywords (not explicitly declared via "type"). It generates a
+// wrapper struct that accepts any JSON value but provides typed access for
+// the expected type. Non-matching JSON types are silently accepted per JSON
+// Schema semantics (constraints only apply to matching types).
+type InferredAliasDef struct {
+	Name             string
+	Description      string
+	InferredGoType   GoType           // float64, string, or []any
+	InferredJSONType string           // "number", "string", "array" — for accessor naming
+	Validations      []ValidationRule // constraint rules (minimum, maxLength, etc.)
+	AnyOfVariants    [][]ValidationRule
+	OneOfVariants    [][]ValidationRule
+	NeedsNullCheck   bool
+}
+
+func (d *InferredAliasDef) TypeName() string { return d.Name }
+func (d *InferredAliasDef) typeDef()         {}
+
+// AccessorName returns the Go method name for typed access (e.g., "Float64", "StringValue", "Slice").
+func (d *InferredAliasDef) AccessorName() string {
+	switch d.InferredJSONType {
+	case "number":
+		return "Float64"
+	case "string":
+		return "StringValue"
+	case "array":
+		return "Slice"
+	default:
+		return "Value"
+	}
+}
+
+// TypeCheckName returns the Go method name for type checking (e.g., "IsNumber", "IsString", "IsArray").
+func (d *InferredAliasDef) TypeCheckName() string {
+	switch d.InferredJSONType {
+	case "number":
+		return "IsNumber"
+	case "string":
+		return "IsString"
+	case "array":
+		return "IsArray"
+	default:
+		return "IsTyped"
+	}
+}
+
+// GoTypeName returns the Go type name of the inferred type.
+func (d *InferredAliasDef) GoTypeName() string {
+	return d.InferredGoType.GoTypeName()
+}
+
 // ---------- File ----------
 
 // File represents a generated Go source file.

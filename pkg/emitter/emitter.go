@@ -126,6 +126,18 @@ func (w typeDefWrapper) AsAlias() *generator.AliasDef {
 	return a
 }
 
+// IsInferredAlias reports whether the wrapped TypeDef is a *generator.InferredAliasDef.
+func (w typeDefWrapper) IsInferredAlias() bool {
+	_, ok := w.Def.(*generator.InferredAliasDef)
+	return ok
+}
+
+// AsInferredAlias returns the wrapped TypeDef as a *generator.InferredAliasDef, or nil.
+func (w typeDefWrapper) AsInferredAlias() *generator.InferredAliasDef {
+	d, _ := w.Def.(*generator.InferredAliasDef)
+	return d
+}
+
 // wrapTypeDefFunc is the template function that wraps a TypeDef.
 // It handles both generator.TypeDef and already-wrapped typeDefWrapper values.
 func wrapTypeDefFunc(td any) typeDefWrapper {
