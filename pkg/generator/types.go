@@ -127,6 +127,20 @@ func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
 }
 
+// NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
+// validation or dependent schema validation.
+func (d *StructDef) NeedsJSONKeys() bool {
+	if len(d.DependentSchemas) > 0 {
+		return true
+	}
+	for _, v := range d.Validations {
+		if v.Optional {
+			return true
+		}
+	}
+	return false
+}
+
 // PatternPropertyDef describes a patternProperties entry on a struct.
 // Pattern-matched keys are stored in a single overflow map (json.RawMessage values)
 // to preserve them through marshal/unmarshal round-trips. The patterns are used
@@ -150,6 +164,7 @@ type ValidationRule struct {
 	RuleType  string // "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "minItems", "maxItems", "uniqueItems", "required"
 	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern, bool for uniqueItems)
 	IsPointer bool   // true if the field is a pointer type (needs nil check + dereference)
+	Optional  bool   // true if the field is optional (not required) — validation is skipped when absent
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

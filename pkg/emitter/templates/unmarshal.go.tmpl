@@ -93,12 +93,18 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields}}
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys}}
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		{{- if $struct.NeedsJSONKeys}}
+		{{$recv}}._jsonKeys = make(map[string]bool, len(raw))
+		for k := range raw {
+			{{$recv}}._jsonKeys[k] = true
+		}
+		{{- end}}
 		{{- if $struct.HasRequiredFields}}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
@@ -165,20 +171,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 	}
 	{{- end}}
-	{{- if $struct.HasDependentSchemas}}
-
-	// Capture all JSON keys for dependentSchemas validation.
-	{
-		var depRaw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &depRaw); err != nil {
-			return err
-		}
-		{{$recv}}._jsonKeys = make(map[string]bool, len(depRaw))
-		for k := range depRaw {
-			{{$recv}}._jsonKeys[k] = true
-		}
-	}
-	{{- end}}
+	{{- /* _jsonKeys for dependentSchemas and optional validation is populated in the raw block above */}}
 
 	return nil
 }

@@ -11,6 +11,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- range $struct.Validations}}
+	{{- if .Optional}}
+	if {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
+	{{- end}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) < {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$recv}}.{{.FieldName}}))
@@ -116,6 +119,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		if totalProps < {{.Value}} {
 			return fmt.Errorf("too few properties: %d is less than minimum {{.Value}}", totalProps)
 		}
+	}
+	{{- end}}
+	{{- if .Optional}}
 	}
 	{{- end}}
 	{{- end}}

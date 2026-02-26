@@ -822,6 +822,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 			filtered = append(filtered, rules[i])
 		}
+		// Mark rules as optional when the property is not required.
+		// JSON Schema says constraints only apply to present values.
+		if !requiredSet[propName] {
+			for j := range filtered {
+				filtered[j].Optional = true
+			}
+		}
 		validations = append(validations, filtered...)
 	}
 
@@ -888,6 +895,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	})
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
+	}
+
+	// Enable custom unmarshal if there are optional field validations (to track key presence).
+	for _, v := range validations {
+		if v.Optional {
+			needsUnmarshal = true
+			break
+		}
 	}
 
 	// Enable custom unmarshal if there are required fields (to track key presence).

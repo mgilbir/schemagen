@@ -169,7 +169,7 @@ var knownParseFailures = map[string]string{}
 //   - (minLength/maxLength Unicode grapheme counting — FIXED)
 //   - (multipleOf floating point precision — FIXED)
 //   - (enum property validation — FIXED via validatable field dispatch)
-//   - default keyword: valid data omits field, zero-value fails minLength (6)
+//   - (default keyword — FIXED via optional field presence tracking)
 //   - (multipleOf float overflow — FIXED via quotient rounding)
 //   - $dynamicRef with required: $dynamicRef not implemented (3)
 //   - ($ref overrides sibling maxItems — FIXED)
@@ -191,13 +191,7 @@ var knownParseFailures = map[string]string{}
 //   - extends / anyOf / not / dependentSchemas / other (22)
 //   - $recursiveRef / cross-draft (1)
 var knownValidationFailures = map[string]string{
-	// default keyword — Validate() doesn't consider default values; zero-value fails minLength
-	"draft3/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
-	"draft4/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
-	"draft6/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
-	"draft7/default/invalid string value for default/still valid when the invalid default is used":       "default keyword not applied before validation",
-	"draft2019-09/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
-	"draft2020-12/default/invalid string value for default/still valid when the invalid default is used": "default keyword not applied before validation",
+	// (default keyword — FIXED via optional field presence tracking)
 
 	// float-overflow optional test — 1e308 can't be unmarshaled into int64 Go type
 	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "1e308 overflows int64 Go type",

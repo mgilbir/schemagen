@@ -26,8 +26,8 @@ type {{.Name}} struct {
 	_nonObject    bool            // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject json.RawMessage // raw bytes of non-object data for lossless roundtrip
 {{- end}}
-{{- if .HasDependentSchemas}}
-	_jsonKeys map[string]bool // set by UnmarshalJSON for dependentSchemas validation
+{{- if .NeedsJSONKeys}}
+	_jsonKeys map[string]bool // set by UnmarshalJSON for optional field / dependentSchemas validation
 {{- end}}
 }
 {{- range .OneOfs}}
