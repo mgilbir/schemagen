@@ -10,49 +10,32 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
 }
 
-// RoundTrip: 22 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 10 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
-	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties":                                                  "round-trip mismatch: $dynamicRef not implemented",
-	"draft2020-12/optional/bignum/integer/a bignum is an integer":                                                                                               "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
 
-	"draft3/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft3/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft4/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft4/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft6/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft6/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	"draft7/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
-	"draft7/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	// Type-inferred schemas: constraint-only schemas (no "type" field) now infer a Go type
-	// from the constraint keywords. JSTS tests these with incompatible data types (e.g.,
-	// {"minimum": 5} with data "hello") which are "valid" per JSON Schema but can't
-	// unmarshal into the inferred Go type (float64).
 }
 
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 121 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 109 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - unevaluatedProperties: cousin isolation requires per-branch annotation tracking (24)
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
-//   - non-object data: cannot unmarshal number into generated Go type (12)
 //   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
 //   - $ref sibling keyword validation not implemented (10)
@@ -232,19 +215,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
 
-	// non-object data: cannot unmarshal number into generated Go type (12 entries)
-	"draft2019-09/optional/bignum/integer/a bignum is an integer":          "non-object data: cannot unmarshal number into generated Go type",
-	"draft2019-09/optional/bignum/integer/a negative bignum is an integer": "non-object data: cannot unmarshal number into generated Go type",
-	"draft2020-12/optional/bignum/integer/a bignum is an integer":          "non-object data: cannot unmarshal number into generated Go type",
-	"draft2020-12/optional/bignum/integer/a negative bignum is an integer": "non-object data: cannot unmarshal number into generated Go type",
-	"draft3/optional/bignum/integer/a bignum is an integer":                "non-object data: cannot unmarshal number into generated Go type",
-	"draft3/optional/bignum/integer/a negative bignum is an integer":       "non-object data: cannot unmarshal number into generated Go type",
-	"draft4/optional/bignum/integer/a bignum is an integer":                "non-object data: cannot unmarshal number into generated Go type",
-	"draft4/optional/bignum/integer/a negative bignum is an integer":       "non-object data: cannot unmarshal number into generated Go type",
-	"draft6/optional/bignum/integer/a bignum is an integer":                "non-object data: cannot unmarshal number into generated Go type",
-	"draft6/optional/bignum/integer/a negative bignum is an integer":       "non-object data: cannot unmarshal number into generated Go type",
-	"draft7/optional/bignum/integer/a bignum is an integer":                "non-object data: cannot unmarshal number into generated Go type",
-	"draft7/optional/bignum/integer/a negative bignum is an integer":       "non-object data: cannot unmarshal number into generated Go type",
+	// (bignum integer: FIXED via BigIntAliasDef wrapper with int64 + *big.Int)
 	// (tuple items: FIXED via per-position tuple validation in Validate())
 
 	// $dynamicRef: incorrect parent schema (1 entry, previously masked by wrong root type selection)

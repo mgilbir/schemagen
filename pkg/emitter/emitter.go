@@ -138,6 +138,18 @@ func (w typeDefWrapper) AsInferredAlias() *generator.InferredAliasDef {
 	return d
 }
 
+// IsBigIntAlias reports whether the wrapped TypeDef is a *generator.BigIntAliasDef.
+func (w typeDefWrapper) IsBigIntAlias() bool {
+	_, ok := w.Def.(*generator.BigIntAliasDef)
+	return ok
+}
+
+// AsBigIntAlias returns the wrapped TypeDef as a *generator.BigIntAliasDef, or nil.
+func (w typeDefWrapper) AsBigIntAlias() *generator.BigIntAliasDef {
+	d, _ := w.Def.(*generator.BigIntAliasDef)
+	return d
+}
+
 // wrapTypeDefFunc is the template function that wraps a TypeDef.
 // It handles both generator.TypeDef and already-wrapped typeDefWrapper values.
 func wrapTypeDefFunc(td any) typeDefWrapper {

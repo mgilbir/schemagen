@@ -3,6 +3,7 @@
 {{- if $w.IsStruct}}{{template "struct" $w.AsStruct}}
 {{- else if $w.IsEnum}}{{template "enum" $w.AsEnum}}
 {{- else if $w.IsInferredAlias}}{{template "inferred_alias" $w.AsInferredAlias}}
+{{- else if $w.IsBigIntAlias}}{{template "bigint_alias" $w.AsBigIntAlias}}
 {{- else if $w.IsAlias}}{{template "alias" $w.AsAlias}}
 {{- end}}
 {{- end}}

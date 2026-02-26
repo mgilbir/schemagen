@@ -143,6 +143,8 @@ func (g *Generator) addRequiredImports() {
 	needsMath := false
 	needsUTF8 := false
 	needsBytes := false
+	needsStrings := false
+	needsBigInt := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -347,6 +349,13 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if _, ok := td.(*BigIntAliasDef); ok {
+			needsJSON = true    // UnmarshalJSON, MarshalJSON
+			needsFmt = true     // Validate() errors, String()
+			needsMath = true    // math.Trunc, math.IsInf
+			needsStrings = true // strings.ContainsAny for float-format bignums
+			needsBigInt = true  // math/big for *big.Int
+		}
 		if iad, ok := td.(*InferredAliasDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
 			needsFmt = true  // Validate() errors, String()
@@ -412,6 +421,12 @@ func (g *Generator) addRequiredImports() {
 	if needsBytes {
 		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
 	}
+	if needsStrings {
+		g.output.Imports = append(g.output.Imports, Import{Path: "strings"})
+	}
+	if needsBigInt {
+		g.output.Imports = append(g.output.Imports, Import{Path: "math/big"})
+	}
 }
 
 // isInferredAlias returns true if a type name was generated as an InferredAliasDef.
@@ -419,6 +434,17 @@ func (g *Generator) isInferredAlias(name string) bool {
 	for _, td := range g.output.TypeDefs {
 		if td.TypeName() == name {
 			_, ok := td.(*InferredAliasDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isBigIntAlias returns true if a type name was generated as a BigIntAliasDef.
+func (g *Generator) isBigIntAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*BigIntAliasDef)
 			return ok
 		}
 	}
@@ -596,7 +622,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			// If the ref target was generated as InferredAliasDef (a wrapper struct),
 			// creating `type Root Target` would not inherit methods. Instead, generate
 			// Root directly from the resolved schema so it gets its own methods.
-			if g.isInferredAlias(refName) {
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
 				return g.generateTypeDef(name, resolved)
 			}
 			g.generated[name] = true
@@ -637,6 +663,16 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
 				NeedsNullCheck:   !schemaAllowsNull(s),
+			})
+		} else if g.config.BigIntSupport && primaryType == "integer" {
+			// BigInt support: generate wrapper struct with int64 + *big.Int.
+			g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
+				Name:           name,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(s),
 			})
 		} else {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -2641,6 +2677,8 @@ func (g *Generator) populateValidatableFields() {
 			}
 		case *InferredAliasDef:
 			validatableTypes[d.Name] = true // wrapper struct always has Validate()
+		case *BigIntAliasDef:
+			validatableTypes[d.Name] = true // wrapper struct always has Validate()
 		}
 	}
 
@@ -2702,6 +2740,9 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 					return ""
 				case *InferredAliasDef:
 					// InferredAliasDef is a wrapper struct — no meaningful zero literal.
+					return ""
+				case *BigIntAliasDef:
+					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
 					return ""
 				}
 			}

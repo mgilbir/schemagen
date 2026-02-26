@@ -350,6 +350,22 @@ func (d *InferredAliasDef) GoTypeName() string {
 	return d.InferredGoType.GoTypeName()
 }
 
+// BigIntAliasDef represents an integer type with arbitrary-precision support.
+// It generates a wrapper struct with int64 + *big.Int fields. Values that fit
+// in int64 are stored there; larger values use big.Int. This is only generated
+// when Config.BigIntSupport is true and the schema type is "integer".
+type BigIntAliasDef struct {
+	Name           string
+	Description    string
+	Validations    []ValidationRule
+	AnyOfVariants  [][]ValidationRule
+	OneOfVariants  [][]ValidationRule
+	NeedsNullCheck bool
+}
+
+func (d *BigIntAliasDef) TypeName() string { return d.Name }
+func (d *BigIntAliasDef) typeDef()         {}
+
 // ---------- File ----------
 
 // File represents a generated Go source file.

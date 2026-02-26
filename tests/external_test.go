@@ -211,6 +211,12 @@ func filenameWithoutExt(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
+// isBignumFile returns true if the file path is for bignum tests (optional/bignum.json).
+// These tests require BigIntSupport to generate the correct wrapper type.
+func isBignumFile(file string) bool {
+	return strings.Contains(file, "optional/bignum")
+}
+
 // loadTestGroups reads and parses a JSTS test file.
 func loadTestGroups(t *testing.T, path string) []jstsTestGroup {
 	t.Helper()
@@ -331,14 +337,14 @@ func tryParse(schemaJSON json.RawMessage) error {
 }
 
 // tryGenerateAndCompile attempts the full pipeline: parse → generate IR → emit → compile.
-func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver) error {
+func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -381,14 +387,14 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 }
 
 // tryRoundTrip attempts the full round-trip: parse → generate → compile → unmarshal → marshal → compare.
-func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver) error {
+func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -497,14 +503,14 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt bool) (string, error) {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return "", fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -629,7 +635,7 @@ func TestExternalCodeGen(t *testing.T) {
 						}
 						t.Run(group.Description, func(t *testing.T) {
 							key := failureKey(draft, filenameWithoutExt(file), group.Description)
-							err := tryGenerateAndCompile(group.Schema, resolver)
+							err := tryGenerateAndCompile(group.Schema, resolver, isBignumFile(file))
 							checkKnownFailure(t, key, err, knownCodeGenFailures)
 						})
 					}
@@ -676,7 +682,7 @@ func TestExternalRoundTrip(t *testing.T) {
 							for _, tc := range validTests {
 								t.Run(tc.Description, func(t *testing.T) {
 									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
-									err := tryRoundTrip(group.Schema, tc.Data, resolver)
+									err := tryRoundTrip(group.Schema, tc.Data, resolver, isBignumFile(file))
 									checkKnownFailure(t, key, err, knownRoundTripFailures)
 								})
 							}
@@ -725,7 +731,7 @@ func TestExternalValidation(t *testing.T) {
 						totalGroups++
 
 						// Generate code once per group.
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft))
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file))
 
 						if cgErr != nil {
 							skippedCG++
