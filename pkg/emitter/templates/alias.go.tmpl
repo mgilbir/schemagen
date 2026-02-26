@@ -3,7 +3,7 @@
 // {{.Name}} - {{.Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods .NeedsNullCheck}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if .CanHaveMethods}}
@@ -15,11 +15,37 @@ type {{.Name}} {{goType .Underlying}}
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
 	}
+	{{- end}}
+	{{- if .IsIntegerType}}
+	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
+	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
+	if len(data) > 0 && data[0] == '"' {
+		return fmt.Errorf("cannot unmarshal string into Go value of type {{.Name}}")
+	}
+	var _n json.Number
+	if _err := json.Unmarshal(data, &_n); _err != nil {
+		return _err
+	}
+	if _i, _iErr := _n.Int64(); _iErr == nil {
+		*{{$recv}} = {{.Name}}(_i)
+		return nil
+	}
+	// Try float with zero fractional part (e.g., 1.0).
+	if _f, _fErr := _n.Float64(); _fErr == nil {
+		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
+			*{{$recv}} = {{.Name}}(int64(_f))
+			return nil
+		}
+	}
+	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	{{- else}}
 	type Alias {{.Name}}
 	return json.Unmarshal(data, (*Alias)({{$recv}}))
+	{{- end}}
 }
 {{- end}}
 

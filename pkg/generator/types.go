@@ -284,6 +284,15 @@ func (d *AliasDef) CanHaveMethods() bool {
 	return !d.NoMethods
 }
 
+// IsIntegerType returns true if the underlying type is int64 (from "integer" schema type).
+// Used to generate json.Number-based UnmarshalJSON that accepts 1.0 as a valid integer.
+func (d *AliasDef) IsIntegerType() bool {
+	if pt, ok := d.Underlying.(*PrimitiveType); ok {
+		return pt.Name == "int64"
+	}
+	return false
+}
+
 // HasTupleItems returns true if this alias has per-position tuple validation.
 func (d *AliasDef) HasTupleItems() bool {
 	return len(d.TupleItems) > 0

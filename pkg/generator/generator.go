@@ -301,6 +301,11 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal
 				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
 			}
+			if ad.IsIntegerType() && ad.CanHaveMethods() {
+				needsJSON = true // UnmarshalJSON uses json.Number
+				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
+				needsMath = true // UnmarshalJSON uses math.Trunc, math.IsInf
+			}
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
