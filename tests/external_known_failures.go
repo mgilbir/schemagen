@@ -10,14 +10,13 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
 }
 
-// RoundTrip: 128 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 124 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 
-	"draft2019-09/required/required validation/ignores null":                                                                                                    "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/type/integer type matches integers/a float with zero fractional part is an integer":                                                           "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
@@ -27,23 +26,19 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
 
-	"draft2020-12/required/required validation/ignores null":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/type/integer type matches integers/a float with zero fractional part is an integer":                                             "non-structural schema: data shape incompatible with generated type",
 	"draft3/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft3/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
-	"draft4/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	"draft6/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft6/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	"draft7/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
 
 	// Type-inferred schemas: constraint-only schemas (no "type" field) now infer a Go type
@@ -152,28 +147,34 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 270 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 241 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
-//   - unevaluatedProperties validation not implemented (82)
+//   - unevaluatedProperties: cousin isolation requires per-branch annotation tracking (24)
 //   - non-object data: cannot unmarshal number into generated Go type (16)
 //   - tuple items: Root []any cannot validate sub-item structure (15)
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
+//   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
-//   - additionalProperties: allOf interaction (6)
+//   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - codegen produces code that fails to compile for validation binary (6)
-//   - $anchor resolution edge cases (5)
-//   - float-overflow optional test: 1e308 overflows int64 Go type (4)
+//   - additionalProperties: allOf interaction (6)
+//   - unevaluatedProperties: schema-valued constraint not yet validated (4)
+//   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
+//   - float-overflow optional test: 1e308 overflows int64 Go type (4)
+//   - $anchor resolution edge cases (4)
 //   - $dynamicRef with required: $dynamicRef not implemented (3)
 //   - $id/$ref evaluation order edge case (2)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
-//   - $recursiveRef / cross-draft (2)
+//   - $recursiveRef not implemented (2)
+//   - unevaluatedProperties: $dynamicRef not implemented (1)
+//   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
@@ -376,90 +377,66 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":                                             "unevaluatedItems validation not implemented",
 
-	// unevaluatedProperties validation not implemented (82 entries)
-	"draft2019-09/unevaluatedProperties/Evaluated properties collection needs to consider instance location/with an unevaluated property that exists at another location": "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":                           "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":                            "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":                         "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't consider dependentSchemas":                              "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent":                            "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                                                                         "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                                           "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                                           "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":                      "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":                     "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties":                  "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/property is evaluated in an uncle schema to unevaluatedProperties/uncle keyword evaluation is not significant":                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":                                                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid":                                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)":                                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":                                                             "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 1st level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 2nd level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 3rd level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties before $ref/with unevaluated properties":                                                                    "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":                                                      "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                                                                      "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties false/with unevaluated properties":                                                                          "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with invalid unevaluated properties":                                                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties":                                                             "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $ref/with unevaluated properties":                                                                      "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with adjacent patternProperties/with unevaluated properties":                                                "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with adjacent properties/with unevaluated properties":                                                       "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                                                 "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                                                   "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with boolean schemas/with unevaluated properties":                                                           "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                                                          "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, else not defined/when if is false and has no unevaluated properties":                     "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, else not defined/when if is false and has unevaluated properties":                        "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, else not defined/when if is true and has unevaluated properties":                         "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, then not defined/when if is false and has unevaluated properties":                        "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, then not defined/when if is true and has unevaluated properties":                         "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is false and has unevaluated properties":                                          "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is true and has unevaluated properties":                                           "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with nested patternProperties/with additional properties":                                                   "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with nested properties/with additional properties":                                                          "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/Evaluated properties collection needs to consider instance location/with an unevaluated property that exists at another location": "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":                           "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":                            "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":                         "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't consider dependentSchemas":                              "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent":                            "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                                                                         "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                                           "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                                 "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                                           "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                                 "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":                      "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":                     "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties":                  "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/property is evaluated in an uncle schema to unevaluatedProperties/uncle keyword evaluation is not significant":                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":                                                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid":                                                 "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)":                                                 "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":                                                             "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 1st level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 2nd level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + single cyclic ref/Unevaluated on 3rd level is invalid":                                                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties before $ref/with unevaluated properties":                                                                    "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":                                                      "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                                                                      "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":                                                               "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $ref/with unevaluated properties":                                                                      "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with adjacent patternProperties/with unevaluated properties":                                                "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with adjacent properties/with unevaluated properties":                                                       "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                                                 "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                                                   "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with boolean schemas/with unevaluated properties":                                                           "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                                                          "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with nested patternProperties/with additional properties":                                                   "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with nested properties/with additional properties":                                                          "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
+	// unevaluatedProperties: remaining failures (54 entries)
+	// Cousin/uncle isolation requires per-branch annotation tracking (24)
+	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":           "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":        "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":     "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":    "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties": "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":           "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":        "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":     "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":    "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties": "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	// Static over-approximation: if/then/else and anyOf properties over-counted as evaluated (10)
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is true and has unevaluated properties":                    "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is false and has unevaluated properties":                   "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with if/then/else, then not defined/when if is false and has unevaluated properties": "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is true and has unevaluated properties":                    "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is false and has unevaluated properties":                   "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with if/then/else, then not defined/when if is false and has unevaluated properties": "unevaluatedProperties: if/then/else static over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                          "unevaluatedProperties: anyOf static over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                            "unevaluatedProperties: anyOf static over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                          "unevaluatedProperties: anyOf static over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                            "unevaluatedProperties: anyOf static over-approximation",
+	// Schema-valued unevaluatedProperties not yet validated (4)
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties not affected by propertyNames/string property is invalid": "unevaluatedProperties: schema-valued constraint not yet validated",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with invalid unevaluated properties":               "unevaluatedProperties: schema-valued constraint not yet validated",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties schema/with invalid unevaluated properties":               "unevaluatedProperties: schema-valued constraint not yet validated",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties not affected by propertyNames/string property is invalid": "unevaluatedProperties: schema-valued constraint not yet validated",
+	// dependentSchemas with unevaluatedProperties: dependent properties over-counted as evaluated (4)
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                               "unevaluatedProperties: dependentSchemas static over-approximation",
+	"draft2019-09/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent": "unevaluatedProperties: dependentSchemas static over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                               "unevaluatedProperties: dependentSchemas static over-approximation",
+	"draft2020-12/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent": "unevaluatedProperties: dependentSchemas static over-approximation",
+	// Remaining unevaluatedProperties failures: $dynamicRef/$recursiveRef, dynamic oneOf evaluation (12)
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties":             "unevaluatedProperties: $recursiveRef not implemented",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":             "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":               "unevaluatedProperties: $dynamicRef not implemented",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":             "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 
 	// codegen produces code that fails to compile for validation binary (3 additional entries — other half of same groups)
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",

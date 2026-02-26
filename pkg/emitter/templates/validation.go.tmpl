@@ -437,6 +437,72 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasUnevaluatedProperties}}
+	{{- $uneval := $struct.UnevaluatedProperties}}
+	{{- if and (not $uneval.IsAllowed) (not $uneval.AllEvaluated)}}
+	// unevaluatedProperties: check overflow map for properties not covered by evaluated set.
+	{
+		{{- if gt (len $uneval.EvaluatedNames) 0}}
+		evaluatedNames := map[string]bool{
+			{{- range $uneval.EvaluatedNames}}
+			{{printf "%q" .}}: true,
+			{{- end}}
+		}
+		{{- end}}
+		{{- if gt (len $uneval.EvaluatedPatterns) 0}}
+		evaluatedPatterns := []*ecma262.Regexp{
+			{{- range $uneval.EvaluatedPatterns}}
+			ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode),
+			{{- end}}
+		}
+		{{- end}}
+		for k := range {{$recv}}.AdditionalProperties {
+			evaluated := false
+			{{- if gt (len $uneval.EvaluatedNames) 0}}
+			if evaluatedNames[k] {
+				evaluated = true
+			}
+			{{- end}}
+			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
+			if !evaluated {
+				for _, re := range evaluatedPatterns {
+					if re.MatchString(k) {
+						evaluated = true
+						break
+					}
+				}
+			}
+			{{- end}}
+			if !evaluated {
+				return fmt.Errorf("unevaluated property %q is not allowed", k)
+			}
+		}
+		{{- if $struct.HasPatternProperties}}
+		for k := range {{$recv}}.PatternProperties {
+			evaluated := false
+			{{- if gt (len $uneval.EvaluatedNames) 0}}
+			if evaluatedNames[k] {
+				evaluated = true
+			}
+			{{- end}}
+			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
+			if !evaluated {
+				for _, re := range evaluatedPatterns {
+					if re.MatchString(k) {
+						evaluated = true
+						break
+					}
+				}
+			}
+			{{- end}}
+			if !evaluated {
+				return fmt.Errorf("unevaluated property %q is not allowed", k)
+			}
+		}
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
 	return nil
 }
 {{- end}}

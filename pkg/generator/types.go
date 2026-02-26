@@ -67,21 +67,22 @@ type TypeDef interface {
 
 // StructDef represents a Go struct.
 type StructDef struct {
-	Name                 string
-	Description          string
-	Fields               []FieldDef
-	OneOfs               []OneOfDef
-	AdditionalProperties *AdditionalPropertiesDef
-	PatternProperties    []PatternPropertyDef
-	DependentSchemas     []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
-	Validations          []ValidationRule
-	ValidatableFields    []ValidatableFieldDef // fields whose types have their own Validate() method
-	RequiredJSON         []string              // JSON property names that must be present (for required validation)
-	NonObjectValidations []ValidationRule      // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
-	NeedsMarshal         bool
-	NeedsUnmarshal       bool
-	NeedsNullCheck       bool // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonObject      bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+	Name                  string
+	Description           string
+	Fields                []FieldDef
+	OneOfs                []OneOfDef
+	AdditionalProperties  *AdditionalPropertiesDef
+	PatternProperties     []PatternPropertyDef
+	DependentSchemas      []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
+	Validations           []ValidationRule
+	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
+	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
+	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
+	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
+	NeedsMarshal          bool
+	NeedsUnmarshal        bool
+	NeedsNullCheck        bool // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonObject       bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
 }
 
 // DependentSchemaConstraint describes a dependentSchemas entry where the sub-schema
@@ -128,6 +129,11 @@ func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
 }
 
+// HasUnevaluatedProperties returns true if the struct has an unevaluatedProperties constraint.
+func (d *StructDef) HasUnevaluatedProperties() bool {
+	return d.UnevaluatedProperties != nil
+}
+
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
 // validation or dependent schema validation.
 func (d *StructDef) NeedsJSONKeys() bool {
@@ -156,6 +162,17 @@ type PatternPropertyDef struct {
 type AdditionalPropertiesDef struct {
 	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
 	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
+}
+
+// UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
+// Properties are "evaluated" if they are covered by properties, patternProperties,
+// additionalProperties, or unevaluatedProperties in nested applicator subschemas.
+type UnevaluatedPropertiesDef struct {
+	IsForbidden       bool     // true when unevaluatedProperties: false (reject any unevaluated property)
+	IsAllowed         bool     // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
+	EvaluatedNames    []string // statically known evaluated property names from allOf/$ref/properties
+	EvaluatedPatterns []string // regex patterns from patternProperties in allOf/$ref
+	AllEvaluated      bool     // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
 }
 
 // ValidationRule describes a validation constraint on a struct field.

@@ -255,6 +255,12 @@ func (g *Generator) addRequiredImports() {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
 			}
+			if sd.UnevaluatedProperties != nil && !sd.UnevaluatedProperties.IsAllowed && !sd.UnevaluatedProperties.AllEvaluated {
+				needsFmt = true // Validate() uses fmt.Errorf for unevaluated property errors
+				if len(sd.UnevaluatedProperties.EvaluatedPatterns) > 0 {
+					needsRegexp = true
+				}
+			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -495,11 +501,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Object with properties, patternProperties, or oneOf fields → struct
-	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 {
+	// Object with properties, patternProperties, oneOf fields, or unevaluatedProperties → struct
+	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 || s.UnevaluatedProperties != nil {
 		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
-		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0) && len(s.OneOf) == 0
+		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
@@ -772,6 +778,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			needsMarshal = true
 			needsUnmarshal = true
 		}
+	} else if s.UnevaluatedProperties != nil {
+		// unevaluatedProperties without explicit additionalProperties:
+		// need an overflow map to capture unknown keys for unevaluated checking.
+		additionalProps = &AdditionalPropertiesDef{
+			ValueType: &PrimitiveType{Name: "json.RawMessage"},
+		}
+		needsMarshal = true
+		needsUnmarshal = true
 	} else if !g.config.StrictProperties && (len(fields) > 0 || len(s.PatternProperties) > 0) {
 		// No additionalProperties specified: per JSON Schema spec, defaults to true.
 		// In non-strict mode, add an overflow map to preserve extra properties.
@@ -956,21 +970,28 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		nonObjRules = extractNonObjectValidationRules(s)
 	}
 
+	// Build unevaluatedProperties constraint if present.
+	var unevalProps *UnevaluatedPropertiesDef
+	if s.UnevaluatedProperties != nil {
+		unevalProps = g.buildUnevaluatedPropertiesDef(s)
+	}
+
 	structDef := &StructDef{
-		Name:                 name,
-		Description:          s.Description,
-		Fields:               fields,
-		OneOfs:               oneOfs,
-		AdditionalProperties: additionalProps,
-		PatternProperties:    patternProps,
-		DependentSchemas:     depSchemas,
-		Validations:          validations,
-		NonObjectValidations: nonObjRules,
-		RequiredJSON:         requiredJSON,
-		NeedsMarshal:         needsMarshal,
-		NeedsUnmarshal:       needsUnmarshal,
-		NeedsNullCheck:       needsNullCheck,
-		AcceptNonObject:      acceptNonObj,
+		Name:                  name,
+		Description:           s.Description,
+		Fields:                fields,
+		OneOfs:                oneOfs,
+		AdditionalProperties:  additionalProps,
+		PatternProperties:     patternProps,
+		DependentSchemas:      depSchemas,
+		Validations:           validations,
+		NonObjectValidations:  nonObjRules,
+		UnevaluatedProperties: unevalProps,
+		RequiredJSON:          requiredJSON,
+		NeedsMarshal:          needsMarshal,
+		NeedsUnmarshal:        needsUnmarshal,
+		NeedsNullCheck:        needsNullCheck,
+		AcceptNonObject:       acceptNonObj,
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, structDef)
 	return nil
@@ -995,6 +1016,59 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
 	g.mergeAllOfInto(merged, s.AllOf)
+
+	// Propagate keywords from the parent schema that aren't merged by allOf logic.
+	if s.AdditionalProperties != nil && merged.AdditionalProperties == nil {
+		merged.AdditionalProperties = s.AdditionalProperties
+	}
+	if s.UnevaluatedProperties != nil && merged.UnevaluatedProperties == nil {
+		merged.UnevaluatedProperties = s.UnevaluatedProperties
+	}
+	for k, v := range s.PatternProperties {
+		if merged.PatternProperties == nil {
+			merged.PatternProperties = make(map[string]*schema.Schema)
+		}
+		if _, exists := merged.PatternProperties[k]; !exists {
+			merged.PatternProperties[k] = v
+		}
+	}
+	// Preserve allOf on the merged schema so that collectEvaluatedProperties
+	// can walk the original allOf branches to find evaluated property names
+	// and patterns (since mergeAllOfInto only copies properties/required/constraints,
+	// not patternProperties or additionalProperties from sub-schemas).
+	if len(s.AllOf) > 0 && len(merged.AllOf) == 0 {
+		merged.AllOf = s.AllOf
+	}
+	// Propagate $ref from parent for unevaluatedProperties evaluation.
+	if s.Ref != "" && merged.Ref == "" {
+		merged.Ref = s.Ref
+		// Also copy BaseURI and DocumentRoot so ref resolution works on merged schema.
+		if merged.BaseURI == nil && s.BaseURI != nil {
+			merged.BaseURI = s.BaseURI
+		}
+		if merged.DocumentRoot == nil && s.DocumentRoot != nil {
+			merged.DocumentRoot = s.DocumentRoot
+		}
+	}
+	// Propagate anyOf/oneOf/if-then-else from parent for unevaluatedProperties evaluation.
+	if len(s.AnyOf) > 0 && len(merged.AnyOf) == 0 {
+		merged.AnyOf = s.AnyOf
+	}
+	if len(s.OneOf) > 0 && len(merged.OneOf) == 0 {
+		merged.OneOf = s.OneOf
+	}
+	if s.If != nil && merged.If == nil {
+		merged.If = s.If
+	}
+	if s.Then != nil && merged.Then == nil {
+		merged.Then = s.Then
+	}
+	if s.Else != nil && merged.Else == nil {
+		merged.Else = s.Else
+	}
+	if len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
+		merged.DependentSchemas = s.DependentSchemas
+	}
 
 	// If no sub-schema contributed properties, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
@@ -1052,6 +1126,15 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 			target.Properties[k] = v
 		}
 		target.Required = append(target.Required, resolved.Required...)
+		// Merge patternProperties from allOf sub-schemas.
+		for k, v := range resolved.PatternProperties {
+			if target.PatternProperties == nil {
+				target.PatternProperties = make(map[string]*schema.Schema)
+			}
+			if _, exists := target.PatternProperties[k]; !exists {
+				target.PatternProperties[k] = v
+			}
+		}
 		// Propagate type from sub-schemas if the target doesn't have one.
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
@@ -2771,6 +2854,222 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 // patternProperties since both validate json.RawMessage values at runtime.
 func extractNonObjectValidationRules(s *schema.Schema) []ValidationRule {
 	return extractPatternPropertyValidationRules(s)
+}
+
+// buildUnevaluatedPropertiesDef constructs an UnevaluatedPropertiesDef for a schema
+// that has an unevaluatedProperties keyword. It walks the schema tree to determine
+// which properties are "evaluated" (covered by properties, patternProperties,
+// additionalProperties, or nested unevaluatedProperties in applicator subschemas).
+func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *UnevaluatedPropertiesDef {
+	uneval := s.UnevaluatedProperties
+	if uneval == nil {
+		return nil
+	}
+
+	def := &UnevaluatedPropertiesDef{}
+
+	// Check if unevaluatedProperties is a boolean schema.
+	if uneval.IsBooleanSchema() {
+		if uneval.BooleanSchema != nil && *uneval.BooleanSchema {
+			def.IsAllowed = true
+			return def
+		}
+		// false → forbidden
+		def.IsForbidden = true
+	} else {
+		// unevaluatedProperties is a schema constraint (not boolean).
+		// We can't yet generate validation code for arbitrary schemas applied to
+		// overflow properties. Skip the unevaluated check entirely — this is
+		// permissive (allows too much) but avoids false rejections.
+		def.IsAllowed = true
+		return def
+	}
+
+	// Collect evaluated properties from the schema tree.
+	names, patterns, allEvaluated := g.collectEvaluatedProperties(s)
+	def.AllEvaluated = allEvaluated
+
+	// Convert to sorted slices for deterministic output.
+	def.EvaluatedNames = sortedKeys(names)
+	def.EvaluatedPatterns = sortedKeys(patterns)
+
+	return def
+}
+
+// collectEvaluatedProperties walks the schema tree and collects property names
+// and patterns that are "evaluated" for the purpose of unevaluatedProperties.
+// The root schema's own unevaluatedProperties is NOT included (that's the
+// constraint we're evaluating); only nested applicator subschemas contribute.
+// It returns:
+//   - names: set of property names evaluated by properties keywords
+//   - patterns: set of regex patterns evaluated by patternProperties keywords
+//   - allEvaluated: true if additionalProperties or unevaluatedProperties in a nested
+//     schema marks ALL remaining properties as evaluated
+func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[string]bool, patterns map[string]bool, allEvaluated bool) {
+	names = make(map[string]bool)
+	patterns = make(map[string]bool)
+
+	if s == nil {
+		return
+	}
+
+	// Direct properties on the root schema — these are always evaluated.
+	for k := range s.Properties {
+		names[k] = true
+	}
+
+	// Pattern properties on the root schema.
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+
+	// additionalProperties on the root schema marks ALL remaining as evaluated.
+	if s.AdditionalProperties != nil {
+		allEvaluated = true
+		return
+	}
+
+	// $ref on the root — evaluated properties from the referenced schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
+
+	// Recurse into allOf — all branches always apply.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	// For anyOf/oneOf/if/then/else/dependentSchemas, we collect property names and
+	// patterns from ALL branches as "potentially evaluated". This is a conservative
+	// static over-approximation: at runtime, only matching branches contribute, but
+	// we include all branches to avoid false rejections. Precise runtime tracking
+	// will be implemented in Phase 2.
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+	for _, sub := range s.OneOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+	if s.If != nil {
+		g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
+	}
+	if s.Then != nil {
+		g.collectEvaluatedFromNested(s.Then, names, patterns, &allEvaluated)
+	}
+	if s.Else != nil {
+		g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
+	}
+	for _, depSchema := range s.DependentSchemas {
+		g.collectEvaluatedFromNested(depSchema, names, patterns, &allEvaluated)
+	}
+
+	return
+}
+
+// collectEvaluatedFromNested collects evaluated property names and patterns from
+// a nested schema (inside allOf, $ref, etc.). Unlike the root schema, nested
+// schemas' additionalProperties and unevaluatedProperties DO mark all as evaluated.
+func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[string]bool, patterns map[string]bool, allEvaluated *bool) {
+	if s == nil {
+		return
+	}
+	if s.IsBooleanSchema() {
+		return
+	}
+
+	// Direct properties.
+	for k := range s.Properties {
+		names[k] = true
+	}
+
+	// Pattern properties.
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+
+	// additionalProperties in a nested schema marks ALL remaining as evaluated.
+	if s.AdditionalProperties != nil {
+		*allEvaluated = true
+	}
+
+	// unevaluatedProperties in a nested schema marks ALL remaining as evaluated.
+	if s.UnevaluatedProperties != nil {
+		*allEvaluated = true
+	}
+
+	// $ref — evaluated properties from the referenced schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+		}
+	}
+
+	// Recurse into allOf — all branches always apply.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+	}
+
+	// Recurse into anyOf/oneOf — collect from all branches (over-approximation).
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+	}
+	for _, sub := range s.OneOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+	}
+
+	// Recurse into if/then/else.
+	if s.If != nil {
+		g.collectEvaluatedFromNested(s.If, names, patterns, allEvaluated)
+	}
+	if s.Then != nil {
+		g.collectEvaluatedFromNested(s.Then, names, patterns, allEvaluated)
+	}
+	if s.Else != nil {
+		g.collectEvaluatedFromNested(s.Else, names, patterns, allEvaluated)
+	}
+
+	// Recurse into dependentSchemas.
+	for _, depSchema := range s.DependentSchemas {
+		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
+	}
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

@@ -11,7 +11,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if $struct.AcceptNonObject}}
 	// Schema has no explicit "type":"object" — object constraints are type-conditional.
 	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	{{- if $struct.NeedsNullCheck}}
 	if len(data) == 0 || (data[0] != '{' && string(data) != "null") {
+	{{- else}}
+	if len(data) == 0 || data[0] != '{' {
+	{{- end}}
 		{{$recv}}._nonObject = true
 		{{$recv}}._rawNonObject = append({{$recv}}._rawNonObject[:0], data...)
 		return nil
