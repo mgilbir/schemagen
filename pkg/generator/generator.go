@@ -226,6 +226,31 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			// Non-object validations use same pp* rule types.
+			if len(sd.NonObjectValidations) > 0 {
+				needsFmt = true
+				for _, v := range sd.NonObjectValidations {
+					if v.RuleType == "ppType" {
+						needsBytes = true
+					}
+					if v.RuleType == "ppMultipleOf" {
+						needsMath = true
+					}
+					if v.RuleType == "ppMinimum" || v.RuleType == "ppMaximum" ||
+						v.RuleType == "ppExclusiveMinimum" || v.RuleType == "ppExclusiveMaximum" ||
+						v.RuleType == "ppMultipleOf" ||
+						v.RuleType == "ppMinItems" || v.RuleType == "ppMaxItems" ||
+						v.RuleType == "ppMinLength" || v.RuleType == "ppMaxLength" {
+						needsJSON = true
+					}
+					if v.RuleType == "ppMinLength" || v.RuleType == "ppMaxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "ppPattern" {
+						needsRegexp = true
+					}
+				}
+			}
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
@@ -923,6 +948,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsMarshal = true // must preserve raw non-object data for roundtrip
 	}
 
+	// Extract non-object validation rules from the schema itself (e.g.,
+	// minimum/maximum on a schema that has both properties and numeric constraints).
+	// These are checked against _rawNonObject when the data is not an object.
+	var nonObjRules []ValidationRule
+	if acceptNonObj {
+		nonObjRules = extractNonObjectValidationRules(s)
+	}
+
 	structDef := &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -932,6 +965,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		PatternProperties:    patternProps,
 		DependentSchemas:     depSchemas,
 		Validations:          validations,
+		NonObjectValidations: nonObjRules,
 		RequiredJSON:         requiredJSON,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
@@ -2730,6 +2764,13 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 		rules = append(rules, ValidationRule{RuleType: "ppMaxItems", Value: s.MaxItems.Int()})
 	}
 	return rules
+}
+
+// extractNonObjectValidationRules extracts validation rules from the schema
+// that apply to non-object data. These use the same pp* rule types as
+// patternProperties since both validate json.RawMessage values at runtime.
+func extractNonObjectValidationRules(s *schema.Schema) []ValidationRule {
+	return extractPatternPropertyValidationRules(s)
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

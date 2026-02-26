@@ -182,7 +182,7 @@ var knownParseFailures = map[string]string{}
 //   - unevaluatedProperties validation not implemented (84)
 //   - (type-only null validation — FIXED)
 //   - (ECMA-262 regex patternProperties mismatch: FIXED)
-//   - $ref sibling keyword validation not implemented (14)
+//   - $ref sibling keyword validation not implemented (10)
 //   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
 //   - (enum on struct fields: draft3 required-as-boolean — FIXED)
 //   - property-level validation not implemented for this schema shape (13)
@@ -328,21 +328,21 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
-	// $ref sibling keyword validation not implemented (14 entries)
+	// $ref sibling keyword validation not implemented (10 entries)
 	"draft2019-09/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2019-09/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2019-09/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
+	// (draft2019-09 URN base URI with $ref — FIXED via non-object validation)
 	"draft2020-12/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling keyword validation not implemented",
 	"draft2020-12/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling keyword validation not implemented",
-	"draft2020-12/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                  "$ref sibling keyword validation not implemented",
-	"draft6/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
-	"draft6/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft6/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
-	"draft7/ref/refs with relative uris and defs/invalid on inner field":                                                            "$ref sibling keyword validation not implemented",
-	"draft7/ref/relative refs with absolute uris and defs/invalid on inner field":                                                   "$ref sibling keyword validation not implemented",
-	"draft7/ref/simple URN base URI with $ref via the URN/invalid under the URN IDed schema":                                        "$ref sibling keyword validation not implemented",
+	// (draft2020-12 URN base URI with $ref — FIXED via non-object validation)
+	"draft6/ref/refs with relative uris and defs/invalid on inner field":          "$ref sibling keyword validation not implemented",
+	"draft6/ref/relative refs with absolute uris and defs/invalid on inner field": "$ref sibling keyword validation not implemented",
+	// (draft6 URN base URI with $ref — FIXED via non-object validation)
+	"draft7/ref/refs with relative uris and defs/invalid on inner field":          "$ref sibling keyword validation not implemented",
+	"draft7/ref/relative refs with absolute uris and defs/invalid on inner field": "$ref sibling keyword validation not implemented",
+	// (draft7 URN base URI with $ref — FIXED via non-object validation)
 
 	// additionalProperties validation remaining (6 entries — allOf interaction)
 	"draft2019-09/additionalProperties/additionalProperties does not look in applicators/properties defined in allOf are not examined": "additionalProperties: allOf properties not considered",

@@ -77,6 +77,7 @@ type StructDef struct {
 	Validations          []ValidationRule
 	ValidatableFields    []ValidatableFieldDef // fields whose types have their own Validate() method
 	RequiredJSON         []string              // JSON property names that must be present (for required validation)
+	NonObjectValidations []ValidationRule      // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	NeedsMarshal         bool
 	NeedsUnmarshal       bool
 	NeedsNullCheck       bool // true when the schema's type does not include "null" — reject null JSON data
