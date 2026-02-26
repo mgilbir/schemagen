@@ -10,11 +10,9 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
 }
 
-// RoundTrip: 137 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 128 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
-	"draft2019-09/items/items and subitems/fewer items is valid":                                                                                        "non-structural schema: data shape incompatible with generated type",
-	"draft2019-09/items/items and subitems/valid items":                                                                                                 "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
@@ -24,8 +22,7 @@ var knownRoundTripFailures = map[string]string{
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/items/items and subitems/fewer items is valid":                                                                                                "non-structural schema: data shape incompatible with generated type",
-	"draft2020-12/items/items and subitems/valid items":                                                                                                         "non-structural schema: data shape incompatible with generated type",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties":                                                  "round-trip mismatch: $dynamicRef not implemented",
 	"draft2020-12/optional/bignum/integer/a bignum is an integer":                                                                                               "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                                                                                      "non-structural schema: data shape incompatible with generated type",
 	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
@@ -35,20 +32,14 @@ var knownRoundTripFailures = map[string]string{
 	"draft3/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft3/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft4/items/items and subitems/fewer items is valid":                                                                                        "non-structural schema: data shape incompatible with generated type",
-	"draft4/items/items and subitems/valid items":                                                                                                 "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft4/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft4/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft6/items/items and subitems/fewer items is valid":                                                                                        "non-structural schema: data shape incompatible with generated type",
-	"draft6/items/items and subitems/valid items":                                                                                                 "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
 	"draft6/required/required validation/ignores null":                                                                                            "non-structural schema: data shape incompatible with generated type",
 	"draft6/type/integer type matches integers/a float with zero fractional part is an integer":                                                   "non-structural schema: data shape incompatible with generated type",
-	"draft7/items/items and subitems/fewer items is valid":                                                                                        "non-structural schema: data shape incompatible with generated type",
-	"draft7/items/items and subitems/valid items":                                                                                                 "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a bignum is an integer":                                                                                       "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/bignum/integer/a negative bignum is an integer":                                                                              "non-structural schema: data shape incompatible with generated type",
 	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
@@ -161,15 +152,16 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 264 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 270 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
 //   - unevaluatedProperties validation not implemented (82)
-//   - non-object data: cannot unmarshal into generated Go type (26)
-//   - $dynamicRef/$dynamicAnchor not implemented (12)
+//   - non-object data: cannot unmarshal number into generated Go type (16)
+//   - tuple items: Root []any cannot validate sub-item structure (15)
+//   - $dynamicRef/$dynamicAnchor not implemented (13)
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - additionalProperties: allOf interaction (6)
@@ -474,36 +466,43 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
 
-	// non-object data: cannot unmarshal into generated Go type (26 exercised entries)
-	// NOTE: 71 stale entries removed — schemas generated type `any` (no Validate()),
-	// so checkKnownFailure was never reached. Only entries whose schemas produce a
-	// Validate() method are kept here.
-	"draft2019-09/items/items and subitems/fewer items is valid":                                      "non-object data: cannot unmarshal array into generated Go type",
-	"draft2019-09/items/items and subitems/valid items":                                               "non-object data: cannot unmarshal array into generated Go type",
+	// non-object data: cannot unmarshal number into generated Go type (16 entries)
 	"draft2019-09/optional/bignum/integer/a bignum is an integer":                                     "non-object data: cannot unmarshal number into generated Go type",
 	"draft2019-09/optional/bignum/integer/a negative bignum is an integer":                            "non-object data: cannot unmarshal number into generated Go type",
 	"draft2019-09/type/integer type matches integers/a float with zero fractional part is an integer": "non-object data: cannot unmarshal number into generated Go type",
-	"draft2020-12/items/items and subitems/fewer items is valid":                                      "non-object data: cannot unmarshal array into generated Go type",
-	"draft2020-12/items/items and subitems/valid items":                                               "non-object data: cannot unmarshal array into generated Go type",
 	"draft2020-12/optional/bignum/integer/a bignum is an integer":                                     "non-object data: cannot unmarshal number into generated Go type",
 	"draft2020-12/optional/bignum/integer/a negative bignum is an integer":                            "non-object data: cannot unmarshal number into generated Go type",
 	"draft2020-12/type/integer type matches integers/a float with zero fractional part is an integer": "non-object data: cannot unmarshal number into generated Go type",
 	"draft3/optional/bignum/integer/a bignum is an integer":                                           "non-object data: cannot unmarshal number into generated Go type",
 	"draft3/optional/bignum/integer/a negative bignum is an integer":                                  "non-object data: cannot unmarshal number into generated Go type",
-	"draft4/items/items and subitems/fewer items is valid":                                            "non-object data: cannot unmarshal array into generated Go type",
-	"draft4/items/items and subitems/valid items":                                                     "non-object data: cannot unmarshal array into generated Go type",
 	"draft4/optional/bignum/integer/a bignum is an integer":                                           "non-object data: cannot unmarshal number into generated Go type",
 	"draft4/optional/bignum/integer/a negative bignum is an integer":                                  "non-object data: cannot unmarshal number into generated Go type",
-	"draft6/items/items and subitems/fewer items is valid":                                            "non-object data: cannot unmarshal array into generated Go type",
-	"draft6/items/items and subitems/valid items":                                                     "non-object data: cannot unmarshal array into generated Go type",
 	"draft6/optional/bignum/integer/a bignum is an integer":                                           "non-object data: cannot unmarshal number into generated Go type",
 	"draft6/optional/bignum/integer/a negative bignum is an integer":                                  "non-object data: cannot unmarshal number into generated Go type",
 	"draft6/type/integer type matches integers/a float with zero fractional part is an integer":       "non-object data: cannot unmarshal number into generated Go type",
-	"draft7/items/items and subitems/fewer items is valid":                                            "non-object data: cannot unmarshal array into generated Go type",
-	"draft7/items/items and subitems/valid items":                                                     "non-object data: cannot unmarshal array into generated Go type",
 	"draft7/optional/bignum/integer/a bignum is an integer":                                           "non-object data: cannot unmarshal number into generated Go type",
 	"draft7/optional/bignum/integer/a negative bignum is an integer":                                  "non-object data: cannot unmarshal number into generated Go type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":       "non-object data: cannot unmarshal number into generated Go type",
+
+	// tuple items: Root type is []any, sub-item type constraints not validated (15 entries)
+	"draft4/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
+	"draft4/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
+	"draft4/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
+	"draft6/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
+	"draft6/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
+	"draft6/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
+	"draft7/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
+	"draft7/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
+	"draft7/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
+	"draft2019-09/items/items and subitems/too many sub-items": "tuple items: Root []any cannot validate sub-item structure",
+	"draft2019-09/items/items and subitems/wrong item":         "tuple items: Root []any cannot validate sub-item structure",
+	"draft2019-09/items/items and subitems/wrong sub-item":     "tuple items: Root []any cannot validate sub-item structure",
+	"draft2020-12/items/items and subitems/too many sub-items": "tuple items: Root []any cannot validate sub-item structure",
+	"draft2020-12/items/items and subitems/wrong item":         "tuple items: Root []any cannot validate sub-item structure",
+	"draft2020-12/items/items and subitems/wrong sub-item":     "tuple items: Root []any cannot validate sub-item structure",
+
+	// $dynamicRef: incorrect parent schema (1 entry, previously masked by wrong root type selection)
+	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema": "$dynamicRef/$dynamicAnchor not implemented",
 
 	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",

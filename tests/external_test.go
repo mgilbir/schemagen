@@ -247,6 +247,17 @@ func isJSONObject(data json.RawMessage) bool {
 // Returns empty string if none found (does not call t.Fatal).
 func extractRootTypeNameFromCode(code string) string {
 	lines := strings.Split(code, "\n")
+
+	// The generator always names the root type "Root". Check for it first
+	// across all type declarations (struct, alias, defined type).
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "type Root ") {
+			return "Root"
+		}
+	}
+
+	// Fallback: find the last struct with JSON-tagged fields.
 	var lastType string
 	var currentType string
 	var hasJSONTag bool
@@ -286,8 +297,6 @@ func extractRootTypeNameFromCode(code string) string {
 
 	if lastType == "" {
 		// Final fallback: look for any type declaration (aliases, defined types).
-		// e.g., "type Root = any", "type Root string", "type Root int64"
-		// Prefer "Root" if it exists, otherwise use the last type found.
 		var lastAlias string
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
@@ -295,9 +304,6 @@ func extractRootTypeNameFromCode(code string) string {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 3 {
 					lastAlias = parts[1]
-					if parts[1] == "Root" {
-						return "Root"
-					}
 				}
 			}
 		}
