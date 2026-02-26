@@ -161,35 +161,26 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 377 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 335 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Root causes:
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
-//   - (patternProperties validation: sub-schema constraints — FIXED)
-//   - (minLength/maxLength Unicode grapheme counting — FIXED)
-//   - (multipleOf floating point precision — FIXED)
-//   - (enum property validation — FIXED via validatable field dispatch)
-//   - (default keyword — FIXED via optional field presence tracking)
-//   - (multipleOf float overflow — FIXED via quotient rounding)
-//   - $dynamicRef with required: $dynamicRef not implemented (3)
-//   - ($ref overrides sibling maxItems — FIXED)
-//   - $id/$ref evaluation order edge case (3)
+//   - non-object data: cannot unmarshal into generated Go type (97)
+//   - unevaluatedProperties validation not implemented (82)
+//   - $dynamicRef/$dynamicAnchor not implemented (12)
+//   - $ref sibling keyword validation not implemented (10)
+//   - $ref to unknown keyword: unresolved ref falls back to any (8)
+//   - additionalProperties: allOf interaction (6)
+//   - codegen produces code that fails to compile for validation binary (6)
+//   - $anchor resolution edge cases (5)
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
+//   - unevaluatedItems validation not implemented (4)
+//   - $dynamicRef with required: $dynamicRef not implemented (3)
+//   - $id/$ref evaluation order edge case (2)
 //   - custom metaschema vocabulary not supported (2)
 //   - type-inferred schema: no $schema to guide validation (2)
-//   - codegen produces code that fails to compile for validation binary (23)
-//   - (uniqueItems/additionalItems interaction: fixed)
-//   - unevaluatedProperties validation not implemented (84)
-//   - (type-only null validation — FIXED)
-//   - (ECMA-262 regex patternProperties mismatch: FIXED)
-//   - $ref sibling keyword validation not implemented (10)
-//   - additionalProperties remaining: allOf interaction (6), schema validation FIXED
-//   - (enum on struct fields: draft3 required-as-boolean — FIXED)
-//   - property-level validation not implemented for this schema shape (13)
-//   - $dynamicRef/$dynamicAnchor not implemented (11)
-//   - (dependencies/dependentSchemas: fixed)
-//   - extends / anyOf / not / dependentSchemas / other (22)
-//   - $recursiveRef / cross-draft (1)
+//   - $recursiveRef / cross-draft (2)
+//   - over-strict validation: valid data rejected (1)
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
 
@@ -315,7 +306,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/incorrect extended schema": "$dynamicRef with required: $dynamicRef not implemented",
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/incorrect extended schema":  "$dynamicRef with required: $dynamicRef not implemented",
 
-	// $dynamicRef/$dynamicAnchor not implemented (11 entries)
+	// $dynamicRef/$dynamicAnchor not implemented (12 entries)
 	"draft2020-12/dynamicRef/$dynamicRef points to a boolean schema/follow $dynamicRef to a false schema":                                                                                                                 "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference/string property fails":                                                                                                      "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $dynamicRef resolves to the first $dynamicAnchor still in scope that is encountered when the schema is evaluated/An array containing non-strings is invalid":                               "$dynamicRef/$dynamicAnchor not implemented",
@@ -326,6 +317,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $dynamicRef without anchor in fragment behaves identical to $ref/An array of strings is invalid":                                                                                           "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                                                                     "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
 	// $ref sibling keyword validation not implemented (10 entries)
@@ -359,19 +351,20 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":         "$anchor resolution produces wrong unmarshal type",
 	"draft2020-12/anchor/same $anchor with different base uri/$ref does not resolve to /$defs/A/allOf/0": "$anchor resolution: allOf alias exposes wrong type after composition fix",
 
-	// codegen produces code that fails to compile for validation binary (12 entries)
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
+	// $ref to unknown keyword: unresolved ref falls back to any, no type validation (8 entries)
+	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                             "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":             "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch": "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                  "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                             "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":             "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch": "$ref to unknown keyword: unresolved ref falls back to any",
+	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                  "$ref to unknown keyword: unresolved ref falls back to any",
+
+	// codegen produces code that fails to compile for validation binary (6 entries)
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length":      "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid":                                                                    "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid": "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                    "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":                                                          "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch":                                              "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                                                               "codegen produces code that fails to compile for validation binary",
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
@@ -474,7 +467,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with not/with unevaluated properties":                                                                       "unevaluatedProperties validation not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with oneOf/with unevaluated properties":                                                                     "unevaluatedProperties validation not implemented",
 
-	// codegen produces code that fails to compile for validation binary (11 additional entries)
+	// codegen produces code that fails to compile for validation binary (3 additional entries — other half of same groups)
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "codegen produces code that fails to compile for validation binary",
