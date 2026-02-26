@@ -99,6 +99,28 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if .HasTupleItems}}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range {{$recv}} {
+		{{- range $i, $ti := .TupleItems}}
+		{{- if $ti.TypeName}}
+		if _idx == {{$i}} {
+			_raw, _mErr := json.Marshal(_elem)
+			if _mErr != nil {
+				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+			}
+			var _typed {{$ti.TypeName}}
+			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
+			}
+			if _vErr := _typed.Validate(); _vErr != nil {
+				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+			}
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
 	{{- if .AnyOfVariants}}
 	// anyOf: at least one variant must be satisfied.
 	{

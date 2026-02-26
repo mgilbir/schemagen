@@ -147,7 +147,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 241 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 226 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -155,12 +155,11 @@ var knownParseFailures = map[string]string{}
 //   - type-inferred schema: data type incompatible with inferred Go type (89)
 //   - unevaluatedProperties: cousin isolation requires per-branch annotation tracking (24)
 //   - non-object data: cannot unmarshal number into generated Go type (16)
-//   - tuple items: Root []any cannot validate sub-item structure (15)
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
+//   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
-//   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - codegen produces code that fails to compile for validation binary (6)
 //   - additionalProperties: allOf interaction (6)
 //   - unevaluatedProperties: schema-valued constraint not yet validated (4)
@@ -461,22 +460,7 @@ var knownValidationFailures = map[string]string{
 	"draft7/optional/bignum/integer/a negative bignum is an integer":                                  "non-object data: cannot unmarshal number into generated Go type",
 	"draft7/type/integer type matches integers/a float with zero fractional part is an integer":       "non-object data: cannot unmarshal number into generated Go type",
 
-	// tuple items: Root type is []any, sub-item type constraints not validated (15 entries)
-	"draft4/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
-	"draft4/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
-	"draft4/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
-	"draft6/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
-	"draft6/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
-	"draft6/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
-	"draft7/items/items and subitems/too many sub-items":       "tuple items: Root []any cannot validate sub-item structure",
-	"draft7/items/items and subitems/wrong item":               "tuple items: Root []any cannot validate sub-item structure",
-	"draft7/items/items and subitems/wrong sub-item":           "tuple items: Root []any cannot validate sub-item structure",
-	"draft2019-09/items/items and subitems/too many sub-items": "tuple items: Root []any cannot validate sub-item structure",
-	"draft2019-09/items/items and subitems/wrong item":         "tuple items: Root []any cannot validate sub-item structure",
-	"draft2019-09/items/items and subitems/wrong sub-item":     "tuple items: Root []any cannot validate sub-item structure",
-	"draft2020-12/items/items and subitems/too many sub-items": "tuple items: Root []any cannot validate sub-item structure",
-	"draft2020-12/items/items and subitems/wrong item":         "tuple items: Root []any cannot validate sub-item structure",
-	"draft2020-12/items/items and subitems/wrong sub-item":     "tuple items: Root []any cannot validate sub-item structure",
+	// (tuple items: FIXED via per-position tuple validation in Validate())
 
 	// $dynamicRef: incorrect parent schema (1 entry, previously masked by wrong root type selection)
 	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema": "$dynamicRef/$dynamicAnchor not implemented",

@@ -234,6 +234,13 @@ type EnumValue struct {
 	RawJSON string // JSON-encoded form (only set when EnumDef.IsRaw is true)
 }
 
+// TupleItemDef describes one position in a tuple-form array (prefixItems/items-as-array).
+// The generated Validate() method will re-unmarshal each element into the position's
+// type and call its Validate() method.
+type TupleItemDef struct {
+	TypeName string // Go type name for this position (e.g., "Item", "SubItem")
+}
+
 // AliasDef represents a defined type (type Name Underlying).
 // A Validate() method is always emitted. For types whose underlying
 // is a pointer or interface (e.g., *T or any), Validate() cannot be
@@ -245,6 +252,7 @@ type AliasDef struct {
 	Validations       []ValidationRule
 	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
 	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
+	TupleItems        []TupleItemDef     // per-position type validation for tuple arrays (prefixItems / items-as-array)
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data
@@ -258,6 +266,11 @@ func (d *AliasDef) typeDef()         {}
 // which walks the full type chain to detect pointer or interface underlying types.
 func (d *AliasDef) CanHaveMethods() bool {
 	return !d.NoMethods
+}
+
+// HasTupleItems returns true if this alias has per-position tuple validation.
+func (d *AliasDef) HasTupleItems() bool {
+	return len(d.TupleItems) > 0
 }
 
 // ---------- File ----------

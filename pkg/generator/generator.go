@@ -287,6 +287,10 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal
 				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
 			}
+			if ad.HasTupleItems() {
+				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
+				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
+			}
 			if len(ad.Validations) > 0 {
 				needsFmt = true
 				for _, v := range ad.Validations {
@@ -555,13 +559,18 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
 		anyOfVariants := extractAnyOfVariantRules(s, goType)
+		// Mark as generated BEFORE buildTupleItemDefs so that any recursive
+		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
+		// will short-circuit and not cause infinite recursion.
 		g.generated[name] = true
+		tupleItems := g.buildTupleItemDefs(s, name)
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:           name,
 			Underlying:     goType,
 			Description:    s.Description,
 			Validations:    rules,
 			AnyOfVariants:  anyOfVariants,
+			TupleItems:     tupleItems,
 			NeedsNullCheck: !schemaAllowsNull(s),
 		})
 		return nil
@@ -603,11 +612,19 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				RuleType: "minProperties", Value: s.MinProperties.Int(),
 			})
 		}
+		// Required fields on property-less object schemas (e.g., {"type":"object","required":["foo"]}).
+		// All required names land in AdditionalProperties since there are no declared properties.
+		var requiredJSON []string
+		if len(s.Required) > 0 {
+			requiredJSON = s.Required
+			needsUnmarshal = true
+		}
 		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 			Name:                 name,
 			Description:          s.Description,
 			AdditionalProperties: additionalProps,
 			Validations:          validations,
+			RequiredJSON:         requiredJSON,
 			NeedsMarshal:         needsMarshal,
 			NeedsUnmarshal:       needsUnmarshal,
 			NeedsNullCheck:       needsNullCheck,
@@ -811,11 +828,24 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var validations []ValidationRule
 
 	// Collect required JSON property names for presence-based validation.
-	// These are checked via the _present set populated during UnmarshalJSON.
+	// These are checked via the raw JSON keys during UnmarshalJSON.
+	// Include both declared property fields AND schema-level required names
+	// without corresponding properties (e.g., {"type":"object","required":["foo"]}
+	// with no properties — these land in AdditionalProperties but must be present).
 	var requiredJSON []string
+	declaredProps := make(map[string]bool, len(propNames))
+	for _, pn := range propNames {
+		declaredProps[pn] = true
+	}
 	for _, f := range fields {
 		if f.Required {
 			requiredJSON = append(requiredJSON, f.JSONName)
+		}
+	}
+	for _, r := range s.Required {
+		if !declaredProps[r] {
+			// Required name not declared as a property — still needs presence check.
+			requiredJSON = append(requiredJSON, r)
 		}
 	}
 
@@ -3070,6 +3100,69 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 	for _, depSchema := range s.DependentSchemas {
 		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
 	}
+}
+
+// buildTupleItemDefs extracts per-position type definitions for tuple-form arrays
+// (prefixItems in draft 2020-12, or items-as-array in draft 4-7).
+// For each position, it resolves the schema (following $ref if needed),
+// determines the Go type name, and records it for per-position validation.
+// Returns nil if the schema has no tuple items or if no position has a validatable type.
+func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []TupleItemDef {
+	var positionSchemas []*schema.Schema
+
+	// Draft 2020-12: prefixItems
+	if len(s.PrefixItems) > 0 {
+		positionSchemas = s.PrefixItems
+	}
+	// Draft 4-7: items as array of schemas
+	if len(positionSchemas) == 0 && s.Items != nil && len(s.Items.Schemas) > 0 {
+		positionSchemas = s.Items.Schemas
+	}
+
+	if len(positionSchemas) == 0 {
+		return nil
+	}
+
+	var tupleItems []TupleItemDef
+	hasValidatable := false
+
+	for _, posSch := range positionSchemas {
+		if posSch == nil {
+			tupleItems = append(tupleItems, TupleItemDef{})
+			continue
+		}
+
+		// Resolve $ref chain to find the target schema and its generated type name.
+		resolved := posSch
+		refName := ""
+		if ref := posSch.EffectiveRef(); ref != "" {
+			if r := g.resolveRefInContext(ref, posSch); r != nil {
+				resolved = r
+				refName = g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
+			}
+		}
+
+		// Ensure the ref target type is generated. This is safe from infinite
+		// recursion because the caller (generateTypeDef for an array) marks the
+		// parent type as generated BEFORE calling buildTupleItemDefs.
+		if refName != "" {
+			_ = g.generateTypeDef(refName, resolved)
+			if g.generated[refName] {
+				tupleItems = append(tupleItems, TupleItemDef{TypeName: refName})
+				hasValidatable = true
+				continue
+			}
+		}
+
+		// Non-ref position schema: check if it would generate a type with validation.
+		// For now, skip these — most tuple items use $ref.
+		tupleItems = append(tupleItems, TupleItemDef{})
+	}
+
+	if !hasValidatable {
+		return nil
+	}
+	return tupleItems
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.
