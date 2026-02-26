@@ -142,6 +142,12 @@ func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
 }
 
+// HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
+// is a schema (not just true/false) with validation rules for each unevaluated value.
+func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
+	return u.ValueType != "" || len(u.Validations) > 0
+}
+
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
 // validation or dependent schema validation.
 func (d *StructDef) NeedsJSONKeys() bool {
@@ -176,11 +182,13 @@ type AdditionalPropertiesDef struct {
 // Properties are "evaluated" if they are covered by properties, patternProperties,
 // additionalProperties, or unevaluatedProperties in nested applicator subschemas.
 type UnevaluatedPropertiesDef struct {
-	IsForbidden       bool     // true when unevaluatedProperties: false (reject any unevaluated property)
-	IsAllowed         bool     // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
-	EvaluatedNames    []string // statically known evaluated property names from allOf/$ref/properties
-	EvaluatedPatterns []string // regex patterns from patternProperties in allOf/$ref
-	AllEvaluated      bool     // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
+	IsForbidden       bool             // true when unevaluatedProperties: false (reject any unevaluated property)
+	IsAllowed         bool             // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
+	EvaluatedNames    []string         // statically known evaluated property names from allOf/$ref/properties
+	EvaluatedPatterns []string         // regex patterns from patternProperties in allOf/$ref
+	AllEvaluated      bool             // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
+	Validations       []ValidationRule // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
+	ValueType         string           // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
 }
 
 // ValidationRule describes a validation constraint on a struct field.

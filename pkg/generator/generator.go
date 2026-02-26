@@ -260,6 +260,20 @@ func (g *Generator) addRequiredImports() {
 				if len(sd.UnevaluatedProperties.EvaluatedPatterns) > 0 {
 					needsRegexp = true
 				}
+				if sd.UnevaluatedProperties.ValueType != "" {
+					needsJSON = true // Validate() uses json.Unmarshal for schema-valued unevaluatedProperties
+				}
+				for _, v := range sd.UnevaluatedProperties.Validations {
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
 			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
@@ -2930,11 +2944,27 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 		def.IsForbidden = true
 	} else {
 		// unevaluatedProperties is a schema constraint (not boolean).
-		// We can't yet generate validation code for arbitrary schemas applied to
-		// overflow properties. Skip the unevaluated check entirely — this is
-		// permissive (allows too much) but avoids false rejections.
-		def.IsAllowed = true
-		return def
+		// Extract validation rules from the schema to apply to each unevaluated value.
+		unevalType := primarySchemaType(uneval)
+		if unevalType == "" {
+			unevalType = inferTypeFromConstraints(uneval)
+		}
+		if unevalType != "" {
+			goType := PrimitiveTypeFromSchema(unevalType)
+			if goType != nil {
+				def.ValueType = goType.GoTypeName()
+				rules := extractValidationRules("", "", uneval)
+				def.Validations = rules
+			} else {
+				// Non-primitive type (object/array) — too complex, allow permissively.
+				def.IsAllowed = true
+				return def
+			}
+		} else {
+			// No type constraint — allow permissively.
+			def.IsAllowed = true
+			return def
+		}
 	}
 
 	// Collect evaluated properties from the schema tree.

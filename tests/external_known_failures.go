@@ -147,7 +147,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 220 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 216 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -161,7 +161,6 @@ var knownParseFailures = map[string]string{}
 //   - $ref sibling keyword validation not implemented (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - codegen produces code that fails to compile for validation binary (6)
-//   - unevaluatedProperties: schema-valued constraint not yet validated (4)
 //   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
 //   - float-overflow optional test: 1e308 overflows int64 Go type (4)
@@ -402,11 +401,7 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                            "unevaluatedProperties: anyOf static over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                          "unevaluatedProperties: anyOf static over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                            "unevaluatedProperties: anyOf static over-approximation",
-	// Schema-valued unevaluatedProperties not yet validated (4)
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties not affected by propertyNames/string property is invalid": "unevaluatedProperties: schema-valued constraint not yet validated",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties schema/with invalid unevaluated properties":               "unevaluatedProperties: schema-valued constraint not yet validated",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties schema/with invalid unevaluated properties":               "unevaluatedProperties: schema-valued constraint not yet validated",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties not affected by propertyNames/string property is invalid": "unevaluatedProperties: schema-valued constraint not yet validated",
+	// (unevaluatedProperties: schema-valued — FIXED via Validations + ValueType on UnevaluatedPropertiesDef)
 	// dependentSchemas with unevaluatedProperties: dependent properties over-counted as evaluated (4)
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                               "unevaluatedProperties: dependentSchemas static over-approximation",
 	"draft2019-09/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent": "unevaluatedProperties: dependentSchemas static over-approximation",

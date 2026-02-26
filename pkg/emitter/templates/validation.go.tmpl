@@ -456,8 +456,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		for k := range {{$recv}}.AdditionalProperties {
+		for k, v := range {{$recv}}.AdditionalProperties {
 			evaluated := false
+			_ = v
 			{{- if gt (len $uneval.EvaluatedNames) 0}}
 			if evaluatedNames[k] {
 				evaluated = true
@@ -474,12 +475,25 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 			{{- end}}
 			if !evaluated {
+				{{- if $uneval.IsForbidden}}
 				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				{{- else if $uneval.HasSchemaValuedUnevalProps}}
+				{{- if $uneval.ValueType}}
+				var _uVal {{$uneval.ValueType}}
+				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
+					return fmt.Errorf("unevaluated property %q: %w", k, _uErr)
+				}
+				{{- range $uneval.Validations}}
+				{{- template "validation_rule_inline" .}}
+				{{- end}}
+				{{- end}}
+				{{- end}}
 			}
 		}
 		{{- if $struct.HasPatternProperties}}
-		for k := range {{$recv}}.PatternProperties {
+		for k, v := range {{$recv}}.PatternProperties {
 			evaluated := false
+			_ = v
 			{{- if gt (len $uneval.EvaluatedNames) 0}}
 			if evaluatedNames[k] {
 				evaluated = true
@@ -496,7 +510,19 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 			{{- end}}
 			if !evaluated {
+				{{- if $uneval.IsForbidden}}
 				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				{{- else if $uneval.HasSchemaValuedUnevalProps}}
+				{{- if $uneval.ValueType}}
+				var _uVal {{$uneval.ValueType}}
+				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
+					return fmt.Errorf("unevaluated property %q: %w", k, _uErr)
+				}
+				{{- range $uneval.Validations}}
+				{{- template "validation_rule_inline" .}}
+				{{- end}}
+				{{- end}}
+				{{- end}}
 			}
 		}
 		{{- end}}
@@ -505,4 +531,56 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	return nil
 }
+{{- end}}
+
+{{- /* validation_rule_inline emits a validation check on _uVal for a single rule.
+       Used by schema-valued unevaluatedProperties to validate each overflow value.
+       The variable k (property name) is available for error messages. */}}
+{{define "validation_rule_inline"}}
+{{- if eq .RuleType "minLength"}}
+				if utf8.RuneCountInString(_uVal) < {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: length %d is less than minimum {{.Value}}", k, utf8.RuneCountInString(_uVal))
+				}
+{{- end}}
+{{- if eq .RuleType "maxLength"}}
+				if utf8.RuneCountInString(_uVal) > {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: length %d exceeds maximum {{.Value}}", k, utf8.RuneCountInString(_uVal))
+				}
+{{- end}}
+{{- if eq .RuleType "minimum"}}
+				if float64(_uVal) < {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: value %v is less than minimum {{.Value}}", k, _uVal)
+				}
+{{- end}}
+{{- if eq .RuleType "maximum"}}
+				if float64(_uVal) > {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: value %v exceeds maximum {{.Value}}", k, _uVal)
+				}
+{{- end}}
+{{- if eq .RuleType "exclusiveMinimum"}}
+				if float64(_uVal) <= {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: value %v must be greater than {{.Value}}", k, _uVal)
+				}
+{{- end}}
+{{- if eq .RuleType "exclusiveMaximum"}}
+				if float64(_uVal) >= {{.Value}} {
+					return fmt.Errorf("unevaluated property %q: value %v must be less than {{.Value}}", k, _uVal)
+				}
+{{- end}}
+{{- if eq .RuleType "pattern"}}
+				{
+					_re := regexp.MustCompile({{printf "%q" .Value}})
+					if !_re.MatchString(_uVal) {
+						return fmt.Errorf("unevaluated property %q: value does not match pattern %s", k, {{printf "%q" .Value}})
+					}
+				}
+{{- end}}
+{{- if eq .RuleType "multipleOf"}}
+				{
+					_q := float64(_uVal) / {{.Value}}
+					if math.Abs(_q - math.Round(_q)) > 1e-9 {
+						return fmt.Errorf("unevaluated property %q: value %v is not a multiple of {{.Value}}", k, _uVal)
+					}
+				}
+{{- end}}
 {{- end}}
