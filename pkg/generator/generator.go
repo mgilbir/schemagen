@@ -16,6 +16,7 @@ type Generator struct {
 	config       Config
 	output       *File
 	generated    map[string]bool // track already-generated type names
+	generating   map[string]bool // track types currently being generated (recursion guard)
 	defs         map[string]*schema.Schema
 	rootTypeName string                // Go type name for the root schema
 	rootID       string                // $id of the root schema (for detecting self-references)
@@ -34,8 +35,9 @@ type Generator struct {
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
 	return &Generator{
-		config:    cfg,
-		generated: make(map[string]bool),
+		config:     cfg,
+		generated:  make(map[string]bool),
+		generating: make(map[string]bool),
 	}
 }
 
@@ -45,6 +47,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		PackageName: g.config.PackageName,
 	}
 	g.generated = make(map[string]bool)
+	g.generating = make(map[string]bool)
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -1908,6 +1911,20 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &PointerType{Inner: &NamedType{Name: contextName}}
 	}
 
+	// allOf / anyOf-with-properties without direct properties → delegate to generateTypeDef
+	// which handles allOf merging and anyOf property collection. This covers schemas like
+	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
+	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
+	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
+	if !g.generating[contextName] && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+		g.generating[contextName] = true
+		_ = g.generateTypeDef(contextName, s)
+		delete(g.generating, contextName)
+		if g.generated[contextName] {
+			return &NamedType{Name: contextName}
+		}
+	}
+
 	// Array with items
 	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil {
 		itemType := g.resolveType(s.Items.Schema, contextName+"Item")
@@ -2411,6 +2428,33 @@ func isNullOnly(s *schema.Schema) bool {
 // primitives and should not be turned into a merged struct.
 // Self-references ($ref: "#") are excluded because they point back to the root
 // schema and don't represent actual property contributions from the anyOf variant.
+// allOfHasProperties returns true if any allOf sub-schema contributes properties
+// (directly or via $ref resolution). Used by resolveType to decide whether a
+// schema with allOf but no direct properties should generate a struct.
+func (g *Generator) allOfHasProperties(s *schema.Schema) bool {
+	for _, sub := range s.AllOf {
+		if len(sub.Properties) > 0 {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if len(r.Properties) > 0 {
+					return true
+				}
+				// Recursively check resolved schema's allOf chain.
+				if g.allOfHasProperties(r) {
+					return true
+				}
+			}
+		}
+		// Recursively check nested allOf.
+		if g.allOfHasProperties(sub) {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	for _, sub := range s.AnyOf {
 		// Check direct properties on the sub-schema itself.
