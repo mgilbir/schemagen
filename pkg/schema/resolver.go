@@ -112,8 +112,19 @@ func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 	if s.Anchor == anchor {
 		return s, nil
 	}
-	// Search in all sub-schema locations.
+	// Search in all sub-schema locations, but skip sub-schemas that declare
+	// their own $id — those create a separate document scope, and their
+	// anchors belong to that scope, not the parent's.
 	for _, sub := range r.allSubSchemas(s) {
+		if sub.ID != "" {
+			// This sub-schema is a new document root. Only check if this
+			// sub-schema itself has the anchor (not its descendants, which
+			// would be scoped to this sub-document's ID).
+			if sub.Anchor == anchor {
+				return sub, nil
+			}
+			continue
+		}
 		if found, err := r.findAnchor(sub, anchor); err == nil {
 			return found, nil
 		}
