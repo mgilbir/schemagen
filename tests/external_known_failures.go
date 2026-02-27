@@ -10,26 +10,20 @@ var knownCodeGenFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor": "$anchor resolution not fully implemented",
 }
 
-// RoundTrip: 10 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 6 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
-	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                        "$anchor resolution not fully implemented",
-	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-
+	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $ref to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array of strings is valid":      "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties":                                                  "round-trip mismatch: $dynamicRef not implemented",
-	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":         "non-structural schema: data shape incompatible with generated type",
-
-	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                            "non-structural schema: data shape incompatible with generated type",
-	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
-	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "non-structural schema: data shape incompatible with generated type",
+	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                                          "non-structural schema: data shape incompatible with generated type",
 }
 
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 105 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 101 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -44,7 +38,7 @@ var knownParseFailures = map[string]string{}
 //   - $anchor resolution edge cases (5)
 //   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
-//   - float-overflow optional test: 1e308 overflows int64 Go type (4)
+//   - (float-overflow: FIXED via BigIntSupport)
 //   - $dynamicRef with required: $dynamicRef not implemented (3)
 //   - custom metaschema vocabulary not supported (2)
 //   - $recursiveRef not implemented (2)
@@ -55,11 +49,7 @@ var knownParseFailures = map[string]string{}
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
 
-	// float-overflow optional test — 1e308 can't be unmarshaled into int64 Go type
-	"draft6/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "1e308 overflows int64 Go type",
-	"draft7/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented":       "1e308 overflows int64 Go type",
-	"draft2019-09/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
-	"draft2020-12/optional/float-overflow/all integers are multiples of 0.5, if overflow is handled/valid if optional overflow handling is implemented": "1e308 overflows int64 Go type",
+	// (float-overflow: FIXED via BigIntSupport for optional/float-overflow test files)
 
 	// zeroTerminatedFloats optional test — draft3/4 treat 1.0 as non-integer, but our json.Number-based
 	// UnmarshalJSON accepts it (correct for draft6+). Generated code is draft-agnostic.

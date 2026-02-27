@@ -211,10 +211,11 @@ func filenameWithoutExt(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
-// isBignumFile returns true if the file path is for bignum tests (optional/bignum.json).
-// These tests require BigIntSupport to generate the correct wrapper type.
+// isBignumFile returns true if the file path is for tests that require BigIntSupport.
+// This includes optional/bignum.json (arbitrary-precision integers) and
+// optional/float-overflow.json (1e308 overflows int64 but fits in big.Int).
 func isBignumFile(file string) bool {
-	return strings.Contains(file, "optional/bignum")
+	return strings.Contains(file, "optional/bignum") || strings.Contains(file, "optional/float-overflow")
 }
 
 // loadTestGroups reads and parses a JSTS test file.

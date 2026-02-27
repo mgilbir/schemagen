@@ -109,47 +109,51 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minimum"}}
 	{
-		_limit := new(big.Int)
-		_limit.SetString("{{.Value}}", 10)
-		if {{$recv}}.BigInt().Cmp(_limit) < 0 {
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) < 0 {
 			return fmt.Errorf("value: %s is less than minimum {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{
-		_limit := new(big.Int)
-		_limit.SetString("{{.Value}}", 10)
-		if {{$recv}}.BigInt().Cmp(_limit) > 0 {
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) > 0 {
 			return fmt.Errorf("value: %s exceeds maximum {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{
-		_limit := new(big.Int)
-		_limit.SetString("{{.Value}}", 10)
-		if {{$recv}}.BigInt().Cmp(_limit) <= 0 {
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) <= 0 {
 			return fmt.Errorf("value: %s must be greater than {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{
-		_limit := new(big.Int)
-		_limit.SetString("{{.Value}}", 10)
-		if {{$recv}}.BigInt().Cmp(_limit) >= 0 {
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) >= 0 {
 			return fmt.Errorf("value: %s must be less than {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	{
-		_divisor := new(big.Int)
-		_divisor.SetString("{{.Value}}", 10)
-		_mod := new(big.Int)
-		_mod.Mod({{$recv}}.BigInt(), _divisor)
-		if _mod.Sign() != 0 {
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_divisor := new(big.Float)
+		_divisor.SetString("{{.Value}}")
+		_quotient := new(big.Float).Quo(_val, _divisor)
+		if !_quotient.IsInt() {
 			return fmt.Errorf("value: %s is not a multiple of {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
