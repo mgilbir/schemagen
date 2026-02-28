@@ -7,10 +7,9 @@ package tests
 // CodeGen: 0 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownCodeGenFailures = map[string]string{}
 
-// RoundTrip: 4 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 2 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
-	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":               "$anchor resolution not fully implemented",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":               "$anchor resolution not fully implemented",
+	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties": "round-trip mismatch: $dynamicRef not implemented",
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                         "non-structural schema: data shape incompatible with generated type",
 }
@@ -18,14 +17,14 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 36 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 32 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (7)
-//   - $anchor resolution edge cases (5)
+//   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (4)
 //   - custom metaschema vocabulary not supported (2)
 //   - $dynamicRef with required: dynamic scope needed (2)
@@ -95,12 +94,9 @@ var knownValidationFailures = map[string]string{
 
 	// (additionalProperties: allOf interaction — FIXED via OwnPropertyNames scope isolation)
 
-	// $anchor/$recursiveRef resolution edge cases (5 entries)
-	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":         "$anchor resolution produces wrong unmarshal type",
-	"draft2019-09/anchor/same $anchor with different base uri/$ref does not resolve to /$defs/A/allOf/0": "$anchor resolution: allOf alias exposes wrong type after composition fix",
-	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root":                        "$recursiveRef validation not implemented",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":         "$anchor resolution produces wrong unmarshal type",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref does not resolve to /$defs/A/allOf/0": "$anchor resolution: allOf alias exposes wrong type after composition fix",
+	// $anchor/$recursiveRef resolution edge cases (1 entry)
+	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
+	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root": "$recursiveRef validation not implemented",
 
 	// $ref to unknown keyword: unresolved ref falls back to any, no type validation (8 entries)
 	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                             "$ref to unknown keyword: unresolved ref falls back to any",
