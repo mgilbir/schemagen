@@ -687,12 +687,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// $dynamicRef with fragment-only ref → resolve via $dynamicAnchor in local scope.
-	// Only handle plain name fragments (like "#items") — these can be safely resolved
-	// statically within the context document root. URI-based $dynamicRef (like "extended#meta")
-	// or JSON pointer $dynamicRef (like "#/$defs/foo") are left unresolved since they may
+	// $dynamicRef with fragment-only ref → resolve statically.
+	// Plain name fragments (like "#items") resolve via $dynamicAnchor in local scope.
+	// JSON pointer fragments (like "#/$defs/foo") resolve identically to $ref.
+	// URI-based $dynamicRef (like "extended#meta") is left unresolved since it may
 	// involve cross-document dynamic scoping that requires runtime resolution.
-	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") && !strings.HasPrefix(s.DynamicRef, "#/") {
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
 			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
@@ -1982,8 +1982,8 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: goName}
 	}
 
-	// $dynamicRef with plain name fragment — resolve via $dynamicAnchor in local scope.
-	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") && !strings.HasPrefix(s.DynamicRef, "#/") {
+	// $dynamicRef with fragment-only ref — resolve statically.
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
 		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
 			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
