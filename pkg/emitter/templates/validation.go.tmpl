@@ -507,6 +507,60 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			evaluatedNames[{{printf "%q" .}}] = true
 			{{- end}}
 		}
+		{{- else if eq .Kind "ifThenElse"}}
+		// if/then/else: evaluate if-condition at runtime, add then or else properties.
+		{
+			_ifMatch := true
+			{{- range .IfBranch.RequiredKeys}}
+			if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+				_ifMatch = false
+			}
+			{{- end}}
+			{{- range .IfBranch.ConstChecks}}
+			if _ifMatch {
+				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+					_ifMatch = false
+				}
+			}
+			{{- end}}
+			if _ifMatch {
+				{{- if .ThenBranch}}
+				{{- range .ThenBranch.Names}}
+				evaluatedNames[{{printf "%q" .}}] = true
+				{{- end}}
+				{{- end}}
+			} else {
+				{{- if .ElseBranch}}
+				{{- range .ElseBranch.Names}}
+				evaluatedNames[{{printf "%q" .}}] = true
+				{{- end}}
+				{{- end}}
+			}
+		}
+		{{- else if eq .Kind "anyOf"}}
+		// anyOf: add evaluated properties from matching branches.
+		{{- range $bi, $branch := .Branches}}
+		{
+			_branchMatch := true
+			{{- range $branch.RequiredKeys}}
+			if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+				_branchMatch = false
+			}
+			{{- end}}
+			{{- range $branch.ConstChecks}}
+			if _branchMatch {
+				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+					_branchMatch = false
+				}
+			}
+			{{- end}}
+			if _branchMatch {
+				{{- range $branch.Names}}
+				evaluatedNames[{{printf "%q" .}}] = true
+				{{- end}}
+			}
+		}
+		{{- end}}
 		{{- end}}
 		{{- end}}
 		for k, v := range {{$recv}}.AdditionalProperties {

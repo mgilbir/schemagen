@@ -3279,29 +3279,66 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 		}
 	}
 
-	// if/then/else: fall back to static over-approximation for now.
-	// Runtime evaluation of if-conditions requires raw JSON value access,
-	// which will be implemented in a future phase.
+	// if/then/else: try runtime conditional evaluation via IfConditionDef.
+	// If the if-schema is too complex for runtime evaluation, fall back to
+	// static over-approximation.
 	if s.If != nil {
-		g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
-	}
-	if s.Then != nil {
-		g.collectEvaluatedFromNested(s.Then, names, patterns, &allEvaluated)
-	}
-	if s.Else != nil {
-		g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
-	}
-
-	// anyOf: fall back to static over-approximation for now.
-	// Runtime branch matching requires raw JSON value access.
-	for _, sub := range s.AnyOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
+		ifCond := g.extractIfCondition(s.If)
+		if ifCond != nil {
+			// Runtime-evaluable if condition: create conditional branches.
+			thenBranch := g.collectBranchEval(s.Then)
+			elseBranch := g.collectBranchEval(s.Else)
+			// Also collect properties from the if-schema itself into both branches,
+			// since the if-schema's properties are evaluated when it matches.
+			ifBranch := g.collectBranchEval(s.If)
+			if ifBranch != nil && thenBranch != nil {
+				thenBranch = mergeEvalBranches(ifBranch, thenBranch)
+			} else if ifBranch != nil && thenBranch == nil {
+				thenBranch = ifBranch
+			}
+			// Per JSON Schema spec: when if fails, its annotations are discarded.
+			// So the else branch does NOT include if-schema properties.
+			hasThen := thenBranch != nil && (thenBranch.HasNames() || thenBranch.HasPatterns() || thenBranch.AllEvaluated)
+			hasElse := elseBranch != nil && (elseBranch.HasNames() || elseBranch.HasPatterns() || elseBranch.AllEvaluated)
+			if hasThen || hasElse {
+				conditionals = append(conditionals, ConditionalEval{
+					Kind:       "ifThenElse",
+					IfBranch:   ifCond,
+					ThenBranch: thenBranch,
+					ElseBranch: elseBranch,
+				})
+			}
+		} else {
+			// Fallback: static over-approximation.
+			g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
+			if s.Then != nil {
+				g.collectEvaluatedFromNested(s.Then, names, patterns, &allEvaluated)
+			}
+			if s.Else != nil {
+				g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
 			}
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	// anyOf: try runtime conditional evaluation via branch matching.
+	// If branches have evaluable matching criteria (required keys + const checks),
+	// use runtime evaluation; otherwise fall back to static over-approximation.
+	if len(s.AnyOf) > 0 {
+		ce := g.collectMultiBranchEval("anyOf", s.AnyOf)
+		if ce != nil {
+			conditionals = append(conditionals, *ce)
+		} else {
+			// Fallback: static over-approximation.
+			for _, sub := range s.AnyOf {
+				resolved := sub
+				if effRef := sub.EffectiveRef(); effRef != "" {
+					if r := g.resolveRefInContext(effRef, sub); r != nil {
+						resolved = r
+					}
+				}
+				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+			}
+		}
 	}
 
 	// oneOf: fall back to static over-approximation for now.

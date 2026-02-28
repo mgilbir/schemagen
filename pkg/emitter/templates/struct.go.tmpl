@@ -29,6 +29,9 @@ type {{.Name}} struct {
 {{- if .NeedsJSONKeys}}
 	_jsonKeys map[string]bool // set by UnmarshalJSON for optional field / dependentSchemas validation
 {{- end}}
+{{- if .NeedsRawProps}}
+	_jsonRawProps map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+{{- end}}
 }
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}

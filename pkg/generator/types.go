@@ -154,6 +154,29 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 	return u.ValueType != "" || len(u.Validations) > 0
 }
 
+// NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
+// conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
+func (d *StructDef) NeedsRawProps() bool {
+	if d.UnevaluatedProperties == nil {
+		return false
+	}
+	for _, ce := range d.UnevaluatedProperties.ConditionalEvals {
+		switch ce.Kind {
+		case "ifThenElse":
+			if ce.IfBranch != nil && len(ce.IfBranch.ConstChecks) > 0 {
+				return true
+			}
+		case "anyOf", "oneOf":
+			for _, b := range ce.Branches {
+				if len(b.ConstChecks) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
 // validation, dependent schema validation, or unevaluatedProperties with
 // conditional evaluation or cousin isolation.
