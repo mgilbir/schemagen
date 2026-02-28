@@ -437,12 +437,54 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasCousinUnevalChecks}}
+	// Cousin isolation: allOf/anyOf sub-schemas with their own unevaluatedProperties
+	// can only see properties evaluated in their own branch scope.
+	{{- range $ci, $cousin := $struct.CousinUnevalChecks}}
+	{{- if not $cousin.AllEvaluated}}
+	{
+		{{- if gt (len $cousin.EvaluatedNames) 0}}
+		_cousinEval{{$ci}} := map[string]bool{
+			{{- range $cousin.EvaluatedNames}}
+			{{printf "%q" .}}: true,
+			{{- end}}
+		}
+		{{- end}}
+		{{- if gt (len $cousin.EvalPatterns) 0}}
+		_cousinPat{{$ci}} := []*ecma262.Regexp{
+			{{- range $cousin.EvalPatterns}}
+			ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode),
+			{{- end}}
+		}
+		{{- end}}
+		for k := range {{$recv}}._jsonKeys {
+			_cEval := false
+			{{- if gt (len $cousin.EvaluatedNames) 0}}
+			if _cousinEval{{$ci}}[k] { _cEval = true }
+			{{- end}}
+			{{- if gt (len $cousin.EvalPatterns) 0}}
+			if !_cEval {
+				for _, _re := range _cousinPat{{$ci}} {
+					if _re.MatchString(k) { _cEval = true; break }
+				}
+			}
+			{{- end}}
+			if !_cEval {
+				{{- if $cousin.IsForbidden}}
+				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				{{- end}}
+			}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
 	{{- if $struct.HasUnevaluatedProperties}}
 	{{- $uneval := $struct.UnevaluatedProperties}}
 	{{- if and (not $uneval.IsAllowed) (not $uneval.AllEvaluated)}}
 	// unevaluatedProperties: check overflow map for properties not covered by evaluated set.
 	{
-		{{- if gt (len $uneval.EvaluatedNames) 0}}
+		{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
 		evaluatedNames := map[string]bool{
 			{{- range $uneval.EvaluatedNames}}
 			{{printf "%q" .}}: true,
@@ -456,10 +498,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
+		{{- /* Runtime conditional branches: add properties to evaluated set dynamically. */}}
+		{{- range $uneval.ConditionalEvals}}
+		{{- if eq .Kind "dependentSchema"}}
+		// dependentSchemas: {{.TriggerKey}} — only evaluated when trigger key is present.
+		if {{$recv}}._jsonKeys[{{printf "%q" .TriggerKey}}] {
+			{{- range .Branch.Names}}
+			evaluatedNames[{{printf "%q" .}}] = true
+			{{- end}}
+		}
+		{{- end}}
+		{{- end}}
 		for k, v := range {{$recv}}.AdditionalProperties {
 			evaluated := false
 			_ = v
-			{{- if gt (len $uneval.EvaluatedNames) 0}}
+			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
 			if evaluatedNames[k] {
 				evaluated = true
 			}
@@ -494,7 +547,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		for k, v := range {{$recv}}.PatternProperties {
 			evaluated := false
 			_ = v
-			{{- if gt (len $uneval.EvaluatedNames) 0}}
+			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
 			if evaluatedNames[k] {
 				evaluated = true
 			}

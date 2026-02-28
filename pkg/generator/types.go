@@ -79,6 +79,7 @@ type StructDef struct {
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
+	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -142,6 +143,11 @@ func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
 }
 
+// HasCousinUnevalChecks returns true if the struct has cousin isolation checks.
+func (d *StructDef) HasCousinUnevalChecks() bool {
+	return len(d.CousinUnevalChecks) > 0
+}
+
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
 // is a schema (not just true/false) with validation rules for each unevaluated value.
 func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
@@ -149,9 +155,16 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 }
 
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
-// validation or dependent schema validation.
+// validation, dependent schema validation, or unevaluatedProperties with
+// conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if len(d.DependentSchemas) > 0 {
+		return true
+	}
+	if len(d.CousinUnevalChecks) > 0 {
+		return true
+	}
+	if d.UnevaluatedProperties != nil && d.UnevaluatedProperties.HasConditionalEvals() {
 		return true
 	}
 	for _, v := range d.Validations {
@@ -182,13 +195,75 @@ type AdditionalPropertiesDef struct {
 // Properties are "evaluated" if they are covered by properties, patternProperties,
 // additionalProperties, or unevaluatedProperties in nested applicator subschemas.
 type UnevaluatedPropertiesDef struct {
-	IsForbidden       bool             // true when unevaluatedProperties: false (reject any unevaluated property)
-	IsAllowed         bool             // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
-	EvaluatedNames    []string         // statically known evaluated property names from allOf/$ref/properties
-	EvaluatedPatterns []string         // regex patterns from patternProperties in allOf/$ref
-	AllEvaluated      bool             // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
-	Validations       []ValidationRule // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
-	ValueType         string           // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
+	IsForbidden       bool              // true when unevaluatedProperties: false (reject any unevaluated property)
+	IsAllowed         bool              // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
+	EvaluatedNames    []string          // statically known evaluated property names from allOf/$ref/properties (always-true sources)
+	EvaluatedPatterns []string          // regex patterns from patternProperties in allOf/$ref (always-true sources)
+	AllEvaluated      bool              // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
+	Validations       []ValidationRule  // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
+	ValueType         string            // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
+	ConditionalEvals  []ConditionalEval // runtime-conditional evaluation branches (if/then/else, dependentSchemas, anyOf, oneOf)
+}
+
+// HasConditionalEvals returns true if there are conditional evaluation branches.
+func (u *UnevaluatedPropertiesDef) HasConditionalEvals() bool {
+	return len(u.ConditionalEvals) > 0
+}
+
+// ConditionalEval describes a set of properties that are conditionally evaluated
+// based on a runtime condition. At validation time, the condition is checked and
+// matching properties are added to the "evaluated" set dynamically.
+type ConditionalEval struct {
+	Kind string // "dependentSchema", "ifThenElse", "anyOf", "oneOf"
+	// dependentSchema: properties evaluated only when TriggerKey is present
+	TriggerKey string         // JSON property name that triggers the branch
+	Branch     *EvalBranchDef // properties evaluated when trigger is present
+	// ifThenElse: ThenBranch evaluated when if matches, ElseBranch when it doesn't
+	IfBranch   *IfConditionDef // describes how to evaluate the if condition
+	ThenBranch *EvalBranchDef  // properties evaluated when if matches
+	ElseBranch *EvalBranchDef  // properties evaluated when if doesn't match
+	// anyOf/oneOf: each branch's properties are evaluated only if that branch matches
+	Branches []EvalBranchDef // per-branch property info for anyOf/oneOf
+}
+
+// EvalBranchDef describes a set of properties evaluated by a schema branch.
+type EvalBranchDef struct {
+	Names        []string // property names evaluated by this branch
+	Patterns     []string // regex patterns evaluated by this branch
+	AllEvaluated bool     // if true, this branch evaluates ALL remaining properties
+	// For branch matching in anyOf/oneOf:
+	RequiredKeys []string     // keys that must be present for this branch to match
+	ConstChecks  []ConstCheck // property const value checks
+}
+
+// HasNames returns true if this branch has any evaluated property names.
+func (b *EvalBranchDef) HasNames() bool { return len(b.Names) > 0 }
+
+// HasPatterns returns true if this branch has any evaluated pattern properties.
+func (b *EvalBranchDef) HasPatterns() bool { return len(b.Patterns) > 0 }
+
+// IfConditionDef describes a simple if-schema condition that can be evaluated
+// at runtime by checking property values in the JSON object.
+type IfConditionDef struct {
+	ConstChecks  []ConstCheck // property const value checks
+	RequiredKeys []string     // keys that must be present
+}
+
+// ConstCheck describes a property const value check (property must equal a specific JSON value).
+type ConstCheck struct {
+	PropertyName string // JSON property name
+	GoFieldName  string // Go field name for struct access
+	JSONValue    string // expected JSON-encoded value (e.g., `"bar"`, `42`)
+}
+
+// CousinUnevalCheck describes an unevaluatedProperties check from an allOf/anyOf
+// sub-schema ("cousin"). Per JSON Schema spec, unevaluatedProperties inside an
+// applicator branch can only see annotations from its own branch, not siblings.
+type CousinUnevalCheck struct {
+	IsForbidden    bool     // true when the cousin's unevaluatedProperties: false
+	EvaluatedNames []string // property names evaluated in the cousin's own scope
+	EvalPatterns   []string // regex patterns evaluated in the cousin's own scope
+	AllEvaluated   bool     // true when the cousin's branch has additionalProperties
 }
 
 // ValidationRule describes a validation constraint on a struct field.

@@ -279,6 +279,37 @@ func (g *Generator) addRequiredImports() {
 						needsMath = true
 					}
 				}
+				// Conditional evals may need JSON for const checks and regexp for patterns.
+				for _, ce := range sd.UnevaluatedProperties.ConditionalEvals {
+					if ce.IfBranch != nil && len(ce.IfBranch.ConstChecks) > 0 {
+						needsJSON = true
+					}
+					for _, b := range ce.Branches {
+						if len(b.Patterns) > 0 {
+							needsRegexp = true
+						}
+						if len(b.ConstChecks) > 0 {
+							needsJSON = true
+						}
+					}
+					if ce.ThenBranch != nil && len(ce.ThenBranch.Patterns) > 0 {
+						needsRegexp = true
+					}
+					if ce.ElseBranch != nil && len(ce.ElseBranch.Patterns) > 0 {
+						needsRegexp = true
+					}
+					if ce.Branch != nil && len(ce.Branch.Patterns) > 0 {
+						needsRegexp = true
+					}
+				}
+			}
+			if len(sd.CousinUnevalChecks) > 0 {
+				needsFmt = true // Validate() uses fmt.Errorf for cousin isolation errors
+				for _, c := range sd.CousinUnevalChecks {
+					if len(c.EvalPatterns) > 0 {
+						needsRegexp = true
+					}
+				}
 			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
@@ -1155,6 +1186,20 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		unevalProps = g.buildUnevaluatedPropertiesDef(s)
 	}
 
+	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
+	// unevaluatedProperties need separate validation scoped to their branch.
+	cousinChecks := g.collectCousinUnevalChecks(s)
+	if len(cousinChecks) > 0 {
+		// Cousin checks need an overflow map and _jsonKeys.
+		if additionalProps == nil {
+			additionalProps = &AdditionalPropertiesDef{
+				ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			}
+			needsMarshal = true
+			needsUnmarshal = true
+		}
+	}
+
 	structDef := &StructDef{
 		Name:                  name,
 		Description:           s.Description,
@@ -1166,6 +1211,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		Validations:           validations,
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
+		CousinUnevalChecks:    cousinChecks,
 		RequiredJSON:          requiredJSON,
 		NeedsMarshal:          needsMarshal,
 		NeedsUnmarshal:        needsUnmarshal,
@@ -3154,12 +3200,13 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 	}
 
 	// Collect evaluated properties from the schema tree.
-	names, patterns, allEvaluated := g.collectEvaluatedProperties(s)
+	names, patterns, allEvaluated, conditionals := g.collectEvaluatedProperties(s)
 	def.AllEvaluated = allEvaluated
 
 	// Convert to sorted slices for deterministic output.
 	def.EvaluatedNames = sortedKeys(names)
 	def.EvaluatedPatterns = sortedKeys(patterns)
+	def.ConditionalEvals = conditionals
 
 	return def
 }
@@ -3169,11 +3216,12 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 // The root schema's own unevaluatedProperties is NOT included (that's the
 // constraint we're evaluating); only nested applicator subschemas contribute.
 // It returns:
-//   - names: set of property names evaluated by properties keywords
-//   - patterns: set of regex patterns evaluated by patternProperties keywords
+//   - names: set of property names evaluated by always-true sources (properties, allOf, $ref)
+//   - patterns: set of regex patterns from always-true sources
 //   - allEvaluated: true if additionalProperties or unevaluatedProperties in a nested
 //     schema marks ALL remaining properties as evaluated
-func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[string]bool, patterns map[string]bool, allEvaluated bool) {
+//   - conditionals: runtime-conditional evaluation branches for anyOf/oneOf/if-then-else/dependentSchemas
+func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[string]bool, patterns map[string]bool, allEvaluated bool, conditionals []ConditionalEval) {
 	names = make(map[string]bool)
 	patterns = make(map[string]bool)
 
@@ -3215,29 +3263,25 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
 
-	// For anyOf/oneOf/if/then/else/dependentSchemas, we collect property names and
-	// patterns from ALL branches as "potentially evaluated". This is a conservative
-	// static over-approximation: at runtime, only matching branches contribute, but
-	// we include all branches to avoid false rejections. Precise runtime tracking
-	// will be implemented in Phase 2.
-	for _, sub := range s.AnyOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+	// Runtime-conditional branches: anyOf/oneOf/if-then-else/dependentSchemas.
+	// Instead of merging all properties statically, we collect per-branch info
+	// so the generated Validate() can build the evaluated set dynamically.
+
+	// dependentSchemas: properties evaluated only when the trigger key is present.
+	for triggerKey, depSchema := range s.DependentSchemas {
+		branch := g.collectBranchEval(depSchema)
+		if branch != nil && (branch.HasNames() || branch.HasPatterns() || branch.AllEvaluated) {
+			conditionals = append(conditionals, ConditionalEval{
+				Kind:       "dependentSchema",
+				TriggerKey: triggerKey,
+				Branch:     branch,
+			})
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
-	for _, sub := range s.OneOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
-		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
-	}
+
+	// if/then/else: fall back to static over-approximation for now.
+	// Runtime evaluation of if-conditions requires raw JSON value access,
+	// which will be implemented in a future phase.
 	if s.If != nil {
 		g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
 	}
@@ -3247,8 +3291,29 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 	if s.Else != nil {
 		g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
 	}
-	for _, depSchema := range s.DependentSchemas {
-		g.collectEvaluatedFromNested(depSchema, names, patterns, &allEvaluated)
+
+	// anyOf: fall back to static over-approximation for now.
+	// Runtime branch matching requires raw JSON value access.
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	// oneOf: fall back to static over-approximation for now.
+	// Runtime branch matching requires raw JSON value access.
+	for _, sub := range s.OneOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
 
 	return
@@ -3337,6 +3402,283 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 	// Recurse into dependentSchemas.
 	for _, depSchema := range s.DependentSchemas {
 		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
+	}
+}
+
+// collectBranchEval collects evaluated property names and patterns from a single
+// schema branch, returning an EvalBranchDef. Returns nil if the branch is nil.
+func (g *Generator) collectBranchEval(s *schema.Schema) *EvalBranchDef {
+	if s == nil {
+		return nil
+	}
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	var allEvaluated bool
+
+	// Collect from this schema and its nested applicators.
+	g.collectEvaluatedFromNested(s, names, patterns, &allEvaluated)
+
+	branch := &EvalBranchDef{
+		Names:        sortedKeys(names),
+		Patterns:     sortedKeys(patterns),
+		AllEvaluated: allEvaluated,
+	}
+
+	// Collect branch-matching metadata: required keys and const checks.
+	branch.RequiredKeys = append([]string(nil), s.Required...)
+	sort.Strings(branch.RequiredKeys)
+	for propName, propSchema := range s.Properties {
+		if propSchema != nil && propSchema.Const != nil {
+			jsonVal, err := json.Marshal(*propSchema.Const)
+			if err == nil {
+				branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
+					PropertyName: propName,
+					GoFieldName:  JSONPropertyToGoName(propName),
+					JSONValue:    string(jsonVal),
+				})
+			}
+		}
+	}
+	// Sort const checks for deterministic output.
+	sort.Slice(branch.ConstChecks, func(i, j int) bool {
+		return branch.ConstChecks[i].PropertyName < branch.ConstChecks[j].PropertyName
+	})
+
+	return branch
+}
+
+// extractIfCondition extracts a runtime-evaluable condition from an if-schema.
+// Returns nil if the if-schema is too complex for runtime evaluation.
+func (g *Generator) extractIfCondition(s *schema.Schema) *IfConditionDef {
+	if s == nil {
+		return nil
+	}
+	// We can evaluate if-schemas that use properties with const constraints
+	// and/or required fields.
+	var constChecks []ConstCheck
+	for propName, propSchema := range s.Properties {
+		if propSchema != nil && propSchema.Const != nil {
+			jsonVal, err := json.Marshal(*propSchema.Const)
+			if err == nil {
+				constChecks = append(constChecks, ConstCheck{
+					PropertyName: propName,
+					GoFieldName:  JSONPropertyToGoName(propName),
+					JSONValue:    string(jsonVal),
+				})
+			}
+		}
+	}
+	requiredKeys := append([]string(nil), s.Required...)
+	sort.Strings(requiredKeys)
+	sort.Slice(constChecks, func(i, j int) bool {
+		return constChecks[i].PropertyName < constChecks[j].PropertyName
+	})
+
+	// Must have at least some condition to evaluate.
+	if len(constChecks) == 0 && len(requiredKeys) == 0 {
+		return nil
+	}
+
+	return &IfConditionDef{
+		ConstChecks:  constChecks,
+		RequiredKeys: requiredKeys,
+	}
+}
+
+// collectMultiBranchEval collects evaluation branches for anyOf/oneOf.
+// Returns a ConditionalEval or nil if any branch is too complex.
+func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *ConditionalEval {
+	if len(subs) == 0 {
+		return nil
+	}
+
+	var branches []EvalBranchDef
+	for _, sub := range subs {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		branch := g.collectBranchEval(resolved)
+		if branch == nil {
+			branch = &EvalBranchDef{}
+		}
+		// For matching, we need required keys and/or const checks from the original
+		// sub-schema (not the resolved one, since required is on the sub itself).
+		if len(sub.Required) > 0 && len(branch.RequiredKeys) == 0 {
+			branch.RequiredKeys = append([]string(nil), sub.Required...)
+			sort.Strings(branch.RequiredKeys)
+		}
+		for propName, propSchema := range sub.Properties {
+			if propSchema != nil && propSchema.Const != nil {
+				jsonVal, err := json.Marshal(*propSchema.Const)
+				if err == nil {
+					// Check if this const check already exists from resolved schema.
+					found := false
+					for _, cc := range branch.ConstChecks {
+						if cc.PropertyName == propName {
+							found = true
+							break
+						}
+					}
+					if !found {
+						branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
+							PropertyName: propName,
+							GoFieldName:  JSONPropertyToGoName(propName),
+							JSONValue:    string(jsonVal),
+						})
+					}
+				}
+			}
+		}
+		sort.Slice(branch.ConstChecks, func(i, j int) bool {
+			return branch.ConstChecks[i].PropertyName < branch.ConstChecks[j].PropertyName
+		})
+		branches = append(branches, *branch)
+	}
+
+	// Check that at least some branches have evaluable properties.
+	hasContent := false
+	for _, b := range branches {
+		if b.HasNames() || b.HasPatterns() || b.AllEvaluated {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+
+	return &ConditionalEval{
+		Kind:     kind,
+		Branches: branches,
+	}
+}
+
+// mergeEvalBranches merges two EvalBranchDef into one (union of names and patterns).
+func mergeEvalBranches(a, b *EvalBranchDef) *EvalBranchDef {
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	for _, n := range a.Names {
+		names[n] = true
+	}
+	for _, n := range b.Names {
+		names[n] = true
+	}
+	for _, p := range a.Patterns {
+		patterns[p] = true
+	}
+	for _, p := range b.Patterns {
+		patterns[p] = true
+	}
+	return &EvalBranchDef{
+		Names:        sortedKeys(names),
+		Patterns:     sortedKeys(patterns),
+		AllEvaluated: a.AllEvaluated || b.AllEvaluated,
+	}
+}
+
+// collectCousinUnevalChecks detects allOf/anyOf sub-schemas that have their own
+// unevaluatedProperties constraint (cousin isolation). For each such sub-schema,
+// it computes the evaluated set scoped to that branch only.
+func (g *Generator) collectCousinUnevalChecks(s *schema.Schema) []CousinUnevalCheck {
+	var checks []CousinUnevalCheck
+
+	// Check allOf sub-schemas.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		if resolved.UnevaluatedProperties == nil {
+			continue
+		}
+		check := g.buildCousinCheck(resolved)
+		if check != nil {
+			checks = append(checks, *check)
+		}
+	}
+
+	// Check anyOf sub-schemas.
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		if resolved.UnevaluatedProperties == nil {
+			continue
+		}
+		check := g.buildCousinCheck(resolved)
+		if check != nil {
+			checks = append(checks, *check)
+		}
+	}
+
+	return checks
+}
+
+// buildCousinCheck builds a CousinUnevalCheck for a sub-schema with unevaluatedProperties.
+func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
+	uneval := s.UnevaluatedProperties
+	if uneval == nil {
+		return nil
+	}
+
+	// Check boolean value.
+	if uneval.IsBooleanSchema() {
+		if uneval.BooleanSchema != nil && *uneval.BooleanSchema {
+			// unevaluatedProperties: true — no constraint, skip.
+			return nil
+		}
+		// unevaluatedProperties: false
+	}
+
+	// Collect evaluated properties scoped to this branch only.
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	var allEvaluated bool
+
+	// Direct properties on this sub-schema.
+	for k := range s.Properties {
+		names[k] = true
+	}
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+	if s.AdditionalProperties != nil {
+		allEvaluated = true
+	}
+
+	// $ref on this sub-schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
+
+	// allOf within this sub-schema.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	isForbidden := uneval.IsBooleanSchema() && (uneval.BooleanSchema == nil || !*uneval.BooleanSchema)
+
+	return &CousinUnevalCheck{
+		IsForbidden:    isForbidden,
+		EvaluatedNames: sortedKeys(names),
+		EvalPatterns:   sortedKeys(patterns),
+		AllEvaluated:   allEvaluated,
 	}
 }
 

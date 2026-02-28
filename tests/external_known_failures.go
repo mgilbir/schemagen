@@ -23,29 +23,27 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 101 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 73 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
-//   - unevaluatedProperties: cousin isolation requires per-branch annotation tracking (24)
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
 //   - unevaluatedProperties: if/then/else/anyOf static over-approximation (10)
 //   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
-//   - $ref sibling keyword validation not implemented (6)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
+//   - $ref sibling keyword validation not implemented (6)
 //   - codegen produces code that fails to compile for validation binary (6)
 //   - $anchor resolution edge cases (5)
-//   - unevaluatedProperties: dependentSchemas static over-approximation (4)
 //   - unevaluatedItems validation not implemented (4)
-//   - (float-overflow: FIXED via BigIntSupport)
 //   - $dynamicRef with required: $dynamicRef not implemented (3)
 //   - custom metaschema vocabulary not supported (2)
-//   - $recursiveRef not implemented (2)
 //   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
-//   - unevaluatedProperties: $dynamicRef not implemented (1)
+//   - unevaluatedProperties: $dynamicRef/$recursiveRef not implemented (2)
 //   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
+//   - (unevaluatedProperties cousin isolation: FIXED via per-branch annotation tracking) (24)
+//   - (unevaluatedProperties dependentSchemas: FIXED via runtime conditional evaluation) (4)
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
 
@@ -139,28 +137,8 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":                                             "unevaluatedItems validation not implemented",
 
-	// unevaluatedProperties: remaining failures (54 entries)
-	// Cousin/uncle isolation requires per-branch annotation tracking (24)
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":           "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":        "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":     "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":    "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties": "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, false with properties/with nested unevaluated properties":          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with nested unevaluated properties":           "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/cousin unevaluatedProperties, true and false, true with properties/with no nested unevaluated properties":        "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, allOf has unevaluated/in place applicator siblings, foo is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/base case: both properties present":                          "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/in-place applicator siblings, anyOf has unevaluated/in place applicator siblings, bar is missing":                "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties inside/with nested unevaluated properties":     "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with nested unevaluated properties":    "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/nested unevaluatedProperties, outer true, inner false, properties outside/with no nested unevaluated properties": "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
+	// unevaluatedProperties: remaining failures (22 entries)
+	// (Cousin/uncle isolation: FIXED via per-branch annotation tracking — 24 entries removed)
 	// Static over-approximation: if/then/else and anyOf properties over-counted as evaluated (10)
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is true and has unevaluated properties":                    "unevaluatedProperties: if/then/else static over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with if/then/else/when if is false and has unevaluated properties":                   "unevaluatedProperties: if/then/else static over-approximation",
@@ -173,23 +151,15 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when one matches and has unevaluated properties":                          "unevaluatedProperties: anyOf static over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with anyOf/when two match and has unevaluated properties":                            "unevaluatedProperties: anyOf static over-approximation",
 	// (unevaluatedProperties: schema-valued — FIXED via Validations + ValueType on UnevaluatedPropertiesDef)
-	// dependentSchemas with unevaluatedProperties: dependent properties over-counted as evaluated (4)
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                               "unevaluatedProperties: dependentSchemas static over-approximation",
-	"draft2019-09/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent": "unevaluatedProperties: dependentSchemas static over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with dependentSchemas/with unevaluated properties":                               "unevaluatedProperties: dependentSchemas static over-approximation",
-	"draft2020-12/unevaluatedProperties/dependentSchemas with unevaluatedProperties/unevaluatedProperties doesn't see bar when foo2 is absent": "unevaluatedProperties: dependentSchemas static over-approximation",
+	// (dependentSchemas: FIXED via runtime conditional evaluation — 4 entries removed)
 	// Remaining unevaluatedProperties failures: $dynamicRef/$recursiveRef, dynamic oneOf evaluation (12)
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties":             "unevaluatedProperties: $recursiveRef not implemented",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
 	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":             "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":               "unevaluatedProperties: $dynamicRef not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins (reverse order)/always fails":      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties can't see inside cousins/always fails":                      "unevaluatedProperties: cousin isolation requires per-branch annotation tracking",
 	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
