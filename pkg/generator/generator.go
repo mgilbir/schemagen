@@ -3253,6 +3253,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 	}
 
 	// Recurse into allOf — all branches always apply.
+	// We also check each allOf sub-schema for oneOf/anyOf/if-then-else and
+	// build conditional evals for them instead of static over-approximation.
 	for _, sub := range s.AllOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
@@ -3260,7 +3262,75 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 				resolved = r
 			}
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		// Collect static evaluated properties (properties, patternProperties, $ref, etc.)
+		// but exclude oneOf/anyOf/if-then-else from the static collection.
+		g.collectEvaluatedFromNestedExcludeConditional(resolved, names, patterns, &allEvaluated)
+
+		// Build conditional evals for oneOf/anyOf/if-then-else inside allOf sub-schemas.
+		if len(resolved.OneOf) > 0 {
+			ce := g.collectMultiBranchEval("oneOf", resolved.OneOf)
+			if ce != nil {
+				conditionals = append(conditionals, *ce)
+			} else {
+				// Fallback: static over-approximation.
+				for _, osub := range resolved.OneOf {
+					oresolved := osub
+					if effRef := osub.EffectiveRef(); effRef != "" {
+						if r := g.resolveRefInContext(effRef, osub); r != nil {
+							oresolved = r
+						}
+					}
+					g.collectEvaluatedFromNested(oresolved, names, patterns, &allEvaluated)
+				}
+			}
+		}
+		if len(resolved.AnyOf) > 0 {
+			ce := g.collectMultiBranchEval("anyOf", resolved.AnyOf)
+			if ce != nil {
+				conditionals = append(conditionals, *ce)
+			} else {
+				for _, asub := range resolved.AnyOf {
+					aresolved := asub
+					if effRef := asub.EffectiveRef(); effRef != "" {
+						if r := g.resolveRefInContext(effRef, asub); r != nil {
+							aresolved = r
+						}
+					}
+					g.collectEvaluatedFromNested(aresolved, names, patterns, &allEvaluated)
+				}
+			}
+		}
+		if resolved.If != nil {
+			ifCond := g.extractIfCondition(resolved.If)
+			if ifCond != nil {
+				thenBranch := g.collectBranchEval(resolved.Then)
+				elseBranch := g.collectBranchEval(resolved.Else)
+				ifBranch := g.collectBranchEval(resolved.If)
+				if ifBranch != nil && thenBranch != nil {
+					thenBranch = mergeEvalBranches(ifBranch, thenBranch)
+				} else if ifBranch != nil && thenBranch == nil {
+					thenBranch = ifBranch
+				}
+				hasThen := thenBranch != nil && (thenBranch.HasNames() || thenBranch.HasPatterns() || thenBranch.AllEvaluated)
+				hasElse := elseBranch != nil && (elseBranch.HasNames() || elseBranch.HasPatterns() || elseBranch.AllEvaluated)
+				if hasThen || hasElse {
+					conditionals = append(conditionals, ConditionalEval{
+						Kind:       "ifThenElse",
+						IfBranch:   ifCond,
+						ThenBranch: thenBranch,
+						ElseBranch: elseBranch,
+					})
+				}
+			} else {
+				g.collectEvaluatedFromNested(resolved.If, names, patterns, &allEvaluated)
+				if resolved.Then != nil {
+					g.collectEvaluatedFromNested(resolved.Then, names, patterns, &allEvaluated)
+				}
+				if resolved.Else != nil {
+					g.collectEvaluatedFromNested(resolved.Else, names, patterns, &allEvaluated)
+				}
+			}
+		}
 	}
 
 	// Runtime-conditional branches: anyOf/oneOf/if-then-else/dependentSchemas.
@@ -3341,16 +3411,25 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 		}
 	}
 
-	// oneOf: fall back to static over-approximation for now.
-	// Runtime branch matching requires raw JSON value access.
-	for _, sub := range s.OneOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
+	// oneOf: try runtime conditional evaluation via branch matching.
+	// If branches have evaluable matching criteria (required keys + const checks),
+	// use runtime evaluation; otherwise fall back to static over-approximation.
+	if len(s.OneOf) > 0 {
+		ce := g.collectMultiBranchEval("oneOf", s.OneOf)
+		if ce != nil {
+			conditionals = append(conditionals, *ce)
+		} else {
+			// Fallback: static over-approximation.
+			for _, sub := range s.OneOf {
+				resolved := sub
+				if effRef := sub.EffectiveRef(); effRef != "" {
+					if r := g.resolveRefInContext(effRef, sub); r != nil {
+						resolved = r
+					}
+				}
+				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 			}
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
 
 	return
@@ -3435,6 +3514,64 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 	if s.Else != nil {
 		g.collectEvaluatedFromNested(s.Else, names, patterns, allEvaluated)
 	}
+
+	// Recurse into dependentSchemas.
+	for _, depSchema := range s.DependentSchemas {
+		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
+	}
+}
+
+// collectEvaluatedFromNestedExcludeConditional is like collectEvaluatedFromNested
+// but skips oneOf, anyOf, and if/then/else processing. These are handled separately
+// by the caller via conditional evaluation instead of static over-approximation.
+func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schema, names map[string]bool, patterns map[string]bool, allEvaluated *bool) {
+	if s == nil {
+		return
+	}
+	if s.IsBooleanSchema() {
+		return
+	}
+
+	// Direct properties.
+	for k := range s.Properties {
+		names[k] = true
+	}
+
+	// Pattern properties.
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+
+	// additionalProperties in a nested schema marks ALL remaining as evaluated.
+	if s.AdditionalProperties != nil {
+		*allEvaluated = true
+	}
+
+	// unevaluatedProperties in a nested schema marks ALL remaining as evaluated.
+	if s.UnevaluatedProperties != nil {
+		*allEvaluated = true
+	}
+
+	// $ref — evaluated properties from the referenced schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+		}
+	}
+
+	// Recurse into allOf — all branches always apply.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+	}
+
+	// NOTE: oneOf, anyOf, and if/then/else are NOT processed here.
+	// The caller handles them via conditional evaluation.
 
 	// Recurse into dependentSchemas.
 	for _, depSchema := range s.DependentSchemas {
@@ -3529,6 +3666,61 @@ func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *
 		return nil
 	}
 
+	branches := g.flattenBranches(subs, 0)
+	if branches == nil {
+		return nil
+	}
+
+	// Check that at least some branches have evaluable properties.
+	hasContent := false
+	for _, b := range branches {
+		if b.HasNames() || b.HasPatterns() || b.AllEvaluated {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+
+	// Check that ALL branches have matching criteria (required keys or const checks).
+	// Without matching criteria, we can't determine which branch matched at runtime
+	// and must fall back to static over-approximation.
+	for _, b := range branches {
+		if len(b.RequiredKeys) == 0 && len(b.ConstChecks) == 0 {
+			return nil
+		}
+	}
+
+	return &ConditionalEval{
+		Kind:     kind,
+		Branches: branches,
+	}
+}
+
+// isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct
+// properties, patternProperties, required, additionalProperties, etc.) — just
+// structural content that can be flattened.
+func isOneOfOnlySchema(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	return len(s.Properties) == 0 &&
+		len(s.PatternProperties) == 0 &&
+		len(s.Required) == 0 &&
+		s.AdditionalProperties == nil &&
+		len(s.AllOf) == 0 &&
+		len(s.AnyOf) == 0 &&
+		s.If == nil
+}
+
+// flattenBranches recursively collects EvalBranchDefs from a list of sub-schemas.
+// When a sub-schema resolves to a oneOf-only schema (no direct properties),
+// it is expanded into its inner branches. Returns nil if recursion exceeds depth limit.
+func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBranchDef {
+	if depth > 5 {
+		return nil // prevent infinite recursion
+	}
 	var branches []EvalBranchDef
 	for _, sub := range subs {
 		resolved := sub
@@ -3537,6 +3729,17 @@ func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *
 				resolved = r
 			}
 		}
+
+		// If the resolved schema is a oneOf-only schema, flatten recursively.
+		if isOneOfOnlySchema(resolved) {
+			inner := g.flattenBranches(resolved.OneOf, depth+1)
+			if inner == nil {
+				return nil // propagate failure
+			}
+			branches = append(branches, inner...)
+			continue
+		}
+
 		branch := g.collectBranchEval(resolved)
 		if branch == nil {
 			branch = &EvalBranchDef{}
@@ -3574,23 +3777,7 @@ func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *
 		})
 		branches = append(branches, *branch)
 	}
-
-	// Check that at least some branches have evaluable properties.
-	hasContent := false
-	for _, b := range branches {
-		if b.HasNames() || b.HasPatterns() || b.AllEvaluated {
-			hasContent = true
-			break
-		}
-	}
-	if !hasContent {
-		return nil
-	}
-
-	return &ConditionalEval{
-		Kind:     kind,
-		Branches: branches,
-	}
+	return branches
 }
 
 // mergeEvalBranches merges two EvalBranchDef into one (union of names and patterns).

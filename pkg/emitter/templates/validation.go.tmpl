@@ -561,6 +561,62 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 		}
 		{{- end}}
+		{{- else if eq .Kind "oneOf"}}
+		// oneOf: add evaluated properties from the single matching branch.
+		{
+			_oneOfMatchCount := 0
+			_oneOfMatchIdx := -1
+			{{- range $bi, $branch := .Branches}}
+			{
+				_branchMatch := true
+				{{- range $branch.RequiredKeys}}
+				if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+					_branchMatch = false
+				}
+				{{- end}}
+				{{- range $branch.ConstChecks}}
+				if _branchMatch {
+					if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+						_branchMatch = false
+					}
+				}
+				{{- end}}
+				if _branchMatch {
+					_oneOfMatchCount++
+					_oneOfMatchIdx = {{$bi}}
+				}
+			}
+			{{- end}}
+			if _oneOfMatchCount != 1 {
+				return fmt.Errorf("oneOf: expected exactly 1 matching branch, got %d", _oneOfMatchCount)
+			}
+			_ = _oneOfMatchIdx
+			{{- range $bi, $branch := .Branches}}
+			{{- if or $branch.Names $branch.Patterns $branch.AllEvaluated}}
+			if _oneOfMatchIdx == {{$bi}} {
+				{{- range $branch.Names}}
+				evaluatedNames[{{printf "%q" .}}] = true
+				{{- end}}
+				{{- if $branch.AllEvaluated}}
+				// Matching branch evaluates all properties.
+				for _k := range {{$recv}}._jsonKeys {
+					evaluatedNames[_k] = true
+				}
+				{{- end}}
+				{{- range $branch.Patterns}}
+				{
+					_re := ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode)
+					for _k := range {{$recv}}._jsonKeys {
+						if _re.MatchString(_k) {
+							evaluatedNames[_k] = true
+						}
+					}
+				}
+				{{- end}}
+			}
+			{{- end}}
+			{{- end}}
+		}
 		{{- end}}
 		{{- end}}
 		for k, v := range {{$recv}}.AdditionalProperties {

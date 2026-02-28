@@ -23,13 +23,12 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 63 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 53 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
-//   - unevaluatedProperties: dynamic oneOf evaluation over-approximation (10)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - $ref sibling keyword validation not implemented (6)
 //   - codegen produces code that fails to compile for validation binary (6)
@@ -45,6 +44,7 @@ var knownParseFailures = map[string]string{}
 //   - (unevaluatedProperties dependentSchemas: FIXED via runtime conditional evaluation) (4)
 //   - (unevaluatedProperties if/then/else: FIXED via runtime conditional evaluation) (6)
 //   - (unevaluatedProperties anyOf: FIXED via runtime branch matching) (4)
+//   - (unevaluatedProperties oneOf: FIXED via runtime branch matching + flattening) (10)
 var knownValidationFailures = map[string]string{
 	// (default keyword — FIXED via optional field presence tracking)
 
@@ -138,25 +138,16 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":                                             "unevaluatedItems validation not implemented",
 
-	// unevaluatedProperties: remaining failures (12 entries)
+	// unevaluatedProperties: remaining failures (2 entries)
 	// (Cousin/uncle isolation: FIXED via per-branch annotation tracking — 24 entries removed)
 	// (if/then/else: FIXED via runtime conditional evaluation — 6 entries removed)
 	// (anyOf: FIXED via runtime branch matching — 4 entries removed)
+	// (oneOf: FIXED via runtime branch matching + recursive flattening — 10 entries removed)
 	// (unevaluatedProperties: schema-valued — FIXED via Validations + ValueType on UnevaluatedPropertiesDef)
 	// (dependentSchemas: FIXED via runtime conditional evaluation — 4 entries removed)
-	// Remaining unevaluatedProperties failures: $dynamicRef/$recursiveRef, dynamic oneOf evaluation (12)
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties":             "unevaluatedProperties: $recursiveRef not implemented",
-	"draft2019-09/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2019-09/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":             "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":               "unevaluatedProperties: $dynamicRef not implemented",
-	"draft2020-12/unevaluatedProperties/dynamic evalation inside nested refs/xx + foo is invalid":                         "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/Empty is invalid (no x or y)":    "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b and x and y are invalid": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/a and b are invalid (no x or y)": "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties + ref inside allOf / oneOf/x and y are invalid":             "unevaluatedProperties: dynamic oneOf evaluation over-approximation",
+	// Remaining unevaluatedProperties failures: $dynamicRef/$recursiveRef (2)
+	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties": "unevaluatedProperties: $recursiveRef not implemented",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":   "unevaluatedProperties: $dynamicRef not implemented",
 
 	// codegen produces code that fails to compile for validation binary (3 additional entries — other half of same groups)
 	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
