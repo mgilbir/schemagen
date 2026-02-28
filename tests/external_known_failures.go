@@ -21,14 +21,14 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 51 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 45 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - $dynamicRef/$dynamicAnchor not implemented (13)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
-//   - $ref sibling keyword validation not implemented (6)
+//   - ($ref sibling keyword validation: ALL FIXED via $ref sibling allOf synthesis)
 //   - codegen produces code that fails to compile for validation binary (4)
 //   - $anchor resolution edge cases (5)
 //   - unevaluatedItems validation not implemented (4)
@@ -84,14 +84,14 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                                                                     "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
-	// $ref sibling keyword validation not implemented (6 entries — 4 fixed via allOf property resolution in resolveType)
-	"draft2019-09/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling: unevaluatedProperties scope isolation required",
-	"draft2019-09/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling: root-level $ref alongside properties not merged (draft2019-09+)",
-	"draft2019-09/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling: root-level $ref alongside properties not merged (draft2019-09+)",
+	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
+	// (draft2019-09/ref/ref creates new scope — FIXED via $ref sibling allOf synthesis)
+	// (draft2019-09/ref/refs with relative uris and defs — FIXED via $ref sibling allOf synthesis)
+	// (draft2019-09/ref/relative refs with absolute uris and defs — FIXED via $ref sibling allOf synthesis)
 	// (draft2019-09 URN base URI with $ref — FIXED via non-object validation)
-	"draft2020-12/ref/ref creates new scope when adjacent to keywords/referenced subschema doesn't see annotations from properties": "$ref sibling: unevaluatedProperties scope isolation required",
-	"draft2020-12/ref/refs with relative uris and defs/invalid on outer field":                                                      "$ref sibling: root-level $ref alongside properties not merged (draft2019-09+)",
-	"draft2020-12/ref/relative refs with absolute uris and defs/invalid on outer field":                                             "$ref sibling: root-level $ref alongside properties not merged (draft2019-09+)",
+	// (draft2020-12/ref/ref creates new scope — FIXED via $ref sibling allOf synthesis)
+	// (draft2020-12/ref/refs with relative uris and defs — FIXED via $ref sibling allOf synthesis)
+	// (draft2020-12/ref/relative refs with absolute uris and defs — FIXED via $ref sibling allOf synthesis)
 	// (draft2020-12 URN base URI with $ref — FIXED via non-object validation)
 	// (draft6/7 refs with relative/absolute uris and defs — FIXED via allOf property resolution in resolveType)
 	// (draft7 URN base URI with $ref — FIXED via non-object validation)

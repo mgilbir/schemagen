@@ -584,6 +584,22 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateEnumDef(name, s)
 	}
 
+	// In draft2019-09+, $ref is an applicator that works alongside sibling keywords.
+	// When a schema has both $ref and structural keywords (properties, patternProperties,
+	// etc.), synthesize an implicit allOf so both the $ref target and local keywords
+	// are merged into a single struct.
+	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0) {
+		refSub := &schema.Schema{
+			Ref:          s.Ref,
+			BaseURI:      s.BaseURI,
+			DocumentRoot: s.DocumentRoot,
+		}
+		synth := *s // shallow copy
+		synth.Ref = ""
+		synth.AllOf = append([]*schema.Schema{refSub}, synth.AllOf...)
+		return g.generateAllOfDef(name, &synth)
+	}
+
 	// allOf → merge all sub-schemas into one struct
 	if len(s.AllOf) > 0 {
 		return g.generateAllOfDef(name, s)
@@ -1363,10 +1379,25 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
 	for _, sub := range allOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
+		// Follow $ref chains until we reach a schema with properties or no more refs.
+		for {
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
 			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil {
+				break
+			}
+			// If the resolved schema has properties or patternProperties, merge
+			// those but also continue to check for nested allOf/ref below.
+			if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 {
+				resolved = r
+				break
+			}
+			// The resolved schema has no direct properties — it may itself
+			// be a $ref-only schema; follow it.
+			resolved = r
 		}
 		// Copy direct properties.
 		for k, v := range resolved.Properties {
