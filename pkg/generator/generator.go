@@ -2799,11 +2799,51 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 	if s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil {
 		return "array"
 	}
+	// unevaluatedItems:false with tuple items and NO sibling applicators/items that
+	// could extend or evaluate additional items → safe to infer array with implicit
+	// maxItems = tuple length.
+	if unevaluatedItemsImpliesFixedTuple(s) {
+		return "array"
+	}
 	// Object constraints → object
 	if s.MinProperties != nil || s.MaxProperties != nil {
 		return "object"
 	}
 	return ""
+}
+
+// unevaluatedItemsImpliesFixedTuple returns true when a schema has
+// unevaluatedItems:false alongside a tuple definition (prefixItems or tuple-form
+// items) and NO other applicators or keywords that could evaluate additional items.
+// In this narrow case, the schema is equivalent to a fixed-length tuple with
+// maxItems = tuple length.
+func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
+	if s.UnevaluatedItems == nil || !s.UnevaluatedItems.IsFalseSchema() {
+		return false
+	}
+	tupleLen := len(s.PrefixItems)
+	if tupleLen == 0 && s.Items != nil {
+		tupleLen = len(s.Items.Schemas)
+	}
+	if tupleLen == 0 {
+		return false
+	}
+	// Bail if any applicator or keyword could extend or evaluate additional items.
+	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+		return false
+	}
+	if s.If != nil || s.Ref != "" || s.Contains != nil {
+		return false
+	}
+	// items as a schema (not tuple form) evaluates all remaining items — no unevaluated ones.
+	if s.Items != nil && s.Items.Schema != nil {
+		return false
+	}
+	// additionalItems evaluates items beyond the tuple — no unevaluated ones.
+	if s.AdditionalItems != nil {
+		return false
+	}
+	return true
 }
 
 // schemaHasExplicitType returns true if the schema declares an explicit "type"
@@ -3131,6 +3171,19 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "maxItems", Value: len(s.PrefixItems),
+		})
+	}
+	// unevaluatedItems:false with a fixed tuple and no extending applicators →
+	// implicit maxItems = tuple length. Only applied when the schema is a simple
+	// self-contained tuple (see unevaluatedItemsImpliesFixedTuple).
+	if s.MaxItems == nil && unevaluatedItemsImpliesFixedTuple(s) {
+		tupleLen := len(s.PrefixItems)
+		if tupleLen == 0 && s.Items != nil {
+			tupleLen = len(s.Items.Schemas)
+		}
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "maxItems", Value: tupleLen,
 		})
 	}
 	// exclusiveMinimum: can be a number (Draft 2020-12) or a boolean (Draft 4).

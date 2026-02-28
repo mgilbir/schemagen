@@ -17,7 +17,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 32 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 30 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -25,7 +25,7 @@ var knownParseFailures = map[string]string{}
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (7)
 //   - $recursiveRef validation not implemented (1)
-//   - unevaluatedItems validation not implemented (4)
+//   - unevaluatedItems validation not implemented (2)
 //   - custom metaschema vocabulary not supported (2)
 //   - $dynamicRef with required: dynamic scope needed (2)
 //   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
@@ -124,11 +124,10 @@ var knownValidationFailures = map[string]string{
 	// required with composition validation not implemented (1 entries)
 	// (draft3/required — FIXED via draft3 required normalization)
 
-	// unevaluatedItems validation not implemented (4 entries)
-	"draft2019-09/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with $recursiveRef/with unevaluated items":                                           "unevaluatedItems validation not implemented",
-	"draft2020-12/unevaluatedItems/item is evaluated in an uncle schema to unevaluatedItems/uncle keyword evaluation is not significant": "unevaluatedItems validation not implemented",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":                                             "unevaluatedItems validation not implemented",
+	// unevaluatedItems validation not implemented (2 entries)
+	// (uncle keyword isolation: FIXED via unevaluatedItems:false maxItems inference — 2 entries removed)
+	"draft2019-09/unevaluatedItems/unevaluatedItems with $recursiveRef/with unevaluated items": "unevaluatedItems validation not implemented",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":   "unevaluatedItems validation not implemented",
 
 	// unevaluatedProperties: remaining failures (2 entries)
 	// (Cousin/uncle isolation: FIXED via per-branch annotation tracking — 24 entries removed)
