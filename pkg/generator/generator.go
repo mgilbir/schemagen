@@ -2233,6 +2233,11 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 	if def.Anchor != "" {
 		g.anchors["#"+def.Anchor] = refPath
 	}
+	// $dynamicAnchor is resolvable by both $ref and $dynamicRef.
+	// For static code generation, treat it like $anchor.
+	if def.DynamicAnchor != "" {
+		g.anchors["#"+def.DynamicAnchor] = refPath
+	}
 }
 
 // isScopedSelfRef returns true if the given ref, resolved from the context schema,
