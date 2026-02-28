@@ -4,40 +4,38 @@ package tests
 // These are categorized by root cause. Bidirectional checking ensures
 // that if a known failure starts passing, the test will error (remove from list).
 
-// CodeGen: 1 known failures (2 flaky entries removed — non-deterministic map iteration)
-var knownCodeGenFailures = map[string]string{
-	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered": "$dynamicRef/$dynamicAnchor not implemented",
-}
+// CodeGen: 0 known failures (2 flaky entries removed — non-deterministic map iteration)
+var knownCodeGenFailures = map[string]string{}
 
-// RoundTrip: 5 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 4 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
-	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
-	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":                                                                "$anchor resolution not fully implemented",
-	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties":                                                  "round-trip mismatch: $dynamicRef not implemented",
-	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                                                                          "non-structural schema: data shape incompatible with generated type",
+	"draft2019-09/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":               "$anchor resolution not fully implemented",
+	"draft2020-12/anchor/same $anchor with different base uri/$ref resolves to /$defs/A/allOf/1":               "$anchor resolution not fully implemented",
+	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties": "round-trip mismatch: $dynamicRef not implemented",
+	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                         "non-structural schema: data shape incompatible with generated type",
 }
 
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 45 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 39 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
-//   - $dynamicRef/$dynamicAnchor not implemented (13)
+//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (8)
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
 //   - ($ref sibling keyword validation: ALL FIXED via $ref sibling allOf synthesis)
-//   - codegen produces code that fails to compile for validation binary (4)
 //   - $anchor resolution edge cases (5)
 //   - unevaluatedItems validation not implemented (4)
-//   - $dynamicRef with required: $dynamicRef not implemented (3)
+//   - codegen produces code that fails to compile for validation binary (3)
 //   - custom metaschema vocabulary not supported (2)
+//   - $dynamicRef with required: dynamic scope needed (2)
 //   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
 //   - unevaluatedProperties: $dynamicRef/$recursiveRef not implemented (2)
 //   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
+//   - $dynamicRef: incorrect parent schema (1)
 //   - (unevaluatedProperties cousin isolation: FIXED via per-branch annotation tracking) (24)
 //   - (unevaluatedProperties dependentSchemas: FIXED via runtime conditional evaluation) (4)
 //   - (unevaluatedProperties if/then/else: FIXED via runtime conditional evaluation) (6)
@@ -65,24 +63,24 @@ var knownValidationFailures = map[string]string{
 
 	// (enum in properties — FIXED via validatable field dispatch)
 
-	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not implemented
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect extended schema":     "$dynamicRef with required: $dynamicRef not implemented",
+	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not fully implemented
+	// (tests for implementation dynamic anchor and reference link/incorrect extended schema — FIXED via $dynamicRef static resolution)
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/incorrect extended schema": "$dynamicRef with required: $dynamicRef not implemented",
 	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/incorrect extended schema":  "$dynamicRef with required: $dynamicRef not implemented",
 
-	// $dynamicRef/$dynamicAnchor not implemented (12 entries)
+	// $dynamicRef/$dynamicAnchor: remaining failures requiring dynamic scope resolution (8 entries)
+	// ($dynamicRef to a $dynamicAnchor in same resource — FIXED via $dynamicRef static resolution)
+	// ($dynamicRef to an $anchor in same resource — FIXED via $dynamicRef static resolution)
+	// ($dynamicRef skips over intermediate resources - direct reference — FIXED via $dynamicRef static resolution)
+	// ($dynamicRef skips over intermediate resources - pointer reference — FIXED via $dynamicRef static resolution)
 	"draft2020-12/dynamicRef/$dynamicRef points to a boolean schema/follow $dynamicRef to a false schema":                                                                                                                 "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/$dynamicRef skips over intermediate resources - direct reference/string property fails":                                                                                                      "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $dynamicRef resolves to the first $dynamicAnchor still in scope that is encountered when the schema is evaluated/An array containing non-strings is invalid":                               "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef to a $dynamicAnchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid":                                           "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef to an $anchor in the same schema resource behaves like a normal $ref to an $anchor/An array containing non-strings is invalid":                                                 "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $dynamicRef with intermediate scopes that don't include a matching $dynamicAnchor does not affect dynamic scope resolution/An array containing non-strings is invalid":                     "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/A $dynamicRef without anchor in fragment behaves identical to $ref/An array of strings is invalid":                                                                                           "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                                                                     "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/optional/dynamicRef/$dynamicRef skips over intermediate resources - pointer reference across resource boundary/string property fails":                                                                   "$dynamicRef/$dynamicAnchor not implemented",
 
 	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
 	// (draft2019-09/ref/ref creates new scope — FIXED via $ref sibling allOf synthesis)
@@ -115,9 +113,12 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch": "$ref to unknown keyword: unresolved ref falls back to any",
 	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                  "$ref to unknown keyword: unresolved ref falls back to any",
 
-	// codegen produces code that fails to compile for validation binary (4 entries)
-	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid":                                                               "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (1 entry)
+	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/non-number is invalid": "codegen produces code that fails to compile for validation binary",
+
+	// $dynamicRef avoids root: codegen now compiles but static resolution picks wrong maxLength (1 entry)
+	// (data is sufficient — FIXED: valid data correctly accepted under static resolution)
+	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length": "$dynamicRef: static resolution picks wrong maxLength, needs dynamic scope",
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
@@ -146,9 +147,9 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties": "unevaluatedProperties: $recursiveRef not implemented",
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":   "unevaluatedProperties: $dynamicRef not implemented",
 
-	// codegen produces code that fails to compile for validation binary (2 additional entries — other half of same groups)
-	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is sufficient for schema at second#/$defs/length": "codegen produces code that fails to compile for validation binary",
-	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid":                                                                 "codegen produces code that fails to compile for validation binary",
+	// codegen produces code that fails to compile for validation binary (1 additional entry — other half of same group)
+	// ($dynamicRef avoids root/data is sufficient — FIXED via $dynamicRef static resolution)
+	"draft2020-12/dynamicRef/$ref to $dynamicRef finds detached $dynamicAnchor/number is valid": "codegen produces code that fails to compile for validation binary",
 
 	// (bignum integer: FIXED via BigIntAliasDef wrapper with int64 + *big.Int)
 	// (tuple items: FIXED via per-position tuple validation in Validate())

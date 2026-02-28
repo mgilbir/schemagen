@@ -13,18 +13,19 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config       Config
-	output       *File
-	generated    map[string]bool // track already-generated type names
-	generating   map[string]bool // track types currently being generated (recursion guard)
-	defs         map[string]*schema.Schema
-	rootTypeName string                // Go type name for the root schema
-	rootID       string                // $id of the root schema (for detecting self-references)
-	anchors      map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
-	resolver     schema.SchemaResolver // external resolver for non-local refs
-	baseURI      *url.URL              // base URI for the root document (from $id or file path)
-	rootSchema   *schema.Schema        // the root schema for local ref resolution
-	draft        schema.Draft          // detected draft version of the root schema
+	config         Config
+	output         *File
+	generated      map[string]bool // track already-generated type names
+	generating     map[string]bool // track types currently being generated (recursion guard)
+	defs           map[string]*schema.Schema
+	rootTypeName   string                // Go type name for the root schema
+	rootID         string                // $id of the root schema (for detecting self-references)
+	anchors        map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
+	dynamicAnchors map[string]string     // $dynamicAnchor name → def ref path (e.g., "#items" → "#/$defs/items")
+	resolver       schema.SchemaResolver // external resolver for non-local refs
+	baseURI        *url.URL              // base URI for the root document (from $id or file path)
+	rootSchema     *schema.Schema        // the root schema for local ref resolution
+	draft          schema.Draft          // detected draft version of the root schema
 
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
@@ -87,6 +88,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	// Collect definitions ($defs and definitions) and build anchor index.
 	g.defs = make(map[string]*schema.Schema)
 	g.anchors = make(map[string]string)
+	g.dynamicAnchors = make(map[string]string)
 	for name, def := range s.Defs {
 		refPath := "#/$defs/" + name
 		g.defs[refPath] = def
@@ -660,7 +662,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
-	// Ref only → alias (handles $ref, $recursiveRef, $dynamicRef)
+	// Ref only → alias (handles $ref, $recursiveRef)
 	if effRef := s.EffectiveRef(); effRef != "" {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
@@ -672,6 +674,31 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			// If the ref target was generated as InferredAliasDef (a wrapper struct),
 			// creating `type Root Target` would not inherit methods. Instead, generate
 			// Root directly from the resolved schema so it gets its own methods.
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
+				return g.generateTypeDef(name, resolved)
+			}
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:        name,
+				Underlying:  &NamedType{Name: refName},
+				Description: s.Description,
+			})
+			return nil
+		}
+	}
+
+	// $dynamicRef with fragment-only ref → resolve via $dynamicAnchor in local scope.
+	// Only handle plain name fragments (like "#items") — these can be safely resolved
+	// statically within the context document root. URI-based $dynamicRef (like "extended#meta")
+	// or JSON pointer $dynamicRef (like "#/$defs/foo") are left unresolved since they may
+	// involve cross-document dynamic scoping that requires runtime resolution.
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") && !strings.HasPrefix(s.DynamicRef, "#/") {
+		resolved := g.resolveDynamicRef(s.DynamicRef, s)
+		if resolved != nil {
+			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
+			if err := g.generateTypeDef(refName, resolved); err != nil {
+				return err
+			}
 			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
 				return g.generateTypeDef(name, resolved)
 			}
@@ -1930,7 +1957,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: enumName}
 	}
 
-	// $ref / $recursiveRef / $dynamicRef
+	// $ref / $recursiveRef
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if g.isSelfRefInContext(effRef, s) {
 			if g.rootIsObjectType() {
@@ -1949,6 +1976,19 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			// local self-reference within a scoped $id context. Use a pointer
 			// to break the Go recursive type cycle.
 			if g.isScopedSelfRef(effRef, s, refSchema) {
+				return &PointerType{Inner: &NamedType{Name: goName}}
+			}
+		}
+		return &NamedType{Name: goName}
+	}
+
+	// $dynamicRef with plain name fragment — resolve via $dynamicAnchor in local scope.
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") && !strings.HasPrefix(s.DynamicRef, "#/") {
+		goName := refToGoName(s.DynamicRef)
+		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
+			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
+			_ = g.generateTypeDef(goName, refSchema)
+			if g.isScopedSelfRef(s.DynamicRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}
 			}
 		}
@@ -2244,6 +2284,124 @@ func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
 	g.buildDocumentRoots(s)
 }
 
+// resolveDynamicRef resolves a $dynamicRef to a schema. For plain name fragments
+// (like "#items"), it resolves within the context schema's document root scope
+// first, matching both $anchor and $dynamicAnchor. This avoids the global anchors
+// map which may contain entries from outer scopes. For JSON pointer fragments or
+// full URIs, it falls back to standard ref resolution.
+func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
+	// Determine the context document root for scoped resolution.
+	ctxDocRoot := g.rootSchema
+	if ctx != nil && ctx.DocumentRoot != nil {
+		ctxDocRoot = ctx.DocumentRoot
+	}
+
+	// For fragment-only refs, try scoped resolution within the context document root first.
+	// This ensures $dynamicRef: "#items" finds the $dynamicAnchor within the local scope
+	// rather than a same-named $anchor/$dynamicAnchor from an outer scope.
+	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") && ctxDocRoot != nil {
+		anchor := ref[1:] // strip "#"
+		if found := findDynamicAnchor(ctxDocRoot, anchor); found != nil {
+			return found
+		}
+		// Fall back: try standard anchor resolution (handles $anchor fallback).
+		local := schema.NewLocalResolver(ctxDocRoot)
+		if s, err := local.Resolve(ref); err == nil {
+			return s
+		}
+	}
+
+	// For JSON pointers or full URIs, use standard resolution.
+	return g.resolveRefInContext(ref, ctx)
+}
+
+// findDynamicAnchor searches a schema tree for a sub-schema with the given
+// $dynamicAnchor value. It respects $id scope boundaries.
+func findDynamicAnchor(s *schema.Schema, anchor string) *schema.Schema {
+	if s == nil || s.IsBooleanSchema() {
+		return nil
+	}
+	if s.DynamicAnchor == anchor {
+		return s
+	}
+	// Search child schemas, respecting $id scope boundaries.
+	for _, sub := range allSubSchemas(s) {
+		if sub == nil || sub.IsBooleanSchema() {
+			continue
+		}
+		if sub.ID != "" {
+			// New document scope — only check this node directly, not descendants.
+			if sub.DynamicAnchor == anchor {
+				return sub
+			}
+			continue
+		}
+		if found := findDynamicAnchor(sub, anchor); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
+// This is a generator-level helper (not tied to LocalResolver).
+func allSubSchemas(s *schema.Schema) []*schema.Schema {
+	var subs []*schema.Schema
+	for _, v := range s.Properties {
+		subs = append(subs, v)
+	}
+	for _, v := range s.PatternProperties {
+		subs = append(subs, v)
+	}
+	for _, v := range s.Defs {
+		subs = append(subs, v)
+	}
+	for _, v := range s.Definitions {
+		subs = append(subs, v)
+	}
+	subs = append(subs, s.AllOf...)
+	subs = append(subs, s.AnyOf...)
+	subs = append(subs, s.OneOf...)
+	if s.Not != nil {
+		subs = append(subs, s.Not)
+	}
+	if s.If != nil {
+		subs = append(subs, s.If)
+	}
+	if s.Then != nil {
+		subs = append(subs, s.Then)
+	}
+	if s.Else != nil {
+		subs = append(subs, s.Else)
+	}
+	if s.Items != nil && s.Items.Schema != nil {
+		subs = append(subs, s.Items.Schema)
+	}
+	if s.Items != nil {
+		subs = append(subs, s.Items.Schemas...)
+	}
+	subs = append(subs, s.PrefixItems...)
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		subs = append(subs, s.AdditionalProperties.Schema)
+	}
+	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
+		subs = append(subs, s.AdditionalItems.Schema)
+	}
+	for _, v := range s.DependentSchemas {
+		subs = append(subs, v)
+	}
+	if s.Contains != nil {
+		subs = append(subs, s.Contains)
+	}
+	if s.UnevaluatedProperties != nil {
+		subs = append(subs, s.UnevaluatedProperties)
+	}
+	if s.UnevaluatedItems != nil {
+		subs = append(subs, s.UnevaluatedItems)
+	}
+	return subs
+}
+
 // indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
 // It stores both the raw $id value and the canonicalized (resolved against base URI)
 // form so that both relative and absolute lookups succeed.
@@ -2265,9 +2423,13 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 		g.anchors["#"+def.Anchor] = refPath
 	}
 	// $dynamicAnchor is resolvable by both $ref and $dynamicRef.
-	// For static code generation, treat it like $anchor.
+	// For $ref resolution, treat it like $anchor.
+	// Also track separately for $dynamicRef-specific resolution.
 	if def.DynamicAnchor != "" {
 		g.anchors["#"+def.DynamicAnchor] = refPath
+		if g.dynamicAnchors != nil {
+			g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
+		}
 	}
 }
 
