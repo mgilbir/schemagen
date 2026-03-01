@@ -13,6 +13,7 @@ type Measurement struct {
 	Rating               float64                    `json:"rating,omitempty"`
 	Temperature          float64                    `json:"temperature"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (m *Measurement) UnmarshalJSON(data []byte) error {
@@ -33,6 +34,10 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		m._jsonKeys = make(map[string]bool, len(raw))
+		for k := range raw {
+			m._jsonKeys[k] = true
 		}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
@@ -89,16 +94,22 @@ func (m Measurement) Validate() error {
 			return fmt.Errorf("count: value %v is not a multiple of 5", m.Count)
 		}
 	}
-	if float64(m.Rating) < 0 {
-		return fmt.Errorf("rating: value %v is less than minimum 0", m.Rating)
+	if m._jsonKeys["rating"] {
+		if float64(m.Rating) < 0 {
+			return fmt.Errorf("rating: value %v is less than minimum 0", m.Rating)
+		}
 	}
-	if float64(m.Rating) > 10 {
-		return fmt.Errorf("rating: value %v exceeds maximum 10", m.Rating)
+	if m._jsonKeys["rating"] {
+		if float64(m.Rating) > 10 {
+			return fmt.Errorf("rating: value %v exceeds maximum 10", m.Rating)
+		}
 	}
-	{
-		q := float64(m.Rating) / 0.5
-		if math.Abs(q-math.Round(q)) > 1e-9 {
-			return fmt.Errorf("rating: value %v is not a multiple of 0.5", m.Rating)
+	if m._jsonKeys["rating"] {
+		{
+			q := float64(m.Rating) / 0.5
+			if math.Abs(q-math.Round(q)) > 1e-9 {
+				return fmt.Errorf("rating: value %v is not a multiple of 0.5", m.Rating)
+			}
 		}
 	}
 	if float64(m.Temperature) <= -273.15 {

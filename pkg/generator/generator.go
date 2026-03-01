@@ -597,9 +597,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// In draft2019-09+, $ref is an applicator that works alongside sibling keywords.
 	// When a schema has both $ref and structural keywords (properties, patternProperties,
-	// etc.), synthesize an implicit allOf so both the $ref target and local keywords
-	// are merged into a single struct.
-	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0) {
+	// unevaluatedProperties, additionalProperties), synthesize an implicit allOf so both
+	// the $ref target and local keywords are merged into a single struct.
+	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil) {
 		refSub := &schema.Schema{
 			Ref:          s.Ref,
 			BaseURI:      s.BaseURI,
@@ -3115,18 +3115,30 @@ func (g *Generator) populateValidatableFields() {
 			continue
 		}
 		for _, f := range sd.Fields {
+			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
-			if typeName == "" || !validatableTypes[typeName] {
+			if typeName != "" && validatableTypes[typeName] {
+				zeroLit := g.zeroLiteralForType(f.Type)
+				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+					FieldName:   f.Name,
+					GoType:      f.Type,
+					IsPointer:   f.Type.IsPointer(),
+					OmitEmpty:   f.OmitEmpty,
+					ZeroLiteral: zeroLit,
+				})
 				continue
 			}
-			zeroLit := g.zeroLiteralForType(f.Type)
-			sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
-				FieldName:   f.Name,
-				GoType:      f.Type,
-				IsPointer:   f.Type.IsPointer(),
-				OmitEmpty:   f.OmitEmpty,
-				ZeroLiteral: zeroLit,
-			})
+			// Slice of named type (or pointer to slice of named type).
+			elemName := sliceElementTypeName(f.Type)
+			if elemName != "" && validatableTypes[elemName] {
+				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+					FieldName: f.Name,
+					GoType:    f.Type,
+					IsPointer: f.Type.IsPointer(),
+					IsSlice:   true,
+					OmitEmpty: f.OmitEmpty,
+				})
+			}
 		}
 	}
 }
@@ -3142,6 +3154,20 @@ func namedTypeName(t GoType) string {
 	default:
 		return ""
 	}
+}
+
+// sliceElementTypeName extracts the element type name from a slice GoType.
+// Handles []T, *[]T, []*T, *[]*T where T is a NamedType.
+func sliceElementTypeName(t GoType) string {
+	inner := t
+	if pt, ok := inner.(*PointerType); ok {
+		inner = pt.Inner
+	}
+	st, ok := inner.(*ArrayType)
+	if !ok {
+		return ""
+	}
+	return namedTypeName(st.ItemType)
 }
 
 // zeroLiteralForType returns the Go zero value literal for a given type.

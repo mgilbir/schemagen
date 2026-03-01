@@ -17,13 +17,13 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 25 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 24 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
-//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (5)
+//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (4)
 //   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (2)
 //   - custom metaschema vocabulary not supported (2)
@@ -77,7 +77,7 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                                                                     "$dynamicRef/$dynamicAnchor not implemented",
+	// (strict-tree misspelled field: FIXED via $ref sibling allOf synthesis for unevaluatedProperties + recursive slice validation)
 
 	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
 	// (draft2019-09/ref/ref creates new scope — FIXED via $ref sibling allOf synthesis)

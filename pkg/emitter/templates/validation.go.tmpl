@@ -406,7 +406,23 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- range $struct.ValidatableFields}}
-	{{- if .IsPointer}}
+	{{- if and .IsSlice .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil {
+		for _i, _item := range *{{$recv}}.{{.FieldName}} {
+			_ = _i
+			if err := _item.Validate(); err != nil {
+				return err
+			}
+		}
+	}
+	{{- else if .IsSlice}}
+	for _i, _item := range {{$recv}}.{{.FieldName}} {
+		_ = _i
+		if err := _item.Validate(); err != nil {
+			return err
+		}
+	}
+	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
 			return err

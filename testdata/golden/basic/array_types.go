@@ -150,5 +150,13 @@ func (a ArrayTypes) MarshalJSON() ([]byte, error) {
 
 // Validate checks ArrayTypes against its JSON Schema constraints.
 func (a ArrayTypes) Validate() error {
+	if a.Metadata != nil {
+		for _i, _item := range *a.Metadata {
+			_ = _i
+			if err := _item.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
