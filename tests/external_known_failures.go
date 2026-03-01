@@ -17,12 +17,12 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 24 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 16 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
-//   - $ref to unknown keyword: unresolved ref falls back to any (8)
+//   - ($ref to unknown keyword: FIXED via Schema.Extensions + walkPath extension lookup) (0)
 //   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (4)
 //   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (2)
@@ -97,15 +97,7 @@ var knownValidationFailures = map[string]string{
 	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
 	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root": "$recursiveRef validation not implemented",
 
-	// $ref to unknown keyword: unresolved ref falls back to any, no type validation (8 entries)
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                             "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":             "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch": "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2019-09/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                  "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword /mismatch":                             "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of a root arbitrary keyword with encoded ref/mismatch":             "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema with encoded ref/mismatch": "$ref to unknown keyword: unresolved ref falls back to any",
-	"draft2020-12/optional/refOfUnknownKeyword/reference of an arbitrary keyword of a sub-schema/mismatch":                  "$ref to unknown keyword: unresolved ref falls back to any",
+	// ($ref to unknown keyword: ALL FIXED via Schema.Extensions + walkPath extension lookup — 8 entries removed)
 
 	// ($ref to $dynamicRef finds detached $dynamicAnchor — codegen now compiles, generates type any, tests skipped)
 

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"reflect"
+	"strings"
 )
 
 // FlexInt is an integer type that tolerates float-encoded integers in JSON (e.g. 2.0).
@@ -368,6 +370,10 @@ type Schema struct {
 	UnevaluatedItems      *Schema `json:"unevaluatedItems,omitempty"`
 	UnevaluatedProperties *Schema `json:"unevaluatedProperties,omitempty"`
 
+	// Extensions preserves unknown/vendor-specific keywords as raw JSON so that
+	// JSON Pointer $ref (e.g., "#/unknown-keyword") can resolve into them.
+	Extensions map[string]json.RawMessage `json:"-"`
+
 	// DetectedDraft is set during parsing to record which draft was detected/used.
 	DetectedDraft Draft `json:"-"`
 
@@ -383,8 +389,32 @@ type Schema struct {
 	DocumentRoot *Schema `json:"-"`
 }
 
+// knownSchemaKeys is the set of JSON property names that correspond to struct
+// fields on Schema. Anything else is captured in Extensions. Built at init time
+// via reflection so it stays in sync with the struct definition automatically.
+var knownSchemaKeys map[string]bool
+
+func init() {
+	knownSchemaKeys = make(map[string]bool)
+	t := reflect.TypeOf(Schema{})
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		// Strip ",omitempty" etc.
+		if idx := strings.IndexByte(tag, ','); idx != -1 {
+			tag = tag[:idx]
+		}
+		if tag != "" && tag != "-" {
+			knownSchemaKeys[tag] = true
+		}
+	}
+}
+
 // UnmarshalJSON implements custom unmarshaling for Schema to handle boolean schemas.
 // In JSON Schema Draft 6+, a bare `true` or `false` is a valid schema.
+// Unknown keywords are preserved in Extensions for JSON Pointer resolution.
 func (s *Schema) UnmarshalJSON(data []byte) error {
 	// Check for boolean schema.
 	trimmed := trimJSONWhitespace(data)
@@ -406,6 +436,20 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = Schema(alias)
+
+	// Capture unknown keywords in Extensions for JSON Pointer $ref resolution.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // non-object JSON (shouldn't happen here since we handled booleans above)
+	}
+	for key, val := range raw {
+		if !knownSchemaKeys[key] {
+			if s.Extensions == nil {
+				s.Extensions = make(map[string]json.RawMessage)
+			}
+			s.Extensions[key] = val
+		}
+	}
 	return nil
 }
 

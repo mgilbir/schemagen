@@ -397,6 +397,20 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		return r.walkPath(current.ContentSchema, rest, originalRef)
 
 	default:
+		// Check Extensions for unknown keywords (e.g., vendor extensions,
+		// arbitrary keywords referenced via JSON Pointer $ref).
+		if current.Extensions != nil {
+			if raw, ok := current.Extensions[key]; ok {
+				var sub Schema
+				if err := json.Unmarshal(raw, &sub); err != nil {
+					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
+				}
+				if len(rest) == 0 {
+					return &sub, nil
+				}
+				return r.walkPath(&sub, rest, originalRef)
+			}
+		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)
 	}
 }
