@@ -320,6 +320,43 @@ func extractRootTypeNameFromCode(code string) string {
 	return lastType
 }
 
+// ephemeralCacheDir holds a per-process temporary GOCACHE directory that is
+// cleaned up at process exit. Using a shared ephemeral cache (instead of the
+// user's persistent ~/.cache/go-build) prevents the ~14,000 unique compilations
+// from bloating the build cache by hundreds of gigabytes.
+var ephemeralCacheDir string
+
+func init() {
+	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
+	if err != nil {
+		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
+	}
+	ephemeralCacheDir = dir
+}
+
+// TestMain cleans up the ephemeral cache directory after all tests finish.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if ephemeralCacheDir != "" {
+		os.RemoveAll(ephemeralCacheDir)
+	}
+	os.Exit(code)
+}
+
+// ephemeralCacheEnv returns a copy of the current environment with GOCACHE
+// pointed at an ephemeral temporary directory. This prevents external go
+// build/run invocations from bloating the user's persistent build cache —
+// each test compiles unique generated code that will never be reused.
+func ephemeralCacheEnv() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GOCACHE=") {
+			env = append(env, e)
+		}
+	}
+	return append(env, "GOCACHE="+ephemeralCacheDir)
+}
+
 // tryParse attempts to parse a JSTS schema into our schema.Schema type.
 func tryParse(schemaJSON json.RawMessage) error {
 	// Handle boolean schemas
@@ -380,6 +417,7 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "build", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compile: %s\n%s", err, string(output))
@@ -440,6 +478,7 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("round-trip: %s\n%s", err, string(output))
@@ -566,6 +605,7 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("run: %s\n%s", err, string(output))
