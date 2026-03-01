@@ -31,6 +31,12 @@ type Generator struct {
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
 	// within it resolves against that subschema, not the top-level root.
 	documentRoots map[string]*schema.Schema
+
+	// dynamicScope tracks the stack of document roots entered via $ref during
+	// code generation. This enables $dynamicRef to resolve against the dynamic
+	// scope chain (walking from outermost to innermost) rather than only the
+	// local document scope. The root schema's document root is always at index 0.
+	dynamicScope []*schema.Schema
 }
 
 // New creates a new Generator with the given configuration.
@@ -84,6 +90,9 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
+
+	// Initialize dynamic scope with the root document root.
+	g.dynamicScope = []*schema.Schema{s}
 
 	// Collect definitions ($defs and definitions) and build anchor index.
 	g.defs = make(map[string]*schema.Schema)
@@ -666,16 +675,27 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if effRef := s.EffectiveRef(); effRef != "" {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
+			pushed := g.pushDynamicScope(resolved)
 			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 			// Generate the referenced type definition (e.g., for remote $ref targets).
 			if err := g.generateTypeDef(refName, resolved); err != nil {
+				if pushed {
+					g.popDynamicScope()
+				}
 				return err
 			}
 			// If the ref target was generated as InferredAliasDef (a wrapper struct),
 			// creating `type Root Target` would not inherit methods. Instead, generate
 			// Root directly from the resolved schema so it gets its own methods.
 			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
-				return g.generateTypeDef(name, resolved)
+				err := g.generateTypeDef(name, resolved)
+				if pushed {
+					g.popDynamicScope()
+				}
+				return err
+			}
+			if pushed {
+				g.popDynamicScope()
 			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -687,11 +707,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// $dynamicRef with fragment-only ref → resolve statically.
-	// Plain name fragments (like "#items") resolve via $dynamicAnchor in local scope.
+	// $dynamicRef with fragment-only ref → resolve via dynamic scope chain.
+	// Plain name fragments (like "#items") resolve via $dynamicAnchor with scope walking.
 	// JSON pointer fragments (like "#/$defs/foo") resolve identically to $ref.
-	// URI-based $dynamicRef (like "extended#meta") is left unresolved since it may
-	// involve cross-document dynamic scoping that requires runtime resolution.
+	// URI-based $dynamicRef (like "extended#meta") left for future work.
 	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
@@ -1407,6 +1426,7 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 	for _, sub := range allOf {
 		resolved := sub
 		// Follow $ref chains until we reach a schema with properties or no more refs.
+		var pushedCount int
 		for {
 			effRef := resolved.EffectiveRef()
 			if effRef == "" {
@@ -1415,6 +1435,9 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 			r := g.resolveRefInContext(effRef, resolved)
 			if r == nil {
 				break
+			}
+			if g.pushDynamicScope(r) {
+				pushedCount++
 			}
 			// If the resolved schema has properties or patternProperties, merge
 			// those but also continue to check for nested allOf/ref below.
@@ -1449,6 +1472,9 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)
+		}
+		for i := 0; i < pushedCount; i++ {
+			g.popDynamicScope()
 		}
 	}
 }
@@ -1899,9 +1925,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// Ensure the referenced type gets generated.
 		refSchema := g.resolveRefInContext(effRef, s)
 		if refSchema != nil {
+			pushed := g.pushDynamicScope(refSchema)
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
+				if pushed {
+					g.popDynamicScope()
+				}
 				return nil, err
+			}
+			if pushed {
+				g.popDynamicScope()
 			}
 			// If the ref resolves to its own enclosing document root, use a pointer.
 			if g.isScopedSelfRef(effRef, s, refSchema) {
@@ -1967,11 +2000,15 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 		goName := refToGoName(effRef)
 		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+			pushed := g.pushDynamicScope(refSchema)
 			// If the ref resolved to a scoped document root (not the main root),
 			// derive the Go name from that schema rather than the raw ref string.
 			// This handles $ref: "#" inside a sub-schema with its own $id.
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			_ = g.generateTypeDef(goName, refSchema)
+			if pushed {
+				g.popDynamicScope()
+			}
 			// If the ref resolves to its own enclosing document root, it's a
 			// local self-reference within a scoped $id context. Use a pointer
 			// to break the Go recursive type cycle.
@@ -1982,7 +2019,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: goName}
 	}
 
-	// $dynamicRef with fragment-only ref — resolve statically.
+	// $dynamicRef with fragment-only ref — resolve via dynamic scope chain.
 	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
 		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
@@ -2284,35 +2321,96 @@ func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
 	g.buildDocumentRoots(s)
 }
 
-// resolveDynamicRef resolves a $dynamicRef to a schema. For plain name fragments
-// (like "#items"), it resolves within the context schema's document root scope
-// first, matching both $anchor and $dynamicAnchor. This avoids the global anchors
-// map which may contain entries from outer scopes. For JSON pointer fragments or
-// full URIs, it falls back to standard ref resolution.
+// pushDynamicScope pushes a document root onto the dynamic scope chain when
+// following a $ref that crosses a document boundary. Returns true if pushed
+// (caller must pop), false if the target is in the same scope or nil.
+func (g *Generator) pushDynamicScope(target *schema.Schema) bool {
+	if target == nil {
+		return false
+	}
+	docRoot := target.DocumentRoot
+	if docRoot == nil {
+		docRoot = target
+	}
+	// Don't push if it's the same document root as the current top of stack.
+	if len(g.dynamicScope) > 0 && g.dynamicScope[len(g.dynamicScope)-1] == docRoot {
+		return false
+	}
+	g.dynamicScope = append(g.dynamicScope, docRoot)
+	return true
+}
+
+// popDynamicScope removes the top entry from the dynamic scope chain.
+func (g *Generator) popDynamicScope() {
+	if len(g.dynamicScope) > 0 {
+		g.dynamicScope = g.dynamicScope[:len(g.dynamicScope)-1]
+	}
+}
+
+// resolveDynamicRef resolves a $dynamicRef to a schema using the dynamic scope
+// chain. Per the JSON Schema 2020-12 spec:
+//
+//  1. Resolve the $dynamicRef to its initial target (just like $ref).
+//  2. Check if the initial target schema has a $dynamicAnchor with the same name
+//     as the fragment in the $dynamicRef (the "bookend").
+//  3. If a bookend exists, walk the dynamic scope chain (the stack of document
+//     roots entered via $ref) from outermost to innermost. The first document
+//     root that contains a $dynamicAnchor with the same name wins.
+//  4. If no bookend exists at the initial target, behave like a normal $ref.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
-	// Determine the context document root for scoped resolution.
+	// Extract the fragment anchor name for dynamic scope lookup.
+	var anchorName string
+	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") {
+		anchorName = ref[1:] // plain name fragment, e.g., "#items" → "items"
+	} else if idx := strings.LastIndex(ref, "#"); idx > 0 {
+		frag := ref[idx+1:]
+		if !strings.HasPrefix(frag, "/") {
+			anchorName = frag // URI with name fragment, e.g., "extended#meta" → "meta"
+		}
+	}
+
+	// Step 1: Resolve the $dynamicRef to its initial target (static resolution).
+	var initialTarget *schema.Schema
 	ctxDocRoot := g.rootSchema
 	if ctx != nil && ctx.DocumentRoot != nil {
 		ctxDocRoot = ctx.DocumentRoot
 	}
-
-	// For fragment-only refs, try scoped resolution within the context document root first.
-	// This ensures $dynamicRef: "#items" finds the $dynamicAnchor within the local scope
-	// rather than a same-named $anchor/$dynamicAnchor from an outer scope.
-	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") && ctxDocRoot != nil {
-		anchor := ref[1:] // strip "#"
-		if found := findDynamicAnchor(ctxDocRoot, anchor); found != nil {
-			return found
+	if anchorName != "" && ctxDocRoot != nil {
+		// Try $dynamicAnchor lookup in the local document scope first.
+		initialTarget = findDynamicAnchor(ctxDocRoot, anchorName)
+		if initialTarget == nil {
+			// Fall back to standard $anchor resolution.
+			local := schema.NewLocalResolver(ctxDocRoot)
+			if s, err := local.Resolve("#" + anchorName); err == nil {
+				initialTarget = s
+			}
 		}
-		// Fall back: try standard anchor resolution (handles $anchor fallback).
-		local := schema.NewLocalResolver(ctxDocRoot)
-		if s, err := local.Resolve(ref); err == nil {
-			return s
+	}
+	if initialTarget == nil {
+		// For JSON pointers, full URIs, or when local resolution failed.
+		initialTarget = g.resolveRefInContext(ref, ctx)
+	}
+	if initialTarget == nil {
+		return nil
+	}
+
+	// Step 2: Check for the bookend — does the initial target have a matching
+	// $dynamicAnchor? If not, $dynamicRef behaves like a normal $ref.
+	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
+		return initialTarget
+	}
+
+	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
+	// innermost, looking for the first document root that contains a
+	// $dynamicAnchor with the same name.
+	for _, docRoot := range g.dynamicScope {
+		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
+			return found
 		}
 	}
 
-	// For JSON pointers or full URIs, use standard resolution.
-	return g.resolveRefInContext(ref, ctx)
+	// Fallback: no override found in dynamic scope — use the bookend.
+	return initialTarget
 }
 
 // findDynamicAnchor searches a schema tree for a sub-schema with the given

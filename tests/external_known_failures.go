@@ -17,20 +17,20 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 30 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 25 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - $ref to unknown keyword: unresolved ref falls back to any (8)
-//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (7)
+//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (5)
 //   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (2)
 //   - custom metaschema vocabulary not supported (2)
-//   - $dynamicRef with required: dynamic scope needed (2)
+//   - ($dynamicRef with required — FIXED via dynamic scope chain) (0)
 //   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
 //   - unevaluatedProperties: $dynamicRef/$recursiveRef not implemented (2)
-//   - $dynamicRef: static resolution picks wrong constraint (1)
+//   - ($dynamicRef: static resolution picks wrong constraint — FIXED via dynamic scope chain) (0)
 //   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
 //   - $dynamicRef: incorrect parent schema (1)
@@ -61,24 +61,23 @@ var knownValidationFailures = map[string]string{
 
 	// (enum in properties — FIXED via validatable field dispatch)
 
-	// $dynamicRef with required fields: $dynamicRef/$dynamicAnchor not fully implemented
+	// ($dynamicRef with required fields — FIXED via dynamic scope chain resolution)
 	// (tests for implementation dynamic anchor and reference link/incorrect extended schema — FIXED via $dynamicRef static resolution)
-	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $defs first/incorrect extended schema": "$dynamicRef with required: $dynamicRef not implemented",
-	"draft2020-12/dynamicRef/$ref and $dynamicAnchor are independent of order - $ref first/incorrect extended schema":  "$dynamicRef with required: $dynamicRef not implemented",
+	// ($ref and $dynamicAnchor are independent of order — FIXED via dynamic scope chain resolution)
 
-	// $dynamicRef/$dynamicAnchor: remaining failures requiring dynamic scope resolution (7 entries)
+	// $dynamicRef/$dynamicAnchor: remaining failures (5 entries)
 	// ($dynamicRef to a $dynamicAnchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef to an $anchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef skips over intermediate resources - direct reference — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef skips over intermediate resources - pointer reference — FIXED via $dynamicRef static resolution)
-	"draft2020-12/dynamicRef/$dynamicRef points to a boolean schema/follow $dynamicRef to a false schema":                                                                                                                 "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef resolves to the first $dynamicAnchor still in scope that is encountered when the schema is evaluated/An array containing non-strings is invalid":                               "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef with intermediate scopes that don't include a matching $dynamicAnchor does not affect dynamic scope resolution/An array containing non-strings is invalid":                     "$dynamicRef/$dynamicAnchor not implemented",
+	// (A $dynamicRef resolves to the first $dynamicAnchor in scope — FIXED via dynamic scope chain)
+	// (A $dynamicRef with intermediate scopes — FIXED via dynamic scope chain)
 	// (A $dynamicRef without anchor in fragment — FIXED via JSON pointer $dynamicRef static resolution)
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":        "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":        "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field": "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/$dynamicRef points to a boolean schema/follow $dynamicRef to a false schema":                                                                                                                 "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
+	"draft2020-12/dynamicRef/strict-tree schema, guards against misspelled properties/instance with misspelled field":                                                                                                     "$dynamicRef/$dynamicAnchor not implemented",
 
 	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
 	// (draft2019-09/ref/ref creates new scope — FIXED via $ref sibling allOf synthesis)
@@ -110,9 +109,7 @@ var knownValidationFailures = map[string]string{
 
 	// ($ref to $dynamicRef finds detached $dynamicAnchor — codegen now compiles, generates type any, tests skipped)
 
-	// $dynamicRef avoids root: codegen now compiles but static resolution picks wrong maxLength (1 entry)
-	// (data is sufficient — FIXED: valid data correctly accepted under static resolution)
-	"draft2020-12/dynamicRef/$dynamicRef avoids the root of each schema, but scopes are still registered/data is not sufficient for schema at second#/$defs/length": "$dynamicRef: static resolution picks wrong maxLength, needs dynamic scope",
+	// ($dynamicRef avoids root — FIXED via dynamic scope chain resolution)
 
 	// cross-draft validation not supported (1 entries)
 	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
