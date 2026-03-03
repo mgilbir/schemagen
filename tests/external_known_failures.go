@@ -17,7 +17,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 16 known failures for Validate() correctness testing (2 flaky entries in knownFlakyTests).
+// Validation: 15 known failures for Validate() correctness testing.
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -65,7 +65,7 @@ var knownValidationFailures = map[string]string{
 	// (tests for implementation dynamic anchor and reference link/incorrect extended schema — FIXED via $dynamicRef static resolution)
 	// ($ref and $dynamicAnchor are independent of order — FIXED via dynamic scope chain resolution)
 
-	// $dynamicRef/$dynamicAnchor: remaining failures (5 entries)
+	// $dynamicRef/$dynamicAnchor: remaining failures (4 entries)
 	// ($dynamicRef to a $dynamicAnchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef to an $anchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef skips over intermediate resources - direct reference — FIXED via $dynamicRef static resolution)
@@ -73,10 +73,10 @@ var knownValidationFailures = map[string]string{
 	// (A $dynamicRef resolves to the first $dynamicAnchor in scope — FIXED via dynamic scope chain)
 	// (A $dynamicRef with intermediate scopes — FIXED via dynamic scope chain)
 	// (A $dynamicRef without anchor in fragment — FIXED via JSON pointer $dynamicRef static resolution)
-	"draft2020-12/dynamicRef/$dynamicRef points to a boolean schema/follow $dynamicRef to a false schema":                                                                                                                 "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor not implemented",
+	// ($dynamicRef points to boolean false schema — FIXED via resolvedToFalseSchema check)
+	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor: URI-based $dynamicRef with runtime scope",
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
 	// (strict-tree misspelled field: FIXED via $ref sibling allOf synthesis for unevaluatedProperties + recursive slice validation)
 
 	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
@@ -146,11 +146,6 @@ var knownValidationFailures = map[string]string{
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order
 // in $anchor resolution. These are always skipped regardless of outcome.
-var knownFlakyTests = map[string]bool{
-	"draft2019-09/ref/order of evaluation: $id and $anchor and $ref":                                          true,
-	"draft2019-09/ref/order of evaluation: $id and $anchor and $ref/data is valid against first definition":   true,
-	"draft2019-09/ref/order of evaluation: $id and $anchor and $ref/data is invalid against first definition": true,
-	"draft2020-12/ref/order of evaluation: $id and $anchor and $ref":                                          true,
-	"draft2020-12/ref/order of evaluation: $id and $anchor and $ref/data is valid against first definition":   true,
-	"draft2020-12/ref/order of evaluation: $id and $anchor and $ref/data is invalid against first definition": true,
-}
+// (FIXED: all 6 entries removed — deterministic sorted-key iteration in allSubSchemas
+// and scope-aware $anchor indexing in the generator now produce consistent results.)
+var knownFlakyTests = map[string]bool{}

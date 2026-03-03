@@ -95,15 +95,19 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.dynamicScope = []*schema.Schema{s}
 
 	// Collect definitions ($defs and definitions) and build anchor index.
+	// Iterate in sorted key order for deterministic anchor registration
+	// (important when multiple defs declare the same $anchor in different scopes).
 	g.defs = make(map[string]*schema.Schema)
 	g.anchors = make(map[string]string)
 	g.dynamicAnchors = make(map[string]string)
-	for name, def := range s.Defs {
+	for _, name := range sortedKeys(s.Defs) {
+		def := s.Defs[name]
 		refPath := "#/$defs/" + name
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
 	}
-	for name, def := range s.Definitions {
+	for _, name := range sortedKeys(s.Definitions) {
+		def := s.Definitions[name]
 		refPath := "#/definitions/" + name
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
@@ -588,6 +592,11 @@ func usesJSONType(t GoType) bool {
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if g.generated[name] {
 		return nil
+	}
+
+	// Const → treat as single-element enum for validation purposes.
+	if s.Const != nil && len(s.Enum) == 0 {
+		s.Enum = []any{*s.Const}
 	}
 
 	// Enum type
@@ -1098,7 +1107,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		goFieldName := goFieldNames[propName]
 		// Boolean schema false → property is forbidden (any value is invalid).
-		if propSchema.IsFalseSchema() {
+		// Also check if a $ref/$dynamicRef resolves to a false boolean schema.
+		if propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema) {
 			validations = append(validations, ValidationRule{
 				FieldName: goFieldName, JSONName: propName,
 				RuleType: "forbidden", Value: true,
@@ -2443,19 +2453,20 @@ func findDynamicAnchor(s *schema.Schema, anchor string) *schema.Schema {
 
 // allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
 // This is a generator-level helper (not tied to LocalResolver).
+// Map-valued fields are iterated in sorted key order for determinism.
 func allSubSchemas(s *schema.Schema) []*schema.Schema {
 	var subs []*schema.Schema
-	for _, v := range s.Properties {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Properties) {
+		subs = append(subs, s.Properties[k])
 	}
-	for _, v := range s.PatternProperties {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.PatternProperties) {
+		subs = append(subs, s.PatternProperties[k])
 	}
-	for _, v := range s.Defs {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Defs) {
+		subs = append(subs, s.Defs[k])
 	}
-	for _, v := range s.Definitions {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Definitions) {
+		subs = append(subs, s.Definitions[k])
 	}
 	subs = append(subs, s.AllOf...)
 	subs = append(subs, s.AnyOf...)
@@ -2485,8 +2496,8 @@ func allSubSchemas(s *schema.Schema) []*schema.Schema {
 	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
 		subs = append(subs, s.AdditionalItems.Schema)
 	}
-	for _, v := range s.DependentSchemas {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.DependentSchemas) {
+		subs = append(subs, s.DependentSchemas[k])
 	}
 	if s.Contains != nil {
 		subs = append(subs, s.Contains)
@@ -2503,7 +2514,14 @@ func allSubSchemas(s *schema.Schema) []*schema.Schema {
 // indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
 // It stores both the raw $id value and the canonicalized (resolved against base URI)
 // form so that both relative and absolute lookups succeed.
+//
+// When a definition declares its own $id, it creates a new document scope.
+// Its $anchor belongs to that scope, not the parent's, so a plain "#anchor"
+// lookup from the parent scope must NOT match it. Instead, the anchor is
+// registered under the $id-qualified form (e.g., "https://example.com/foo#anchor").
 func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
+	hasOwnScope := def.ID != "" || def.LegacyID != ""
+
 	if def.ID != "" {
 		g.anchors[def.ID] = refPath
 		// Also store the canonicalized URI (resolved against base URI).
@@ -2518,17 +2536,65 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 		}
 	}
 	if def.Anchor != "" {
-		g.anchors["#"+def.Anchor] = refPath
+		if hasOwnScope {
+			// The anchor belongs to the $id's scope. Register it under the
+			// $id-qualified URI so it can be found via "$id#anchor" but NOT
+			// via a plain "#anchor" from the parent scope.
+			if def.ID != "" {
+				g.anchors[def.ID+"#"+def.Anchor] = refPath
+				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
+					g.anchors[resolved+"#"+def.Anchor] = refPath
+				}
+			}
+			if def.LegacyID != "" {
+				g.anchors[def.LegacyID+"#"+def.Anchor] = refPath
+				if resolved := g.resolveRelativeURI(def.LegacyID); resolved != "" {
+					g.anchors[resolved+"#"+def.Anchor] = refPath
+				}
+			}
+		} else {
+			g.anchors["#"+def.Anchor] = refPath
+		}
 	}
 	// $dynamicAnchor is resolvable by both $ref and $dynamicRef.
 	// For $ref resolution, treat it like $anchor.
 	// Also track separately for $dynamicRef-specific resolution.
 	if def.DynamicAnchor != "" {
-		g.anchors["#"+def.DynamicAnchor] = refPath
+		if hasOwnScope {
+			if def.ID != "" {
+				g.anchors[def.ID+"#"+def.DynamicAnchor] = refPath
+				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
+					g.anchors[resolved+"#"+def.DynamicAnchor] = refPath
+				}
+			}
+		} else {
+			g.anchors["#"+def.DynamicAnchor] = refPath
+		}
 		if g.dynamicAnchors != nil {
 			g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
 		}
 	}
+}
+
+// resolvedToFalseSchema checks if a property schema's $ref, $dynamicRef, or
+// $recursiveRef resolves to a boolean false schema ("always invalid").
+func (g *Generator) resolvedToFalseSchema(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	// Check $ref / $recursiveRef.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			return resolved.IsFalseSchema()
+		}
+	}
+	// Check $dynamicRef.
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			return resolved.IsFalseSchema()
+		}
+	}
+	return false
 }
 
 // isScopedSelfRef returns true if the given ref, resolved from the context schema,
@@ -3067,7 +3133,13 @@ func enumValueSuffix(v any) string {
 	case string:
 		return SchemaNameToGoName(val)
 	case float64:
-		return fmt.Sprintf("%v", val)
+		// Sanitize numeric values for Go identifiers:
+		// replace '-' with "Neg", '.' with "_", '+' with "", 'e' with "e"
+		s := fmt.Sprintf("%v", val)
+		s = strings.ReplaceAll(s, "-", "Neg")
+		s = strings.ReplaceAll(s, ".", "_")
+		s = strings.ReplaceAll(s, "+", "")
+		return s
 	case bool:
 		if val {
 			return "True"

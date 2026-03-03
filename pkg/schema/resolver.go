@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -130,16 +131,18 @@ func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 }
 
 // allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
+// Map-valued fields (Properties, Defs, etc.) are iterated in sorted key order
+// to ensure deterministic anchor resolution regardless of Go map iteration order.
 func (r *LocalResolver) allSubSchemas(s *Schema) []*Schema {
 	var subs []*Schema
-	for _, v := range s.Properties {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Properties) {
+		subs = append(subs, s.Properties[k])
 	}
-	for _, v := range s.Defs {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Defs) {
+		subs = append(subs, s.Defs[k])
 	}
-	for _, v := range s.Definitions {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.Definitions) {
+		subs = append(subs, s.Definitions[k])
 	}
 	subs = append(subs, s.AllOf...)
 	subs = append(subs, s.AnyOf...)
@@ -172,11 +175,11 @@ func (r *LocalResolver) allSubSchemas(s *Schema) []*Schema {
 	if s.Contains != nil {
 		subs = append(subs, s.Contains)
 	}
-	for _, v := range s.PatternProperties {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.PatternProperties) {
+		subs = append(subs, s.PatternProperties[k])
 	}
-	for _, v := range s.DependentSchemas {
-		subs = append(subs, v)
+	for _, k := range sortedKeys(s.DependentSchemas) {
+		subs = append(subs, s.DependentSchemas[k])
 	}
 	if s.PropertyNames != nil {
 		subs = append(subs, s.PropertyNames)
@@ -191,6 +194,19 @@ func (r *LocalResolver) allSubSchemas(s *Schema) []*Schema {
 		subs = append(subs, s.ContentSchema)
 	}
 	return subs
+}
+
+// sortedKeys returns the keys of a map[string]*Schema in sorted order.
+func sortedKeys(m map[string]*Schema) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef string) (*Schema, error) {
