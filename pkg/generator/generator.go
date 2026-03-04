@@ -275,6 +275,10 @@ func (g *Generator) addRequiredImports() {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
 			}
+			if len(sd.DependentRequired) > 0 {
+				needsFmt = true  // Validate() uses fmt.Errorf for dependentRequired errors
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+			}
 			if sd.UnevaluatedProperties != nil && !sd.UnevaluatedProperties.IsAllowed && !sd.UnevaluatedProperties.AllEvaluated {
 				needsFmt = true // Validate() uses fmt.Errorf for unevaluated property errors
 				if len(sd.UnevaluatedProperties.EvaluatedPatterns) > 0 {
@@ -870,10 +874,50 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			requiredJSON = s.Required
 			needsUnmarshal = true
 		}
+		// Extract dependentRequired constraints.
+		var depRequired []DependentRequiredDef
+		for trigger, deps := range s.DependentRequired {
+			if len(deps) > 0 {
+				sorted := make([]string, len(deps))
+				copy(sorted, deps)
+				sort.Strings(sorted)
+				depRequired = append(depRequired, DependentRequiredDef{
+					TriggerKey: trigger,
+					Required:   sorted,
+				})
+			}
+		}
+		sort.Slice(depRequired, func(i, j int) bool {
+			return depRequired[i].TriggerKey < depRequired[j].TriggerKey
+		})
+		if len(depRequired) > 0 {
+			needsUnmarshal = true
+		}
+		// Extract dependentSchemas constraints.
+		var depSchemas []DependentSchemaConstraint
+		for trigger, depSchema := range s.DependentSchemas {
+			if depSchema.AdditionalProperties != nil &&
+				depSchema.AdditionalProperties.Bool != nil &&
+				!*depSchema.AdditionalProperties.Bool {
+				allowed := sortedKeys(depSchema.Properties)
+				depSchemas = append(depSchemas, DependentSchemaConstraint{
+					TriggerKey:  trigger,
+					AllowedKeys: allowed,
+				})
+			}
+		}
+		sort.Slice(depSchemas, func(i, j int) bool {
+			return depSchemas[i].TriggerKey < depSchemas[j].TriggerKey
+		})
+		if len(depSchemas) > 0 {
+			needsUnmarshal = true
+		}
 		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 			Name:                 name,
 			Description:          s.Description,
 			AdditionalProperties: additionalProps,
+			DependentSchemas:     depSchemas,
+			DependentRequired:    depRequired,
 			Validations:          validations,
 			RequiredJSON:         requiredJSON,
 			NeedsMarshal:         needsMarshal,
@@ -1218,6 +1262,26 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true // need to capture _jsonKeys
 	}
 
+	// Extract dependentRequired constraints.
+	var depRequired []DependentRequiredDef
+	for trigger, deps := range s.DependentRequired {
+		if len(deps) > 0 {
+			sorted := make([]string, len(deps))
+			copy(sorted, deps)
+			sort.Strings(sorted)
+			depRequired = append(depRequired, DependentRequiredDef{
+				TriggerKey: trigger,
+				Required:   sorted,
+			})
+		}
+	}
+	sort.Slice(depRequired, func(i, j int) bool {
+		return depRequired[i].TriggerKey < depRequired[j].TriggerKey
+	})
+	if len(depRequired) > 0 {
+		needsUnmarshal = true // need to capture _jsonKeys
+	}
+
 	// Enable custom unmarshal if there are optional field validations (to track key presence).
 	for _, v := range validations {
 		if v.Optional {
@@ -1280,6 +1344,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		AdditionalProperties:  additionalProps,
 		PatternProperties:     patternProps,
 		DependentSchemas:      depSchemas,
+		DependentRequired:     depRequired,
 		Validations:           validations,
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
@@ -2969,8 +3034,23 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 	if unevaluatedItemsImpliesFixedTuple(s) {
 		return "array"
 	}
+	// Structural array keywords → array
+	// items, prefixItems, additionalItems, contains, and unevaluatedItems
+	// only apply to arrays, so their presence implies type "array".
+	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+		s.Contains != nil || s.UnevaluatedItems != nil {
+		return "array"
+	}
 	// Object constraints → object
 	if s.MinProperties != nil || s.MaxProperties != nil {
+		return "object"
+	}
+	// Structural object keywords → object
+	// required, additionalProperties, dependentRequired, dependentSchemas,
+	// propertyNames, and unevaluatedProperties only apply to objects.
+	if len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.PropertyNames != nil || s.UnevaluatedProperties != nil {
 		return "object"
 	}
 	return ""

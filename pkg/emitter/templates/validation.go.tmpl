@@ -453,6 +453,18 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasDependentRequired}}
+	// dependentRequired: when a trigger key is present, listed properties must also be present.
+	{{- range $dep := $struct.DependentRequired}}
+	if {{$recv}}._jsonKeys[{{printf "%q" $dep.TriggerKey}}] {
+		{{- range $dep.Required}}
+		if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+			return fmt.Errorf("dependentRequired %q: property %q is required", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" .}})
+		}
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
 	{{- if $struct.HasCousinUnevalChecks}}
 	// Cousin isolation: allOf/anyOf sub-schemas with their own unevaluatedProperties
 	// can only see properties evaluated in their own branch scope.

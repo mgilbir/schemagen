@@ -74,6 +74,7 @@ type StructDef struct {
 	AdditionalProperties  *AdditionalPropertiesDef
 	PatternProperties     []PatternPropertyDef
 	DependentSchemas      []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
+	DependentRequired     []DependentRequiredDef      // dependentRequired constraints
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
@@ -85,6 +86,13 @@ type StructDef struct {
 	NeedsUnmarshal        bool
 	NeedsNullCheck        bool // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonObject       bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+}
+
+// DependentRequiredDef describes a dependentRequired constraint: when the
+// trigger property is present, the listed dependent properties must also be present.
+type DependentRequiredDef struct {
+	TriggerKey string   // JSON property name that activates the constraint
+	Required   []string // JSON property names that must be present when trigger is present
 }
 
 // DependentSchemaConstraint describes a dependentSchemas entry where the sub-schema
@@ -139,6 +147,11 @@ func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
 }
 
+// HasDependentRequired returns true if the struct has dependentRequired constraints.
+func (d *StructDef) HasDependentRequired() bool {
+	return len(d.DependentRequired) > 0
+}
+
 // HasUnevaluatedProperties returns true if the struct has an unevaluatedProperties constraint.
 func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
@@ -179,10 +192,13 @@ func (d *StructDef) NeedsRawProps() bool {
 }
 
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
-// validation, dependent schema validation, or unevaluatedProperties with
+// validation, dependent schema/required validation, or unevaluatedProperties with
 // conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if len(d.DependentSchemas) > 0 {
+		return true
+	}
+	if len(d.DependentRequired) > 0 {
 		return true
 	}
 	if len(d.CousinUnevalChecks) > 0 {
