@@ -17,7 +17,7 @@ var knownRoundTripFailures = map[string]string{
 // Parse: 0 known failures
 var knownParseFailures = map[string]string{}
 
-// Validation: 184 known failures for Validate() correctness testing.
+// Validation: known failures for Validate() correctness testing.
 // Only schemas that produce a Validate() method are tested; others are skipped.
 // Only exercised entries are listed — schemas that generate type `any` (no Validate())
 // are not tracked here since checkKnownFailure is never reached for them.
@@ -153,12 +153,7 @@ var knownValidationFailures = map[string]string{
 
 	// (items/additionalItems/prefixItems: ALL 33 entries FIXED via InferredAliasDef item-level validation)
 
-	// (contains/minContains/maxContains: 75 of 79 entries FIXED via InferredAliasDef contains validation)
-	// Remaining: items + contains interaction where items sub-schema uses multipleOf (not extracted as item constraint)
-	"draft6/contains/items + contains/does not match items, matches contains":       "items: multipleOf constraint in items sub-schema not extracted for inferred arrays",
-	"draft7/contains/items + contains/does not match items, matches contains":       "items: multipleOf constraint in items sub-schema not extracted for inferred arrays",
-	"draft2019-09/contains/items + contains/does not match items, matches contains": "items: multipleOf constraint in items sub-schema not extracted for inferred arrays",
-	"draft2020-12/contains/items + contains/does not match items, matches contains": "items: multipleOf constraint in items sub-schema not extracted for inferred arrays",
+	// (contains/minContains/maxContains: ALL 79 entries FIXED via InferredAliasDef contains + items checks validation)
 
 	// (dependentSchemas: ALL 38 entries FIXED via expanded DependentSchemaConstraint extraction)
 

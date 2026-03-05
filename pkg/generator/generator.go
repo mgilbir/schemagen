@@ -475,6 +475,15 @@ func (g *Generator) addRequiredImports() {
 					needsMath = true
 				}
 			}
+			// Items checks imports.
+			for _, chk := range iad.ItemsChecks {
+				if chk.CheckType == "multipleOf" {
+					needsMath = true
+				}
+				if chk.CheckType == "type" && chk.Value == "integer" {
+					needsMath = true
+				}
+			}
 			// Contains validation imports.
 			if iad.Contains != nil {
 				if iad.Contains.ConstJSON != "" {
@@ -845,7 +854,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
 			// Extract item-level validation constraints.
-			itemsFalse, itemsType, itemsTypeName, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
 			// Extract contains/minContains/maxContains constraints.
 			containsDef, minContains, maxContains := extractContainsDef(s)
 			// When item-level or contains validation is needed, force GoType to []any so that
@@ -854,6 +863,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			// entirely on mixed-type arrays, masking per-element errors.
 			inferredGoType := goType
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
+				len(itemsChecks) > 0 ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
 				containsDef != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
@@ -869,6 +879,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				ItemsFalse:           itemsFalse,
 				ItemsType:            itemsType,
 				ItemsTypeName:        itemsTypeName,
+				ItemsChecks:          itemsChecks,
 				TupleItems:           tupleItems,
 				AdditionalItemsFalse: addlItemsFalse,
 				AdditionalItemsType:  addlItemsType,
@@ -3606,6 +3617,7 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	itemsFalse bool,
 	itemsType string,
 	itemsTypeName string,
+	itemsChecks []ContainsCheck,
 	tupleItems []InferredTupleItem,
 	additionalItemsFalse bool,
 	additionalItemsType string,
@@ -3670,6 +3682,9 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 			}
 		} else if len(itemSchema.Type) == 1 {
 			itemsType = itemSchema.Type[0]
+		} else {
+			// No explicit type — extract validation checks if present.
+			itemsChecks = extractSchemaChecks(itemSchema)
 		}
 		return
 	}
@@ -3816,6 +3831,31 @@ func isAlwaysTrueSchema(s *schema.Schema) bool {
 // extractContainsDef builds a ContainsDef from a contains sub-schema.
 // Returns nil if the sub-schema cannot be analyzed or is always-true with no
 // minContains/maxContains constraints.
+// extractSchemaChecks extracts ContainsCheck-style validation checks from a schema.
+// This is used for items sub-schemas that have validation keywords but no explicit type.
+func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
+	var checks []ContainsCheck
+	if s.Minimum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minimum", Value: *s.Minimum})
+	}
+	if s.Maximum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maximum", Value: *s.Maximum})
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+	}
+	if s.MultipleOf != nil {
+		checks = append(checks, ContainsCheck{CheckType: "multipleOf", Value: *s.MultipleOf})
+	}
+	if len(s.Type) == 1 {
+		checks = append(checks, ContainsCheck{CheckType: "type", Value: s.Type[0]})
+	}
+	return checks
+}
+
 // extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.
 // It handles boolean false schemas, additionalProperties:false (allowed-keys check),
 // properties with type constraints, required properties, and minProperties/maxProperties.

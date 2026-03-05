@@ -462,6 +462,7 @@ type InferredAliasDef struct {
 	ItemsFalse           bool                // items: false — reject any non-empty array
 	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
 	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
+	ItemsChecks          []ContainsCheck     // per-element validation checks from items sub-schema (multipleOf, minimum, etc.)
 	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
 	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
 	AdditionalItemsType  string              // additionalItems as simple JSON type
@@ -497,6 +498,7 @@ type InferredTupleItem struct {
 // HasItemValidation returns true if the InferredAliasDef has any item-level validation.
 func (d *InferredAliasDef) HasItemValidation() bool {
 	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
+		len(d.ItemsChecks) > 0 ||
 		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
 }
 

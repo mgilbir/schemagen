@@ -313,6 +313,69 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if .ItemsChecks}}
+	for _i, _elem := range {{$recv}}._value {
+		{{- range .ItemsChecks}}
+		{{- if eq .CheckType "type"}}
+		{{- if eq .Value "integer"}}
+		{
+			_f, _fOk := _elem.(float64)
+			if !_fOk || _f != math.Trunc(_f) {
+				return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
+			}
+		}
+		{{- else if eq .Value "number"}}
+		if _, _fOk := _elem.(float64); !_fOk {
+			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
+		}
+		{{- else if eq .Value "string"}}
+		if _, _sOk := _elem.(string); !_sOk {
+			return fmt.Errorf("items[%d]: expected string, got %T", _i, _elem)
+		}
+		{{- else if eq .Value "boolean"}}
+		if _, _bOk := _elem.(bool); !_bOk {
+			return fmt.Errorf("items[%d]: expected boolean, got %T", _i, _elem)
+		}
+		{{- else if eq .Value "null"}}
+		if _elem != nil {
+			return fmt.Errorf("items[%d]: expected null, got %T", _i, _elem)
+		}
+		{{- else if eq .Value "array"}}
+		if _, _aOk := _elem.([]any); !_aOk {
+			return fmt.Errorf("items[%d]: expected array, got %T", _i, _elem)
+		}
+		{{- else if eq .Value "object"}}
+		if _, _oOk := _elem.(map[string]any); !_oOk {
+			return fmt.Errorf("items[%d]: expected object, got %T", _i, _elem)
+		}
+		{{- end}}
+		{{- else if eq .CheckType "minimum"}}
+		if _f, _fOk := _elem.(float64); _fOk && _f < {{.Value}} {
+			return fmt.Errorf("items[%d]: %v is less than minimum {{.Value}}", _i, _elem)
+		}
+		{{- else if eq .CheckType "maximum"}}
+		if _f, _fOk := _elem.(float64); _fOk && _f > {{.Value}} {
+			return fmt.Errorf("items[%d]: %v exceeds maximum {{.Value}}", _i, _elem)
+		}
+		{{- else if eq .CheckType "exclusiveMinimum"}}
+		if _f, _fOk := _elem.(float64); _fOk && _f <= {{.Value}} {
+			return fmt.Errorf("items[%d]: %v must be greater than {{.Value}}", _i, _elem)
+		}
+		{{- else if eq .CheckType "exclusiveMaximum"}}
+		if _f, _fOk := _elem.(float64); _fOk && _f >= {{.Value}} {
+			return fmt.Errorf("items[%d]: %v must be less than {{.Value}}", _i, _elem)
+		}
+		{{- else if eq .CheckType "multipleOf"}}
+		if _f, _fOk := _elem.(float64); _fOk {
+			_q := _f / {{.Value}}
+			if math.Abs(_q - math.Round(_q)) > 1e-9 {
+				return fmt.Errorf("items[%d]: %v is not a multiple of {{.Value}}", _i, _elem)
+			}
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
 	{{- if .TupleItems}}
 	{
 		{{- range $idx, $item := .TupleItems}}
