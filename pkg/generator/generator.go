@@ -274,10 +274,27 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+				for _, ds := range sd.DependentSchemas {
+					for _, pt := range ds.PropertyTypes {
+						if pt.JSONType == "integer" {
+							needsMath = true // math.Trunc for integer type check
+						}
+					}
+				}
 			}
 			if len(sd.DependentRequired) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependentRequired errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+			}
+			if sd.PropertyNames != nil {
+				needsFmt = true  // Validate() uses fmt.Errorf for propertyNames errors
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+				if sd.PropertyNames.MaxLength != nil || sd.PropertyNames.MinLength != nil {
+					needsUTF8 = true
+				}
+				if sd.PropertyNames.Pattern != "" {
+					needsRegexp = true // pattern uses ecma262
+				}
 			}
 			if sd.UnevaluatedProperties != nil && !sd.UnevaluatedProperties.IsAllowed && !sd.UnevaluatedProperties.AllEvaluated {
 				needsFmt = true // Validate() uses fmt.Errorf for unevaluated property errors
@@ -445,6 +462,26 @@ func (g *Generator) addRequiredImports() {
 						needsRegexp = true
 					}
 					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+			// Item-level validation may need math.Trunc for integer checks.
+			if iad.ItemsType == "integer" || iad.AdditionalItemsType == "integer" {
+				needsMath = true
+			}
+			for _, ti := range iad.TupleItems {
+				if ti.JSONType == "integer" {
+					needsMath = true
+				}
+			}
+			// Contains validation imports.
+			if iad.Contains != nil {
+				if iad.Contains.ConstJSON != "" {
+					needsJSON = true // json.Marshal for per-element comparison
+				}
+				for _, chk := range iad.Contains.Checks {
+					if chk.CheckType == "multipleOf" {
 						needsMath = true
 					}
 				}
@@ -807,14 +844,37 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
+			// Extract item-level validation constraints.
+			itemsFalse, itemsType, itemsTypeName, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
+			// Extract contains/minContains/maxContains constraints.
+			containsDef, minContains, maxContains := extractContainsDef(s)
+			// When item-level or contains validation is needed, force GoType to []any so that
+			// json.Unmarshal accepts any array (per-element validation in Validate()).
+			// If the typed array (e.g., []int64) were used, unmarshal would fail
+			// entirely on mixed-type arrays, masking per-element errors.
+			inferredGoType := goType
+			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
+				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
+				containsDef != nil {
+				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
+			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
-				Name:             name,
-				Description:      s.Description,
-				InferredGoType:   goType,
-				InferredJSONType: primaryType,
-				Validations:      rules,
-				AnyOfVariants:    anyOfVariants,
-				NeedsNullCheck:   !schemaAllowsNull(s),
+				Name:                 name,
+				Description:          s.Description,
+				InferredGoType:       inferredGoType,
+				InferredJSONType:     primaryType,
+				Validations:          rules,
+				AnyOfVariants:        anyOfVariants,
+				NeedsNullCheck:       !schemaAllowsNull(s),
+				ItemsFalse:           itemsFalse,
+				ItemsType:            itemsType,
+				ItemsTypeName:        itemsTypeName,
+				TupleItems:           tupleItems,
+				AdditionalItemsFalse: addlItemsFalse,
+				AdditionalItemsType:  addlItemsType,
+				Contains:             containsDef,
+				MinContains:          minContains,
+				MaxContains:          maxContains,
 			})
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
@@ -894,23 +954,17 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			needsUnmarshal = true
 		}
 		// Extract dependentSchemas constraints.
-		var depSchemas []DependentSchemaConstraint
-		for trigger, depSchema := range s.DependentSchemas {
-			if depSchema.AdditionalProperties != nil &&
-				depSchema.AdditionalProperties.Bool != nil &&
-				!*depSchema.AdditionalProperties.Bool {
-				allowed := sortedKeys(depSchema.Properties)
-				depSchemas = append(depSchemas, DependentSchemaConstraint{
-					TriggerKey:  trigger,
-					AllowedKeys: allowed,
-				})
-			}
-		}
-		sort.Slice(depSchemas, func(i, j int) bool {
-			return depSchemas[i].TriggerKey < depSchemas[j].TriggerKey
-		})
+		depSchemas := extractDependentSchemaConstraints(s)
 		if len(depSchemas) > 0 {
 			needsUnmarshal = true
+		}
+		// Extract propertyNames constraint.
+		var propNames *PropertyNamesDef
+		if s.PropertyNames != nil {
+			propNames = extractPropertyNamesDef(s.PropertyNames)
+			if propNames != nil {
+				needsUnmarshal = true // need _jsonKeys for validation
+			}
 		}
 		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 			Name:                 name,
@@ -918,6 +972,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			AdditionalProperties: additionalProps,
 			DependentSchemas:     depSchemas,
 			DependentRequired:    depRequired,
+			PropertyNames:        propNames,
 			Validations:          validations,
 			RequiredJSON:         requiredJSON,
 			NeedsMarshal:         needsMarshal,
@@ -1240,24 +1295,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		})
 	}
 
-	// Extract dependent schema constraints (dependentSchemas where the sub-schema
-	// has additionalProperties: false — we emit validation that checks the JSON keys).
-	var depSchemas []DependentSchemaConstraint
-	for trigger, depSchema := range s.DependentSchemas {
-		if depSchema.AdditionalProperties != nil &&
-			depSchema.AdditionalProperties.Bool != nil &&
-			!*depSchema.AdditionalProperties.Bool {
-			allowed := sortedKeys(depSchema.Properties)
-			depSchemas = append(depSchemas, DependentSchemaConstraint{
-				TriggerKey:  trigger,
-				AllowedKeys: allowed,
-			})
-		}
-	}
-	// Sort for deterministic output.
-	sort.Slice(depSchemas, func(i, j int) bool {
-		return depSchemas[i].TriggerKey < depSchemas[j].TriggerKey
-	})
+	// Extract dependent schema constraints.
+	depSchemas := extractDependentSchemaConstraints(s)
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
 	}
@@ -1336,6 +1375,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 
+	// Extract propertyNames constraint.
+	var propertyNamesDef *PropertyNamesDef
+	if s.PropertyNames != nil {
+		propertyNamesDef = extractPropertyNamesDef(s.PropertyNames)
+		if propertyNamesDef != nil {
+			needsUnmarshal = true // need _jsonKeys for validation
+		}
+	}
+
 	structDef := &StructDef{
 		Name:                  name,
 		Description:           s.Description,
@@ -1345,6 +1393,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		PatternProperties:     patternProps,
 		DependentSchemas:      depSchemas,
 		DependentRequired:     depRequired,
+		PropertyNames:         propertyNamesDef,
 		Validations:           validations,
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
@@ -3551,6 +3600,376 @@ func isNilCheckable(t GoType) bool {
 // receiver IS the value, so FieldName and JSONName are empty — the template
 // uses the receiver name directly.
 // Returns nil if the Go type is "any" (untyped schemas can't be validated).
+// extractInferredItemConstraints extracts item-level validation info from an inferred
+// array schema. It returns the fields needed for InferredAliasDef item validation.
+func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName string) (
+	itemsFalse bool,
+	itemsType string,
+	itemsTypeName string,
+	tupleItems []InferredTupleItem,
+	additionalItemsFalse bool,
+	additionalItemsType string,
+) {
+	hasPrefixItems := len(s.PrefixItems) > 0
+	hasTupleItems := s.Items != nil && s.Items.Schemas != nil
+	hasSingleItems := s.Items != nil && s.Items.Schema != nil
+
+	// Draft 2020-12: prefixItems defines tuple positions.
+	if hasPrefixItems {
+		for _, sub := range s.PrefixItems {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		}
+		// In draft 2020-12, "items" (as single schema) acts as additionalItems.
+		if hasSingleItems {
+			itemSchema := s.Items.Schema
+			if itemSchema.IsFalseSchema() {
+				additionalItemsFalse = true
+			} else if len(itemSchema.Type) == 1 {
+				additionalItemsType = itemSchema.Type[0]
+			}
+		}
+		return
+	}
+
+	// Pre-2020-12: items as array of schemas = tuple form.
+	if hasTupleItems {
+		for _, sub := range s.Items.Schemas {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		}
+		// additionalItems constrains elements beyond the tuple.
+		if s.AdditionalItems != nil {
+			if s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
+				additionalItemsFalse = true
+			} else if s.AdditionalItems.Schema != nil {
+				addlSchema := s.AdditionalItems.Schema
+				if len(addlSchema.Type) == 1 {
+					additionalItemsType = addlSchema.Type[0]
+				}
+			}
+		}
+		return
+	}
+
+	// items as single schema — validates every element.
+	if hasSingleItems {
+		itemSchema := s.Items.Schema
+		if itemSchema.IsFalseSchema() {
+			itemsFalse = true
+		} else if itemSchema.IsBooleanSchema() {
+			// items: true — no constraint
+		} else if effRef := itemSchema.EffectiveRef(); effRef != "" {
+			// $ref — resolve and check for simple type or named type.
+			resolved := g.resolveRefInContext(effRef, itemSchema)
+			if resolved != nil && len(resolved.Type) == 1 {
+				itemsType = resolved.Type[0]
+			} else {
+				refName := g.resolveRefTypeName(itemSchema)
+				if refName != "" {
+					itemsTypeName = refName
+				}
+			}
+		} else if len(itemSchema.Type) == 1 {
+			itemsType = itemSchema.Type[0]
+		}
+		return
+	}
+
+	return
+}
+
+// inferredTupleItemFromSchema converts a sub-schema to an InferredTupleItem.
+// The generator is needed to resolve $ref sub-schemas.
+func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema) InferredTupleItem {
+	if sub.IsFalseSchema() {
+		return InferredTupleItem{IsFalse: true}
+	}
+	if sub.IsTrueSchema() || sub.IsBooleanSchema() {
+		return InferredTupleItem{} // true schema — no constraint
+	}
+	// If the sub-schema has a $ref, resolve it and check the resolved type.
+	if effRef := sub.EffectiveRef(); effRef != "" {
+		resolved := g.resolveRefInContext(effRef, sub)
+		if resolved != nil {
+			if len(resolved.Type) == 1 {
+				return InferredTupleItem{JSONType: resolved.Type[0]}
+			}
+			// Could be a named type — generate it and reference it.
+			goName := refToGoName(effRef)
+			goName = g.goNameForResolvedRef(effRef, resolved, goName)
+			if !g.generated[goName] {
+				_ = g.generateTypeDef(goName, resolved)
+			}
+			return InferredTupleItem{TypeName: goName}
+		}
+	}
+	if len(sub.Type) == 1 {
+		return InferredTupleItem{JSONType: sub.Type[0]}
+	}
+	return InferredTupleItem{} // complex schema — skip for now
+}
+
+// resolveRefTypeName resolves a $ref schema to a Go type name, generating the
+// referenced type if needed. Returns empty string if the ref cannot be resolved.
+func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
+	effRef := s.EffectiveRef()
+	if effRef == "" {
+		return ""
+	}
+	goName := refToGoName(effRef)
+	if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		goName = g.goNameForResolvedRef(effRef, resolved, goName)
+		if !g.generated[goName] {
+			_ = g.generateTypeDef(goName, resolved)
+		}
+	}
+	return goName
+}
+
+// extractPropertyNamesDef builds a PropertyNamesDef from a propertyNames sub-schema.
+// Returns nil if the sub-schema is boolean true or has no actionable constraints.
+func extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef {
+	// Boolean false schema: no property name is valid (empty objects only).
+	if pn.IsFalseSchema() {
+		return &PropertyNamesDef{IsForbidden: true}
+	}
+	// Boolean true schema: no constraint.
+	if pn.IsTrueSchema() {
+		return nil
+	}
+
+	def := &PropertyNamesDef{}
+	hasConstraint := false
+
+	if pn.MaxLength != nil {
+		v := int(*pn.MaxLength)
+		def.MaxLength = &v
+		hasConstraint = true
+	}
+	if pn.MinLength != nil {
+		v := int(*pn.MinLength)
+		def.MinLength = &v
+		hasConstraint = true
+	}
+	if pn.Pattern != nil {
+		def.Pattern = *pn.Pattern
+		hasConstraint = true
+	}
+	// Handle const (convert to single-element enum) and enum.
+	enumValues := pn.Enum
+	if pn.Const != nil && len(enumValues) == 0 {
+		enumValues = []any{*pn.Const}
+	}
+	if len(enumValues) > 0 {
+		for _, e := range enumValues {
+			if str, ok := e.(string); ok {
+				def.Enum = append(def.Enum, str)
+			}
+		}
+		if len(def.Enum) > 0 {
+			hasConstraint = true
+		}
+	}
+
+	if !hasConstraint {
+		return nil
+	}
+	return def
+}
+
+// isAlwaysTrueSchema returns true if the schema is semantically equivalent to
+// "true" — i.e., it matches every possible value. This includes:
+// - boolean true schema
+// - empty schema (no keywords)
+// - {"if": false, "else": true} pattern (if always fails, else always passes)
+func isAlwaysTrueSchema(s *schema.Schema) bool {
+	if s.IsTrueSchema() {
+		return true
+	}
+	if s.IsBooleanSchema() {
+		return false // IsFalseSchema case
+	}
+	// {"if": false, "else": true} pattern:
+	// if is boolean false → always fails → else branch applies → true → always matches.
+	if s.If != nil && s.If.IsFalseSchema() && s.Else != nil && s.Else.IsTrueSchema() {
+		return true
+	}
+	// Empty schema (no constraints) matches everything.
+	// Check for the absence of any constraining keywords.
+	if s.Type == nil && s.Enum == nil && s.Const == nil &&
+		s.Minimum == nil && s.Maximum == nil && s.MultipleOf == nil &&
+		s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.MinLength == nil && s.MaxLength == nil && s.Pattern == nil &&
+		s.MinItems == nil && s.MaxItems == nil && s.UniqueItems == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.AdditionalProperties == nil && len(s.Properties) == 0 &&
+		len(s.Required) == 0 && len(s.AllOf) == 0 && len(s.AnyOf) == 0 &&
+		len(s.OneOf) == 0 && s.Not == nil && s.If == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.EffectiveRef() == "" {
+		return true
+	}
+	return false
+}
+
+// extractContainsDef builds a ContainsDef from a contains sub-schema.
+// Returns nil if the sub-schema cannot be analyzed or is always-true with no
+// minContains/maxContains constraints.
+// extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.
+// It handles boolean false schemas, additionalProperties:false (allowed-keys check),
+// properties with type constraints, required properties, and minProperties/maxProperties.
+func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
+	if len(s.DependentSchemas) == 0 {
+		return nil
+	}
+	var result []DependentSchemaConstraint
+	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		depSchema := s.DependentSchemas[trigger]
+		constraint := DependentSchemaConstraint{TriggerKey: trigger}
+		hasConstraint := false
+
+		// Boolean false schema: always reject when trigger is present.
+		if depSchema.IsFalseSchema() {
+			constraint.IsFalse = true
+			result = append(result, constraint)
+			continue
+		}
+		// Boolean true or empty schema: no constraint.
+		if depSchema.IsTrueSchema() || isAlwaysTrueSchema(depSchema) {
+			continue
+		}
+
+		// additionalProperties: false — only listed keys are allowed.
+		if depSchema.AdditionalProperties != nil &&
+			depSchema.AdditionalProperties.Bool != nil &&
+			!*depSchema.AdditionalProperties.Bool {
+			constraint.AllowedKeys = sortedKeys(depSchema.Properties)
+			hasConstraint = true
+		}
+
+		// Properties with type constraints.
+		if len(depSchema.Properties) > 0 {
+			for _, propName := range sortedKeys(depSchema.Properties) {
+				propSchema := depSchema.Properties[propName]
+				if len(propSchema.Type) == 1 {
+					constraint.PropertyTypes = append(constraint.PropertyTypes, DependentPropertyType{
+						PropName: propName,
+						JSONType: propSchema.Type[0],
+					})
+					hasConstraint = true
+				}
+			}
+		}
+
+		// Required properties from the sub-schema.
+		if len(depSchema.Required) > 0 {
+			sorted := make([]string, len(depSchema.Required))
+			copy(sorted, depSchema.Required)
+			sort.Strings(sorted)
+			constraint.RequiredProps = sorted
+			hasConstraint = true
+		}
+
+		// minProperties / maxProperties from the sub-schema.
+		if depSchema.MinProperties != nil {
+			v := depSchema.MinProperties.Int()
+			constraint.MinProperties = &v
+			hasConstraint = true
+		}
+		if depSchema.MaxProperties != nil {
+			v := depSchema.MaxProperties.Int()
+			constraint.MaxProperties = &v
+			hasConstraint = true
+		}
+
+		if hasConstraint {
+			result = append(result, constraint)
+		}
+	}
+	return result
+}
+
+func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
+	if s.Contains == nil {
+		return nil, nil, nil
+	}
+
+	containsSch := s.Contains
+
+	// Compute minContains and maxContains.
+	var minC *int
+	var maxC *int
+	if s.MinContains != nil {
+		v := int(*s.MinContains)
+		minC = &v
+	}
+	if s.MaxContains != nil {
+		v := int(*s.MaxContains)
+		maxC = &v
+	}
+
+	// Boolean false schema: no element can ever match.
+	if containsSch.IsFalseSchema() {
+		return &ContainsDef{IsFalse: true}, minC, maxC
+	}
+
+	// Boolean true or always-true schema: every element matches.
+	if isAlwaysTrueSchema(containsSch) {
+		return &ContainsDef{IsTrue: true}, minC, maxC
+	}
+
+	def := &ContainsDef{}
+
+	// Const → marshal to JSON for exact matching.
+	if containsSch.Const != nil {
+		b, err := json.Marshal(*containsSch.Const)
+		if err == nil {
+			def.ConstJSON = string(b)
+			return def, minC, maxC
+		}
+	}
+
+	// Single-value enum → treat as const.
+	if len(containsSch.Enum) == 1 {
+		b, err := json.Marshal(containsSch.Enum[0])
+		if err == nil {
+			def.ConstJSON = string(b)
+			return def, minC, maxC
+		}
+	}
+
+	// Collect constraint checks.
+	var checks []ContainsCheck
+
+	if containsSch.Minimum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minimum", Value: *containsSch.Minimum})
+	}
+	if containsSch.Maximum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maximum", Value: *containsSch.Maximum})
+	}
+	if containsSch.ExclusiveMinimum != nil && containsSch.ExclusiveMinimum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMinimum", Value: *containsSch.ExclusiveMinimum.Number})
+	}
+	if containsSch.ExclusiveMaximum != nil && containsSch.ExclusiveMaximum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *containsSch.ExclusiveMaximum.Number})
+	}
+	if containsSch.MultipleOf != nil {
+		checks = append(checks, ContainsCheck{CheckType: "multipleOf", Value: *containsSch.MultipleOf})
+	}
+	if len(containsSch.Type) == 1 {
+		checks = append(checks, ContainsCheck{CheckType: "type", Value: containsSch.Type[0]})
+	}
+
+	if len(checks) > 0 {
+		def.Checks = checks
+		return def, minC, maxC
+	}
+
+	// Complex schema we can't extract checks from — skip.
+	return nil, nil, nil
+}
+
 func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
 	// Skip validation on untyped "any" fields — can't compile numeric/string checks.
 	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {

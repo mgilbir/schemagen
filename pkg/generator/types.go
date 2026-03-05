@@ -75,6 +75,7 @@ type StructDef struct {
 	PatternProperties     []PatternPropertyDef
 	DependentSchemas      []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
 	DependentRequired     []DependentRequiredDef      // dependentRequired constraints
+	PropertyNames         *PropertyNamesDef           // propertyNames constraint (Draft 6+)
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
@@ -95,12 +96,33 @@ type DependentRequiredDef struct {
 	Required   []string // JSON property names that must be present when trigger is present
 }
 
-// DependentSchemaConstraint describes a dependentSchemas entry where the sub-schema
-// has additionalProperties: false. When the trigger key is present in the JSON object,
-// only the keys listed in AllowedKeys are valid.
+// PropertyNamesDef describes a propertyNames constraint on a struct.
+// All property names in the JSON object must satisfy these string validation rules.
+type PropertyNamesDef struct {
+	IsForbidden bool     // true when propertyNames: false (any property is invalid)
+	MaxLength   *int     // maximum length of property names
+	MinLength   *int     // minimum length of property names
+	Pattern     string   // regex pattern property names must match
+	Enum        []string // allowed property name values (from enum or const)
+}
+
+// DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
+// is present in the JSON object, the sub-schema's constraints are applied.
 type DependentSchemaConstraint struct {
-	TriggerKey  string   // JSON property name that activates the constraint
-	AllowedKeys []string // set of JSON property names allowed by the dependent sub-schema
+	TriggerKey    string                  // JSON property name that activates the constraint
+	IsFalse       bool                    // boolean false schema — always reject when trigger is present
+	AllowedKeys   []string                // set of JSON property names allowed (additionalProperties: false)
+	RequiredProps []string                // required properties from the sub-schema
+	MinProperties *int                    // minProperties from the sub-schema
+	MaxProperties *int                    // maxProperties from the sub-schema
+	PropertyTypes []DependentPropertyType // per-property type constraints from the sub-schema
+}
+
+// DependentPropertyType describes a JSON type constraint on a specific property
+// within a dependentSchemas sub-schema.
+type DependentPropertyType struct {
+	PropName string // JSON property name
+	JSONType string // required JSON type (e.g., "integer", "string")
 }
 
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
@@ -152,6 +174,11 @@ func (d *StructDef) HasDependentRequired() bool {
 	return len(d.DependentRequired) > 0
 }
 
+// HasPropertyNames returns true if the struct has a propertyNames constraint.
+func (d *StructDef) HasPropertyNames() bool {
+	return d.PropertyNames != nil
+}
+
 // HasUnevaluatedProperties returns true if the struct has an unevaluatedProperties constraint.
 func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
@@ -192,13 +219,16 @@ func (d *StructDef) NeedsRawProps() bool {
 }
 
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
-// validation, dependent schema/required validation, or unevaluatedProperties with
-// conditional evaluation or cousin isolation.
+// validation, dependent schema/required validation, propertyNames validation,
+// or unevaluatedProperties with conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if len(d.DependentSchemas) > 0 {
 		return true
 	}
 	if len(d.DependentRequired) > 0 {
+		return true
+	}
+	if d.PropertyNames != nil {
 		return true
 	}
 	if len(d.CousinUnevalChecks) > 0 {
@@ -427,6 +457,52 @@ type InferredAliasDef struct {
 	AnyOfVariants    [][]ValidationRule
 	OneOfVariants    [][]ValidationRule
 	NeedsNullCheck   bool
+
+	// Item-level validation for inferred arrays:
+	ItemsFalse           bool                // items: false — reject any non-empty array
+	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
+	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
+	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
+	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
+	AdditionalItemsType  string              // additionalItems as simple JSON type
+
+	// Contains validation for inferred arrays:
+	Contains    *ContainsDef // contains sub-schema validation
+	MinContains *int         // minContains (default 1 when contains is present)
+	MaxContains *int         // maxContains (nil = no upper bound)
+}
+
+// ContainsDef describes a contains constraint on an array.
+type ContainsDef struct {
+	IsFalse   bool            // contains: false — no element can ever match
+	IsTrue    bool            // contains: true — every element matches
+	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
+	Checks    []ContainsCheck // per-element validation checks
+}
+
+// ContainsCheck describes one validation check applied to each element
+// when evaluating whether it matches the contains sub-schema.
+type ContainsCheck struct {
+	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum"
+	Value     any    // the constraint value
+}
+
+// InferredTupleItem describes a per-position item schema for inferred arrays.
+type InferredTupleItem struct {
+	IsFalse  bool   // boolean false schema — reject any value at this position
+	JSONType string // simple JSON type constraint (e.g., "integer", "string")
+	TypeName string // named Go type for $ref-based items (unmarshal + Validate())
+}
+
+// HasItemValidation returns true if the InferredAliasDef has any item-level validation.
+func (d *InferredAliasDef) HasItemValidation() bool {
+	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
+		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
+}
+
+// HasContainsValidation returns true if the InferredAliasDef has contains validation.
+func (d *InferredAliasDef) HasContainsValidation() bool {
+	return d.Contains != nil
 }
 
 func (d *InferredAliasDef) TypeName() string { return d.Name }

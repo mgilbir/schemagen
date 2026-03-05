@@ -257,6 +257,294 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if .HasItemValidation}}
+	// Item-level validation for inferred array.
+	{{- if .ItemsFalse}}
+	if len({{$recv}}._value) > 0 {
+		return fmt.Errorf("items: no items are allowed (got %d)", len({{$recv}}._value))
+	}
+	{{- end}}
+	{{- if .ItemsType}}
+	for _i, _elem := range {{$recv}}._value {
+		{{- if eq .ItemsType "integer"}}
+		_f, _fOk := _elem.(float64)
+		if !_fOk || _f != math.Trunc(_f) {
+			return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "number"}}
+		if _, _fOk := _elem.(float64); !_fOk {
+			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "string"}}
+		if _, _sOk := _elem.(string); !_sOk {
+			return fmt.Errorf("items[%d]: expected string, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "boolean"}}
+		if _, _bOk := _elem.(bool); !_bOk {
+			return fmt.Errorf("items[%d]: expected boolean, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "null"}}
+		if _elem != nil {
+			return fmt.Errorf("items[%d]: expected null, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "array"}}
+		if _, _aOk := _elem.([]any); !_aOk {
+			return fmt.Errorf("items[%d]: expected array, got %T", _i, _elem)
+		}
+		{{- else if eq .ItemsType "object"}}
+		if _, _oOk := _elem.(map[string]any); !_oOk {
+			return fmt.Errorf("items[%d]: expected object, got %T", _i, _elem)
+		}
+		{{- end}}
+	}
+	{{- end}}
+	{{- if .ItemsTypeName}}
+	for _i, _elem := range {{$recv}}._value {
+		_raw, _mErr := json.Marshal(_elem)
+		if _mErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, _mErr)
+		}
+		var _typed {{.ItemsTypeName}}
+		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, _uErr)
+		}
+		if _vErr := _typed.Validate(); _vErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, _vErr)
+		}
+	}
+	{{- end}}
+	{{- if .TupleItems}}
+	{
+		{{- range $idx, $item := .TupleItems}}
+		{{- if $item.IsFalse}}
+		if len({{$recv}}._value) > {{$idx}} {
+			return fmt.Errorf("items[{{$idx}}]: value is not allowed (schema is false)")
+		}
+		{{- else if $item.JSONType}}
+		if len({{$recv}}._value) > {{$idx}} {
+			_tElem := {{$recv}}._value[{{$idx}}]
+			{{- if eq $item.JSONType "integer"}}
+			_f, _fOk := _tElem.(float64)
+			if !_fOk || _f != math.Trunc(_f) {
+				return fmt.Errorf("items[{{$idx}}]: expected integer, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "number"}}
+			if _, _fOk := _tElem.(float64); !_fOk {
+				return fmt.Errorf("items[{{$idx}}]: expected number, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "string"}}
+			if _, _sOk := _tElem.(string); !_sOk {
+				return fmt.Errorf("items[{{$idx}}]: expected string, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "boolean"}}
+			if _, _bOk := _tElem.(bool); !_bOk {
+				return fmt.Errorf("items[{{$idx}}]: expected boolean, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "null"}}
+			if _tElem != nil {
+				return fmt.Errorf("items[{{$idx}}]: expected null, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "array"}}
+			if _, _aOk := _tElem.([]any); !_aOk {
+				return fmt.Errorf("items[{{$idx}}]: expected array, got %T", _tElem)
+			}
+			{{- else if eq $item.JSONType "object"}}
+			if _, _oOk := _tElem.(map[string]any); !_oOk {
+				return fmt.Errorf("items[{{$idx}}]: expected object, got %T", _tElem)
+			}
+			{{- end}}
+		}
+		{{- else if $item.TypeName}}
+		if len({{$recv}}._value) > {{$idx}} {
+			_raw, _mErr := json.Marshal({{$recv}}._value[{{$idx}}])
+			if _mErr != nil {
+				return fmt.Errorf("items[{{$idx}}]: %w", _mErr)
+			}
+			var _typed {{$item.TypeName}}
+			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+				return fmt.Errorf("items[{{$idx}}]: %w", _uErr)
+			}
+			if _vErr := _typed.Validate(); _vErr != nil {
+				return fmt.Errorf("items[{{$idx}}]: %w", _vErr)
+			}
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
+	{{- if .AdditionalItemsFalse}}
+	if len({{$recv}}._value) > {{len .TupleItems}} {
+		return fmt.Errorf("additionalItems: %d extra items are not allowed", len({{$recv}}._value) - {{len .TupleItems}})
+	}
+	{{- end}}
+	{{- if .AdditionalItemsType}}
+	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
+		_elem := {{$recv}}._value[_i]
+		{{- if eq .AdditionalItemsType "integer"}}
+		_f, _fOk := _elem.(float64)
+		if !_fOk || _f != math.Trunc(_f) {
+			return fmt.Errorf("additionalItems[%d]: expected integer, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "number"}}
+		if _, _fOk := _elem.(float64); !_fOk {
+			return fmt.Errorf("additionalItems[%d]: expected number, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "string"}}
+		if _, _sOk := _elem.(string); !_sOk {
+			return fmt.Errorf("additionalItems[%d]: expected string, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "boolean"}}
+		if _, _bOk := _elem.(bool); !_bOk {
+			return fmt.Errorf("additionalItems[%d]: expected boolean, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "null"}}
+		if _elem != nil {
+			return fmt.Errorf("additionalItems[%d]: expected null, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "array"}}
+		if _, _aOk := _elem.([]any); !_aOk {
+			return fmt.Errorf("additionalItems[%d]: expected array, got %T", _i, _elem)
+		}
+		{{- else if eq .AdditionalItemsType "object"}}
+		if _, _oOk := _elem.(map[string]any); !_oOk {
+			return fmt.Errorf("additionalItems[%d]: expected object, got %T", _i, _elem)
+		}
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- if .HasContainsValidation}}
+	// contains validation: count elements matching the contains sub-schema.
+	{
+		{{- if .Contains.IsFalse}}
+		// contains: false — no element can ever match.
+		return fmt.Errorf("contains: no element matches (schema is false)")
+		{{- else}}
+		_containsCount := 0
+		{{- if .Contains.IsTrue}}
+		_containsCount = len({{$recv}}._value)
+		{{- else if .Contains.ConstJSON}}
+		for _, _cElem := range {{$recv}}._value {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
+				_containsCount++
+			}
+		}
+		{{- else if .Contains.Checks}}
+		for _, _cElem := range {{$recv}}._value {
+			_cMatch := true
+			{{- range .Contains.Checks}}
+			{{- if eq .CheckType "type"}}
+			{{- if eq .Value "integer"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk || _cf != math.Trunc(_cf) {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "number"}}
+			if _cMatch {
+				if _, _cfOk := _cElem.(float64); !_cfOk {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "string"}}
+			if _cMatch {
+				if _, _csOk := _cElem.(string); !_csOk {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "boolean"}}
+			if _cMatch {
+				if _, _cbOk := _cElem.(bool); !_cbOk {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "null"}}
+			if _cMatch {
+				if _cElem != nil {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "array"}}
+			if _cMatch {
+				if _, _caOk := _cElem.([]any); !_caOk {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "object"}}
+			if _cMatch {
+				if _, _coOk := _cElem.(map[string]any); !_coOk {
+					_cMatch = false
+				}
+			}
+			{{- end}}
+			{{- else if eq .CheckType "minimum"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk || _cf < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maximum"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk || _cf > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMinimum"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk || _cf <= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMaximum"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk || _cf >= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "multipleOf"}}
+			if _cMatch {
+				_cf, _cfOk := _cElem.(float64)
+				if !_cfOk {
+					_cMatch = false
+				} else {
+					_cq := _cf / {{.Value}}
+					if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+						_cMatch = false
+					}
+				}
+			}
+			{{- end}}
+			{{- end}}
+			if _cMatch {
+				_containsCount++
+			}
+		}
+		{{- end}}
+		{{- if and .MinContains (eq (deref .MinContains) 0)}}
+		{{- /* minContains=0 means contains always passes for minContains check */}}
+		{{- else if .MinContains}}
+		if _containsCount < {{deref .MinContains}} {
+			return fmt.Errorf("contains: %d matching elements, minimum is {{deref .MinContains}}", _containsCount)
+		}
+		{{- else}}
+		if _containsCount < 1 {
+			return fmt.Errorf("contains: no element matches the contains schema")
+		}
+		{{- end}}
+		{{- if .MaxContains}}
+		if _containsCount > {{deref .MaxContains}} {
+			return fmt.Errorf("contains: %d matching elements, maximum is {{deref .MaxContains}}", _containsCount)
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
 	return nil
 }
 {{- end}}

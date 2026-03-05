@@ -441,15 +441,78 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if $struct.HasDependentSchemas}}
-	// dependentSchemas: when a trigger key is present, only the allowed keys are valid.
-	{{- range $struct.DependentSchemas}}
-	if {{$recv}}._jsonKeys[{{printf "%q" .TriggerKey}}] {
-		allowedKeys := map[string]bool{ {{- range .AllowedKeys}}{{printf "%q" .}}: true, {{end -}} }
-		for k := range {{$recv}}._jsonKeys {
-			if !allowedKeys[k] {
-				return fmt.Errorf("dependentSchema %q: property %q is not allowed", {{printf "%q" .TriggerKey}}, k)
+	// dependentSchemas: when a trigger key is present, validate against the dependent sub-schema.
+	{{- range $dep := $struct.DependentSchemas}}
+	if {{$recv}}._jsonKeys[{{printf "%q" $dep.TriggerKey}}] {
+		{{- if $dep.IsFalse}}
+		return fmt.Errorf("dependentSchema %q: schema is false, object with this property is always invalid", {{printf "%q" $dep.TriggerKey}})
+		{{- end}}
+		{{- if $dep.AllowedKeys}}
+		{
+			_allowedKeys := map[string]bool{ {{- range $dep.AllowedKeys}}{{printf "%q" .}}: true, {{end -}} }
+			for _k := range {{$recv}}._jsonKeys {
+				if !_allowedKeys[_k] {
+					return fmt.Errorf("dependentSchema %q: property %q is not allowed", {{printf "%q" $dep.TriggerKey}}, _k)
+				}
 			}
 		}
+		{{- end}}
+		{{- if $dep.RequiredProps}}
+		{{- range $dep.RequiredProps}}
+		if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+			return fmt.Errorf("dependentSchema %q: property %q is required", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" .}})
+		}
+		{{- end}}
+		{{- end}}
+		{{- if $dep.MinProperties}}
+		if len({{$recv}}._jsonKeys) < {{deref $dep.MinProperties}} {
+			return fmt.Errorf("dependentSchema %q: has %d properties, minimum is {{deref $dep.MinProperties}}", {{printf "%q" $dep.TriggerKey}}, len({{$recv}}._jsonKeys))
+		}
+		{{- end}}
+		{{- if $dep.MaxProperties}}
+		if len({{$recv}}._jsonKeys) > {{deref $dep.MaxProperties}} {
+			return fmt.Errorf("dependentSchema %q: has %d properties, maximum is {{deref $dep.MaxProperties}}", {{printf "%q" $dep.TriggerKey}}, len({{$recv}}._jsonKeys))
+		}
+		{{- end}}
+		{{- if $dep.PropertyTypes}}
+		{{- range $pt := $dep.PropertyTypes}}
+		if _raw, _ok := {{$recv}}.AdditionalProperties[{{printf "%q" $pt.PropName}}]; _ok {
+			var _v any
+			if _dErr := json.Unmarshal(_raw, &_v); _dErr == nil {
+				{{- if eq $pt.JSONType "integer"}}
+				_f, _fOk := _v.(float64)
+				if !_fOk || _f != math.Trunc(_f) {
+					return fmt.Errorf("dependentSchema %q: property %q: expected integer", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "number"}}
+				if _, _fOk := _v.(float64); !_fOk {
+					return fmt.Errorf("dependentSchema %q: property %q: expected number", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "string"}}
+				if _, _sOk := _v.(string); !_sOk {
+					return fmt.Errorf("dependentSchema %q: property %q: expected string", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "boolean"}}
+				if _, _bOk := _v.(bool); !_bOk {
+					return fmt.Errorf("dependentSchema %q: property %q: expected boolean", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "null"}}
+				if _v != nil {
+					return fmt.Errorf("dependentSchema %q: property %q: expected null", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "array"}}
+				if _, _aOk := _v.([]any); !_aOk {
+					return fmt.Errorf("dependentSchema %q: property %q: expected array", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- else if eq $pt.JSONType "object"}}
+				if _, _oOk := _v.(map[string]any); !_oOk {
+					return fmt.Errorf("dependentSchema %q: property %q: expected object", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
+				}
+				{{- end}}
+			}
+		}
+		{{- end}}
+		{{- end}}
 	}
 	{{- end}}
 	{{- end}}
@@ -464,6 +527,41 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
+	{{- end}}
+	{{- if $struct.HasPropertyNames}}
+	// propertyNames: validate that all property names satisfy the constraint.
+	for _pnKey := range {{$recv}}._jsonKeys {
+		{{- if $struct.PropertyNames.IsForbidden}}
+		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+		{{- end}}
+		{{- if $struct.PropertyNames.MaxLength}}
+		if utf8.RuneCountInString(_pnKey) > {{deref $struct.PropertyNames.MaxLength}} {
+			return fmt.Errorf("propertyNames: property name %q exceeds maxLength {{deref $struct.PropertyNames.MaxLength}}", _pnKey)
+		}
+		{{- end}}
+		{{- if $struct.PropertyNames.MinLength}}
+		if utf8.RuneCountInString(_pnKey) < {{deref $struct.PropertyNames.MinLength}} {
+			return fmt.Errorf("propertyNames: property name %q is shorter than minLength {{deref $struct.PropertyNames.MinLength}}", _pnKey)
+		}
+		{{- end}}
+		{{- if $struct.PropertyNames.Pattern}}
+		if !ecma262.MustCompile({{printf "%q" $struct.PropertyNames.Pattern}}, ecmaflags.Unicode).MatchString(_pnKey) {
+			return fmt.Errorf("propertyNames: property name %q does not match pattern %q", _pnKey, {{printf "%q" $struct.PropertyNames.Pattern}})
+		}
+		{{- end}}
+		{{- if $struct.PropertyNames.Enum}}
+		{
+			_pnAllowed := map[string]bool{
+				{{- range $struct.PropertyNames.Enum}}
+				{{printf "%q" .}}: true,
+				{{- end}}
+			}
+			if !_pnAllowed[_pnKey] {
+				return fmt.Errorf("propertyNames: property name %q is not in the allowed set", _pnKey)
+			}
+		}
+		{{- end}}
+	}
 	{{- end}}
 	{{- if $struct.HasCousinUnevalChecks}}
 	// Cousin isolation: allOf/anyOf sub-schemas with their own unevaluatedProperties
