@@ -703,6 +703,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// Const → treat as single-element enum for validation purposes.
 	if s.Const != nil && len(s.Enum) == 0 {
 		s.Enum = []any{*s.Const}
+	} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
+		// Handle {"const": null}: Go's json.Unmarshal sets *any to nil for null,
+		// so s.Const is nil even though const was present. Use ConstIsNull flag.
+		s.Enum = []any{nil}
 	}
 
 	// Enum type
@@ -729,6 +733,43 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// allOf → merge all sub-schemas into one struct
 	if len(s.AllOf) > 0 {
 		return g.generateAllOfDef(name, s)
+	}
+
+	// anyOf/oneOf with only boolean false sub-schemas → nothing can match → forbidden.
+	if len(s.AnyOf) > 0 && !hasProperties(s) && allSubsFalse(s.AnyOf) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+	if len(s.OneOf) > 0 && !hasProperties(s) && len(s.Type) == 0 {
+		// oneOf: all false → nothing matches → forbidden.
+		// oneOf: multiple true sub-schemas → multiple match → forbidden (oneOf requires exactly one).
+		trueCount, falseCount := countBooleanSchemas(s.OneOf)
+		total := len(s.OneOf)
+		if falseCount == total {
+			// All false → nothing matches
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				IsForbidden: true,
+			})
+			return nil
+		}
+		if trueCount > 1 {
+			// More than one always-true sub-schema → always multiple matches → forbidden
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				IsForbidden: true,
+			})
+			return nil
+		}
 	}
 
 	// anyOf without properties → merge all variant properties into one struct,
@@ -1498,6 +1539,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 // When no sub-schema contributes properties, it generates an alias type
 // instead of an empty struct, using the inferred type from constraints.
 func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
+	// If any allOf sub-schema is boolean false, nothing can satisfy all constraints.
+	// Generate a forbidden type (NotSchemaDef).
+	if allOfContainsFalseSchema(s.AllOf) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+
 	// Merge all properties and required fields from allOf sub-schemas.
 	merged := &schema.Schema{
 		Title:       s.Title,
@@ -1570,6 +1623,23 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// If no sub-schema contributed properties, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
 	if len(merged.Properties) == 0 {
+		// Check for type-only merged result (null-only or multi-type like ["integer","string"]).
+		// These don't map to a single Go type, so use TypeOnlySchemaDef.
+		// We check the merged type directly rather than calling extractTypeOnlySchemaDef,
+		// because the merged schema may have allOf preserved for other purposes.
+		if len(merged.Type) > 0 {
+			pt := primarySchemaType(merged)
+			if pt == "null" || (pt == "" && len(merged.Type) > 1) {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+					Name:         name,
+					Description:  s.Description,
+					AllowedTypes: merged.Type,
+				})
+				return nil
+			}
+		}
+
 		primaryType := primarySchemaType(merged)
 		if primaryType == "" {
 			primaryType = inferTypeFromConstraints(merged)
@@ -1687,6 +1757,50 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 			g.popDynamicScope()
 		}
 	}
+}
+
+// allOfContainsFalseSchema returns true if any sub-schema in the allOf array
+// is a boolean false schema. In that case, nothing can satisfy all constraints
+// simultaneously, so the entire allOf is equivalent to false.
+func allOfContainsFalseSchema(allOf []*schema.Schema) bool {
+	for _, sub := range allOf {
+		if sub.IsFalseSchema() {
+			return true
+		}
+		// Recursively check nested allOf: {allOf: [{allOf: [false]}]}
+		if len(sub.AllOf) > 0 && allOfContainsFalseSchema(sub.AllOf) {
+			return true
+		}
+	}
+	return false
+}
+
+// allSubsFalse returns true if every sub-schema in the list is a boolean false schema.
+// Used for anyOf: if all variants are false, nothing can match.
+func allSubsFalse(subs []*schema.Schema) bool {
+	if len(subs) == 0 {
+		return false
+	}
+	for _, sub := range subs {
+		if !sub.IsFalseSchema() {
+			return false
+		}
+	}
+	return true
+}
+
+// countBooleanSchemas counts how many sub-schemas are boolean true and boolean false.
+// An empty schema {} or a schema with no constraints is treated as "always true"
+// for this purpose.
+func countBooleanSchemas(subs []*schema.Schema) (trueCount, falseCount int) {
+	for _, sub := range subs {
+		if sub.IsFalseSchema() {
+			falseCount++
+		} else if sub.IsTrueSchema() || isAcceptAllSchema(sub) {
+			trueCount++
+		}
+	}
+	return
 }
 
 // mergeConstraints propagates validation constraint fields from src into dst,
@@ -3654,12 +3768,21 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 		return false
 	}
 	// An empty schema (no constraints) matches everything.
+	// Must check ALL structural and validation keywords to avoid false positives.
 	return len(s.Type) == 0 && len(s.Properties) == 0 && s.Not == nil &&
 		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
 		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
 		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
-		len(s.Required) == 0 && s.AdditionalProperties == nil
+		len(s.Required) == 0 && s.AdditionalProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.MultipleOf == nil && s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.UniqueItems == nil && s.If == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.UnevaluatedProperties == nil && s.UnevaluatedItems == nil &&
+		s.Const == nil && !s.ConstIsNull && len(s.PatternProperties) == 0
 }
 
 // extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only

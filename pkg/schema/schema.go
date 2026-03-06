@@ -319,9 +319,10 @@ type Schema struct {
 	MultipleOf       *float64       `json:"multipleOf,omitempty"`
 
 	// Enum and const
-	Enum    []any `json:"enum,omitempty"`
-	Const   *any  `json:"const,omitempty"`
-	Default *any  `json:"default,omitempty"`
+	Enum        []any `json:"enum,omitempty"`
+	Const       *any  `json:"const,omitempty"`
+	ConstIsNull bool  `json:"-"` // true when the schema has {"const": null}; Go's json.Unmarshal leaves *any nil for null
+	Default     *any  `json:"default,omitempty"`
 
 	// Metadata
 	Title       string `json:"title,omitempty"`
@@ -450,6 +451,13 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 			s.Extensions[key] = val
 		}
 	}
+
+	// Detect {"const": null} which Go's json.Unmarshal loses (sets *any to nil,
+	// indistinguishable from "const not present").
+	if constRaw, ok := raw["const"]; ok && string(constRaw) == "null" {
+		s.ConstIsNull = true
+	}
+
 	return nil
 }
 
