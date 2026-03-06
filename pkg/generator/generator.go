@@ -132,11 +132,24 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		}
 	}
 
-	// Process the root type. This handles objects, compositions, primitive types
-	// with validation constraints, enums, arrays, and any other schema that can
-	// produce a Go type definition.
-	if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
-		return nil, fmt.Errorf("generating root type: %w", err)
+	// Boolean false schema at root level → nothing is valid. Generate a
+	// NotSchemaDef that rejects everything (same as {"not": {}}).
+	// This is only applied to the root schema; definitions with boolean
+	// false schemas are left as-is to avoid type conflicts when referenced.
+	if s.IsFalseSchema() {
+		g.generated[g.rootTypeName] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        g.rootTypeName,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+	} else {
+		// Process the root type. This handles objects, compositions, primitive types
+		// with validation constraints, enums, arrays, and any other schema that can
+		// produce a Go type definition.
+		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
+			return nil, fmt.Errorf("generating root type: %w", err)
+		}
 	}
 
 	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
@@ -426,6 +439,27 @@ func (g *Generator) addRequiredImports() {
 			needsStrings = true // strings.ContainsAny for float-format bignums
 			needsBigInt = true  // math/big for *big.Int
 		}
+		if tosd, ok := td.(*TypeOnlySchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors
+			for _, at := range tosd.AllowedTypes {
+				if at == "integer" {
+					needsMath = true // math.Trunc, math.IsInf for integer check
+				}
+			}
+		}
+		if nsd, ok := td.(*NotSchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors
+			if len(nsd.NotTypes) > 0 {
+				// Type checks for "integer" use math.Trunc and math.IsInf.
+				for _, nt := range nsd.NotTypes {
+					if nt == "integer" {
+						needsMath = true
+					}
+				}
+			}
+		}
 		if iad, ok := td.(*InferredAliasDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
 			needsFmt = true  // Validate() errors, String()
@@ -544,6 +578,28 @@ func (g *Generator) isBigIntAlias(name string) bool {
 	for _, td := range g.output.TypeDefs {
 		if td.TypeName() == name {
 			_, ok := td.(*BigIntAliasDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isNotSchema returns true if a type name was generated as a NotSchemaDef.
+func (g *Generator) isNotSchema(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*NotSchemaDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isTypeOnlySchema returns true if a type name was generated as a TypeOnlySchemaDef.
+func (g *Generator) isTypeOnlySchema(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*TypeOnlySchemaDef)
 			return ok
 		}
 	}
@@ -743,10 +799,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				}
 				return err
 			}
-			// If the ref target was generated as InferredAliasDef (a wrapper struct),
-			// creating `type Root Target` would not inherit methods. Instead, generate
-			// Root directly from the resolved schema so it gets its own methods.
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
+			// If the ref target was generated as a wrapper struct (InferredAliasDef,
+			// BigIntAliasDef, or NotSchemaDef), creating `type Root Target` would not
+			// inherit methods. Instead, generate Root directly from the resolved schema.
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
 				err := g.generateTypeDef(name, resolved)
 				if pushed {
 					g.popDynamicScope()
@@ -777,7 +833,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
 			}
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) {
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
 				return g.generateTypeDef(name, resolved)
 			}
 			g.generated[name] = true
@@ -788,6 +844,25 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			})
 			return nil
 		}
+	}
+
+	// Root-level "not" schema: generates a wrapper around json.RawMessage that
+	// validates the negated constraint. Only handles schemas where "not" is the
+	// sole meaningful keyword (no type, properties, items, etc.).
+	if notDef := extractNotSchemaDef(name, s); notDef != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, notDef)
+		return nil
+	}
+
+	// Multi-type or null-only schemas: generates a wrapper around json.RawMessage
+	// that validates the value's JSON type against the allowed types. This handles
+	// schemas like {"type": "null"}, {"type": ["integer","string"]}, etc. that
+	// don't map to a single Go type.
+	if toDef := extractTypeOnlySchemaDef(name, s); toDef != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, toDef)
+		return nil
 	}
 
 	// Simple primitive type → alias (or defined type if it has validation constraints)
@@ -3585,6 +3660,120 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
 		len(s.Required) == 0 && s.AdditionalProperties == nil
+}
+
+// extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only
+// schema that we can statically validate. Returns nil for schemas that have
+// other constraints or use complex not sub-schemas we can't handle.
+func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
+	if s.Not == nil {
+		return nil
+	}
+	// Only handle "not" as the sole constraint keyword. If the schema also has
+	// type, properties, items, allOf, etc., it should be handled by other code paths.
+	if len(s.Type) > 0 || hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.If != nil || s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		s.Minimum != nil || s.Maximum != nil || s.MinLength != nil || s.MaxLength != nil ||
+		s.Pattern != nil || s.MinItems != nil || s.MaxItems != nil ||
+		s.MinProperties != nil || s.MaxProperties != nil ||
+		s.Contains != nil || s.PropertyNames != nil ||
+		s.UnevaluatedProperties != nil || s.UnevaluatedItems != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 {
+		return nil
+	}
+
+	not := s.Not
+
+	// not: false (boolean false schema) → allow everything, no validation needed.
+	if not.IsFalseSchema() {
+		return nil
+	}
+
+	// not: {} (empty schema) or not: true → forbid everything.
+	if isAcceptAllSchema(not) || not.IsTrueSchema() {
+		return &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		}
+	}
+
+	// not: {not: {}} → double negation of accept-all = accept-all.
+	// No validation needed.
+	if not.Not != nil && isAcceptAllSchema(not.Not) {
+		return nil
+	}
+
+	// not: {type: X} or not: {type: [X, Y]} → reject values of those types.
+	if len(not.Type) > 0 && isTypeOnlySchema(not) {
+		return &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			NotTypes:    not.Type,
+		}
+	}
+
+	// Complex not sub-schema — can't handle statically.
+	return nil
+}
+
+// isTypeOnlySchema returns true if the schema has only a "type" constraint and
+// nothing else (used for not:{type:X} detection).
+func isTypeOnlySchema(s *schema.Schema) bool {
+	return len(s.Properties) == 0 && s.Not == nil &&
+		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
+		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
+		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
+		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
+		len(s.Required) == 0 && s.AdditionalProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.If == nil && s.UnevaluatedProperties == nil && s.UnevaluatedItems == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.MultipleOf == nil && s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.UniqueItems == nil
+}
+
+// extractTypeOnlySchemaDef returns a *TypeOnlySchemaDef if the schema has an
+// explicit "type" constraint with types that don't map to a single Go type
+// (multi-type arrays or null-only) and no other structural constraints.
+// Returns nil for schemas that should be handled by other code paths.
+func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef {
+	if len(s.Type) == 0 {
+		return nil
+	}
+	// Check if the type maps to a single Go type already handled elsewhere.
+	// primarySchemaType returns non-empty for single non-null types and for "null".
+	pt := primarySchemaType(s)
+	if pt != "" && pt != "null" {
+		return nil // Already handled by primitive type / object / array paths.
+	}
+	// At this point: either multi-type (pt == "") or null-only (pt == "null").
+
+	// Only handle schemas where "type" is the sole constraint keyword.
+	if hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.Not != nil || s.If != nil || s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		s.Minimum != nil || s.Maximum != nil || s.MinLength != nil || s.MaxLength != nil ||
+		s.Pattern != nil || s.MinItems != nil || s.MaxItems != nil ||
+		s.MinProperties != nil || s.MaxProperties != nil ||
+		s.Contains != nil || s.PropertyNames != nil ||
+		s.UnevaluatedProperties != nil || s.UnevaluatedItems != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.MultipleOf != nil || s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
+		s.UniqueItems != nil {
+		return nil
+	}
+
+	return &TypeOnlySchemaDef{
+		Name:         name,
+		Description:  s.Description,
+		AllowedTypes: s.Type,
+	}
 }
 
 // isNilCheckable returns true if a Go type can be compared to nil.

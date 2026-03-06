@@ -559,6 +559,33 @@ type BigIntAliasDef struct {
 func (d *BigIntAliasDef) TypeName() string { return d.Name }
 func (d *BigIntAliasDef) typeDef()         {}
 
+// NotSchemaDef represents a schema whose only constraint is a root-level "not".
+// It generates a wrapper struct around json.RawMessage that validates the negated
+// constraint. The generated type accepts any JSON value and rejects those that
+// match the not sub-schema.
+type NotSchemaDef struct {
+	Name        string
+	Description string
+	IsForbidden bool     // not:{} or not:true — reject everything
+	NotTypes    []string // not:{type:X} — reject values of these JSON types
+}
+
+func (d *NotSchemaDef) TypeName() string { return d.Name }
+func (d *NotSchemaDef) typeDef()         {}
+
+// TypeOnlySchemaDef represents a schema whose sole constraint is a "type" field
+// with types that don't map to a single Go type (e.g., "null", ["integer","string"],
+// ["array","object","null"]). It generates a wrapper around json.RawMessage that
+// validates the value's JSON type against the allowed types.
+type TypeOnlySchemaDef struct {
+	Name         string
+	Description  string
+	AllowedTypes []string // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+}
+
+func (d *TypeOnlySchemaDef) TypeName() string { return d.Name }
+func (d *TypeOnlySchemaDef) typeDef()         {}
+
 // ---------- File ----------
 
 // File represents a generated Go source file.

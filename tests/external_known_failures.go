@@ -141,6 +141,9 @@ var knownValidationFailures = map[string]string{
 	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
 
+	// disallow with inline sub-schema: only string type elements are normalized, not inline schemas
+	"draft3/disallow/multiple disallow subschema/other mismatch": "disallow: inline schema objects in disallow array not supported",
+
 	// ($ref percent-encoding — FIXED via URI fragment percent-decoding in LocalResolver)
 
 	// =========================================================================

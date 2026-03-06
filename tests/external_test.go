@@ -236,8 +236,13 @@ func loadTestGroups(t *testing.T, path string) []jstsTestGroup {
 // All JSON object schemas are suitable. Boolean schemas (true/false) are not.
 func isCodeGenSuitable(schemaJSON json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(schemaJSON))
-	if trimmed == "true" || trimmed == "false" {
+	if trimmed == "true" {
+		// Boolean true schema accepts everything — no validation possible.
 		return false
+	}
+	if trimmed == "false" {
+		// Boolean false schema rejects everything — generates a forbidden type.
+		return true
 	}
 	// Any JSON object schema can produce a type definition (struct, alias, enum, etc.).
 	return len(trimmed) > 0 && trimmed[0] == '{'
@@ -545,7 +550,13 @@ func main() {
 // is found (not an error, just a skip condition).
 func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt bool) (string, error) {
 	var s schema.Schema
-	if err := json.Unmarshal(schemaJSON, &s); err != nil {
+	// Handle boolean false schema: "false" is not a JSON object, so we construct
+	// the Schema struct manually with BooleanSchema set to false.
+	trimmed := strings.TrimSpace(string(schemaJSON))
+	if trimmed == "false" {
+		boolVal := false
+		s.BooleanSchema = &boolVal
+	} else if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return "", fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
