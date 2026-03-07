@@ -7,9 +7,81 @@ import (
 	"fmt"
 )
 
+type SearchResultResult struct {
+	Description          string                     `json:"description,omitempty"`
+	Name                 string                     `json:"name,omitempty"`
+	Title                string                     `json:"title,omitempty"`
+	URL                  string                     `json:"url,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+}
+
+func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type SearchResultResult")
+	}
+	type Alias SearchResultResult
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"description": true,
+			"name":        true,
+			"title":       true,
+			"url":         true,
+		}
+		for k, v := range raw {
+			if knownFields[k] {
+				continue
+			}
+			if s.AdditionalProperties == nil {
+				s.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			s.AdditionalProperties[k] = v
+		}
+	}
+
+	return nil
+}
+func (s SearchResultResult) MarshalJSON() ([]byte, error) {
+	type Alias SearchResultResult
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(s),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range s.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
+}
+
+// Validate checks SearchResultResult against its JSON Schema constraints.
+func (s SearchResultResult) Validate() error {
+	return nil
+}
+
 type SearchResult struct {
 	ID                   string                     `json:"id"`
-	Result               any                        `json:"result,omitempty"`
+	Result               SearchResultResult         `json:"result,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -80,5 +152,8 @@ func (s SearchResult) MarshalJSON() ([]byte, error) {
 
 // Validate checks SearchResult against its JSON Schema constraints.
 func (s SearchResult) Validate() error {
+	if err := s.Result.Validate(); err != nil {
+		return err
+	}
 	return nil
 }

@@ -211,6 +211,13 @@ func filenameWithoutExt(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
+// isBignumFile returns true if the file path is for tests that require BigIntSupport.
+// This includes optional/bignum.json (arbitrary-precision integers) and
+// optional/float-overflow.json (1e308 overflows int64 but fits in big.Int).
+func isBignumFile(file string) bool {
+	return strings.Contains(file, "optional/bignum") || strings.Contains(file, "optional/float-overflow")
+}
+
 // loadTestGroups reads and parses a JSTS test file.
 func loadTestGroups(t *testing.T, path string) []jstsTestGroup {
 	t.Helper()
@@ -229,8 +236,13 @@ func loadTestGroups(t *testing.T, path string) []jstsTestGroup {
 // All JSON object schemas are suitable. Boolean schemas (true/false) are not.
 func isCodeGenSuitable(schemaJSON json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(schemaJSON))
-	if trimmed == "true" || trimmed == "false" {
+	if trimmed == "true" {
+		// Boolean true schema accepts everything — no validation possible.
 		return false
+	}
+	if trimmed == "false" {
+		// Boolean false schema rejects everything — generates a forbidden type.
+		return true
 	}
 	// Any JSON object schema can produce a type definition (struct, alias, enum, etc.).
 	return len(trimmed) > 0 && trimmed[0] == '{'
@@ -313,6 +325,43 @@ func extractRootTypeNameFromCode(code string) string {
 	return lastType
 }
 
+// ephemeralCacheDir holds a per-process temporary GOCACHE directory that is
+// cleaned up at process exit. Using a shared ephemeral cache (instead of the
+// user's persistent ~/.cache/go-build) prevents the ~14,000 unique compilations
+// from bloating the build cache by hundreds of gigabytes.
+var ephemeralCacheDir string
+
+func init() {
+	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
+	if err != nil {
+		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
+	}
+	ephemeralCacheDir = dir
+}
+
+// TestMain cleans up the ephemeral cache directory after all tests finish.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if ephemeralCacheDir != "" {
+		os.RemoveAll(ephemeralCacheDir)
+	}
+	os.Exit(code)
+}
+
+// ephemeralCacheEnv returns a copy of the current environment with GOCACHE
+// pointed at an ephemeral temporary directory. This prevents external go
+// build/run invocations from bloating the user's persistent build cache —
+// each test compiles unique generated code that will never be reused.
+func ephemeralCacheEnv() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GOCACHE=") {
+			env = append(env, e)
+		}
+	}
+	return append(env, "GOCACHE="+ephemeralCacheDir)
+}
+
 // tryParse attempts to parse a JSTS schema into our schema.Schema type.
 func tryParse(schemaJSON json.RawMessage) error {
 	// Handle boolean schemas
@@ -331,14 +380,14 @@ func tryParse(schemaJSON json.RawMessage) error {
 }
 
 // tryGenerateAndCompile attempts the full pipeline: parse → generate IR → emit → compile.
-func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver) error {
+func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -373,6 +422,7 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "build", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compile: %s\n%s", err, string(output))
@@ -381,14 +431,14 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 }
 
 // tryRoundTrip attempts the full round-trip: parse → generate → compile → unmarshal → marshal → compare.
-func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver) error {
+func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -433,6 +483,7 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("round-trip: %s\n%s", err, string(output))
@@ -497,14 +548,20 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt bool) (string, error) {
 	var s schema.Schema
-	if err := json.Unmarshal(schemaJSON, &s); err != nil {
+	// Handle boolean false schema: "false" is not a JSON object, so we construct
+	// the Schema struct manually with BooleanSchema set to false.
+	trimmed := strings.TrimSpace(string(schemaJSON))
+	if trimmed == "false" {
+		boolVal := false
+		s.BooleanSchema = &boolVal
+	} else if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return "", fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -559,6 +616,7 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "run", ".")
 	cmd.Dir = tmpDir
+	cmd.Env = ephemeralCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("run: %s\n%s", err, string(output))
@@ -629,7 +687,7 @@ func TestExternalCodeGen(t *testing.T) {
 						}
 						t.Run(group.Description, func(t *testing.T) {
 							key := failureKey(draft, filenameWithoutExt(file), group.Description)
-							err := tryGenerateAndCompile(group.Schema, resolver)
+							err := tryGenerateAndCompile(group.Schema, resolver, isBignumFile(file))
 							checkKnownFailure(t, key, err, knownCodeGenFailures)
 						})
 					}
@@ -676,7 +734,7 @@ func TestExternalRoundTrip(t *testing.T) {
 							for _, tc := range validTests {
 								t.Run(tc.Description, func(t *testing.T) {
 									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
-									err := tryRoundTrip(group.Schema, tc.Data, resolver)
+									err := tryRoundTrip(group.Schema, tc.Data, resolver, isBignumFile(file))
 									checkKnownFailure(t, key, err, knownRoundTripFailures)
 								})
 							}
@@ -725,7 +783,7 @@ func TestExternalValidation(t *testing.T) {
 						totalGroups++
 
 						// Generate code once per group.
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft))
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file))
 
 						if cgErr != nil {
 							skippedCG++

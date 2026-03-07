@@ -38,6 +38,7 @@ func FuncMap() template.FuncMap {
 		"goStringQuote":      goStringQuoteFunc,
 		"hasManualFields":    hasManualFieldsFunc,
 		"ppTypeValue":        ppTypeValueFunc,
+		"deref":              derefIntFunc,
 	}
 }
 
@@ -158,6 +159,15 @@ func ppTypeValueFunc(v any) string {
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// derefIntFunc dereferences an *int pointer for use in templates.
+// Returns 0 if the pointer is nil.
+func derefIntFunc(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

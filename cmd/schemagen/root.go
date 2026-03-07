@@ -30,6 +30,7 @@ func newGenerateCmd() *cobra.Command {
 		pkgName          string
 		omitEmpty        bool
 		strictProperties bool
+		bigInt           bool
 		verbose          bool
 	)
 
@@ -68,6 +69,7 @@ func newGenerateCmd() *cobra.Command {
 					OutputDir:        outputDir,
 					OmitEmpty:        omitEmpty,
 					StrictProperties: strictProperties,
+					BigIntSupport:    bigInt,
 					Resolver:         resolver,
 				}
 				gen := generator.New(cfg)
@@ -111,6 +113,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&pkgName, "package", "p", "generated", "Go package name for generated code")
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false (no overflow map for extra JSON keys)")
+	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd

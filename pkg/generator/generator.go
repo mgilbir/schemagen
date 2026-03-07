@@ -13,29 +13,38 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config       Config
-	output       *File
-	generated    map[string]bool // track already-generated type names
-	defs         map[string]*schema.Schema
-	rootTypeName string                // Go type name for the root schema
-	rootID       string                // $id of the root schema (for detecting self-references)
-	anchors      map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
-	resolver     schema.SchemaResolver // external resolver for non-local refs
-	baseURI      *url.URL              // base URI for the root document (from $id or file path)
-	rootSchema   *schema.Schema        // the root schema for local ref resolution
-	draft        schema.Draft          // detected draft version of the root schema
+	config         Config
+	output         *File
+	generated      map[string]bool // track already-generated type names
+	generating     map[string]bool // track types currently being generated (recursion guard)
+	defs           map[string]*schema.Schema
+	rootTypeName   string                // Go type name for the root schema
+	rootID         string                // $id of the root schema (for detecting self-references)
+	anchors        map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
+	dynamicAnchors map[string]string     // $dynamicAnchor name → def ref path (e.g., "#items" → "#/$defs/items")
+	resolver       schema.SchemaResolver // external resolver for non-local refs
+	baseURI        *url.URL              // base URI for the root document (from $id or file path)
+	rootSchema     *schema.Schema        // the root schema for local ref resolution
+	draft          schema.Draft          // detected draft version of the root schema
 
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
 	// within it resolves against that subschema, not the top-level root.
 	documentRoots map[string]*schema.Schema
+
+	// dynamicScope tracks the stack of document roots entered via $ref during
+	// code generation. This enables $dynamicRef to resolve against the dynamic
+	// scope chain (walking from outermost to innermost) rather than only the
+	// local document scope. The root schema's document root is always at index 0.
+	dynamicScope []*schema.Schema
 }
 
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
 	return &Generator{
-		config:    cfg,
-		generated: make(map[string]bool),
+		config:     cfg,
+		generated:  make(map[string]bool),
+		generating: make(map[string]bool),
 	}
 }
 
@@ -45,6 +54,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		PackageName: g.config.PackageName,
 	}
 	g.generated = make(map[string]bool)
+	g.generating = make(map[string]bool)
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -81,15 +91,23 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
 
+	// Initialize dynamic scope with the root document root.
+	g.dynamicScope = []*schema.Schema{s}
+
 	// Collect definitions ($defs and definitions) and build anchor index.
+	// Iterate in sorted key order for deterministic anchor registration
+	// (important when multiple defs declare the same $anchor in different scopes).
 	g.defs = make(map[string]*schema.Schema)
 	g.anchors = make(map[string]string)
-	for name, def := range s.Defs {
+	g.dynamicAnchors = make(map[string]string)
+	for _, name := range sortedKeys(s.Defs) {
+		def := s.Defs[name]
 		refPath := "#/$defs/" + name
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
 	}
-	for name, def := range s.Definitions {
+	for _, name := range sortedKeys(s.Definitions) {
+		def := s.Definitions[name]
 		refPath := "#/definitions/" + name
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
@@ -114,11 +132,24 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		}
 	}
 
-	// Process the root type. This handles objects, compositions, primitive types
-	// with validation constraints, enums, arrays, and any other schema that can
-	// produce a Go type definition.
-	if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
-		return nil, fmt.Errorf("generating root type: %w", err)
+	// Boolean false schema at root level → nothing is valid. Generate a
+	// NotSchemaDef that rejects everything (same as {"not": {}}).
+	// This is only applied to the root schema; definitions with boolean
+	// false schemas are left as-is to avoid type conflicts when referenced.
+	if s.IsFalseSchema() {
+		g.generated[g.rootTypeName] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        g.rootTypeName,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+	} else {
+		// Process the root type. This handles objects, compositions, primitive types
+		// with validation constraints, enums, arrays, and any other schema that can
+		// produce a Go type definition.
+		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
+			return nil, fmt.Errorf("generating root type: %w", err)
+		}
 	}
 
 	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
@@ -143,6 +174,8 @@ func (g *Generator) addRequiredImports() {
 	needsMath := false
 	needsUTF8 := false
 	needsBytes := false
+	needsStrings := false
+	needsBigInt := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -254,6 +287,27 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+				for _, ds := range sd.DependentSchemas {
+					for _, pt := range ds.PropertyTypes {
+						if pt.JSONType == "integer" {
+							needsMath = true // math.Trunc for integer type check
+						}
+					}
+				}
+			}
+			if len(sd.DependentRequired) > 0 {
+				needsFmt = true  // Validate() uses fmt.Errorf for dependentRequired errors
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+			}
+			if sd.PropertyNames != nil {
+				needsFmt = true  // Validate() uses fmt.Errorf for propertyNames errors
+				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
+				if sd.PropertyNames.MaxLength != nil || sd.PropertyNames.MinLength != nil {
+					needsUTF8 = true
+				}
+				if sd.PropertyNames.Pattern != "" {
+					needsRegexp = true // pattern uses ecma262
+				}
 			}
 			if sd.UnevaluatedProperties != nil && !sd.UnevaluatedProperties.IsAllowed && !sd.UnevaluatedProperties.AllEvaluated {
 				needsFmt = true // Validate() uses fmt.Errorf for unevaluated property errors
@@ -272,6 +326,37 @@ func (g *Generator) addRequiredImports() {
 					}
 					if v.RuleType == "multipleOf" {
 						needsMath = true
+					}
+				}
+				// Conditional evals may need JSON for const checks and regexp for patterns.
+				for _, ce := range sd.UnevaluatedProperties.ConditionalEvals {
+					if ce.IfBranch != nil && len(ce.IfBranch.ConstChecks) > 0 {
+						needsJSON = true
+					}
+					for _, b := range ce.Branches {
+						if len(b.Patterns) > 0 {
+							needsRegexp = true
+						}
+						if len(b.ConstChecks) > 0 {
+							needsJSON = true
+						}
+					}
+					if ce.ThenBranch != nil && len(ce.ThenBranch.Patterns) > 0 {
+						needsRegexp = true
+					}
+					if ce.ElseBranch != nil && len(ce.ElseBranch.Patterns) > 0 {
+						needsRegexp = true
+					}
+					if ce.Branch != nil && len(ce.Branch.Patterns) > 0 {
+						needsRegexp = true
+					}
+				}
+			}
+			if len(sd.CousinUnevalChecks) > 0 {
+				needsFmt = true // Validate() uses fmt.Errorf for cousin isolation errors
+				for _, c := range sd.CousinUnevalChecks {
+					if len(c.EvalPatterns) > 0 {
+						needsRegexp = true
 					}
 				}
 			}
@@ -300,6 +385,11 @@ func (g *Generator) addRequiredImports() {
 			if ad.NeedsNullCheck && ad.CanHaveMethods() {
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal
 				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
+			}
+			if ad.IsIntegerType() && ad.CanHaveMethods() {
+				needsJSON = true // UnmarshalJSON uses json.Number
+				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
+				needsMath = true // UnmarshalJSON uses math.Trunc, math.IsInf
 			}
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
@@ -342,6 +432,104 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if _, ok := td.(*BigIntAliasDef); ok {
+			needsJSON = true    // UnmarshalJSON, MarshalJSON
+			needsFmt = true     // Validate() errors, String()
+			needsMath = true    // math.Trunc, math.IsInf
+			needsStrings = true // strings.ContainsAny for float-format bignums
+			needsBigInt = true  // math/big for *big.Int
+		}
+		if tosd, ok := td.(*TypeOnlySchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors
+			for _, at := range tosd.AllowedTypes {
+				if at == "integer" {
+					needsMath = true // math.Trunc, math.IsInf for integer check
+				}
+			}
+		}
+		if nsd, ok := td.(*NotSchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors
+			if len(nsd.NotTypes) > 0 {
+				// Type checks for "integer" use math.Trunc and math.IsInf.
+				for _, nt := range nsd.NotTypes {
+					if nt == "integer" {
+						needsMath = true
+					}
+				}
+			}
+		}
+		if iad, ok := td.(*InferredAliasDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
+			needsFmt = true  // Validate() errors, String()
+			for _, v := range iad.Validations {
+				if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+					needsUTF8 = true
+				}
+				if v.RuleType == "pattern" {
+					needsRegexp = true
+				}
+				if v.RuleType == "multipleOf" {
+					needsMath = true
+				}
+			}
+			for _, variant := range iad.AnyOfVariants {
+				for _, v := range variant {
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+			for _, variant := range iad.OneOfVariants {
+				for _, v := range variant {
+					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+						needsUTF8 = true
+					}
+					if v.RuleType == "pattern" {
+						needsRegexp = true
+					}
+					if v.RuleType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+			// Item-level validation may need math.Trunc for integer checks.
+			if iad.ItemsType == "integer" || iad.AdditionalItemsType == "integer" {
+				needsMath = true
+			}
+			for _, ti := range iad.TupleItems {
+				if ti.JSONType == "integer" {
+					needsMath = true
+				}
+			}
+			// Items checks imports.
+			for _, chk := range iad.ItemsChecks {
+				if chk.CheckType == "multipleOf" {
+					needsMath = true
+				}
+				if chk.CheckType == "type" && chk.Value == "integer" {
+					needsMath = true
+				}
+			}
+			// Contains validation imports.
+			if iad.Contains != nil {
+				if iad.Contains.ConstJSON != "" {
+					needsJSON = true // json.Marshal for per-element comparison
+				}
+				for _, chk := range iad.Contains.Checks {
+					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
+		}
 	}
 
 	if needsJSON {
@@ -366,6 +554,56 @@ func (g *Generator) addRequiredImports() {
 	if needsBytes {
 		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
 	}
+	if needsStrings {
+		g.output.Imports = append(g.output.Imports, Import{Path: "strings"})
+	}
+	if needsBigInt {
+		g.output.Imports = append(g.output.Imports, Import{Path: "math/big"})
+	}
+}
+
+// isInferredAlias returns true if a type name was generated as an InferredAliasDef.
+func (g *Generator) isInferredAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*InferredAliasDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isBigIntAlias returns true if a type name was generated as a BigIntAliasDef.
+func (g *Generator) isBigIntAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*BigIntAliasDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isNotSchema returns true if a type name was generated as a NotSchemaDef.
+func (g *Generator) isNotSchema(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*NotSchemaDef)
+			return ok
+		}
+	}
+	return false
+}
+
+// isTypeOnlySchema returns true if a type name was generated as a TypeOnlySchemaDef.
+func (g *Generator) isTypeOnlySchema(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*TypeOnlySchemaDef)
+			return ok
+		}
+	}
+	return false
 }
 
 // resolveAliasMethodability walks all AliasDefs and sets NoMethods=true
@@ -462,14 +700,76 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// Const → treat as single-element enum for validation purposes.
+	if s.Const != nil && len(s.Enum) == 0 {
+		s.Enum = []any{*s.Const}
+	} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
+		// Handle {"const": null}: Go's json.Unmarshal sets *any to nil for null,
+		// so s.Const is nil even though const was present. Use ConstIsNull flag.
+		s.Enum = []any{nil}
+	}
+
 	// Enum type
 	if len(s.Enum) > 0 {
 		return g.generateEnumDef(name, s)
 	}
 
+	// In draft2019-09+, $ref is an applicator that works alongside sibling keywords.
+	// When a schema has both $ref and structural keywords (properties, patternProperties,
+	// unevaluatedProperties, additionalProperties), synthesize an implicit allOf so both
+	// the $ref target and local keywords are merged into a single struct.
+	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil) {
+		refSub := &schema.Schema{
+			Ref:          s.Ref,
+			BaseURI:      s.BaseURI,
+			DocumentRoot: s.DocumentRoot,
+		}
+		synth := *s // shallow copy
+		synth.Ref = ""
+		synth.AllOf = append([]*schema.Schema{refSub}, synth.AllOf...)
+		return g.generateAllOfDef(name, &synth)
+	}
+
 	// allOf → merge all sub-schemas into one struct
 	if len(s.AllOf) > 0 {
 		return g.generateAllOfDef(name, s)
+	}
+
+	// anyOf/oneOf with only boolean false sub-schemas → nothing can match → forbidden.
+	if len(s.AnyOf) > 0 && !hasProperties(s) && allSubsFalse(s.AnyOf) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+	if len(s.OneOf) > 0 && !hasProperties(s) && len(s.Type) == 0 {
+		// oneOf: all false → nothing matches → forbidden.
+		// oneOf: multiple true sub-schemas → multiple match → forbidden (oneOf requires exactly one).
+		trueCount, falseCount := countBooleanSchemas(s.OneOf)
+		total := len(s.OneOf)
+		if falseCount == total {
+			// All false → nothing matches
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				IsForbidden: true,
+			})
+			return nil
+		}
+		if trueCount > 1 {
+			// More than one always-true sub-schema → always multiple matches → forbidden
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				IsForbidden: true,
+			})
+			return nil
+		}
 	}
 
 	// anyOf without properties → merge all variant properties into one struct,
@@ -527,14 +827,31 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
-	// Ref only → alias (handles $ref, $recursiveRef, $dynamicRef)
+	// Ref only → alias (handles $ref, $recursiveRef)
 	if effRef := s.EffectiveRef(); effRef != "" {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
+			pushed := g.pushDynamicScope(resolved)
 			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 			// Generate the referenced type definition (e.g., for remote $ref targets).
 			if err := g.generateTypeDef(refName, resolved); err != nil {
+				if pushed {
+					g.popDynamicScope()
+				}
 				return err
+			}
+			// If the ref target was generated as a wrapper struct (InferredAliasDef,
+			// BigIntAliasDef, or NotSchemaDef), creating `type Root Target` would not
+			// inherit methods. Instead, generate Root directly from the resolved schema.
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
+				err := g.generateTypeDef(name, resolved)
+				if pushed {
+					g.popDynamicScope()
+				}
+				return err
+			}
+			if pushed {
+				g.popDynamicScope()
 			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -546,25 +863,98 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
+	// $dynamicRef with fragment-only ref → resolve via dynamic scope chain.
+	// Plain name fragments (like "#items") resolve via $dynamicAnchor with scope walking.
+	// JSON pointer fragments (like "#/$defs/foo") resolve identically to $ref.
+	// URI-based $dynamicRef (like "extended#meta") left for future work.
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
+		resolved := g.resolveDynamicRef(s.DynamicRef, s)
+		if resolved != nil {
+			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
+			if err := g.generateTypeDef(refName, resolved); err != nil {
+				return err
+			}
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
+				return g.generateTypeDef(name, resolved)
+			}
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:        name,
+				Underlying:  &NamedType{Name: refName},
+				Description: s.Description,
+			})
+			return nil
+		}
+	}
+
+	// Root-level "not" schema: generates a wrapper around json.RawMessage that
+	// validates the negated constraint. Only handles schemas where "not" is the
+	// sole meaningful keyword (no type, properties, items, etc.).
+	if notDef := extractNotSchemaDef(name, s); notDef != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, notDef)
+		return nil
+	}
+
+	// Multi-type or null-only schemas: generates a wrapper around json.RawMessage
+	// that validates the value's JSON type against the allowed types. This handles
+	// schemas like {"type": "null"}, {"type": ["integer","string"]}, etc. that
+	// don't map to a single Go type.
+	if toDef := extractTypeOnlySchemaDef(name, s); toDef != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, toDef)
+		return nil
+	}
+
 	// Simple primitive type → alias (or defined type if it has validation constraints)
 	// When no explicit type is declared, infer from constraint keywords.
 	primaryType := primarySchemaType(s)
+	isInferred := false
 	if primaryType == "" {
 		primaryType = inferTypeFromConstraints(s)
+		if primaryType != "" {
+			isInferred = true
+		}
 	}
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
 		rules := extractAliasValidationRules(s, goType)
 		anyOfVariants := extractAnyOfVariantRules(s, goType)
+		oneOfVariants := extractOneOfVariantRules(s, goType)
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:           name,
-			Underlying:     goType,
-			Description:    s.Description,
-			Validations:    rules,
-			AnyOfVariants:  anyOfVariants,
-			NeedsNullCheck: !schemaAllowsNull(s),
-		})
+		if isInferred {
+			// Type was inferred from constraints — generate wrapper struct that
+			// accepts any JSON value but validates only matching types.
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:             name,
+				Description:      s.Description,
+				InferredGoType:   goType,
+				InferredJSONType: primaryType,
+				Validations:      rules,
+				AnyOfVariants:    anyOfVariants,
+				OneOfVariants:    oneOfVariants,
+				NeedsNullCheck:   !schemaAllowsNull(s),
+			})
+		} else if g.config.BigIntSupport && primaryType == "integer" {
+			// BigInt support: generate wrapper struct with int64 + *big.Int.
+			g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
+				Name:           name,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(s),
+			})
+		} else {
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				NeedsNullCheck: !schemaAllowsNull(s),
+			})
+		}
 		return nil
 	}
 
@@ -577,16 +967,54 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
 		// will short-circuit and not cause infinite recursion.
 		g.generated[name] = true
-		tupleItems := g.buildTupleItemDefs(s, name)
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:           name,
-			Underlying:     goType,
-			Description:    s.Description,
-			Validations:    rules,
-			AnyOfVariants:  anyOfVariants,
-			TupleItems:     tupleItems,
-			NeedsNullCheck: !schemaAllowsNull(s),
-		})
+		if isInferred {
+			// Inferred array type — wrapper struct for non-array fallback.
+			// Extract item-level validation constraints.
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
+			// Extract contains/minContains/maxContains constraints.
+			containsDef, minContains, maxContains := extractContainsDef(s)
+			// When item-level or contains validation is needed, force GoType to []any so that
+			// json.Unmarshal accepts any array (per-element validation in Validate()).
+			// If the typed array (e.g., []int64) were used, unmarshal would fail
+			// entirely on mixed-type arrays, masking per-element errors.
+			inferredGoType := goType
+			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
+				len(itemsChecks) > 0 ||
+				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
+				containsDef != nil {
+				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
+			}
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:                 name,
+				Description:          s.Description,
+				InferredGoType:       inferredGoType,
+				InferredJSONType:     primaryType,
+				Validations:          rules,
+				AnyOfVariants:        anyOfVariants,
+				NeedsNullCheck:       !schemaAllowsNull(s),
+				ItemsFalse:           itemsFalse,
+				ItemsType:            itemsType,
+				ItemsTypeName:        itemsTypeName,
+				ItemsChecks:          itemsChecks,
+				TupleItems:           tupleItems,
+				AdditionalItemsFalse: addlItemsFalse,
+				AdditionalItemsType:  addlItemsType,
+				Contains:             containsDef,
+				MinContains:          minContains,
+				MaxContains:          maxContains,
+			})
+		} else {
+			tupleItems := g.buildTupleItemDefs(s, name)
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:           name,
+				Underlying:     goType,
+				Description:    s.Description,
+				Validations:    rules,
+				AnyOfVariants:  anyOfVariants,
+				TupleItems:     tupleItems,
+				NeedsNullCheck: !schemaAllowsNull(s),
+			})
+		}
 		return nil
 	}
 
@@ -633,10 +1061,45 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			requiredJSON = s.Required
 			needsUnmarshal = true
 		}
+		// Extract dependentRequired constraints.
+		var depRequired []DependentRequiredDef
+		for trigger, deps := range s.DependentRequired {
+			if len(deps) > 0 {
+				sorted := make([]string, len(deps))
+				copy(sorted, deps)
+				sort.Strings(sorted)
+				depRequired = append(depRequired, DependentRequiredDef{
+					TriggerKey: trigger,
+					Required:   sorted,
+				})
+			}
+		}
+		sort.Slice(depRequired, func(i, j int) bool {
+			return depRequired[i].TriggerKey < depRequired[j].TriggerKey
+		})
+		if len(depRequired) > 0 {
+			needsUnmarshal = true
+		}
+		// Extract dependentSchemas constraints.
+		depSchemas := extractDependentSchemaConstraints(s)
+		if len(depSchemas) > 0 {
+			needsUnmarshal = true
+		}
+		// Extract propertyNames constraint.
+		var propNames *PropertyNamesDef
+		if s.PropertyNames != nil {
+			propNames = extractPropertyNamesDef(s.PropertyNames)
+			if propNames != nil {
+				needsUnmarshal = true // need _jsonKeys for validation
+			}
+		}
 		g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 			Name:                 name,
 			Description:          s.Description,
 			AdditionalProperties: additionalProps,
+			DependentSchemas:     depSchemas,
+			DependentRequired:    depRequired,
+			PropertyNames:        propNames,
 			Validations:          validations,
 			RequiredJSON:         requiredJSON,
 			NeedsMarshal:         needsMarshal,
@@ -870,7 +1333,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		goFieldName := goFieldNames[propName]
 		// Boolean schema false → property is forbidden (any value is invalid).
-		if propSchema.IsFalseSchema() {
+		// Also check if a $ref/$dynamicRef resolves to a false boolean schema.
+		if propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema) {
 			validations = append(validations, ValidationRule{
 				FieldName: goFieldName, JSONName: propName,
 				RuleType: "forbidden", Value: true,
@@ -958,25 +1422,29 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		})
 	}
 
-	// Extract dependent schema constraints (dependentSchemas where the sub-schema
-	// has additionalProperties: false — we emit validation that checks the JSON keys).
-	var depSchemas []DependentSchemaConstraint
-	for trigger, depSchema := range s.DependentSchemas {
-		if depSchema.AdditionalProperties != nil &&
-			depSchema.AdditionalProperties.Bool != nil &&
-			!*depSchema.AdditionalProperties.Bool {
-			allowed := sortedKeys(depSchema.Properties)
-			depSchemas = append(depSchemas, DependentSchemaConstraint{
-				TriggerKey:  trigger,
-				AllowedKeys: allowed,
+	// Extract dependent schema constraints.
+	depSchemas := extractDependentSchemaConstraints(s)
+	if len(depSchemas) > 0 {
+		needsUnmarshal = true // need to capture _jsonKeys
+	}
+
+	// Extract dependentRequired constraints.
+	var depRequired []DependentRequiredDef
+	for trigger, deps := range s.DependentRequired {
+		if len(deps) > 0 {
+			sorted := make([]string, len(deps))
+			copy(sorted, deps)
+			sort.Strings(sorted)
+			depRequired = append(depRequired, DependentRequiredDef{
+				TriggerKey: trigger,
+				Required:   sorted,
 			})
 		}
 	}
-	// Sort for deterministic output.
-	sort.Slice(depSchemas, func(i, j int) bool {
-		return depSchemas[i].TriggerKey < depSchemas[j].TriggerKey
+	sort.Slice(depRequired, func(i, j int) bool {
+		return depRequired[i].TriggerKey < depRequired[j].TriggerKey
 	})
-	if len(depSchemas) > 0 {
+	if len(depRequired) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
 	}
 
@@ -1020,6 +1488,29 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		unevalProps = g.buildUnevaluatedPropertiesDef(s)
 	}
 
+	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
+	// unevaluatedProperties need separate validation scoped to their branch.
+	cousinChecks := g.collectCousinUnevalChecks(s)
+	if len(cousinChecks) > 0 {
+		// Cousin checks need an overflow map and _jsonKeys.
+		if additionalProps == nil {
+			additionalProps = &AdditionalPropertiesDef{
+				ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			}
+			needsMarshal = true
+			needsUnmarshal = true
+		}
+	}
+
+	// Extract propertyNames constraint.
+	var propertyNamesDef *PropertyNamesDef
+	if s.PropertyNames != nil {
+		propertyNamesDef = extractPropertyNamesDef(s.PropertyNames)
+		if propertyNamesDef != nil {
+			needsUnmarshal = true // need _jsonKeys for validation
+		}
+	}
+
 	structDef := &StructDef{
 		Name:                  name,
 		Description:           s.Description,
@@ -1028,9 +1519,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		AdditionalProperties:  additionalProps,
 		PatternProperties:     patternProps,
 		DependentSchemas:      depSchemas,
+		DependentRequired:     depRequired,
+		PropertyNames:         propertyNamesDef,
 		Validations:           validations,
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
+		CousinUnevalChecks:    cousinChecks,
 		RequiredJSON:          requiredJSON,
 		NeedsMarshal:          needsMarshal,
 		NeedsUnmarshal:        needsUnmarshal,
@@ -1045,6 +1539,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 // When no sub-schema contributes properties, it generates an alias type
 // instead of an empty struct, using the inferred type from constraints.
 func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
+	// If any allOf sub-schema is boolean false, nothing can satisfy all constraints.
+	// Generate a forbidden type (NotSchemaDef).
+	if allOfContainsFalseSchema(s.AllOf) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+
 	// Merge all properties and required fields from allOf sub-schemas.
 	merged := &schema.Schema{
 		Title:       s.Title,
@@ -1113,13 +1619,92 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	if len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
 		merged.DependentSchemas = s.DependentSchemas
 	}
+	// Propagate array-structural keywords from parent schema.
+	// Per JSON Schema spec, items/additionalItems scoping is per-schema (they don't
+	// cross into applicator sub-schemas like allOf). So the parent's items applies
+	// independently and must be preserved on the merged schema for type inference
+	// and validation extraction.
+	if s.Items != nil && merged.Items == nil {
+		merged.Items = s.Items
+	}
+	if len(s.PrefixItems) > 0 && len(merged.PrefixItems) == 0 {
+		merged.PrefixItems = s.PrefixItems
+	}
+	if s.Contains != nil && merged.Contains == nil {
+		merged.Contains = s.Contains
+	}
+	if s.MinContains != nil && merged.MinContains == nil {
+		merged.MinContains = s.MinContains
+	}
+	if s.MaxContains != nil && merged.MaxContains == nil {
+		merged.MaxContains = s.MaxContains
+	}
+	if s.AdditionalItems != nil && merged.AdditionalItems == nil {
+		merged.AdditionalItems = s.AdditionalItems
+	}
 
 	// If no sub-schema contributed properties, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
 	if len(merged.Properties) == 0 {
+		// Check for type-only merged result (null-only or multi-type like ["integer","string"]).
+		// These don't map to a single Go type, so use TypeOnlySchemaDef.
+		// We check the merged type directly rather than calling extractTypeOnlySchemaDef,
+		// because the merged schema may have allOf preserved for other purposes.
+		if len(merged.Type) > 0 {
+			pt := primarySchemaType(merged)
+			if pt == "null" || (pt == "" && len(merged.Type) > 1) {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+					Name:         name,
+					Description:  s.Description,
+					AllowedTypes: merged.Type,
+				})
+				return nil
+			}
+		}
+
 		primaryType := primarySchemaType(merged)
 		if primaryType == "" {
 			primaryType = inferTypeFromConstraints(merged)
+		}
+		if primaryType == "array" {
+			// Array type — extract item-level constraints and generate InferredAliasDef
+			// so that per-element validation works (items, prefixItems, contains, etc.).
+			goType := g.resolveType(merged, name)
+			rules := extractAliasValidationRules(merged, goType)
+			anyOfVariants := extractAnyOfVariantRules(s, goType)
+			oneOfVariants := extractOneOfVariantRules(s, goType)
+			g.generated[name] = true
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
+			containsDef, minContains, maxContains := extractContainsDef(merged)
+			inferredGoType := goType
+			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
+				len(itemsChecks) > 0 ||
+				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
+				containsDef != nil {
+				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
+			}
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:                 name,
+				Description:          s.Description,
+				InferredGoType:       inferredGoType,
+				InferredJSONType:     primaryType,
+				Validations:          rules,
+				AnyOfVariants:        anyOfVariants,
+				OneOfVariants:        oneOfVariants,
+				NeedsNullCheck:       !schemaAllowsNull(merged),
+				ItemsFalse:           itemsFalse,
+				ItemsType:            itemsType,
+				ItemsTypeName:        itemsTypeName,
+				ItemsChecks:          itemsChecks,
+				TupleItems:           tupleItems,
+				AdditionalItemsFalse: addlItemsFalse,
+				AdditionalItemsType:  addlItemsType,
+				Contains:             containsDef,
+				MinContains:          minContains,
+				MaxContains:          maxContains,
+			})
+			return nil
 		}
 		if primaryType != "" && primaryType != "object" {
 			goType := g.resolveType(merged, name)
@@ -1182,10 +1767,30 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
 	for _, sub := range allOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
+		// Follow $ref chains until we reach a schema with properties or no more refs.
+		var pushedCount int
+		for {
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
 			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil {
+				break
+			}
+			if g.pushDynamicScope(r) {
+				pushedCount++
+			}
+			// If the resolved schema has structural content (properties, array keywords,
+			// allOf, etc.), stop following $ref and use this schema.
+			if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 ||
+				r.Items != nil || len(r.PrefixItems) > 0 || r.Contains != nil || r.AdditionalItems != nil {
+				resolved = r
+				break
+			}
+			// The resolved schema has no direct properties — it may itself
+			// be a $ref-only schema; follow it.
+			resolved = r
 		}
 		// Copy direct properties.
 		for k, v := range resolved.Properties {
@@ -1207,11 +1812,72 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		}
 		// Propagate validation constraints (use tightest / first-set-wins).
 		mergeConstraints(target, resolved)
+		// NOTE: We deliberately do NOT merge array-structural keywords (items,
+		// prefixItems, contains, additionalItems) from allOf sub-schemas into
+		// the target. Per JSON Schema spec, items/additionalItems scoping is
+		// per-schema — merging them would change the scoping semantics (e.g.,
+		// parent's `items` would apply only after merged `prefixItems` instead
+		// of to all elements). Parent array keywords are propagated separately
+		// in generateAllOfDef after merging.
+		// However, we DO infer the type from sub-schema array/object keywords
+		// so that the merged schema can still generate the right Go type.
+		if len(target.Type) == 0 {
+			if resolved.Items != nil || len(resolved.PrefixItems) > 0 || resolved.Contains != nil || resolved.AdditionalItems != nil {
+				target.Type = []string{"array"}
+			}
+		}
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)
 		}
+		for i := 0; i < pushedCount; i++ {
+			g.popDynamicScope()
+		}
 	}
+}
+
+// allOfContainsFalseSchema returns true if any sub-schema in the allOf array
+// is a boolean false schema. In that case, nothing can satisfy all constraints
+// simultaneously, so the entire allOf is equivalent to false.
+func allOfContainsFalseSchema(allOf []*schema.Schema) bool {
+	for _, sub := range allOf {
+		if sub.IsFalseSchema() {
+			return true
+		}
+		// Recursively check nested allOf: {allOf: [{allOf: [false]}]}
+		if len(sub.AllOf) > 0 && allOfContainsFalseSchema(sub.AllOf) {
+			return true
+		}
+	}
+	return false
+}
+
+// allSubsFalse returns true if every sub-schema in the list is a boolean false schema.
+// Used for anyOf: if all variants are false, nothing can match.
+func allSubsFalse(subs []*schema.Schema) bool {
+	if len(subs) == 0 {
+		return false
+	}
+	for _, sub := range subs {
+		if !sub.IsFalseSchema() {
+			return false
+		}
+	}
+	return true
+}
+
+// countBooleanSchemas counts how many sub-schemas are boolean true and boolean false.
+// An empty schema {} or a schema with no constraints is treated as "always true"
+// for this purpose.
+func countBooleanSchemas(subs []*schema.Schema) (trueCount, falseCount int) {
+	for _, sub := range subs {
+		if sub.IsFalseSchema() {
+			falseCount++
+		} else if sub.IsTrueSchema() || isAcceptAllSchema(sub) {
+			trueCount++
+		}
+	}
+	return
 }
 
 // mergeConstraints propagates validation constraint fields from src into dst,
@@ -1660,9 +2326,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// Ensure the referenced type gets generated.
 		refSchema := g.resolveRefInContext(effRef, s)
 		if refSchema != nil {
+			pushed := g.pushDynamicScope(refSchema)
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
+				if pushed {
+					g.popDynamicScope()
+				}
 				return nil, err
+			}
+			if pushed {
+				g.popDynamicScope()
 			}
 			// If the ref resolves to its own enclosing document root, use a pointer.
 			if g.isScopedSelfRef(effRef, s, refSchema) {
@@ -1718,7 +2391,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: enumName}
 	}
 
-	// $ref / $recursiveRef / $dynamicRef
+	// $ref / $recursiveRef
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if g.isSelfRefInContext(effRef, s) {
 			if g.rootIsObjectType() {
@@ -1728,15 +2401,32 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 		goName := refToGoName(effRef)
 		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+			pushed := g.pushDynamicScope(refSchema)
 			// If the ref resolved to a scoped document root (not the main root),
 			// derive the Go name from that schema rather than the raw ref string.
 			// This handles $ref: "#" inside a sub-schema with its own $id.
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			_ = g.generateTypeDef(goName, refSchema)
+			if pushed {
+				g.popDynamicScope()
+			}
 			// If the ref resolves to its own enclosing document root, it's a
 			// local self-reference within a scoped $id context. Use a pointer
 			// to break the Go recursive type cycle.
 			if g.isScopedSelfRef(effRef, s, refSchema) {
+				return &PointerType{Inner: &NamedType{Name: goName}}
+			}
+		}
+		return &NamedType{Name: goName}
+	}
+
+	// $dynamicRef with fragment-only ref — resolve via dynamic scope chain.
+	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
+		goName := refToGoName(s.DynamicRef)
+		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
+			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
+			_ = g.generateTypeDef(goName, refSchema)
+			if g.isScopedSelfRef(s.DynamicRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}
 			}
 		}
@@ -1774,6 +2464,20 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if primaryType == "" && hasProperties(s) {
 		_ = g.generateTypeDef(contextName, s)
 		return &PointerType{Inner: &NamedType{Name: contextName}}
+	}
+
+	// allOf / anyOf-with-properties without direct properties → delegate to generateTypeDef
+	// which handles allOf merging and anyOf property collection. This covers schemas like
+	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
+	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
+	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
+	if !g.generating[contextName] && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+		g.generating[contextName] = true
+		_ = g.generateTypeDef(contextName, s)
+		delete(g.generating, contextName)
+		if g.generated[contextName] {
+			return &NamedType{Name: contextName}
+		}
 	}
 
 	// Array with items
@@ -2018,10 +2722,197 @@ func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
 	g.buildDocumentRoots(s)
 }
 
+// pushDynamicScope pushes a document root onto the dynamic scope chain when
+// following a $ref that crosses a document boundary. Returns true if pushed
+// (caller must pop), false if the target is in the same scope or nil.
+func (g *Generator) pushDynamicScope(target *schema.Schema) bool {
+	if target == nil {
+		return false
+	}
+	docRoot := target.DocumentRoot
+	if docRoot == nil {
+		docRoot = target
+	}
+	// Don't push if it's the same document root as the current top of stack.
+	if len(g.dynamicScope) > 0 && g.dynamicScope[len(g.dynamicScope)-1] == docRoot {
+		return false
+	}
+	g.dynamicScope = append(g.dynamicScope, docRoot)
+	return true
+}
+
+// popDynamicScope removes the top entry from the dynamic scope chain.
+func (g *Generator) popDynamicScope() {
+	if len(g.dynamicScope) > 0 {
+		g.dynamicScope = g.dynamicScope[:len(g.dynamicScope)-1]
+	}
+}
+
+// resolveDynamicRef resolves a $dynamicRef to a schema using the dynamic scope
+// chain. Per the JSON Schema 2020-12 spec:
+//
+//  1. Resolve the $dynamicRef to its initial target (just like $ref).
+//  2. Check if the initial target schema has a $dynamicAnchor with the same name
+//     as the fragment in the $dynamicRef (the "bookend").
+//  3. If a bookend exists, walk the dynamic scope chain (the stack of document
+//     roots entered via $ref) from outermost to innermost. The first document
+//     root that contains a $dynamicAnchor with the same name wins.
+//  4. If no bookend exists at the initial target, behave like a normal $ref.
+func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
+	// Extract the fragment anchor name for dynamic scope lookup.
+	var anchorName string
+	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") {
+		anchorName = ref[1:] // plain name fragment, e.g., "#items" → "items"
+	} else if idx := strings.LastIndex(ref, "#"); idx > 0 {
+		frag := ref[idx+1:]
+		if !strings.HasPrefix(frag, "/") {
+			anchorName = frag // URI with name fragment, e.g., "extended#meta" → "meta"
+		}
+	}
+
+	// Step 1: Resolve the $dynamicRef to its initial target (static resolution).
+	var initialTarget *schema.Schema
+	ctxDocRoot := g.rootSchema
+	if ctx != nil && ctx.DocumentRoot != nil {
+		ctxDocRoot = ctx.DocumentRoot
+	}
+	if anchorName != "" && ctxDocRoot != nil {
+		// Try $dynamicAnchor lookup in the local document scope first.
+		initialTarget = findDynamicAnchor(ctxDocRoot, anchorName)
+		if initialTarget == nil {
+			// Fall back to standard $anchor resolution.
+			local := schema.NewLocalResolver(ctxDocRoot)
+			if s, err := local.Resolve("#" + anchorName); err == nil {
+				initialTarget = s
+			}
+		}
+	}
+	if initialTarget == nil {
+		// For JSON pointers, full URIs, or when local resolution failed.
+		initialTarget = g.resolveRefInContext(ref, ctx)
+	}
+	if initialTarget == nil {
+		return nil
+	}
+
+	// Step 2: Check for the bookend — does the initial target have a matching
+	// $dynamicAnchor? If not, $dynamicRef behaves like a normal $ref.
+	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
+		return initialTarget
+	}
+
+	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
+	// innermost, looking for the first document root that contains a
+	// $dynamicAnchor with the same name.
+	for _, docRoot := range g.dynamicScope {
+		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
+			return found
+		}
+	}
+
+	// Fallback: no override found in dynamic scope — use the bookend.
+	return initialTarget
+}
+
+// findDynamicAnchor searches a schema tree for a sub-schema with the given
+// $dynamicAnchor value. It respects $id scope boundaries.
+func findDynamicAnchor(s *schema.Schema, anchor string) *schema.Schema {
+	if s == nil || s.IsBooleanSchema() {
+		return nil
+	}
+	if s.DynamicAnchor == anchor {
+		return s
+	}
+	// Search child schemas, respecting $id scope boundaries.
+	for _, sub := range allSubSchemas(s) {
+		if sub == nil || sub.IsBooleanSchema() {
+			continue
+		}
+		if sub.ID != "" {
+			// New document scope — only check this node directly, not descendants.
+			if sub.DynamicAnchor == anchor {
+				return sub
+			}
+			continue
+		}
+		if found := findDynamicAnchor(sub, anchor); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
+// This is a generator-level helper (not tied to LocalResolver).
+// Map-valued fields are iterated in sorted key order for determinism.
+func allSubSchemas(s *schema.Schema) []*schema.Schema {
+	var subs []*schema.Schema
+	for _, k := range sortedKeys(s.Properties) {
+		subs = append(subs, s.Properties[k])
+	}
+	for _, k := range sortedKeys(s.PatternProperties) {
+		subs = append(subs, s.PatternProperties[k])
+	}
+	for _, k := range sortedKeys(s.Defs) {
+		subs = append(subs, s.Defs[k])
+	}
+	for _, k := range sortedKeys(s.Definitions) {
+		subs = append(subs, s.Definitions[k])
+	}
+	subs = append(subs, s.AllOf...)
+	subs = append(subs, s.AnyOf...)
+	subs = append(subs, s.OneOf...)
+	if s.Not != nil {
+		subs = append(subs, s.Not)
+	}
+	if s.If != nil {
+		subs = append(subs, s.If)
+	}
+	if s.Then != nil {
+		subs = append(subs, s.Then)
+	}
+	if s.Else != nil {
+		subs = append(subs, s.Else)
+	}
+	if s.Items != nil && s.Items.Schema != nil {
+		subs = append(subs, s.Items.Schema)
+	}
+	if s.Items != nil {
+		subs = append(subs, s.Items.Schemas...)
+	}
+	subs = append(subs, s.PrefixItems...)
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		subs = append(subs, s.AdditionalProperties.Schema)
+	}
+	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
+		subs = append(subs, s.AdditionalItems.Schema)
+	}
+	for _, k := range sortedKeys(s.DependentSchemas) {
+		subs = append(subs, s.DependentSchemas[k])
+	}
+	if s.Contains != nil {
+		subs = append(subs, s.Contains)
+	}
+	if s.UnevaluatedProperties != nil {
+		subs = append(subs, s.UnevaluatedProperties)
+	}
+	if s.UnevaluatedItems != nil {
+		subs = append(subs, s.UnevaluatedItems)
+	}
+	return subs
+}
+
 // indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
 // It stores both the raw $id value and the canonicalized (resolved against base URI)
 // form so that both relative and absolute lookups succeed.
+//
+// When a definition declares its own $id, it creates a new document scope.
+// Its $anchor belongs to that scope, not the parent's, so a plain "#anchor"
+// lookup from the parent scope must NOT match it. Instead, the anchor is
+// registered under the $id-qualified form (e.g., "https://example.com/foo#anchor").
 func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
+	hasOwnScope := def.ID != "" || def.LegacyID != ""
+
 	if def.ID != "" {
 		g.anchors[def.ID] = refPath
 		// Also store the canonicalized URI (resolved against base URI).
@@ -2036,8 +2927,65 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 		}
 	}
 	if def.Anchor != "" {
-		g.anchors["#"+def.Anchor] = refPath
+		if hasOwnScope {
+			// The anchor belongs to the $id's scope. Register it under the
+			// $id-qualified URI so it can be found via "$id#anchor" but NOT
+			// via a plain "#anchor" from the parent scope.
+			if def.ID != "" {
+				g.anchors[def.ID+"#"+def.Anchor] = refPath
+				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
+					g.anchors[resolved+"#"+def.Anchor] = refPath
+				}
+			}
+			if def.LegacyID != "" {
+				g.anchors[def.LegacyID+"#"+def.Anchor] = refPath
+				if resolved := g.resolveRelativeURI(def.LegacyID); resolved != "" {
+					g.anchors[resolved+"#"+def.Anchor] = refPath
+				}
+			}
+		} else {
+			g.anchors["#"+def.Anchor] = refPath
+		}
 	}
+	// $dynamicAnchor is resolvable by both $ref and $dynamicRef.
+	// For $ref resolution, treat it like $anchor.
+	// Also track separately for $dynamicRef-specific resolution.
+	if def.DynamicAnchor != "" {
+		if hasOwnScope {
+			if def.ID != "" {
+				g.anchors[def.ID+"#"+def.DynamicAnchor] = refPath
+				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
+					g.anchors[resolved+"#"+def.DynamicAnchor] = refPath
+				}
+			}
+		} else {
+			g.anchors["#"+def.DynamicAnchor] = refPath
+		}
+		if g.dynamicAnchors != nil {
+			g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
+		}
+	}
+}
+
+// resolvedToFalseSchema checks if a property schema's $ref, $dynamicRef, or
+// $recursiveRef resolves to a boolean false schema ("always invalid").
+func (g *Generator) resolvedToFalseSchema(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	// Check $ref / $recursiveRef.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			return resolved.IsFalseSchema()
+		}
+	}
+	// Check $dynamicRef.
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			return resolved.IsFalseSchema()
+		}
+	}
+	return false
 }
 
 // isScopedSelfRef returns true if the given ref, resolved from the context schema,
@@ -2279,6 +3227,33 @@ func isNullOnly(s *schema.Schema) bool {
 // primitives and should not be turned into a merged struct.
 // Self-references ($ref: "#") are excluded because they point back to the root
 // schema and don't represent actual property contributions from the anyOf variant.
+// allOfHasProperties returns true if any allOf sub-schema contributes properties
+// (directly or via $ref resolution). Used by resolveType to decide whether a
+// schema with allOf but no direct properties should generate a struct.
+func (g *Generator) allOfHasProperties(s *schema.Schema) bool {
+	for _, sub := range s.AllOf {
+		if len(sub.Properties) > 0 {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if len(r.Properties) > 0 {
+					return true
+				}
+				// Recursively check resolved schema's allOf chain.
+				if g.allOfHasProperties(r) {
+					return true
+				}
+			}
+		}
+		// Recursively check nested allOf.
+		if g.allOfHasProperties(sub) {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	for _, sub := range s.AnyOf {
 		// Check direct properties on the sub-schema itself.
@@ -2379,11 +3354,66 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 	if s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil {
 		return "array"
 	}
+	// unevaluatedItems:false with tuple items and NO sibling applicators/items that
+	// could extend or evaluate additional items → safe to infer array with implicit
+	// maxItems = tuple length.
+	if unevaluatedItemsImpliesFixedTuple(s) {
+		return "array"
+	}
+	// Structural array keywords → array
+	// items, prefixItems, additionalItems, contains, and unevaluatedItems
+	// only apply to arrays, so their presence implies type "array".
+	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+		s.Contains != nil || s.UnevaluatedItems != nil {
+		return "array"
+	}
 	// Object constraints → object
 	if s.MinProperties != nil || s.MaxProperties != nil {
 		return "object"
 	}
+	// Structural object keywords → object
+	// required, additionalProperties, dependentRequired, dependentSchemas,
+	// propertyNames, and unevaluatedProperties only apply to objects.
+	if len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.PropertyNames != nil || s.UnevaluatedProperties != nil {
+		return "object"
+	}
 	return ""
+}
+
+// unevaluatedItemsImpliesFixedTuple returns true when a schema has
+// unevaluatedItems:false alongside a tuple definition (prefixItems or tuple-form
+// items) and NO other applicators or keywords that could evaluate additional items.
+// In this narrow case, the schema is equivalent to a fixed-length tuple with
+// maxItems = tuple length.
+func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
+	if s.UnevaluatedItems == nil || !s.UnevaluatedItems.IsFalseSchema() {
+		return false
+	}
+	tupleLen := len(s.PrefixItems)
+	if tupleLen == 0 && s.Items != nil {
+		tupleLen = len(s.Items.Schemas)
+	}
+	if tupleLen == 0 {
+		return false
+	}
+	// Bail if any applicator or keyword could extend or evaluate additional items.
+	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+		return false
+	}
+	if s.If != nil || s.Ref != "" || s.Contains != nil {
+		return false
+	}
+	// items as a schema (not tuple form) evaluates all remaining items — no unevaluated ones.
+	if s.Items != nil && s.Items.Schema != nil {
+		return false
+	}
+	// additionalItems evaluates items beyond the tuple — no unevaluated ones.
+	if s.AdditionalItems != nil {
+		return false
+	}
+	return true
 }
 
 // schemaHasExplicitType returns true if the schema declares an explicit "type"
@@ -2509,7 +3539,13 @@ func enumValueSuffix(v any) string {
 	case string:
 		return SchemaNameToGoName(val)
 	case float64:
-		return fmt.Sprintf("%v", val)
+		// Sanitize numeric values for Go identifiers:
+		// replace '-' with "Neg", '.' with "_", '+' with "", 'e' with "e"
+		s := fmt.Sprintf("%v", val)
+		s = strings.ReplaceAll(s, "-", "Neg")
+		s = strings.ReplaceAll(s, ".", "_")
+		s = strings.ReplaceAll(s, "+", "")
+		return s
 	case bool:
 		if val {
 			return "True"
@@ -2543,6 +3579,10 @@ func (g *Generator) populateValidatableFields() {
 			if d.CanHaveMethods() {
 				validatableTypes[d.Name] = true
 			}
+		case *InferredAliasDef:
+			validatableTypes[d.Name] = true // wrapper struct always has Validate()
+		case *BigIntAliasDef:
+			validatableTypes[d.Name] = true // wrapper struct always has Validate()
 		}
 	}
 
@@ -2553,18 +3593,30 @@ func (g *Generator) populateValidatableFields() {
 			continue
 		}
 		for _, f := range sd.Fields {
+			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
-			if typeName == "" || !validatableTypes[typeName] {
+			if typeName != "" && validatableTypes[typeName] {
+				zeroLit := g.zeroLiteralForType(f.Type)
+				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+					FieldName:   f.Name,
+					GoType:      f.Type,
+					IsPointer:   f.Type.IsPointer(),
+					OmitEmpty:   f.OmitEmpty,
+					ZeroLiteral: zeroLit,
+				})
 				continue
 			}
-			zeroLit := g.zeroLiteralForType(f.Type)
-			sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
-				FieldName:   f.Name,
-				GoType:      f.Type,
-				IsPointer:   f.Type.IsPointer(),
-				OmitEmpty:   f.OmitEmpty,
-				ZeroLiteral: zeroLit,
-			})
+			// Slice of named type (or pointer to slice of named type).
+			elemName := sliceElementTypeName(f.Type)
+			if elemName != "" && validatableTypes[elemName] {
+				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+					FieldName: f.Name,
+					GoType:    f.Type,
+					IsPointer: f.Type.IsPointer(),
+					IsSlice:   true,
+					OmitEmpty: f.OmitEmpty,
+				})
+			}
 		}
 	}
 }
@@ -2580,6 +3632,20 @@ func namedTypeName(t GoType) string {
 	default:
 		return ""
 	}
+}
+
+// sliceElementTypeName extracts the element type name from a slice GoType.
+// Handles []T, *[]T, []*T, *[]*T where T is a NamedType.
+func sliceElementTypeName(t GoType) string {
+	inner := t
+	if pt, ok := inner.(*PointerType); ok {
+		inner = pt.Inner
+	}
+	st, ok := inner.(*ArrayType)
+	if !ok {
+		return ""
+	}
+	return namedTypeName(st.ItemType)
 }
 
 // zeroLiteralForType returns the Go zero value literal for a given type.
@@ -2601,6 +3667,12 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 					return zeroForPrimitive(d.Underlying.GoTypeName())
 				case *StructDef:
 					// Structs don't have a meaningful zero literal for comparison.
+					return ""
+				case *InferredAliasDef:
+					// InferredAliasDef is a wrapper struct — no meaningful zero literal.
+					return ""
+				case *BigIntAliasDef:
+					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
 					return ""
 				}
 			}
@@ -2703,6 +3775,19 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			RuleType: "maxItems", Value: len(s.PrefixItems),
 		})
 	}
+	// unevaluatedItems:false with a fixed tuple and no extending applicators →
+	// implicit maxItems = tuple length. Only applied when the schema is a simple
+	// self-contained tuple (see unevaluatedItemsImpliesFixedTuple).
+	if s.MaxItems == nil && unevaluatedItemsImpliesFixedTuple(s) {
+		tupleLen := len(s.PrefixItems)
+		if tupleLen == 0 && s.Items != nil {
+			tupleLen = len(s.Items.Schemas)
+		}
+		rules = append(rules, ValidationRule{
+			FieldName: goFieldName, JSONName: jsonName,
+			RuleType: "maxItems", Value: tupleLen,
+		})
+	}
 	// exclusiveMinimum: can be a number (Draft 2020-12) or a boolean (Draft 4).
 	// When boolean and true, the constraint uses the value from Minimum.
 	if s.ExclusiveMinimum != nil {
@@ -2760,12 +3845,135 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 		return false
 	}
 	// An empty schema (no constraints) matches everything.
+	// Must check ALL structural and validation keywords to avoid false positives.
 	return len(s.Type) == 0 && len(s.Properties) == 0 && s.Not == nil &&
 		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
 		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
 		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
-		len(s.Required) == 0 && s.AdditionalProperties == nil
+		len(s.Required) == 0 && s.AdditionalProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.MultipleOf == nil && s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.UniqueItems == nil && s.If == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.UnevaluatedProperties == nil && s.UnevaluatedItems == nil &&
+		s.Const == nil && !s.ConstIsNull && len(s.PatternProperties) == 0
+}
+
+// extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only
+// schema that we can statically validate. Returns nil for schemas that have
+// other constraints or use complex not sub-schemas we can't handle.
+func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
+	if s.Not == nil {
+		return nil
+	}
+	// Only handle "not" as the sole constraint keyword. If the schema also has
+	// type, properties, items, allOf, etc., it should be handled by other code paths.
+	if len(s.Type) > 0 || hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.If != nil || s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		s.Minimum != nil || s.Maximum != nil || s.MinLength != nil || s.MaxLength != nil ||
+		s.Pattern != nil || s.MinItems != nil || s.MaxItems != nil ||
+		s.MinProperties != nil || s.MaxProperties != nil ||
+		s.Contains != nil || s.PropertyNames != nil ||
+		s.UnevaluatedProperties != nil || s.UnevaluatedItems != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 {
+		return nil
+	}
+
+	not := s.Not
+
+	// not: false (boolean false schema) → allow everything, no validation needed.
+	if not.IsFalseSchema() {
+		return nil
+	}
+
+	// not: {} (empty schema) or not: true → forbid everything.
+	if isAcceptAllSchema(not) || not.IsTrueSchema() {
+		return &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		}
+	}
+
+	// not: {not: {}} → double negation of accept-all = accept-all.
+	// No validation needed.
+	if not.Not != nil && isAcceptAllSchema(not.Not) {
+		return nil
+	}
+
+	// not: {type: X} or not: {type: [X, Y]} → reject values of those types.
+	if len(not.Type) > 0 && isTypeOnlySchema(not) {
+		return &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			NotTypes:    not.Type,
+		}
+	}
+
+	// Complex not sub-schema — can't handle statically.
+	return nil
+}
+
+// isTypeOnlySchema returns true if the schema has only a "type" constraint and
+// nothing else (used for not:{type:X} detection).
+func isTypeOnlySchema(s *schema.Schema) bool {
+	return len(s.Properties) == 0 && s.Not == nil &&
+		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
+		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
+		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
+		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
+		len(s.Required) == 0 && s.AdditionalProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.If == nil && s.UnevaluatedProperties == nil && s.UnevaluatedItems == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.MultipleOf == nil && s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.UniqueItems == nil
+}
+
+// extractTypeOnlySchemaDef returns a *TypeOnlySchemaDef if the schema has an
+// explicit "type" constraint with types that don't map to a single Go type
+// (multi-type arrays or null-only) and no other structural constraints.
+// Returns nil for schemas that should be handled by other code paths.
+func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef {
+	if len(s.Type) == 0 {
+		return nil
+	}
+	// Check if the type maps to a single Go type already handled elsewhere.
+	// primarySchemaType returns non-empty for single non-null types and for "null".
+	pt := primarySchemaType(s)
+	if pt != "" && pt != "null" {
+		return nil // Already handled by primitive type / object / array paths.
+	}
+	// At this point: either multi-type (pt == "") or null-only (pt == "null").
+
+	// Only handle schemas where "type" is the sole constraint keyword.
+	if hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.Not != nil || s.If != nil || s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		s.Minimum != nil || s.Maximum != nil || s.MinLength != nil || s.MaxLength != nil ||
+		s.Pattern != nil || s.MinItems != nil || s.MaxItems != nil ||
+		s.MinProperties != nil || s.MaxProperties != nil ||
+		s.Contains != nil || s.PropertyNames != nil ||
+		s.UnevaluatedProperties != nil || s.UnevaluatedItems != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.MultipleOf != nil || s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
+		s.UniqueItems != nil {
+		return nil
+	}
+
+	return &TypeOnlySchemaDef{
+		Name:         name,
+		Description:  s.Description,
+		AllowedTypes: s.Type,
+	}
 }
 
 // isNilCheckable returns true if a Go type can be compared to nil.
@@ -2792,6 +4000,405 @@ func isNilCheckable(t GoType) bool {
 // receiver IS the value, so FieldName and JSONName are empty — the template
 // uses the receiver name directly.
 // Returns nil if the Go type is "any" (untyped schemas can't be validated).
+// extractInferredItemConstraints extracts item-level validation info from an inferred
+// array schema. It returns the fields needed for InferredAliasDef item validation.
+func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName string) (
+	itemsFalse bool,
+	itemsType string,
+	itemsTypeName string,
+	itemsChecks []ContainsCheck,
+	tupleItems []InferredTupleItem,
+	additionalItemsFalse bool,
+	additionalItemsType string,
+) {
+	hasPrefixItems := len(s.PrefixItems) > 0
+	hasTupleItems := s.Items != nil && s.Items.Schemas != nil
+	hasSingleItems := s.Items != nil && s.Items.Schema != nil
+
+	// Draft 2020-12: prefixItems defines tuple positions.
+	if hasPrefixItems {
+		for _, sub := range s.PrefixItems {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		}
+		// In draft 2020-12, "items" (as single schema) acts as additionalItems.
+		if hasSingleItems {
+			itemSchema := s.Items.Schema
+			if itemSchema.IsFalseSchema() {
+				additionalItemsFalse = true
+			} else if len(itemSchema.Type) == 1 {
+				additionalItemsType = itemSchema.Type[0]
+			}
+		}
+		return
+	}
+
+	// Pre-2020-12: items as array of schemas = tuple form.
+	if hasTupleItems {
+		for _, sub := range s.Items.Schemas {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		}
+		// additionalItems constrains elements beyond the tuple.
+		if s.AdditionalItems != nil {
+			if s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
+				additionalItemsFalse = true
+			} else if s.AdditionalItems.Schema != nil {
+				addlSchema := s.AdditionalItems.Schema
+				if len(addlSchema.Type) == 1 {
+					additionalItemsType = addlSchema.Type[0]
+				}
+			}
+		}
+		return
+	}
+
+	// items as single schema — validates every element.
+	if hasSingleItems {
+		itemSchema := s.Items.Schema
+		if itemSchema.IsFalseSchema() {
+			itemsFalse = true
+		} else if itemSchema.IsBooleanSchema() {
+			// items: true — no constraint
+		} else if effRef := itemSchema.EffectiveRef(); effRef != "" {
+			// $ref — resolve and check for simple type or named type.
+			resolved := g.resolveRefInContext(effRef, itemSchema)
+			if resolved != nil && len(resolved.Type) == 1 {
+				itemsType = resolved.Type[0]
+			} else {
+				refName := g.resolveRefTypeName(itemSchema)
+				if refName != "" {
+					itemsTypeName = refName
+				}
+			}
+		} else if len(itemSchema.Type) == 1 {
+			itemsType = itemSchema.Type[0]
+		} else {
+			// No explicit type — extract validation checks if present.
+			itemsChecks = extractSchemaChecks(itemSchema)
+		}
+		return
+	}
+
+	return
+}
+
+// inferredTupleItemFromSchema converts a sub-schema to an InferredTupleItem.
+// The generator is needed to resolve $ref sub-schemas.
+func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema) InferredTupleItem {
+	if sub.IsFalseSchema() {
+		return InferredTupleItem{IsFalse: true}
+	}
+	if sub.IsTrueSchema() || sub.IsBooleanSchema() {
+		return InferredTupleItem{} // true schema — no constraint
+	}
+	// If the sub-schema has a $ref, resolve it and check the resolved type.
+	if effRef := sub.EffectiveRef(); effRef != "" {
+		resolved := g.resolveRefInContext(effRef, sub)
+		if resolved != nil {
+			if len(resolved.Type) == 1 {
+				return InferredTupleItem{JSONType: resolved.Type[0]}
+			}
+			// Could be a named type — generate it and reference it.
+			goName := refToGoName(effRef)
+			goName = g.goNameForResolvedRef(effRef, resolved, goName)
+			if !g.generated[goName] {
+				_ = g.generateTypeDef(goName, resolved)
+			}
+			return InferredTupleItem{TypeName: goName}
+		}
+	}
+	if len(sub.Type) == 1 {
+		return InferredTupleItem{JSONType: sub.Type[0]}
+	}
+	return InferredTupleItem{} // complex schema — skip for now
+}
+
+// resolveRefTypeName resolves a $ref schema to a Go type name, generating the
+// referenced type if needed. Returns empty string if the ref cannot be resolved.
+func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
+	effRef := s.EffectiveRef()
+	if effRef == "" {
+		return ""
+	}
+	goName := refToGoName(effRef)
+	if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		goName = g.goNameForResolvedRef(effRef, resolved, goName)
+		if !g.generated[goName] {
+			_ = g.generateTypeDef(goName, resolved)
+		}
+	}
+	return goName
+}
+
+// extractPropertyNamesDef builds a PropertyNamesDef from a propertyNames sub-schema.
+// Returns nil if the sub-schema is boolean true or has no actionable constraints.
+func extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef {
+	// Boolean false schema: no property name is valid (empty objects only).
+	if pn.IsFalseSchema() {
+		return &PropertyNamesDef{IsForbidden: true}
+	}
+	// Boolean true schema: no constraint.
+	if pn.IsTrueSchema() {
+		return nil
+	}
+
+	def := &PropertyNamesDef{}
+	hasConstraint := false
+
+	if pn.MaxLength != nil {
+		v := int(*pn.MaxLength)
+		def.MaxLength = &v
+		hasConstraint = true
+	}
+	if pn.MinLength != nil {
+		v := int(*pn.MinLength)
+		def.MinLength = &v
+		hasConstraint = true
+	}
+	if pn.Pattern != nil {
+		def.Pattern = *pn.Pattern
+		hasConstraint = true
+	}
+	// Handle const (convert to single-element enum) and enum.
+	enumValues := pn.Enum
+	if pn.Const != nil && len(enumValues) == 0 {
+		enumValues = []any{*pn.Const}
+	}
+	if len(enumValues) > 0 {
+		for _, e := range enumValues {
+			if str, ok := e.(string); ok {
+				def.Enum = append(def.Enum, str)
+			}
+		}
+		if len(def.Enum) > 0 {
+			hasConstraint = true
+		}
+	}
+
+	if !hasConstraint {
+		return nil
+	}
+	return def
+}
+
+// isAlwaysTrueSchema returns true if the schema is semantically equivalent to
+// "true" — i.e., it matches every possible value. This includes:
+// - boolean true schema
+// - empty schema (no keywords)
+// - {"if": false, "else": true} pattern (if always fails, else always passes)
+func isAlwaysTrueSchema(s *schema.Schema) bool {
+	if s.IsTrueSchema() {
+		return true
+	}
+	if s.IsBooleanSchema() {
+		return false // IsFalseSchema case
+	}
+	// {"if": false, "else": true} pattern:
+	// if is boolean false → always fails → else branch applies → true → always matches.
+	if s.If != nil && s.If.IsFalseSchema() && s.Else != nil && s.Else.IsTrueSchema() {
+		return true
+	}
+	// Empty schema (no constraints) matches everything.
+	// Check for the absence of any constraining keywords.
+	if s.Type == nil && s.Enum == nil && s.Const == nil &&
+		s.Minimum == nil && s.Maximum == nil && s.MultipleOf == nil &&
+		s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
+		s.MinLength == nil && s.MaxLength == nil && s.Pattern == nil &&
+		s.MinItems == nil && s.MaxItems == nil && s.UniqueItems == nil &&
+		s.MinProperties == nil && s.MaxProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
+		s.Contains == nil && s.PropertyNames == nil &&
+		s.AdditionalProperties == nil && len(s.Properties) == 0 &&
+		len(s.Required) == 0 && len(s.AllOf) == 0 && len(s.AnyOf) == 0 &&
+		len(s.OneOf) == 0 && s.Not == nil && s.If == nil &&
+		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
+		s.EffectiveRef() == "" {
+		return true
+	}
+	return false
+}
+
+// extractContainsDef builds a ContainsDef from a contains sub-schema.
+// Returns nil if the sub-schema cannot be analyzed or is always-true with no
+// minContains/maxContains constraints.
+// extractSchemaChecks extracts ContainsCheck-style validation checks from a schema.
+// This is used for items sub-schemas that have validation keywords but no explicit type.
+func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
+	var checks []ContainsCheck
+	if s.Minimum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minimum", Value: *s.Minimum})
+	}
+	if s.Maximum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maximum", Value: *s.Maximum})
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+	}
+	if s.MultipleOf != nil {
+		checks = append(checks, ContainsCheck{CheckType: "multipleOf", Value: *s.MultipleOf})
+	}
+	if len(s.Type) == 1 {
+		checks = append(checks, ContainsCheck{CheckType: "type", Value: s.Type[0]})
+	}
+	return checks
+}
+
+// extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.
+// It handles boolean false schemas, additionalProperties:false (allowed-keys check),
+// properties with type constraints, required properties, and minProperties/maxProperties.
+func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
+	if len(s.DependentSchemas) == 0 {
+		return nil
+	}
+	var result []DependentSchemaConstraint
+	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		depSchema := s.DependentSchemas[trigger]
+		constraint := DependentSchemaConstraint{TriggerKey: trigger}
+		hasConstraint := false
+
+		// Boolean false schema: always reject when trigger is present.
+		if depSchema.IsFalseSchema() {
+			constraint.IsFalse = true
+			result = append(result, constraint)
+			continue
+		}
+		// Boolean true or empty schema: no constraint.
+		if depSchema.IsTrueSchema() || isAlwaysTrueSchema(depSchema) {
+			continue
+		}
+
+		// additionalProperties: false — only listed keys are allowed.
+		if depSchema.AdditionalProperties != nil &&
+			depSchema.AdditionalProperties.Bool != nil &&
+			!*depSchema.AdditionalProperties.Bool {
+			constraint.AllowedKeys = sortedKeys(depSchema.Properties)
+			hasConstraint = true
+		}
+
+		// Properties with type constraints.
+		if len(depSchema.Properties) > 0 {
+			for _, propName := range sortedKeys(depSchema.Properties) {
+				propSchema := depSchema.Properties[propName]
+				if len(propSchema.Type) == 1 {
+					constraint.PropertyTypes = append(constraint.PropertyTypes, DependentPropertyType{
+						PropName: propName,
+						JSONType: propSchema.Type[0],
+					})
+					hasConstraint = true
+				}
+			}
+		}
+
+		// Required properties from the sub-schema.
+		if len(depSchema.Required) > 0 {
+			sorted := make([]string, len(depSchema.Required))
+			copy(sorted, depSchema.Required)
+			sort.Strings(sorted)
+			constraint.RequiredProps = sorted
+			hasConstraint = true
+		}
+
+		// minProperties / maxProperties from the sub-schema.
+		if depSchema.MinProperties != nil {
+			v := depSchema.MinProperties.Int()
+			constraint.MinProperties = &v
+			hasConstraint = true
+		}
+		if depSchema.MaxProperties != nil {
+			v := depSchema.MaxProperties.Int()
+			constraint.MaxProperties = &v
+			hasConstraint = true
+		}
+
+		if hasConstraint {
+			result = append(result, constraint)
+		}
+	}
+	return result
+}
+
+func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
+	if s.Contains == nil {
+		return nil, nil, nil
+	}
+
+	containsSch := s.Contains
+
+	// Compute minContains and maxContains.
+	var minC *int
+	var maxC *int
+	if s.MinContains != nil {
+		v := int(*s.MinContains)
+		minC = &v
+	}
+	if s.MaxContains != nil {
+		v := int(*s.MaxContains)
+		maxC = &v
+	}
+
+	// Boolean false schema: no element can ever match.
+	if containsSch.IsFalseSchema() {
+		return &ContainsDef{IsFalse: true}, minC, maxC
+	}
+
+	// Boolean true or always-true schema: every element matches.
+	if isAlwaysTrueSchema(containsSch) {
+		return &ContainsDef{IsTrue: true}, minC, maxC
+	}
+
+	def := &ContainsDef{}
+
+	// Const → marshal to JSON for exact matching.
+	if containsSch.Const != nil {
+		b, err := json.Marshal(*containsSch.Const)
+		if err == nil {
+			def.ConstJSON = string(b)
+			return def, minC, maxC
+		}
+	}
+
+	// Single-value enum → treat as const.
+	if len(containsSch.Enum) == 1 {
+		b, err := json.Marshal(containsSch.Enum[0])
+		if err == nil {
+			def.ConstJSON = string(b)
+			return def, minC, maxC
+		}
+	}
+
+	// Collect constraint checks.
+	var checks []ContainsCheck
+
+	if containsSch.Minimum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minimum", Value: *containsSch.Minimum})
+	}
+	if containsSch.Maximum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maximum", Value: *containsSch.Maximum})
+	}
+	if containsSch.ExclusiveMinimum != nil && containsSch.ExclusiveMinimum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMinimum", Value: *containsSch.ExclusiveMinimum.Number})
+	}
+	if containsSch.ExclusiveMaximum != nil && containsSch.ExclusiveMaximum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *containsSch.ExclusiveMaximum.Number})
+	}
+	if containsSch.MultipleOf != nil {
+		checks = append(checks, ContainsCheck{CheckType: "multipleOf", Value: *containsSch.MultipleOf})
+	}
+	if len(containsSch.Type) == 1 {
+		checks = append(checks, ContainsCheck{CheckType: "type", Value: containsSch.Type[0]})
+	}
+
+	if len(checks) > 0 {
+		def.Checks = checks
+		return def, minC, maxC
+	}
+
+	// Complex schema we can't extract checks from — skip.
+	return nil, nil, nil
+}
+
 func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
 	// Skip validation on untyped "any" fields — can't compile numeric/string checks.
 	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
@@ -2968,12 +4575,13 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 	}
 
 	// Collect evaluated properties from the schema tree.
-	names, patterns, allEvaluated := g.collectEvaluatedProperties(s)
+	names, patterns, allEvaluated, conditionals := g.collectEvaluatedProperties(s)
 	def.AllEvaluated = allEvaluated
 
 	// Convert to sorted slices for deterministic output.
 	def.EvaluatedNames = sortedKeys(names)
 	def.EvaluatedPatterns = sortedKeys(patterns)
+	def.ConditionalEvals = conditionals
 
 	return def
 }
@@ -2983,11 +4591,12 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 // The root schema's own unevaluatedProperties is NOT included (that's the
 // constraint we're evaluating); only nested applicator subschemas contribute.
 // It returns:
-//   - names: set of property names evaluated by properties keywords
-//   - patterns: set of regex patterns evaluated by patternProperties keywords
+//   - names: set of property names evaluated by always-true sources (properties, allOf, $ref)
+//   - patterns: set of regex patterns from always-true sources
 //   - allEvaluated: true if additionalProperties or unevaluatedProperties in a nested
 //     schema marks ALL remaining properties as evaluated
-func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[string]bool, patterns map[string]bool, allEvaluated bool) {
+//   - conditionals: runtime-conditional evaluation branches for anyOf/oneOf/if-then-else/dependentSchemas
+func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[string]bool, patterns map[string]bool, allEvaluated bool, conditionals []ConditionalEval) {
 	names = make(map[string]bool)
 	patterns = make(map[string]bool)
 
@@ -3019,6 +4628,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 	}
 
 	// Recurse into allOf — all branches always apply.
+	// We also check each allOf sub-schema for oneOf/anyOf/if-then-else and
+	// build conditional evals for them instead of static over-approximation.
 	for _, sub := range s.AllOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
@@ -3026,43 +4637,174 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 				resolved = r
 			}
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		// Collect static evaluated properties (properties, patternProperties, $ref, etc.)
+		// but exclude oneOf/anyOf/if-then-else from the static collection.
+		g.collectEvaluatedFromNestedExcludeConditional(resolved, names, patterns, &allEvaluated)
+
+		// Build conditional evals for oneOf/anyOf/if-then-else inside allOf sub-schemas.
+		if len(resolved.OneOf) > 0 {
+			ce := g.collectMultiBranchEval("oneOf", resolved.OneOf)
+			if ce != nil {
+				conditionals = append(conditionals, *ce)
+			} else {
+				// Fallback: static over-approximation.
+				for _, osub := range resolved.OneOf {
+					oresolved := osub
+					if effRef := osub.EffectiveRef(); effRef != "" {
+						if r := g.resolveRefInContext(effRef, osub); r != nil {
+							oresolved = r
+						}
+					}
+					g.collectEvaluatedFromNested(oresolved, names, patterns, &allEvaluated)
+				}
+			}
+		}
+		if len(resolved.AnyOf) > 0 {
+			ce := g.collectMultiBranchEval("anyOf", resolved.AnyOf)
+			if ce != nil {
+				conditionals = append(conditionals, *ce)
+			} else {
+				for _, asub := range resolved.AnyOf {
+					aresolved := asub
+					if effRef := asub.EffectiveRef(); effRef != "" {
+						if r := g.resolveRefInContext(effRef, asub); r != nil {
+							aresolved = r
+						}
+					}
+					g.collectEvaluatedFromNested(aresolved, names, patterns, &allEvaluated)
+				}
+			}
+		}
+		if resolved.If != nil {
+			ifCond := g.extractIfCondition(resolved.If)
+			if ifCond != nil {
+				thenBranch := g.collectBranchEval(resolved.Then)
+				elseBranch := g.collectBranchEval(resolved.Else)
+				ifBranch := g.collectBranchEval(resolved.If)
+				if ifBranch != nil && thenBranch != nil {
+					thenBranch = mergeEvalBranches(ifBranch, thenBranch)
+				} else if ifBranch != nil && thenBranch == nil {
+					thenBranch = ifBranch
+				}
+				hasThen := thenBranch != nil && (thenBranch.HasNames() || thenBranch.HasPatterns() || thenBranch.AllEvaluated)
+				hasElse := elseBranch != nil && (elseBranch.HasNames() || elseBranch.HasPatterns() || elseBranch.AllEvaluated)
+				if hasThen || hasElse {
+					conditionals = append(conditionals, ConditionalEval{
+						Kind:       "ifThenElse",
+						IfBranch:   ifCond,
+						ThenBranch: thenBranch,
+						ElseBranch: elseBranch,
+					})
+				}
+			} else {
+				g.collectEvaluatedFromNested(resolved.If, names, patterns, &allEvaluated)
+				if resolved.Then != nil {
+					g.collectEvaluatedFromNested(resolved.Then, names, patterns, &allEvaluated)
+				}
+				if resolved.Else != nil {
+					g.collectEvaluatedFromNested(resolved.Else, names, patterns, &allEvaluated)
+				}
+			}
+		}
 	}
 
-	// For anyOf/oneOf/if/then/else/dependentSchemas, we collect property names and
-	// patterns from ALL branches as "potentially evaluated". This is a conservative
-	// static over-approximation: at runtime, only matching branches contribute, but
-	// we include all branches to avoid false rejections. Precise runtime tracking
-	// will be implemented in Phase 2.
-	for _, sub := range s.AnyOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+	// Runtime-conditional branches: anyOf/oneOf/if-then-else/dependentSchemas.
+	// Instead of merging all properties statically, we collect per-branch info
+	// so the generated Validate() can build the evaluated set dynamically.
+
+	// dependentSchemas: properties evaluated only when the trigger key is present.
+	for triggerKey, depSchema := range s.DependentSchemas {
+		branch := g.collectBranchEval(depSchema)
+		if branch != nil && (branch.HasNames() || branch.HasPatterns() || branch.AllEvaluated) {
+			conditionals = append(conditionals, ConditionalEval{
+				Kind:       "dependentSchema",
+				TriggerKey: triggerKey,
+				Branch:     branch,
+			})
 		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
-	for _, sub := range s.OneOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
-		}
-		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
-	}
+
+	// if/then/else: try runtime conditional evaluation via IfConditionDef.
+	// If the if-schema is too complex for runtime evaluation, fall back to
+	// static over-approximation.
 	if s.If != nil {
-		g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
+		ifCond := g.extractIfCondition(s.If)
+		if ifCond != nil {
+			// Runtime-evaluable if condition: create conditional branches.
+			thenBranch := g.collectBranchEval(s.Then)
+			elseBranch := g.collectBranchEval(s.Else)
+			// Also collect properties from the if-schema itself into both branches,
+			// since the if-schema's properties are evaluated when it matches.
+			ifBranch := g.collectBranchEval(s.If)
+			if ifBranch != nil && thenBranch != nil {
+				thenBranch = mergeEvalBranches(ifBranch, thenBranch)
+			} else if ifBranch != nil && thenBranch == nil {
+				thenBranch = ifBranch
+			}
+			// Per JSON Schema spec: when if fails, its annotations are discarded.
+			// So the else branch does NOT include if-schema properties.
+			hasThen := thenBranch != nil && (thenBranch.HasNames() || thenBranch.HasPatterns() || thenBranch.AllEvaluated)
+			hasElse := elseBranch != nil && (elseBranch.HasNames() || elseBranch.HasPatterns() || elseBranch.AllEvaluated)
+			if hasThen || hasElse {
+				conditionals = append(conditionals, ConditionalEval{
+					Kind:       "ifThenElse",
+					IfBranch:   ifCond,
+					ThenBranch: thenBranch,
+					ElseBranch: elseBranch,
+				})
+			}
+		} else {
+			// Fallback: static over-approximation.
+			g.collectEvaluatedFromNested(s.If, names, patterns, &allEvaluated)
+			if s.Then != nil {
+				g.collectEvaluatedFromNested(s.Then, names, patterns, &allEvaluated)
+			}
+			if s.Else != nil {
+				g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
+			}
+		}
 	}
-	if s.Then != nil {
-		g.collectEvaluatedFromNested(s.Then, names, patterns, &allEvaluated)
+
+	// anyOf: try runtime conditional evaluation via branch matching.
+	// If branches have evaluable matching criteria (required keys + const checks),
+	// use runtime evaluation; otherwise fall back to static over-approximation.
+	if len(s.AnyOf) > 0 {
+		ce := g.collectMultiBranchEval("anyOf", s.AnyOf)
+		if ce != nil {
+			conditionals = append(conditionals, *ce)
+		} else {
+			// Fallback: static over-approximation.
+			for _, sub := range s.AnyOf {
+				resolved := sub
+				if effRef := sub.EffectiveRef(); effRef != "" {
+					if r := g.resolveRefInContext(effRef, sub); r != nil {
+						resolved = r
+					}
+				}
+				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+			}
+		}
 	}
-	if s.Else != nil {
-		g.collectEvaluatedFromNested(s.Else, names, patterns, &allEvaluated)
-	}
-	for _, depSchema := range s.DependentSchemas {
-		g.collectEvaluatedFromNested(depSchema, names, patterns, &allEvaluated)
+
+	// oneOf: try runtime conditional evaluation via branch matching.
+	// If branches have evaluable matching criteria (required keys + const checks),
+	// use runtime evaluation; otherwise fall back to static over-approximation.
+	if len(s.OneOf) > 0 {
+		ce := g.collectMultiBranchEval("oneOf", s.OneOf)
+		if ce != nil {
+			conditionals = append(conditionals, *ce)
+		} else {
+			// Fallback: static over-approximation.
+			for _, sub := range s.OneOf {
+				resolved := sub
+				if effRef := sub.EffectiveRef(); effRef != "" {
+					if r := g.resolveRefInContext(effRef, sub); r != nil {
+						resolved = r
+					}
+				}
+				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+			}
+		}
 	}
 
 	return
@@ -3151,6 +4893,391 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 	// Recurse into dependentSchemas.
 	for _, depSchema := range s.DependentSchemas {
 		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
+	}
+}
+
+// collectEvaluatedFromNestedExcludeConditional is like collectEvaluatedFromNested
+// but skips oneOf, anyOf, and if/then/else processing. These are handled separately
+// by the caller via conditional evaluation instead of static over-approximation.
+func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schema, names map[string]bool, patterns map[string]bool, allEvaluated *bool) {
+	if s == nil {
+		return
+	}
+	if s.IsBooleanSchema() {
+		return
+	}
+
+	// Direct properties.
+	for k := range s.Properties {
+		names[k] = true
+	}
+
+	// Pattern properties.
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+
+	// additionalProperties in a nested schema marks ALL remaining as evaluated.
+	if s.AdditionalProperties != nil {
+		*allEvaluated = true
+	}
+
+	// unevaluatedProperties in a nested schema marks ALL remaining as evaluated.
+	if s.UnevaluatedProperties != nil {
+		*allEvaluated = true
+	}
+
+	// $ref — evaluated properties from the referenced schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+		}
+	}
+
+	// Recurse into allOf — all branches always apply.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+	}
+
+	// NOTE: oneOf, anyOf, and if/then/else are NOT processed here.
+	// The caller handles them via conditional evaluation.
+
+	// Recurse into dependentSchemas.
+	for _, depSchema := range s.DependentSchemas {
+		g.collectEvaluatedFromNested(depSchema, names, patterns, allEvaluated)
+	}
+}
+
+// collectBranchEval collects evaluated property names and patterns from a single
+// schema branch, returning an EvalBranchDef. Returns nil if the branch is nil.
+func (g *Generator) collectBranchEval(s *schema.Schema) *EvalBranchDef {
+	if s == nil {
+		return nil
+	}
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	var allEvaluated bool
+
+	// Collect from this schema and its nested applicators.
+	g.collectEvaluatedFromNested(s, names, patterns, &allEvaluated)
+
+	branch := &EvalBranchDef{
+		Names:        sortedKeys(names),
+		Patterns:     sortedKeys(patterns),
+		AllEvaluated: allEvaluated,
+	}
+
+	// Collect branch-matching metadata: required keys and const checks.
+	branch.RequiredKeys = append([]string(nil), s.Required...)
+	sort.Strings(branch.RequiredKeys)
+	for propName, propSchema := range s.Properties {
+		if propSchema != nil && propSchema.Const != nil {
+			jsonVal, err := json.Marshal(*propSchema.Const)
+			if err == nil {
+				branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
+					PropertyName: propName,
+					GoFieldName:  JSONPropertyToGoName(propName),
+					JSONValue:    string(jsonVal),
+				})
+			}
+		}
+	}
+	// Sort const checks for deterministic output.
+	sort.Slice(branch.ConstChecks, func(i, j int) bool {
+		return branch.ConstChecks[i].PropertyName < branch.ConstChecks[j].PropertyName
+	})
+
+	return branch
+}
+
+// extractIfCondition extracts a runtime-evaluable condition from an if-schema.
+// Returns nil if the if-schema is too complex for runtime evaluation.
+func (g *Generator) extractIfCondition(s *schema.Schema) *IfConditionDef {
+	if s == nil {
+		return nil
+	}
+	// We can evaluate if-schemas that use properties with const constraints
+	// and/or required fields.
+	var constChecks []ConstCheck
+	for propName, propSchema := range s.Properties {
+		if propSchema != nil && propSchema.Const != nil {
+			jsonVal, err := json.Marshal(*propSchema.Const)
+			if err == nil {
+				constChecks = append(constChecks, ConstCheck{
+					PropertyName: propName,
+					GoFieldName:  JSONPropertyToGoName(propName),
+					JSONValue:    string(jsonVal),
+				})
+			}
+		}
+	}
+	requiredKeys := append([]string(nil), s.Required...)
+	sort.Strings(requiredKeys)
+	sort.Slice(constChecks, func(i, j int) bool {
+		return constChecks[i].PropertyName < constChecks[j].PropertyName
+	})
+
+	// Must have at least some condition to evaluate.
+	if len(constChecks) == 0 && len(requiredKeys) == 0 {
+		return nil
+	}
+
+	return &IfConditionDef{
+		ConstChecks:  constChecks,
+		RequiredKeys: requiredKeys,
+	}
+}
+
+// collectMultiBranchEval collects evaluation branches for anyOf/oneOf.
+// Returns a ConditionalEval or nil if any branch is too complex.
+func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *ConditionalEval {
+	if len(subs) == 0 {
+		return nil
+	}
+
+	branches := g.flattenBranches(subs, 0)
+	if branches == nil {
+		return nil
+	}
+
+	// Check that at least some branches have evaluable properties.
+	hasContent := false
+	for _, b := range branches {
+		if b.HasNames() || b.HasPatterns() || b.AllEvaluated {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+
+	// Check that ALL branches have matching criteria (required keys or const checks).
+	// Without matching criteria, we can't determine which branch matched at runtime
+	// and must fall back to static over-approximation.
+	for _, b := range branches {
+		if len(b.RequiredKeys) == 0 && len(b.ConstChecks) == 0 {
+			return nil
+		}
+	}
+
+	return &ConditionalEval{
+		Kind:     kind,
+		Branches: branches,
+	}
+}
+
+// isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct
+// properties, patternProperties, required, additionalProperties, etc.) — just
+// structural content that can be flattened.
+func isOneOfOnlySchema(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	return len(s.Properties) == 0 &&
+		len(s.PatternProperties) == 0 &&
+		len(s.Required) == 0 &&
+		s.AdditionalProperties == nil &&
+		len(s.AllOf) == 0 &&
+		len(s.AnyOf) == 0 &&
+		s.If == nil
+}
+
+// flattenBranches recursively collects EvalBranchDefs from a list of sub-schemas.
+// When a sub-schema resolves to a oneOf-only schema (no direct properties),
+// it is expanded into its inner branches. Returns nil if recursion exceeds depth limit.
+func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBranchDef {
+	if depth > 5 {
+		return nil // prevent infinite recursion
+	}
+	var branches []EvalBranchDef
+	for _, sub := range subs {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+
+		// If the resolved schema is a oneOf-only schema, flatten recursively.
+		if isOneOfOnlySchema(resolved) {
+			inner := g.flattenBranches(resolved.OneOf, depth+1)
+			if inner == nil {
+				return nil // propagate failure
+			}
+			branches = append(branches, inner...)
+			continue
+		}
+
+		branch := g.collectBranchEval(resolved)
+		if branch == nil {
+			branch = &EvalBranchDef{}
+		}
+		// For matching, we need required keys and/or const checks from the original
+		// sub-schema (not the resolved one, since required is on the sub itself).
+		if len(sub.Required) > 0 && len(branch.RequiredKeys) == 0 {
+			branch.RequiredKeys = append([]string(nil), sub.Required...)
+			sort.Strings(branch.RequiredKeys)
+		}
+		for propName, propSchema := range sub.Properties {
+			if propSchema != nil && propSchema.Const != nil {
+				jsonVal, err := json.Marshal(*propSchema.Const)
+				if err == nil {
+					// Check if this const check already exists from resolved schema.
+					found := false
+					for _, cc := range branch.ConstChecks {
+						if cc.PropertyName == propName {
+							found = true
+							break
+						}
+					}
+					if !found {
+						branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
+							PropertyName: propName,
+							GoFieldName:  JSONPropertyToGoName(propName),
+							JSONValue:    string(jsonVal),
+						})
+					}
+				}
+			}
+		}
+		sort.Slice(branch.ConstChecks, func(i, j int) bool {
+			return branch.ConstChecks[i].PropertyName < branch.ConstChecks[j].PropertyName
+		})
+		branches = append(branches, *branch)
+	}
+	return branches
+}
+
+// mergeEvalBranches merges two EvalBranchDef into one (union of names and patterns).
+func mergeEvalBranches(a, b *EvalBranchDef) *EvalBranchDef {
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	for _, n := range a.Names {
+		names[n] = true
+	}
+	for _, n := range b.Names {
+		names[n] = true
+	}
+	for _, p := range a.Patterns {
+		patterns[p] = true
+	}
+	for _, p := range b.Patterns {
+		patterns[p] = true
+	}
+	return &EvalBranchDef{
+		Names:        sortedKeys(names),
+		Patterns:     sortedKeys(patterns),
+		AllEvaluated: a.AllEvaluated || b.AllEvaluated,
+	}
+}
+
+// collectCousinUnevalChecks detects allOf/anyOf sub-schemas that have their own
+// unevaluatedProperties constraint (cousin isolation). For each such sub-schema,
+// it computes the evaluated set scoped to that branch only.
+func (g *Generator) collectCousinUnevalChecks(s *schema.Schema) []CousinUnevalCheck {
+	var checks []CousinUnevalCheck
+
+	// Check allOf sub-schemas.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		if resolved.UnevaluatedProperties == nil {
+			continue
+		}
+		check := g.buildCousinCheck(resolved)
+		if check != nil {
+			checks = append(checks, *check)
+		}
+	}
+
+	// Check anyOf sub-schemas.
+	for _, sub := range s.AnyOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		if resolved.UnevaluatedProperties == nil {
+			continue
+		}
+		check := g.buildCousinCheck(resolved)
+		if check != nil {
+			checks = append(checks, *check)
+		}
+	}
+
+	return checks
+}
+
+// buildCousinCheck builds a CousinUnevalCheck for a sub-schema with unevaluatedProperties.
+func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
+	uneval := s.UnevaluatedProperties
+	if uneval == nil {
+		return nil
+	}
+
+	// Check boolean value.
+	if uneval.IsBooleanSchema() {
+		if uneval.BooleanSchema != nil && *uneval.BooleanSchema {
+			// unevaluatedProperties: true — no constraint, skip.
+			return nil
+		}
+		// unevaluatedProperties: false
+	}
+
+	// Collect evaluated properties scoped to this branch only.
+	names := make(map[string]bool)
+	patterns := make(map[string]bool)
+	var allEvaluated bool
+
+	// Direct properties on this sub-schema.
+	for k := range s.Properties {
+		names[k] = true
+	}
+	for pattern := range s.PatternProperties {
+		patterns[pattern] = true
+	}
+	if s.AdditionalProperties != nil {
+		allEvaluated = true
+	}
+
+	// $ref on this sub-schema.
+	if effRef := s.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
+
+	// allOf within this sub-schema.
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				resolved = r
+			}
+		}
+		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	isForbidden := uneval.IsBooleanSchema() && (uneval.BooleanSchema == nil || !*uneval.BooleanSchema)
+
+	return &CousinUnevalCheck{
+		IsForbidden:    isForbidden,
+		EvaluatedNames: sortedKeys(names),
+		EvalPatterns:   sortedKeys(patterns),
+		AllEvaluated:   allEvaluated,
 	}
 }
 

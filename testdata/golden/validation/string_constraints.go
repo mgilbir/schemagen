@@ -14,6 +14,7 @@ type UserProfile struct {
 	Tags                 *[]string                  `json:"tags,omitempty"`
 	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (u *UserProfile) UnmarshalJSON(data []byte) error {
@@ -34,6 +35,10 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		u._jsonKeys = make(map[string]bool, len(raw))
+		for k := range raw {
+			u._jsonKeys[k] = true
 		}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
@@ -85,17 +90,25 @@ func (u UserProfile) MarshalJSON() ([]byte, error) {
 
 // Validate checks UserProfile against its JSON Schema constraints.
 func (u UserProfile) Validate() error {
-	if float64(u.Age) < 0 {
-		return fmt.Errorf("age: value %v is less than minimum 0", u.Age)
+	if u._jsonKeys["age"] {
+		if float64(u.Age) < 0 {
+			return fmt.Errorf("age: value %v is less than minimum 0", u.Age)
+		}
 	}
-	if float64(u.Age) > 150 {
-		return fmt.Errorf("age: value %v exceeds maximum 150", u.Age)
+	if u._jsonKeys["age"] {
+		if float64(u.Age) > 150 {
+			return fmt.Errorf("age: value %v exceeds maximum 150", u.Age)
+		}
 	}
-	if utf8.RuneCountInString(u.Bio) > 500 {
-		return fmt.Errorf("bio: length %d exceeds maximum 500", utf8.RuneCountInString(u.Bio))
+	if u._jsonKeys["bio"] {
+		if utf8.RuneCountInString(u.Bio) > 500 {
+			return fmt.Errorf("bio: length %d exceeds maximum 500", utf8.RuneCountInString(u.Bio))
+		}
 	}
-	if u.Tags != nil && len(*u.Tags) > 10 {
-		return fmt.Errorf("tags: has %d items, maximum is 10", len(*u.Tags))
+	if u._jsonKeys["tags"] {
+		if u.Tags != nil && len(*u.Tags) > 10 {
+			return fmt.Errorf("tags: has %d items, maximum is 10", len(*u.Tags))
+		}
 	}
 	if utf8.RuneCountInString(u.Username) < 3 {
 		return fmt.Errorf("username: length %d is less than minimum 3", utf8.RuneCountInString(u.Username))

@@ -126,6 +126,54 @@ func (w typeDefWrapper) AsAlias() *generator.AliasDef {
 	return a
 }
 
+// IsInferredAlias reports whether the wrapped TypeDef is a *generator.InferredAliasDef.
+func (w typeDefWrapper) IsInferredAlias() bool {
+	_, ok := w.Def.(*generator.InferredAliasDef)
+	return ok
+}
+
+// AsInferredAlias returns the wrapped TypeDef as a *generator.InferredAliasDef, or nil.
+func (w typeDefWrapper) AsInferredAlias() *generator.InferredAliasDef {
+	d, _ := w.Def.(*generator.InferredAliasDef)
+	return d
+}
+
+// IsBigIntAlias reports whether the wrapped TypeDef is a *generator.BigIntAliasDef.
+func (w typeDefWrapper) IsBigIntAlias() bool {
+	_, ok := w.Def.(*generator.BigIntAliasDef)
+	return ok
+}
+
+// AsBigIntAlias returns the wrapped TypeDef as a *generator.BigIntAliasDef, or nil.
+func (w typeDefWrapper) AsBigIntAlias() *generator.BigIntAliasDef {
+	d, _ := w.Def.(*generator.BigIntAliasDef)
+	return d
+}
+
+// IsNotSchema reports whether the wrapped TypeDef is a *generator.NotSchemaDef.
+func (w typeDefWrapper) IsNotSchema() bool {
+	_, ok := w.Def.(*generator.NotSchemaDef)
+	return ok
+}
+
+// AsNotSchema returns the wrapped TypeDef as a *generator.NotSchemaDef, or nil.
+func (w typeDefWrapper) AsNotSchema() *generator.NotSchemaDef {
+	d, _ := w.Def.(*generator.NotSchemaDef)
+	return d
+}
+
+// IsTypeOnlySchema reports whether the wrapped TypeDef is a *generator.TypeOnlySchemaDef.
+func (w typeDefWrapper) IsTypeOnlySchema() bool {
+	_, ok := w.Def.(*generator.TypeOnlySchemaDef)
+	return ok
+}
+
+// AsTypeOnlySchema returns the wrapped TypeDef as a *generator.TypeOnlySchemaDef, or nil.
+func (w typeDefWrapper) AsTypeOnlySchema() *generator.TypeOnlySchemaDef {
+	d, _ := w.Def.(*generator.TypeOnlySchemaDef)
+	return d
+}
+
 // wrapTypeDefFunc is the template function that wraps a TypeDef.
 // It handles both generator.TypeDef and already-wrapped typeDefWrapper values.
 func wrapTypeDefFunc(td any) typeDefWrapper {

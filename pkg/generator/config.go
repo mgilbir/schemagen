@@ -11,8 +11,9 @@ type Config struct {
 	//                        When false (default), absent additionalProperties follows JSON Schema spec
 	//                        (defaults to true), so an overflow map[string]json.RawMessage is added to
 	//                        capture any extra properties during unmarshal and re-emit them during marshal.
-	Resolver schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
-	Draft    schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI.
+	Resolver      schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
+	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI.
+	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
 }
 
 // DefaultConfig returns sensible defaults.

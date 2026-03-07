@@ -1,0 +1,71 @@
+{{define "not_schema"}}
+{{- $recv := receiverName .Name -}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+// {{.Name}} accepts any JSON value and validates a root-level "not" constraint.
+type {{.Name}} struct {
+	_raw json.RawMessage
+}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
+	return nil
+}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if len({{$recv}}._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return {{$recv}}._raw, nil
+}
+
+func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }
+
+func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
+
+// Validate checks {{.Name}} against its JSON Schema "not" constraint.
+func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .IsForbidden}}
+	return fmt.Errorf("not: value is forbidden (not schema matches all values)")
+	{{- else if .NotTypes}}
+	// Decode raw JSON to determine the value's type.
+	var _v any
+	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+		return fmt.Errorf("not: cannot decode value: %w", _err)
+	}
+	{{- range .NotTypes}}
+	{{- if eq . "integer"}}
+	if _f, _fOk := _v.(float64); _fOk && _f == math.Trunc(_f) && !math.IsInf(_f, 0) {
+		return fmt.Errorf("not: value must not be integer")
+	}
+	{{- else if eq . "number"}}
+	if _, _fOk := _v.(float64); _fOk {
+		return fmt.Errorf("not: value must not be number")
+	}
+	{{- else if eq . "string"}}
+	if _, _sOk := _v.(string); _sOk {
+		return fmt.Errorf("not: value must not be string")
+	}
+	{{- else if eq . "boolean"}}
+	if _, _bOk := _v.(bool); _bOk {
+		return fmt.Errorf("not: value must not be boolean")
+	}
+	{{- else if eq . "null"}}
+	if _v == nil {
+		return fmt.Errorf("not: value must not be null")
+	}
+	{{- else if eq . "array"}}
+	if _, _aOk := _v.([]any); _aOk {
+		return fmt.Errorf("not: value must not be array")
+	}
+	{{- else if eq . "object"}}
+	if _, _oOk := _v.(map[string]any); _oOk {
+		return fmt.Errorf("not: value must not be object")
+	}
+	{{- end}}
+	{{- end}}
+	return nil
+	{{- end}}
+}
+{{- end}}

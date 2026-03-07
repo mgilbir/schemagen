@@ -107,6 +107,13 @@ func (s *Schema) Normalize() {
 		s.MultipleOf = s.DivisibleBy
 	}
 
+	// Draft 3: convert "disallow" to "not".
+	// "disallow" is the draft 3 equivalent of "not" with type constraints.
+	// It can be a single type string or an array of type strings.
+	if len(s.Disallow) > 0 && s.Not == nil {
+		s.normalizeDisallow()
+	}
+
 	// Draft 4-7: convert "dependencies" to dependentSchemas/dependentRequired.
 	if len(s.Dependencies) > 0 {
 		s.normalizeDependencies()
@@ -114,6 +121,45 @@ func (s *Schema) Normalize() {
 
 	// Recursively normalize nested schemas.
 	s.normalizeChildren()
+}
+
+// normalizeDisallow converts Draft 3's "disallow" to "not" with type constraints.
+// "disallow" can be a single type string or an array of type strings/schemas.
+// Only simple type strings are handled; inline schema objects in the disallow
+// array are ignored (they'd require complex not-schema generation).
+func (s *Schema) normalizeDisallow() {
+	trimmed := trimJSONWhitespace(s.Disallow)
+	if len(trimmed) == 0 {
+		return
+	}
+
+	var types []string
+	if trimmed[0] == '"' {
+		// Single type string: "disallow": "integer"
+		var t string
+		if json.Unmarshal(s.Disallow, &t) == nil {
+			types = []string{t}
+		}
+	} else if trimmed[0] == '[' {
+		// Array of strings or schemas: "disallow": ["integer", "boolean"]
+		// Only extract string elements; ignore inline schema objects.
+		var raw []json.RawMessage
+		if json.Unmarshal(s.Disallow, &raw) == nil {
+			for _, elem := range raw {
+				elemTrimmed := trimJSONWhitespace(elem)
+				if len(elemTrimmed) > 0 && elemTrimmed[0] == '"' {
+					var t string
+					if json.Unmarshal(elem, &t) == nil {
+						types = append(types, t)
+					}
+				}
+			}
+		}
+	}
+
+	if len(types) > 0 {
+		s.Not = &Schema{Type: types}
+	}
 }
 
 // normalizeDraft3Required converts Draft 3's per-property "required": true

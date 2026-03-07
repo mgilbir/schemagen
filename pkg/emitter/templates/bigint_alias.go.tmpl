@@ -1,0 +1,164 @@
+{{define "bigint_alias"}}
+{{- $recv := receiverName .Name -}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+// {{.Name}} holds an integer value with arbitrary-precision support (int64 + *big.Int).
+type {{.Name}} struct {
+	_int64    int64
+	_bigInt   *big.Int
+	_isBigInt bool
+}
+
+{{template "bigint_alias_unmarshal" .}}
+{{template "bigint_alias_marshal" .}}
+{{template "bigint_alias_accessors" .}}
+{{template "bigint_alias_validate" .}}
+{{- end}}
+
+{{define "bigint_alias_unmarshal"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- if .NeedsNullCheck}}
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type {{.Name}}")
+	}
+	{{- end}}
+	// Reject JSON strings (e.g., "1").
+	if len(data) > 0 && data[0] == '"' {
+		return fmt.Errorf("cannot unmarshal string into Go value of type {{.Name}}")
+	}
+	var _n json.Number
+	if _err := json.Unmarshal(data, &_n); _err != nil {
+		return _err
+	}
+	// Try int64 first.
+	if _i, _iErr := _n.Int64(); _iErr == nil {
+		{{$recv}}._int64 = _i
+		{{$recv}}._isBigInt = false
+		{{$recv}}._bigInt = nil
+		return nil
+	}
+	// Try float with zero fractional part (e.g., 1.0).
+	if _f, _fErr := _n.Float64(); _fErr == nil {
+		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
+			{{$recv}}._int64 = int64(_f)
+			{{$recv}}._isBigInt = false
+			{{$recv}}._bigInt = nil
+			return nil
+		}
+	}
+	// Try big.Int for values that overflow int64.
+	_bi := new(big.Int)
+	_s := _n.String()
+	// Handle float-format bignums (e.g., 1e100).
+	if strings.ContainsAny(_s, ".eE") {
+		_bf := new(big.Float)
+		if _, _ok := _bf.SetString(_s); _ok {
+			if _bf.IsInt() {
+				_bf.Int(_bi)
+				{{$recv}}._bigInt = _bi
+				{{$recv}}._isBigInt = true
+				{{$recv}}._int64 = 0
+				return nil
+			}
+		}
+		return fmt.Errorf("value %s is not an integer", _s)
+	}
+	if _, _ok := _bi.SetString(_s, 10); _ok {
+		{{$recv}}._bigInt = _bi
+		{{$recv}}._isBigInt = true
+		{{$recv}}._int64 = 0
+		return nil
+	}
+	return fmt.Errorf("value %s is not a valid integer", _s)
+}
+{{- end}}
+
+{{define "bigint_alias_marshal"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
+		return []byte({{$recv}}._bigInt.String()), nil
+	}
+	return json.Marshal({{$recv}}._int64)
+}
+{{- end}}
+
+{{define "bigint_alias_accessors"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} {{.Name}}) Int64() int64 { return {{$recv}}._int64 }
+func ({{$recv}} {{.Name}}) BigInt() *big.Int {
+	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
+		return {{$recv}}._bigInt
+	}
+	return big.NewInt({{$recv}}._int64)
+}
+func ({{$recv}} {{.Name}}) IsBigInt() bool { return {{$recv}}._isBigInt }
+func ({{$recv}} {{.Name}}) String() string { return {{$recv}}.BigInt().String() }
+{{- end}}
+
+{{define "bigint_alias_validate"}}
+{{- $recv := receiverName .Name -}}
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	{{- range .Validations}}
+	{{- if eq .RuleType "minimum"}}
+	{
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) < 0 {
+			return fmt.Errorf("value: %s is less than minimum {{.Value}}", {{$recv}}.BigInt().String())
+		}
+	}
+	{{- end}}
+	{{- if eq .RuleType "maximum"}}
+	{
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) > 0 {
+			return fmt.Errorf("value: %s exceeds maximum {{.Value}}", {{$recv}}.BigInt().String())
+		}
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMinimum"}}
+	{
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) <= 0 {
+			return fmt.Errorf("value: %s must be greater than {{.Value}}", {{$recv}}.BigInt().String())
+		}
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMaximum"}}
+	{
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float)
+		_limit.SetString("{{.Value}}")
+		if _val.Cmp(_limit) >= 0 {
+			return fmt.Errorf("value: %s must be less than {{.Value}}", {{$recv}}.BigInt().String())
+		}
+	}
+	{{- end}}
+	{{- if eq .RuleType "multipleOf"}}
+	{
+		_val := new(big.Float).SetInt({{$recv}}.BigInt())
+		_divisor := new(big.Float)
+		_divisor.SetString("{{.Value}}")
+		_quotient := new(big.Float).Quo(_val, _divisor)
+		if !_quotient.IsInt() {
+			return fmt.Errorf("value: %s is not a multiple of {{.Value}}", {{$recv}}.BigInt().String())
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return nil
+}
+{{- end}}

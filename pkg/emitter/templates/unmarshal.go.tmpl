@@ -97,7 +97,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys}}
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps}}
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -108,6 +108,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		for k := range raw {
 			{{$recv}}._jsonKeys[k] = true
 		}
+		{{- end}}
+		{{- if $struct.NeedsRawProps}}
+		{{$recv}}._jsonRawProps = raw
 		{{- end}}
 		{{- if $struct.HasRequiredFields}}
 		// Check required JSON properties are present (only for JSON objects, not null).

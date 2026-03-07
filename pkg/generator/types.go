@@ -74,11 +74,14 @@ type StructDef struct {
 	AdditionalProperties  *AdditionalPropertiesDef
 	PatternProperties     []PatternPropertyDef
 	DependentSchemas      []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
+	DependentRequired     []DependentRequiredDef      // dependentRequired constraints
+	PropertyNames         *PropertyNamesDef           // propertyNames constraint (Draft 6+)
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
+	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -86,12 +89,40 @@ type StructDef struct {
 	AcceptNonObject       bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
 }
 
-// DependentSchemaConstraint describes a dependentSchemas entry where the sub-schema
-// has additionalProperties: false. When the trigger key is present in the JSON object,
-// only the keys listed in AllowedKeys are valid.
+// DependentRequiredDef describes a dependentRequired constraint: when the
+// trigger property is present, the listed dependent properties must also be present.
+type DependentRequiredDef struct {
+	TriggerKey string   // JSON property name that activates the constraint
+	Required   []string // JSON property names that must be present when trigger is present
+}
+
+// PropertyNamesDef describes a propertyNames constraint on a struct.
+// All property names in the JSON object must satisfy these string validation rules.
+type PropertyNamesDef struct {
+	IsForbidden bool     // true when propertyNames: false (any property is invalid)
+	MaxLength   *int     // maximum length of property names
+	MinLength   *int     // minimum length of property names
+	Pattern     string   // regex pattern property names must match
+	Enum        []string // allowed property name values (from enum or const)
+}
+
+// DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
+// is present in the JSON object, the sub-schema's constraints are applied.
 type DependentSchemaConstraint struct {
-	TriggerKey  string   // JSON property name that activates the constraint
-	AllowedKeys []string // set of JSON property names allowed by the dependent sub-schema
+	TriggerKey    string                  // JSON property name that activates the constraint
+	IsFalse       bool                    // boolean false schema — always reject when trigger is present
+	AllowedKeys   []string                // set of JSON property names allowed (additionalProperties: false)
+	RequiredProps []string                // required properties from the sub-schema
+	MinProperties *int                    // minProperties from the sub-schema
+	MaxProperties *int                    // maxProperties from the sub-schema
+	PropertyTypes []DependentPropertyType // per-property type constraints from the sub-schema
+}
+
+// DependentPropertyType describes a JSON type constraint on a specific property
+// within a dependentSchemas sub-schema.
+type DependentPropertyType struct {
+	PropName string // JSON property name
+	JSONType string // required JSON type (e.g., "integer", "string")
 }
 
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
@@ -100,6 +131,7 @@ type ValidatableFieldDef struct {
 	FieldName   string // Go field name (PascalCase)
 	GoType      GoType // the Go type of the field (for zero-value comparison)
 	IsPointer   bool   // true if the field is a pointer type (needs nil check)
+	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
 }
@@ -137,9 +169,24 @@ func (d *StructDef) HasDependentSchemas() bool {
 	return len(d.DependentSchemas) > 0
 }
 
+// HasDependentRequired returns true if the struct has dependentRequired constraints.
+func (d *StructDef) HasDependentRequired() bool {
+	return len(d.DependentRequired) > 0
+}
+
+// HasPropertyNames returns true if the struct has a propertyNames constraint.
+func (d *StructDef) HasPropertyNames() bool {
+	return d.PropertyNames != nil
+}
+
 // HasUnevaluatedProperties returns true if the struct has an unevaluatedProperties constraint.
 func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
+}
+
+// HasCousinUnevalChecks returns true if the struct has cousin isolation checks.
+func (d *StructDef) HasCousinUnevalChecks() bool {
+	return len(d.CousinUnevalChecks) > 0
 }
 
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
@@ -148,10 +195,46 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 	return u.ValueType != "" || len(u.Validations) > 0
 }
 
+// NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
+// conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
+func (d *StructDef) NeedsRawProps() bool {
+	if d.UnevaluatedProperties == nil {
+		return false
+	}
+	for _, ce := range d.UnevaluatedProperties.ConditionalEvals {
+		switch ce.Kind {
+		case "ifThenElse":
+			if ce.IfBranch != nil && len(ce.IfBranch.ConstChecks) > 0 {
+				return true
+			}
+		case "anyOf", "oneOf":
+			for _, b := range ce.Branches {
+				if len(b.ConstChecks) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
-// validation or dependent schema validation.
+// validation, dependent schema/required validation, propertyNames validation,
+// or unevaluatedProperties with conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if len(d.DependentSchemas) > 0 {
+		return true
+	}
+	if len(d.DependentRequired) > 0 {
+		return true
+	}
+	if d.PropertyNames != nil {
+		return true
+	}
+	if len(d.CousinUnevalChecks) > 0 {
+		return true
+	}
+	if d.UnevaluatedProperties != nil && d.UnevaluatedProperties.HasConditionalEvals() {
 		return true
 	}
 	for _, v := range d.Validations {
@@ -182,13 +265,75 @@ type AdditionalPropertiesDef struct {
 // Properties are "evaluated" if they are covered by properties, patternProperties,
 // additionalProperties, or unevaluatedProperties in nested applicator subschemas.
 type UnevaluatedPropertiesDef struct {
-	IsForbidden       bool             // true when unevaluatedProperties: false (reject any unevaluated property)
-	IsAllowed         bool             // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
-	EvaluatedNames    []string         // statically known evaluated property names from allOf/$ref/properties
-	EvaluatedPatterns []string         // regex patterns from patternProperties in allOf/$ref
-	AllEvaluated      bool             // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
-	Validations       []ValidationRule // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
-	ValueType         string           // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
+	IsForbidden       bool              // true when unevaluatedProperties: false (reject any unevaluated property)
+	IsAllowed         bool              // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
+	EvaluatedNames    []string          // statically known evaluated property names from allOf/$ref/properties (always-true sources)
+	EvaluatedPatterns []string          // regex patterns from patternProperties in allOf/$ref (always-true sources)
+	AllEvaluated      bool              // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
+	Validations       []ValidationRule  // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
+	ValueType         string            // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
+	ConditionalEvals  []ConditionalEval // runtime-conditional evaluation branches (if/then/else, dependentSchemas, anyOf, oneOf)
+}
+
+// HasConditionalEvals returns true if there are conditional evaluation branches.
+func (u *UnevaluatedPropertiesDef) HasConditionalEvals() bool {
+	return len(u.ConditionalEvals) > 0
+}
+
+// ConditionalEval describes a set of properties that are conditionally evaluated
+// based on a runtime condition. At validation time, the condition is checked and
+// matching properties are added to the "evaluated" set dynamically.
+type ConditionalEval struct {
+	Kind string // "dependentSchema", "ifThenElse", "anyOf", "oneOf"
+	// dependentSchema: properties evaluated only when TriggerKey is present
+	TriggerKey string         // JSON property name that triggers the branch
+	Branch     *EvalBranchDef // properties evaluated when trigger is present
+	// ifThenElse: ThenBranch evaluated when if matches, ElseBranch when it doesn't
+	IfBranch   *IfConditionDef // describes how to evaluate the if condition
+	ThenBranch *EvalBranchDef  // properties evaluated when if matches
+	ElseBranch *EvalBranchDef  // properties evaluated when if doesn't match
+	// anyOf/oneOf: each branch's properties are evaluated only if that branch matches
+	Branches []EvalBranchDef // per-branch property info for anyOf/oneOf
+}
+
+// EvalBranchDef describes a set of properties evaluated by a schema branch.
+type EvalBranchDef struct {
+	Names        []string // property names evaluated by this branch
+	Patterns     []string // regex patterns evaluated by this branch
+	AllEvaluated bool     // if true, this branch evaluates ALL remaining properties
+	// For branch matching in anyOf/oneOf:
+	RequiredKeys []string     // keys that must be present for this branch to match
+	ConstChecks  []ConstCheck // property const value checks
+}
+
+// HasNames returns true if this branch has any evaluated property names.
+func (b *EvalBranchDef) HasNames() bool { return len(b.Names) > 0 }
+
+// HasPatterns returns true if this branch has any evaluated pattern properties.
+func (b *EvalBranchDef) HasPatterns() bool { return len(b.Patterns) > 0 }
+
+// IfConditionDef describes a simple if-schema condition that can be evaluated
+// at runtime by checking property values in the JSON object.
+type IfConditionDef struct {
+	ConstChecks  []ConstCheck // property const value checks
+	RequiredKeys []string     // keys that must be present
+}
+
+// ConstCheck describes a property const value check (property must equal a specific JSON value).
+type ConstCheck struct {
+	PropertyName string // JSON property name
+	GoFieldName  string // Go field name for struct access
+	JSONValue    string // expected JSON-encoded value (e.g., `"bar"`, `42`)
+}
+
+// CousinUnevalCheck describes an unevaluatedProperties check from an allOf/anyOf
+// sub-schema ("cousin"). Per JSON Schema spec, unevaluatedProperties inside an
+// applicator branch can only see annotations from its own branch, not siblings.
+type CousinUnevalCheck struct {
+	IsForbidden    bool     // true when the cousin's unevaluatedProperties: false
+	EvaluatedNames []string // property names evaluated in the cousin's own scope
+	EvalPatterns   []string // regex patterns evaluated in the cousin's own scope
+	AllEvaluated   bool     // true when the cousin's branch has additionalProperties
 }
 
 // ValidationRule describes a validation constraint on a struct field.
@@ -284,10 +429,162 @@ func (d *AliasDef) CanHaveMethods() bool {
 	return !d.NoMethods
 }
 
+// IsIntegerType returns true if the underlying type is int64 (from "integer" schema type).
+// Used to generate json.Number-based UnmarshalJSON that accepts 1.0 as a valid integer.
+func (d *AliasDef) IsIntegerType() bool {
+	if pt, ok := d.Underlying.(*PrimitiveType); ok {
+		return pt.Name == "int64"
+	}
+	return false
+}
+
 // HasTupleItems returns true if this alias has per-position tuple validation.
 func (d *AliasDef) HasTupleItems() bool {
 	return len(d.TupleItems) > 0
 }
+
+// InferredAliasDef represents a type where the Go type was inferred from
+// constraint keywords (not explicitly declared via "type"). It generates a
+// wrapper struct that accepts any JSON value but provides typed access for
+// the expected type. Non-matching JSON types are silently accepted per JSON
+// Schema semantics (constraints only apply to matching types).
+type InferredAliasDef struct {
+	Name             string
+	Description      string
+	InferredGoType   GoType           // float64, string, or []any
+	InferredJSONType string           // "number", "string", "array" — for accessor naming
+	Validations      []ValidationRule // constraint rules (minimum, maxLength, etc.)
+	AnyOfVariants    [][]ValidationRule
+	OneOfVariants    [][]ValidationRule
+	NeedsNullCheck   bool
+
+	// Item-level validation for inferred arrays:
+	ItemsFalse           bool                // items: false — reject any non-empty array
+	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
+	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
+	ItemsChecks          []ContainsCheck     // per-element validation checks from items sub-schema (multipleOf, minimum, etc.)
+	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
+	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
+	AdditionalItemsType  string              // additionalItems as simple JSON type
+
+	// Contains validation for inferred arrays:
+	Contains    *ContainsDef // contains sub-schema validation
+	MinContains *int         // minContains (default 1 when contains is present)
+	MaxContains *int         // maxContains (nil = no upper bound)
+}
+
+// ContainsDef describes a contains constraint on an array.
+type ContainsDef struct {
+	IsFalse   bool            // contains: false — no element can ever match
+	IsTrue    bool            // contains: true — every element matches
+	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
+	Checks    []ContainsCheck // per-element validation checks
+}
+
+// ContainsCheck describes one validation check applied to each element
+// when evaluating whether it matches the contains sub-schema.
+type ContainsCheck struct {
+	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum"
+	Value     any    // the constraint value
+}
+
+// InferredTupleItem describes a per-position item schema for inferred arrays.
+type InferredTupleItem struct {
+	IsFalse  bool   // boolean false schema — reject any value at this position
+	JSONType string // simple JSON type constraint (e.g., "integer", "string")
+	TypeName string // named Go type for $ref-based items (unmarshal + Validate())
+}
+
+// HasItemValidation returns true if the InferredAliasDef has any item-level validation.
+func (d *InferredAliasDef) HasItemValidation() bool {
+	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
+		len(d.ItemsChecks) > 0 ||
+		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
+}
+
+// HasContainsValidation returns true if the InferredAliasDef has contains validation.
+func (d *InferredAliasDef) HasContainsValidation() bool {
+	return d.Contains != nil
+}
+
+func (d *InferredAliasDef) TypeName() string { return d.Name }
+func (d *InferredAliasDef) typeDef()         {}
+
+// AccessorName returns the Go method name for typed access (e.g., "Float64", "StringValue", "Slice").
+func (d *InferredAliasDef) AccessorName() string {
+	switch d.InferredJSONType {
+	case "number":
+		return "Float64"
+	case "string":
+		return "StringValue"
+	case "array":
+		return "Slice"
+	default:
+		return "Value"
+	}
+}
+
+// TypeCheckName returns the Go method name for type checking (e.g., "IsNumber", "IsString", "IsArray").
+func (d *InferredAliasDef) TypeCheckName() string {
+	switch d.InferredJSONType {
+	case "number":
+		return "IsNumber"
+	case "string":
+		return "IsString"
+	case "array":
+		return "IsArray"
+	default:
+		return "IsTyped"
+	}
+}
+
+// GoTypeName returns the Go type name of the inferred type.
+func (d *InferredAliasDef) GoTypeName() string {
+	return d.InferredGoType.GoTypeName()
+}
+
+// BigIntAliasDef represents an integer type with arbitrary-precision support.
+// It generates a wrapper struct with int64 + *big.Int fields. Values that fit
+// in int64 are stored there; larger values use big.Int. This is only generated
+// when Config.BigIntSupport is true and the schema type is "integer".
+type BigIntAliasDef struct {
+	Name           string
+	Description    string
+	Validations    []ValidationRule
+	AnyOfVariants  [][]ValidationRule
+	OneOfVariants  [][]ValidationRule
+	NeedsNullCheck bool
+}
+
+func (d *BigIntAliasDef) TypeName() string { return d.Name }
+func (d *BigIntAliasDef) typeDef()         {}
+
+// NotSchemaDef represents a schema whose only constraint is a root-level "not".
+// It generates a wrapper struct around json.RawMessage that validates the negated
+// constraint. The generated type accepts any JSON value and rejects those that
+// match the not sub-schema.
+type NotSchemaDef struct {
+	Name        string
+	Description string
+	IsForbidden bool     // not:{} or not:true — reject everything
+	NotTypes    []string // not:{type:X} — reject values of these JSON types
+}
+
+func (d *NotSchemaDef) TypeName() string { return d.Name }
+func (d *NotSchemaDef) typeDef()         {}
+
+// TypeOnlySchemaDef represents a schema whose sole constraint is a "type" field
+// with types that don't map to a single Go type (e.g., "null", ["integer","string"],
+// ["array","object","null"]). It generates a wrapper around json.RawMessage that
+// validates the value's JSON type against the allowed types.
+type TypeOnlySchemaDef struct {
+	Name         string
+	Description  string
+	AllowedTypes []string // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+}
+
+func (d *TypeOnlySchemaDef) TypeName() string { return d.Name }
+func (d *TypeOnlySchemaDef) typeDef()         {}
 
 // ---------- File ----------
 

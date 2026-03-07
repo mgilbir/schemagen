@@ -243,6 +243,12 @@ func (o Order) Validate() error {
 	if err := o.BillingAddress.Validate(); err != nil {
 		return err
 	}
+	for _i, _item := range o.Items {
+		_ = _i
+		if err := _item.Validate(); err != nil {
+			return err
+		}
+	}
 	if err := o.ShippingAddress.Validate(); err != nil {
 		return err
 	}
