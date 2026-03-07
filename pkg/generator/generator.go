@@ -1619,6 +1619,29 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	if len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
 		merged.DependentSchemas = s.DependentSchemas
 	}
+	// Propagate array-structural keywords from parent schema.
+	// Per JSON Schema spec, items/additionalItems scoping is per-schema (they don't
+	// cross into applicator sub-schemas like allOf). So the parent's items applies
+	// independently and must be preserved on the merged schema for type inference
+	// and validation extraction.
+	if s.Items != nil && merged.Items == nil {
+		merged.Items = s.Items
+	}
+	if len(s.PrefixItems) > 0 && len(merged.PrefixItems) == 0 {
+		merged.PrefixItems = s.PrefixItems
+	}
+	if s.Contains != nil && merged.Contains == nil {
+		merged.Contains = s.Contains
+	}
+	if s.MinContains != nil && merged.MinContains == nil {
+		merged.MinContains = s.MinContains
+	}
+	if s.MaxContains != nil && merged.MaxContains == nil {
+		merged.MaxContains = s.MaxContains
+	}
+	if s.AdditionalItems != nil && merged.AdditionalItems == nil {
+		merged.AdditionalItems = s.AdditionalItems
+	}
 
 	// If no sub-schema contributed properties, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
@@ -1643,6 +1666,45 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		primaryType := primarySchemaType(merged)
 		if primaryType == "" {
 			primaryType = inferTypeFromConstraints(merged)
+		}
+		if primaryType == "array" {
+			// Array type — extract item-level constraints and generate InferredAliasDef
+			// so that per-element validation works (items, prefixItems, contains, etc.).
+			goType := g.resolveType(merged, name)
+			rules := extractAliasValidationRules(merged, goType)
+			anyOfVariants := extractAnyOfVariantRules(s, goType)
+			oneOfVariants := extractOneOfVariantRules(s, goType)
+			g.generated[name] = true
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
+			containsDef, minContains, maxContains := extractContainsDef(merged)
+			inferredGoType := goType
+			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
+				len(itemsChecks) > 0 ||
+				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
+				containsDef != nil {
+				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
+			}
+			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				Name:                 name,
+				Description:          s.Description,
+				InferredGoType:       inferredGoType,
+				InferredJSONType:     primaryType,
+				Validations:          rules,
+				AnyOfVariants:        anyOfVariants,
+				OneOfVariants:        oneOfVariants,
+				NeedsNullCheck:       !schemaAllowsNull(merged),
+				ItemsFalse:           itemsFalse,
+				ItemsType:            itemsType,
+				ItemsTypeName:        itemsTypeName,
+				ItemsChecks:          itemsChecks,
+				TupleItems:           tupleItems,
+				AdditionalItemsFalse: addlItemsFalse,
+				AdditionalItemsType:  addlItemsType,
+				Contains:             containsDef,
+				MinContains:          minContains,
+				MaxContains:          maxContains,
+			})
+			return nil
 		}
 		if primaryType != "" && primaryType != "object" {
 			goType := g.resolveType(merged, name)
@@ -1719,9 +1781,10 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 			if g.pushDynamicScope(r) {
 				pushedCount++
 			}
-			// If the resolved schema has properties or patternProperties, merge
-			// those but also continue to check for nested allOf/ref below.
-			if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 {
+			// If the resolved schema has structural content (properties, array keywords,
+			// allOf, etc.), stop following $ref and use this schema.
+			if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 ||
+				r.Items != nil || len(r.PrefixItems) > 0 || r.Contains != nil || r.AdditionalItems != nil {
 				resolved = r
 				break
 			}
@@ -1749,6 +1812,20 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		}
 		// Propagate validation constraints (use tightest / first-set-wins).
 		mergeConstraints(target, resolved)
+		// NOTE: We deliberately do NOT merge array-structural keywords (items,
+		// prefixItems, contains, additionalItems) from allOf sub-schemas into
+		// the target. Per JSON Schema spec, items/additionalItems scoping is
+		// per-schema — merging them would change the scoping semantics (e.g.,
+		// parent's `items` would apply only after merged `prefixItems` instead
+		// of to all elements). Parent array keywords are propagated separately
+		// in generateAllOfDef after merging.
+		// However, we DO infer the type from sub-schema array/object keywords
+		// so that the merged schema can still generate the right Go type.
+		if len(target.Type) == 0 {
+			if resolved.Items != nil || len(resolved.PrefixItems) > 0 || resolved.Contains != nil || resolved.AdditionalItems != nil {
+				target.Type = []string{"array"}
+			}
+		}
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)

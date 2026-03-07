@@ -170,7 +170,7 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
 	"draft2020-12/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
 
-	// unevaluatedItems: validation not implemented for inferred arrays (30 entries)
+	// unevaluatedItems: validation not implemented for inferred arrays (36 entries)
 	"draft2019-09/unevaluatedItems/unevaluatedItems as schema/with invalid unevaluated items":                                                   "unevaluatedItems: not implemented for inferred arrays",
 	"draft2019-09/unevaluatedItems/unevaluatedItems before $ref/with unevaluated items":                                                         "unevaluatedItems: not implemented for inferred arrays",
 	"draft2019-09/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/invalid in case if is evaluated":          "unevaluatedItems: not implemented for inferred arrays",
@@ -181,7 +181,10 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if doesn't match and it has unevaluated items":                       "unevaluatedItems: not implemented for inferred arrays",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":                             "unevaluatedItems: not implemented for inferred arrays",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":                                "unevaluatedItems: not implemented for inferred arrays",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems":                     "unevaluatedItems: not implemented for inferred arrays",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                             "unevaluatedItems: not implemented for inferred arrays",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with nested tuple/with unevaluated items":                                                   "unevaluatedItems: not implemented for inferred arrays",
+	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                      "unevaluatedItems: not implemented for inferred arrays",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's and c's are invalid": "unevaluatedItems: not implemented for inferred arrays",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only b's and c's are invalid": "unevaluatedItems: not implemented for inferred arrays",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only b's are invalid":         "unevaluatedItems: not implemented for inferred arrays",
@@ -197,9 +200,12 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if doesn't match and it has unevaluated items":                       "unevaluatedItems: not implemented for inferred arrays",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":                             "unevaluatedItems: not implemented for inferred arrays",
 	// (draft2020-12/unevaluatedItems/unevaluatedItems with items/invalid under items — FIXED via items validation in InferredAliasDef)
-	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/no items evaluated by contains":               "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/some but not all items evaluated by contains": "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                    "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/no items evaluated by contains":                         "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/some but not all items evaluated by contains":           "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                              "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with nested tuple/with unevaluated items":                                    "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                       "unevaluatedItems: not implemented for inferred arrays",
+	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems": "unevaluatedItems: not implemented for inferred arrays",
 
 	// cross-draft: cross-draft ref processing issues (1 entry)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)
