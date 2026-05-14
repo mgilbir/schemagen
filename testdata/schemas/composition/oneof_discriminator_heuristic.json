@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shape",
+  "type": "object",
+  "$defs": {
+    "Circle": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "circle" },
+        "radius": { "type": "number" }
+      },
+      "required": ["type", "radius"]
+    },
+    "Square": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "square" },
+        "side": { "type": "number" }
+      },
+      "required": ["type", "side"]
+    },
+    "Triangle": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "triangle" },
+        "base": { "type": "number" },
+        "height": { "type": "number" }
+      },
+      "required": ["type", "base", "height"]
+    }
+  },
+  "properties": {
+    "name": { "type": "string" },
+    "geometry": {
+      "oneOf": [
+        { "$ref": "#/$defs/Circle" },
+        { "$ref": "#/$defs/Square" },
+        { "$ref": "#/$defs/Triangle" }
+      ]
+    }
+  },
+  "required": ["name", "geometry"]
+}

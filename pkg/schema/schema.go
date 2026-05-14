@@ -265,6 +265,16 @@ func (r RequiredList) MarshalJSON() ([]byte, error) {
 	return json.Marshal([]string(r))
 }
 
+// Discriminator represents an OpenAPI-style discriminator for oneOf/anyOf polymorphism.
+// It identifies a property whose value determines which variant schema applies.
+type Discriminator struct {
+	// PropertyName is the name of the property that holds the discriminator value.
+	PropertyName string `json:"propertyName"`
+	// Mapping is an optional map from discriminator values to schema references.
+	// If empty, the discriminator value is matched against variant const/enum values.
+	Mapping map[string]string `json:"mapping,omitempty"`
+}
+
 // Schema represents a JSON Schema document. It is a superset struct that supports
 // keywords from all draft versions. Draft-specific normalization is done by Normalize().
 type Schema struct {
@@ -283,10 +293,11 @@ type Schema struct {
 	Type TypeList `json:"type,omitempty"`
 
 	// Composition
-	AllOf []*Schema `json:"allOf,omitempty"`
-	AnyOf []*Schema `json:"anyOf,omitempty"`
-	OneOf []*Schema `json:"oneOf,omitempty"`
-	Not   *Schema   `json:"not,omitempty"`
+	AllOf         []*Schema      `json:"allOf,omitempty"`
+	AnyOf         []*Schema      `json:"anyOf,omitempty"`
+	OneOf         []*Schema      `json:"oneOf,omitempty"`
+	Not           *Schema        `json:"not,omitempty"`
+	Discriminator *Discriminator `json:"discriminator,omitempty"`
 
 	// Object keywords
 	Properties           map[string]*Schema `json:"properties,omitempty"`

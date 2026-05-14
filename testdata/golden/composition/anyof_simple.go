@@ -40,14 +40,14 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 			"title":       true,
 			"url":         true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if s.AdditionalProperties == nil {
 				s.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			s.AdditionalProperties[k] = v
+			s.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -116,14 +116,14 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 			"id":     true,
 			"result": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if s.AdditionalProperties == nil {
 				s.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			s.AdditionalProperties[k] = v
+			s.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

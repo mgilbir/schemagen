@@ -46,14 +46,14 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 			"street": true,
 			"zip":    true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			a.AdditionalProperties[k] = v
+			a.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -124,14 +124,14 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 			"price":    true,
 			"quantity": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if i.AdditionalProperties == nil {
 				i.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			i.AdditionalProperties[k] = v
+			i.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -204,14 +204,14 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 			"order_id":         true,
 			"shipping_address": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if o.AdditionalProperties == nil {
 				o.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			o.AdditionalProperties[k] = v
+			o.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

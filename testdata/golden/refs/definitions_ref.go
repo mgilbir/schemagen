@@ -44,14 +44,14 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 			"name": true,
 			"role": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			m.AdditionalProperties[k] = v
+			m.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -120,14 +120,14 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 			"members": true,
 			"name":    true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if t.AdditionalProperties == nil {
 				t.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			t.AdditionalProperties[k] = v
+			t.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

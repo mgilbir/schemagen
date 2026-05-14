@@ -42,14 +42,14 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 			"num_field":    true,
 			"str_field":    true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if p.AdditionalProperties == nil {
 				p.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			p.AdditionalProperties[k] = v
+			p.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

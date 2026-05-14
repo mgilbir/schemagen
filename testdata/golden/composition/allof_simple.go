@@ -48,14 +48,14 @@ func (e *Employee) UnmarshalJSON(data []byte) error {
 			"employee_id": true,
 			"name":        true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if e.AdditionalProperties == nil {
 				e.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			e.AdditionalProperties[k] = v
+			e.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

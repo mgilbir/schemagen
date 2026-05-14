@@ -52,14 +52,14 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 			"email":  true,
 			"name":   true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if p.AdditionalProperties == nil {
 				p.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			p.AdditionalProperties[k] = v
+			p.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

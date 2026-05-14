@@ -42,14 +42,14 @@ func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"name": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if f.AdditionalProperties == nil {
 				f.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			f.AdditionalProperties[k] = v
+			f.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

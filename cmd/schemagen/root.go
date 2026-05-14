@@ -32,6 +32,7 @@ func newGenerateCmd() *cobra.Command {
 		strictProperties bool
 		bigInt           bool
 		verbose          bool
+		allowRemoteRefs  bool
 	)
 
 	cmd := &cobra.Command{
@@ -62,7 +63,17 @@ func newGenerateCmd() *cobra.Command {
 				//    rooted at the schema file's directory.
 				absPath, _ := filepath.Abs(schemaPath)
 				schemaDir := filepath.Dir(absPath)
-				resolver := schema.NewFileResolver(schemaDir)
+				fileResolver := schema.NewFileResolver(schemaDir)
+
+				// Build resolver chain. File resolver is always available;
+				// HTTP resolver is opt-in via --allow-remote-refs.
+				var resolver schema.SchemaResolver
+				if allowRemoteRefs {
+					httpResolver := schema.NewHTTPResolver()
+					resolver = schema.NewCompositeResolver(fileResolver, httpResolver)
+				} else {
+					resolver = fileResolver
+				}
 
 				cfg := generator.Config{
 					PackageName:      pkgName,
@@ -114,6 +125,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false (no overflow map for extra JSON keys)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
+	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd

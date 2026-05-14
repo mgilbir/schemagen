@@ -42,18 +42,18 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"version": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]string)
 			}
 			var val string
-			if err := json.Unmarshal(v, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", k, err)
+			if err := json.Unmarshal(rawVal, &val); err != nil {
+				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}
-			m.AdditionalProperties[k] = val
+			m.AdditionalProperties[rawKey] = val
 		}
 	}
 

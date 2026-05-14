@@ -1,0 +1,30 @@
+{{define "set_defaults"}}
+{{- $struct := . -}}
+{{- $recv := receiverName .Name -}}
+
+// SetDefaults sets default values for unset fields of {{$struct.Name}}.
+// A field is considered "unset" if it holds the zero value for its type.
+func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
+	{{- range $struct.Fields}}
+	{{- if .DefaultLiteral}}
+	{{- if eq (goType .Type) "string"}}
+	if {{$recv}}.{{.Name}} == "" {
+		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq (goType .Type) "int64"}}
+	if {{$recv}}.{{.Name}} == 0 {
+		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq (goType .Type) "float64"}}
+	if {{$recv}}.{{.Name}} == 0 {
+		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq (goType .Type) "bool"}}
+	if !{{$recv}}.{{.Name}} {
+		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
+}
+{{- end}}

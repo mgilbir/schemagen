@@ -15,3 +15,6 @@ import (
 {{- if .HasOneOf}}
 {{template "oneof_helpers"}}
 {{- end}}
+{{- if .HasDiscriminatedOneOf}}
+{{template "oneof_discriminator_helper"}}
+{{- end}}

@@ -66,6 +66,20 @@ func (d fileData) HasOneOf() bool {
 	return false
 }
 
+// HasDiscriminatedOneOf returns true if any struct in the file has a discriminator-based oneOf.
+func (d fileData) HasDiscriminatedOneOf() bool {
+	for _, td := range d.TypeDefs {
+		if s, ok := td.Def.(*generator.StructDef); ok {
+			for _, oof := range s.OneOfs {
+				if oof.HasDiscriminator() {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // HasValidation returns true if any type in the file has validation rules.
 func (d fileData) HasValidation() bool {
 	for _, td := range d.TypeDefs {

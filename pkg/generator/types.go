@@ -141,6 +141,16 @@ func (d *StructDef) HasRequiredFields() bool {
 	return len(d.RequiredJSON) > 0
 }
 
+// HasDefaults returns true if any field has a default value.
+func (d *StructDef) HasDefaults() bool {
+	for _, f := range d.Fields {
+		if f.DefaultLiteral != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // HasOwnPropertyNames returns true if the struct tracks own (non-merged) property names
 // for additionalProperties scope isolation (e.g., allOf merges). A non-nil but empty
 // slice means "no own properties" — all properties came from allOf sub-schemas.
@@ -351,29 +361,38 @@ func (d *StructDef) typeDef()         {}
 
 // FieldDef represents a struct field.
 type FieldDef struct {
-	Name        string // Go field name (PascalCase)
-	JSONName    string // JSON property name (original)
-	Type        GoType // resolved Go type
-	OmitEmpty   bool
-	Required    bool
-	Description string
-	ManualJSON  bool // true if JSONName contains chars that break struct tags (control chars, quotes)
+	Name           string // Go field name (PascalCase)
+	JSONName       string // JSON property name (original)
+	Type           GoType // resolved Go type
+	OmitEmpty      bool
+	Required       bool
+	Description    string
+	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
+	DefaultLiteral string // Go literal for the default value (empty string means no default)
 }
 
 // OneOfDef represents a oneOf group on a struct.
 type OneOfDef struct {
-	InterfaceName string // unexported: isTypeName_FieldName
-	FieldName     string // exported field name on parent struct
-	JSONName      string // JSON property name
-	Variants      []OneOfVariant
+	InterfaceName      string // unexported: isTypeName_FieldName
+	FieldName          string // exported field name on parent struct
+	JSONName           string // JSON property name
+	Variants           []OneOfVariant
+	DiscriminatorField string            // JSON property name used as discriminator (empty = use required-fields heuristic)
+	DiscriminatorMap   map[string]int    // maps discriminator value → variant index (when DiscriminatorField is set)
+}
+
+// HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.
+func (d *OneOfDef) HasDiscriminator() bool {
+	return d.DiscriminatorField != ""
 }
 
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
-	WrapperName    string   // TypeName_VariantName
-	FieldName      string   // exported field inside wrapper
-	Type           GoType   // the actual type of this variant
-	RequiredFields []string // JSON field names that must be present for this variant to match
+	WrapperName        string   // TypeName_VariantName
+	FieldName          string   // exported field inside wrapper
+	Type               GoType   // the actual type of this variant
+	RequiredFields     []string // JSON field names that must be present for this variant to match
+	DiscriminatorValue string   // the value of the discriminator field that selects this variant (empty if no discriminator)
 }
 
 // EnumDef represents an enum type.

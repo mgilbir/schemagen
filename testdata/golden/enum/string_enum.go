@@ -83,14 +83,14 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 			"status":   true,
 			"title":    true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if t.AdditionalProperties == nil {
 				t.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			t.AdditionalProperties[k] = v
+			t.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

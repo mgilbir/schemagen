@@ -42,14 +42,14 @@ func (e *EmailTarget) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"email_address": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if e.AdditionalProperties == nil {
 				e.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			e.AdditionalProperties[k] = v
+			e.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -118,14 +118,14 @@ func (h *HTMLContent) UnmarshalJSON(data []byte) error {
 			"html":    true,
 			"subject": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if h.AdditionalProperties == nil {
 				h.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			h.AdditionalProperties[k] = v
+			h.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -192,14 +192,14 @@ func (s *SmsTarget) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"phone_number": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if s.AdditionalProperties == nil {
 				s.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			s.AdditionalProperties[k] = v
+			s.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -266,14 +266,14 @@ func (t *TextContent) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"body": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if t.AdditionalProperties == nil {
 				t.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			t.AdditionalProperties[k] = v
+			t.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -512,14 +512,14 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			"content": true,
 			"target":  true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if n.AdditionalProperties == nil {
 				n.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			n.AdditionalProperties[k] = v
+			n.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

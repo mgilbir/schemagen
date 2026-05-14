@@ -44,14 +44,14 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 			"latitude":  true,
 			"longitude": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			a.AdditionalProperties[k] = v
+			a.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -126,14 +126,14 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 			"street":   true,
 			"zip":      true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			a.AdditionalProperties[k] = v
+			a.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

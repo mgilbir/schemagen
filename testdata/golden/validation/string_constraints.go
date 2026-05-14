@@ -54,14 +54,14 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 			"tags":     true,
 			"username": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if u.AdditionalProperties == nil {
 				u.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			u.AdditionalProperties[k] = v
+			u.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

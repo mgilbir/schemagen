@@ -44,14 +44,14 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 			"key":   true,
 			"value": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			a.AdditionalProperties[k] = v
+			a.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -114,14 +114,14 @@ func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 			"scores":   true,
 			"tags":     true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			a.AdditionalProperties[k] = v
+			a.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

@@ -176,6 +176,10 @@ func (g *Generator) addRequiredImports() {
 	needsBytes := false
 	needsStrings := false
 	needsBigInt := false
+	needsNetIP := false
+	needsNetMail := false
+	needsNetURL := false
+	needsStdRegexp := false
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -367,6 +371,27 @@ func (g *Generator) addRequiredImports() {
 				if usesJSONType(f.Type) {
 					needsJSON = true
 				}
+				if usesNetIPType(f.Type) {
+					needsNetIP = true
+				}
+			}
+			// Check format validation rules for their import needs.
+			for _, v := range sd.Validations {
+				if v.RuleType == "format" {
+					needsFmt = true
+					switch v.Value.(string) {
+					case "date", "time":
+						needsTime = true
+					case "email", "idn-email":
+						needsNetMail = true
+					case "uri", "uri-reference", "iri", "iri-reference", "uri-template":
+						needsNetURL = true
+					case "uuid", "hostname", "idn-hostname", "json-pointer", "relative-json-pointer", "regex", "duration":
+						needsStdRegexp = true
+					case "ipv4", "ipv6":
+						needsNetIP = true
+					}
+				}
 			}
 		}
 		if ed, ok := td.(*EnumDef); ok {
@@ -378,6 +403,9 @@ func (g *Generator) addRequiredImports() {
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
 				needsTime = true
+			}
+			if usesNetIPType(ad.Underlying) {
+				needsNetIP = true
 			}
 			if usesJSONType(ad.Underlying) {
 				needsJSON = true
@@ -560,6 +588,18 @@ func (g *Generator) addRequiredImports() {
 	if needsBigInt {
 		g.output.Imports = append(g.output.Imports, Import{Path: "math/big"})
 	}
+	if needsNetIP {
+		g.output.Imports = append(g.output.Imports, Import{Path: "net/netip"})
+	}
+	if needsNetMail {
+		g.output.Imports = append(g.output.Imports, Import{Path: "net/mail"})
+	}
+	if needsNetURL {
+		g.output.Imports = append(g.output.Imports, Import{Path: "net/url"})
+	}
+	if needsStdRegexp {
+		g.output.Imports = append(g.output.Imports, Import{Path: "regexp"})
+	}
 }
 
 // isInferredAlias returns true if a type name was generated as an InferredAliasDef.
@@ -689,6 +729,60 @@ func usesJSONType(t GoType) bool {
 		return usesJSONType(v.ItemType)
 	case *MapType:
 		return usesJSONType(v.KeyType) || usesJSONType(v.ValueType)
+	}
+	return false
+}
+
+// formatGoType returns the Go type for a JSON Schema format string, or nil if
+// the format should remain as the default type (string) with validation only.
+func formatGoType(format string) GoType {
+	switch format {
+	case "date-time":
+		return &PrimitiveType{Name: "time.Time"}
+	case "ipv4", "ipv6":
+		return &PrimitiveType{Name: "netip.Addr"}
+	default:
+		// Formats like date, time, email, hostname, uri, uuid, duration, etc.
+		// remain as string with format validation in Validate().
+		return nil
+	}
+}
+
+// formatNeedsValidation returns true if the given format string should produce
+// a validation rule in Validate() for string-typed fields that don't get a
+// distinct Go type mapping.
+func formatNeedsValidation(format string) bool {
+	switch format {
+	case "date", "time",
+		"email", "idn-email",
+		"hostname", "idn-hostname",
+		"uri", "uri-reference",
+		"iri", "iri-reference",
+		"uri-template",
+		"uuid",
+		"duration",
+		"json-pointer", "relative-json-pointer",
+		"regex":
+		return true
+	default:
+		return false
+	}
+}
+
+// usesNetIPType returns true if the GoType references netip.Addr.
+func usesNetIPType(t GoType) bool {
+	if t == nil {
+		return false
+	}
+	switch v := t.(type) {
+	case *PrimitiveType:
+		return v.Name == "netip.Addr"
+	case *PointerType:
+		return usesNetIPType(v.Inner)
+	case *ArrayType:
+		return usesNetIPType(v.ItemType)
+	case *MapType:
+		return usesNetIPType(v.KeyType) || usesNetIPType(v.ValueType)
 	}
 	return false
 }
@@ -1217,14 +1311,21 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		manualJSON := needsManualJSON(propName)
 
+		// Compute default literal if schema provides a default value.
+		var defaultLiteral string
+		if propSchema.Default != nil {
+			defaultLiteral = defaultToGoLiteral(*propSchema.Default, goType)
+		}
+
 		fields = append(fields, FieldDef{
-			Name:        goFieldName,
-			JSONName:    propName,
-			Type:        goType,
-			OmitEmpty:   omitEmpty,
-			Required:    required,
-			Description: propSchema.Description,
-			ManualJSON:  manualJSON,
+			Name:           goFieldName,
+			JSONName:       propName,
+			Type:           goType,
+			OmitEmpty:      omitEmpty,
+			Required:       required,
+			Description:    propSchema.Description,
+			ManualJSON:     manualJSON,
+			DefaultLiteral: defaultLiteral,
 		})
 	}
 
@@ -2025,12 +2126,171 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 		})
 	}
 
-	return &OneOfDef{
+	oneOfDef := &OneOfDef{
 		InterfaceName: interfaceName,
 		FieldName:     goFieldName,
 		JSONName:      jsonName,
 		Variants:      variants,
-	}, nil
+	}
+
+	// Try to detect or apply a discriminator for more efficient dispatch.
+	g.applyDiscriminator(oneOfDef, s, nonNullVariants)
+
+	return oneOfDef, nil
+}
+
+// applyDiscriminator attempts to set discriminator info on a OneOfDef.
+// It checks for:
+// 1. Explicit OpenAPI-style "discriminator" keyword on the schema
+// 2. Heuristic: all variants share a property with distinct const/enum values
+func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, variants []*schema.Schema) {
+	if len(variants) < 2 {
+		return
+	}
+
+	// 1. Explicit discriminator keyword
+	if s.Discriminator != nil && s.Discriminator.PropertyName != "" {
+		propName := s.Discriminator.PropertyName
+		discMap := make(map[string]int)
+
+		if len(s.Discriminator.Mapping) > 0 {
+			// Use explicit mapping: value → $ref or type name
+			for discValue, ref := range s.Discriminator.Mapping {
+				// Find which variant index corresponds to this ref
+				for i, variant := range variants {
+					variantRef := variant.EffectiveRef()
+					if variantRef == ref || refToGoName(variantRef) == refToGoName(ref) {
+						discMap[discValue] = i
+						oneOfDef.Variants[i].DiscriminatorValue = discValue
+						break
+					}
+				}
+			}
+		} else {
+			// No mapping — try to infer from const/enum in each variant's discriminator property
+			g.inferDiscriminatorValues(oneOfDef, variants, propName, discMap)
+		}
+
+		if len(discMap) == len(variants) {
+			// Successfully mapped all variants
+			oneOfDef.DiscriminatorField = propName
+			oneOfDef.DiscriminatorMap = discMap
+			return
+		}
+	}
+
+	// 2. Heuristic detection: find a shared property with distinct const/enum values
+	g.detectHeuristicDiscriminator(oneOfDef, variants)
+}
+
+// inferDiscriminatorValues extracts discriminator values from each variant's property.
+// It looks for const or single-value enum on the discriminator property.
+func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*schema.Schema, propName string, discMap map[string]int) {
+	for i, variant := range variants {
+		resolved := g.resolveVariantSchema(variant)
+		if resolved == nil {
+			return
+		}
+		propSchema, ok := resolved.Properties[propName]
+		if !ok {
+			return
+		}
+		val := extractDiscriminatorValue(propSchema)
+		if val == "" {
+			return
+		}
+		// Check for duplicate values
+		if _, exists := discMap[val]; exists {
+			return
+		}
+		discMap[val] = i
+		oneOfDef.Variants[i].DiscriminatorValue = val
+	}
+}
+
+// detectHeuristicDiscriminator looks for a shared property across all variants
+// where each variant has a distinct const or single-value enum for that property.
+func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []*schema.Schema) {
+	// Collect resolved schemas for all variants
+	resolvedVariants := make([]*schema.Schema, len(variants))
+	for i, v := range variants {
+		resolved := g.resolveVariantSchema(v)
+		if resolved == nil || len(resolved.Properties) == 0 {
+			return
+		}
+		resolvedVariants[i] = resolved
+	}
+
+	// Find candidate properties that exist in ALL variants
+	firstProps := resolvedVariants[0].Properties
+	for propName := range firstProps {
+		allHaveConst := true
+		seenValues := make(map[string]int)
+		values := make([]string, len(resolvedVariants))
+
+		for i, resolved := range resolvedVariants {
+			propSchema, ok := resolved.Properties[propName]
+			if !ok {
+				allHaveConst = false
+				break
+			}
+			val := extractDiscriminatorValue(propSchema)
+			if val == "" {
+				allHaveConst = false
+				break
+			}
+			if _, dup := seenValues[val]; dup {
+				allHaveConst = false
+				break
+			}
+			seenValues[val] = i
+			values[i] = val
+		}
+
+		if allHaveConst && len(seenValues) == len(variants) {
+			// Found a valid heuristic discriminator
+			oneOfDef.DiscriminatorField = propName
+			oneOfDef.DiscriminatorMap = seenValues
+			for i, val := range values {
+				oneOfDef.Variants[i].DiscriminatorValue = val
+			}
+			return
+		}
+	}
+}
+
+// resolveVariantSchema resolves a variant schema (following $ref if needed) to get
+// its concrete properties for discriminator detection.
+func (g *Generator) resolveVariantSchema(variant *schema.Schema) *schema.Schema {
+	if effRef := variant.EffectiveRef(); effRef != "" {
+		resolved := g.resolveRefInContext(effRef, variant)
+		if resolved != nil {
+			return resolved
+		}
+		return nil
+	}
+	return variant
+}
+
+// extractDiscriminatorValue extracts a single string discriminator value from a property schema.
+// It recognizes: {"const": "value"} or {"enum": ["single_value"]}.
+func extractDiscriminatorValue(propSchema *schema.Schema) string {
+	if propSchema == nil {
+		return ""
+	}
+	// Check const
+	if propSchema.Const != nil {
+		if s, ok := (*propSchema.Const).(string); ok {
+			return s
+		}
+	}
+	// Check single-value enum
+	if len(propSchema.Enum) == 1 {
+		if s, ok := propSchema.Enum[0].(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // oneOfVariantResult holds the result of resolving a oneOf variant.
@@ -2370,9 +2630,11 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &PointerType{Inner: baseType}, nil
 	}
 
-	// Check for format: "date-time" on string types → time.Time
-	if s.Format != nil && *s.Format == "date-time" && primarySchemaType(s) == "string" {
-		return &PrimitiveType{Name: "time.Time"}, nil
+	// Check for format-based type mapping on string types.
+	if s.Format != nil && primarySchemaType(s) == "string" {
+		if goType := formatGoType(*s.Format); goType != nil {
+			return goType, nil
+		}
 	}
 
 	return g.resolveType(s, parentName+fieldName), nil
@@ -2488,9 +2750,11 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// Primitive or default
 	if primaryType != "" {
-		// Check for format: "date-time" on string types → time.Time
-		if primaryType == "string" && s.Format != nil && *s.Format == "date-time" {
-			return &PrimitiveType{Name: "time.Time"}
+		// Check for format-based type mapping on string types.
+		if primaryType == "string" && s.Format != nil {
+			if goType := formatGoType(*s.Format); goType != nil {
+				return goType
+			}
 		}
 		t := PrimitiveTypeFromSchema(primaryType)
 		if t != nil {
@@ -3835,6 +4099,19 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "forbidden", Value: true,
 		})
+	}
+	// Format validation: for string-typed fields where the format doesn't map to
+	// a distinct Go type (e.g. email, uri, uuid), emit a validation rule.
+	// For formats that DO map to a distinct type (ipv4/ipv6 → netip.Addr),
+	// emit a validation rule to enforce the specific subtype (v4 vs v6).
+	if s.Format != nil && primarySchemaType(s) == "string" {
+		format := *s.Format
+		if formatNeedsValidation(format) || format == "ipv4" || format == "ipv6" {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "format", Value: format,
+			})
+		}
 	}
 	return rules
 }

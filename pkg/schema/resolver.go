@@ -3,11 +3,14 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // SchemaResolver resolves $ref references to schema objects.
@@ -587,6 +590,109 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	s.Normalize()
 
 	f.cache[filePath] = &s
+
+	if fragment != "" {
+		local := NewLocalResolver(&s)
+		return local.ResolveLocal("#" + fragment)
+	}
+
+	return &s, nil
+}
+
+// ---------- HTTPResolver (remote HTTP/HTTPS) ----------
+
+// HTTPResolver resolves $ref URIs by fetching JSON Schema documents over HTTP/HTTPS.
+// It caches fetched schemas in memory to avoid redundant network requests.
+type HTTPResolver struct {
+	client *http.Client
+	cache  map[string]*Schema
+}
+
+// HTTPResolverOption configures an HTTPResolver.
+type HTTPResolverOption func(*HTTPResolver)
+
+// WithHTTPClient sets a custom HTTP client for the resolver.
+func WithHTTPClient(client *http.Client) HTTPResolverOption {
+	return func(r *HTTPResolver) {
+		r.client = client
+	}
+}
+
+// NewHTTPResolver creates an HTTPResolver that fetches schemas over HTTP/HTTPS.
+// By default it uses a client with a 30-second timeout.
+func NewHTTPResolver(opts ...HTTPResolverOption) *HTTPResolver {
+	r := &HTTPResolver{
+		client: &http.Client{Timeout: 30 * time.Second},
+		cache:  make(map[string]*Schema),
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
+}
+
+// ResolveSchema implements SchemaResolver. It handles http:// and https:// URLs.
+func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, error) {
+	// Parse ref.
+	refURL, err := url.Parse(ref)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ref URI %q: %w", ref, err)
+	}
+
+	// Resolve against base URI if relative.
+	resolved := refURL
+	if baseURI != nil && !refURL.IsAbs() && !strings.HasPrefix(ref, "#") {
+		resolved = baseURI.ResolveReference(refURL)
+	}
+
+	// Only handle http:// and https:// schemes.
+	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		return nil, fmt.Errorf("HTTPResolver: unsupported scheme %q in %q", resolved.Scheme, resolved.String())
+	}
+
+	// Fragment-only refs after resolution are not our responsibility.
+	if resolved.Host == "" && resolved.Path == "" {
+		return nil, fmt.Errorf("HTTPResolver: fragment-only ref %q not handled", ref)
+	}
+
+	// Split into document URI (without fragment) and fragment.
+	fragment := resolved.Fragment
+	docURI := *resolved
+	docURI.Fragment = ""
+	docKey := docURI.String()
+
+	// Check cache.
+	if cached, ok := h.cache[docKey]; ok {
+		if fragment != "" {
+			local := NewLocalResolver(cached)
+			return local.ResolveLocal("#" + fragment)
+		}
+		return cached, nil
+	}
+
+	// Fetch the schema.
+	resp, err := h.client.Get(docKey)
+	if err != nil {
+		return nil, fmt.Errorf("HTTPResolver: fetching %q: %w", docKey, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTPResolver: fetching %q: HTTP %d", docKey, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+	}
+
+	var s Schema
+	if err := json.Unmarshal(body, &s); err != nil {
+		return nil, fmt.Errorf("HTTPResolver: parsing schema from %q: %w", docKey, err)
+	}
+	s.Normalize()
+
+	h.cache[docKey] = &s
 
 	if fragment != "" {
 		local := NewLocalResolver(&s)

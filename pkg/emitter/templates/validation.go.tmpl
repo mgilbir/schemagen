@@ -248,6 +248,123 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if eq .RuleType "format"}}
+	{{- if eq .Value "date"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _, _err := time.Parse("2006-01-02", {{$recv}}.{{.FieldName}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$recv}}.{{.FieldName}}, _err)
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "time"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		_valid := false
+		for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
+			if _, _err := time.Parse(_layout, {{$recv}}.{{.FieldName}}); _err == nil {
+				_valid = true
+				break
+			}
+		}
+		if !_valid {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "email"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _, err := mail.ParseAddress({{$recv}}.{{.FieldName}}); err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$recv}}.{{.FieldName}}, err)
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "idn-email"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _, err := mail.ParseAddress({{$recv}}.{{.FieldName}}); err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$recv}}.{{.FieldName}}, err)
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "uri"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _u, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil || _u.Scheme == "" {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI reference", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "iri"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _u, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil || _u.Scheme == "" {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid IRI", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "uuid"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid UUID", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "hostname"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "idn-hostname"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "json-pointer"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid JSON Pointer", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "relative-json-pointer"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid relative JSON Pointer", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "regex"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if _, _err := regexp.Compile({{$recv}}.{{.FieldName}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid regex: %w", {{$recv}}.{{.FieldName}}, _err)
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "duration"}}
+	if {{$recv}}.{{.FieldName}} != "" {
+		if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$recv}}.{{.FieldName}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid ISO 8601 duration", {{$recv}}.{{.FieldName}})
+		}
+	}
+	{{- end}}
+	{{- if eq .Value "ipv4"}}
+	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is4() {
+		return fmt.Errorf("{{.JSONName}}: value %q is not a valid IPv4 address", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- if eq .Value "ipv6"}}
+	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is6() {
+		return fmt.Errorf("{{.JSONName}}: value %q is not a valid IPv6 address", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- end}}
 	{{- if .Optional}}
 	}
 	{{- end}}

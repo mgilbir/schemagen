@@ -2,6 +2,9 @@ package schema
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -834,5 +837,197 @@ func TestTypeListMarshalMultiple(t *testing.T) {
 	}
 	if string(data) != `["string","null"]` {
 		t.Errorf("expected [\"string\",\"null\"], got %s", string(data))
+	}
+}
+
+func TestHTTPResolverBasic(t *testing.T) {
+	// Set up a test HTTP server serving a schema.
+	schemaJSON := `{
+		"type": "object",
+		"properties": {
+			"name": { "type": "string" }
+		}
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(schemaJSON))
+	}))
+	defer server.Close()
+
+	resolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	// Override the client's transport to route to the test server.
+	resolver.client = server.Client()
+	// Use the test server's URL directly.
+	s, err := resolver.ResolveSchema(server.URL+"/person.json", nil)
+	if err != nil {
+		t.Fatalf("resolve error: %v", err)
+	}
+	if len(s.Type) != 1 || s.Type[0] != "object" {
+		t.Errorf("expected type [object], got %v", s.Type)
+	}
+	if _, ok := s.Properties["name"]; !ok {
+		t.Error("expected property 'name' in resolved schema")
+	}
+}
+
+func TestHTTPResolverWithFragment(t *testing.T) {
+	// Serve a schema with $defs.
+	schemaJSON := `{
+		"type": "object",
+		"$defs": {
+			"Address": {
+				"type": "object",
+				"properties": {
+					"street": { "type": "string" },
+					"city": { "type": "string" }
+				}
+			}
+		}
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(schemaJSON))
+	}))
+	defer server.Close()
+
+	resolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	resolver.client = server.Client()
+
+	// Resolve with fragment pointing to a $def.
+	s, err := resolver.ResolveSchema(server.URL+"/schema.json#/$defs/Address", nil)
+	if err != nil {
+		t.Fatalf("resolve error: %v", err)
+	}
+	if len(s.Type) != 1 || s.Type[0] != "object" {
+		t.Errorf("expected type [object], got %v", s.Type)
+	}
+	if _, ok := s.Properties["street"]; !ok {
+		t.Error("expected property 'street' in resolved schema")
+	}
+	if _, ok := s.Properties["city"]; !ok {
+		t.Error("expected property 'city' in resolved schema")
+	}
+}
+
+func TestHTTPResolverCaching(t *testing.T) {
+	// Count requests to verify caching.
+	requestCount := 0
+	schemaJSON := `{"type": "string"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(schemaJSON))
+	}))
+	defer server.Close()
+
+	resolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	resolver.client = server.Client()
+
+	ref := server.URL + "/cached.json"
+	// First request.
+	s1, err := resolver.ResolveSchema(ref, nil)
+	if err != nil {
+		t.Fatalf("first resolve error: %v", err)
+	}
+	// Second request (should be cached).
+	s2, err := resolver.ResolveSchema(ref, nil)
+	if err != nil {
+		t.Fatalf("second resolve error: %v", err)
+	}
+
+	if requestCount != 1 {
+		t.Errorf("expected 1 HTTP request (caching), got %d", requestCount)
+	}
+	if s1 != s2 {
+		t.Error("expected same schema pointer from cache")
+	}
+}
+
+func TestHTTPResolverRelativeRef(t *testing.T) {
+	// Serve different schemas on different paths.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/schemas/address.json":
+			w.Write([]byte(`{"type": "object", "properties": {"zip": {"type": "string"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	resolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	resolver.client = server.Client()
+
+	// Resolve relative ref against a base URI.
+	baseURI, _ := url.Parse(server.URL + "/schemas/person.json")
+	s, err := resolver.ResolveSchema("address.json", baseURI)
+	if err != nil {
+		t.Fatalf("resolve error: %v", err)
+	}
+	if _, ok := s.Properties["zip"]; !ok {
+		t.Error("expected property 'zip' in resolved schema")
+	}
+}
+
+func TestHTTPResolverUnsupportedScheme(t *testing.T) {
+	resolver := NewHTTPResolver()
+	_, err := resolver.ResolveSchema("file:///etc/passwd", nil)
+	if err == nil {
+		t.Error("expected error for file:// scheme")
+	}
+}
+
+func TestHTTPResolverHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	resolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	resolver.client = server.Client()
+
+	_, err := resolver.ResolveSchema(server.URL+"/missing.json", nil)
+	if err == nil {
+		t.Error("expected error for 404 response")
+	}
+}
+
+func TestHTTPResolverInComposite(t *testing.T) {
+	// Simulate a real workflow: local resolver for fragments, file resolver for
+	// local files, HTTP resolver for remote refs.
+	schemaJSON := `{"type": "integer", "minimum": 0}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(schemaJSON))
+	}))
+	defer server.Close()
+
+	localSchema := &Schema{Type: TypeList{"object"}}
+	local := NewLocalResolver(localSchema)
+	httpResolver := NewHTTPResolver(WithHTTPClient(server.Client()))
+	httpResolver.client = server.Client()
+
+	composite := NewCompositeResolver(local, httpResolver)
+
+	// Local ref should work.
+	resolved, err := composite.ResolveSchema("#", nil)
+	if err != nil {
+		t.Fatalf("local resolve error: %v", err)
+	}
+	if resolved != localSchema {
+		t.Error("expected local schema")
+	}
+
+	// Remote HTTP ref should work.
+	resolved, err = composite.ResolveSchema(server.URL+"/positive_int.json", nil)
+	if err != nil {
+		t.Fatalf("remote resolve error: %v", err)
+	}
+	if len(resolved.Type) != 1 || resolved.Type[0] != "integer" {
+		t.Errorf("expected type [integer], got %v", resolved.Type)
+	}
+	if resolved.Minimum == nil || *resolved.Minimum != 0 {
+		t.Error("expected minimum 0")
 	}
 }

@@ -65,6 +65,27 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		oneofData := json.RawMessage(data)
 		{{- end}}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
+			{{- if $oof.HasDiscriminator}}
+			// Discriminator-based dispatch on "{{$oof.DiscriminatorField}}"
+			discVal, discErr := oneofDiscriminatorValue(oneofData, "{{$oof.DiscriminatorField}}")
+			if discErr != nil {
+				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: %w", discErr)
+			}
+			switch discVal {
+			{{- range $i, $v := $oof.Variants}}
+			{{- if $v.DiscriminatorValue}}
+			case "{{$v.DiscriminatorValue}}":
+				var candidate {{goType $v.Type}}
+				if err := json.Unmarshal(oneofData, &candidate); err != nil {
+					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)
+				}
+				{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+			{{- end}}
+			{{- end}}
+			default:
+				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: unknown discriminator value %q for field \"{{$oof.DiscriminatorField}}\"", discVal)
+			}
+			{{- else}}
 			var oneofMatched int
 			var oneofLastErr error
 			{{- range $i, $v := $oof.Variants}}
@@ -93,6 +114,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			if oneofMatched > 1 {
 				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
+			{{- end}}
 		}
 	}
 	{{- end}}
@@ -149,14 +171,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 		}
 		{{- end}}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			{{- if $struct.HasPatternProperties}}
 			matchesPattern := false
 			for _, re := range patternRegexps {
-				if re.MatchString(k) {
+				if re.MatchString(rawKey) {
 					matchesPattern = true
 					break
 				}
@@ -165,7 +187,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				if {{$recv}}.PatternProperties == nil {
 					{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
 				}
-				{{$recv}}.PatternProperties[k] = v
+				{{$recv}}.PatternProperties[rawKey] = rawVal
 				continue
 			}
 			{{- end}}
@@ -174,13 +196,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
 			}
 			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-			{{$recv}}.AdditionalProperties[k] = v
+			{{$recv}}.AdditionalProperties[rawKey] = rawVal
 			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
-			if err := json.Unmarshal(v, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", k, err)
+			if err := json.Unmarshal(rawVal, &val); err != nil {
+				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}
-			{{$recv}}.AdditionalProperties[k] = val
+			{{$recv}}.AdditionalProperties[rawKey] = val
 			{{- end}}
 			{{- end}}
 		}

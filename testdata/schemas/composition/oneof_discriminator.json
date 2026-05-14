@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Event",
+  "type": "object",
+  "$defs": {
+    "ClickEvent": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "click" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      },
+      "required": ["kind", "x", "y"]
+    },
+    "KeypressEvent": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "keypress" },
+        "key": { "type": "string" }
+      },
+      "required": ["kind", "key"]
+    },
+    "ScrollEvent": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "scroll" },
+        "delta": { "type": "number" }
+      },
+      "required": ["kind", "delta"]
+    }
+  },
+  "properties": {
+    "id": { "type": "string" },
+    "payload": {
+      "oneOf": [
+        { "$ref": "#/$defs/ClickEvent" },
+        { "$ref": "#/$defs/KeypressEvent" },
+        { "$ref": "#/$defs/ScrollEvent" }
+      ],
+      "discriminator": {
+        "propertyName": "kind"
+      }
+    }
+  },
+  "required": ["id", "payload"]
+}

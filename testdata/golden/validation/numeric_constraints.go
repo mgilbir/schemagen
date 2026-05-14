@@ -52,14 +52,14 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 			"rating":      true,
 			"temperature": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			m.AdditionalProperties[k] = v
+			m.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

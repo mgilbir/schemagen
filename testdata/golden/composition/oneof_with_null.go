@@ -44,14 +44,14 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 			"host": true,
 			"port": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if d.AdditionalProperties == nil {
 				d.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			d.AdditionalProperties[k] = v
+			d.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -120,14 +120,14 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			"database": true,
 			"name":     true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if c.AdditionalProperties == nil {
 				c.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			c.AdditionalProperties[k] = v
+			c.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 

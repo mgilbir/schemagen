@@ -115,6 +115,21 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/formats/datetime.json",
 			FixturePath: "testdata/fixtures/formats/datetime.json",
 		},
+		{
+			Name:        "composition/oneof_discriminator_click",
+			SchemaPath:  "testdata/schemas/composition/oneof_discriminator.json",
+			FixturePath: "testdata/fixtures/composition/oneof_discriminator_click.json",
+		},
+		{
+			Name:        "composition/oneof_discriminator_keypress",
+			SchemaPath:  "testdata/schemas/composition/oneof_discriminator.json",
+			FixturePath: "testdata/fixtures/composition/oneof_discriminator_keypress.json",
+		},
+		{
+			Name:        "composition/oneof_discriminator_heuristic",
+			SchemaPath:  "testdata/schemas/composition/oneof_discriminator_heuristic.json",
+			FixturePath: "testdata/fixtures/composition/oneof_discriminator_heuristic.json",
+		},
 	}
 }
 
@@ -190,6 +205,7 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/composition",
 		"testdata/golden/validation",
 		"testdata/golden/formats",
+		"testdata/golden/defaults",
 	}
 
 	tmpDir := t.TempDir()

@@ -43,5 +43,8 @@ type {{.Name}} struct {
 {{- if .NeedsMarshal}}
 {{template "marshal" .}}
 {{- end}}
+{{- if .HasDefaults}}
+{{template "set_defaults" .}}
+{{- end}}
 {{template "validate" .}}
 {{- end}}

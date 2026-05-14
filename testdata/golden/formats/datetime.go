@@ -5,6 +5,7 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Event struct {
 	StartsAt             time.Time                  `json:"starts_at"`
 	URL                  string                     `json:"url,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (e *Event) UnmarshalJSON(data []byte) error {
@@ -35,6 +37,10 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		e._jsonKeys = make(map[string]bool, len(raw))
+		for k := range raw {
+			e._jsonKeys[k] = true
+		}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
 			for _, req := range []string{"name", "starts_at"} {
@@ -49,14 +55,14 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 			"starts_at": true,
 			"url":       true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if e.AdditionalProperties == nil {
 				e.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			e.AdditionalProperties[k] = v
+			e.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -85,5 +91,12 @@ func (e Event) MarshalJSON() ([]byte, error) {
 
 // Validate checks Event against its JSON Schema constraints.
 func (e Event) Validate() error {
+	if e._jsonKeys["url"] {
+		if e.URL != "" {
+			if _u, _err := url.Parse(e.URL); _err != nil || _u.Scheme == "" {
+				return fmt.Errorf("url: value %q is not a valid URI", e.URL)
+			}
+		}
+	}
 	return nil
 }

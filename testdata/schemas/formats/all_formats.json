@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NetworkConfig",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "primary_ip": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "gateway_ip": {
+      "type": "string",
+      "format": "ipv6"
+    },
+    "admin_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "docs_ref": {
+      "type": "string",
+      "format": "uri-reference"
+    },
+    "host": {
+      "type": "string",
+      "format": "hostname"
+    },
+    "device_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "created_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "time"
+    },
+    "ttl": {
+      "type": "string",
+      "format": "duration"
+    },
+    "config_path": {
+      "type": "string",
+      "format": "json-pointer"
+    },
+    "pattern_rule": {
+      "type": "string",
+      "format": "regex"
+    }
+  },
+  "required": ["name", "primary_ip"]
+}

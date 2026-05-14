@@ -42,14 +42,14 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 		knownFields := map[string]bool{
 			"radius": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if c.AdditionalProperties == nil {
 				c.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			c.AdditionalProperties[k] = v
+			c.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -118,14 +118,14 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 			"height": true,
 			"width":  true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if r.AdditionalProperties == nil {
 				r.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			r.AdditionalProperties[k] = v
+			r.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -278,14 +278,14 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			"name":  true,
 			"shape": true,
 		}
-		for k, v := range raw {
-			if knownFields[k] {
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
 				continue
 			}
 			if d.AdditionalProperties == nil {
 				d.AdditionalProperties = make(map[string]json.RawMessage)
 			}
-			d.AdditionalProperties[k] = v
+			d.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
