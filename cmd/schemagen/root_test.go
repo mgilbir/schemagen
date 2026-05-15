@@ -618,6 +618,45 @@ func TestGenerateValidationHybridEmitsCapability(t *testing.T) {
 	}
 }
 
+func TestGenerateValidationRuntimeEmitsCapability(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "runtime_features.json")
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"string"}],
+		"unevaluatedItems": false
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := filepath.Join(tmpDir, "out")
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", outDir, "--package", "testpkg", "--validation", "runtime", schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	outPath := filepath.Join(outDir, "runtime_features.go")
+	content, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected output file: %v", err)
+	}
+
+	src := string(content)
+	if !strings.Contains(src, `const SchemagenValidationMode = "runtime"`) {
+		t.Errorf("generated code missing runtime validation mode, got:\n%s", src)
+	}
+	if !strings.Contains(src, `func SchemagenValidationCapability() validationruntime.Capability`) {
+		t.Errorf("generated code missing runtime capability helper, got:\n%s", src)
+	}
+}
+
 func TestGenerateDraftFlagInHelp(t *testing.T) {
 	cmd := NewRootCmd()
 	buf := new(bytes.Buffer)

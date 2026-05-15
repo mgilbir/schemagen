@@ -528,6 +528,17 @@ func (g *Generator) addRequiredImports() {
 							needsMath = true
 						}
 					}
+					for _, v := range branch.Validations {
+						if v.RuleType == "multipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+							needsUTF8 = true
+						}
+						if v.RuleType == "pattern" {
+							needsRegexp = true
+						}
+					}
 				}
 			}
 		}
@@ -3915,8 +3926,9 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 	}
 	def.EvaluatedCount = tupleLen
 
-	// 3. additionalItems evaluates all positions beyond the tuple
-	if s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
+	// 3. additionalItems evaluates positions beyond the tuple only when tuple
+	// items exist. Without tuple items, additionalItems is ignored by the spec.
+	if tupleLen > 0 && s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
 		// additionalItems is present and is NOT false — it evaluates all remaining items
 		def.AllEvaluated = true
 		return
@@ -4101,11 +4113,6 @@ func (g *Generator) countEvaluatedItemsInSchema(s *schema.Schema) (int, bool) {
 		return 0, true
 	}
 
-	// additionalItems (non-false) → all positions evaluated
-	if s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
-		return 0, true
-	}
-
 	// unevaluatedItems: true in a sub-schema → all items are evaluated by that sub-schema
 	if s.UnevaluatedItems != nil && s.UnevaluatedItems.IsTrueSchema() {
 		return 0, true
@@ -4115,6 +4122,9 @@ func (g *Generator) countEvaluatedItemsInSchema(s *schema.Schema) (int, bool) {
 	tupleLen := len(s.PrefixItems)
 	if tupleLen == 0 && s.Items != nil {
 		tupleLen = len(s.Items.Schemas)
+	}
+	if tupleLen > 0 && s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
+		return 0, true
 	}
 
 	// Recurse into allOf/$ref
@@ -4715,6 +4725,13 @@ func extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaBranch {
 			branches = append(branches, NotSchemaBranch{Types: append([]string(nil), sub.Type...)})
 			continue
 		}
+		if len(sub.Type) == 1 && hasSimpleNotBranchValidations(sub) && isSimpleNotBranchSchema(sub) {
+			branches = append(branches, NotSchemaBranch{
+				Types:       append([]string(nil), sub.Type...),
+				Validations: extractSimpleNotBranchValidations(sub),
+			})
+			continue
+		}
 		if len(sub.Properties) > 0 && len(sub.Type) <= 1 && (len(sub.Type) == 0 || sub.Type[0] == "object") {
 			branch := NotSchemaBranch{}
 			for _, name := range sortedKeys(sub.Properties) {
@@ -4730,6 +4747,38 @@ func extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaBranch {
 		return nil
 	}
 	return branches
+}
+
+func hasSimpleNotBranchValidations(s *schema.Schema) bool {
+	return s.Minimum != nil || s.Maximum != nil || s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
+		s.MultipleOf != nil || s.MinLength != nil || s.MaxLength != nil || s.Pattern != nil ||
+		s.MinItems != nil || s.MaxItems != nil
+}
+
+func extractSimpleNotBranchValidations(s *schema.Schema) []ValidationRule {
+	rules := extractValidationRules("", "", s)
+	out := make([]ValidationRule, 0, len(rules))
+	for _, rule := range rules {
+		switch rule.RuleType {
+		case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+			"minLength", "maxLength", "pattern", "minItems", "maxItems":
+			out = append(out, rule)
+		}
+	}
+	return out
+}
+
+func isSimpleNotBranchSchema(s *schema.Schema) bool {
+	return s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
+		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 && s.Not == nil &&
+		s.If == nil && s.Then == nil && s.Else == nil &&
+		len(s.Properties) == 0 && len(s.PatternProperties) == 0 && s.AdditionalProperties == nil &&
+		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil && s.Contains == nil &&
+		len(s.Enum) == 0 && s.Const == nil && !s.ConstIsNull && s.Format == nil &&
+		s.UniqueItems == nil && s.MinProperties == nil && s.MaxProperties == nil &&
+		len(s.Definitions) == 0 && len(s.Defs) == 0 &&
+		s.PropertyNames == nil && s.UnevaluatedItems == nil && s.UnevaluatedProperties == nil &&
+		s.DependentSchemas == nil && s.DependentRequired == nil && len(s.Dependencies) == 0
 }
 
 // isTypeOnlySchema returns true if the schema has only a "type" constraint and

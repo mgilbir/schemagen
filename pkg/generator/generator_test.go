@@ -96,6 +96,99 @@ func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
 	}
 }
 
+func TestDraft3DisallowInlineSchemaGeneratesSimpleValidationBranches(t *testing.T) {
+	input := `{
+		"disallow": [
+			{"type":"integer", "minimum":10},
+			{"type":"string", "minLength":3},
+			{"type":"array", "maxItems":1}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var notDef *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok {
+			notDef = d
+			break
+		}
+	}
+	if notDef == nil {
+		t.Fatalf("expected NotSchemaDef")
+	}
+	if len(notDef.NotBranches) != 3 {
+		t.Fatalf("expected 3 not branches, got %d", len(notDef.NotBranches))
+	}
+	wants := []struct {
+		jsonType string
+		ruleType string
+	}{
+		{"integer", "minimum"},
+		{"string", "minLength"},
+		{"array", "maxItems"},
+	}
+	for i, want := range wants {
+		branch := notDef.NotBranches[i]
+		if len(branch.Types) != 1 || branch.Types[0] != want.jsonType {
+			t.Fatalf("branch %d types = %#v, want %q", i, branch.Types, want.jsonType)
+		}
+		if len(branch.Validations) != 1 || branch.Validations[0].RuleType != want.ruleType {
+			t.Fatalf("branch %d validations = %#v, want rule %q", i, branch.Validations, want.ruleType)
+		}
+	}
+}
+
+func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"additionalItems": {"type":"number"},
+		"unevaluatedItems": {"type":"string"}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok {
+			alias = d
+			break
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected InferredAliasDef")
+	}
+	if alias.UnevaluatedItems == nil {
+		t.Fatalf("expected unevaluatedItems validation")
+	}
+	if alias.UnevaluatedItems.AllEvaluated {
+		t.Fatalf("additionalItems without tuple items must not mark all items evaluated")
+	}
+	if alias.UnevaluatedItems.ValueType != "string" {
+		t.Fatalf("unevaluatedItems value type = %q, want string", alias.UnevaluatedItems.ValueType)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

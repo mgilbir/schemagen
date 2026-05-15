@@ -245,46 +245,6 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/bigint",
 	}
 
-	tmpDir := t.TempDir()
-
-	// Write go.mod + go.sum (with goecma262 dependency for generated code)
-	if err := writeTestGoMod(tmpDir, "compile_test"); err != nil {
-		t.Fatalf("writing go.mod: %v", err)
-	}
-
-	// Copy all golden files to the temp directory, adjusting for name conflicts
-	// by prefixing with directory name
-	fileIdx := 0
-	for _, dir := range goldenDirs {
-		fullDir := filepath.Join("..", dir)
-		entries, err := os.ReadDir(fullDir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			t.Fatalf("reading %s: %v", dir, err)
-		}
-
-		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".go") {
-				continue
-			}
-
-			data, err := os.ReadFile(filepath.Join(fullDir, entry.Name()))
-			if err != nil {
-				t.Fatalf("reading %s: %v", entry.Name(), err)
-			}
-
-			// Replace package name to be consistent
-			content := strings.Replace(string(data), "package testpkg", "package main", 1)
-			outName := fmt.Sprintf("gen_%d_%s", fileIdx, entry.Name())
-			if err := os.WriteFile(filepath.Join(tmpDir, outName), []byte(content), 0o644); err != nil {
-				t.Fatalf("writing %s: %v", outName, err)
-			}
-			fileIdx++
-		}
-	}
-
 	// We can't compile all files together since they may have conflicting type names
 	// (e.g., Address in nested_object.go and defs_ref.go). Instead, compile each separately.
 	for _, dir := range goldenDirs {
@@ -660,7 +620,7 @@ func main() {
 
 	// Test 1: Valid strict_tuple (exactly 2 items, matching prefixItems)
 	{
-		input := ` + "`" + `{"strict_tuple": ["hello", 42]}` + "`" + `
+		input := `+"`"+`{"strict_tuple": ["hello", 42]}`+"`"+`
 		var obj %s
 		if err := json.Unmarshal([]byte(input), &obj); err != nil {
 			errs = append(errs, fmt.Sprintf("unmarshal valid strict_tuple: %%v", err))
@@ -671,7 +631,7 @@ func main() {
 
 	// Test 2: Invalid strict_tuple (3 items, exceeds prefixItems when unevaluatedItems: false)
 	{
-		input := ` + "`" + `{"strict_tuple": ["hello", 42, "extra"]}` + "`" + `
+		input := `+"`"+`{"strict_tuple": ["hello", 42, "extra"]}`+"`"+`
 		var obj %s
 		if err := json.Unmarshal([]byte(input), &obj); err != nil {
 			errs = append(errs, fmt.Sprintf("unmarshal invalid strict_tuple: %%v", err))
@@ -684,7 +644,7 @@ func main() {
 
 	// Test 3: Empty strict_tuple should pass
 	{
-		input := ` + "`" + `{"strict_tuple": []}` + "`" + `
+		input := `+"`"+`{"strict_tuple": []}`+"`"+`
 		var obj %s
 		if err := json.Unmarshal([]byte(input), &obj); err != nil {
 			errs = append(errs, fmt.Sprintf("unmarshal empty strict_tuple: %%v", err))
@@ -695,7 +655,7 @@ func main() {
 
 	// Test 4: strict_tuple with 1 item (within bounds) should pass
 	{
-		input := ` + "`" + `{"strict_tuple": ["only"]}` + "`" + `
+		input := `+"`"+`{"strict_tuple": ["only"]}`+"`"+`
 		var obj %s
 		if err := json.Unmarshal([]byte(input), &obj); err != nil {
 			errs = append(errs, fmt.Sprintf("unmarshal 1-item strict_tuple: %%v", err))

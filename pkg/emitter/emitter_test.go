@@ -425,6 +425,55 @@ func TestEmitValidationCapabilityForHybridRuntimeFeatures(t *testing.T) {
 	}
 }
 
+func TestEmitNotSchemaBranchesWithSimpleValidations(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+			{Path: "math"},
+			{Path: "unicode/utf8"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.NotSchemaDef{
+				Name: "Root",
+				NotBranches: []generator.NotSchemaBranch{
+					{
+						Types: []string{"integer"},
+						Validations: []generator.ValidationRule{
+							{RuleType: "minimum", Value: 10.0},
+						},
+					},
+					{
+						Types: []string{"string"},
+						Validations: []generator.ValidationRule{
+							{RuleType: "minLength", Value: 3},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+
+	src := string(out)
+	for _, want := range []string{
+		`if _num < 10`,
+		`utf8.RuneCountInString(_s) < 3`,
+		`return fmt.Errorf("not: value matches forbidden branch`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("expected generated not-schema validation snippet %q, got:\n%s", want, src)
+		}
+	}
+}
+
 func TestFuncMapGoType(t *testing.T) {
 	tests := []struct {
 		input    generator.GoType

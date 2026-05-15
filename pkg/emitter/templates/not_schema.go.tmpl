@@ -130,6 +130,53 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- end}}
+		{{- range $branch.Validations}}
+		if _branchMatches {
+			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+			_num, _numOk := _v.(float64)
+			if !_numOk {
+				_branchMatches = false
+			} else {
+				{{- if eq .RuleType "minimum"}}
+				if _num < {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "maximum"}}
+				if _num > {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "exclusiveMinimum"}}
+				if _num <= {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "exclusiveMaximum"}}
+				if _num >= {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "multipleOf"}}
+				_q := _num / {{.Value}}
+				if math.Abs(_q - math.Round(_q)) > 1e-9 { _branchMatches = false }
+				{{- end}}
+			}
+			{{- else if or (eq .RuleType "minLength") (eq .RuleType "maxLength") (eq .RuleType "pattern")}}
+			_s, _sOk := _v.(string)
+			if !_sOk {
+				_branchMatches = false
+			} else {
+				{{- if eq .RuleType "minLength"}}
+				if utf8.RuneCountInString(_s) < {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "maxLength"}}
+				if utf8.RuneCountInString(_s) > {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "pattern"}}
+				if _matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, _s); !_matched { _branchMatches = false }
+				{{- end}}
+			}
+			{{- else if or (eq .RuleType "minItems") (eq .RuleType "maxItems")}}
+			_arr, _arrOk := _v.([]any)
+			if !_arrOk {
+				_branchMatches = false
+			} else {
+				{{- if eq .RuleType "minItems"}}
+				if len(_arr) < {{.Value}} { _branchMatches = false }
+				{{- else if eq .RuleType "maxItems"}}
+				if len(_arr) > {{.Value}} { _branchMatches = false }
+				{{- end}}
+			}
+			{{- end}}
+		}
+		{{- end}}
 		if _branchMatches {
 			return fmt.Errorf("not: value matches forbidden branch {{$bi}}")
 		}

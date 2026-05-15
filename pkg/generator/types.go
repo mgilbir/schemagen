@@ -660,8 +660,9 @@ type NotSchemaDef struct {
 }
 
 type NotSchemaBranch struct {
-	Types      []string
-	Properties []NotPropertyBranch
+	Types       []string
+	Properties  []NotPropertyBranch
+	Validations []ValidationRule
 }
 
 type NotPropertyBranch struct {
