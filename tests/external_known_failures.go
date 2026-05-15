@@ -103,8 +103,7 @@ var knownValidationFailures = map[string]string{
 
 	// ($dynamicRef avoids root — FIXED via dynamic scope chain resolution)
 
-	// cross-draft validation not supported (1 entries)
-	"draft7/optional/cross-draft/refs to future drafts are processed as future drafts/missing bar is invalid": "cross-draft validation not supported",
+	// (cross-draft dependentRequired — FIXED via resource-dialect-aware allOf merging)
 
 	// (draft3 enum required-as-boolean — FIXED via draft3 required normalization)
 

@@ -877,7 +877,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// unevaluatedProperties, additionalProperties, or array-structural keywords like
 	// prefixItems, items, unevaluatedItems), synthesize an implicit allOf so both
 	// the $ref target and local keywords are merged into a single definition.
-	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
+	if s.Ref != "" && !g.refOverridesSiblingsForSchema(s) && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
 		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil) {
 		refSub := &schema.Schema{
 			Ref:          s.Ref,
@@ -1072,7 +1072,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	primaryType := primarySchemaType(s)
 	isInferred := false
 	if primaryType == "" {
-		primaryType = inferTypeFromConstraints(s)
+		primaryType = g.inferTypeFromConstraints(s)
 		if primaryType != "" {
 			isInferred = true
 		}
@@ -1852,7 +1852,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 
 		primaryType := primarySchemaType(merged)
 		if primaryType == "" {
-			primaryType = inferTypeFromConstraints(merged)
+			primaryType = g.inferTypeFromConstraints(merged)
 		}
 		if primaryType == "array" {
 			// Array type — extract item-level constraints and generate InferredAliasDef
@@ -1999,6 +1999,12 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		// Propagate type from sub-schemas if the target doesn't have one.
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
+		}
+		if supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentRequired) > 0 && len(target.DependentRequired) == 0 {
+			target.DependentRequired = resolved.DependentRequired
+		}
+		if supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentSchemas) > 0 && len(target.DependentSchemas) == 0 {
+			target.DependentSchemas = resolved.DependentSchemas
 		}
 		// Propagate validation constraints (use tightest / first-set-wins).
 		mergeConstraints(target, resolved)
@@ -2798,7 +2804,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	primaryType := primarySchemaType(s)
 	if primaryType == "" {
-		primaryType = inferTypeFromConstraints(s)
+		primaryType = g.inferTypeFromConstraints(s)
 	}
 
 	// Nullable types
@@ -3766,7 +3772,7 @@ func primarySchemaType(s *schema.Schema) string {
 // like {"minimum": 5} or {"minLength": 2, "pattern": "^a"}.
 //
 // Returns "" if the type cannot be inferred.
-func inferTypeFromConstraints(s *schema.Schema) string {
+func (g *Generator) inferTypeFromConstraints(s *schema.Schema) string {
 	// Numeric constraints → number
 	if s.Minimum != nil || s.Maximum != nil || s.MultipleOf != nil ||
 		s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil {
@@ -3783,13 +3789,13 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 	// unevaluatedItems:false with tuple items and NO sibling applicators/items that
 	// could extend or evaluate additional items → safe to infer array with implicit
 	// maxItems = tuple length.
-	if unevaluatedItemsImpliesFixedTuple(s) {
+	if g.unevaluatedItemsImpliesFixedTuple(s) {
 		return "array"
 	}
 	// Structural array keywords → array
-	// items, prefixItems, additionalItems, contains, and unevaluatedItems
+	// items, prefixItems (2020-12 only), additionalItems, contains, and unevaluatedItems
 	// only apply to arrays, so their presence implies type "array".
-	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+	if s.Items != nil || (len(s.PrefixItems) > 0 && g.supportsPrefixItems(s)) || s.AdditionalItems != nil ||
 		s.Contains != nil || s.UnevaluatedItems != nil {
 		return "array"
 	}
@@ -3813,11 +3819,14 @@ func inferTypeFromConstraints(s *schema.Schema) string {
 // items) and NO other applicators or keywords that could evaluate additional items.
 // In this narrow case, the schema is equivalent to a fixed-length tuple with
 // maxItems = tuple length.
-func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
+func (g *Generator) unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
 	if s.UnevaluatedItems == nil || !s.UnevaluatedItems.IsFalseSchema() {
 		return false
 	}
-	tupleLen := len(s.PrefixItems)
+	tupleLen := 0
+	if g.supportsPrefixItems(s) {
+		tupleLen = len(s.PrefixItems)
+	}
 	if tupleLen == 0 && s.Items != nil {
 		tupleLen = len(s.Items.Schemas)
 	}
@@ -3840,6 +3849,10 @@ func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
 		return false
 	}
 	return true
+}
+
+func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
+	return (&Generator{}).unevaluatedItemsImpliesFixedTuple(s)
 }
 
 // buildUnevaluatedItemsDef builds an UnevaluatedItemsDef from a schema's unevaluatedItems keyword.
@@ -4455,13 +4468,44 @@ func zeroForPrimitive(name string) string {
 // all sibling keywords to be ignored. Starting with draft 2019-09,
 // $ref is just another applicator and sibling keywords apply normally.
 func (g *Generator) refOverridesSiblings() bool {
-	switch g.draft {
+	return refOverridesSiblingsForDraft(g.draft)
+}
+
+func (g *Generator) refOverridesSiblingsForSchema(s *schema.Schema) bool {
+	return refOverridesSiblingsForDraft(g.draftForSchema(s))
+}
+
+func refOverridesSiblingsForDraft(draft schema.Draft) bool {
+	switch draft {
 	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
 		return true
 	default:
 		// DraftUnknown: be conservative and assume modern behavior.
 		return false
 	}
+}
+
+func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
+	if s == nil {
+		return g.draft
+	}
+	if d := schema.DetectDraft(s); d != schema.DraftUnknown {
+		return d
+	}
+	if s.DocumentRoot != nil {
+		if d := schema.DetectDraft(s.DocumentRoot); d != schema.DraftUnknown {
+			return d
+		}
+	}
+	return g.draft
+}
+
+func (g *Generator) supportsPrefixItems(s *schema.Schema) bool {
+	return g.draftForSchema(s) == schema.Draft202012
+}
+
+func supportsDependentRequired(draft schema.Draft) bool {
+	return draft == schema.Draft201909 || draft == schema.Draft202012
 }
 
 // extractValidationRules extracts validation rules from a property schema.
@@ -4881,8 +4925,8 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	hasTupleItems := s.Items != nil && s.Items.Schemas != nil
 	hasSingleItems := s.Items != nil && s.Items.Schema != nil
 
-	// Draft 2020-12: prefixItems defines tuple positions.
-	if hasPrefixItems {
+	// Draft 2020-12: prefixItems defines tuple positions. Older drafts ignore it.
+	if hasPrefixItems && g.supportsPrefixItems(s) {
 		for _, sub := range s.PrefixItems {
 			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
 		}
@@ -5469,7 +5513,7 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 		// Extract validation rules from the schema to apply to each unevaluated value.
 		unevalType := primarySchemaType(uneval)
 		if unevalType == "" {
-			unevalType = inferTypeFromConstraints(uneval)
+			unevalType = g.inferTypeFromConstraints(uneval)
 		}
 		if unevalType != "" {
 			goType := PrimitiveTypeFromSchema(unevalType)
@@ -6205,7 +6249,7 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 	var positionSchemas []*schema.Schema
 
 	// Draft 2020-12: prefixItems
-	if len(s.PrefixItems) > 0 {
+	if len(s.PrefixItems) > 0 && g.supportsPrefixItems(s) {
 		positionSchemas = s.PrefixItems
 	}
 	// Draft 4-7: items as array of schemas
