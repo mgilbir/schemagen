@@ -389,6 +389,42 @@ func TestEmitEmptyFile(t *testing.T) {
 	t.Logf("Output:\n%s", src)
 }
 
+func TestEmitValidationCapabilityForHybridRuntimeFeatures(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "github.com/mgilbir/schemagen/pkg/validationruntime"},
+		},
+		ValidationCapability: generator.ValidationCapability{
+			Mode:            generator.ValidationModeHybrid,
+			RequiresRuntime: true,
+			RuntimeFeatures: []generator.ValidationFeature{generator.ValidationFeatureDynamicRef},
+			ResourceCount:   2,
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+
+	src := string(out)
+	for _, want := range []string{
+		`"github.com/mgilbir/schemagen/pkg/validationruntime"`,
+		`const SchemagenValidationMode = "hybrid"`,
+		`func SchemagenValidationRuntimeFeatures() []string`,
+		`func SchemagenValidationCapability() validationruntime.Capability`,
+		`RuntimeFeatures: []validationruntime.Feature{validationruntime.Feature("$dynamicRef")}`,
+		`ResourceCount:   2`,
+	} {
+		if !containsNormalized(src, want) {
+			t.Errorf("expected generated validation capability snippet %q, got:\n%s", want, src)
+		}
+	}
+}
+
 func TestFuncMapGoType(t *testing.T) {
 	tests := []struct {
 		input    generator.GoType

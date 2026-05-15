@@ -12,6 +12,9 @@ import (
 {{range .TypeDefs}}
 {{template "typedef" .}}
 {{end}}
+{{- if .HasValidationCapability}}
+{{template "validation_capability" .}}
+{{- end}}
 {{- if .HasOneOf}}
 {{template "oneof_helpers"}}
 {{- end}}

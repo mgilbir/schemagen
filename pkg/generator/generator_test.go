@@ -1,10 +1,100 @@
 package generator
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
+
+func TestValidationCapabilityDetectsRuntimeFeatures(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"string"}],
+		"unevaluatedItems": false,
+		"$defs": {
+			"node": {"$dynamicAnchor":"node", "type":"object"}
+		},
+		"$dynamicRef": "#node"
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Validation: ValidationModeHybrid})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	capability := ir.ValidationCapability
+	if capability.Mode != ValidationModeHybrid {
+		t.Fatalf("mode = %q, want %q", capability.Mode, ValidationModeHybrid)
+	}
+	if !capability.RequiresRuntime {
+		t.Fatalf("expected runtime requirement")
+	}
+	if !hasValidationFeature(capability.RuntimeFeatures, ValidationFeatureDynamicRef) {
+		t.Fatalf("missing dynamicRef feature: %v", capability.RuntimeFeatures)
+	}
+	if !hasValidationFeature(capability.RuntimeFeatures, ValidationFeatureUnevaluatedItems) {
+		t.Fatalf("missing unevaluatedItems feature: %v", capability.RuntimeFeatures)
+	}
+}
+
+func hasValidationFeature(features []ValidationFeature, want ValidationFeature) bool {
+	for _, got := range features {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
+	input := `{
+		"disallow": [
+			"string",
+			{"type":"object", "properties":{"foo":{"type":"string"}}}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var notDef *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok {
+			notDef = d
+			break
+		}
+	}
+	if notDef == nil {
+		t.Fatalf("expected NotSchemaDef")
+	}
+	if len(notDef.NotBranches) != 2 {
+		t.Fatalf("expected 2 not branches, got %d", len(notDef.NotBranches))
+	}
+	if len(notDef.NotBranches[0].Types) != 1 || notDef.NotBranches[0].Types[0] != "string" {
+		t.Fatalf("first branch = %#v, want string type branch", notDef.NotBranches[0])
+	}
+	if len(notDef.NotBranches[1].Properties) != 1 || notDef.NotBranches[1].Properties[0].Name != "foo" || notDef.NotBranches[1].Properties[0].JSONType != "string" {
+		t.Fatalf("second branch = %#v, want foo:string property branch", notDef.NotBranches[1])
+	}
+}
 
 // ---------- Naming tests ----------
 

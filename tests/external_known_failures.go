@@ -141,8 +141,7 @@ var knownValidationFailures = map[string]string{
 	// over-strict validation: valid data rejected (1 additional entry)
 	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
 
-	// disallow with inline sub-schema: only string type elements are normalized, not inline schemas
-	"draft3/disallow/multiple disallow subschema/other mismatch": "disallow: inline schema objects in disallow array not supported",
+	// (disallow with inline sub-schema — FIXED via disallow array → not:anyOf normalization)
 
 	// ($ref percent-encoding — FIXED via URI fragment percent-decoding in LocalResolver)
 
@@ -175,18 +174,18 @@ var knownValidationFailures = map[string]string{
 	// validate at runtime, or evaluating contains annotations in nested contexts.
 	// (unevaluatedItems with if/then/else — FIXED via runtime if-condition evaluation with IfItemConstChecks)
 	// (unevaluatedItems can see annotations from if without then and else — FIXED via IfEvalCount tracking)
-	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":            "unevaluatedItems: requires runtime additionalItems interaction",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems": "unevaluatedItems: requires runtime additionalItems interaction",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems":                                       "unevaluatedItems: requires runtime nested contains evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's are valid":                                   "unevaluatedItems: requires runtime if/contains annotation propagation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":                                "unevaluatedItems: requires runtime if/contains annotation propagation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid":                           "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                             "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":                              "unevaluatedItems: requires runtime additionalItems interaction",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems":                   "unevaluatedItems: requires runtime additionalItems interaction",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                           "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                    "unevaluatedItems: requires cousin scope isolation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                           "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                             "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                    "unevaluatedItems: requires cousin scope isolation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems":              "unevaluatedItems: requires runtime nested contains evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's are valid":         "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":      "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid": "unevaluatedItems: requires runtime if/contains annotation propagation",
 
 	// cross-draft: cross-draft ref processing issues (1 entry)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)

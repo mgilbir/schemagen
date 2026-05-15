@@ -26,6 +26,7 @@ type Generator struct {
 	baseURI        *url.URL              // base URI for the root document (from $id or file path)
 	rootSchema     *schema.Schema        // the root schema for local ref resolution
 	draft          schema.Draft          // detected draft version of the root schema
+	resourceGraph  *schema.ResourceGraph // document/dialect/anchor graph for validation planning
 
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
@@ -88,10 +89,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 		}
 	}
 
-	// Compute effective base URIs and document roots for all schema nodes.
-	// This enables scoped $id resolution: subschemas with $id change the
-	// base URI for relative refs within their scope.
-	s.ComputeBaseURIs(g.baseURI, s)
+	// Compute effective base URIs, document roots, and schema resources. This
+	// enables scoped $id resolution and gives validation planning a dialect-aware
+	// view of the schema graph.
+	g.resourceGraph = schema.BuildResourceGraph(s, g.baseURI, g.draft)
 	g.documentRoots = make(map[string]*schema.Schema)
 	g.buildDocumentRoots(s)
 
@@ -167,6 +168,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.populateValidatableFields()
 
 	// Add imports based on what was generated.
+	g.output.ValidationCapability = analyzeValidationCapability(s, g.resourceGraph, g.config.Validation)
 	g.addRequiredImports()
 
 	return g.output, nil
@@ -187,6 +189,11 @@ func (g *Generator) addRequiredImports() {
 	needsNetMail := false
 	needsNetURL := false
 	needsStdRegexp := false
+	needsValidationRuntime := false
+
+	if g.output.ValidationCapability.RequiresRuntime && g.output.ValidationCapability.Mode != ValidationModeStatic {
+		needsValidationRuntime = true
+	}
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
@@ -503,11 +510,23 @@ func (g *Generator) addRequiredImports() {
 		if nsd, ok := td.(*NotSchemaDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
 			needsFmt = true  // Validate() errors
-			if len(nsd.NotTypes) > 0 {
+			if len(nsd.NotTypes) > 0 || len(nsd.NotBranches) > 0 {
 				// Type checks for "integer" use math.Trunc and math.IsInf.
 				for _, nt := range nsd.NotTypes {
 					if nt == "integer" {
 						needsMath = true
+					}
+				}
+				for _, branch := range nsd.NotBranches {
+					for _, nt := range branch.Types {
+						if nt == "integer" {
+							needsMath = true
+						}
+					}
+					for _, prop := range branch.Properties {
+						if prop.JSONType == "integer" {
+							needsMath = true
+						}
 					}
 				}
 			}
@@ -629,6 +648,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsStdRegexp {
 		g.output.Imports = append(g.output.Imports, Import{Path: "regexp"})
+	}
+	if needsValidationRuntime {
+		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/schemagen/pkg/validationruntime"})
 	}
 }
 
@@ -4666,8 +4688,48 @@ func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
 		}
 	}
 
+	// Draft 3 disallow arrays normalize to not:{anyOf:[...]}. Handle branches
+	// with simple type constraints and object property type checks.
+	if len(not.AnyOf) > 0 {
+		branches := extractNotSchemaBranches(not.AnyOf)
+		if len(branches) == len(not.AnyOf) {
+			return &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				NotBranches: branches,
+			}
+		}
+	}
+
 	// Complex not sub-schema — can't handle statically.
 	return nil
+}
+
+func extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaBranch {
+	branches := make([]NotSchemaBranch, 0, len(subs))
+	for _, sub := range subs {
+		if sub == nil || sub.IsBooleanSchema() {
+			return nil
+		}
+		if len(sub.Type) > 0 && isTypeOnlySchema(sub) {
+			branches = append(branches, NotSchemaBranch{Types: append([]string(nil), sub.Type...)})
+			continue
+		}
+		if len(sub.Properties) > 0 && len(sub.Type) <= 1 && (len(sub.Type) == 0 || sub.Type[0] == "object") {
+			branch := NotSchemaBranch{}
+			for _, name := range sortedKeys(sub.Properties) {
+				prop := sub.Properties[name]
+				if prop == nil || len(prop.Type) != 1 || !isTypeOnlySchema(prop) {
+					return nil
+				}
+				branch.Properties = append(branch.Properties, NotPropertyBranch{Name: name, JSONType: prop.Type[0]})
+			}
+			branches = append(branches, branch)
+			continue
+		}
+		return nil
+	}
+	return branches
 }
 
 // isTypeOnlySchema returns true if the schema has only a "type" constraint and

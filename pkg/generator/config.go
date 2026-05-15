@@ -14,6 +14,7 @@ type Config struct {
 	Resolver      schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
 	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI.
 	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
+	Validation    ValidationMode        // Controls static vs hybrid/runtime validation planning.
 }
 
 // DefaultConfig returns sensible defaults.
@@ -23,5 +24,6 @@ func DefaultConfig() Config {
 		OutputDir:        ".",
 		OmitEmpty:        true,
 		StrictProperties: false,
+		Validation:       ValidationModeStatic,
 	}
 }

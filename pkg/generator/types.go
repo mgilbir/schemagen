@@ -378,9 +378,9 @@ type OneOfDef struct {
 	FieldName          string // exported field name on parent struct
 	JSONName           string // JSON property name
 	Variants           []OneOfVariant
-	DiscriminatorField string            // JSON property name used as discriminator (empty = use required-fields heuristic)
-	DiscriminatorMap   map[string]int    // maps discriminator value → variant index (when DiscriminatorField is set)
-	Required           bool              // true when this oneOf's JSONName is in the parent schema's required array
+	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
+	DiscriminatorMap   map[string]int // maps discriminator value → variant index (when DiscriminatorField is set)
+	Required           bool           // true when this oneOf's JSONName is in the parent schema's required array
 }
 
 // HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.
@@ -527,13 +527,13 @@ type ContainsCheck struct {
 // Items are "evaluated" if covered by items, prefixItems, additionalItems, contains,
 // or by sub-schemas in allOf/$ref/anyOf/oneOf/if-then-else.
 type UnevaluatedItemsDef struct {
-	IsForbidden      bool            // unevaluatedItems: false — reject any unevaluated items
-	IsAllowed        bool            // unevaluatedItems: true — allow any unevaluated item (no-op)
-	AllEvaluated     bool            // true when items (uniform) or additionalItems covers all positions
-	EvaluatedCount   int             // number of statically evaluated positions (from prefixItems/tuple)
-	ContainsEvaluates bool           // true when adjacent contains marks matching items as evaluated (runtime check)
-	ValueType        string          // JSON type constraint on unevaluated items (e.g., "string", "integer")
-	Checks           []ContainsCheck // validation checks on each unevaluated item
+	IsForbidden       bool            // unevaluatedItems: false — reject any unevaluated items
+	IsAllowed         bool            // unevaluatedItems: true — allow any unevaluated item (no-op)
+	AllEvaluated      bool            // true when items (uniform) or additionalItems covers all positions
+	EvaluatedCount    int             // number of statically evaluated positions (from prefixItems/tuple)
+	ContainsEvaluates bool            // true when adjacent contains marks matching items as evaluated (runtime check)
+	ValueType         string          // JSON type constraint on unevaluated items (e.g., "string", "integer")
+	Checks            []ContainsCheck // validation checks on each unevaluated item
 	// ConditionalEvals holds runtime-conditional evaluation branches (allOf prefixItems, anyOf/oneOf items, if/then/else)
 	ConditionalEvals []UnevalItemsConditionalEval
 }
@@ -553,13 +553,13 @@ type UnevalItemsConditionalEval struct {
 	// For anyOf/oneOf: branches are tried at runtime
 	Branches []UnevalItemsBranch
 	// For ifThenElse:
-	IfItemChecks   []IfItemConstCheck // runtime checks on array items to evaluate the if-condition
-	IfEvalCount    int                // items evaluated by the if-schema itself (its prefixItems length)
-	IfAllEval      bool               // if-schema covers all items
-	ThenEvalCount  int                // items evaluated by then branch
-	ThenAllEval    bool               // then branch covers all items
-	ElseEvalCount  int                // items evaluated by else branch
-	ElseAllEval    bool               // else branch covers all items
+	IfItemChecks  []IfItemConstCheck // runtime checks on array items to evaluate the if-condition
+	IfEvalCount   int                // items evaluated by the if-schema itself (its prefixItems length)
+	IfAllEval     bool               // if-schema covers all items
+	ThenEvalCount int                // items evaluated by then branch
+	ThenAllEval   bool               // then branch covers all items
+	ElseEvalCount int                // items evaluated by else branch
+	ElseAllEval   bool               // else branch covers all items
 	// For contains:
 	ContainsAllEval bool // if contains evaluates all items
 }
@@ -654,8 +654,19 @@ func (d *BigIntAliasDef) typeDef()         {}
 type NotSchemaDef struct {
 	Name        string
 	Description string
-	IsForbidden bool     // not:{} or not:true — reject everything
-	NotTypes    []string // not:{type:X} — reject values of these JSON types
+	IsForbidden bool              // not:{} or not:true — reject everything
+	NotTypes    []string          // not:{type:X} — reject values of these JSON types
+	NotBranches []NotSchemaBranch // not:anyOf branches from draft3 disallow arrays
+}
+
+type NotSchemaBranch struct {
+	Types      []string
+	Properties []NotPropertyBranch
+}
+
+type NotPropertyBranch struct {
+	Name     string
+	JSONType string
 }
 
 func (d *NotSchemaDef) TypeName() string { return d.Name }
@@ -678,9 +689,10 @@ func (d *TypeOnlySchemaDef) typeDef()         {}
 
 // File represents a generated Go source file.
 type File struct {
-	PackageName string
-	TypeDefs    []TypeDef
-	Imports     []Import
+	PackageName          string
+	TypeDefs             []TypeDef
+	Imports              []Import
+	ValidationCapability ValidationCapability
 }
 
 // Import represents a Go import.

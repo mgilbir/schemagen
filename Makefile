@@ -37,7 +37,7 @@ download-test-suite:
 	fi
 
 test-external: download-test-suite
-	go test ./tests/... -run TestExternal -v -count=1 -timeout 30m
+	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 30m
 
 clean:
 	rm -rf bin/

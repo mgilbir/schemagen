@@ -34,6 +34,7 @@ func newGenerateCmd() *cobra.Command {
 		verbose          bool
 		allowRemoteRefs  bool
 		draftStr         string
+		validationStr    string
 	)
 
 	cmd := &cobra.Command{
@@ -49,6 +50,11 @@ func newGenerateCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+			}
+
+			validationMode, err := parseValidationMode(validationStr)
+			if err != nil {
+				return err
 			}
 
 			// Ensure output directory exists.
@@ -94,6 +100,7 @@ func newGenerateCmd() *cobra.Command {
 					BigIntSupport:    bigInt,
 					Resolver:         resolver,
 					Draft:            draft,
+					Validation:       validationMode,
 				}
 				gen := generator.New(cfg)
 
@@ -139,6 +146,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
+	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
@@ -161,6 +169,19 @@ func parseDraft(s string) (schema.Draft, error) {
 		return schema.Draft202012, nil
 	default:
 		return schema.DraftUnknown, fmt.Errorf("unknown draft version %q: valid values are 3, 4, 6, 7, 2019-09, 2020-12", s)
+	}
+}
+
+func parseValidationMode(s string) (generator.ValidationMode, error) {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "", "static":
+		return generator.ValidationModeStatic, nil
+	case "hybrid":
+		return generator.ValidationModeHybrid, nil
+	case "runtime":
+		return generator.ValidationModeRuntime, nil
+	default:
+		return generator.ValidationModeStatic, fmt.Errorf("unknown validation mode %q: valid values are static, hybrid, runtime", s)
 	}
 }
 

@@ -55,6 +55,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
+| `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
 | `--verbose` | `-v` | `false` | Print progress information |
 
 ### Remote References
@@ -77,6 +78,12 @@ schemagen generate modern.json --draft 2020-12
 ```
 
 This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics).
+
+### Validation Strategy
+
+`schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
+
+Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
 
 ## How It Works
 

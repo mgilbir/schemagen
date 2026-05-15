@@ -23,14 +23,14 @@ import (
 //   - "isOneOfRequired": returns true if the given oneOf field is required on its parent struct
 func FuncMap() template.FuncMap {
 	return template.FuncMap{
-		"goType":             goTypeFunc,
-		"enumValue":          enumValueFunc,
-		"receiverName":       receiverNameFunc,
-		"lowerFirst":         lowerFirstFunc,
-		"add":                addFunc,
-		"wrapTypeDef":        wrapTypeDefFunc,
-		"mkOneOfCtx":         mkOneOfCtxFunc,
-		"isOneOfRequired":    func(oof any) bool {
+		"goType":       goTypeFunc,
+		"enumValue":    enumValueFunc,
+		"receiverName": receiverNameFunc,
+		"lowerFirst":   lowerFirstFunc,
+		"add":          addFunc,
+		"wrapTypeDef":  wrapTypeDefFunc,
+		"mkOneOfCtx":   mkOneOfCtxFunc,
+		"isOneOfRequired": func(oof any) bool {
 			if o, ok := oof.(generator.OneOfDef); ok {
 				return o.Required
 			}
@@ -47,7 +47,31 @@ func FuncMap() template.FuncMap {
 		"hasManualFields":    hasManualFieldsFunc,
 		"ppTypeValue":        ppTypeValueFunc,
 		"deref":              derefIntFunc,
+		"validationFeatures": validationFeaturesFunc,
+		"stringList":         stringListFunc,
 	}
+}
+
+func validationFeaturesFunc(features []generator.ValidationFeature) string {
+	if len(features) == 0 {
+		return "nil"
+	}
+	parts := make([]string, len(features))
+	for i, feature := range features {
+		parts[i] = fmt.Sprintf("validationruntime.Feature(%q)", string(feature))
+	}
+	return "[]validationruntime.Feature{" + strings.Join(parts, ", ") + "}"
+}
+
+func stringListFunc(features []generator.ValidationFeature) string {
+	if len(features) == 0 {
+		return "nil"
+	}
+	parts := make([]string, len(features))
+	for i, feature := range features {
+		parts[i] = fmt.Sprintf("%q", string(feature))
+	}
+	return "[]string{" + strings.Join(parts, ", ") + "}"
 }
 
 // OneOfContext is passed to oneof_interface and oneof_getters templates.

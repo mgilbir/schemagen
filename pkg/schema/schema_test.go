@@ -8,6 +8,58 @@ import (
 	"testing"
 )
 
+func TestBuildResourceGraphIndexesResourcesAndDynamicAnchors(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/root",
+		"$defs": {
+			"base": {
+				"$dynamicAnchor": "node",
+				"type": "object"
+			},
+			"legacy": {
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"$id": "legacy.json",
+				"$anchor": "legacyAnchor",
+				"type": "object"
+			}
+		}
+	}`
+
+	var s Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	s.Normalize()
+
+	graph := BuildResourceGraph(&s, nil, DraftUnknown)
+	if len(graph.Resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(graph.Resources))
+	}
+
+	root := graph.Resources["https://example.com/root"]
+	if root == nil {
+		t.Fatalf("missing root resource")
+	}
+	if root.Draft != Draft202012 {
+		t.Fatalf("root draft = %v, want %v", root.Draft, Draft202012)
+	}
+	if root.DynamicAnchors["node"] == nil {
+		t.Fatalf("missing dynamic anchor node")
+	}
+
+	legacy := graph.Resources["https://example.com/legacy.json"]
+	if legacy == nil {
+		t.Fatalf("missing legacy resource")
+	}
+	if legacy.Draft != Draft07 {
+		t.Fatalf("legacy draft = %v, want %v", legacy.Draft, Draft07)
+	}
+	if legacy.Anchors["legacyAnchor"] == nil {
+		t.Fatalf("missing legacy anchor")
+	}
+}
+
 func TestParseSimpleObjectSchema(t *testing.T) {
 	input := `{
 		"type": "object",

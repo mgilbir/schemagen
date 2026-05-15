@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
@@ -538,6 +539,82 @@ func TestGenerateDraftFlagInvalid(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown draft version") {
 		t.Errorf("expected 'unknown draft version' error, got: %v", err)
+	}
+}
+
+func TestParseValidationMode(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    generator.ValidationMode
+		wantErr bool
+	}{
+		{"", generator.ValidationModeStatic, false},
+		{"static", generator.ValidationModeStatic, false},
+		{"hybrid", generator.ValidationModeHybrid, false},
+		{"runtime", generator.ValidationModeRuntime, false},
+		{" HYBRID ", generator.ValidationModeHybrid, false},
+		{"invalid", generator.ValidationModeStatic, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseValidationMode(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseValidationMode(%q) expected error, got %v", tt.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parseValidationMode(%q) unexpected error: %v", tt.input, err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseValidationMode(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateValidationHybridEmitsCapability(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaPath := filepath.Join(tmpDir, "runtime_features.json")
+	schemaContent := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"string"}],
+		"unevaluatedItems": false
+	}`
+	if err := os.WriteFile(schemaPath, []byte(schemaContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := filepath.Join(tmpDir, "out")
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", outDir, "--package", "testpkg", "--validation", "hybrid", schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	outPath := filepath.Join(outDir, "runtime_features.go")
+	content, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected output file: %v", err)
+	}
+
+	src := string(content)
+	if !strings.Contains(src, `const SchemagenValidationMode = "hybrid"`) {
+		t.Errorf("generated code missing hybrid validation mode, got:\n%s", src)
+	}
+	if !strings.Contains(src, `func SchemagenValidationCapability() validationruntime.Capability`) {
+		t.Errorf("generated code missing runtime capability helper, got:\n%s", src)
+	}
+	if !strings.Contains(src, `validationruntime.Feature("unevaluatedItems")`) {
+		t.Errorf("generated code missing unevaluatedItems runtime feature, got:\n%s", src)
 	}
 }
 

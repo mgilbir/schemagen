@@ -28,7 +28,7 @@ func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
 func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .IsForbidden}}
 	return fmt.Errorf("not: value is forbidden (not schema matches all values)")
-	{{- else if .NotTypes}}
+	{{- else if or .NotTypes .NotBranches}}
 	// Decode raw JSON to determine the value's type.
 	var _v any
 	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
@@ -64,6 +64,76 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("not: value must not be object")
 	}
 	{{- end}}
+	{{- end}}
+	{{- range $bi, $branch := .NotBranches}}
+	{
+		_branchMatches := true
+		{{- range $branch.Types}}
+		{{- if eq . "integer"}}
+		if _f, _fOk := _v.(float64); !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) {
+			_branchMatches = false
+		}
+		{{- else if eq . "number"}}
+		if _, _fOk := _v.(float64); !_fOk {
+			_branchMatches = false
+		}
+		{{- else if eq . "string"}}
+		if _, _sOk := _v.(string); !_sOk {
+			_branchMatches = false
+		}
+		{{- else if eq . "boolean"}}
+		if _, _bOk := _v.(bool); !_bOk {
+			_branchMatches = false
+		}
+		{{- else if eq . "null"}}
+		if _v != nil {
+			_branchMatches = false
+		}
+		{{- else if eq . "array"}}
+		if _, _aOk := _v.([]any); !_aOk {
+			_branchMatches = false
+		}
+		{{- else if eq . "object"}}
+		if _, _oOk := _v.(map[string]any); !_oOk {
+			_branchMatches = false
+		}
+		{{- end}}
+		{{- end}}
+		{{- if $branch.Properties}}
+		_obj, _objOk := _v.(map[string]any)
+		if !_objOk {
+			_branchMatches = false
+		}
+		{{- range $branch.Properties}}
+		if _branchMatches {
+			_propVal, _propOk := _obj[{{printf "%q" .Name}}]
+			if !_propOk {
+				_branchMatches = false
+			} else {
+				{{- if eq .JSONType "integer"}}
+				_f, _fOk := _propVal.(float64)
+				if !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
+				{{- else if eq .JSONType "number"}}
+				if _, _fOk := _propVal.(float64); !_fOk { _branchMatches = false }
+				{{- else if eq .JSONType "string"}}
+				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
+				{{- else if eq .JSONType "boolean"}}
+				if _, _bOk := _propVal.(bool); !_bOk { _branchMatches = false }
+				{{- else if eq .JSONType "null"}}
+				if _propVal != nil { _branchMatches = false }
+				{{- else if eq .JSONType "array"}}
+				if _, _aOk := _propVal.([]any); !_aOk { _branchMatches = false }
+				{{- else if eq .JSONType "object"}}
+				if _, _oOk := _propVal.(map[string]any); !_oOk { _branchMatches = false }
+				{{- end}}
+			}
+		}
+		{{- end}}
+		{{- end}}
+		if _branchMatches {
+			return fmt.Errorf("not: value matches forbidden branch {{$bi}}")
+		}
+	}
 	{{- end}}
 	return nil
 	{{- end}}
