@@ -501,7 +501,7 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
-			for _, req := range []string{"id"} {
+			for _, req := range []string{"id", "content", "target"} {
 				if _, ok := raw[req]; !ok {
 					return fmt.Errorf("%s: required property is missing", req)
 				}

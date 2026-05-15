@@ -7,11 +7,15 @@ A CLI tool that generates idiomatic Go type definitions from JSON Schema files.
 - Generates Go structs with proper `json` struct tags from JSON Schema objects
 - Supports primitive types, arrays, nested objects, enums, and type aliases
 - Full `$ref` / `$defs` resolution (file-based references rooted at schema directory)
+- Optional remote `$ref` resolution over HTTP/HTTPS (`--allow-remote-refs`)
 - Composition keywords: `allOf`, `anyOf`, `oneOf` (including nullable via `oneOf` with null)
+- Discriminated unions with automatic or heuristic-based discriminator detection
 - Validation-aware: string constraints (`minLength`, `maxLength`, `pattern`), numeric constraints
-- Format handling (e.g., `date-time`)
-- `additionalProperties` support with overflow maps
+- Format handling (e.g., `date-time`, `email`, `uri`, `uuid`)
+- Default values for struct fields
+- `additionalProperties` and `patternProperties` support with overflow maps
 - Optional `*big.Int` wrapper for arbitrary-precision integers
+- Supports JSON Schema drafts 3, 4, 6, 7, 2019-09, and 2020-12 (auto-detected or overridden via `--draft`)
 
 ## Installation
 
@@ -49,7 +53,30 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false (no overflow map) |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
+| `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
+| `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
 | `--verbose` | `-v` | `false` | Print progress information |
+
+### Remote References
+
+By default, `schemagen` only resolves `$ref` references to local files relative to the schema's directory. If your schema references external schemas via HTTP/HTTPS URLs (e.g., `"$ref": "https://example.com/common.json#/$defs/Address"`), you must opt in with `--allow-remote-refs`:
+
+```bash
+schemagen generate schema.json --allow-remote-refs
+```
+
+This enables the HTTP resolver, which fetches and caches remote schemas at generation time. Remote resolution is disabled by default for security and reproducibility reasons -- schemas should ideally be vendored locally.
+
+### Draft Override
+
+`schemagen` auto-detects the JSON Schema draft version from the `$schema` URI in your schema file. If your schema lacks a `$schema` field or you need to force a specific draft version, use `--draft`:
+
+```bash
+schemagen generate legacy.json --draft 4
+schemagen generate modern.json --draft 2020-12
+```
+
+This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics).
 
 ## How It Works
 

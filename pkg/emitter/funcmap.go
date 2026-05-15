@@ -20,7 +20,7 @@ import (
 //   - "add":            adds two ints (useful in templates)
 //   - "wrapTypeDef":    wraps a TypeDef for template type-dispatch
 //   - "mkOneOfCtx":     creates a context map for oneOf templates
-//   - "isOneOfRequired": always returns false (placeholder)
+//   - "isOneOfRequired": returns true if the given oneOf field is required on its parent struct
 func FuncMap() template.FuncMap {
 	return template.FuncMap{
 		"goType":             goTypeFunc,
@@ -30,7 +30,15 @@ func FuncMap() template.FuncMap {
 		"add":                addFunc,
 		"wrapTypeDef":        wrapTypeDefFunc,
 		"mkOneOfCtx":         mkOneOfCtxFunc,
-		"isOneOfRequired":    func(recv, field string) bool { return false },
+		"isOneOfRequired":    func(oof any) bool {
+			if o, ok := oof.(generator.OneOfDef); ok {
+				return o.Required
+			}
+			if o, ok := oof.(*generator.OneOfDef); ok {
+				return o.Required
+			}
+			return false
+		},
 		"requiredFieldsList": requiredFieldsListFunc,
 		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
 		"isRawMessage":       isRawMessageFunc,

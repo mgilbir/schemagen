@@ -130,6 +130,41 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/composition/oneof_discriminator_heuristic.json",
 			FixturePath: "testdata/fixtures/composition/oneof_discriminator_heuristic.json",
 		},
+		{
+			Name:        "defaults/server_config",
+			SchemaPath:  "testdata/schemas/defaults/server_config.json",
+			FixturePath: "testdata/fixtures/defaults/server_config.json",
+		},
+		{
+			Name:        "validation/unevaluated_items",
+			SchemaPath:  "testdata/schemas/validation/unevaluated_items.json",
+			FixturePath: "testdata/fixtures/validation/unevaluated_items.json",
+		},
+		{
+			Name:        "advanced/recursive_tree",
+			SchemaPath:  "testdata/schemas/advanced/recursive_tree.json",
+			FixturePath: "testdata/fixtures/advanced/recursive_tree.json",
+		},
+		{
+			Name:        "advanced/pattern_properties",
+			SchemaPath:  "testdata/schemas/advanced/pattern_properties.json",
+			FixturePath: "testdata/fixtures/advanced/pattern_properties.json",
+		},
+		{
+			Name:        "advanced/nullable_const",
+			SchemaPath:  "testdata/schemas/advanced/nullable_const.json",
+			FixturePath: "testdata/fixtures/advanced/nullable_const.json",
+		},
+		{
+			Name:        "advanced/tuple_array",
+			SchemaPath:  "testdata/schemas/advanced/tuple_array.json",
+			FixturePath: "testdata/fixtures/advanced/tuple_array.json",
+		},
+		{
+			Name:        "advanced/cross_refs",
+			SchemaPath:  "testdata/schemas/advanced/cross_refs.json",
+			FixturePath: "testdata/fixtures/advanced/cross_refs.json",
+		},
 	}
 }
 
@@ -206,6 +241,7 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/validation",
 		"testdata/golden/formats",
 		"testdata/golden/defaults",
+		"testdata/golden/advanced",
 	}
 
 	tmpDir := t.TempDir()
@@ -298,6 +334,8 @@ func TestCompile(t *testing.T) {
 // extractRootTypeName finds the root struct type in the generated code.
 // It looks for the last struct type that has json-tagged fields (not wrapper structs
 // which have no json tags). Wrapper structs for oneOf have fields without json tags.
+// Only considers top-level type declarations (no leading whitespace) to avoid
+// picking up type aliases inside function bodies (e.g. "type Alias X" in UnmarshalJSON).
 func extractRootTypeName(t *testing.T, code string) string {
 	t.Helper()
 
@@ -308,7 +346,8 @@ func extractRootTypeName(t *testing.T, code string) string {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+		// Only consider top-level type declarations (starts at column 0)
+		if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				currentType = parts[1]
@@ -327,10 +366,10 @@ func extractRootTypeName(t *testing.T, code string) string {
 	}
 
 	if lastType == "" {
-		// Fallback: just find the last struct
+		// Fallback: just find the last top-level struct
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+			if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 2 {
 					lastType = parts[1]
@@ -340,10 +379,11 @@ func extractRootTypeName(t *testing.T, code string) string {
 	}
 
 	if lastType == "" {
-		// Final fallback: look for type aliases (e.g., "type Root = any" or "type Root string").
+		// Final fallback: look for top-level type aliases (e.g., "type Root = any" or "type Root []any").
+		// Only consider lines starting at column 0 to skip inner Alias declarations.
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") {
+			if strings.HasPrefix(line, "type ") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 2 {
 					lastType = parts[1]
@@ -419,4 +459,258 @@ func main() {
 	fmt.Println("PASS")
 }
 `, rootType)
+}
+
+// TestDefaults generates Go code from the defaults schema, then creates a small Go program
+// that unmarshals minimal JSON (only required fields), calls SetDefaults(), and verifies
+// that default values were applied correctly.
+func TestDefaults(t *testing.T) {
+	schemaPath := "testdata/schemas/defaults/server_config.json"
+	generated := generateFromSchema(t, schemaPath)
+
+	rootType := extractRootTypeName(t, string(generated))
+
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+
+	// Minimal JSON: only the required field "name"
+	minimalJSON := `{"name":"myserver"}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), []byte(minimalJSON), 0o644); err != nil {
+		t.Fatalf("writing fixture.json: %v", err)
+	}
+
+	// Write a main.go that tests SetDefaults
+	mainGo := generateDefaultsMain(rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+
+	if err := writeTestGoMod(tmpDir, "defaults_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("defaults test failed:\n%s\nerror: %v", string(output), err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr != "PASS" {
+		t.Fatalf("defaults test output:\n%s", outputStr)
+	}
+}
+
+// generateDefaultsMain creates a Go main() that:
+// 1. Reads fixture.json (minimal — only required fields)
+// 2. Unmarshals into the generated type
+// 3. Calls SetDefaults()
+// 4. Verifies that default values are applied correctly
+func generateDefaultsMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	data, err := os.ReadFile("fixture.json")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "reading fixture: %%v\n", err)
+		os.Exit(1)
+	}
+
+	var obj %s
+	if err := json.Unmarshal(data, &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	// Before SetDefaults: optional fields should be zero values
+	if obj.Host != "" {
+		fmt.Fprintf(os.Stderr, "before SetDefaults: Host should be empty, got %%q\n", obj.Host)
+		os.Exit(1)
+	}
+	if obj.Port != 0 {
+		fmt.Fprintf(os.Stderr, "before SetDefaults: Port should be 0, got %%d\n", obj.Port)
+		os.Exit(1)
+	}
+
+	// Call SetDefaults
+	obj.SetDefaults()
+
+	// After SetDefaults: default values should be applied
+	var errs []string
+	if obj.Name != "myserver" {
+		errs = append(errs, fmt.Sprintf("Name: got %%q, want %%q", obj.Name, "myserver"))
+	}
+	if obj.Host != "localhost" {
+		errs = append(errs, fmt.Sprintf("Host: got %%q, want %%q", obj.Host, "localhost"))
+	}
+	if obj.Port != 8080 {
+		errs = append(errs, fmt.Sprintf("Port: got %%d, want %%d", obj.Port, 8080))
+	}
+	if obj.Timeout != 30.5 {
+		errs = append(errs, fmt.Sprintf("Timeout: got %%f, want %%f", obj.Timeout, 30.5))
+	}
+	if obj.Debug != true {
+		errs = append(errs, fmt.Sprintf("Debug: got %%v, want %%v", obj.Debug, true))
+	}
+	if obj.LogLevel != "info" {
+		errs = append(errs, fmt.Sprintf("LogLevel: got %%q, want %%q", obj.LogLevel, "info"))
+	}
+	if obj.MaxRetries != 3 {
+		errs = append(errs, fmt.Sprintf("MaxRetries: got %%d, want %%d", obj.MaxRetries, 3))
+	}
+
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "FAIL: %%s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	// Also verify that SetDefaults does NOT overwrite explicitly set values
+	obj2 := %s{Name: "test", Host: "custom.host", Port: 9999}
+	obj2.SetDefaults()
+	if obj2.Host != "custom.host" {
+		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Host: got %%q, want %%q", obj2.Host, "custom.host"))
+	}
+	if obj2.Port != 9999 {
+		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Port: got %%d, want %%d", obj2.Port, 9999))
+	}
+
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "FAIL: %%s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`, rootType, rootType)
+}
+
+// TestUnevaluatedItemsValidation generates Go code from the unevaluated_items schema,
+// then creates a small Go program that verifies Validate() correctly rejects arrays
+// with too many items when unevaluatedItems: false.
+func TestUnevaluatedItemsValidation(t *testing.T) {
+	schemaPath := "testdata/schemas/validation/unevaluated_items.json"
+	generated := generateFromSchema(t, schemaPath)
+
+	rootType := extractRootTypeName(t, string(generated))
+
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+
+	mainGo := generateUnevaluatedItemsMain(rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+
+	if err := writeTestGoMod(tmpDir, "unevalitems_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("unevaluatedItems validation test failed:\n%s\nerror: %v", string(output), err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr != "PASS" {
+		t.Fatalf("unevaluatedItems validation test output:\n%s", outputStr)
+	}
+}
+
+// generateUnevaluatedItemsMain creates a Go main() that tests unevaluatedItems validation:
+// 1. A valid tuple (within prefixItems limit) should pass Validate()
+// 2. A tuple exceeding prefixItems should fail Validate() when unevaluatedItems: false
+func generateUnevaluatedItemsMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	var errs []string
+
+	// Test 1: Valid strict_tuple (exactly 2 items, matching prefixItems)
+	{
+		input := ` + "`" + `{"strict_tuple": ["hello", 42]}` + "`" + `
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			errs = append(errs, fmt.Sprintf("unmarshal valid strict_tuple: %%v", err))
+		} else if err := obj.Validate(); err != nil {
+			errs = append(errs, fmt.Sprintf("valid strict_tuple should pass: %%v", err))
+		}
+	}
+
+	// Test 2: Invalid strict_tuple (3 items, exceeds prefixItems when unevaluatedItems: false)
+	{
+		input := ` + "`" + `{"strict_tuple": ["hello", 42, "extra"]}` + "`" + `
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			errs = append(errs, fmt.Sprintf("unmarshal invalid strict_tuple: %%v", err))
+		} else if err := obj.Validate(); err == nil {
+			errs = append(errs, "invalid strict_tuple (3 items) should fail validation")
+		} else if !strings.Contains(err.Error(), "strict_tuple") {
+			errs = append(errs, fmt.Sprintf("error should mention strict_tuple: %%v", err))
+		}
+	}
+
+	// Test 3: Empty strict_tuple should pass
+	{
+		input := ` + "`" + `{"strict_tuple": []}` + "`" + `
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			errs = append(errs, fmt.Sprintf("unmarshal empty strict_tuple: %%v", err))
+		} else if err := obj.Validate(); err != nil {
+			errs = append(errs, fmt.Sprintf("empty strict_tuple should pass: %%v", err))
+		}
+	}
+
+	// Test 4: strict_tuple with 1 item (within bounds) should pass
+	{
+		input := ` + "`" + `{"strict_tuple": ["only"]}` + "`" + `
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			errs = append(errs, fmt.Sprintf("unmarshal 1-item strict_tuple: %%v", err))
+		} else if err := obj.Validate(); err != nil {
+			errs = append(errs, fmt.Sprintf("1-item strict_tuple should pass: %%v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "FAIL: %%s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`, rootType, rootType, rootType, rootType)
 }

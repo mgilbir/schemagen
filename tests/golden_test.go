@@ -41,6 +41,13 @@ func allGoldenTests() []goldenTestCase {
 		{"defaults/server_config", "testdata/schemas/defaults/server_config.json", "testdata/golden/defaults/server_config.go"},
 		{"composition/oneof_discriminator", "testdata/schemas/composition/oneof_discriminator.json", "testdata/golden/composition/oneof_discriminator.go"},
 		{"composition/oneof_discriminator_heuristic", "testdata/schemas/composition/oneof_discriminator_heuristic.json", "testdata/golden/composition/oneof_discriminator_heuristic.go"},
+		{"validation/unevaluated_items", "testdata/schemas/validation/unevaluated_items.json", "testdata/golden/validation/unevaluated_items.go"},
+		{"advanced/recursive_tree", "testdata/schemas/advanced/recursive_tree.json", "testdata/golden/advanced/recursive_tree.go"},
+		{"advanced/pattern_properties", "testdata/schemas/advanced/pattern_properties.json", "testdata/golden/advanced/pattern_properties.go"},
+		{"advanced/nullable_const", "testdata/schemas/advanced/nullable_const.json", "testdata/golden/advanced/nullable_const.go"},
+		{"advanced/tuple_array", "testdata/schemas/advanced/tuple_array.json", "testdata/golden/advanced/tuple_array.go"},
+		{"advanced/cross_refs", "testdata/schemas/advanced/cross_refs.json", "testdata/golden/advanced/cross_refs.go"},
+		{"advanced/complex_tuple", "testdata/schemas/advanced/complex_tuple.json", "testdata/golden/advanced/complex_tuple.go"},
 	}
 }
 

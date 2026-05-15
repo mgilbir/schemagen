@@ -1,0 +1,7 @@
+{
+  "version": "2.0",
+  "name": "my-config",
+  "count": 10,
+  "tags": ["alpha", "beta"],
+  "mode": "fast"
+}

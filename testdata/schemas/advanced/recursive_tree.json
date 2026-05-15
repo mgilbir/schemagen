@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TreeNode",
+  "description": "A recursive tree structure",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "Node value"
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "$ref": "#"
+      },
+      "description": "Child nodes"
+    },
+    "parent": {
+      "$ref": "#",
+      "description": "Parent node reference"
+    }
+  },
+  "required": ["value"]
+}

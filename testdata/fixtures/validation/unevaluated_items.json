@@ -1,0 +1,5 @@
+{
+  "strict_tuple": ["hello", 42],
+  "typed_overflow": ["first", 3.14, "extra1", "extra2"],
+  "allof_extended_tuple": ["name", 99]
+}

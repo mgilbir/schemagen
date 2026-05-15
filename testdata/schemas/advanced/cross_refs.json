@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Document",
+  "description": "Schema using $defs with multiple cross-references",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Section"
+      }
+    },
+    "author": {
+      "$ref": "#/$defs/Person"
+    }
+  },
+  "required": ["metadata", "sections"],
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "created": { "type": "string", "format": "date-time" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["title", "created"]
+    },
+    "Section": {
+      "type": "object",
+      "properties": {
+        "heading": { "type": "string" },
+        "body": { "type": "string" },
+        "subsections": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Section" }
+        }
+      },
+      "required": ["heading"]
+    },
+    "Person": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["name"]
+    }
+  }
+}

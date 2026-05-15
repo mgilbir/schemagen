@@ -379,6 +379,7 @@ type OneOfDef struct {
 	Variants           []OneOfVariant
 	DiscriminatorField string            // JSON property name used as discriminator (empty = use required-fields heuristic)
 	DiscriminatorMap   map[string]int    // maps discriminator value → variant index (when DiscriminatorField is set)
+	Required           bool              // true when this oneOf's JSONName is in the parent schema's required array
 }
 
 // HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.
@@ -490,6 +491,9 @@ type InferredAliasDef struct {
 	Contains    *ContainsDef // contains sub-schema validation
 	MinContains *int         // minContains (default 1 when contains is present)
 	MaxContains *int         // maxContains (nil = no upper bound)
+
+	// UnevaluatedItems validation for inferred arrays:
+	UnevaluatedItems *UnevaluatedItemsDef // unevaluatedItems constraint (Draft 2019-09+)
 }
 
 // ContainsDef describes a contains constraint on an array.
@@ -497,14 +501,60 @@ type ContainsDef struct {
 	IsFalse   bool            // contains: false — no element can ever match
 	IsTrue    bool            // contains: true — every element matches
 	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
+	EnumJSON  []string        // JSON-encoded enum values for multi-value matching
 	Checks    []ContainsCheck // per-element validation checks
 }
 
 // ContainsCheck describes one validation check applied to each element
 // when evaluating whether it matches the contains sub-schema.
 type ContainsCheck struct {
-	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum"
+	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern"
 	Value     any    // the constraint value
+}
+
+// UnevaluatedItemsDef describes an unevaluatedItems constraint on an array.
+// Items are "evaluated" if covered by items, prefixItems, additionalItems, contains,
+// or by sub-schemas in allOf/$ref/anyOf/oneOf/if-then-else.
+type UnevaluatedItemsDef struct {
+	IsForbidden      bool            // unevaluatedItems: false — reject any unevaluated items
+	IsAllowed        bool            // unevaluatedItems: true — allow any unevaluated item (no-op)
+	AllEvaluated     bool            // true when items (uniform) or additionalItems covers all positions
+	EvaluatedCount   int             // number of statically evaluated positions (from prefixItems/tuple)
+	ContainsEvaluates bool           // true when adjacent contains marks matching items as evaluated (runtime check)
+	ValueType        string          // JSON type constraint on unevaluated items (e.g., "string", "integer")
+	Checks           []ContainsCheck // validation checks on each unevaluated item
+	// ConditionalEvals holds runtime-conditional evaluation branches (allOf prefixItems, anyOf/oneOf items, if/then/else)
+	ConditionalEvals []UnevalItemsConditionalEval
+}
+
+// HasUnevaluatedItems returns true if the InferredAliasDef has unevaluatedItems validation.
+func (d *InferredAliasDef) HasUnevaluatedItems() bool {
+	return d.UnevaluatedItems != nil
+}
+
+// UnevalItemsConditionalEval describes a conditional evaluation branch for unevaluatedItems.
+// At runtime, if a branch matches, its evaluated item count is used.
+type UnevalItemsConditionalEval struct {
+	Kind string // "allOf", "anyOf", "oneOf", "ifThenElse", "ref", "contains"
+	// For allOf/$ref: items are always evaluated (static)
+	EvaluatedCount int  // number of additional evaluated positions from this branch
+	AllEvaluated   bool // branch covers all items (has uniform items)
+	// For anyOf/oneOf: branches are tried at runtime
+	Branches []UnevalItemsBranch
+	// For ifThenElse:
+	IfChecks       []ContainsCheck // checks to evaluate the if condition
+	ThenEvalCount  int             // items evaluated by then branch
+	ThenAllEval    bool            // then branch covers all items
+	ElseEvalCount  int             // items evaluated by else branch
+	ElseAllEval    bool            // else branch covers all items
+	// For contains:
+	ContainsAllEval bool // if contains evaluates all items
+}
+
+// UnevalItemsBranch describes one branch in an anyOf/oneOf for unevaluatedItems evaluation.
+type UnevalItemsBranch struct {
+	EvaluatedCount int  // number of evaluated positions in this branch
+	AllEvaluated   bool // branch covers all items (has uniform items)
 }
 
 // InferredTupleItem describes a per-position item schema for inferred arrays.

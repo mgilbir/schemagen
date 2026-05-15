@@ -1,0 +1,1 @@
+{"name": "myserver", "host": "example.com", "port": 9090, "timeout": 15.0, "debug": true, "log_level": "warn", "max_retries": 5}

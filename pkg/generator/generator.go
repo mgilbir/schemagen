@@ -37,14 +37,21 @@ type Generator struct {
 	// scope chain (walking from outermost to innermost) rather than only the
 	// local document scope. The root schema's document root is always at index 0.
 	dynamicScope []*schema.Schema
+
+	// structsInProgress tracks Go type names for structs currently having their
+	// fields resolved (on the call stack). Used to detect recursive value-type
+	// cycles: if a resolved ref points to a type that references a type in this
+	// set, a pointer must be used to break the cycle.
+	structsInProgress map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
 	return &Generator{
-		config:     cfg,
-		generated:  make(map[string]bool),
-		generating: make(map[string]bool),
+		config:            cfg,
+		generated:         make(map[string]bool),
+		generating:        make(map[string]bool),
+		structsInProgress: make(map[string]bool),
 	}
 }
 
@@ -551,9 +558,15 @@ func (g *Generator) addRequiredImports() {
 				if iad.Contains.ConstJSON != "" {
 					needsJSON = true // json.Marshal for per-element comparison
 				}
+				if len(iad.Contains.EnumJSON) > 0 {
+					needsJSON = true // json.Marshal for per-element enum comparison
+				}
 				for _, chk := range iad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
 						needsMath = true
+					}
+					if chk.CheckType == "pattern" {
+						needsStdRegexp = true
 					}
 				}
 			}
@@ -810,9 +823,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// In draft2019-09+, $ref is an applicator that works alongside sibling keywords.
 	// When a schema has both $ref and structural keywords (properties, patternProperties,
-	// unevaluatedProperties, additionalProperties), synthesize an implicit allOf so both
-	// the $ref target and local keywords are merged into a single struct.
-	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil) {
+	// unevaluatedProperties, additionalProperties, or array-structural keywords like
+	// prefixItems, items, unevaluatedItems), synthesize an implicit allOf so both
+	// the $ref target and local keywords are merged into a single definition.
+	if s.Ref != "" && !g.refOverridesSiblings() && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
+		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil) {
 		refSub := &schema.Schema{
 			Ref:          s.Ref,
 			BaseURI:      s.BaseURI,
@@ -957,11 +972,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// $dynamicRef with fragment-only ref → resolve via dynamic scope chain.
+	// $dynamicRef → resolve via dynamic scope chain.
 	// Plain name fragments (like "#items") resolve via $dynamicAnchor with scope walking.
 	// JSON pointer fragments (like "#/$defs/foo") resolve identically to $ref.
-	// URI-based $dynamicRef (like "extended#meta") left for future work.
-	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
+	// URI-based $dynamicRef (like "extended#meta") resolves the URI part first, then
+	// checks the bookend $dynamicAnchor and walks the dynamic scope.
+	if s.DynamicRef != "" {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
 			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
@@ -1067,6 +1083,8 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
 			// Extract contains/minContains/maxContains constraints.
 			containsDef, minContains, maxContains := extractContainsDef(s)
+			// Extract unevaluatedItems constraint.
+			unevalItems := g.buildUnevaluatedItemsDef(s)
 			// When item-level or contains validation is needed, force GoType to []any so that
 			// json.Unmarshal accepts any array (per-element validation in Validate()).
 			// If the typed array (e.g., []int64) were used, unmarshal would fail
@@ -1075,7 +1093,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
 				len(itemsChecks) > 0 ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
-				containsDef != nil {
+				containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
@@ -1096,6 +1114,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Contains:             containsDef,
 				MinContains:          minContains,
 				MaxContains:          maxContains,
+				UnevaluatedItems:     unevalItems,
 			})
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
@@ -1226,6 +1245,8 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 // and NOT for schemas generated from applicator merging (allOf, anyOf).
 func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonObject bool) error {
 	g.generated[name] = true
+	g.structsInProgress[name] = true
+	defer delete(g.structsInProgress, name)
 
 	requiredSet := make(map[string]bool, len(s.Required))
 	for _, r := range s.Required {
@@ -1271,6 +1292,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				return fmt.Errorf("property %s (oneOf): %w", propName, err)
 			}
 			if oneOfDef != nil {
+				oneOfDef.Required = required
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
 				needsUnmarshal = true
@@ -1418,6 +1440,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	for _, f := range fields {
 		if f.Required {
 			requiredJSON = append(requiredJSON, f.JSONName)
+		}
+	}
+	for i := range oneOfs {
+		if oneOfs[i].Required && oneOfs[i].JSONName != "" {
+			requiredJSON = append(requiredJSON, oneOfs[i].JSONName)
 		}
 	}
 	for _, r := range s.Required {
@@ -1743,6 +1770,9 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	if s.AdditionalItems != nil && merged.AdditionalItems == nil {
 		merged.AdditionalItems = s.AdditionalItems
 	}
+	if s.UnevaluatedItems != nil && merged.UnevaluatedItems == nil {
+		merged.UnevaluatedItems = s.UnevaluatedItems
+	}
 
 	// If no sub-schema contributed properties, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
@@ -1778,11 +1808,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			g.generated[name] = true
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
 			containsDef, minContains, maxContains := extractContainsDef(merged)
+			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			inferredGoType := goType
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
 				len(itemsChecks) > 0 ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
-				containsDef != nil {
+				containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
@@ -1804,6 +1835,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Contains:             containsDef,
 				MinContains:          minContains,
 				MaxContains:          maxContains,
+				UnevaluatedItems:     unevalItems,
 			})
 			return nil
 		}
@@ -2682,8 +2714,8 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: goName}
 	}
 
-	// $dynamicRef with fragment-only ref — resolve via dynamic scope chain.
-	if s.DynamicRef != "" && strings.HasPrefix(s.DynamicRef, "#") {
+	// $dynamicRef — resolve via dynamic scope chain.
+	if s.DynamicRef != "" {
 		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
 			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
@@ -3264,7 +3296,68 @@ func (g *Generator) isScopedSelfRef(ref string, ctx *schema.Schema, resolved *sc
 	if ctx.DocumentRoot != nil && resolved == ctx.DocumentRoot {
 		return true
 	}
+	// If the resolved schema IS its own document root (has $id) and appears in the
+	// dynamic scope, we're inside its generation chain and using it as a value type
+	// would create a recursive type cycle. Use a pointer to break the cycle.
+	// Only applies to schemas that define their own scope ($id) — not schemas
+	// merely defined within the root document.
+	if resolved.DocumentRoot == resolved && resolved.ID != "" {
+		for _, scope := range g.dynamicScope {
+			if scope == resolved {
+				return true
+			}
+		}
+	}
+	// Check if the resolved type has already been generated as a struct that
+	// references a type currently being built. This detects indirect cycles
+	// like A → B → A where A is already generated and B is being built.
+	if len(g.structsInProgress) > 0 {
+		goName := g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
+		if g.generated[goName] && g.typeReferencesAnyInProgress(goName) {
+			return true
+		}
+	}
 	return false
+}
+
+// typeReferencesAnyInProgress checks if a generated type has any value-type field
+// that references a type currently being built (in structsInProgress).
+func (g *Generator) typeReferencesAnyInProgress(typeName string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != typeName {
+			continue
+		}
+		sd, ok := td.(*StructDef)
+		if !ok {
+			return false
+		}
+		for _, field := range sd.Fields {
+			fieldTypeName := extractTypeName(field.Type)
+			if fieldTypeName != "" && g.structsInProgress[fieldTypeName] {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// extractTypeName returns the Go type name from a GoType, stripping pointers/slices.
+// Returns "" for primitive types or complex types that can't create cycles.
+func extractTypeName(t GoType) string {
+	switch tt := t.(type) {
+	case *NamedType:
+		if tt.Pointer {
+			return "" // already a pointer, can't create a cycle
+		}
+		return tt.Name
+	case *PointerType:
+		return "" // already a pointer, can't create a cycle
+	case *ArrayType:
+		return "" // arrays are fine
+	default:
+		return ""
+	}
 }
 
 // goNameForResolvedRef determines the Go type name for a resolved $ref.
@@ -3678,6 +3771,283 @@ func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
 		return false
 	}
 	return true
+}
+
+// buildUnevaluatedItemsDef builds an UnevaluatedItemsDef from a schema's unevaluatedItems keyword.
+// Returns nil if the schema has no unevaluatedItems or if all items are statically evaluated.
+func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItemsDef {
+	if s.UnevaluatedItems == nil {
+		return nil
+	}
+
+	ui := s.UnevaluatedItems
+
+	// Boolean schemas
+	if ui.IsBooleanSchema() {
+		if ui.IsTrueSchema() {
+			// unevaluatedItems: true — allow anything, no validation needed
+			return nil
+		}
+		// unevaluatedItems: false — reject any unevaluated items
+		def := &UnevaluatedItemsDef{IsForbidden: true}
+		g.collectEvaluatedItems(s, def)
+		// If all items are already evaluated, unevaluatedItems:false is a no-op
+		if def.AllEvaluated {
+			return nil
+		}
+		return def
+	}
+
+	// Schema-valued unevaluatedItems — validate each unevaluated item
+	def := &UnevaluatedItemsDef{}
+
+	// Extract type constraint
+	if len(ui.Type) == 1 {
+		def.ValueType = ui.Type[0]
+	}
+
+	// Extract simple validation checks
+	def.Checks = extractUnevalItemChecks(ui)
+
+	if def.ValueType == "" && len(def.Checks) == 0 {
+		// Schema-valued but no extractable constraints (complex sub-schema)
+		// Still need to reject non-matching items — treat as type check if possible
+		// For now, skip (we handle the common cases)
+		return nil
+	}
+
+	g.collectEvaluatedItems(s, def)
+	if def.AllEvaluated {
+		return nil
+	}
+	return def
+}
+
+// extractUnevalItemChecks extracts simple validation checks from a unevaluatedItems sub-schema.
+func extractUnevalItemChecks(ui *schema.Schema) []ContainsCheck {
+	var checks []ContainsCheck
+	if ui.Minimum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minimum", Value: *ui.Minimum})
+	}
+	if ui.Maximum != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maximum", Value: *ui.Maximum})
+	}
+	if ui.MultipleOf != nil {
+		checks = append(checks, ContainsCheck{CheckType: "multipleOf", Value: *ui.MultipleOf})
+	}
+	if ui.ExclusiveMinimum != nil && ui.ExclusiveMinimum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMinimum", Value: *ui.ExclusiveMinimum.Number})
+	}
+	if ui.ExclusiveMaximum != nil && ui.ExclusiveMaximum.Number != nil {
+		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *ui.ExclusiveMaximum.Number})
+	}
+	return checks
+}
+
+// collectEvaluatedItems populates an UnevaluatedItemsDef with information about
+// which array positions are "evaluated" by other keywords in the schema.
+func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItemsDef) {
+	// 1. items as a single schema (uniform items) evaluates ALL positions
+	if s.Items != nil && s.Items.Schema != nil {
+		def.AllEvaluated = true
+		return
+	}
+
+	// 2. prefixItems / items-as-array evaluates fixed positions
+	tupleLen := len(s.PrefixItems)
+	if tupleLen == 0 && s.Items != nil {
+		tupleLen = len(s.Items.Schemas)
+	}
+	def.EvaluatedCount = tupleLen
+
+	// 3. additionalItems evaluates all positions beyond the tuple
+	if s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
+		// additionalItems is present and is NOT false — it evaluates all remaining items
+		def.AllEvaluated = true
+		return
+	}
+
+	// 4. contains in Draft 2020-12 evaluates matching items at runtime.
+	// Since we cannot determine which items will match contains at compile time,
+	// we set ContainsEvaluates so the template generates per-item runtime checks
+	// that integrate contains matching with unevaluatedItems validation.
+	if s.Contains != nil {
+		def.ContainsEvaluates = true
+	}
+
+	// 5. if (without then/else) evaluates items via its prefixItems/items annotations
+	// only when the if condition holds at runtime. Since we cannot evaluate the if
+	// condition at compile time, we cannot statically determine which items are
+	// evaluated. The if/then/else block below will add a conditional eval entry,
+	// but without then/else, both branches have 0 evaluated — which is correct
+	// for the case where if doesn't match. When if DOES match, we'd need runtime
+	// evaluation (added as known limitation / known-failure).
+
+	// 6. Walk applicators: allOf, $ref, anyOf, oneOf, if/then/else
+	if s.Ref != "" {
+		refSchema := g.resolveRefInContext(s.Ref, s)
+		if refSchema != nil {
+			evalCount, allEval := g.countEvaluatedItemsInSchema(refSchema)
+			if allEval {
+				def.AllEvaluated = true
+				return
+			}
+			if evalCount > def.EvaluatedCount {
+				def.EvaluatedCount = evalCount
+			}
+		}
+	}
+
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if sub.Ref != "" {
+			if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+				resolved = r
+			}
+		}
+		evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+		if allEval {
+			def.AllEvaluated = true
+			return
+		}
+		if evalCount > def.EvaluatedCount {
+			def.EvaluatedCount = evalCount
+		}
+	}
+
+	// anyOf/oneOf: runtime-conditional — the maximum of evaluated counts across branches
+	if len(s.AnyOf) > 0 {
+		ce := UnevalItemsConditionalEval{Kind: "anyOf"}
+		for _, sub := range s.AnyOf {
+			resolved := sub
+			if sub.Ref != "" {
+				if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+					resolved = r
+				}
+			}
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+			ce.Branches = append(ce.Branches, UnevalItemsBranch{
+				EvaluatedCount: evalCount,
+				AllEvaluated:   allEval,
+			})
+		}
+		def.ConditionalEvals = append(def.ConditionalEvals, ce)
+	}
+
+	if len(s.OneOf) > 0 {
+		ce := UnevalItemsConditionalEval{Kind: "oneOf"}
+		for _, sub := range s.OneOf {
+			resolved := sub
+			if sub.Ref != "" {
+				if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+					resolved = r
+				}
+			}
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+			ce.Branches = append(ce.Branches, UnevalItemsBranch{
+				EvaluatedCount: evalCount,
+				AllEvaluated:   allEval,
+			})
+		}
+		def.ConditionalEvals = append(def.ConditionalEvals, ce)
+	}
+
+	// if/then/else
+	if s.If != nil {
+		ce := UnevalItemsConditionalEval{Kind: "ifThenElse"}
+		if s.Then != nil {
+			resolved := s.Then
+			if s.Then.Ref != "" {
+				if r := g.resolveRefInContext(s.Then.Ref, s.Then); r != nil {
+					resolved = r
+				}
+			}
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+			ce.ThenEvalCount = evalCount
+			ce.ThenAllEval = allEval
+		}
+		if s.Else != nil {
+			resolved := s.Else
+			if s.Else.Ref != "" {
+				if r := g.resolveRefInContext(s.Else.Ref, s.Else); r != nil {
+					resolved = r
+				}
+			}
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+			ce.ElseEvalCount = evalCount
+			ce.ElseAllEval = allEval
+		}
+		def.ConditionalEvals = append(def.ConditionalEvals, ce)
+	}
+}
+
+// countEvaluatedItemsInSchema returns how many array positions are evaluated by
+// a sub-schema, and whether it evaluates all positions.
+func (g *Generator) countEvaluatedItemsInSchema(s *schema.Schema) (int, bool) {
+	if s == nil {
+		return 0, false
+	}
+
+	// Boolean true schema → evaluates nothing (no annotations produced).
+	// But note: a sub-schema with unevaluatedItems:true evaluates all items.
+	if s.IsTrueSchema() {
+		return 0, false
+	}
+
+	// items as uniform schema → all positions evaluated
+	if s.Items != nil && s.Items.Schema != nil {
+		return 0, true
+	}
+
+	// additionalItems (non-false) → all positions evaluated
+	if s.AdditionalItems != nil && !(s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool) {
+		return 0, true
+	}
+
+	// unevaluatedItems: true in a sub-schema → all items are evaluated by that sub-schema
+	if s.UnevaluatedItems != nil && s.UnevaluatedItems.IsTrueSchema() {
+		return 0, true
+	}
+
+	// prefixItems / items-as-array
+	tupleLen := len(s.PrefixItems)
+	if tupleLen == 0 && s.Items != nil {
+		tupleLen = len(s.Items.Schemas)
+	}
+
+	// Recurse into allOf/$ref
+	maxEval := tupleLen
+
+	if s.Ref != "" {
+		refSchema := g.resolveRefInContext(s.Ref, s)
+		if refSchema != nil {
+			evalCount, allEval := g.countEvaluatedItemsInSchema(refSchema)
+			if allEval {
+				return 0, true
+			}
+			if evalCount > maxEval {
+				maxEval = evalCount
+			}
+		}
+	}
+
+	for _, sub := range s.AllOf {
+		resolved := sub
+		if sub.Ref != "" {
+			if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+				resolved = r
+			}
+		}
+		evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
+		if allEval {
+			return 0, true
+		}
+		if evalCount > maxEval {
+			maxEval = evalCount
+		}
+	}
+
+	return maxEval, false
 }
 
 // schemaHasExplicitType returns true if the schema declares an explicit "type"
@@ -4645,6 +5015,24 @@ func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
 		}
 	}
 
+	// Multi-value enum → marshal all values, check if element matches any.
+	if len(containsSch.Enum) > 1 {
+		var enumValues []string
+		allOK := true
+		for _, v := range containsSch.Enum {
+			b, err := json.Marshal(v)
+			if err != nil {
+				allOK = false
+				break
+			}
+			enumValues = append(enumValues, string(b))
+		}
+		if allOK {
+			def.EnumJSON = enumValues
+			return def, minC, maxC
+		}
+	}
+
 	// Collect constraint checks.
 	var checks []ContainsCheck
 
@@ -4665,6 +5053,16 @@ func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
 	}
 	if len(containsSch.Type) == 1 {
 		checks = append(checks, ContainsCheck{CheckType: "type", Value: containsSch.Type[0]})
+	}
+	// String constraints
+	if containsSch.MinLength != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: *containsSch.MinLength})
+	}
+	if containsSch.MaxLength != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: *containsSch.MaxLength})
+	}
+	if containsSch.Pattern != nil && *containsSch.Pattern != "" {
+		checks = append(checks, ContainsCheck{CheckType: "pattern", Value: *containsSch.Pattern})
 	}
 
 	if len(checks) > 0 {
@@ -5582,7 +5980,7 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 	var tupleItems []TupleItemDef
 	hasValidatable := false
 
-	for _, posSch := range positionSchemas {
+	for i, posSch := range positionSchemas {
 		if posSch == nil {
 			tupleItems = append(tupleItems, TupleItemDef{})
 			continue
@@ -5610,8 +6008,18 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 			}
 		}
 
-		// Non-ref position schema: check if it would generate a type with validation.
-		// For now, skip these — most tuple items use $ref.
+		// Non-ref position schema: for schemas with structural keywords (type,
+		// properties, etc.), generate a named type so positional validation works.
+		if hasStructuralKeywords(resolved) {
+			posName := fmt.Sprintf("%sItem%d", parentName, i)
+			_ = g.generateTypeDef(posName, resolved)
+			if g.generated[posName] {
+				tupleItems = append(tupleItems, TupleItemDef{TypeName: posName})
+				hasValidatable = true
+				continue
+			}
+		}
+
 		tupleItems = append(tupleItems, TupleItemDef{})
 	}
 
@@ -5629,4 +6037,49 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// hasStructuralKeywords returns true if the schema has keywords that would
+// produce a meaningful Go type with validation (properties, type constraints,
+// validation keywords, etc.). Used to decide whether an inline tuple position
+// schema is worth generating as a named type.
+func hasStructuralKeywords(s *schema.Schema) bool {
+	if s == nil || s.IsBooleanSchema() {
+		return false
+	}
+	// Object with properties
+	if len(s.Properties) > 0 {
+		return true
+	}
+	// Has required fields
+	if len(s.Required) > 0 {
+		return true
+	}
+	// Typed schema with validation keywords
+	if len(s.Type) > 0 {
+		// Check for string constraints
+		if s.MinLength != nil || s.MaxLength != nil || (s.Pattern != nil && *s.Pattern != "") {
+			return true
+		}
+		// Numeric constraints
+		if s.Minimum != nil || s.Maximum != nil || s.MultipleOf != nil {
+			return true
+		}
+		if s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil {
+			return true
+		}
+		// Enum/const
+		if len(s.Enum) > 0 || s.Const != nil {
+			return true
+		}
+		// Object type with properties or composition
+		if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+			return true
+		}
+	}
+	// Composition keywords at top level
+	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+		return true
+	}
+	return false
 }

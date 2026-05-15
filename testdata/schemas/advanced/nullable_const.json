@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "description": "Schema using const and nullable types",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": "2.0",
+      "description": "Schema version, always 2.0"
+    },
+    "name": {
+      "type": ["string", "null"],
+      "description": "Optional name that can be null"
+    },
+    "count": {
+      "type": ["integer", "null"],
+      "description": "Optional count"
+    },
+    "tags": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional list of tags"
+    },
+    "mode": {
+      "enum": ["fast", "slow", "auto"],
+      "description": "Operation mode"
+    }
+  },
+  "required": ["version", "mode"]
+}

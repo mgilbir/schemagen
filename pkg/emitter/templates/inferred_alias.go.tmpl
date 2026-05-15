@@ -493,6 +493,19 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_containsCount++
 			}
 		}
+		{{- else if .Contains.EnumJSON}}
+		for _, _cElem := range {{$recv}}._value {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil {
+				_cStr := string(_cBytes)
+				{{- range .Contains.EnumJSON}}
+				if _cStr == {{printf "%q" .}} {
+					_containsCount++
+					continue
+				}
+				{{- end}}
+			}
+		}
 		{{- else if .Contains.Checks}}
 		for _, _cElem := range {{$recv}}._value {
 			_cMatch := true
@@ -582,6 +595,32 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					}
 				}
 			}
+			{{- else if eq .CheckType "minLength"}}
+			if _cMatch {
+				_cs, _csOk := _cElem.(string)
+				if !_csOk || len([]rune(_cs)) < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maxLength"}}
+			if _cMatch {
+				_cs, _csOk := _cElem.(string)
+				if !_csOk || len([]rune(_cs)) > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "pattern"}}
+			if _cMatch {
+				_cs, _csOk := _cElem.(string)
+				if !_csOk {
+					_cMatch = false
+				} else {
+					_cRe := regexp.MustCompile({{printf "%q" .Value}})
+					if !_cRe.MatchString(_cs) {
+						_cMatch = false
+					}
+				}
+			}
 			{{- end}}
 			{{- end}}
 			if _cMatch {
@@ -606,6 +645,251 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- end}}
+	}
+	{{- end}}
+	{{- if .HasUnevaluatedItems}}
+	// unevaluatedItems validation
+	{
+		arr := {{$recv}}._value
+		if arr != nil {
+			evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
+			allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
+			{{- range .UnevaluatedItems.ConditionalEvals}}
+			{{- if eq .Kind "allOf"}}
+			// allOf: statically evaluated
+			{{- if .AllEvaluated}}
+			allEvaluated = true
+			{{- else if gt .EvaluatedCount 0}}
+			if {{.EvaluatedCount}} > evaluatedCount {
+				evaluatedCount = {{.EvaluatedCount}}
+			}
+			{{- end}}
+			{{- else if eq .Kind "ref"}}
+			{{- if .AllEvaluated}}
+			allEvaluated = true
+			{{- else if gt .EvaluatedCount 0}}
+			if {{.EvaluatedCount}} > evaluatedCount {
+				evaluatedCount = {{.EvaluatedCount}}
+			}
+			{{- end}}
+			{{- else if eq .Kind "anyOf"}}
+			// anyOf: take maximum of any matching branch
+			{
+				branchEvals := []int{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.EvaluatedCount}}{{end -}} }
+				branchAllEval := []bool{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.AllEvaluated}}{{end -}} }
+				for _bi, _be := range branchEvals {
+					if branchAllEval[_bi] {
+						allEvaluated = true
+						break
+					}
+					if _be > evaluatedCount {
+						evaluatedCount = _be
+					}
+				}
+			}
+			{{- else if eq .Kind "oneOf"}}
+			// oneOf: take maximum of any matching branch (exactly one matches)
+			{
+				branchEvals := []int{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.EvaluatedCount}}{{end -}} }
+				branchAllEval := []bool{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.AllEvaluated}}{{end -}} }
+				for _bi, _be := range branchEvals {
+					if branchAllEval[_bi] {
+						allEvaluated = true
+						break
+					}
+					if _be > evaluatedCount {
+						evaluatedCount = _be
+					}
+				}
+			}
+			{{- else if eq .Kind "ifThenElse"}}
+			// if/then/else: take maximum of then and else branches
+			{
+				{{- if .ThenAllEval}}
+				allEvaluated = true
+				{{- else if .ElseAllEval}}
+				allEvaluated = true
+				{{- else}}
+				thenEval := {{.ThenEvalCount}}
+				elseEval := {{.ElseEvalCount}}
+				maxEval := thenEval
+				if elseEval > maxEval {
+					maxEval = elseEval
+				}
+				if maxEval > evaluatedCount {
+					evaluatedCount = maxEval
+				}
+				{{- end}}
+			}
+			{{- end}}
+			{{- end}}
+
+			if !allEvaluated && len(arr) > evaluatedCount {
+			{{- if .UnevaluatedItems.ContainsEvaluates}}
+			// contains evaluates matching items at runtime — check each item beyond evaluatedCount
+			for _ui := evaluatedCount; _ui < len(arr); _ui++ {
+				_uiElem := arr[_ui]
+				_evaluatedByContains := false
+				{{- if .Contains}}
+				{{- if .Contains.IsTrue}}
+				_evaluatedByContains = true
+				{{- else if .Contains.ConstJSON}}
+				{
+					_cBytes, _cErr := json.Marshal(_uiElem)
+					if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
+						_evaluatedByContains = true
+					}
+				}
+				{{- else if .Contains.Checks}}
+				{
+					_cMatch := true
+					{{- range .Contains.Checks}}
+					{{- if eq .CheckType "type"}}
+					{{- if eq .Value "integer"}}
+					if _cMatch {
+						_cf, _cfOk := _uiElem.(float64)
+						if !_cfOk || _cf != math.Trunc(_cf) {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "number"}}
+					if _cMatch {
+						if _, _cfOk := _uiElem.(float64); !_cfOk {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "string"}}
+					if _cMatch {
+						if _, _csOk := _uiElem.(string); !_csOk {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "boolean"}}
+					if _cMatch {
+						if _, _cbOk := _uiElem.(bool); !_cbOk {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "null"}}
+					if _cMatch {
+						if _uiElem != nil {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "array"}}
+					if _cMatch {
+						if _, _caOk := _uiElem.([]any); !_caOk {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .Value "object"}}
+					if _cMatch {
+						if _, _coOk := _uiElem.(map[string]any); !_coOk {
+							_cMatch = false
+						}
+					}
+					{{- end}}
+					{{- else if eq .CheckType "minimum"}}
+					if _cMatch {
+						_cf, _cfOk := _uiElem.(float64)
+						if !_cfOk || _cf < {{.Value}} {
+							_cMatch = false
+						}
+					}
+					{{- else if eq .CheckType "maximum"}}
+					if _cMatch {
+						_cf, _cfOk := _uiElem.(float64)
+						if !_cfOk || _cf > {{.Value}} {
+							_cMatch = false
+						}
+					}
+					{{- end}}
+					{{- end}}
+					_evaluatedByContains = _cMatch
+				}
+				{{- end}}
+				{{- end}}
+				if !_evaluatedByContains {
+					{{- if .UnevaluatedItems.IsForbidden}}
+					return fmt.Errorf("unevaluatedItems: item at index %d is not evaluated", _ui)
+					{{- else}}
+					_ = _uiElem
+					{{- if .UnevaluatedItems.ValueType}}
+					{{- if eq .UnevaluatedItems.ValueType "string"}}
+					if _, ok := _uiElem.(string); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "number"}}
+					if _, ok := _uiElem.(float64); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
+					if _, ok := _uiElem.(bool); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
+					}
+					{{- end}}
+					{{- end}}
+					{{- end}}
+				}
+			}
+			{{- else}}
+			{{- if .UnevaluatedItems.IsForbidden}}
+				return fmt.Errorf("unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len(arr)-evaluatedCount, evaluatedCount)
+				{{- else}}
+				for _ui := evaluatedCount; _ui < len(arr); _ui++ {
+					_uiElem := arr[_ui]
+					_ = _uiElem
+					{{- if .UnevaluatedItems.ValueType}}
+					{{- if eq .UnevaluatedItems.ValueType "string"}}
+					if _, ok := _uiElem.(string); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "integer"}}
+					_uiNum, _uiNumOk := _uiElem.(float64)
+					if !_uiNumOk {
+						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
+					}
+					if _uiNum != float64(int64(_uiNum)) {
+						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "number"}}
+					if _, ok := _uiElem.(float64); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
+					if _, ok := _uiElem.(bool); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "object"}}
+					if _, ok := _uiElem.(map[string]any); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be an object", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "array"}}
+					if _, ok := _uiElem.([]any); !ok {
+						return fmt.Errorf("unevaluatedItems[%d]: must be an array", _ui)
+					}
+					{{- else if eq .UnevaluatedItems.ValueType "null"}}
+					if _uiElem != nil {
+						return fmt.Errorf("unevaluatedItems[%d]: must be null", _ui)
+					}
+					{{- end}}
+					{{- end}}
+					{{- range .UnevaluatedItems.Checks}}
+					{{- if eq .CheckType "minimum"}}
+					if _uiNumVal, ok := _uiElem.(float64); ok && _uiNumVal < {{.Value}} {
+						return fmt.Errorf("unevaluatedItems[%d]: must be >= {{.Value}}", _ui)
+					}
+					{{- else if eq .CheckType "maximum"}}
+					if _uiNumVal, ok := _uiElem.(float64); ok && _uiNumVal > {{.Value}} {
+						return fmt.Errorf("unevaluatedItems[%d]: must be <= {{.Value}}", _ui)
+					}
+					{{- end}}
+					{{- end}}
+				}
+				{{- end}}
+			{{- end}}
+			}
+		}
 	}
 	{{- end}}
 	return nil

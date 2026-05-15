@@ -74,7 +74,8 @@ var knownValidationFailures = map[string]string{
 	// (A $dynamicRef with intermediate scopes — FIXED via dynamic scope chain)
 	// (A $dynamicRef without anchor in fragment — FIXED via JSON pointer $dynamicRef static resolution)
 	// ($dynamicRef points to boolean false schema — FIXED via resolvedToFalseSchema check)
-	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor: URI-based $dynamicRef with runtime scope",
+	// (URI-based $dynamicRef initial resolution — FIXED via removing fragment-only guard + cycle detection)
+	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor: const validation not implemented",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
 	// (strict-tree misspelled field: FIXED via $ref sibling allOf synthesis for unevaluatedProperties + recursive slice validation)
@@ -93,9 +94,9 @@ var knownValidationFailures = map[string]string{
 
 	// (additionalProperties: allOf interaction — FIXED via OwnPropertyNames scope isolation)
 
-	// $anchor/$recursiveRef resolution edge cases (1 entry)
+	// $anchor/$recursiveRef resolution edge cases
 	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
-	"draft2019-09/ref/$ref with $recursiveAnchor/extra items disallowed for root": "$recursiveRef validation not implemented",
+	// ($ref with $recursiveAnchor/extra items disallowed for root — FIXED via URI-based $dynamicRef support + cycle detection)
 
 	// ($ref to unknown keyword: ALL FIXED via Schema.Extensions + walkPath extension lookup — 8 entries removed)
 
@@ -170,42 +171,25 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
 	"draft2020-12/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
 
-	// unevaluatedItems: validation not implemented for inferred arrays (36 entries)
-	"draft2019-09/unevaluatedItems/unevaluatedItems as schema/with invalid unevaluated items":                                                   "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems before $ref/with unevaluated items":                                                         "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/invalid in case if is evaluated":          "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems false/with unevaluated items":                                                               "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with $ref/with unevaluated items":                                                           "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                               "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when two schemas match and has unevaluated items":                                "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if doesn't match and it has unevaluated items":                       "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":                             "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":                                "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems":                     "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                             "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with nested tuple/with unevaluated items":                                                   "unevaluatedItems: not implemented for inferred arrays",
-	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                      "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's and c's are invalid": "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only b's and c's are invalid": "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only b's are invalid":         "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only c's are invalid":         "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems as schema/with invalid unevaluated items":                                                   "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems before $ref/with unevaluated items":                                                         "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/invalid in case if is evaluated":          "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems depends on adjacent contains/contains passes, second item is not evaluated":                 "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems false/with unevaluated items":                                                               "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with $ref/with unevaluated items":                                                           "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                               "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when two schemas match and has unevaluated items":                                "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if doesn't match and it has unevaluated items":                       "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":                             "unevaluatedItems: not implemented for inferred arrays",
-	// (draft2020-12/unevaluatedItems/unevaluatedItems with items/invalid under items — FIXED via items validation in InferredAliasDef)
-	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/no items evaluated by contains":                         "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with minContains = 0/some but not all items evaluated by contains":           "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                              "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with nested tuple/with unevaluated items":                                    "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                       "unevaluatedItems: not implemented for inferred arrays",
-	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems": "unevaluatedItems: not implemented for inferred arrays",
+	// unevaluatedItems: runtime branch/annotation evaluation required (17 entries)
+	// These tests require knowing which anyOf/oneOf/if-then-else branches actually
+	// validate at runtime, or evaluating contains annotations in nested contexts.
+	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":         "unevaluatedItems: requires runtime if/then/else evaluation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":            "unevaluatedItems: requires runtime additionalItems interaction",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems": "unevaluatedItems: requires runtime additionalItems interaction",
+	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":         "unevaluatedItems: requires runtime if/then/else evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems":                                       "unevaluatedItems: requires runtime nested contains evaluation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's are valid":                                   "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":                                "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid":                           "unevaluatedItems: requires runtime if/contains annotation propagation",
+	"draft2020-12/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/valid in case if is evaluated":                                    "unevaluatedItems: requires runtime if-condition evaluation for annotations",
+	"draft2019-09/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/valid in case if is evaluated":                                    "unevaluatedItems: requires runtime if-condition evaluation for annotations",
 
 	// cross-draft: cross-draft ref processing issues (1 entry)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)
