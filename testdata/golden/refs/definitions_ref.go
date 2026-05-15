@@ -157,9 +157,8 @@ func (t Team) MarshalJSON() ([]byte, error) {
 // Validate checks Team against its JSON Schema constraints.
 func (t Team) Validate() error {
 	for _i, _item := range t.Members {
-		_ = _i
 		if err := _item.Validate(); err != nil {
-			return err
+			return fmt.Errorf("members[%d].%w", _i, err)
 		}
 	}
 	return nil

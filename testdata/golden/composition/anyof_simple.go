@@ -153,7 +153,7 @@ func (s SearchResult) MarshalJSON() ([]byte, error) {
 // Validate checks SearchResult against its JSON Schema constraints.
 func (s SearchResult) Validate() error {
 	if err := s.Result.Validate(); err != nil {
-		return err
+		return fmt.Errorf("result.%w", err)
 	}
 	return nil
 }

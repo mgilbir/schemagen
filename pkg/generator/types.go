@@ -129,6 +129,7 @@ type DependentPropertyType struct {
 // that should be called from the parent struct's Validate().
 type ValidatableFieldDef struct {
 	FieldName   string // Go field name (PascalCase)
+	JSONName    string // JSON property name (for error path context)
 	GoType      GoType // the Go type of the field (for zero-value comparison)
 	IsPointer   bool   // true if the field is a pointer type (needs nil check)
 	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
@@ -417,9 +418,11 @@ type EnumValue struct {
 
 // TupleItemDef describes one position in a tuple-form array (prefixItems/items-as-array).
 // The generated Validate() method will re-unmarshal each element into the position's
-// type and call its Validate() method.
+// type and call its Validate() method, or check JSON type for simple schemas.
 type TupleItemDef struct {
 	TypeName string // Go type name for this position (e.g., "Item", "SubItem")
+	JSONType string // simple JSON type constraint (e.g., "integer", "string", "number", "boolean", "null", "array", "object")
+	IsFalse  bool   // boolean false schema — reject any value at this position
 }
 
 // AliasDef represents a defined type (type Name Underlying).
@@ -434,6 +437,9 @@ type AliasDef struct {
 	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
 	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
 	TupleItems        []TupleItemDef     // per-position type validation for tuple arrays (prefixItems / items-as-array)
+	Contains          *ContainsDef       // contains sub-schema validation
+	MinContains       *int               // minContains (default 1 if contains is present)
+	MaxContains       *int               // maxContains
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data
@@ -441,6 +447,11 @@ type AliasDef struct {
 
 func (d *AliasDef) TypeName() string { return d.Name }
 func (d *AliasDef) typeDef()         {}
+
+// HasContainsValidation returns true if the AliasDef has contains validation.
+func (d *AliasDef) HasContainsValidation() bool {
+	return d.Contains != nil
+}
 
 // CanHaveMethods returns true if this defined type can have methods attached.
 // The NoMethods flag is set by resolveAliasMethodability() after generation,
@@ -542,13 +553,21 @@ type UnevalItemsConditionalEval struct {
 	// For anyOf/oneOf: branches are tried at runtime
 	Branches []UnevalItemsBranch
 	// For ifThenElse:
-	IfChecks       []ContainsCheck // checks to evaluate the if condition
-	ThenEvalCount  int             // items evaluated by then branch
-	ThenAllEval    bool            // then branch covers all items
-	ElseEvalCount  int             // items evaluated by else branch
-	ElseAllEval    bool            // else branch covers all items
+	IfItemChecks   []IfItemConstCheck // runtime checks on array items to evaluate the if-condition
+	IfEvalCount    int                // items evaluated by the if-schema itself (its prefixItems length)
+	IfAllEval      bool               // if-schema covers all items
+	ThenEvalCount  int                // items evaluated by then branch
+	ThenAllEval    bool               // then branch covers all items
+	ElseEvalCount  int                // items evaluated by else branch
+	ElseAllEval    bool               // else branch covers all items
 	// For contains:
 	ContainsAllEval bool // if contains evaluates all items
+}
+
+// IfItemConstCheck describes a const check on a specific array position for if-condition evaluation.
+type IfItemConstCheck struct {
+	Index     int    // array position to check (0-based)
+	JSONValue string // expected JSON-marshaled value (e.g., `"bar"`)
 }
 
 // UnevalItemsBranch describes one branch in an anyOf/oneOf for unevaluatedItems evaluation.

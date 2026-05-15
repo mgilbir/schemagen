@@ -242,6 +242,7 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/formats",
 		"testdata/golden/defaults",
 		"testdata/golden/advanced",
+		"testdata/golden/bigint",
 	}
 
 	tmpDir := t.TempDir()

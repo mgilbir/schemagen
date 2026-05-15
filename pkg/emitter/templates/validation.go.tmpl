@@ -232,6 +232,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		return fmt.Errorf("{{.JSONName}}: property is forbidden (not: {})")
 	}
 	{{- end}}
+	{{- if eq .RuleType "const"}}
+	{
+		_constGot, _constErr := json.Marshal({{$recv}}.{{.FieldName}})
+		if _constErr != nil {
+			return fmt.Errorf("{{.JSONName}}: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != {{printf "%q" .Value}} {
+			return fmt.Errorf("{{.JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, string(_constGot))
+		}
+	}
+	{{- end}}
 	{{- if eq .RuleType "maxProperties"}}
 	{
 		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
@@ -526,34 +537,32 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if and .IsSlice .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		for _i, _item := range *{{$recv}}.{{.FieldName}} {
-			_ = _i
 			if err := _item.Validate(); err != nil {
-				return err
+				return fmt.Errorf("{{.JSONName}}[%d].%w", _i, err)
 			}
 		}
 	}
 	{{- else if .IsSlice}}
 	for _i, _item := range {{$recv}}.{{.FieldName}} {
-		_ = _i
 		if err := _item.Validate(); err != nil {
-			return err
+			return fmt.Errorf("{{.JSONName}}[%d].%w", _i, err)
 		}
 	}
 	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-			return err
+			return fmt.Errorf("{{.JSONName}}.%w", err)
 		}
 	}
 	{{- else if and .OmitEmpty .ZeroLiteral}}
 	if {{$recv}}.{{.FieldName}} != {{.ZeroLiteral}} {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-			return err
+			return fmt.Errorf("{{.JSONName}}.%w", err)
 		}
 	}
 	{{- else}}
 	if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-		return err
+		return fmt.Errorf("{{.JSONName}}.%w", err)
 	}
 	{{- end}}
 	{{- end}}

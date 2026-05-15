@@ -26,6 +26,23 @@ func (c ConfigMode) Validate() error {
 	}
 }
 
+// ConfigVersion - Schema version, always 2.0
+type ConfigVersion string
+
+const (
+	ConfigVersionX20 ConfigVersion = "2.0"
+)
+
+// Validate checks ConfigVersion against its JSON Schema constraints.
+func (c ConfigVersion) Validate() error {
+	switch c {
+	case ConfigVersionX20:
+		return nil
+	default:
+		return fmt.Errorf("invalid ConfigVersion value: %v", c)
+	}
+}
+
 // Config - Schema using const and nullable types
 type Config struct {
 	// Optional count
@@ -37,7 +54,7 @@ type Config struct {
 	// Optional list of tags
 	Tags *[]any `json:"tags"`
 	// Schema version, always 2.0
-	Version              any                        `json:"version"`
+	Version              ConfigVersion              `json:"version"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -112,7 +129,10 @@ func (c Config) MarshalJSON() ([]byte, error) {
 // Validate checks Config against its JSON Schema constraints.
 func (c Config) Validate() error {
 	if err := c.Mode.Validate(); err != nil {
-		return err
+		return fmt.Errorf("mode.%w", err)
+	}
+	if err := c.Version.Validate(); err != nil {
+		return fmt.Errorf("version.%w", err)
 	}
 	return nil
 }

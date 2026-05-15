@@ -75,9 +75,8 @@ var knownValidationFailures = map[string]string{
 	// (A $dynamicRef without anchor in fragment — FIXED via JSON pointer $dynamicRef static resolution)
 	// ($dynamicRef points to boolean false schema — FIXED via resolvedToFalseSchema check)
 	// (URI-based $dynamicRef initial resolution — FIXED via removing fragment-only guard + cycle detection)
-	"draft2020-12/dynamicRef/A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope/The recursive part is not valid against the root": "$dynamicRef/$dynamicAnchor: const validation not implemented",
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/number list with string values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword/string list with number values":                                                                                                            "$dynamicRef/$dynamicAnchor: runtime dynamic scope via if/then/else",
+	// ($dynamicRef/$dynamicAnchor const validation — FIXED via const validation in resolvePropertyType)
+	// (multiple dynamic paths via if/then/else — FIXED via runtime if/then/else + const validation)
 	// (strict-tree misspelled field: FIXED via $ref sibling allOf synthesis for unevaluatedProperties + recursive slice validation)
 
 	// ($ref sibling keyword validation — ALL FIXED via $ref sibling allOf synthesis + $ref chain following in mergeAllOfInto)
@@ -174,22 +173,20 @@ var knownValidationFailures = map[string]string{
 	// unevaluatedItems: runtime branch/annotation evaluation required (17 entries)
 	// These tests require knowing which anyOf/oneOf/if-then-else branches actually
 	// validate at runtime, or evaluating contains annotations in nested contexts.
+	// (unevaluatedItems with if/then/else — FIXED via runtime if-condition evaluation with IfItemConstChecks)
+	// (unevaluatedItems can see annotations from if without then and else — FIXED via IfEvalCount tracking)
 	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":         "unevaluatedItems: requires runtime if/then/else evaluation",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored additionalItems/invalid under unevaluatedItems":            "unevaluatedItems: requires runtime additionalItems interaction",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with ignored applicator additionalItems/invalid under unevaluatedItems": "unevaluatedItems: requires runtime additionalItems interaction",
 	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
 	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                         "unevaluatedItems: requires runtime anyOf branch evaluation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with if/then/else/when if matches and it has unevaluated items":         "unevaluatedItems: requires runtime if/then/else evaluation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                  "unevaluatedItems: requires cousin scope isolation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems":                                       "unevaluatedItems: requires runtime nested contains evaluation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's are valid":                                   "unevaluatedItems: requires runtime if/contains annotation propagation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":                                "unevaluatedItems: requires runtime if/contains annotation propagation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid":                           "unevaluatedItems: requires runtime if/contains annotation propagation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/valid in case if is evaluated":                                    "unevaluatedItems: requires runtime if-condition evaluation for annotations",
-	"draft2019-09/unevaluatedItems/unevaluatedItems can see annotations from if without then and else/valid in case if is evaluated":                                    "unevaluatedItems: requires runtime if-condition evaluation for annotations",
 
 	// cross-draft: cross-draft ref processing issues (1 entry)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)

@@ -158,7 +158,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 func (c Config) Validate() error {
 	if c.Database != nil {
 		if err := c.Database.Validate(); err != nil {
-			return err
+			return fmt.Errorf("database.%w", err)
 		}
 	}
 	return nil

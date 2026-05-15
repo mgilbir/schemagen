@@ -80,6 +80,15 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 
 // Validate checks Circle against its JSON Schema constraints.
 func (c Circle) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(c.Type_)
+		if _constErr != nil {
+			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"circle\"" {
+			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", string(_constGot))
+		}
+	}
 	return nil
 }
 
@@ -156,6 +165,15 @@ func (s Square) MarshalJSON() ([]byte, error) {
 
 // Validate checks Square against its JSON Schema constraints.
 func (s Square) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(s.Type_)
+		if _constErr != nil {
+			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"square\"" {
+			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", string(_constGot))
+		}
+	}
 	return nil
 }
 
@@ -234,6 +252,15 @@ func (t Triangle) MarshalJSON() ([]byte, error) {
 
 // Validate checks Triangle against its JSON Schema constraints.
 func (t Triangle) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(t.Type_)
+		if _constErr != nil {
+			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"triangle\"" {
+			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", string(_constGot))
+		}
+	}
 	return nil
 }
 

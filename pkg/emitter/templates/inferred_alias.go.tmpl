@@ -703,8 +703,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				}
 			}
 			{{- else if eq .Kind "ifThenElse"}}
-			// if/then/else: take maximum of then and else branches
+			// if/then/else: evaluate if-condition at runtime to choose branch
 			{
+				{{- if and (not .IfItemChecks) (not .IfAllEval)}}
+				{{- /* No runtime checks available — fall back to static max */}}
 				{{- if .ThenAllEval}}
 				allEvaluated = true
 				{{- else if .ElseAllEval}}
@@ -712,12 +714,43 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else}}
 				thenEval := {{.ThenEvalCount}}
 				elseEval := {{.ElseEvalCount}}
+				ifEval := {{.IfEvalCount}}
 				maxEval := thenEval
-				if elseEval > maxEval {
-					maxEval = elseEval
+				if ifEval > maxEval { maxEval = ifEval }
+				if elseEval > maxEval { maxEval = elseEval }
+				if maxEval > evaluatedCount { evaluatedCount = maxEval }
+				{{- end}}
+				{{- else}}
+				{{- /* Runtime if-condition evaluation */}}
+				_ifMatch := true
+				{{- range .IfItemChecks}}
+				if _ifMatch {
+					if len(arr) <= {{.Index}} {
+						_ifMatch = false
+					} else {
+						_ib, _ie := json.Marshal(arr[{{.Index}}])
+						if _ie != nil || string(_ib) != {{printf "%q" .JSONValue}} {
+							_ifMatch = false
+						}
+					}
 				}
-				if maxEval > evaluatedCount {
-					evaluatedCount = maxEval
+				{{- end}}
+				if _ifMatch {
+					{{- if .IfAllEval}}
+					allEvaluated = true
+					{{- else if .ThenAllEval}}
+					allEvaluated = true
+					{{- else}}
+					_branchEval := {{.IfEvalCount}}
+					if {{.ThenEvalCount}} > _branchEval { _branchEval = {{.ThenEvalCount}} }
+					if _branchEval > evaluatedCount { evaluatedCount = _branchEval }
+					{{- end}}
+				} else {
+					{{- if .ElseAllEval}}
+					allEvaluated = true
+					{{- else}}
+					if {{.ElseEvalCount}} > evaluatedCount { evaluatedCount = {{.ElseEvalCount}} }
+					{{- end}}
 				}
 				{{- end}}
 			}

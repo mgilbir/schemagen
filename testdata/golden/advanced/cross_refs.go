@@ -252,9 +252,8 @@ func (s Section) MarshalJSON() ([]byte, error) {
 func (s Section) Validate() error {
 	if s.Subsections != nil {
 		for _i, _item := range *s.Subsections {
-			_ = _i
 			if err := _item.Validate(); err != nil {
-				return err
+				return fmt.Errorf("subsections[%d].%w", _i, err)
 			}
 		}
 	}
@@ -338,15 +337,14 @@ func (d Document) MarshalJSON() ([]byte, error) {
 // Validate checks Document against its JSON Schema constraints.
 func (d Document) Validate() error {
 	if err := d.Author.Validate(); err != nil {
-		return err
+		return fmt.Errorf("author.%w", err)
 	}
 	if err := d.Metadata.Validate(); err != nil {
-		return err
+		return fmt.Errorf("metadata.%w", err)
 	}
 	for _i, _item := range d.Sections {
-		_ = _i
 		if err := _item.Validate(); err != nil {
-			return err
+			return fmt.Errorf("sections[%d].%w", _i, err)
 		}
 	}
 	return nil

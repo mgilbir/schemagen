@@ -26,5 +26,24 @@ func (c Coordinate) Validate() error {
 	if len(c) > 3 {
 		return fmt.Errorf("value: has %d items, maximum is 3", len(c))
 	}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range c {
+		_ = _elem
+		if _idx == 0 {
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
+			}
+		}
+		if _idx == 1 {
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
+			}
+		}
+		if _idx == 2 {
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
+			}
+		}
+	}
 	return nil
 }

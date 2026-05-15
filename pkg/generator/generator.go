@@ -466,6 +466,23 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			// Contains validation imports.
+			if ad.Contains != nil {
+				if ad.Contains.ConstJSON != "" {
+					needsJSON = true
+				}
+				if len(ad.Contains.EnumJSON) > 0 {
+					needsJSON = true
+				}
+				for _, chk := range ad.Contains.Checks {
+					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+					if chk.CheckType == "pattern" {
+						needsStdRegexp = true
+					}
+				}
+			}
 		}
 		if _, ok := td.(*BigIntAliasDef); ok {
 			needsJSON = true    // UnmarshalJSON, MarshalJSON
@@ -1118,6 +1135,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			})
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
+			containsDef, minContains, maxContains := extractContainsDef(s)
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
 				Underlying:     goType,
@@ -1125,6 +1143,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				TupleItems:     tupleItems,
+				Contains:       containsDef,
+				MinContains:    minContains,
+				MaxContains:    maxContains,
 				NeedsNullCheck: !schemaAllowsNull(s),
 			})
 		}
@@ -2538,6 +2559,18 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName string, ctxSchema *schema.Schema) (GoType, error) {
 	if s == nil {
 		return &PrimitiveType{Name: "any"}, nil
+	}
+
+	// Const → treat as single-element enum for validation purposes.
+	// Only promote when no explicit type is specified (the enum is needed to
+	// determine the Go type). When type IS specified, keep the natural Go type
+	// and rely on the "const" validation rule for enforcement.
+	if len(s.Type) == 0 {
+		if s.Const != nil && len(s.Enum) == 0 {
+			s.Enum = []any{*s.Const}
+		} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
+			s.Enum = []any{nil}
+		}
 	}
 
 	// Inline enum → generate enum type
@@ -3955,6 +3988,12 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 	// if/then/else
 	if s.If != nil {
 		ce := UnevalItemsConditionalEval{Kind: "ifThenElse"}
+		// Count items evaluated by the if-schema itself (its own annotations).
+		ifEvalCount, ifAllEval := g.countEvaluatedItemsInSchema(s.If)
+		ce.IfEvalCount = ifEvalCount
+		ce.IfAllEval = ifAllEval
+		// Extract runtime if-condition checks from the if-schema's prefixItems const values.
+		ce.IfItemChecks = g.extractIfItemConstChecks(s.If)
 		if s.Then != nil {
 			resolved := s.Then
 			if s.Then.Ref != "" {
@@ -3979,6 +4018,47 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 		}
 		def.ConditionalEvals = append(def.ConditionalEvals, ce)
 	}
+}
+
+// extractIfItemConstChecks extracts const checks from an if-schema's prefixItems
+// for runtime evaluation of the if-condition in unevaluatedItems validation.
+// Returns checks for each prefixItems position that has a const constraint.
+func (g *Generator) extractIfItemConstChecks(ifSchema *schema.Schema) []IfItemConstCheck {
+	if ifSchema == nil {
+		return nil
+	}
+	var checks []IfItemConstCheck
+	// Check prefixItems (Draft 2020-12)
+	for i, itemSchema := range ifSchema.PrefixItems {
+		if itemSchema == nil || itemSchema.IsTrueSchema() {
+			continue // boolean true — no constraint at this position
+		}
+		if itemSchema.Const != nil {
+			b, err := json.Marshal(*itemSchema.Const)
+			if err == nil {
+				checks = append(checks, IfItemConstCheck{Index: i, JSONValue: string(b)})
+			}
+		} else if itemSchema.ConstIsNull {
+			checks = append(checks, IfItemConstCheck{Index: i, JSONValue: "null"})
+		}
+	}
+	// Check items.Schemas (Draft 7 / 2019-09 tuple form)
+	if ifSchema.Items != nil {
+		for i, itemSchema := range ifSchema.Items.Schemas {
+			if itemSchema == nil || itemSchema.IsTrueSchema() {
+				continue
+			}
+			if itemSchema.Const != nil {
+				b, err := json.Marshal(*itemSchema.Const)
+				if err == nil {
+					checks = append(checks, IfItemConstCheck{Index: i, JSONValue: string(b)})
+				}
+			} else if itemSchema.ConstIsNull {
+				checks = append(checks, IfItemConstCheck{Index: i, JSONValue: "null"})
+			}
+		}
+	}
+	return checks
 }
 
 // countEvaluatedItemsInSchema returns how many array positions are evaluated by
@@ -4233,6 +4313,7 @@ func (g *Generator) populateValidatableFields() {
 				zeroLit := g.zeroLiteralForType(f.Type)
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName:   f.Name,
+					JSONName:    f.JSONName,
 					GoType:      f.Type,
 					IsPointer:   f.Type.IsPointer(),
 					OmitEmpty:   f.OmitEmpty,
@@ -4245,6 +4326,7 @@ func (g *Generator) populateValidatableFields() {
 			if elemName != "" && validatableTypes[elemName] {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName: f.Name,
+					JSONName:  f.JSONName,
 					GoType:    f.Type,
 					IsPointer: f.Type.IsPointer(),
 					IsSlice:   true,
@@ -4480,6 +4562,28 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "format", Value: format,
+			})
+		}
+	}
+	// Const validation: if the schema has a const value and we haven't already
+	// handled it through an enum type (e.g., the field is typed as `any`),
+	// emit a runtime check that marshals the field value and compares to the
+	// expected JSON. This is a safety net for inline properties that didn't
+	// get a dedicated enum type. Skip if enum is set (enum type has Validate).
+	if (s.Const != nil || s.ConstIsNull) && len(s.Enum) == 0 {
+		var constJSON string
+		if s.Const != nil {
+			b, err := json.Marshal(*s.Const)
+			if err == nil {
+				constJSON = string(b)
+			}
+		} else {
+			constJSON = "null"
+		}
+		if constJSON != "" {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "const", Value: constJSON,
 			})
 		}
 	}
@@ -5986,6 +6090,19 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 			continue
 		}
 
+		// Boolean false schema — reject any value at this position.
+		if posSch.IsFalseSchema() {
+			tupleItems = append(tupleItems, TupleItemDef{IsFalse: true})
+			hasValidatable = true
+			continue
+		}
+
+		// Boolean true schema — no constraint.
+		if posSch.IsTrueSchema() {
+			tupleItems = append(tupleItems, TupleItemDef{})
+			continue
+		}
+
 		// Resolve $ref chain to find the target schema and its generated type name.
 		resolved := posSch
 		refName := ""
@@ -6018,6 +6135,14 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 				hasValidatable = true
 				continue
 			}
+		}
+
+		// Simple type-only schema (no structural keywords) — record the JSON type
+		// for lightweight runtime type checking.
+		if jsonType := primarySchemaType(resolved); jsonType != "" {
+			tupleItems = append(tupleItems, TupleItemDef{JSONType: jsonType})
+			hasValidatable = true
+			continue
 		}
 
 		tupleItems = append(tupleItems, TupleItemDef{})

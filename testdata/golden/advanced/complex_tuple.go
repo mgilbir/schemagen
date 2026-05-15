@@ -5,6 +5,7 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"time"
 	"unicode/utf8"
 )
@@ -153,7 +154,7 @@ func (e EventRecordItem2) Validate() error {
 		}
 	}
 	if err := e.Level.Validate(); err != nil {
-		return err
+		return fmt.Errorf("level.%w", err)
 	}
 	return nil
 }
@@ -176,6 +177,7 @@ func (e EventRecord) Validate() error {
 	}
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range e {
+		_ = _elem
 		if _idx == 0 {
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
@@ -214,6 +216,40 @@ func (e EventRecord) Validate() error {
 			if _vErr := _typed.Validate(); _vErr != nil {
 				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
 			}
+		}
+	}
+	// contains validation: count elements matching the contains sub-schema.
+	{
+		_containsCount := 0
+		for _, _cElem := range e {
+			_cMatch := true
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) < 2 || _cBytes[0] != '"' {
+					_cMatch = false
+				}
+			}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil {
+					_cMatch = false
+				} else {
+					_cRe := regexp.MustCompile("^event_")
+					if !_cRe.MatchString(_cs) {
+						_cMatch = false
+					}
+				}
+			}
+			if _cMatch {
+				_containsCount++
+			}
+		}
+		if _containsCount < 1 {
+			return fmt.Errorf("contains: %d matching elements, minimum is 1", _containsCount)
+		}
+		if _containsCount > 1 {
+			return fmt.Errorf("contains: %d matching elements, maximum is 1", _containsCount)
 		}
 	}
 	return nil

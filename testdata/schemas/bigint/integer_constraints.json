@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Counter",
+  "description": "An arbitrary-precision integer counter with constraints",
+  "type": "integer",
+  "minimum": 0,
+  "exclusiveMaximum": 1e30
+}

@@ -88,15 +88,14 @@ func (t TreeNode) MarshalJSON() ([]byte, error) {
 func (t TreeNode) Validate() error {
 	if t.Children != nil {
 		for _i, _item := range *t.Children {
-			_ = _i
 			if err := _item.Validate(); err != nil {
-				return err
+				return fmt.Errorf("children[%d].%w", _i, err)
 			}
 		}
 	}
 	if t.Parent != nil {
 		if err := t.Parent.Validate(); err != nil {
-			return err
+			return fmt.Errorf("parent.%w", err)
 		}
 	}
 	return nil

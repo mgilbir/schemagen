@@ -121,11 +121,11 @@ func (t Task) MarshalJSON() ([]byte, error) {
 func (t Task) Validate() error {
 	if t.Priority != "" {
 		if err := t.Priority.Validate(); err != nil {
-			return err
+			return fmt.Errorf("priority.%w", err)
 		}
 	}
 	if err := t.Status.Validate(); err != nil {
-		return err
+		return fmt.Errorf("status.%w", err)
 	}
 	return nil
 }
