@@ -232,6 +232,52 @@ func TestInferredArrayExtractsNestedRemoteItemType(t *testing.T) {
 	}
 }
 
+func TestMetaschemaWithoutValidationVocabularyKeepsApplicators(t *testing.T) {
+	input := `{
+		"$schema": "http://example.test/meta-no-validation",
+		"properties": {
+			"badProperty": false,
+			"numberProperty": {"minimum": 10}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	meta := &schema.Schema{
+		ID: "http://example.test/meta-no-validation",
+		Vocabulary: map[string]bool{
+			"https://json-schema.org/draft/2020-12/vocab/applicator": true,
+			"https://json-schema.org/draft/2020-12/vocab/core":       true,
+		},
+	}
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{
+		"http://example.test/meta-no-validation": meta,
+	})
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012, Resolver: resolver})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected root StructDef")
+	}
+	if len(root.Validations) != 1 || root.Validations[0].RuleType != "forbidden" || root.Validations[0].JSONName != "badProperty" {
+		t.Fatalf("validations = %#v, want only badProperty forbidden", root.Validations)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

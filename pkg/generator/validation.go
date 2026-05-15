@@ -106,7 +106,7 @@ func collectValidationFeatures(s *schema.Schema, capability *ValidationCapabilit
 	if s.UnevaluatedProperties != nil {
 		capability.RuntimeFeatures = appendFeature(capability.RuntimeFeatures, ValidationFeatureUnevaluatedProps)
 	}
-	if raw, ok := s.Extensions["$vocabulary"]; ok && len(raw) > 0 {
+	if len(s.Vocabulary) > 0 {
 		capability.Unsupported = appendFeature(capability.Unsupported, ValidationFeatureCustomVocabulary)
 	}
 	for _, child := range validationChildren(s) {

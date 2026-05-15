@@ -13,20 +13,21 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config         Config
-	output         *File
-	generated      map[string]bool // track already-generated type names
-	generating     map[string]bool // track types currently being generated (recursion guard)
-	defs           map[string]*schema.Schema
-	rootTypeName   string                // Go type name for the root schema
-	rootID         string                // $id of the root schema (for detecting self-references)
-	anchors        map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
-	dynamicAnchors map[string]string     // $dynamicAnchor name → def ref path (e.g., "#items" → "#/$defs/items")
-	resolver       schema.SchemaResolver // external resolver for non-local refs
-	baseURI        *url.URL              // base URI for the root document (from $id or file path)
-	rootSchema     *schema.Schema        // the root schema for local ref resolution
-	draft          schema.Draft          // detected draft version of the root schema
-	resourceGraph  *schema.ResourceGraph // document/dialect/anchor graph for validation planning
+	config                     Config
+	output                     *File
+	generated                  map[string]bool // track already-generated type names
+	generating                 map[string]bool // track types currently being generated (recursion guard)
+	defs                       map[string]*schema.Schema
+	rootTypeName               string                // Go type name for the root schema
+	rootID                     string                // $id of the root schema (for detecting self-references)
+	anchors                    map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
+	dynamicAnchors             map[string]string     // $dynamicAnchor name → def ref path (e.g., "#items" → "#/$defs/items")
+	resolver                   schema.SchemaResolver // external resolver for non-local refs
+	baseURI                    *url.URL              // base URI for the root document (from $id or file path)
+	rootSchema                 *schema.Schema        // the root schema for local ref resolution
+	draft                      schema.Draft          // detected draft version of the root schema
+	resourceGraph              *schema.ResourceGraph // document/dialect/anchor graph for validation planning
+	validationKeywordsDisabled bool                  // true when the declared metaschema omits the validation vocabulary
 
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
@@ -101,6 +102,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
+	g.validationKeywordsDisabled = !g.hasValidationVocabulary(s)
 
 	// Collect definitions ($defs and definitions) and build anchor index.
 	// Iterate in sorted key order for deterministic anchor registration
@@ -858,17 +860,19 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Const → treat as single-element enum for validation purposes.
-	if s.Const != nil && len(s.Enum) == 0 {
-		s.Enum = []any{*s.Const}
-	} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
-		// Handle {"const": null}: Go's json.Unmarshal sets *any to nil for null,
-		// so s.Const is nil even though const was present. Use ConstIsNull flag.
-		s.Enum = []any{nil}
+	// Const -> treat as single-element enum for validation purposes.
+	if g.validationKeywordsEnabled() {
+		if s.Const != nil && len(s.Enum) == 0 {
+			s.Enum = []any{*s.Const}
+		} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
+			// Handle {"const": null}: Go's json.Unmarshal sets *any to nil for null,
+			// so s.Const is nil even though const was present. Use ConstIsNull flag.
+			s.Enum = []any{nil}
+		}
 	}
 
 	// Enum type
-	if len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
 		return g.generateEnumDef(name, s)
 	}
 
@@ -1079,9 +1083,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 	if primaryType != "" && primaryType != "object" && primaryType != "array" {
 		goType := g.resolveType(s, name)
-		rules := extractAliasValidationRules(s, goType)
-		anyOfVariants := extractAnyOfVariantRules(s, goType)
-		oneOfVariants := extractOneOfVariantRules(s, goType)
+		var rules []ValidationRule
+		var anyOfVariants [][]ValidationRule
+		var oneOfVariants [][]ValidationRule
+		if g.validationKeywordsEnabled() {
+			rules = extractAliasValidationRules(s, goType)
+			anyOfVariants = extractAnyOfVariantRules(s, goType)
+			oneOfVariants = extractOneOfVariantRules(s, goType)
+		}
 		g.generated[name] = true
 		if isInferred {
 			// Type was inferred from constraints — generate wrapper struct that
@@ -1122,8 +1131,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// Array type → alias (or defined type if it has validation constraints)
 	if primaryType == "array" {
 		goType := g.resolveType(s, name)
-		rules := extractAliasValidationRules(s, goType)
-		anyOfVariants := extractAnyOfVariantRules(s, goType)
+		var rules []ValidationRule
+		var anyOfVariants [][]ValidationRule
+		if g.validationKeywordsEnabled() {
+			rules = extractAliasValidationRules(s, goType)
+			anyOfVariants = extractAnyOfVariantRules(s, goType)
+		}
 		// Mark as generated BEFORE buildTupleItemDefs so that any recursive
 		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
 		// will short-circuit and not cause infinite recursion.
@@ -1136,6 +1149,20 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			containsDef, minContains, maxContains := extractContainsDef(s)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
+			if !g.validationKeywordsEnabled() {
+				itemsFalse = false
+				itemsType = ""
+				itemsTypeName = ""
+				itemsChecks = nil
+				itemsNested = nil
+				tupleItems = nil
+				addlItemsFalse = false
+				addlItemsType = ""
+				containsDef = nil
+				minContains = nil
+				maxContains = nil
+				unevalItems = nil
+			}
 			// When item-level or contains validation is needed, force GoType to []any so that
 			// json.Unmarshal accepts any array (per-element validation in Validate()).
 			// If the typed array (e.g., []int64) were used, unmarshal would fail
@@ -1171,6 +1198,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			containsDef, minContains, maxContains := extractContainsDef(s)
+			if !g.validationKeywordsEnabled() {
+				tupleItems = nil
+				containsDef = nil
+				minContains = nil
+				maxContains = nil
+			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
 				Underlying:     goType,
@@ -1213,12 +1246,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		needsMarshal := additionalProps != nil || acceptNonObject
 		needsUnmarshal := additionalProps != nil || needsNullCheck || acceptNonObject
 		var validations []ValidationRule
-		if s.MaxProperties != nil {
+		if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 			validations = append(validations, ValidationRule{
 				RuleType: "maxProperties", Value: s.MaxProperties.Int(),
 			})
 		}
-		if s.MinProperties != nil {
+		if g.validationKeywordsEnabled() && s.MinProperties != nil {
 			validations = append(validations, ValidationRule{
 				RuleType: "minProperties", Value: s.MinProperties.Int(),
 			})
@@ -1226,21 +1259,23 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		// Required fields on property-less object schemas (e.g., {"type":"object","required":["foo"]}).
 		// All required names land in AdditionalProperties since there are no declared properties.
 		var requiredJSON []string
-		if len(s.Required) > 0 {
+		if g.validationKeywordsEnabled() && len(s.Required) > 0 {
 			requiredJSON = s.Required
 			needsUnmarshal = true
 		}
 		// Extract dependentRequired constraints.
 		var depRequired []DependentRequiredDef
-		for trigger, deps := range s.DependentRequired {
-			if len(deps) > 0 {
-				sorted := make([]string, len(deps))
-				copy(sorted, deps)
-				sort.Strings(sorted)
-				depRequired = append(depRequired, DependentRequiredDef{
-					TriggerKey: trigger,
-					Required:   sorted,
-				})
+		if g.validationKeywordsEnabled() {
+			for trigger, deps := range s.DependentRequired {
+				if len(deps) > 0 {
+					sorted := make([]string, len(deps))
+					copy(sorted, deps)
+					sort.Strings(sorted)
+					depRequired = append(depRequired, DependentRequiredDef{
+						TriggerKey: trigger,
+						Required:   sorted,
+					})
+				}
 			}
 		}
 		sort.Slice(depRequired, func(i, j int) bool {
@@ -1250,13 +1285,16 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			needsUnmarshal = true
 		}
 		// Extract dependentSchemas constraints.
-		depSchemas := extractDependentSchemaConstraints(s)
+		var depSchemas []DependentSchemaConstraint
+		if g.validationKeywordsEnabled() {
+			depSchemas = extractDependentSchemaConstraints(s)
+		}
 		if len(depSchemas) > 0 {
 			needsUnmarshal = true
 		}
 		// Extract propertyNames constraint.
 		var propNames *PropertyNamesDef
-		if s.PropertyNames != nil {
+		if s.PropertyNames != nil && g.validationKeywordsEnabled() {
 			propNames = extractPropertyNamesDef(s.PropertyNames)
 			if propNames != nil {
 				needsUnmarshal = true // need _jsonKeys for validation
@@ -1281,7 +1319,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Fallback: alias to any
 	goType := &PrimitiveType{Name: "any"}
-	rules := extractAliasValidationRules(s, goType)
+	var rules []ValidationRule
+	if g.validationKeywordsEnabled() {
+		rules = extractAliasValidationRules(s, goType)
+	}
 	g.generated[name] = true
 	g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 		Name:        name,
@@ -1304,8 +1345,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	g.structsInProgress[name] = true
 	defer delete(g.structsInProgress, name)
 
-	requiredSet := make(map[string]bool, len(s.Required))
-	for _, r := range s.Required {
+	requiredList := s.Required
+	if !g.validationKeywordsEnabled() {
+		requiredList = nil
+	}
+	requiredSet := make(map[string]bool, len(requiredList))
+	for _, r := range requiredList {
 		requiredSet[r] = true
 	}
 
@@ -1503,7 +1548,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			requiredJSON = append(requiredJSON, oneOfs[i].JSONName)
 		}
 	}
-	for _, r := range s.Required {
+	for _, r := range requiredList {
 		if !declaredProps[r] {
 			// Required name not declared as a property — still needs presence check.
 			requiredJSON = append(requiredJSON, r)
@@ -1530,11 +1575,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if propSchema.EffectiveRef() != "" && g.refOverridesSiblings() {
 			continue
 		}
-		rules := extractValidationRules(goFieldName, propName, propSchema)
-		// Also apply constraints from patternProperties whose pattern matches this property name.
-		for pattern, patSchema := range s.PatternProperties {
-			if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
-				rules = append(rules, extractValidationRules(goFieldName, propName, patSchema)...)
+		var rules []ValidationRule
+		if g.validationKeywordsEnabled() {
+			rules = extractValidationRules(goFieldName, propName, propSchema)
+			// Also apply constraints from patternProperties whose pattern matches this property name.
+			for pattern, patSchema := range s.PatternProperties {
+				if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
+					rules = append(rules, extractValidationRules(goFieldName, propName, patSchema)...)
+				}
 			}
 		}
 		// Filter out rules that don't make sense for the Go type (e.g.,
@@ -1584,7 +1632,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			ppDef.IsForbidden = true
 		} else if ppSchema.IsBooleanSchema() {
 			// boolean true → no constraints
-		} else {
+		} else if g.validationKeywordsEnabled() {
 			ppDef.Validations = extractPatternPropertyValidationRules(ppSchema)
 		}
 		patternProps = append(patternProps, ppDef)
@@ -1595,34 +1643,39 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	}
 
 	// Add struct-level property count validations.
-	if s.MaxProperties != nil {
+	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "maxProperties", Value: s.MaxProperties.Int(),
 		})
 	}
-	if s.MinProperties != nil {
+	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "minProperties", Value: s.MinProperties.Int(),
 		})
 	}
 
 	// Extract dependent schema constraints.
-	depSchemas := extractDependentSchemaConstraints(s)
+	var depSchemas []DependentSchemaConstraint
+	if g.validationKeywordsEnabled() {
+		depSchemas = extractDependentSchemaConstraints(s)
+	}
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
 	}
 
 	// Extract dependentRequired constraints.
 	var depRequired []DependentRequiredDef
-	for trigger, deps := range s.DependentRequired {
-		if len(deps) > 0 {
-			sorted := make([]string, len(deps))
-			copy(sorted, deps)
-			sort.Strings(sorted)
-			depRequired = append(depRequired, DependentRequiredDef{
-				TriggerKey: trigger,
-				Required:   sorted,
-			})
+	if g.validationKeywordsEnabled() {
+		for trigger, deps := range s.DependentRequired {
+			if len(deps) > 0 {
+				sorted := make([]string, len(deps))
+				copy(sorted, deps)
+				sort.Strings(sorted)
+				depRequired = append(depRequired, DependentRequiredDef{
+					TriggerKey: trigger,
+					Required:   sorted,
+				})
+			}
 		}
 	}
 	sort.Slice(depRequired, func(i, j int) bool {
@@ -1662,7 +1715,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// minimum/maximum on a schema that has both properties and numeric constraints).
 	// These are checked against _rawNonObject when the data is not an object.
 	var nonObjRules []ValidationRule
-	if acceptNonObj {
+	if acceptNonObj && g.validationKeywordsEnabled() {
 		nonObjRules = extractNonObjectValidationRules(s)
 	}
 
@@ -1688,7 +1741,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 
 	// Extract propertyNames constraint.
 	var propertyNamesDef *PropertyNamesDef
-	if s.PropertyNames != nil {
+	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
 		propertyNamesDef = extractPropertyNamesDef(s.PropertyNames)
 		if propertyNamesDef != nil {
 			needsUnmarshal = true // need _jsonKeys for validation
@@ -1746,7 +1799,9 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
 	}
-	merged.Required = append(merged.Required, s.Required...)
+	if g.validationKeywordsEnabled() {
+		merged.Required = append(merged.Required, s.Required...)
+	}
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
 	g.mergeAllOfInto(merged, s.AllOf)
@@ -1800,7 +1855,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	if s.Else != nil && merged.Else == nil {
 		merged.Else = s.Else
 	}
-	if len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
+	if g.validationKeywordsEnabled() && len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
 		merged.DependentSchemas = s.DependentSchemas
 	}
 	// Propagate array-structural keywords from parent schema.
@@ -1858,13 +1913,32 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			// Array type — extract item-level constraints and generate InferredAliasDef
 			// so that per-element validation works (items, prefixItems, contains, etc.).
 			goType := g.resolveType(merged, name)
-			rules := extractAliasValidationRules(merged, goType)
-			anyOfVariants := extractAnyOfVariantRules(s, goType)
-			oneOfVariants := extractOneOfVariantRules(s, goType)
+			var rules []ValidationRule
+			var anyOfVariants [][]ValidationRule
+			var oneOfVariants [][]ValidationRule
+			if g.validationKeywordsEnabled() {
+				rules = extractAliasValidationRules(merged, goType)
+				anyOfVariants = extractAnyOfVariantRules(s, goType)
+				oneOfVariants = extractOneOfVariantRules(s, goType)
+			}
 			g.generated[name] = true
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
 			containsDef, minContains, maxContains := extractContainsDef(merged)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
+			if !g.validationKeywordsEnabled() {
+				itemsFalse = false
+				itemsType = ""
+				itemsTypeName = ""
+				itemsChecks = nil
+				itemsNested = nil
+				tupleItems = nil
+				addlItemsFalse = false
+				addlItemsType = ""
+				containsDef = nil
+				minContains = nil
+				maxContains = nil
+				unevalItems = nil
+			}
 			inferredGoType := goType
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
 				len(itemsChecks) > 0 || itemsNested != nil ||
@@ -1898,11 +1972,16 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		}
 		if primaryType != "" && primaryType != "object" {
 			goType := g.resolveType(merged, name)
-			rules := extractAliasValidationRules(merged, goType)
+			var rules []ValidationRule
 			// Carry through anyOf/oneOf variant rules from the parent schema,
 			// since these are siblings of allOf and must also be validated.
-			anyOfVariants := extractAnyOfVariantRules(s, goType)
-			oneOfVariants := extractOneOfVariantRules(s, goType)
+			var anyOfVariants [][]ValidationRule
+			var oneOfVariants [][]ValidationRule
+			if g.validationKeywordsEnabled() {
+				rules = extractAliasValidationRules(merged, goType)
+				anyOfVariants = extractAnyOfVariantRules(s, goType)
+				oneOfVariants = extractOneOfVariantRules(s, goType)
+			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
@@ -2000,14 +2079,16 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
 		}
-		if supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentRequired) > 0 && len(target.DependentRequired) == 0 {
+		if g.validationKeywordsEnabled() && supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentRequired) > 0 && len(target.DependentRequired) == 0 {
 			target.DependentRequired = resolved.DependentRequired
 		}
-		if supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentSchemas) > 0 && len(target.DependentSchemas) == 0 {
+		if g.validationKeywordsEnabled() && supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentSchemas) > 0 && len(target.DependentSchemas) == 0 {
 			target.DependentSchemas = resolved.DependentSchemas
 		}
 		// Propagate validation constraints (use tightest / first-set-wins).
-		mergeConstraints(target, resolved)
+		if g.validationKeywordsEnabled() {
+			mergeConstraints(target, resolved)
+		}
 		// NOTE: We deliberately do NOT merge array-structural keywords (items,
 		// prefixItems, contains, additionalItems) from allOf sub-schemas into
 		// the target. Per JSON Schema spec, items/additionalItems scoping is
@@ -2603,11 +2684,11 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &PrimitiveType{Name: "any"}, nil
 	}
 
-	// Const → treat as single-element enum for validation purposes.
+	// Const -> treat as single-element enum for validation purposes.
 	// Only promote when no explicit type is specified (the enum is needed to
 	// determine the Go type). When type IS specified, keep the natural Go type
 	// and rely on the "const" validation rule for enforcement.
-	if len(s.Type) == 0 {
+	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
 		if s.Const != nil && len(s.Enum) == 0 {
 			s.Enum = []any{*s.Const}
 		} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
@@ -2616,7 +2697,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	}
 
 	// Inline enum → generate enum type
-	if len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
 		enumName := parentName + fieldName
 		if err := g.generateEnumDef(enumName, s); err != nil {
 			return nil, err
@@ -2754,7 +2835,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	}
 
 	// Inline enum
-	if len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
 		enumName := contextName
 		_ = g.generateEnumDef(enumName, s)
 		return &NamedType{Name: enumName}
@@ -3773,6 +3854,17 @@ func primarySchemaType(s *schema.Schema) string {
 //
 // Returns "" if the type cannot be inferred.
 func (g *Generator) inferTypeFromConstraints(s *schema.Schema) string {
+	if !g.validationKeywordsEnabled() {
+		if s.Items != nil || (len(s.PrefixItems) > 0 && g.supportsPrefixItems(s)) || s.AdditionalItems != nil ||
+			s.Contains != nil || s.UnevaluatedItems != nil {
+			return "array"
+		}
+		if s.AdditionalProperties != nil || s.UnevaluatedProperties != nil {
+			return "object"
+		}
+		return ""
+	}
+
 	// Numeric constraints → number
 	if s.Minimum != nil || s.Maximum != nil || s.MultipleOf != nil ||
 		s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil {
@@ -3800,15 +3892,18 @@ func (g *Generator) inferTypeFromConstraints(s *schema.Schema) string {
 		return "array"
 	}
 	// Object constraints → object
-	if s.MinProperties != nil || s.MaxProperties != nil {
+	if g.validationKeywordsEnabled() && (s.MinProperties != nil || s.MaxProperties != nil) {
 		return "object"
 	}
 	// Structural object keywords → object
 	// required, additionalProperties, dependentRequired, dependentSchemas,
 	// propertyNames, and unevaluatedProperties only apply to objects.
-	if len(s.Required) > 0 || s.AdditionalProperties != nil ||
+	if s.AdditionalProperties != nil || s.UnevaluatedProperties != nil {
+		return "object"
+	}
+	if g.validationKeywordsEnabled() && (len(s.Required) > 0 ||
 		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
-		s.PropertyNames != nil || s.UnevaluatedProperties != nil {
+		s.PropertyNames != nil) {
 		return "object"
 	}
 	return ""
@@ -4483,6 +4578,36 @@ func refOverridesSiblingsForDraft(draft schema.Draft) bool {
 		// DraftUnknown: be conservative and assume modern behavior.
 		return false
 	}
+}
+
+func (g *Generator) validationKeywordsEnabled() bool {
+	return !g.validationKeywordsDisabled
+}
+
+func (g *Generator) hasValidationVocabulary(s *schema.Schema) bool {
+	if s == nil {
+		return true
+	}
+	if len(s.Vocabulary) > 0 {
+		return declaresValidationVocabulary(s.Vocabulary)
+	}
+	if s.Schema == "" || g.resolver == nil {
+		return true
+	}
+	meta, err := g.resolver.ResolveSchema(s.Schema, nil)
+	if err != nil || meta == nil || len(meta.Vocabulary) == 0 {
+		return true
+	}
+	return declaresValidationVocabulary(meta.Vocabulary)
+}
+
+func declaresValidationVocabulary(vocabulary map[string]bool) bool {
+	for uri, required := range vocabulary {
+		if required && strings.HasSuffix(uri, "/vocab/validation") {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {

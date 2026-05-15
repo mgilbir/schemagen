@@ -283,11 +283,12 @@ type Schema struct {
 	BooleanSchema *bool `json:"-"`
 
 	// Core identifiers
-	ID       string `json:"$id,omitempty"`
-	LegacyID string `json:"id,omitempty"` // Draft 3/4 use "id" instead of "$id"
-	Schema   string `json:"$schema,omitempty"`
-	Ref      string `json:"$ref,omitempty"`
-	Anchor   string `json:"$anchor,omitempty"` // Draft 2019-09+
+	ID         string          `json:"$id,omitempty"`
+	LegacyID   string          `json:"id,omitempty"` // Draft 3/4 use "id" instead of "$id"
+	Schema     string          `json:"$schema,omitempty"`
+	Vocabulary map[string]bool `json:"$vocabulary,omitempty"`
+	Ref        string          `json:"$ref,omitempty"`
+	Anchor     string          `json:"$anchor,omitempty"` // Draft 2019-09+
 
 	// Type
 	Type TypeList `json:"type,omitempty"`

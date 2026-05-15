@@ -55,9 +55,7 @@ var knownValidationFailures = map[string]string{
 	// ($id/$ref evaluation order — FIXED via InferredAliasDef ref handling)
 	// (no $schema validation — FIXED via InferredAliasDef wrapper struct)
 
-	// custom metaschema vocabulary not supported — vocabulary that disables validation
-	"draft2019-09/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom metaschema vocabulary not supported",
-	"draft2020-12/vocabulary/schema that uses custom metaschema with with no validation vocabulary/no validation: invalid number, but it still validates": "custom metaschema vocabulary not supported",
+	// (custom metaschema without validation vocabulary — FIXED via validation vocabulary opt-out)
 
 	// (enum in properties — FIXED via validatable field dispatch)
 
