@@ -189,6 +189,49 @@ func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
 	}
 }
 
+func TestInferredArrayExtractsNestedRemoteItemType(t *testing.T) {
+	input := `{
+		"id": "http://localhost:1234/",
+		"items": {
+			"id": "baseUriChange/",
+			"items": {"$ref": "folderInteger.json"}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	remote := &schema.Schema{Type: schema.TypeList{"integer"}}
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{
+		"http://localhost:1234/baseUriChange/folderInteger.json": remote,
+	})
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03, Resolver: resolver})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok && d.Name == "Root" {
+			alias = d
+			break
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected root InferredAliasDef")
+	}
+	if alias.ItemsNested == nil || alias.ItemsNested.ItemsType != "integer" {
+		t.Fatalf("nested items = %#v, want integer", alias.ItemsNested)
+	}
+	if alias.InferredGoType.GoTypeName() != "[]any" {
+		t.Fatalf("inferred Go type = %q, want []any", alias.InferredGoType.GoTypeName())
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

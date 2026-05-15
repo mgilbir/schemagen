@@ -158,14 +158,7 @@ var knownValidationFailures = map[string]string{
 	// (dependentSchemas: ALL 38 entries FIXED via expanded DependentSchemaConstraint extraction)
 
 	// (propertyNames: ALL 20 entries FIXED via PropertyNamesDef extraction + _jsonKeys validation)
-	// ($ref to array: 6 of 12 entries FIXED via tuple item $ref resolution)
-	// Remaining 6 refRemote entries: remote $ref item schemas can't be resolved at codegen time (too permissive).
-	"draft3/refRemote/change resolution scope/changed scope ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
-	"draft4/refRemote/base URI change/base URI change ref invalid":       "$ref to array: remote item schema not resolvable at codegen time",
-	"draft6/refRemote/base URI change/base URI change ref invalid":       "$ref to array: remote item schema not resolvable at codegen time",
-	"draft7/refRemote/base URI change/base URI change ref invalid":       "$ref to array: remote item schema not resolvable at codegen time",
-	"draft2019-09/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
-	"draft2020-12/refRemote/base URI change/base URI change ref invalid": "$ref to array: remote item schema not resolvable at codegen time",
+	// ($ref to array: ALL FIXED via tuple and nested item $ref resolution)
 
 	// unevaluatedItems: runtime branch/annotation evaluation required (17 entries)
 	// These tests require knowing which anyOf/oneOf/if-then-else branches actually

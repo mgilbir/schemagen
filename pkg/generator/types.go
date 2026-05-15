@@ -494,6 +494,7 @@ type InferredAliasDef struct {
 	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
 	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
 	ItemsChecks          []ContainsCheck     // per-element validation checks from items sub-schema (multipleOf, minimum, etc.)
+	ItemsNested          *NestedItemsDef     // per-element nested array item validation from an items sub-schema
 	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
 	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
 	AdditionalItemsType  string              // additionalItems as simple JSON type
@@ -505,6 +506,13 @@ type InferredAliasDef struct {
 
 	// UnevaluatedItems validation for inferred arrays:
 	UnevaluatedItems *UnevaluatedItemsDef // unevaluatedItems constraint (Draft 2019-09+)
+}
+
+// NestedItemsDef describes nested array item validation for schemas like
+// {"items":{"items":{"$ref":"..."}}}. It covers a narrow but common case
+// where outer array elements are arrays whose own elements have constraints.
+type NestedItemsDef struct {
+	ItemsType string
 }
 
 // ContainsDef describes a contains constraint on an array.
@@ -586,7 +594,7 @@ type InferredTupleItem struct {
 // HasItemValidation returns true if the InferredAliasDef has any item-level validation.
 func (d *InferredAliasDef) HasItemValidation() bool {
 	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
-		len(d.ItemsChecks) > 0 ||
+		len(d.ItemsChecks) > 0 || d.ItemsNested != nil ||
 		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
 }
 

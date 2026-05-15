@@ -376,6 +376,46 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
+	{{- if .ItemsNested}}
+	for _i, _elem := range {{$recv}}._value {
+		_nested, _nestedOk := _elem.([]any)
+		if !_nestedOk {
+			continue
+		}
+		for _j, _nestedElem := range _nested {
+			{{- if eq .ItemsNested.ItemsType "integer"}}
+			_f, _fOk := _nestedElem.(float64)
+			if !_fOk || _f != math.Trunc(_f) {
+				return fmt.Errorf("items[%d][%d]: expected integer, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "number"}}
+			if _, _fOk := _nestedElem.(float64); !_fOk {
+				return fmt.Errorf("items[%d][%d]: expected number, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "string"}}
+			if _, _sOk := _nestedElem.(string); !_sOk {
+				return fmt.Errorf("items[%d][%d]: expected string, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "boolean"}}
+			if _, _bOk := _nestedElem.(bool); !_bOk {
+				return fmt.Errorf("items[%d][%d]: expected boolean, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "null"}}
+			if _nestedElem != nil {
+				return fmt.Errorf("items[%d][%d]: expected null, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "array"}}
+			if _, _aOk := _nestedElem.([]any); !_aOk {
+				return fmt.Errorf("items[%d][%d]: expected array, got %T", _i, _j, _nestedElem)
+			}
+			{{- else if eq .ItemsNested.ItemsType "object"}}
+			if _, _oOk := _nestedElem.(map[string]any); !_oOk {
+				return fmt.Errorf("items[%d][%d]: expected object, got %T", _i, _j, _nestedElem)
+			}
+			{{- end}}
+		}
+	}
+	{{- end}}
 	{{- if .TupleItems}}
 	{
 		{{- range $idx, $item := .TupleItems}}

@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -409,6 +411,7 @@ func main() {
 	}
 	fmt.Println("PASS")
 }
+
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
@@ -430,5 +433,114 @@ func main() {
 	outputStr := strings.TrimSpace(string(output))
 	if outputStr != "PASS" {
 		t.Fatalf("validation error path test output:\n%s", outputStr)
+	}
+}
+
+func TestNestedRemoteItemsValidation(t *testing.T) {
+	input := `{
+		"id": "http://localhost:1234/",
+		"items": {
+			"id": "baseUriChange/",
+			"items": {"$ref": "folderInteger.json"}
+		}
+	}`
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+	s.Normalize()
+	base, err := url.Parse("http://localhost:1234/")
+	if err != nil {
+		t.Fatalf("parse base uri: %v", err)
+	}
+	s.ComputeBaseURIs(base, &s)
+	remote := &schema.Schema{Type: schema.TypeList{"integer"}}
+	gen := generator.New(generator.Config{
+		PackageName: "testpkg",
+		OmitEmpty:   true,
+		Draft:       schema.Draft03,
+		Resolver: schema.NewMappingResolver(map[string]*schema.Schema{
+			"http://localhost:1234/baseUriChange/folderInteger.json": remote,
+		}),
+	})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, td := range ir.TypeDefs {
+		if alias, ok := td.(*generator.InferredAliasDef); ok && alias.Name == "Root" {
+			if alias.ItemsNested == nil {
+				t.Fatalf("root IR missing nested item validation: %#v", alias)
+			}
+		}
+	}
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatalf("emitter: %v", err)
+	}
+	generated, err := em.Emit(ir)
+	if err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if !strings.Contains(string(generated), "items[%d][%d]") {
+		t.Fatalf("generated code missing nested item validation:\n%s", string(generated))
+	}
+
+	tmpDir := t.TempDir()
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	valid := []byte(` + "`" + `[[1]]` + "`" + `)
+	var validObj Root
+	if err := json.Unmarshal(valid, &validObj); err != nil {
+		fmt.Fprintf(os.Stderr, "valid unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	if err := validObj.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "valid validate: %v\n", err)
+		os.Exit(1)
+	}
+
+	invalid := []byte(` + "`" + `[["a"]]` + "`" + `)
+	var invalidObj Root
+	if err := json.Unmarshal(invalid, &invalidObj); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid unmarshal should succeed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := invalidObj.Validate(); err == nil {
+		fmt.Fprintf(os.Stderr, "invalid validate: expected error\n")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "nested_remote_items_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("nested remote items test failed:\n%s\nerror: %v", string(output), err)
+	}
+	if strings.TrimSpace(string(output)) != "PASS" {
+		t.Fatalf("nested remote items output:\n%s", string(output))
 	}
 }

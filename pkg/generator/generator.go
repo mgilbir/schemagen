@@ -96,11 +96,11 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.documentRoots = make(map[string]*schema.Schema)
 	g.buildDocumentRoots(s)
 
-	// Store the external resolver from config (may be nil).
-	g.resolver = g.config.Resolver
-
 	// Initialize dynamic scope with the root document root.
 	g.dynamicScope = []*schema.Schema{s}
+
+	// Store the external resolver from config (may be nil).
+	g.resolver = g.config.Resolver
 
 	// Collect definitions ($defs and definitions) and build anchor index.
 	// Iterate in sorted key order for deterministic anchor registration
@@ -583,7 +583,8 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 			// Item-level validation may need math.Trunc for integer checks.
-			if iad.ItemsType == "integer" || iad.AdditionalItemsType == "integer" {
+			if iad.ItemsType == "integer" || iad.AdditionalItemsType == "integer" ||
+				(iad.ItemsNested != nil && iad.ItemsNested.ItemsType == "integer") {
 				needsMath = true
 			}
 			for _, ti := range iad.TupleItems {
@@ -1130,7 +1131,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
 			// Extract item-level validation constraints.
-			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
 			// Extract contains/minContains/maxContains constraints.
 			containsDef, minContains, maxContains := extractContainsDef(s)
 			// Extract unevaluatedItems constraint.
@@ -1141,7 +1142,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			// entirely on mixed-type arrays, masking per-element errors.
 			inferredGoType := goType
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
-				len(itemsChecks) > 0 ||
+				len(itemsChecks) > 0 || itemsNested != nil ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
 				containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
@@ -1158,6 +1159,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				ItemsType:            itemsType,
 				ItemsTypeName:        itemsTypeName,
 				ItemsChecks:          itemsChecks,
+				ItemsNested:          itemsNested,
 				TupleItems:           tupleItems,
 				AdditionalItemsFalse: addlItemsFalse,
 				AdditionalItemsType:  addlItemsType,
@@ -1860,12 +1862,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			anyOfVariants := extractAnyOfVariantRules(s, goType)
 			oneOfVariants := extractOneOfVariantRules(s, goType)
 			g.generated[name] = true
-			itemsFalse, itemsType, itemsTypeName, itemsChecks, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
 			containsDef, minContains, maxContains := extractContainsDef(merged)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			inferredGoType := goType
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
-				len(itemsChecks) > 0 ||
+				len(itemsChecks) > 0 || itemsNested != nil ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
 				containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
@@ -1883,6 +1885,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				ItemsType:            itemsType,
 				ItemsTypeName:        itemsTypeName,
 				ItemsChecks:          itemsChecks,
+				ItemsNested:          itemsNested,
 				TupleItems:           tupleItems,
 				AdditionalItemsFalse: addlItemsFalse,
 				AdditionalItemsType:  addlItemsType,
@@ -4869,6 +4872,7 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	itemsType string,
 	itemsTypeName string,
 	itemsChecks []ContainsCheck,
+	itemsNested *NestedItemsDef,
 	tupleItems []InferredTupleItem,
 	additionalItemsFalse bool,
 	additionalItemsType string,
@@ -4931,6 +4935,8 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 					itemsTypeName = refName
 				}
 			}
+		} else if nested := g.extractNestedItemsDef(itemSchema); nested != nil {
+			itemsNested = nested
 		} else if len(itemSchema.Type) == 1 {
 			itemsType = itemSchema.Type[0]
 		} else {
@@ -4941,6 +4947,25 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	}
 
 	return
+}
+
+func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
+	if s == nil || s.Items == nil || s.Items.Schema == nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil {
+		return nil
+	}
+	itemSchema := s.Items.Schema
+	if itemSchema == nil || itemSchema.IsBooleanSchema() {
+		return nil
+	}
+	if effRef := itemSchema.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, itemSchema); resolved != nil && len(resolved.Type) == 1 {
+			return &NestedItemsDef{ItemsType: resolved.Type[0]}
+		}
+	}
+	if len(itemSchema.Type) == 1 {
+		return &NestedItemsDef{ItemsType: itemSchema.Type[0]}
+	}
+	return nil
 }
 
 // inferredTupleItemFromSchema converts a sub-schema to an InferredTupleItem.
