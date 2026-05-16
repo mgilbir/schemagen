@@ -129,6 +129,27 @@ func TestTypeListFromArray(t *testing.T) {
 	}
 }
 
+func TestTypeListPreservesDraft3SchemaAlternatives(t *testing.T) {
+	input := `{"type": ["integer", {"properties": {"foo": {"type": "null"}}}]}`
+
+	var s Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	s.Normalize()
+
+	if len(s.Type) != 1 || s.Type[0] != "integer" {
+		t.Fatalf("expected primitive type [integer], got %v", s.Type)
+	}
+	if len(s.TypeSchemas) != 1 {
+		t.Fatalf("expected 1 schema-valued type alternative, got %d", len(s.TypeSchemas))
+	}
+	foo := s.TypeSchemas[0].Properties["foo"]
+	if foo == nil || len(foo.Type) != 1 || foo.Type[0] != "null" {
+		t.Fatalf("expected foo:null schema branch, got %#v", foo)
+	}
+}
+
 func TestAdditionalPropertiesBoolFalse(t *testing.T) {
 	input := `{
 		"type": "object",

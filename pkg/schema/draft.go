@@ -245,6 +245,11 @@ func (s *Schema) normalizeChildren() {
 			sub.Normalize()
 		}
 	}
+	for _, sub := range s.TypeSchemas {
+		if sub != nil {
+			sub.Normalize()
+		}
+	}
 	for _, sub := range s.PatternProperties {
 		if sub != nil {
 			sub.Normalize()

@@ -688,7 +688,19 @@ func (d *NotSchemaDef) typeDef()         {}
 type TypeOnlySchemaDef struct {
 	Name         string
 	Description  string
-	AllowedTypes []string // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+	TypeBranches []TypeSchemaBranch // Draft 3 schema-valued alternatives in the type array
+}
+
+type TypeSchemaBranch struct {
+	AllowedTypes []string
+	Properties   []TypeSchemaProperty
+}
+
+type TypeSchemaProperty struct {
+	Name     string
+	JSONType string
+	Required bool
 }
 
 func (d *TypeOnlySchemaDef) TypeName() string { return d.Name }

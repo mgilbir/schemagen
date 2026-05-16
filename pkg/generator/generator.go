@@ -508,6 +508,18 @@ func (g *Generator) addRequiredImports() {
 					needsMath = true // math.Trunc, math.IsInf for integer check
 				}
 			}
+			for _, branch := range tosd.TypeBranches {
+				for _, at := range branch.AllowedTypes {
+					if at == "integer" {
+						needsMath = true
+					}
+				}
+				for _, prop := range branch.Properties {
+					if prop.JSONType == "integer" {
+						needsMath = true
+					}
+				}
+			}
 		}
 		if nsd, ok := td.(*NotSchemaDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
@@ -1068,6 +1080,20 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if toDef := extractTypeOnlySchemaDef(name, s); toDef != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, toDef)
+		return nil
+	}
+
+	// Draft 3 allows schema-valued alternatives inside the type array. When mixed
+	// with a single primitive type (for example integer OR an object schema), use
+	// the same raw wrapper as multi-type schemas so both alternatives can validate.
+	if len(s.TypeSchemas) > 0 {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+			Name:         name,
+			Description:  s.Description,
+			AllowedTypes: s.Type,
+			TypeBranches: extractTypeSchemaBranches(s.TypeSchemas),
+		})
 		return nil
 	}
 
@@ -1900,6 +1926,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 					Name:         name,
 					Description:  s.Description,
 					AllowedTypes: merged.Type,
+					TypeBranches: extractTypeSchemaBranches(merged.TypeSchemas),
 				})
 				return nil
 			}
@@ -2972,6 +2999,9 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 	for _, sub := range s.Properties {
 		g.buildDocumentRoots(sub)
 	}
+	for _, sub := range s.TypeSchemas {
+		g.buildDocumentRoots(sub)
+	}
 	for _, sub := range s.PatternProperties {
 		g.buildDocumentRoots(sub)
 	}
@@ -3302,6 +3332,7 @@ func allSubSchemas(s *schema.Schema) []*schema.Schema {
 	for _, k := range sortedKeys(s.Properties) {
 		subs = append(subs, s.Properties[k])
 	}
+	subs = append(subs, s.TypeSchemas...)
 	for _, k := range sortedKeys(s.PatternProperties) {
 		subs = append(subs, s.PatternProperties[k])
 	}
@@ -4976,13 +5007,13 @@ func isTypeOnlySchema(s *schema.Schema) bool {
 // (multi-type arrays or null-only) and no other structural constraints.
 // Returns nil for schemas that should be handled by other code paths.
 func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef {
-	if len(s.Type) == 0 {
+	if len(s.Type) == 0 && len(s.TypeSchemas) == 0 {
 		return nil
 	}
 	// Check if the type maps to a single Go type already handled elsewhere.
 	// primarySchemaType returns non-empty for single non-null types and for "null".
 	pt := primarySchemaType(s)
-	if pt != "" && pt != "null" {
+	if pt != "" && pt != "null" && len(s.TypeSchemas) == 0 {
 		return nil // Already handled by primitive type / object / array paths.
 	}
 	// At this point: either multi-type (pt == "") or null-only (pt == "null").
@@ -5007,7 +5038,39 @@ func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef 
 		Name:         name,
 		Description:  s.Description,
 		AllowedTypes: s.Type,
+		TypeBranches: extractTypeSchemaBranches(s.TypeSchemas),
 	}
+}
+
+func extractTypeSchemaBranches(typeSchemas []*schema.Schema) []TypeSchemaBranch {
+	var branches []TypeSchemaBranch
+	for _, typeSchema := range typeSchemas {
+		if typeSchema == nil || typeSchema.IsBooleanSchema() || (len(typeSchema.Type) == 0 && len(typeSchema.Properties) == 0) {
+			continue
+		}
+		branch := TypeSchemaBranch{AllowedTypes: append([]string(nil), typeSchema.Type...)}
+		required := make(map[string]bool, len(typeSchema.Required))
+		for _, name := range typeSchema.Required {
+			required[name] = true
+		}
+		ok := true
+		for _, propName := range sortedKeys(typeSchema.Properties) {
+			propSchema := typeSchema.Properties[propName]
+			if propSchema == nil || len(propSchema.Type) != 1 {
+				ok = false
+				break
+			}
+			branch.Properties = append(branch.Properties, TypeSchemaProperty{
+				Name:     propName,
+				JSONType: propSchema.Type[0],
+				Required: required[propName],
+			})
+		}
+		if ok && (len(branch.AllowedTypes) > 0 || len(branch.Properties) > 0) {
+			branches = append(branches, branch)
+		}
+	}
+	return branches
 }
 
 // isNilCheckable returns true if a Go type can be compared to nil.

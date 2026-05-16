@@ -119,6 +119,7 @@ func validationChildren(s *schema.Schema) []*schema.Schema {
 	for _, key := range sortedKeys(s.Properties) {
 		out = append(out, s.Properties[key])
 	}
+	out = append(out, s.TypeSchemas...)
 	for _, key := range sortedKeys(s.PatternProperties) {
 		out = append(out, s.PatternProperties[key])
 	}

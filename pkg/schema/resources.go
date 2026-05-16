@@ -126,6 +126,7 @@ func schemaChildren(s *Schema) []*Schema {
 	for _, key := range sortedSchemaKeys(s.Properties) {
 		out = append(out, s.Properties[key])
 	}
+	out = append(out, s.TypeSchemas...)
 	for _, key := range sortedSchemaKeys(s.PatternProperties) {
 		out = append(out, s.PatternProperties[key])
 	}

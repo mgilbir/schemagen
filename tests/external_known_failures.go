@@ -11,7 +11,7 @@ var knownCodeGenFailures = map[string]string{}
 var knownRoundTripFailures = map[string]string{
 	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
 	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties": "round-trip mismatch: $dynamicRef not implemented",
-	"draft3/type/applies a nested schema/an object is valid only if it is fully valid":                         "non-structural schema: data shape incompatible with generated type",
+	// (draft3 schema-valued type alternative — FIXED via TypeOnlySchemaDef type branches)
 }
 
 // Parse: 0 known failures
@@ -135,8 +135,7 @@ var knownValidationFailures = map[string]string{
 	// $dynamicRef: incorrect parent schema (1 entry, previously masked by wrong root type selection)
 	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema": "$dynamicRef/$dynamicAnchor not implemented",
 
-	// over-strict validation: valid data rejected (1 additional entry)
-	"draft3/type/applies a nested schema/an object is valid only if it is fully valid": "over-strict validation: valid data rejected",
+	// (draft3 schema-valued type alternative — FIXED via TypeOnlySchemaDef type branches)
 
 	// ($ref percent-encoding — FIXED via URI fragment percent-decoding in LocalResolver)
 

@@ -30,6 +30,66 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
+	_typeBranchValid := false
+	{{- range $bi, $branch := .TypeBranches}}
+	{
+		_branchMatches := true
+		{{- range $branch.AllowedTypes}}
+		{{- if eq . "object"}}
+		if _, _ok := _v.(map[string]any); !_ok { _branchMatches = false }
+		{{- else if eq . "integer"}}
+		if _f, _ok := _v.(float64); !_ok || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
+		{{- else if eq . "number"}}
+		if _, _ok := _v.(float64); !_ok { _branchMatches = false }
+		{{- else if eq . "string"}}
+		if _, _ok := _v.(string); !_ok { _branchMatches = false }
+		{{- else if eq . "boolean"}}
+		if _, _ok := _v.(bool); !_ok { _branchMatches = false }
+		{{- else if eq . "null"}}
+		if _v != nil { _branchMatches = false }
+		{{- else if eq . "array"}}
+		if _, _ok := _v.([]any); !_ok { _branchMatches = false }
+		{{- end}}
+		{{- end}}
+		_obj, _objOk := _v.(map[string]any)
+		if !_objOk {
+			_branchMatches = false
+		}
+		{{- range $branch.Properties}}
+		if _branchMatches {
+			_propVal, _propOk := _obj[{{printf "%q" .Name}}]
+			if !_propOk {
+				{{- if .Required}}
+				_branchMatches = false
+				{{- end}}
+			} else {
+				{{- if eq .JSONType "integer"}}
+				_f, _fOk := _propVal.(float64)
+				if !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
+				{{- else if eq .JSONType "number"}}
+				if _, _fOk := _propVal.(float64); !_fOk { _branchMatches = false }
+				{{- else if eq .JSONType "string"}}
+				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
+				{{- else if eq .JSONType "boolean"}}
+				if _, _bOk := _propVal.(bool); !_bOk { _branchMatches = false }
+				{{- else if eq .JSONType "null"}}
+				if _propVal != nil { _branchMatches = false }
+				{{- else if eq .JSONType "array"}}
+				if _, _aOk := _propVal.([]any); !_aOk { _branchMatches = false }
+				{{- else if eq .JSONType "object"}}
+				if _, _oOk := _propVal.(map[string]any); !_oOk { _branchMatches = false }
+				{{- end}}
+			}
+		}
+		{{- end}}
+		if _branchMatches {
+			_typeBranchValid = true
+		}
+	}
+	{{- end}}
+	if _typeBranchValid {
+		return nil
+	}
 	{{- $nullOk := false}}{{$numOk := false}}{{$intOk := false}}{{$strOk := false}}{{$boolOk := false}}{{$arrOk := false}}{{$objOk := false}}
 	{{- range .AllowedTypes -}}
 		{{- if eq . "null"}}{{$nullOk = true}}

@@ -278,6 +278,48 @@ func TestMetaschemaWithoutValidationVocabularyKeepsApplicators(t *testing.T) {
 	}
 }
 
+func TestDraft3SchemaValuedTypeGeneratesTypeBranch(t *testing.T) {
+	input := `{
+		"type": [
+			"integer",
+			{"properties": {"foo": {"type": "null"}}}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var typeDef *TypeOnlySchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*TypeOnlySchemaDef); ok && d.Name == "Root" {
+			typeDef = d
+			break
+		}
+	}
+	if typeDef == nil {
+		t.Fatalf("expected root TypeOnlySchemaDef")
+	}
+	if len(typeDef.AllowedTypes) != 1 || typeDef.AllowedTypes[0] != "integer" {
+		t.Fatalf("allowed types = %#v, want integer", typeDef.AllowedTypes)
+	}
+	if len(typeDef.TypeBranches) != 1 || len(typeDef.TypeBranches[0].Properties) != 1 {
+		t.Fatalf("type branches = %#v, want one property branch", typeDef.TypeBranches)
+	}
+	prop := typeDef.TypeBranches[0].Properties[0]
+	if prop.Name != "foo" || prop.JSONType != "null" {
+		t.Fatalf("branch property = %#v, want foo:null", prop)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {
