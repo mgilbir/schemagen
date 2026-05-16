@@ -2182,10 +2182,246 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		if len(resolved.AllOf) > 0 {
 			g.mergeAllOfInto(target, resolved.AllOf)
 		}
+		// Merge object shape contributed by variants inside an allOf branch. This
+		// handles schemas like allOf: [$ref base, {oneOf: [variant objects]}]
+		// by making variant-specific properties typed fields on the merged struct.
+		// Variant required lists are intentionally not promoted to global required.
+		g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf)
+		g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf)
 		for i := 0; i < pushedCount; i++ {
 			g.popDynamicScope()
 		}
 	}
+}
+
+func (g *Generator) mergeApplicatorVariantPropertiesInto(target *schema.Schema, variants []*schema.Schema) {
+	for _, variant := range variants {
+		g.mergeVariantObjectPropertiesInto(target, variant)
+	}
+}
+
+func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, variant *schema.Schema) {
+	if target == nil || variant == nil || variant.IsBooleanSchema() {
+		return
+	}
+	resolved := variant
+	var pushedCount int
+	for {
+		effRef := resolved.EffectiveRef()
+		if effRef == "" || g.isSelfRefInContext(effRef, resolved) {
+			break
+		}
+		r := g.resolveRefInContext(effRef, resolved)
+		if r == nil {
+			break
+		}
+		if g.pushDynamicScope(r) {
+			pushedCount++
+		}
+		resolved = r
+		if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 || len(r.OneOf) > 0 || len(r.AnyOf) > 0 {
+			break
+		}
+	}
+
+	for k, v := range resolved.Properties {
+		if existing, exists := target.Properties[k]; exists {
+			target.Properties[k] = mergeVariantPropertySchemas(existing, v)
+		} else {
+			target.Properties[k] = v
+		}
+	}
+	for k, v := range resolved.PatternProperties {
+		if target.PatternProperties == nil {
+			target.PatternProperties = make(map[string]*schema.Schema)
+		}
+		if _, exists := target.PatternProperties[k]; !exists {
+			target.PatternProperties[k] = v
+		}
+	}
+	if len(target.Type) == 0 && (len(resolved.Properties) > 0 || len(resolved.PatternProperties) > 0) {
+		target.Type = []string{"object"}
+	}
+
+	for _, sub := range resolved.AllOf {
+		g.mergeVariantObjectPropertiesInto(target, sub)
+	}
+	g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf)
+	g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf)
+
+	for i := 0; i < pushedCount; i++ {
+		g.popDynamicScope()
+	}
+}
+
+func mergeVariantPropertySchemas(existing, next *schema.Schema) *schema.Schema {
+	if existing == nil {
+		return next
+	}
+	if next == nil {
+		return existing
+	}
+	if canUnionEnumLikeSchemas(existing, next) {
+		merged := *existing
+		merged.Enum = unionEnumValues(enumLikeValues(existing), enumLikeValues(next))
+		merged.Const = nil
+		merged.ConstIsNull = false
+		if len(merged.Type) == 0 {
+			merged.Type = enumValueTypeList(merged.Enum)
+		}
+		return &merged
+	}
+	if schemasHaveCompatibleType(existing, next) {
+		return existing
+	}
+	merged := *existing
+	merged.Type = nil
+	merged.Enum = nil
+	merged.Const = nil
+	merged.ConstIsNull = false
+	merged.Format = nil
+	merged.MinLength = nil
+	merged.MaxLength = nil
+	merged.Pattern = nil
+	merged.Minimum = nil
+	merged.Maximum = nil
+	merged.ExclusiveMinimum = nil
+	merged.ExclusiveMaximum = nil
+	merged.MultipleOf = nil
+	merged.Items = nil
+	merged.PrefixItems = nil
+	merged.MinItems = nil
+	merged.MaxItems = nil
+	merged.UniqueItems = nil
+	merged.Properties = nil
+	merged.Required = nil
+	merged.PatternProperties = nil
+	return &merged
+}
+
+func canUnionEnumLikeSchemas(a, b *schema.Schema) bool {
+	av := enumLikeValues(a)
+	bv := enumLikeValues(b)
+	if len(av) == 0 || len(bv) == 0 {
+		return false
+	}
+	return enumValuesHaveSingleJSONType(av) && enumValuesHaveSingleJSONType(bv) && enumValueJSONType(av[0]) == enumValueJSONType(bv[0])
+}
+
+func enumLikeValues(s *schema.Schema) []any {
+	if s == nil {
+		return nil
+	}
+	if len(s.Enum) > 0 {
+		return s.Enum
+	}
+	if s.Const != nil {
+		return []any{*s.Const}
+	}
+	if s.ConstIsNull {
+		return []any{nil}
+	}
+	return nil
+}
+
+func unionEnumValues(values ...[]any) []any {
+	var out []any
+	seen := make(map[string]bool)
+	for _, group := range values {
+		for _, value := range group {
+			key := enumValueKey(value)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func enumValueKey(value any) string {
+	b, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%T:%v", value, value)
+	}
+	return string(b)
+}
+
+func enumValuesHaveSingleJSONType(values []any) bool {
+	if len(values) == 0 {
+		return false
+	}
+	want := enumValueJSONType(values[0])
+	for _, value := range values[1:] {
+		if enumValueJSONType(value) != want {
+			return false
+		}
+	}
+	return true
+}
+
+func enumValueJSONType(value any) string {
+	switch value.(type) {
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case float64, int, int64:
+		return "number"
+	case nil:
+		return "null"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	default:
+		return ""
+	}
+}
+
+func enumValueTypeList(values []any) schema.TypeList {
+	if len(values) == 0 || !enumValuesHaveSingleJSONType(values) {
+		return nil
+	}
+	t := enumValueJSONType(values[0])
+	if t == "number" {
+		return schema.TypeList{"number"}
+	}
+	if t == "" {
+		return nil
+	}
+	return schema.TypeList{t}
+}
+
+func schemasHaveCompatibleType(a, b *schema.Schema) bool {
+	at := propertySchemaTypeSignature(a)
+	bt := propertySchemaTypeSignature(b)
+	return at != "" && at == bt
+}
+
+func propertySchemaTypeSignature(s *schema.Schema) string {
+	if s == nil {
+		return ""
+	}
+	if len(s.Type) > 0 {
+		return strings.Join(sortedNonNullTypes(s.Type), "|")
+	}
+	if values := enumLikeValues(s); len(values) > 0 && enumValuesHaveSingleJSONType(values) {
+		return enumValueJSONType(values[0])
+	}
+	return ""
+}
+
+func sortedNonNullTypes(types schema.TypeList) []string {
+	out := make([]string, 0, len(types))
+	for _, typ := range types {
+		if typ != "null" {
+			out = append(out, typ)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // allOfContainsFalseSchema returns true if any sub-schema in the allOf array

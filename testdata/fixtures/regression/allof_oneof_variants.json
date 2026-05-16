@@ -1,0 +1,9 @@
+{
+  "name": "duration",
+  "type": "number",
+  "label": "Duration",
+  "min": 0,
+  "max": 24,
+  "widget": "hours",
+  "default": 1.5
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DiaryField",
+  "type": "object",
+  "allOf": [
+    { "$ref": "#/$defs/field_base" },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "select" },
+            "choices": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "widget": { "enum": ["slider"] },
+            "default": { "type": "string" }
+          },
+          "required": ["choices"]
+        },
+        {
+          "properties": {
+            "type": { "const": "number" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "widget": { "enum": ["slider", "hours"] },
+            "default": { "type": "number" }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "field_base": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "required": ["name", "type"]
+    }
+  }
+}

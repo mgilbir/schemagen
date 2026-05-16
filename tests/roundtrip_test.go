@@ -165,6 +165,11 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/advanced/cross_refs.json",
 			FixturePath: "testdata/fixtures/advanced/cross_refs.json",
 		},
+		{
+			Name:        "regression/allof_oneof_variants",
+			SchemaPath:  "testdata/schemas/regression/allof_oneof_variants.json",
+			FixturePath: "testdata/fixtures/regression/allof_oneof_variants.json",
+		},
 	}
 }
 

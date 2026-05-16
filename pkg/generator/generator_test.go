@@ -110,6 +110,119 @@ func TestOptionalStringWithOmitEmptyUsesPointer(t *testing.T) {
 	}
 }
 
+func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
+	input := `{
+		"title": "Field",
+		"type": "object",
+		"allOf": [
+			{"$ref": "#/$defs/field_base"},
+			{
+				"oneOf": [
+					{
+						"properties": {
+							"type": {"const":"select"},
+							"choices": {"type":"array", "items":{"type":"string"}},
+							"default": {"type":"string"},
+							"widget": {"enum":["slider"]}
+						},
+						"required": ["choices"]
+					},
+					{
+						"properties": {
+							"type": {"const":"number"},
+							"min": {"type":"number"},
+							"max": {"type":"number"},
+							"default": {"type":"number"},
+							"widget": {"enum":["slider", "hours"]}
+						}
+					}
+				]
+			}
+		],
+		"$defs": {
+			"field_base": {
+				"type": "object",
+				"properties": {
+					"name": {"type":"string"},
+					"type": {"type":"string"},
+					"label": {"type":"string"}
+				},
+				"required": ["name", "type"]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var field *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Field" {
+			field = d
+			break
+		}
+	}
+	if field == nil {
+		t.Fatalf("expected Field struct")
+	}
+
+	fields := make(map[string]FieldDef)
+	for _, f := range field.Fields {
+		fields[f.JSONName] = f
+	}
+	for _, name := range []string{"name", "type", "label", "choices", "min", "max", "default", "widget"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("missing merged field %q; fields = %#v", name, fields)
+		}
+	}
+	if !fields["name"].Required || !fields["type"].Required {
+		t.Fatalf("base required fields not preserved: name=%v type=%v", fields["name"].Required, fields["type"].Required)
+	}
+	if fields["choices"].Required || fields["min"].Required || fields["max"].Required {
+		t.Fatalf("variant-specific fields must not become globally required")
+	}
+	if got := fields["choices"].Type.GoTypeName(); got != "*[]string" {
+		t.Fatalf("choices type = %q, want *[]string", got)
+	}
+	if got := fields["min"].Type.GoTypeName(); got != "*float64" {
+		t.Fatalf("min type = %q, want *float64", got)
+	}
+	if got := fields["default"].Type.GoTypeName(); got != "any" {
+		t.Fatalf("default type = %q, want any", got)
+	}
+	if len(fields["widget"].Type.GoTypeName()) == 0 {
+		t.Fatalf("widget type is empty")
+	}
+	var widgetEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && d.Name == "FieldWidget" {
+			widgetEnum = d
+			break
+		}
+	}
+	if widgetEnum == nil {
+		t.Fatalf("expected FieldWidget enum")
+	}
+	gotValues := make(map[any]bool)
+	for _, v := range widgetEnum.Values {
+		gotValues[v.Value] = true
+	}
+	for _, want := range []string{"slider", "hours"} {
+		if !gotValues[want] {
+			t.Fatalf("widget enum missing %q: %#v", want, widgetEnum.Values)
+		}
+	}
+}
+
 func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
 	input := `{
 		"disallow": [
