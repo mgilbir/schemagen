@@ -442,6 +442,9 @@ func (g *Generator) addRequiredImports() {
 			if ad.UnmarshalAs != "" && ad.CanHaveMethods() {
 				needsJSON = true // UnmarshalJSON delegates through json.Unmarshal
 			}
+			if ad.MarshalAs != "" && ad.CanHaveMethods() {
+				needsJSON = true // MarshalJSON delegates through json.Marshal
+			}
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
@@ -4523,12 +4526,16 @@ func (g *Generator) populateValidatableFields() {
 func (g *Generator) populateAliasDelegates() {
 	validatableTypes := make(map[string]bool)
 	unmarshalTypes := make(map[string]bool)
+	marshalTypes := make(map[string]bool)
 	for _, td := range g.output.TypeDefs {
 		switch d := td.(type) {
 		case *StructDef:
 			validatableTypes[d.Name] = true
 			if d.NeedsUnmarshal {
 				unmarshalTypes[d.Name] = true
+			}
+			if d.NeedsMarshal {
+				marshalTypes[d.Name] = true
 			}
 		case *EnumDef:
 			validatableTypes[d.Name] = true
@@ -4545,6 +4552,9 @@ func (g *Generator) populateAliasDelegates() {
 				validatableTypes[d.Name] = true
 				if d.NeedsNullCheck || d.IsIntegerType() || d.UnmarshalAs != "" {
 					unmarshalTypes[d.Name] = true
+				}
+				if d.MarshalAs != "" {
+					marshalTypes[d.Name] = true
 				}
 			}
 		}
@@ -4564,6 +4574,9 @@ func (g *Generator) populateAliasDelegates() {
 		}
 		if unmarshalTypes[name] {
 			ad.UnmarshalAs = name
+		}
+		if marshalTypes[name] {
+			ad.MarshalAs = name
 		}
 	}
 }
@@ -5839,6 +5852,11 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 		}
 	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
 
 	// Recurse into allOf — all branches always apply.
 	// We also check each allOf sub-schema for oneOf/anyOf/if-then-else and
@@ -6060,6 +6078,11 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
 		}
 	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+		}
+	}
 
 	// Recurse into allOf — all branches always apply.
 	for _, sub := range s.AllOf {
@@ -6143,6 +6166,11 @@ func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schem
 	// $ref — evaluated properties from the referenced schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
+		}
+	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
 		}
 	}
@@ -6469,6 +6497,11 @@ func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
 	// $ref on this sub-schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 		}
 	}

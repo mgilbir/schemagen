@@ -442,6 +442,7 @@ type AliasDef struct {
 	MaxContains       *int               // maxContains
 	ValidateAs        string             // named underlying type whose Validate method should be delegated to
 	UnmarshalAs       string             // named underlying type whose UnmarshalJSON behavior should be delegated to
+	MarshalAs         string             // named underlying type whose MarshalJSON behavior should be delegated to
 	StrictInteger     bool               // true when integer JSON must use an integer token, not 1.0/1e0
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data

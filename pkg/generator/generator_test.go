@@ -55,6 +55,15 @@ func hasValidationFeature(features []ValidationFeature, want ValidationFeature) 
 	return false
 }
 
+func containsString(values []string, want string) bool {
+	for _, got := range values {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
 	input := `{
 		"disallow": [
@@ -186,6 +195,58 @@ func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
 	}
 	if alias.UnevaluatedItems.ValueType != "string" {
 		t.Fatalf("unevaluatedItems value type = %q, want string", alias.UnevaluatedItems.ValueType)
+	}
+}
+
+func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/derived",
+		"$ref": "./baseSchema",
+		"$defs": {
+			"derived": {
+				"$dynamicAnchor": "addons",
+				"properties": {"bar": {"type":"string"}}
+			},
+			"baseSchema": {
+				"$id": "./baseSchema",
+				"unevaluatedProperties": false,
+				"properties": {"foo": {"type":"string"}},
+				"$dynamicRef": "#addons",
+				"$defs": {
+					"defaultAddons": {"$dynamicAnchor": "addons"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var base *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "BaseSchema" {
+			base = d
+			break
+		}
+	}
+	if base == nil {
+		t.Fatalf("expected BaseSchema StructDef")
+	}
+	if base.UnevaluatedProperties == nil {
+		t.Fatalf("expected unevaluatedProperties definition")
+	}
+	if !containsString(base.UnevaluatedProperties.EvaluatedNames, "foo") || !containsString(base.UnevaluatedProperties.EvaluatedNames, "bar") {
+		t.Fatalf("evaluated names = %#v, want foo and bar", base.UnevaluatedProperties.EvaluatedNames)
 	}
 }
 
@@ -360,6 +421,9 @@ func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
 	}
 	if root.UnmarshalAs != "Target" {
 		t.Fatalf("UnmarshalAs = %q, want Target", root.UnmarshalAs)
+	}
+	if root.MarshalAs != "Target" {
+		t.Fatalf("MarshalAs = %q, want Target", root.MarshalAs)
 	}
 }
 

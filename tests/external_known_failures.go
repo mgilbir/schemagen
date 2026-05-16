@@ -7,10 +7,10 @@ package tests
 // CodeGen: 0 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownCodeGenFailures = map[string]string{}
 
-// RoundTrip: 2 known failures (2 flaky entries removed — non-deterministic map iteration)
+// RoundTrip: 0 known failures (2 flaky entries removed — non-deterministic map iteration)
 var knownRoundTripFailures = map[string]string{
 	// (same $anchor with different base uri — FIXED via findAnchor $id scope boundary fix)
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with no unevaluated properties": "round-trip mismatch: $dynamicRef not implemented",
+	// (unevaluatedProperties with $dynamicRef — FIXED via dynamicRef evaluated-property collection + alias marshal delegation)
 	// (draft3 schema-valued type alternative — FIXED via TypeOnlySchemaDef type branches)
 }
 
@@ -29,7 +29,7 @@ var knownParseFailures = map[string]string{}
 //   - custom metaschema vocabulary not supported (0)
 //   - ($dynamicRef with required — FIXED via dynamic scope chain) (0)
 //   - (draft3/4 zeroTerminatedFloats: FIXED via draft-aware strict integer tokens) (0)
-//   - unevaluatedProperties: $dynamicRef/$recursiveRef not implemented (2)
+//   - unevaluatedProperties: $recursiveRef not implemented (1)
 //   - ($dynamicRef: static resolution picks wrong constraint — FIXED via dynamic scope chain) (0)
 //   - cross-draft validation not supported (0)
 //   - over-strict validation: valid data rejected (0)
@@ -112,16 +112,16 @@ var knownValidationFailures = map[string]string{
 	"draft2019-09/unevaluatedItems/unevaluatedItems with $recursiveRef/with unevaluated items": "unevaluatedItems validation not implemented",
 	"draft2020-12/unevaluatedItems/unevaluatedItems with $dynamicRef/with unevaluated items":   "unevaluatedItems validation not implemented",
 
-	// unevaluatedProperties: remaining failures (2 entries)
+	// unevaluatedProperties: remaining failures (1 entry)
 	// (Cousin/uncle isolation: FIXED via per-branch annotation tracking — 24 entries removed)
 	// (if/then/else: FIXED via runtime conditional evaluation — 6 entries removed)
 	// (anyOf: FIXED via runtime branch matching — 4 entries removed)
 	// (oneOf: FIXED via runtime branch matching + recursive flattening — 10 entries removed)
 	// (unevaluatedProperties: schema-valued — FIXED via Validations + ValueType on UnevaluatedPropertiesDef)
 	// (dependentSchemas: FIXED via runtime conditional evaluation — 4 entries removed)
-	// Remaining unevaluatedProperties failures: $dynamicRef/$recursiveRef (2)
+	// Remaining unevaluatedProperties failures: $recursiveRef (1)
 	"draft2019-09/unevaluatedProperties/unevaluatedProperties with $recursiveRef/with unevaluated properties": "unevaluatedProperties: $recursiveRef not implemented",
-	"draft2020-12/unevaluatedProperties/unevaluatedProperties with $dynamicRef/with unevaluated properties":   "unevaluatedProperties: $dynamicRef not implemented",
+	// (draft2020-12 unevaluatedProperties with $dynamicRef — FIXED via dynamicRef evaluated-property collection)
 
 	// ($ref to $dynamicRef finds detached $dynamicAnchor/number is valid — codegen now compiles, generates type any, tests skipped)
 	// ($dynamicRef avoids root/data is sufficient — FIXED via $dynamicRef static resolution)

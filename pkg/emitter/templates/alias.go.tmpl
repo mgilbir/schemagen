@@ -6,6 +6,9 @@ type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
+{{- if and .CanHaveMethods .MarshalAs}}
+{{template "alias_marshal" .}}
+{{- end}}
 {{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
 {{- end}}
@@ -56,6 +59,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	type Alias {{.Name}}
 	return json.Unmarshal(data, (*Alias)({{$recv}}))
 	{{- end}}
+}
+{{- end}}
+
+{{define "alias_marshal"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	return json.Marshal({{.MarshalAs}}({{$recv}}))
 }
 {{- end}}
 
