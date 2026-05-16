@@ -131,7 +131,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if _matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched {
+	if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched {
 		return fmt.Errorf("value: %q does not match pattern %s", {{$recv}}._value, {{printf "%q" .Value}})
 	}
 	{{- end}}
@@ -195,7 +195,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
+			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}._value) < {{.Value}} { _variantValid = false }
@@ -245,7 +245,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
+			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}._value) < {{.Value}} { _variantValid = false }

@@ -141,48 +141,102 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if .Optional}}
 	if {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
 	{{- end}}
+	{{- $value := validationValue $recv .}}
 	{{- if eq .RuleType "minLength"}}
-	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$recv}}.{{.FieldName}}))
+	{{- if .IsPointer}}
+	if {{validationNonNil $recv .}} && utf8.RuneCountInString({{$value}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
+	{{- else}}
+	if utf8.RuneCountInString({{$value}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
+	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
-	if utf8.RuneCountInString({{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$recv}}.{{.FieldName}}))
+	{{- if .IsPointer}}
+	if {{validationNonNil $recv .}} && utf8.RuneCountInString({{$value}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
+	}
+	{{- else}}
+	if utf8.RuneCountInString({{$value}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "minimum"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) < {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v is less than minimum {{.Value}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) < {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: value %v is less than minimum {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "maximum"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) > {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) > {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) <= {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v must be greater than {{.Value}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) <= {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: value %v must be greater than {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) >= {{.Value}} {
+		return fmt.Errorf("{{.JSONName}}: value %v must be less than {{.Value}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) >= {{.Value}} {
 		return fmt.Errorf("{{.JSONName}}: value %v must be less than {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	{
+		{{- if .IsPointer}}
+		if {{$recv}}.{{.FieldName}} != nil {
+		q := float64(*{{$recv}}.{{.FieldName}}) / {{.Value}}
+		if math.Abs(q - math.Round(q)) > 1e-9 {
+			return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", *{{$recv}}.{{.FieldName}})
+		}
+		}
+		{{- else}}
 		q := float64({{$recv}}.{{.FieldName}}) / {{.Value}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
 			return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
 		}
+		{{- end}}
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, {{$recv}}.{{.FieldName}}); !matched {
-		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$recv}}.{{.FieldName}}, {{printf "%q" .Value}})
+	{{- if .IsPointer}}
+	if {{validationNonNil $recv .}} {
+		if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
+			return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+		}
 	}
+	{{- else}}
+	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
+		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	{{- if .IsPointer}}
@@ -261,107 +315,107 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "format"}}
 	{{- if eq .Value "date"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _, _err := time.Parse("2006-01-02", {{$recv}}.{{.FieldName}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$recv}}.{{.FieldName}}, _err)
+	if {{validationStringSet $recv .}} {
+		if _, _err := time.Parse("2006-01-02", {{$value}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$value}}, _err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "time"}}
-	if {{$recv}}.{{.FieldName}} != "" {
+	if {{validationStringSet $recv .}} {
 		_valid := false
 		for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
-			if _, _err := time.Parse(_layout, {{$recv}}.{{.FieldName}}); _err == nil {
+			if _, _err := time.Parse(_layout, {{$value}}); _err == nil {
 				_valid = true
 				break
 			}
 		}
 		if !_valid {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "email"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _, err := mail.ParseAddress({{$recv}}.{{.FieldName}}); err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$recv}}.{{.FieldName}}, err)
+	if {{validationStringSet $recv .}} {
+		if _, err := mail.ParseAddress({{$value}}); err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "idn-email"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _, err := mail.ParseAddress({{$recv}}.{{.FieldName}}); err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$recv}}.{{.FieldName}}, err)
+	if {{validationStringSet $recv .}} {
+		if _, err := mail.ParseAddress({{$value}}); err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "uri"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _u, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI reference", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if _, _err := url.Parse({{$value}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI reference", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "iri"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _u, _err := url.Parse({{$recv}}.{{.FieldName}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid IRI", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid IRI", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "uuid"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid UUID", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid UUID", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "hostname"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "idn-hostname"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "json-pointer"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid JSON Pointer", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid JSON Pointer", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "relative-json-pointer"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid relative JSON Pointer", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid relative JSON Pointer", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "regex"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if _, _err := regexp.Compile({{$recv}}.{{.FieldName}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid regex: %w", {{$recv}}.{{.FieldName}}, _err)
+	if {{validationStringSet $recv .}} {
+		if _, _err := regexp.Compile({{$value}}); _err != nil {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid regex: %w", {{$value}}, _err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "duration"}}
-	if {{$recv}}.{{.FieldName}} != "" {
-		if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$recv}}.{{.FieldName}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid ISO 8601 duration", {{$recv}}.{{.FieldName}})
+	if {{validationStringSet $recv .}} {
+		if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$value}}) {
+			return fmt.Errorf("{{.JSONName}}: value %q is not a valid ISO 8601 duration", {{$value}})
 		}
 	}
 	{{- end}}
@@ -392,7 +446,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	if len({{$recv}}.PatternProperties) > 0 {
 		ppRegexps := []*ecma262.Regexp{
 			{{- range $struct.PatternProperties}}
-			ecma262.MustCompile({{printf "%q" .Pattern}}, ecmaflags.Unicode),
+			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		for k, v := range {{$recv}}.PatternProperties {
@@ -671,7 +725,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- if $struct.PropertyNames.Pattern}}
-		if !ecma262.MustCompile({{printf "%q" $struct.PropertyNames.Pattern}}, ecmaflags.Unicode).MatchString(_pnKey) {
+		if !ecma262.MustCompile({{ecmaPattern $struct.PropertyNames.Pattern}}, ecmaflags.Unicode).MatchString(_pnKey) {
 			return fmt.Errorf("propertyNames: property name %q does not match pattern %q", _pnKey, {{printf "%q" $struct.PropertyNames.Pattern}})
 		}
 		{{- end}}
@@ -705,7 +759,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- if gt (len $cousin.EvalPatterns) 0}}
 		_cousinPat{{$ci}} := []*ecma262.Regexp{
 			{{- range $cousin.EvalPatterns}}
-			ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode),
+			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		{{- end}}
@@ -746,7 +800,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- if gt (len $uneval.EvaluatedPatterns) 0}}
 		evaluatedPatterns := []*ecma262.Regexp{
 			{{- range $uneval.EvaluatedPatterns}}
-			ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode),
+			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		{{- end}}
@@ -857,7 +911,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- range $branch.Patterns}}
 				{
-					_re := ecma262.MustCompile({{printf "%q" .}}, ecmaflags.Unicode)
+					_re := ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode)
 					for _k := range {{$recv}}._jsonKeys {
 						if _re.MatchString(_k) {
 							evaluatedNames[_k] = true

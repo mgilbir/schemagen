@@ -8,11 +8,11 @@ import (
 )
 
 type PrimitiveTypes struct {
-	BoolField            bool                       `json:"bool_field,omitempty"`
-	IntField             int64                      `json:"int_field,omitempty"`
+	BoolField            *bool                      `json:"bool_field,omitempty"`
+	IntField             *int64                     `json:"int_field,omitempty"`
 	NullableStr          *string                    `json:"nullable_str"`
-	NumField             float64                    `json:"num_field,omitempty"`
-	StrField             string                     `json:"str_field,omitempty"`
+	NumField             *float64                   `json:"num_field,omitempty"`
+	StrField             *string                    `json:"str_field,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 

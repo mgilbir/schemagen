@@ -160,7 +160,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else if eq .RuleType "maxLength"}}
 				if utf8.RuneCountInString(_s) > {{.Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "pattern"}}
-				if _matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, _s); !_matched { _branchMatches = false }
+				if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _s); !_matched { _branchMatches = false }
 				{{- end}}
 			}
 			{{- else if or (eq .RuleType "minItems") (eq .RuleType "maxItems")}}

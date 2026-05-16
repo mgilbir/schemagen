@@ -1,6 +1,10 @@
 package emitter
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -548,5 +552,98 @@ func TestFuncMapLowerFirst(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("lowerFirstFunc(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestNormalizeECMA262PatternEscapedClassIdentity(t *testing.T) {
+	input := `^[A-Za-z0-9_\-\.\:]+$`
+	got := normalizeECMA262Pattern(input)
+	want := `^[A-Za-z0-9_\x2d\.\x3a]+$`
+	if got != want {
+		t.Fatalf("normalizeECMA262Pattern(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestNormalizeECMA262PatternLiteralClosingBracketInClass(t *testing.T) {
+	input := `^[\]\:]+$`
+	got := normalizeECMA262Pattern(input)
+	want := `^[\]\x3a]+$`
+	if got != want {
+		t.Fatalf("normalizeECMA262Pattern(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
+	e := mustNew(t)
+	f := &generator.File{
+		PackageName: "main",
+		Imports: []generator.Import{
+			{Path: "github.com/mgilbir/goecma262", Alias: "ecma262"},
+			{Path: "github.com/mgilbir/goecma262/flags", Alias: "ecmaflags"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.AliasDef{
+				Name:       "Name",
+				Underlying: &generator.PrimitiveType{Name: "string"},
+				Validations: []generator.ValidationRule{
+					{RuleType: "pattern", Value: `^[A-Za-z0-9_\-\.\:]+$`},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+	if !strings.Contains(src, `^[A-Za-z0-9_\\x2d\\.\\x3a]+$`) {
+		t.Fatalf("expected normalized pattern in generated code, got:\n%s", src)
+	}
+
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "types.go"), out, 0o644); err != nil {
+		t.Fatalf("write types.go: %v", err)
+	}
+	mainSrc := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func main() {
+	var v Name
+	if err := json.Unmarshal([]byte(` + strconv.Quote(`"wake_up_time"`) + `), &v); err != nil {
+		panic(err)
+	}
+	if err := v.Validate(); err != nil {
+		panic(err)
+	}
+	fmt.Println("ok")
+}
+`
+	if err := os.WriteFile(filepath.Join(tmp, "main.go"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	goMod := "module patternrepro\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0\n"
+	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	goSum := "github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0 h1:g5uVjex1bABu72M6R0A//gQDoVXPSatqP50yZDX5wUQ=\n" +
+		"github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0/go.mod h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI=\n"
+	if err := os.WriteFile(filepath.Join(tmp, "go.sum"), []byte(goSum), 0o644); err != nil {
+		t.Fatalf("write go.sum: %v", err)
+	}
+
+	cmd := exec.Command("go", "run", ".")
+	cmd.Dir = tmp
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated code failed: %v\n%s", err, string(output))
+	}
+	if strings.TrimSpace(string(output)) != "ok" {
+		t.Fatalf("output = %q, want ok", strings.TrimSpace(string(output)))
 	}
 }

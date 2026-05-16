@@ -9,8 +9,8 @@ import (
 )
 
 type UserProfile struct {
-	Age                  int64                      `json:"age,omitempty"`
-	Bio                  string                     `json:"bio,omitempty"`
+	Age                  *int64                     `json:"age,omitempty"`
+	Bio                  *string                    `json:"bio,omitempty"`
 	Tags                 *[]string                  `json:"tags,omitempty"`
 	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -91,18 +91,18 @@ func (u UserProfile) MarshalJSON() ([]byte, error) {
 // Validate checks UserProfile against its JSON Schema constraints.
 func (u UserProfile) Validate() error {
 	if u._jsonKeys["age"] {
-		if float64(u.Age) < 0 {
-			return fmt.Errorf("age: value %v is less than minimum 0", u.Age)
+		if u.Age != nil && float64(*u.Age) < 0 {
+			return fmt.Errorf("age: value %v is less than minimum 0", *u.Age)
 		}
 	}
 	if u._jsonKeys["age"] {
-		if float64(u.Age) > 150 {
-			return fmt.Errorf("age: value %v exceeds maximum 150", u.Age)
+		if u.Age != nil && float64(*u.Age) > 150 {
+			return fmt.Errorf("age: value %v exceeds maximum 150", *u.Age)
 		}
 	}
 	if u._jsonKeys["bio"] {
-		if utf8.RuneCountInString(u.Bio) > 500 {
-			return fmt.Errorf("bio: length %d exceeds maximum 500", utf8.RuneCountInString(u.Bio))
+		if u.Bio != nil && utf8.RuneCountInString(*u.Bio) > 500 {
+			return fmt.Errorf("bio: length %d exceeds maximum 500", utf8.RuneCountInString(*u.Bio))
 		}
 	}
 	if u._jsonKeys["tags"] {

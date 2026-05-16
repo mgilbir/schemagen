@@ -66,7 +66,7 @@ func (e EventRecordItem2Level) Validate() error {
 }
 
 type EventRecordItem2 struct {
-	Code                 int64                      `json:"code,omitempty"`
+	Code                 *int64                     `json:"code,omitempty"`
 	Level                EventRecordItem2Level      `json:"level"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -144,13 +144,13 @@ func (e EventRecordItem2) MarshalJSON() ([]byte, error) {
 // Validate checks EventRecordItem2 against its JSON Schema constraints.
 func (e EventRecordItem2) Validate() error {
 	if e._jsonKeys["code"] {
-		if float64(e.Code) < 100 {
-			return fmt.Errorf("code: value %v is less than minimum 100", e.Code)
+		if e.Code != nil && float64(*e.Code) < 100 {
+			return fmt.Errorf("code: value %v is less than minimum 100", *e.Code)
 		}
 	}
 	if e._jsonKeys["code"] {
-		if float64(e.Code) > 599 {
-			return fmt.Errorf("code: value %v exceeds maximum 599", e.Code)
+		if e.Code != nil && float64(*e.Code) > 599 {
+			return fmt.Errorf("code: value %v exceeds maximum 599", *e.Code)
 		}
 	}
 	if err := e.Level.Validate(); err != nil {

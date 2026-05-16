@@ -1490,6 +1490,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if omitEmpty && g.isArrayProperty(goType, propSchema) {
 			goType = &PointerType{Inner: goType}
 		}
+		// For optional struct fields with omitempty, wrap in a pointer (*T) so that
+		// absent → nil (omitted). encoding/json's omitempty never considers struct
+		// values as empty, and types with custom MarshalJSON are always marshaled
+		// (producing non-null output even when all fields are zero).
+		if omitEmpty && !goType.IsPointer() && g.isObjectProperty(goType, propSchema) {
+			goType = &PointerType{Inner: goType}
+		}
+		// For optional scalar fields with omitempty, wrap in a pointer so that the
+		// zero value ("", false, 0, 0.0) is distinguishable from
+		// absent. Without this, omitempty conflates "absent" with "zero value".
+		if omitEmpty && !goType.IsPointer() && isZeroLossyPrimitive(goType) {
+			goType = &PointerType{Inner: goType}
+		}
 		manualJSON := needsManualJSON(propName)
 
 		// Compute default literal if schema provides a default value.
@@ -1562,13 +1575,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		needsMarshal = true
 		needsUnmarshal = true
-	} else if !g.config.StrictProperties && (len(fields) > 0 || len(s.PatternProperties) > 0) {
+	} else if len(fields) > 0 || len(s.PatternProperties) > 0 {
 		// No additionalProperties specified: per JSON Schema spec, defaults to true.
-		// In non-strict mode, add an overflow map to preserve extra properties.
-		// Add when there are declared fields or patternProperties (so non-pattern-matched
-		// keys are preserved through round-trip).
+		// Add an overflow map to preserve extra properties for round-trip fidelity.
+		// In StrictProperties mode, mark as Forbidden so Validate() rejects them,
+		// but the data is still captured (not silently dropped).
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			Forbidden: g.config.StrictProperties,
 		}
 		needsMarshal = true
 		needsUnmarshal = true
@@ -3825,6 +3839,67 @@ func (g *Generator) isArrayProperty(goType GoType, propSchema *schema.Schema) bo
 				}
 			}
 		}
+	}
+	return false
+}
+
+// isObjectProperty returns true if the Go type resolves to a struct (NamedType that
+// is not an array) or the schema is an object with properties. Used to wrap optional
+// struct fields in pointers for correct omitempty behavior.
+func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) bool {
+	// Check if it's a NamedType (which means it's a generated struct or enum).
+	// Exclude arrays (NamedType wrapping a slice) and primitives.
+	if nt, ok := goType.(*NamedType); ok {
+		return g.isStructType(nt.Name)
+	}
+	// Check the property schema for object type.
+	if propSchema != nil {
+		if primarySchemaType(propSchema) == "object" && hasProperties(propSchema) {
+			return true
+		}
+		if effRef := propSchema.EffectiveRef(); effRef != "" {
+			if resolved := g.resolveRefInContext(effRef, propSchema); resolved != nil {
+				if primarySchemaType(resolved) == "object" && hasProperties(resolved) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isEnumType returns true if a type name corresponds to an already-generated enum.
+func (g *Generator) isEnumType(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, isEnum := td.(*EnumDef)
+			return isEnum
+		}
+	}
+	return false
+}
+
+// isStructType returns true if a type name corresponds to an already-generated struct.
+func (g *Generator) isStructType(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, isStruct := td.(*StructDef)
+			return isStruct
+		}
+	}
+	return false
+}
+
+// isZeroLossyPrimitive returns true if the Go type is a primitive whose zero value
+// would be lost with omitempty ("", false, int64=0, float64=0.0).
+func isZeroLossyPrimitive(goType GoType) bool {
+	pt, ok := goType.(*PrimitiveType)
+	if !ok {
+		return false
+	}
+	switch pt.Name {
+	case "string", "bool", "int64", "float64":
+		return true
 	}
 	return false
 }

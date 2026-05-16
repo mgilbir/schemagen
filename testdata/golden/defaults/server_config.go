@@ -8,13 +8,13 @@ import (
 )
 
 type ServerConfig struct {
-	Debug                bool                       `json:"debug,omitempty"`
-	Host                 string                     `json:"host,omitempty"`
-	LogLevel             string                     `json:"log_level,omitempty"`
-	MaxRetries           int64                      `json:"max_retries,omitempty"`
+	Debug                *bool                      `json:"debug,omitempty"`
+	Host                 *string                    `json:"host,omitempty"`
+	LogLevel             *string                    `json:"log_level,omitempty"`
+	MaxRetries           *int64                     `json:"max_retries,omitempty"`
 	Name                 string                     `json:"name"`
-	Port                 int64                      `json:"port,omitempty"`
-	Timeout              float64                    `json:"timeout,omitempty"`
+	Port                 *int64                     `json:"port,omitempty"`
+	Timeout              *float64                   `json:"timeout,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -91,23 +91,29 @@ func (s ServerConfig) MarshalJSON() ([]byte, error) {
 // SetDefaults sets default values for unset fields of ServerConfig.
 // A field is considered "unset" if it holds the zero value for its type.
 func (s *ServerConfig) SetDefaults() {
-	if !s.Debug {
-		s.Debug = true
+	if s.Debug == nil {
+		_default := true
+		s.Debug = &_default
 	}
-	if s.Host == "" {
-		s.Host = "localhost"
+	if s.Host == nil {
+		_default := "localhost"
+		s.Host = &_default
 	}
-	if s.LogLevel == "" {
-		s.LogLevel = "info"
+	if s.LogLevel == nil {
+		_default := "info"
+		s.LogLevel = &_default
 	}
-	if s.MaxRetries == 0 {
-		s.MaxRetries = 3
+	if s.MaxRetries == nil {
+		_default := int64(3)
+		s.MaxRetries = &_default
 	}
-	if s.Port == 0 {
-		s.Port = 8080
+	if s.Port == nil {
+		_default := int64(8080)
+		s.Port = &_default
 	}
-	if s.Timeout == 0 {
-		s.Timeout = 30.5
+	if s.Timeout == nil {
+		_default := float64(30.5)
+		s.Timeout = &_default
 	}
 }
 

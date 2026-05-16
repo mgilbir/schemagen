@@ -85,10 +85,10 @@ func (a AddressLocation) Validate() error {
 
 type Address struct {
 	City                 string                     `json:"city"`
-	Location             AddressLocation            `json:"location,omitempty"`
-	State                string                     `json:"state,omitempty"`
+	Location             *AddressLocation           `json:"location,omitempty"`
+	State                *string                    `json:"state,omitempty"`
 	Street               string                     `json:"street"`
-	Zip                  string                     `json:"zip,omitempty"`
+	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -162,8 +162,10 @@ func (a Address) MarshalJSON() ([]byte, error) {
 
 // Validate checks Address against its JSON Schema constraints.
 func (a Address) Validate() error {
-	if err := a.Location.Validate(); err != nil {
-		return fmt.Errorf("location.%w", err)
+	if a.Location != nil {
+		if err := a.Location.Validate(); err != nil {
+			return fmt.Errorf("location.%w", err)
+		}
 	}
 	return nil
 }

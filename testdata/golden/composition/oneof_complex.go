@@ -83,7 +83,7 @@ func (e EmailTarget) Validate() error {
 
 type HTMLContent struct {
 	HTML                 string                     `json:"html"`
-	Subject              string                     `json:"subject,omitempty"`
+	Subject              *string                    `json:"subject,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 

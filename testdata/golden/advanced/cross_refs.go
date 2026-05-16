@@ -88,7 +88,7 @@ func (m Metadata) Validate() error {
 }
 
 type Person struct {
-	Email                string                     `json:"email,omitempty"`
+	Email                *string                    `json:"email,omitempty"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -166,9 +166,9 @@ func (p Person) MarshalJSON() ([]byte, error) {
 // Validate checks Person against its JSON Schema constraints.
 func (p Person) Validate() error {
 	if p._jsonKeys["email"] {
-		if p.Email != "" {
-			if _, err := mail.ParseAddress(p.Email); err != nil {
-				return fmt.Errorf("email: value %q is not a valid email address: %w", p.Email, err)
+		if p.Email != nil && *p.Email != "" {
+			if _, err := mail.ParseAddress(*p.Email); err != nil {
+				return fmt.Errorf("email: value %q is not a valid email address: %w", *p.Email, err)
 			}
 		}
 	}
@@ -176,7 +176,7 @@ func (p Person) Validate() error {
 }
 
 type Section struct {
-	Body                 string                     `json:"body,omitempty"`
+	Body                 *string                    `json:"body,omitempty"`
 	Heading              string                     `json:"heading"`
 	Subsections          *[]Section                 `json:"subsections,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -262,7 +262,7 @@ func (s Section) Validate() error {
 
 // Document - Schema using $defs with multiple cross-references
 type Document struct {
-	Author               Person                     `json:"author,omitempty"`
+	Author               *Person                    `json:"author,omitempty"`
 	Metadata             Metadata                   `json:"metadata"`
 	Sections             []Section                  `json:"sections"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -336,8 +336,10 @@ func (d Document) MarshalJSON() ([]byte, error) {
 
 // Validate checks Document against its JSON Schema constraints.
 func (d Document) Validate() error {
-	if err := d.Author.Validate(); err != nil {
-		return fmt.Errorf("author.%w", err)
+	if d.Author != nil {
+		if err := d.Author.Validate(); err != nil {
+			return fmt.Errorf("author.%w", err)
+		}
 	}
 	if err := d.Metadata.Validate(); err != nil {
 		return fmt.Errorf("metadata.%w", err)

@@ -9,7 +9,7 @@ import (
 
 type DatabaseConfig struct {
 	Host                 string                     `json:"host"`
-	Port                 int64                      `json:"port,omitempty"`
+	Port                 *int64                     `json:"port,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 

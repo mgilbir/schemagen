@@ -13,19 +13,19 @@ import (
 )
 
 type NetworkConfig struct {
-	AdminEmail           string                     `json:"admin_email,omitempty"`
-	ConfigPath           string                     `json:"config_path,omitempty"`
-	CreatedDate          string                     `json:"created_date,omitempty"`
-	DeviceID             string                     `json:"device_id,omitempty"`
-	DocsRef              string                     `json:"docs_ref,omitempty"`
+	AdminEmail           *string                    `json:"admin_email,omitempty"`
+	ConfigPath           *string                    `json:"config_path,omitempty"`
+	CreatedDate          *string                    `json:"created_date,omitempty"`
+	DeviceID             *string                    `json:"device_id,omitempty"`
+	DocsRef              *string                    `json:"docs_ref,omitempty"`
 	GatewayIP            netip.Addr                 `json:"gateway_ip,omitempty"`
-	Homepage             string                     `json:"homepage,omitempty"`
-	Host                 string                     `json:"host,omitempty"`
+	Homepage             *string                    `json:"homepage,omitempty"`
+	Host                 *string                    `json:"host,omitempty"`
 	Name                 string                     `json:"name"`
-	PatternRule          string                     `json:"pattern_rule,omitempty"`
+	PatternRule          *string                    `json:"pattern_rule,omitempty"`
 	PrimaryIP            netip.Addr                 `json:"primary_ip"`
-	StartTime            string                     `json:"start_time,omitempty"`
-	TTL                  string                     `json:"ttl,omitempty"`
+	StartTime            *string                    `json:"start_time,omitempty"`
+	TTL                  *string                    `json:"ttl,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -113,37 +113,37 @@ func (n NetworkConfig) MarshalJSON() ([]byte, error) {
 // Validate checks NetworkConfig against its JSON Schema constraints.
 func (n NetworkConfig) Validate() error {
 	if n._jsonKeys["admin_email"] {
-		if n.AdminEmail != "" {
-			if _, err := mail.ParseAddress(n.AdminEmail); err != nil {
-				return fmt.Errorf("admin_email: value %q is not a valid email address: %w", n.AdminEmail, err)
+		if n.AdminEmail != nil && *n.AdminEmail != "" {
+			if _, err := mail.ParseAddress(*n.AdminEmail); err != nil {
+				return fmt.Errorf("admin_email: value %q is not a valid email address: %w", *n.AdminEmail, err)
 			}
 		}
 	}
 	if n._jsonKeys["config_path"] {
-		if n.ConfigPath != "" {
-			if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString(n.ConfigPath) {
-				return fmt.Errorf("config_path: value %q is not a valid JSON Pointer", n.ConfigPath)
+		if n.ConfigPath != nil && *n.ConfigPath != "" {
+			if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString(*n.ConfigPath) {
+				return fmt.Errorf("config_path: value %q is not a valid JSON Pointer", *n.ConfigPath)
 			}
 		}
 	}
 	if n._jsonKeys["created_date"] {
-		if n.CreatedDate != "" {
-			if _, _err := time.Parse("2006-01-02", n.CreatedDate); _err != nil {
-				return fmt.Errorf("created_date: value %q is not a valid date (YYYY-MM-DD): %w", n.CreatedDate, _err)
+		if n.CreatedDate != nil && *n.CreatedDate != "" {
+			if _, _err := time.Parse("2006-01-02", *n.CreatedDate); _err != nil {
+				return fmt.Errorf("created_date: value %q is not a valid date (YYYY-MM-DD): %w", *n.CreatedDate, _err)
 			}
 		}
 	}
 	if n._jsonKeys["device_id"] {
-		if n.DeviceID != "" {
-			if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(n.DeviceID) {
-				return fmt.Errorf("device_id: value %q is not a valid UUID", n.DeviceID)
+		if n.DeviceID != nil && *n.DeviceID != "" {
+			if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(*n.DeviceID) {
+				return fmt.Errorf("device_id: value %q is not a valid UUID", *n.DeviceID)
 			}
 		}
 	}
 	if n._jsonKeys["docs_ref"] {
-		if n.DocsRef != "" {
-			if _, _err := url.Parse(n.DocsRef); _err != nil {
-				return fmt.Errorf("docs_ref: value %q is not a valid URI reference", n.DocsRef)
+		if n.DocsRef != nil && *n.DocsRef != "" {
+			if _, _err := url.Parse(*n.DocsRef); _err != nil {
+				return fmt.Errorf("docs_ref: value %q is not a valid URI reference", *n.DocsRef)
 			}
 		}
 	}
@@ -153,23 +153,23 @@ func (n NetworkConfig) Validate() error {
 		}
 	}
 	if n._jsonKeys["homepage"] {
-		if n.Homepage != "" {
-			if _u, _err := url.Parse(n.Homepage); _err != nil || _u.Scheme == "" {
-				return fmt.Errorf("homepage: value %q is not a valid URI", n.Homepage)
+		if n.Homepage != nil && *n.Homepage != "" {
+			if _u, _err := url.Parse(*n.Homepage); _err != nil || _u.Scheme == "" {
+				return fmt.Errorf("homepage: value %q is not a valid URI", *n.Homepage)
 			}
 		}
 	}
 	if n._jsonKeys["host"] {
-		if n.Host != "" {
-			if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString(n.Host) {
-				return fmt.Errorf("host: value %q is not a valid hostname", n.Host)
+		if n.Host != nil && *n.Host != "" {
+			if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString(*n.Host) {
+				return fmt.Errorf("host: value %q is not a valid hostname", *n.Host)
 			}
 		}
 	}
 	if n._jsonKeys["pattern_rule"] {
-		if n.PatternRule != "" {
-			if _, _err := regexp.Compile(n.PatternRule); _err != nil {
-				return fmt.Errorf("pattern_rule: value %q is not a valid regex: %w", n.PatternRule, _err)
+		if n.PatternRule != nil && *n.PatternRule != "" {
+			if _, _err := regexp.Compile(*n.PatternRule); _err != nil {
+				return fmt.Errorf("pattern_rule: value %q is not a valid regex: %w", *n.PatternRule, _err)
 			}
 		}
 	}
@@ -177,23 +177,23 @@ func (n NetworkConfig) Validate() error {
 		return fmt.Errorf("primary_ip: value %q is not a valid IPv4 address", n.PrimaryIP)
 	}
 	if n._jsonKeys["start_time"] {
-		if n.StartTime != "" {
+		if n.StartTime != nil && *n.StartTime != "" {
 			_valid := false
 			for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
-				if _, _err := time.Parse(_layout, n.StartTime); _err == nil {
+				if _, _err := time.Parse(_layout, *n.StartTime); _err == nil {
 					_valid = true
 					break
 				}
 			}
 			if !_valid {
-				return fmt.Errorf("start_time: value %q is not a valid time (HH:MM:SS or with offset)", n.StartTime)
+				return fmt.Errorf("start_time: value %q is not a valid time (HH:MM:SS or with offset)", *n.StartTime)
 			}
 		}
 	}
 	if n._jsonKeys["ttl"] {
-		if n.TTL != "" {
-			if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString(n.TTL) {
-				return fmt.Errorf("ttl: value %q is not a valid ISO 8601 duration", n.TTL)
+		if n.TTL != nil && *n.TTL != "" {
+			if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString(*n.TTL) {
+				return fmt.Errorf("ttl: value %q is not a valid ISO 8601 duration", *n.TTL)
 			}
 		}
 	}

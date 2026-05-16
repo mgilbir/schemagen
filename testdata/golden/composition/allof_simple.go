@@ -8,8 +8,8 @@ import (
 )
 
 type Employee struct {
-	Department           string                     `json:"department,omitempty"`
-	Email                string                     `json:"email,omitempty"`
+	Department           *string                    `json:"department,omitempty"`
+	Email                *string                    `json:"email,omitempty"`
 	EmployeeID           string                     `json:"employee_id"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`

@@ -283,8 +283,14 @@ func TestGenerateStrictProperties(t *testing.T) {
 	}
 
 	src := string(content)
-	if strings.Contains(src, "AdditionalProperties") {
-		t.Error("strict-properties should suppress AdditionalProperties field")
+	// With strict-properties, AdditionalProperties is still generated (for round-trip
+	// fidelity) but Validate() should reject them. Verify the overflow map exists
+	// and that the validation rejects unknown keys.
+	if !strings.Contains(src, "AdditionalProperties") {
+		t.Error("strict-properties should still generate AdditionalProperties for round-trip capture")
+	}
+	if !strings.Contains(src, "additional property") {
+		t.Error("strict-properties should make Validate() reject additional properties")
 	}
 }
 

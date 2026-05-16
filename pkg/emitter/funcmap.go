@@ -44,12 +44,36 @@ func FuncMap() template.FuncMap {
 		"isRawMessage":       isRawMessageFunc,
 		"goStringLiteral":    goStringLiteralFunc,
 		"goStringQuote":      goStringQuoteFunc,
+		"ecmaPattern":        ecmaPatternLiteralFunc,
 		"hasManualFields":    hasManualFieldsFunc,
 		"ppTypeValue":        ppTypeValueFunc,
 		"deref":              derefIntFunc,
 		"validationFeatures": validationFeaturesFunc,
 		"stringList":         stringListFunc,
+		"validationValue":    validationValueFunc,
+		"validationNonNil":   validationNonNilFunc,
+		"validationStringSet": validationStringSetFunc,
 	}
+}
+
+func validationValueFunc(recv string, rule generator.ValidationRule) string {
+	field := recv + "." + rule.FieldName
+	if rule.IsPointer {
+		return "*" + field
+	}
+	return field
+}
+
+func validationNonNilFunc(recv string, rule generator.ValidationRule) string {
+	return recv + "." + rule.FieldName + " != nil"
+}
+
+func validationStringSetFunc(recv string, rule generator.ValidationRule) string {
+	value := validationValueFunc(recv, rule)
+	if rule.IsPointer {
+		return validationNonNilFunc(recv, rule) + " && " + value + " != \"\""
+	}
+	return value + " != \"\""
 }
 
 func validationFeaturesFunc(features []generator.ValidationFeature) string {
@@ -161,6 +185,59 @@ func goStringLiteralFunc(s string) string {
 // This is useful in templates where backtick strings can't be used.
 func goStringQuoteFunc(s string) string {
 	return fmt.Sprintf("%q", s)
+}
+
+func ecmaPatternLiteralFunc(v any) string {
+	return fmt.Sprintf("%q", normalizeECMA262Pattern(fmt.Sprintf("%v", v)))
+}
+
+func normalizeECMA262Pattern(pattern string) string {
+	var out strings.Builder
+	out.Grow(len(pattern))
+	inClass := false
+
+	for i := 0; i < len(pattern); i++ {
+		ch := pattern[i]
+		if ch == '\\' {
+			if i+1 >= len(pattern) {
+				out.WriteByte(ch)
+				continue
+			}
+			next := pattern[i+1]
+			if inClass && shouldHexEscapeClassIdentity(next) {
+				out.WriteString(fmt.Sprintf("\\x%02x", next))
+				i++
+				continue
+			}
+			out.WriteByte(ch)
+			out.WriteByte(next)
+			i++
+			continue
+		}
+
+		if ch == '[' && !inClass {
+			inClass = true
+		} else if ch == ']' && inClass && !isLiteralClassClosingBracket(pattern, i) {
+			inClass = false
+		}
+		out.WriteByte(ch)
+	}
+
+	return out.String()
+}
+
+func isLiteralClassClosingBracket(pattern string, idx int) bool {
+	return idx > 0 && idx+1 < len(pattern) && pattern[idx-1] == '['
+}
+
+func shouldHexEscapeClassIdentity(ch byte) bool {
+	if ch < 0x21 || ch > 0x7e {
+		return false
+	}
+	if strings.ContainsRune(`bBdDsSwWpPxuc0123456789fnrtv^$\.*+?()[]{}|/`, rune(ch)) {
+		return false
+	}
+	return true
 }
 
 // hasManualFieldsFunc returns true if any FieldDef in the slice has ManualJSON set.

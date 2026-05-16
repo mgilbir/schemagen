@@ -167,7 +167,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- if $struct.HasPatternProperties}}
 		patternRegexps := []*ecma262.Regexp{
 			{{- range $struct.PatternProperties}}
-			ecma262.MustCompile({{printf "%q" .Pattern}}, ecmaflags.Unicode),
+			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		{{- end}}

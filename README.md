@@ -51,7 +51,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--output-dir` | `-o` | `.` | Output directory for generated files |
 | `--package` | `-p` | `generated` | Go package name for generated code |
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
-| `--strict-properties` | | `false` | Treat absent `additionalProperties` as false (no overflow map) |
+| `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
@@ -84,6 +84,10 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 `schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
 
 Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
+
+### Regular Expressions
+
+JSON Schema `pattern`, `patternProperties`, and `propertyNames.pattern` use ECMA-262 regular expression semantics. Generated code uses `github.com/mgilbir/goecma262` for those checks. To avoid false validation failures from harmless identity escapes inside character classes, `schemagen` normalizes those escapes when emitting generated code. For example, `^[A-Za-z0-9_\-\.\:]+$` is emitted with `\-` and `\:` rewritten to hex escapes, preserving the intended literal `-` and `:` matches.
 
 ## How It Works
 

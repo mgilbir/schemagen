@@ -16,47 +16,47 @@ func defaultToGoLiteral(defaultVal any, goType GoType) string {
 	typeName := goType.GoTypeName()
 
 	switch typeName {
-	case "string":
+	case "string", "*string":
 		if s, ok := defaultVal.(string); ok {
-			if s == "" {
-				return "" // zero value, no-op
+			if typeName == "string" && s == "" {
+				return "" // zero value, no-op (for non-pointer)
 			}
 			return strconv.Quote(s)
 		}
-	case "int64":
+	case "int64", "*int64":
 		switch v := defaultVal.(type) {
 		case float64:
 			// JSON numbers are always float64 from json.Unmarshal.
 			intVal := int64(v)
-			if intVal == 0 {
-				return "" // zero value, no-op
+			if typeName == "int64" && intVal == 0 {
+				return "" // zero value, no-op (for non-pointer)
 			}
 			return fmt.Sprintf("%d", intVal)
 		case int:
-			if v == 0 {
+			if typeName == "int64" && v == 0 {
 				return ""
 			}
 			return fmt.Sprintf("%d", v)
 		}
-	case "float64":
+	case "float64", "*float64":
 		switch v := defaultVal.(type) {
 		case float64:
-			if v == 0 {
-				return "" // zero value, no-op
+			if typeName == "float64" && v == 0 {
+				return "" // zero value, no-op (for non-pointer)
 			}
 			return strconv.FormatFloat(v, 'f', -1, 64)
 		case int:
-			if v == 0 {
+			if typeName == "float64" && v == 0 {
 				return ""
 			}
 			return fmt.Sprintf("%d.0", v)
 		}
-	case "bool":
+	case "bool", "*bool":
 		if b, ok := defaultVal.(bool); ok {
-			if !b {
-				return "" // zero value (false), no-op
+			if typeName == "bool" && !b {
+				return "" // zero value (false), no-op (for non-pointer)
 			}
-			return "true"
+			return strconv.FormatBool(b)
 		}
 	}
 

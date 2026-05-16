@@ -483,6 +483,10 @@ import (
 	"os"
 )
 
+func intPtr(v int64) *int64       { return &v }
+func floatPtr(v float64) *float64 { return &v }
+func stringPtr(v string) *string  { return &v }
+
 func main() {
 	data, err := os.ReadFile("fixture.json")
 	if err != nil {
@@ -496,13 +500,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Before SetDefaults: optional fields should be zero values
-	if obj.Host != "" {
-		fmt.Fprintf(os.Stderr, "before SetDefaults: Host should be empty, got %%q\n", obj.Host)
+	// Before SetDefaults: optional fields should be nil (pointer types) or zero
+	if obj.Host != nil {
+		fmt.Fprintf(os.Stderr, "before SetDefaults: Host should be nil, got %%q\n", *obj.Host)
 		os.Exit(1)
 	}
-	if obj.Port != 0 {
-		fmt.Fprintf(os.Stderr, "before SetDefaults: Port should be 0, got %%d\n", obj.Port)
+	if obj.Port != nil {
+		fmt.Fprintf(os.Stderr, "before SetDefaults: Port should be nil, got %%v\n", *obj.Port)
 		os.Exit(1)
 	}
 
@@ -514,23 +518,23 @@ func main() {
 	if obj.Name != "myserver" {
 		errs = append(errs, fmt.Sprintf("Name: got %%q, want %%q", obj.Name, "myserver"))
 	}
-	if obj.Host != "localhost" {
-		errs = append(errs, fmt.Sprintf("Host: got %%q, want %%q", obj.Host, "localhost"))
+	if obj.Host == nil || *obj.Host != "localhost" {
+		errs = append(errs, fmt.Sprintf("Host: got %%v, want localhost", obj.Host))
 	}
-	if obj.Port != 8080 {
-		errs = append(errs, fmt.Sprintf("Port: got %%d, want %%d", obj.Port, 8080))
+	if obj.Port == nil || *obj.Port != 8080 {
+		errs = append(errs, fmt.Sprintf("Port: got %%v, want 8080", obj.Port))
 	}
-	if obj.Timeout != 30.5 {
-		errs = append(errs, fmt.Sprintf("Timeout: got %%f, want %%f", obj.Timeout, 30.5))
+	if obj.Timeout == nil || *obj.Timeout != 30.5 {
+		errs = append(errs, fmt.Sprintf("Timeout: got %%v, want 30.5", obj.Timeout))
 	}
-	if obj.Debug != true {
-		errs = append(errs, fmt.Sprintf("Debug: got %%v, want %%v", obj.Debug, true))
+	if obj.Debug == nil || *obj.Debug != true {
+		errs = append(errs, fmt.Sprintf("Debug: got %%v, want true", obj.Debug))
 	}
-	if obj.LogLevel != "info" {
-		errs = append(errs, fmt.Sprintf("LogLevel: got %%q, want %%q", obj.LogLevel, "info"))
+	if obj.LogLevel == nil || *obj.LogLevel != "info" {
+		errs = append(errs, fmt.Sprintf("LogLevel: got %%v, want info", obj.LogLevel))
 	}
-	if obj.MaxRetries != 3 {
-		errs = append(errs, fmt.Sprintf("MaxRetries: got %%d, want %%d", obj.MaxRetries, 3))
+	if obj.MaxRetries == nil || *obj.MaxRetries != 3 {
+		errs = append(errs, fmt.Sprintf("MaxRetries: got %%v, want 3", obj.MaxRetries))
 	}
 
 	if len(errs) > 0 {
@@ -541,13 +545,13 @@ func main() {
 	}
 
 	// Also verify that SetDefaults does NOT overwrite explicitly set values
-	obj2 := %s{Name: "test", Host: "custom.host", Port: 9999}
+	obj2 := %s{Name: "test", Host: stringPtr("custom.host"), Port: intPtr(9999)}
 	obj2.SetDefaults()
-	if obj2.Host != "custom.host" {
-		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Host: got %%q, want %%q", obj2.Host, "custom.host"))
+	if obj2.Host == nil || *obj2.Host != "custom.host" {
+		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Host: got %%v, want custom.host", obj2.Host))
 	}
-	if obj2.Port != 9999 {
-		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Port: got %%d, want %%d", obj2.Port, 9999))
+	if obj2.Port == nil || *obj2.Port != 9999 {
+		errs = append(errs, fmt.Sprintf("SetDefaults overwrote Port: got %%v, want 9999", obj2.Port))
 	}
 
 	if len(errs) > 0 {

@@ -13,7 +13,7 @@ import (
 type CompanyAddress struct {
 	City                 string                     `json:"city"`
 	Street               string                     `json:"street"`
-	Zip                  string                     `json:"zip,omitempty"`
+	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -97,15 +97,17 @@ func (c CompanyAddress) Validate() error {
 		return fmt.Errorf("street: length %d is less than minimum 1", utf8.RuneCountInString(c.Street))
 	}
 	if c._jsonKeys["zip"] {
-		if matched, _ := ecma262.MatchString("^[0-9]{5}$", ecmaflags.Unicode, c.Zip); !matched {
-			return fmt.Errorf("zip: value %q does not match pattern %s", c.Zip, "^[0-9]{5}$")
+		if c.Zip != nil {
+			if matched, _ := ecma262.MatchString("^[0-9]{5}$", ecmaflags.Unicode, *c.Zip); !matched {
+				return fmt.Errorf("zip: value %q does not match pattern %s", *c.Zip, "^[0-9]{5}$")
+			}
 		}
 	}
 	return nil
 }
 
 type CompanyEmployeesItem struct {
-	Age                  int64                      `json:"age,omitempty"`
+	Age                  *int64                     `json:"age,omitempty"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -183,13 +185,13 @@ func (c CompanyEmployeesItem) MarshalJSON() ([]byte, error) {
 // Validate checks CompanyEmployeesItem against its JSON Schema constraints.
 func (c CompanyEmployeesItem) Validate() error {
 	if c._jsonKeys["age"] {
-		if float64(c.Age) < 18 {
-			return fmt.Errorf("age: value %v is less than minimum 18", c.Age)
+		if c.Age != nil && float64(*c.Age) < 18 {
+			return fmt.Errorf("age: value %v is less than minimum 18", *c.Age)
 		}
 	}
 	if c._jsonKeys["age"] {
-		if float64(c.Age) > 130 {
-			return fmt.Errorf("age: value %v exceeds maximum 130", c.Age)
+		if c.Age != nil && float64(*c.Age) > 130 {
+			return fmt.Errorf("age: value %v exceeds maximum 130", *c.Age)
 		}
 	}
 	if utf8.RuneCountInString(c.Name) < 1 {

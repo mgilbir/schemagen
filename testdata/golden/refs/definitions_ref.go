@@ -9,7 +9,7 @@ import (
 
 type Member struct {
 	Name                 string                     `json:"name"`
-	Role                 string                     `json:"role,omitempty"`
+	Role                 *string                    `json:"role,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 

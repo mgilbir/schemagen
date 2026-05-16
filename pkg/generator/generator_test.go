@@ -64,6 +64,52 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
+func TestOptionalStringWithOmitEmptyUsesPointer(t *testing.T) {
+	input := `{
+		"title": "Profile",
+		"type": "object",
+		"properties": {
+			"name": {"type":"string"},
+			"description": {"type":"string"}
+		},
+		"required": ["name"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var profile *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Profile" {
+			profile = d
+			break
+		}
+	}
+	if profile == nil {
+		t.Fatalf("expected Profile struct")
+	}
+
+	fields := make(map[string]FieldDef)
+	for _, f := range profile.Fields {
+		fields[f.JSONName] = f
+	}
+	if got := fields["description"].Type.GoTypeName(); got != "*string" {
+		t.Fatalf("optional description type = %q, want *string", got)
+	}
+	if got := fields["name"].Type.GoTypeName(); got != "string" {
+		t.Fatalf("required name type = %q, want string", got)
+	}
+}
+
 func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
 	input := `{
 		"disallow": [
@@ -584,6 +630,50 @@ func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
 	}
 }
 
+func TestOptionalRefToPrimitiveAliasDoesNotBecomePointer(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"nickname": {"$ref": "#/$defs/name"}
+		},
+		"$defs": {
+			"name": {"type": "string"}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012, OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected Root StructDef")
+	}
+	for _, field := range root.Fields {
+		if field.JSONName == "nickname" {
+			if field.Type.GoTypeName() != "Name" {
+				t.Fatalf("nickname type = %q, want Name", field.Type.GoTypeName())
+			}
+			return
+		}
+	}
+	t.Fatalf("expected nickname field")
+}
+
 func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
 	input := `{"type":"integer"}`
 
@@ -1015,13 +1105,15 @@ func TestGenerate_RefResolution(t *testing.T) {
 	}
 
 	billingField := fieldMap["billing_address"]
-	if billingField.Type.GoTypeName() != "Address" {
-		t.Errorf("billing_address type = %q, want %q", billingField.Type.GoTypeName(), "Address")
+	if billingField.Type.GoTypeName() != "*Address" {
+		t.Errorf("billing_address type = %q, want %q", billingField.Type.GoTypeName(), "*Address")
 	}
 
-	// Should be a NamedType
-	if _, ok := billingField.Type.(*NamedType); !ok {
-		t.Errorf("billing_address type should be *NamedType, got %T", billingField.Type)
+	// Should be a PointerType wrapping a NamedType
+	if pt, ok := billingField.Type.(*PointerType); !ok {
+		t.Errorf("billing_address type should be *PointerType, got %T", billingField.Type)
+	} else if _, ok := pt.Inner.(*NamedType); !ok {
+		t.Errorf("billing_address inner type should be *NamedType, got %T", pt.Inner)
 	}
 }
 
@@ -1074,8 +1166,8 @@ func TestGenerate_NestedObject(t *testing.T) {
 		}
 		for _, f := range sd.Fields {
 			if f.JSONName == "address" {
-				if f.Type.GoTypeName() != "CompanyAddress" {
-					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "CompanyAddress")
+				if f.Type.GoTypeName() != "*CompanyAddress" {
+					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "*CompanyAddress")
 				}
 			}
 		}
