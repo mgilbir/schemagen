@@ -499,6 +499,61 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
+	{{- if .HasUnevaluatedItems}}
+	// unevaluatedItems validation
+	{
+		evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
+		allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
+		if !allEvaluated && len({{$recv}}) > evaluatedCount {
+			{{- if .UnevaluatedItems.IsForbidden}}
+			return fmt.Errorf("unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len({{$recv}})-evaluatedCount, evaluatedCount)
+			{{- else}}
+			for _ui := evaluatedCount; _ui < len({{$recv}}); _ui++ {
+				_uiElem := any({{$recv}}[_ui])
+				_ = _uiElem
+				{{- if .UnevaluatedItems.ValueType}}
+				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
+				if _uiMarshalErr != nil {
+					return fmt.Errorf("unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
+				}
+				{{- if eq .UnevaluatedItems.ValueType "string"}}
+				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "integer"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "number"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
+				_uiString := string(_uiBytes)
+				if _uiString != "true" && _uiString != "false" {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "object"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an object", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "array"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an array", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "null"}}
+				if string(_uiBytes) != "null" {
+					return fmt.Errorf("unevaluatedItems[%d]: must be null", _ui)
+				}
+				{{- end}}
+				{{- end}}
+			}
+			{{- end}}
+		}
+	}
+	{{- end}}
 	return nil
 }
 {{- end}}

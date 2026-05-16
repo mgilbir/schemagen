@@ -86,6 +86,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if {{$recv}}._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	{{- if .ValidateAs}}
+	if _err := ({{.ValidateAs}}({{$recv}}._value)).Validate(); _err != nil {
+		return fmt.Errorf("value: %w", _err)
+	}
+	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}}._value)) < {{.Value}} {

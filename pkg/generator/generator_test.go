@@ -198,6 +198,109 @@ func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
 	}
 }
 
+func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/derived",
+		"$ref": "./baseSchema",
+		"$defs": {
+			"derived": {
+				"$dynamicAnchor": "addons",
+				"prefixItems": [true, {"type":"string"}]
+			},
+			"baseSchema": {
+				"$id": "./baseSchema",
+				"unevaluatedItems": false,
+				"type": "array",
+				"prefixItems": [{"type":"string"}],
+				"$dynamicRef": "#addons",
+				"$defs": {
+					"defaultAddons": {"$dynamicAnchor": "addons"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var base *AliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == "BaseSchema" {
+			base = d
+			break
+		}
+	}
+	if base == nil {
+		t.Fatalf("expected BaseSchema AliasDef")
+	}
+	if base.UnevaluatedItems == nil || !base.UnevaluatedItems.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedItems on BaseSchema, got %#v", base.UnevaluatedItems)
+	}
+	if base.UnevaluatedItems.EvaluatedCount != 2 {
+		t.Fatalf("evaluated count = %d, want 2", base.UnevaluatedItems.EvaluatedCount)
+	}
+}
+
+func TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"$id": "https://example.com/extended-tree",
+		"$recursiveAnchor": true,
+		"$ref": "./tree",
+		"items": [true, true, {"type":"string"}],
+		"$defs": {
+			"tree": {
+				"$id": "./tree",
+				"$recursiveAnchor": true,
+				"type": "array",
+				"items": [
+					{"type":"number"},
+					{"unevaluatedItems": false, "$recursiveRef": "#"}
+				]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var item *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok && d.Name == "TreeItem1" {
+			item = d
+			break
+		}
+	}
+	if item == nil {
+		t.Fatalf("expected TreeItem1 InferredAliasDef")
+	}
+	if item.UnevaluatedItems == nil || !item.UnevaluatedItems.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedItems on TreeItem1, got %#v", item.UnevaluatedItems)
+	}
+	if item.UnevaluatedItems.EvaluatedCount != 3 {
+		t.Fatalf("evaluated count = %d, want 3", item.UnevaluatedItems.EvaluatedCount)
+	}
+}
+
 func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
 	input := `{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -247,6 +350,60 @@ func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
 	}
 	if !containsString(base.UnevaluatedProperties.EvaluatedNames, "foo") || !containsString(base.UnevaluatedProperties.EvaluatedNames, "bar") {
 		t.Fatalf("evaluated names = %#v, want foo and bar", base.UnevaluatedProperties.EvaluatedNames)
+	}
+}
+
+func TestPropertyRecursiveRefWithUnevaluatedPropertiesGeneratesWrapper(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"$id": "https://example.com/extended-tree",
+		"$recursiveAnchor": true,
+		"$ref": "./tree",
+		"properties": {"name": {"type":"string"}},
+		"$defs": {
+			"tree": {
+				"$id": "./tree",
+				"$recursiveAnchor": true,
+				"type": "object",
+				"properties": {
+					"node": true,
+					"branches": {
+						"unevaluatedProperties": false,
+						"$recursiveRef": "#"
+					}
+				},
+				"required": ["node"]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var wrapper *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "TreeBranches" {
+			wrapper = d
+			break
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected TreeBranches StructDef")
+	}
+	if wrapper.UnevaluatedProperties == nil || !wrapper.UnevaluatedProperties.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedProperties on wrapper, got %#v", wrapper.UnevaluatedProperties)
+	}
+	if !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "node") || !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "name") {
+		t.Fatalf("evaluated names = %#v, want node and name", wrapper.UnevaluatedProperties.EvaluatedNames)
 	}
 }
 

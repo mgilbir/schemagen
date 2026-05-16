@@ -449,6 +449,20 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
 			}
+			if ad.HasUnevaluatedItems() {
+				needsFmt = true
+				if ad.UnevaluatedItems.ContainsEvaluates || ad.UnevaluatedItems.ValueType != "" || len(ad.UnevaluatedItems.Checks) > 0 {
+					needsJSON = true
+				}
+				if ad.UnevaluatedItems.ValueType == "integer" {
+					needsMath = true
+				}
+				for _, chk := range ad.UnevaluatedItems.Checks {
+					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+				}
+			}
 			if len(ad.Validations) > 0 {
 				needsFmt = true
 				for _, v := range ad.Validations {
@@ -569,6 +583,9 @@ func (g *Generator) addRequiredImports() {
 		if iad, ok := td.(*InferredAliasDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
 			needsFmt = true  // Validate() errors, String()
+			if iad.ValidateAs != "" {
+				needsFmt = true
+			}
 			for _, v := range iad.Validations {
 				if v.RuleType == "minLength" || v.RuleType == "maxLength" {
 					needsUTF8 = true
@@ -1014,7 +1031,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Ref only → alias (handles $ref, $recursiveRef)
-	if effRef := s.EffectiveRef(); effRef != "" {
+	if effRef := s.EffectiveRef(); effRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
 			pushed := g.pushDynamicScope(resolved)
@@ -1054,7 +1071,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// JSON pointer fragments (like "#/$defs/foo") resolve identically to $ref.
 	// URI-based $dynamicRef (like "extended#meta") resolves the URI part first, then
 	// checks the bookend $dynamicAnchor and walks the dynamic scope.
-	if s.DynamicRef != "" {
+	if s.DynamicRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
 			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
@@ -1235,24 +1252,27 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			containsDef, minContains, maxContains := extractContainsDef(s)
+			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
 				tupleItems = nil
 				containsDef = nil
 				minContains = nil
 				maxContains = nil
+				unevalItems = nil
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-				Name:           name,
-				Underlying:     goType,
-				Description:    s.Description,
-				Validations:    rules,
-				AnyOfVariants:  anyOfVariants,
-				TupleItems:     tupleItems,
-				Contains:       containsDef,
-				MinContains:    minContains,
-				MaxContains:    maxContains,
-				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(s),
-				NeedsNullCheck: !schemaAllowsNull(s),
+				Name:             name,
+				Underlying:       goType,
+				Description:      s.Description,
+				Validations:      rules,
+				AnyOfVariants:    anyOfVariants,
+				TupleItems:       tupleItems,
+				Contains:         containsDef,
+				MinContains:      minContains,
+				MaxContains:      maxContains,
+				UnevaluatedItems: unevalItems,
+				StrictInteger:    primaryType == "integer" && g.requiresStrictIntegerToken(s),
+				NeedsNullCheck:   !schemaAllowsNull(s),
 			})
 		}
 		return nil
@@ -1952,6 +1972,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			// Array type — extract item-level constraints and generate InferredAliasDef
 			// so that per-element validation works (items, prefixItems, contains, etc.).
 			goType := g.resolveType(merged, name)
+			validateAs := g.firstAllOfArrayAliasValidateAs(s.AllOf)
 			var rules []ValidationRule
 			var anyOfVariants [][]ValidationRule
 			var oneOfVariants [][]ValidationRule
@@ -1993,6 +2014,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Validations:          rules,
 				AnyOfVariants:        anyOfVariants,
 				OneOfVariants:        oneOfVariants,
+				ValidateAs:           validateAs,
 				NeedsNullCheck:       !schemaAllowsNull(merged),
 				ItemsFalse:           itemsFalse,
 				ItemsType:            itemsType,
@@ -2799,6 +2821,13 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// $ref / $recursiveRef / $dynamicRef
 	if effRef := s.EffectiveRef(); effRef != "" {
+		if !g.refOverridesSiblingsForSchema(s) && hasRefStructuralSiblings(s) {
+			nestedName := parentName + fieldName
+			if err := g.generateTypeDef(nestedName, s); err != nil {
+				return nil, err
+			}
+			return &NamedType{Name: nestedName}, nil
+		}
 		// Self-references (e.g. $ref: "#" or $ref matching root $id).
 		if g.isSelfRefInContext(effRef, s) {
 			// Only generate *Root if the root schema is explicitly an object type
@@ -2811,7 +2840,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
-		refSchema := g.resolveRefInContext(effRef, s)
+		refSchema := g.resolveEffectiveRefSchema(s)
 		if refSchema != nil {
 			pushed := g.pushDynamicScope(refSchema)
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
@@ -2881,7 +2910,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	}
 
 	// $ref / $recursiveRef
-	if effRef := s.EffectiveRef(); effRef != "" {
+	if effRef := s.EffectiveRef(); effRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		if g.isSelfRefInContext(effRef, s) {
 			if g.rootIsObjectType() {
 				return &PointerType{Inner: &NamedType{Name: g.rootTypeName}}
@@ -2910,7 +2939,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	}
 
 	// $dynamicRef — resolve via dynamic scope chain.
-	if s.DynamicRef != "" {
+	if s.DynamicRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
 			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
@@ -3203,6 +3232,38 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 		}
 	}
 	return nil
+}
+
+func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
+	if s == nil {
+		return nil
+	}
+	if s.RecursiveRef != "" {
+		if resolved := g.resolveRecursiveRef(s.RecursiveRef, s); resolved != nil {
+			return resolved
+		}
+	}
+	if effRef := s.EffectiveRef(); effRef != "" {
+		return g.resolveRefInContext(effRef, s)
+	}
+	return nil
+}
+
+func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
+	resolved := g.resolveRefInContext(ref, ctx)
+	if resolved == nil {
+		return nil
+	}
+	if ref != "#" || ctx == nil || ctx.DocumentRoot == nil || ctx.DocumentRoot.RecursiveAnchor == nil || !*ctx.DocumentRoot.RecursiveAnchor {
+		return resolved
+	}
+	for i := len(g.dynamicScope) - 1; i >= 0; i-- {
+		scope := g.dynamicScope[i]
+		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
+			return scope
+		}
+	}
+	return resolved
 }
 
 // registerRemoteSchema computes base URIs for a remotely-resolved schema and
@@ -3851,6 +3912,14 @@ func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
 }
 
+func hasRefStructuralSiblings(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	return hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
+		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil
+}
+
 // primarySchemaType returns the primary (first non-null) type from the type list.
 // schemaAllowsNull returns true if the schema's type list includes "null"
 // or if there is no explicit type (which means any type is allowed).
@@ -4105,10 +4174,21 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 	// evaluation (added as known limitation / known-failure).
 
 	// 6. Walk applicators: allOf, $ref, anyOf, oneOf, if/then/else
-	if s.Ref != "" {
-		refSchema := g.resolveRefInContext(s.Ref, s)
-		if refSchema != nil {
+	if s.Ref != "" || s.RecursiveRef != "" {
+		if refSchema := g.resolveEffectiveRefSchema(s); refSchema != nil {
 			evalCount, allEval := g.countEvaluatedItemsInSchema(refSchema)
+			if allEval {
+				def.AllEvaluated = true
+				return
+			}
+			if evalCount > def.EvaluatedCount {
+				def.EvaluatedCount = evalCount
+			}
+		}
+	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
 			if allEval {
 				def.AllEvaluated = true
 				return
@@ -4121,8 +4201,13 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if sub.Ref != "" {
-			if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+		if sub.Ref != "" || sub.RecursiveRef != "" {
+			if r := g.resolveEffectiveRefSchema(sub); r != nil {
+				resolved = r
+			}
+		}
+		if sub.DynamicRef != "" {
+			if r := g.resolveDynamicRef(sub.DynamicRef, sub); r != nil {
 				resolved = r
 			}
 		}
@@ -4141,8 +4226,13 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 		ce := UnevalItemsConditionalEval{Kind: "anyOf"}
 		for _, sub := range s.AnyOf {
 			resolved := sub
-			if sub.Ref != "" {
-				if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+			if sub.Ref != "" || sub.RecursiveRef != "" {
+				if r := g.resolveEffectiveRefSchema(sub); r != nil {
+					resolved = r
+				}
+			}
+			if sub.DynamicRef != "" {
+				if r := g.resolveDynamicRef(sub.DynamicRef, sub); r != nil {
 					resolved = r
 				}
 			}
@@ -4159,8 +4249,13 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 		ce := UnevalItemsConditionalEval{Kind: "oneOf"}
 		for _, sub := range s.OneOf {
 			resolved := sub
-			if sub.Ref != "" {
-				if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+			if sub.Ref != "" || sub.RecursiveRef != "" {
+				if r := g.resolveEffectiveRefSchema(sub); r != nil {
+					resolved = r
+				}
+			}
+			if sub.DynamicRef != "" {
+				if r := g.resolveDynamicRef(sub.DynamicRef, sub); r != nil {
 					resolved = r
 				}
 			}
@@ -4184,8 +4279,13 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 		ce.IfItemChecks = g.extractIfItemConstChecks(s.If)
 		if s.Then != nil {
 			resolved := s.Then
-			if s.Then.Ref != "" {
-				if r := g.resolveRefInContext(s.Then.Ref, s.Then); r != nil {
+			if s.Then.Ref != "" || s.Then.RecursiveRef != "" {
+				if r := g.resolveEffectiveRefSchema(s.Then); r != nil {
+					resolved = r
+				}
+			}
+			if s.Then.DynamicRef != "" {
+				if r := g.resolveDynamicRef(s.Then.DynamicRef, s.Then); r != nil {
 					resolved = r
 				}
 			}
@@ -4195,8 +4295,13 @@ func (g *Generator) collectEvaluatedItems(s *schema.Schema, def *UnevaluatedItem
 		}
 		if s.Else != nil {
 			resolved := s.Else
-			if s.Else.Ref != "" {
-				if r := g.resolveRefInContext(s.Else.Ref, s.Else); r != nil {
+			if s.Else.Ref != "" || s.Else.RecursiveRef != "" {
+				if r := g.resolveEffectiveRefSchema(s.Else); r != nil {
+					resolved = r
+				}
+			}
+			if s.Else.DynamicRef != "" {
+				if r := g.resolveDynamicRef(s.Else.DynamicRef, s.Else); r != nil {
 					resolved = r
 				}
 			}
@@ -4284,10 +4389,20 @@ func (g *Generator) countEvaluatedItemsInSchema(s *schema.Schema) (int, bool) {
 	// Recurse into allOf/$ref
 	maxEval := tupleLen
 
-	if s.Ref != "" {
-		refSchema := g.resolveRefInContext(s.Ref, s)
-		if refSchema != nil {
+	if s.Ref != "" || s.RecursiveRef != "" {
+		if refSchema := g.resolveEffectiveRefSchema(s); refSchema != nil {
 			evalCount, allEval := g.countEvaluatedItemsInSchema(refSchema)
+			if allEval {
+				return 0, true
+			}
+			if evalCount > maxEval {
+				maxEval = evalCount
+			}
+		}
+	}
+	if s.DynamicRef != "" {
+		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
+			evalCount, allEval := g.countEvaluatedItemsInSchema(resolved)
 			if allEval {
 				return 0, true
 			}
@@ -4299,8 +4414,13 @@ func (g *Generator) countEvaluatedItemsInSchema(s *schema.Schema) (int, bool) {
 
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if sub.Ref != "" {
-			if r := g.resolveRefInContext(sub.Ref, sub); r != nil {
+		if sub.Ref != "" || sub.RecursiveRef != "" {
+			if r := g.resolveEffectiveRefSchema(sub); r != nil {
+				resolved = r
+			}
+		}
+		if sub.DynamicRef != "" {
+			if r := g.resolveDynamicRef(sub.DynamicRef, sub); r != nil {
 				resolved = r
 			}
 		}
@@ -4561,6 +4681,12 @@ func (g *Generator) populateAliasDelegates() {
 	}
 
 	for _, td := range g.output.TypeDefs {
+		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
+			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
+				ia.ValidateAs = name
+			}
+		}
+
 		ad, ok := td.(*AliasDef)
 		if !ok || !ad.CanHaveMethods() {
 			continue
@@ -4579,6 +4705,47 @@ func (g *Generator) populateAliasDelegates() {
 			ad.MarshalAs = name
 		}
 	}
+}
+
+func (g *Generator) firstAllOfArrayAliasValidateAs(allOf []*schema.Schema) string {
+	for _, sub := range allOf {
+		if sub == nil {
+			continue
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if resolved := g.resolveEffectiveRefSchema(sub); resolved != nil {
+				name := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
+				if !g.generated[name] {
+					_ = g.generateTypeDef(name, resolved)
+				}
+				if g.isArrayAlias(name) {
+					return name
+				}
+			}
+		}
+		if sub.DynamicRef != "" {
+			if resolved := g.resolveDynamicRef(sub.DynamicRef, sub); resolved != nil {
+				name := g.goNameForResolvedRef(sub.DynamicRef, resolved, refToGoName(sub.DynamicRef))
+				if !g.generated[name] {
+					_ = g.generateTypeDef(name, resolved)
+				}
+				if g.isArrayAlias(name) {
+					return name
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (g *Generator) isArrayAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == name {
+			_, ok := d.Underlying.(*ArrayType)
+			return ok
+		}
+	}
+	return false
 }
 
 // namedTypeName extracts the type name from a GoType if it's a NamedType
@@ -5848,7 +6015,7 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 
 	// $ref on the root — evaluated properties from the referenced schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		if resolved := g.resolveEffectiveRefSchema(s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 		}
 	}
@@ -6074,7 +6241,7 @@ func (g *Generator) collectEvaluatedFromNested(s *schema.Schema, names map[strin
 
 	// $ref — evaluated properties from the referenced schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		if resolved := g.resolveEffectiveRefSchema(s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
 		}
 	}
@@ -6165,7 +6332,7 @@ func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schem
 
 	// $ref — evaluated properties from the referenced schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		if resolved := g.resolveEffectiveRefSchema(s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, allEvaluated)
 		}
 	}
@@ -6496,7 +6663,7 @@ func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
 
 	// $ref on this sub-schema.
 	if effRef := s.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		if resolved := g.resolveEffectiveRefSchema(s); resolved != nil {
 			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 		}
 	}
@@ -6573,6 +6740,15 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 		// Resolve $ref chain to find the target schema and its generated type name.
 		resolved := posSch
 		refName := ""
+		if !g.refOverridesSiblingsForSchema(posSch) && hasRefStructuralSiblings(posSch) && (posSch.EffectiveRef() != "" || posSch.DynamicRef != "") {
+			posName := fmt.Sprintf("%sItem%d", parentName, i)
+			_ = g.generateTypeDef(posName, posSch)
+			if g.generated[posName] {
+				tupleItems = append(tupleItems, TupleItemDef{TypeName: posName})
+				hasValidatable = true
+				continue
+			}
+		}
 		if ref := posSch.EffectiveRef(); ref != "" {
 			if r := g.resolveRefInContext(ref, posSch); r != nil {
 				resolved = r
