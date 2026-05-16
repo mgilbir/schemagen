@@ -26,13 +26,13 @@ var knownParseFailures = map[string]string{}
 //   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (0)
 //   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (2)
-//   - custom metaschema vocabulary not supported (2)
+//   - custom metaschema vocabulary not supported (0)
 //   - ($dynamicRef with required — FIXED via dynamic scope chain) (0)
-//   - draft3/4 zeroTerminatedFloats: 1.0 accepted as integer by draft-agnostic unmarshal (2)
+//   - (draft3/4 zeroTerminatedFloats: FIXED via draft-aware strict integer tokens) (0)
 //   - unevaluatedProperties: $dynamicRef/$recursiveRef not implemented (2)
 //   - ($dynamicRef: static resolution picks wrong constraint — FIXED via dynamic scope chain) (0)
-//   - cross-draft validation not supported (1)
-//   - over-strict validation: valid data rejected (1)
+//   - cross-draft validation not supported (0)
+//   - over-strict validation: valid data rejected (0)
 //   - ($dynamicRef: incorrect parent schema: FIXED via alias unmarshal/validation delegation) (0)
 //   - (unevaluatedProperties cousin isolation: FIXED via per-branch annotation tracking) (24)
 //   - (unevaluatedProperties dependentSchemas: FIXED via runtime conditional evaluation) (4)
@@ -44,10 +44,7 @@ var knownValidationFailures = map[string]string{
 
 	// (float-overflow: FIXED via BigIntSupport for optional/float-overflow test files)
 
-	// zeroTerminatedFloats optional test — draft3/4 treat 1.0 as non-integer, but our json.Number-based
-	// UnmarshalJSON accepts it (correct for draft6+). Generated code is draft-agnostic.
-	"draft3/optional/zeroTerminatedFloats/some languages do not distinguish between different types of numeric value/a float is not an integer even without fractional part": "draft3/4: 1.0 treated as integer by draft-agnostic json.Number unmarshal",
-	"draft4/optional/zeroTerminatedFloats/some languages do not distinguish between different types of numeric value/a float is not an integer even without fractional part": "draft3/4: 1.0 treated as integer by draft-agnostic json.Number unmarshal",
+	// (zeroTerminatedFloats optional test — FIXED via draft-aware strict integer tokens)
 
 	// (patternProperties sub-schema validation — FIXED via ppMinItems/ppMaxItems/ppMinLength/ppMaxLength/ppPattern)
 	// (additionalProperty invalidates others — FIXED via schema validation on overflow map)
@@ -171,9 +168,9 @@ var knownValidationFailures = map[string]string{
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":      "unevaluatedItems: requires runtime if/contains annotation propagation",
 	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid": "unevaluatedItems: requires runtime if/contains annotation propagation",
 
-	// cross-draft: cross-draft ref processing issues (1 entry)
+	// cross-draft: cross-draft ref processing issues (0 entries)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)
-	"draft2020-12/optional/cross-draft/refs to historic drafts are processed as historic drafts/first item not a string is valid": "cross-draft: $ref target not processed with correct schema dialect",
+	// (draft2020-12/optional/cross-draft/refs to historic drafts — skipped: no Validate() method)
 }
 
 // Flaky tests that non-deterministically pass/fail due to Go map iteration order

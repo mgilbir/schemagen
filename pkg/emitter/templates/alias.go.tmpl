@@ -41,6 +41,9 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
+	{{- if .StrictInteger}}
+	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	{{- end}}
 	// Try float with zero fractional part (e.g., 1.0).
 	if _f, _fErr := _n.Float64(); _fErr == nil {
 		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {

@@ -363,6 +363,30 @@ func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
 	}
 }
 
+func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
+	input := `{"type":"integer"}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	root, ok := ir.TypeDefs[0].(*AliasDef)
+	if !ok {
+		t.Fatalf("root type = %T, want AliasDef", ir.TypeDefs[0])
+	}
+	if !root.StrictInteger {
+		t.Fatalf("StrictInteger = false, want true")
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

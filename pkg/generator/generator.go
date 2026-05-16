@@ -1155,6 +1155,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Description:    s.Description,
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
+				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(s),
 				NeedsNullCheck: !schemaAllowsNull(s),
 			})
 		}
@@ -1247,6 +1248,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Contains:       containsDef,
 				MinContains:    minContains,
 				MaxContains:    maxContains,
+				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(s),
 				NeedsNullCheck: !schemaAllowsNull(s),
 			})
 		}
@@ -4668,6 +4670,15 @@ func refOverridesSiblingsForDraft(draft schema.Draft) bool {
 
 func (g *Generator) validationKeywordsEnabled() bool {
 	return !g.validationKeywordsDisabled
+}
+
+func (g *Generator) requiresStrictIntegerToken(s *schema.Schema) bool {
+	switch g.draftForSchema(s) {
+	case schema.Draft03, schema.Draft04:
+		return true
+	default:
+		return false
+	}
 }
 
 func (g *Generator) hasValidationVocabulary(s *schema.Schema) bool {
