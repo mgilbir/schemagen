@@ -3,7 +3,7 @@
 // {{.Name}} - {{.Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if .CanHaveMethods}}
@@ -20,7 +20,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
 	}
 	{{- end}}
-	{{- if .IsIntegerType}}
+	{{- if .UnmarshalAs}}
+	var _target {{.UnmarshalAs}}
+	if _err := json.Unmarshal(data, &_target); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.Name}}(_target)
+	return nil
+	{{- else if .IsIntegerType}}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
@@ -54,6 +61,11 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .ValidateAs}}
+	if _err := ({{.ValidateAs}}({{$recv}})).Validate(); _err != nil {
+		return fmt.Errorf("value: %w", _err)
+	}
+	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} {

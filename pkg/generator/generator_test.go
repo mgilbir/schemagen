@@ -320,6 +320,49 @@ func TestDraft3SchemaValuedTypeGeneratesTypeBranch(t *testing.T) {
 	}
 }
 
+func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
+	input := `{
+		"$defs": {
+			"target": {
+				"type": "object",
+				"properties": {"elements": {"type": "array"}},
+				"required": ["elements"],
+				"additionalProperties": false
+			}
+		},
+		"$ref": "#/$defs/target"
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *AliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected root AliasDef")
+	}
+	if root.ValidateAs != "Target" {
+		t.Fatalf("ValidateAs = %q, want Target", root.ValidateAs)
+	}
+	if root.UnmarshalAs != "Target" {
+		t.Fatalf("UnmarshalAs = %q, want Target", root.UnmarshalAs)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

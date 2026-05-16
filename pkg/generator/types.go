@@ -440,6 +440,8 @@ type AliasDef struct {
 	Contains          *ContainsDef       // contains sub-schema validation
 	MinContains       *int               // minContains (default 1 if contains is present)
 	MaxContains       *int               // maxContains
+	ValidateAs        string             // named underlying type whose Validate method should be delegated to
+	UnmarshalAs       string             // named underlying type whose UnmarshalJSON behavior should be delegated to
 	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
 	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data

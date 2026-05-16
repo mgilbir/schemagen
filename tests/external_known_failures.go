@@ -23,7 +23,7 @@ var knownParseFailures = map[string]string{}
 // are not tracked here since checkKnownFailure is never reached for them.
 // Root causes:
 //   - ($ref to unknown keyword: FIXED via Schema.Extensions + walkPath extension lookup) (0)
-//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (4)
+//   - $dynamicRef/$dynamicAnchor: dynamic scope resolution needed (0)
 //   - $recursiveRef validation not implemented (1)
 //   - unevaluatedItems validation not implemented (2)
 //   - custom metaschema vocabulary not supported (2)
@@ -33,7 +33,7 @@ var knownParseFailures = map[string]string{}
 //   - ($dynamicRef: static resolution picks wrong constraint — FIXED via dynamic scope chain) (0)
 //   - cross-draft validation not supported (1)
 //   - over-strict validation: valid data rejected (1)
-//   - $dynamicRef: incorrect parent schema (1)
+//   - ($dynamicRef: incorrect parent schema: FIXED via alias unmarshal/validation delegation) (0)
 //   - (unevaluatedProperties cousin isolation: FIXED via per-branch annotation tracking) (24)
 //   - (unevaluatedProperties dependentSchemas: FIXED via runtime conditional evaluation) (4)
 //   - (unevaluatedProperties if/then/else: FIXED via runtime conditional evaluation) (6)
@@ -63,7 +63,7 @@ var knownValidationFailures = map[string]string{
 	// (tests for implementation dynamic anchor and reference link/incorrect extended schema — FIXED via $dynamicRef static resolution)
 	// ($ref and $dynamicAnchor are independent of order — FIXED via dynamic scope chain resolution)
 
-	// $dynamicRef/$dynamicAnchor: remaining failures (4 entries)
+	// $dynamicRef/$dynamicAnchor: remaining failures (0 entries)
 	// ($dynamicRef to a $dynamicAnchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef to an $anchor in same resource — FIXED via $dynamicRef static resolution)
 	// ($dynamicRef skips over intermediate resources - direct reference — FIXED via $dynamicRef static resolution)
@@ -132,8 +132,7 @@ var knownValidationFailures = map[string]string{
 	// (bignum integer: FIXED via BigIntAliasDef wrapper with int64 + *big.Int)
 	// (tuple items: FIXED via per-position tuple validation in Validate())
 
-	// $dynamicRef: incorrect parent schema (1 entry, previously masked by wrong root type selection)
-	"draft2020-12/dynamicRef/tests for implementation dynamic anchor and reference link/incorrect parent schema": "$dynamicRef/$dynamicAnchor not implemented",
+	// ($dynamicRef: incorrect parent schema — FIXED via alias unmarshal/validation delegation)
 
 	// (draft3 schema-valued type alternative — FIXED via TypeOnlySchemaDef type branches)
 

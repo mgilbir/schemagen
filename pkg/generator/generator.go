@@ -168,6 +168,7 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	// Populate ValidatableFields on structs — identify fields whose types have Validate().
 	// Must run after resolveAliasMethodability so we know which types actually have methods.
 	g.populateValidatableFields()
+	g.populateAliasDelegates()
 
 	// Add imports based on what was generated.
 	g.output.ValidationCapability = analyzeValidationCapability(s, g.resourceGraph, g.config.Validation)
@@ -434,6 +435,12 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true // UnmarshalJSON uses json.Number
 				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
 				needsMath = true // UnmarshalJSON uses math.Trunc, math.IsInf
+			}
+			if ad.ValidateAs != "" && ad.CanHaveMethods() {
+				needsFmt = true // Validate() wraps delegated validation errors
+			}
+			if ad.UnmarshalAs != "" && ad.CanHaveMethods() {
+				needsJSON = true // UnmarshalJSON delegates through json.Unmarshal
 			}
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
@@ -4507,6 +4514,54 @@ func (g *Generator) populateValidatableFields() {
 					OmitEmpty: f.OmitEmpty,
 				})
 			}
+		}
+	}
+}
+
+func (g *Generator) populateAliasDelegates() {
+	validatableTypes := make(map[string]bool)
+	unmarshalTypes := make(map[string]bool)
+	for _, td := range g.output.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			validatableTypes[d.Name] = true
+			if d.NeedsUnmarshal {
+				unmarshalTypes[d.Name] = true
+			}
+		case *EnumDef:
+			validatableTypes[d.Name] = true
+		case *InferredAliasDef:
+			validatableTypes[d.Name] = true
+		case *BigIntAliasDef:
+			validatableTypes[d.Name] = true
+		case *TypeOnlySchemaDef:
+			validatableTypes[d.Name] = true
+		case *NotSchemaDef:
+			validatableTypes[d.Name] = true
+		case *AliasDef:
+			if d.CanHaveMethods() {
+				validatableTypes[d.Name] = true
+				if d.NeedsNullCheck || d.IsIntegerType() || d.UnmarshalAs != "" {
+					unmarshalTypes[d.Name] = true
+				}
+			}
+		}
+	}
+
+	for _, td := range g.output.TypeDefs {
+		ad, ok := td.(*AliasDef)
+		if !ok || !ad.CanHaveMethods() {
+			continue
+		}
+		name := namedTypeName(ad.Underlying)
+		if name == "" || name == ad.Name {
+			continue
+		}
+		if validatableTypes[name] {
+			ad.ValidateAs = name
+		}
+		if unmarshalTypes[name] {
+			ad.UnmarshalAs = name
 		}
 	}
 }
