@@ -55,6 +55,7 @@ func allGoldenTests() []goldenTestCase {
 		{"advanced/complex_tuple", "testdata/schemas/advanced/complex_tuple.json", "testdata/golden/advanced/complex_tuple.go"},
 		{"validation/nested_errors", "testdata/schemas/validation/nested_errors.json", "testdata/golden/validation/nested_errors.go"},
 		{"regression/allof_oneof_variants", "testdata/schemas/regression/allof_oneof_variants.json", "testdata/golden/regression/allof_oneof_variants.go"},
+		{"regression/allof_oneof_crossed_types", "testdata/schemas/regression/allof_oneof_crossed_types.json", "testdata/golden/regression/allof_oneof_crossed_types.go"},
 	}
 }
 

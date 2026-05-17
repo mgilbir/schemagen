@@ -200,6 +200,11 @@ func (g *Generator) addRequiredImports() {
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
+			if len(sd.ObjectOneOfs) > 0 {
+				needsJSON = true
+				needsFmt = true
+				needsBytes = true
+			}
 			if sd.NeedsUnmarshal {
 				needsJSON = true // UnmarshalJSON always uses json.Unmarshal
 			}
@@ -1797,6 +1802,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		unevalProps = g.buildUnevaluatedPropertiesDef(s)
 	}
 
+	objectOneOfs := g.extractObjectOneOfDefs(s)
+	if len(objectOneOfs) > 0 {
+		needsUnmarshal = true
+	}
+
 	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
 	// unevaluatedProperties need separate validation scoped to their branch.
 	cousinChecks := g.collectCousinUnevalChecks(s)
@@ -1834,6 +1844,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
 		CousinUnevalChecks:    cousinChecks,
+		ObjectOneOfs:          objectOneOfs,
 		RequiredJSON:          requiredJSON,
 		NeedsMarshal:          needsMarshal,
 		NeedsUnmarshal:        needsUnmarshal,
@@ -2198,6 +2209,123 @@ func (g *Generator) mergeApplicatorVariantPropertiesInto(target *schema.Schema, 
 	for _, variant := range variants {
 		g.mergeVariantObjectPropertiesInto(target, variant)
 	}
+}
+
+func (g *Generator) extractObjectOneOfDefs(s *schema.Schema) []ObjectOneOfDef {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var defs []ObjectOneOfDef
+	if def := g.objectOneOfDefFromVariants(s.OneOf); def != nil {
+		defs = append(defs, *def)
+	}
+	for _, sub := range s.AllOf {
+		resolved := g.resolveSchemaForApplicator(sub)
+		if def := g.objectOneOfDefFromVariants(resolved.OneOf); def != nil {
+			defs = append(defs, *def)
+		}
+	}
+	return defs
+}
+
+func (g *Generator) objectOneOfDefFromVariants(variants []*schema.Schema) *ObjectOneOfDef {
+	if len(variants) == 0 {
+		return nil
+	}
+	branches := make([]ObjectOneOfBranch, 0, len(variants))
+	for _, variant := range variants {
+		branch := g.objectOneOfBranchFromSchema(variant)
+		if len(branch.RequiredKeys) == 0 && len(branch.Checks) == 0 {
+			return nil
+		}
+		branches = append(branches, branch)
+	}
+	return &ObjectOneOfDef{Branches: branches}
+}
+
+func (g *Generator) objectOneOfBranchFromSchema(s *schema.Schema) ObjectOneOfBranch {
+	resolved := g.resolveSchemaForApplicator(s)
+	if resolved == nil || resolved.IsBooleanSchema() {
+		return ObjectOneOfBranch{}
+	}
+	branch := ObjectOneOfBranch{RequiredKeys: append([]string(nil), resolved.Required...)}
+	sort.Strings(branch.RequiredKeys)
+	propNames := sortedKeys(resolved.Properties)
+	for _, propName := range propNames {
+		if check := objectPropertyCheckFromSchema(propName, resolved.Properties[propName]); check != nil {
+			branch.Checks = append(branch.Checks, *check)
+		}
+	}
+	for _, sub := range resolved.AllOf {
+		subBranch := g.objectOneOfBranchFromSchema(sub)
+		branch.RequiredKeys = mergeStringSets(branch.RequiredKeys, subBranch.RequiredKeys)
+		branch.Checks = append(branch.Checks, subBranch.Checks...)
+	}
+	return branch
+}
+
+func (g *Generator) resolveSchemaForApplicator(s *schema.Schema) *schema.Schema {
+	if s == nil {
+		return nil
+	}
+	resolved := s
+	for {
+		effRef := resolved.EffectiveRef()
+		if effRef == "" || g.isSelfRefInContext(effRef, resolved) {
+			return resolved
+		}
+		r := g.resolveRefInContext(effRef, resolved)
+		if r == nil {
+			return resolved
+		}
+		resolved = r
+		if len(resolved.Properties) > 0 || len(resolved.AllOf) > 0 || len(resolved.OneOf) > 0 || len(resolved.AnyOf) > 0 || len(resolved.Type) > 0 || len(resolved.Enum) > 0 || resolved.Const != nil || resolved.ConstIsNull {
+			return resolved
+		}
+	}
+}
+
+func objectPropertyCheckFromSchema(jsonName string, s *schema.Schema) *ObjectPropertyCheck {
+	if s == nil || s.IsBooleanSchema() {
+		return nil
+	}
+	check := &ObjectPropertyCheck{JSONName: jsonName}
+	if len(s.Type) == 1 {
+		check.JSONType = s.Type[0]
+	}
+	values := enumLikeValues(s)
+	if len(values) > 0 {
+		for _, value := range values {
+			b, err := json.Marshal(value)
+			if err != nil {
+				continue
+			}
+			check.AllowedValues = append(check.AllowedValues, string(b))
+		}
+	}
+	if check.JSONType == "" && len(check.AllowedValues) == 0 {
+		return nil
+	}
+	return check
+}
+
+func mergeStringSets(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, value := range a {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	for _, value := range b {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, variant *schema.Schema) {

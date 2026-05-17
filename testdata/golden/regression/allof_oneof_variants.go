@@ -3,6 +3,7 @@
 package testpkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -112,6 +113,8 @@ type DiaryField struct {
 	Type_                string                     `json:"type"`
 	Widget               DiaryFieldWidget           `json:"widget,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
 func (d *DiaryField) UnmarshalJSON(data []byte) error {
@@ -133,6 +136,11 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		d._jsonKeys = make(map[string]bool, len(raw))
+		for k := range raw {
+			d._jsonKeys[k] = true
+		}
+		d._jsonRawProps = raw
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
 			for _, req := range []string{"name", "type"} {
@@ -187,6 +195,261 @@ func (d DiaryField) MarshalJSON() ([]byte, error) {
 
 // Validate checks DiaryField against its JSON Schema constraints.
 func (d DiaryField) Validate() error {
+	// object-level oneOf: exactly one flattened variant must match.
+	{
+		_oneOfMatches := 0
+		{
+			_branchMatches := true
+			if !d._jsonKeys["choices"] {
+				_branchMatches = false
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["choices"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "array" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["default"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "string" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["type"]; _ok {
+					if _branchMatches {
+						_valueMatches := false
+						switch string(bytes.TrimSpace(_raw)) {
+						case "\"select\"":
+							_valueMatches = true
+						}
+						if !_valueMatches {
+							_branchMatches = false
+						}
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["widget"]; _ok {
+					if _branchMatches {
+						_valueMatches := false
+						switch string(bytes.TrimSpace(_raw)) {
+						case "\"slider\"":
+							_valueMatches = true
+						}
+						if !_valueMatches {
+							_branchMatches = false
+						}
+					}
+				}
+			}
+			if _branchMatches {
+				_oneOfMatches++
+			}
+		}
+		{
+			_branchMatches := true
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["default"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "number" && _jt != "integer" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["max"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "number" && _jt != "integer" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["min"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "number" && _jt != "integer" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["type"]; _ok {
+					if _branchMatches {
+						_valueMatches := false
+						switch string(bytes.TrimSpace(_raw)) {
+						case "\"number\"":
+							_valueMatches = true
+						}
+						if !_valueMatches {
+							_branchMatches = false
+						}
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := d._jsonRawProps["widget"]; _ok {
+					if _branchMatches {
+						_valueMatches := false
+						switch string(bytes.TrimSpace(_raw)) {
+						case "\"slider\"":
+							_valueMatches = true
+						case "\"hours\"":
+							_valueMatches = true
+						}
+						if !_valueMatches {
+							_branchMatches = false
+						}
+					}
+				}
+			}
+			if _branchMatches {
+				_oneOfMatches++
+			}
+		}
+		if _oneOfMatches != 1 {
+			return fmt.Errorf("oneOf: matched %d variants, expected exactly 1", _oneOfMatches)
+		}
+	}
 	if d.Widget != "" {
 		if err := d.Widget.Validate(); err != nil {
 			return fmt.Errorf("widget.%w", err)

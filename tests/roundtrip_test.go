@@ -611,6 +611,82 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 	}
 }
 
+func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
+	schemaPath := "testdata/schemas/regression/allof_oneof_crossed_types.json"
+	generated := generateFromSchema(t, schemaPath)
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	mainGo := generateAllOfOneOfCrossedTypesMain(rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "crossed_types_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("crossed-types validation test failed:\n%s\nerror: %v", string(output), err)
+	}
+	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+		t.Fatalf("crossed-types validation output:\n%s", outputStr)
+	}
+}
+
+func generateAllOfOneOfCrossedTypesMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	valid := []string{
+		`+"`"+`{"kind":"left","a":"x","b":1}`+"`"+`,
+		`+"`"+`{"kind":"right","a":1,"b":"x"}`+"`"+`,
+	}
+	invalid := []string{
+		`+"`"+`{"kind":"left","a":"x","b":"x"}`+"`"+`,
+		`+"`"+`{"kind":"right","a":"x","b":"x"}`+"`"+`,
+	}
+	for _, input := range valid {
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			fmt.Fprintf(os.Stderr, "valid unmarshal failed: %%v\n", err)
+			os.Exit(1)
+		}
+		if err := obj.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "valid should pass: %%v\n", err)
+			os.Exit(1)
+		}
+	}
+	for _, input := range invalid {
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			fmt.Fprintf(os.Stderr, "invalid should still unmarshal: %%v\n", err)
+			os.Exit(1)
+		}
+		if err := obj.Validate(); err == nil {
+			fmt.Fprintf(os.Stderr, "invalid should fail validation: %%s\n", input)
+			os.Exit(1)
+		}
+	}
+	fmt.Println("PASS")
+}
+`, rootType, rootType)
+}
+
 // generateUnevaluatedItemsMain creates a Go main() that tests unevaluatedItems validation:
 // 1. A valid tuple (within prefixItems limit) should pass Validate()
 // 2. A tuple exceeding prefixItems should fail Validate() when unevaluatedItems: false

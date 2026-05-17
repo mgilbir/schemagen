@@ -82,6 +82,7 @@ type StructDef struct {
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
 	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
+	ObjectOneOfs          []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -209,6 +210,9 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
 // conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
 func (d *StructDef) NeedsRawProps() bool {
+	if len(d.ObjectOneOfs) > 0 {
+		return true
+	}
 	if d.UnevaluatedProperties == nil {
 		return false
 	}
@@ -233,6 +237,9 @@ func (d *StructDef) NeedsRawProps() bool {
 // validation, dependent schema/required validation, propertyNames validation,
 // or unevaluatedProperties with conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
+	if len(d.ObjectOneOfs) > 0 {
+		return true
+	}
 	if len(d.DependentSchemas) > 0 {
 		return true
 	}
@@ -254,6 +261,26 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		}
 	}
 	return false
+}
+
+// ObjectOneOfDef describes one object-level oneOf group whose variants should be
+// checked against raw JSON properties after a schema has been flattened.
+type ObjectOneOfDef struct {
+	Branches []ObjectOneOfBranch
+}
+
+// ObjectOneOfBranch describes one variant in an object-level oneOf group.
+type ObjectOneOfBranch struct {
+	RequiredKeys []string
+	Checks       []ObjectPropertyCheck
+}
+
+// ObjectPropertyCheck describes a JSON property constraint used to match an
+// object-level oneOf branch. Checks only apply when the property is present.
+type ObjectPropertyCheck struct {
+	JSONName      string
+	JSONType      string
+	AllowedValues []string // JSON-encoded enum/const values
 }
 
 // PatternPropertyDef describes a patternProperties entry on a struct.
