@@ -223,6 +223,115 @@ func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
 	}
 }
 
+func TestAllOfMergesIfThenBranchProperties(t *testing.T) {
+	input := `{
+		"title": "Trigger",
+		"type": "object",
+		"allOf": [
+			{"$ref": "#/$defs/base"},
+			{
+				"if": {"properties": {"type": {"const":"tool"}}, "required": ["type"]},
+				"then": {
+					"properties": {
+						"type": {"enum":["tool"]},
+						"tool": {"type":"array", "items":{"type":"object", "properties":{"id":{"type":"string"}}, "required":["id"]}},
+						"default": {"type":"string"}
+					},
+					"required": ["tool"]
+				}
+			},
+			{
+				"if": {"properties": {"type": {"const":"notify"}}, "required": ["type"]},
+				"then": {
+					"properties": {
+						"type": {"enum":["notify"]},
+						"title": {"type":"string"},
+						"message": {"type":"string"},
+						"notify": {"type":"array", "items":{"type":"string"}},
+						"default": {"type":"boolean"}
+					},
+					"required": ["title", "message", "notify"]
+				}
+			}
+		],
+		"$defs": {
+			"base": {
+				"type": "object",
+				"properties": {
+					"delay": {"type":"string"},
+					"condition": {"type":"string"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var trigger *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Trigger" {
+			trigger = d
+			break
+		}
+	}
+	if trigger == nil {
+		t.Fatalf("expected Trigger struct")
+	}
+	fields := make(map[string]FieldDef)
+	for _, f := range trigger.Fields {
+		fields[f.JSONName] = f
+	}
+	for _, name := range []string{"delay", "condition", "type", "tool", "title", "message", "notify", "default"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("missing merged field %q; fields = %#v", name, fields)
+		}
+	}
+	if fields["tool"].Required || fields["title"].Required || fields["message"].Required || fields["notify"].Required {
+		t.Fatalf("conditional fields must not become globally required")
+	}
+	if got := fields["default"].Type.GoTypeName(); got != "any" {
+		t.Fatalf("default type = %q, want any", got)
+	}
+	var typeEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && enumHasValues(d, "tool", "notify") {
+			typeEnum = d
+			break
+		}
+	}
+	if typeEnum == nil {
+		t.Fatalf("expected TriggerType enum")
+	}
+}
+
+func enumHasValues(enum *EnumDef, wants ...string) bool {
+	if enum == nil {
+		return false
+	}
+	got := make(map[string]bool)
+	for _, v := range enum.Values {
+		if s, ok := v.Value.(string); ok {
+			got[s] = true
+		}
+	}
+	for _, want := range wants {
+		if !got[want] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
 	input := `{
 		"disallow": [

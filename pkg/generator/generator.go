@@ -2199,6 +2199,7 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		// Variant required lists are intentionally not promoted to global required.
 		g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf)
 		g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf)
+		g.mergeConditionalBranchPropertiesInto(target, resolved)
 		for i := 0; i < pushedCount; i++ {
 			g.popDynamicScope()
 		}
@@ -2209,6 +2210,16 @@ func (g *Generator) mergeApplicatorVariantPropertiesInto(target *schema.Schema, 
 	for _, variant := range variants {
 		g.mergeVariantObjectPropertiesInto(target, variant)
 	}
+}
+
+func (g *Generator) mergeConditionalBranchPropertiesInto(target *schema.Schema, s *schema.Schema) {
+	if s == nil {
+		return
+	}
+	// Conditional branch required lists are not globally required. They are only
+	// required when their corresponding if condition matches at validation time.
+	g.mergeVariantObjectPropertiesInto(target, s.Then)
+	g.mergeVariantObjectPropertiesInto(target, s.Else)
 }
 
 func (g *Generator) extractObjectOneOfDefs(s *schema.Schema) []ObjectOneOfDef {
@@ -2279,7 +2290,7 @@ func (g *Generator) resolveSchemaForApplicator(s *schema.Schema) *schema.Schema 
 			return resolved
 		}
 		resolved = r
-		if len(resolved.Properties) > 0 || len(resolved.AllOf) > 0 || len(resolved.OneOf) > 0 || len(resolved.AnyOf) > 0 || len(resolved.Type) > 0 || len(resolved.Enum) > 0 || resolved.Const != nil || resolved.ConstIsNull {
+		if len(resolved.Properties) > 0 || len(resolved.AllOf) > 0 || len(resolved.OneOf) > 0 || len(resolved.AnyOf) > 0 || resolved.If != nil || resolved.Then != nil || resolved.Else != nil || len(resolved.Type) > 0 || len(resolved.Enum) > 0 || resolved.Const != nil || resolved.ConstIsNull {
 			return resolved
 		}
 	}
@@ -2347,7 +2358,7 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 			pushedCount++
 		}
 		resolved = r
-		if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 || len(r.OneOf) > 0 || len(r.AnyOf) > 0 {
+		if len(r.Properties) > 0 || len(r.PatternProperties) > 0 || len(r.AllOf) > 0 || len(r.OneOf) > 0 || len(r.AnyOf) > 0 || r.If != nil || r.Then != nil || r.Else != nil {
 			break
 		}
 	}
@@ -2376,6 +2387,7 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	}
 	g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf)
 	g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf)
+	g.mergeConditionalBranchPropertiesInto(target, resolved)
 
 	for i := 0; i < pushedCount; i++ {
 		g.popDynamicScope()

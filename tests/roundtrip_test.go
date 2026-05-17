@@ -170,6 +170,11 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/allof_oneof_variants.json",
 			FixturePath: "testdata/fixtures/regression/allof_oneof_variants.json",
 		},
+		{
+			Name:        "regression/allof_if_then_branches",
+			SchemaPath:  "testdata/schemas/regression/allof_if_then_branches.json",
+			FixturePath: "testdata/fixtures/regression/allof_if_then_branches.json",
+		},
 	}
 }
 
