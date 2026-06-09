@@ -10,7 +10,7 @@ import (
 type Address struct {
 	City                 string                     `json:"city"`
 	Street               string                     `json:"street"`
-	Zip                  string                     `json:"zip,omitempty"`
+	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -164,7 +164,7 @@ func (i Item) Validate() error {
 }
 
 type Order struct {
-	BillingAddress       Address                    `json:"billing_address,omitempty"`
+	BillingAddress       *Address                   `json:"billing_address,omitempty"`
 	Items                []Item                     `json:"items"`
 	OrderID              string                     `json:"order_id"`
 	ShippingAddress      Address                    `json:"shipping_address"`
@@ -240,17 +240,18 @@ func (o Order) MarshalJSON() ([]byte, error) {
 
 // Validate checks Order against its JSON Schema constraints.
 func (o Order) Validate() error {
-	if err := o.BillingAddress.Validate(); err != nil {
-		return err
+	if o.BillingAddress != nil {
+		if err := o.BillingAddress.Validate(); err != nil {
+			return fmt.Errorf("billing_address.%w", err)
+		}
 	}
 	for _i, _item := range o.Items {
-		_ = _i
 		if err := _item.Validate(); err != nil {
-			return err
+			return fmt.Errorf("items[%d].%w", _i, err)
 		}
 	}
 	if err := o.ShippingAddress.Validate(); err != nil {
-		return err
+		return fmt.Errorf("shipping_address.%w", err)
 	}
 	return nil
 }

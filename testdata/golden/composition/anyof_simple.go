@@ -8,10 +8,10 @@ import (
 )
 
 type SearchResultResult struct {
-	Description          string                     `json:"description,omitempty"`
-	Name                 string                     `json:"name,omitempty"`
-	Title                string                     `json:"title,omitempty"`
-	URL                  string                     `json:"url,omitempty"`
+	Description          *string                    `json:"description,omitempty"`
+	Name                 *string                    `json:"name,omitempty"`
+	Title                *string                    `json:"title,omitempty"`
+	URL                  *string                    `json:"url,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -81,7 +81,7 @@ func (s SearchResultResult) Validate() error {
 
 type SearchResult struct {
 	ID                   string                     `json:"id"`
-	Result               SearchResultResult         `json:"result,omitempty"`
+	Result               *SearchResultResult        `json:"result,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -152,8 +152,10 @@ func (s SearchResult) MarshalJSON() ([]byte, error) {
 
 // Validate checks SearchResult against its JSON Schema constraints.
 func (s SearchResult) Validate() error {
-	if err := s.Result.Validate(); err != nil {
-		return err
+	if s.Result != nil {
+		if err := s.Result.Validate(); err != nil {
+			return fmt.Errorf("result.%w", err)
+		}
 	}
 	return nil
 }

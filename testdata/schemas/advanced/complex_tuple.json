@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EventRecord",
+  "description": "A tuple with complex positional items and contains constraint",
+  "type": "array",
+  "prefixItems": [
+    {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Event name"
+    },
+    {
+      "$ref": "#/$defs/Timestamp"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["info", "warn", "error"]
+        },
+        "code": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
+      },
+      "required": ["level"]
+    }
+  ],
+  "items": false,
+  "contains": {
+    "type": "string",
+    "pattern": "^event_"
+  },
+  "minContains": 1,
+  "maxContains": 1,
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

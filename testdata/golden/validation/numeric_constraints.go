@@ -10,7 +10,7 @@ import (
 
 type Measurement struct {
 	Count                int64                      `json:"count"`
-	Rating               float64                    `json:"rating,omitempty"`
+	Rating               *float64                   `json:"rating,omitempty"`
 	Temperature          float64                    `json:"temperature"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -95,20 +95,22 @@ func (m Measurement) Validate() error {
 		}
 	}
 	if m._jsonKeys["rating"] {
-		if float64(m.Rating) < 0 {
-			return fmt.Errorf("rating: value %v is less than minimum 0", m.Rating)
+		if m.Rating != nil && float64(*m.Rating) < 0 {
+			return fmt.Errorf("rating: value %v is less than minimum 0", *m.Rating)
 		}
 	}
 	if m._jsonKeys["rating"] {
-		if float64(m.Rating) > 10 {
-			return fmt.Errorf("rating: value %v exceeds maximum 10", m.Rating)
+		if m.Rating != nil && float64(*m.Rating) > 10 {
+			return fmt.Errorf("rating: value %v exceeds maximum 10", *m.Rating)
 		}
 	}
 	if m._jsonKeys["rating"] {
 		{
-			q := float64(m.Rating) / 0.5
-			if math.Abs(q-math.Round(q)) > 1e-9 {
-				return fmt.Errorf("rating: value %v is not a multiple of 0.5", m.Rating)
+			if m.Rating != nil {
+				q := float64(*m.Rating) / 0.5
+				if math.Abs(q-math.Round(q)) > 1e-9 {
+					return fmt.Errorf("rating: value %v is not a multiple of 0.5", *m.Rating)
+				}
 			}
 		}
 	}

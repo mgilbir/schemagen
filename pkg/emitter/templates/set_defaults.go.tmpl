@@ -7,17 +7,37 @@
 func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
 	{{- range $struct.Fields}}
 	{{- if .DefaultLiteral}}
-	{{- if eq (goType .Type) "string"}}
+	{{- if eq (goType .Type) "*string"}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := {{.DefaultLiteral}}
+		{{$recv}}.{{.Name}} = &_default
+	}
+	{{- else if eq (goType .Type) "string"}}
 	if {{$recv}}.{{.Name}} == "" {
 		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq (goType .Type) "*int64"}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := int64({{.DefaultLiteral}})
+		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "int64"}}
 	if {{$recv}}.{{.Name}} == 0 {
 		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
 	}
+	{{- else if eq (goType .Type) "*float64"}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := float64({{.DefaultLiteral}})
+		{{$recv}}.{{.Name}} = &_default
+	}
 	{{- else if eq (goType .Type) "float64"}}
 	if {{$recv}}.{{.Name}} == 0 {
 		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq (goType .Type) "*bool"}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := {{.DefaultLiteral}}
+		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "bool"}}
 	if !{{$recv}}.{{.Name}} {

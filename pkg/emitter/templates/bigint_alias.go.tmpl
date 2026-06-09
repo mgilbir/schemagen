@@ -40,18 +40,24 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		{{$recv}}._bigInt = nil
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			{{$recv}}._int64 = int64(_f)
-			{{$recv}}._isBigInt = false
-			{{$recv}}._bigInt = nil
-			return nil
+	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
+	_s := _n.String()
+	if strings.ContainsAny(_s, ".eE") {
+		if _f, _fErr := _n.Float64(); _fErr == nil {
+			if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
+				_i64 := int64(_f)
+				// Verify no precision loss: int64 → float64 must round-trip.
+				if float64(_i64) == _f {
+					{{$recv}}._int64 = _i64
+					{{$recv}}._isBigInt = false
+					{{$recv}}._bigInt = nil
+					return nil
+				}
+			}
 		}
 	}
 	// Try big.Int for values that overflow int64.
 	_bi := new(big.Int)
-	_s := _n.String()
 	// Handle float-format bignums (e.g., 1e100).
 	if strings.ContainsAny(_s, ".eE") {
 		_bf := new(big.Float)
@@ -109,8 +115,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minimum"}}
 	{
-		_val := new(big.Float).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float)
+		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) < 0 {
 			return fmt.Errorf("value: %s is less than minimum {{.Value}}", {{$recv}}.BigInt().String())
@@ -119,8 +125,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{
-		_val := new(big.Float).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float)
+		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) > 0 {
 			return fmt.Errorf("value: %s exceeds maximum {{.Value}}", {{$recv}}.BigInt().String())
@@ -129,8 +135,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{
-		_val := new(big.Float).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float)
+		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) <= 0 {
 			return fmt.Errorf("value: %s must be greater than {{.Value}}", {{$recv}}.BigInt().String())
@@ -139,8 +145,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{
-		_val := new(big.Float).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float)
+		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) >= 0 {
 			return fmt.Errorf("value: %s must be less than {{.Value}}", {{$recv}}.BigInt().String())
@@ -149,10 +155,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	{
-		_val := new(big.Float).SetInt({{$recv}}.BigInt())
-		_divisor := new(big.Float)
+		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+		_divisor := new(big.Float).SetPrec(256)
 		_divisor.SetString("{{.Value}}")
-		_quotient := new(big.Float).Quo(_val, _divisor)
+		_quotient := new(big.Float).SetPrec(256).Quo(_val, _divisor)
 		if !_quotient.IsInt() {
 			return fmt.Errorf("value: %s is not a multiple of {{.Value}}", {{$recv}}.BigInt().String())
 		}

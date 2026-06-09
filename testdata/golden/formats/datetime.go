@@ -13,7 +13,7 @@ type Event struct {
 	EndsAt               time.Time                  `json:"ends_at,omitempty"`
 	Name                 string                     `json:"name"`
 	StartsAt             time.Time                  `json:"starts_at"`
-	URL                  string                     `json:"url,omitempty"`
+	URL                  *string                    `json:"url,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -92,9 +92,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 // Validate checks Event against its JSON Schema constraints.
 func (e Event) Validate() error {
 	if e._jsonKeys["url"] {
-		if e.URL != "" {
-			if _u, _err := url.Parse(e.URL); _err != nil || _u.Scheme == "" {
-				return fmt.Errorf("url: value %q is not a valid URI", e.URL)
+		if e.URL != nil && *e.URL != "" {
+			if _u, _err := url.Parse(*e.URL); _err != nil || _u.Scheme == "" {
+				return fmt.Errorf("url: value %q is not a valid URI", *e.URL)
 			}
 		}
 	}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trigger",
+  "type": "object",
+  "allOf": [
+    { "$ref": "#/$defs/base" },
+    {
+      "if": {
+        "properties": { "type": { "const": "tool" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "type": { "enum": ["tool"] },
+          "tool": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "id": { "type": "string" } },
+              "required": ["id"]
+            }
+          },
+          "default": { "type": "string" }
+        },
+        "required": ["tool"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "notify" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "type": { "enum": ["notify"] },
+          "title": { "type": "string" },
+          "message": { "type": "string" },
+          "notify": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "default": { "type": "boolean" }
+        },
+        "required": ["title", "message", "notify"]
+      }
+    }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "properties": {
+        "delay": { "type": "string" },
+        "condition": { "type": "string" }
+      }
+    }
+  }
+}

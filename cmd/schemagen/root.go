@@ -33,6 +33,8 @@ func newGenerateCmd() *cobra.Command {
 		bigInt           bool
 		verbose          bool
 		allowRemoteRefs  bool
+		draftStr         string
+		validationStr    string
 	)
 
 	cmd := &cobra.Command{
@@ -40,6 +42,21 @@ func newGenerateCmd() *cobra.Command {
 		Short: "Generate Go source files from JSON Schema definitions",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Parse draft override if specified.
+			var draft schema.Draft
+			if draftStr != "" {
+				var err error
+				draft, err = parseDraft(draftStr)
+				if err != nil {
+					return err
+				}
+			}
+
+			validationMode, err := parseValidationMode(validationStr)
+			if err != nil {
+				return err
+			}
+
 			// Ensure output directory exists.
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
 				return fmt.Errorf("creating output directory: %w", err)
@@ -82,6 +99,8 @@ func newGenerateCmd() *cobra.Command {
 					StrictProperties: strictProperties,
 					BigIntSupport:    bigInt,
 					Resolver:         resolver,
+					Draft:            draft,
+					Validation:       validationMode,
 				}
 				gen := generator.New(cfg)
 
@@ -126,9 +145,44 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false (no overflow map for extra JSON keys)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
+	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
+	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
+}
+
+// parseDraft converts a user-supplied draft version string to a schema.Draft value.
+func parseDraft(s string) (schema.Draft, error) {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "3", "03", "draft-03", "draft03":
+		return schema.Draft03, nil
+	case "4", "04", "draft-04", "draft04":
+		return schema.Draft04, nil
+	case "6", "06", "draft-06", "draft06":
+		return schema.Draft06, nil
+	case "7", "07", "draft-07", "draft07":
+		return schema.Draft07, nil
+	case "2019-09", "draft-2019-09", "2019":
+		return schema.Draft201909, nil
+	case "2020-12", "draft-2020-12", "2020":
+		return schema.Draft202012, nil
+	default:
+		return schema.DraftUnknown, fmt.Errorf("unknown draft version %q: valid values are 3, 4, 6, 7, 2019-09, 2020-12", s)
+	}
+}
+
+func parseValidationMode(s string) (generator.ValidationMode, error) {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "", "static":
+		return generator.ValidationModeStatic, nil
+	case "hybrid":
+		return generator.ValidationModeHybrid, nil
+	case "runtime":
+		return generator.ValidationModeRuntime, nil
+	default:
+		return generator.ValidationModeStatic, fmt.Errorf("unknown validation mode %q: valid values are static, hybrid, runtime", s)
+	}
 }
 
 // deriveOutputFilename converts a schema filename to a Go source filename.

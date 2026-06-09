@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "title": "Design Doc",
+    "created": "2024-01-15T10:30:00Z",
+    "tags": ["architecture", "v2"]
+  },
+  "sections": [
+    {
+      "heading": "Introduction",
+      "body": "This document outlines...",
+      "subsections": [
+        {
+          "heading": "Motivation",
+          "body": "The current system..."
+        }
+      ]
+    },
+    {
+      "heading": "Conclusion",
+      "body": "In summary..."
+    }
+  ],
+  "author": {
+    "name": "Alice",
+    "email": "alice@example.com"
+  }
+}

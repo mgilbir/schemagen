@@ -1,10 +1,924 @@
 package generator
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
+
+func TestValidationCapabilityDetectsRuntimeFeatures(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"string"}],
+		"unevaluatedItems": false,
+		"$defs": {
+			"node": {"$dynamicAnchor":"node", "type":"object"}
+		},
+		"$dynamicRef": "#node"
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Validation: ValidationModeHybrid})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	capability := ir.ValidationCapability
+	if capability.Mode != ValidationModeHybrid {
+		t.Fatalf("mode = %q, want %q", capability.Mode, ValidationModeHybrid)
+	}
+	if !capability.RequiresRuntime {
+		t.Fatalf("expected runtime requirement")
+	}
+	if !hasValidationFeature(capability.RuntimeFeatures, ValidationFeatureDynamicRef) {
+		t.Fatalf("missing dynamicRef feature: %v", capability.RuntimeFeatures)
+	}
+	if !hasValidationFeature(capability.RuntimeFeatures, ValidationFeatureUnevaluatedItems) {
+		t.Fatalf("missing unevaluatedItems feature: %v", capability.RuntimeFeatures)
+	}
+}
+
+func hasValidationFeature(features []ValidationFeature, want ValidationFeature) bool {
+	for _, got := range features {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, want string) bool {
+	for _, got := range values {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOptionalStringWithOmitEmptyUsesPointer(t *testing.T) {
+	input := `{
+		"title": "Profile",
+		"type": "object",
+		"properties": {
+			"name": {"type":"string"},
+			"description": {"type":"string"}
+		},
+		"required": ["name"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var profile *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Profile" {
+			profile = d
+			break
+		}
+	}
+	if profile == nil {
+		t.Fatalf("expected Profile struct")
+	}
+
+	fields := make(map[string]FieldDef)
+	for _, f := range profile.Fields {
+		fields[f.JSONName] = f
+	}
+	if got := fields["description"].Type.GoTypeName(); got != "*string" {
+		t.Fatalf("optional description type = %q, want *string", got)
+	}
+	if got := fields["name"].Type.GoTypeName(); got != "string" {
+		t.Fatalf("required name type = %q, want string", got)
+	}
+}
+
+func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
+	input := `{
+		"title": "Field",
+		"type": "object",
+		"allOf": [
+			{"$ref": "#/$defs/field_base"},
+			{
+				"oneOf": [
+					{
+						"properties": {
+							"type": {"const":"select"},
+							"choices": {"type":"array", "items":{"type":"string"}},
+							"default": {"type":"string"},
+							"widget": {"enum":["slider"]}
+						},
+						"required": ["choices"]
+					},
+					{
+						"properties": {
+							"type": {"const":"number"},
+							"min": {"type":"number"},
+							"max": {"type":"number"},
+							"default": {"type":"number"},
+							"widget": {"enum":["slider", "hours"]}
+						}
+					}
+				]
+			}
+		],
+		"$defs": {
+			"field_base": {
+				"type": "object",
+				"properties": {
+					"name": {"type":"string"},
+					"type": {"type":"string"},
+					"label": {"type":"string"}
+				},
+				"required": ["name", "type"]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var field *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Field" {
+			field = d
+			break
+		}
+	}
+	if field == nil {
+		t.Fatalf("expected Field struct")
+	}
+
+	fields := make(map[string]FieldDef)
+	for _, f := range field.Fields {
+		fields[f.JSONName] = f
+	}
+	for _, name := range []string{"name", "type", "label", "choices", "min", "max", "default", "widget"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("missing merged field %q; fields = %#v", name, fields)
+		}
+	}
+	if !fields["name"].Required || !fields["type"].Required {
+		t.Fatalf("base required fields not preserved: name=%v type=%v", fields["name"].Required, fields["type"].Required)
+	}
+	if fields["choices"].Required || fields["min"].Required || fields["max"].Required {
+		t.Fatalf("variant-specific fields must not become globally required")
+	}
+	if got := fields["choices"].Type.GoTypeName(); got != "*[]string" {
+		t.Fatalf("choices type = %q, want *[]string", got)
+	}
+	if got := fields["min"].Type.GoTypeName(); got != "*float64" {
+		t.Fatalf("min type = %q, want *float64", got)
+	}
+	if got := fields["default"].Type.GoTypeName(); got != "any" {
+		t.Fatalf("default type = %q, want any", got)
+	}
+	if len(fields["widget"].Type.GoTypeName()) == 0 {
+		t.Fatalf("widget type is empty")
+	}
+	var widgetEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && d.Name == "FieldWidget" {
+			widgetEnum = d
+			break
+		}
+	}
+	if widgetEnum == nil {
+		t.Fatalf("expected FieldWidget enum")
+	}
+	gotValues := make(map[any]bool)
+	for _, v := range widgetEnum.Values {
+		gotValues[v.Value] = true
+	}
+	for _, want := range []string{"slider", "hours"} {
+		if !gotValues[want] {
+			t.Fatalf("widget enum missing %q: %#v", want, widgetEnum.Values)
+		}
+	}
+}
+
+func TestAllOfMergesIfThenBranchProperties(t *testing.T) {
+	input := `{
+		"title": "Trigger",
+		"type": "object",
+		"allOf": [
+			{"$ref": "#/$defs/base"},
+			{
+				"if": {"properties": {"type": {"const":"tool"}}, "required": ["type"]},
+				"then": {
+					"properties": {
+						"type": {"enum":["tool"]},
+						"tool": {"type":"array", "items":{"type":"object", "properties":{"id":{"type":"string"}}, "required":["id"]}},
+						"default": {"type":"string"}
+					},
+					"required": ["tool"]
+				}
+			},
+			{
+				"if": {"properties": {"type": {"const":"notify"}}, "required": ["type"]},
+				"then": {
+					"properties": {
+						"type": {"enum":["notify"]},
+						"title": {"type":"string"},
+						"message": {"type":"string"},
+						"notify": {"type":"array", "items":{"type":"string"}},
+						"default": {"type":"boolean"}
+					},
+					"required": ["title", "message", "notify"]
+				}
+			}
+		],
+		"$defs": {
+			"base": {
+				"type": "object",
+				"properties": {
+					"delay": {"type":"string"},
+					"condition": {"type":"string"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var trigger *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Trigger" {
+			trigger = d
+			break
+		}
+	}
+	if trigger == nil {
+		t.Fatalf("expected Trigger struct")
+	}
+	fields := make(map[string]FieldDef)
+	for _, f := range trigger.Fields {
+		fields[f.JSONName] = f
+	}
+	for _, name := range []string{"delay", "condition", "type", "tool", "title", "message", "notify", "default"} {
+		if _, ok := fields[name]; !ok {
+			t.Fatalf("missing merged field %q; fields = %#v", name, fields)
+		}
+	}
+	if fields["tool"].Required || fields["title"].Required || fields["message"].Required || fields["notify"].Required {
+		t.Fatalf("conditional fields must not become globally required")
+	}
+	if got := fields["default"].Type.GoTypeName(); got != "any" {
+		t.Fatalf("default type = %q, want any", got)
+	}
+	var typeEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && enumHasValues(d, "tool", "notify") {
+			typeEnum = d
+			break
+		}
+	}
+	if typeEnum == nil {
+		t.Fatalf("expected TriggerType enum")
+	}
+}
+
+func enumHasValues(enum *EnumDef, wants ...string) bool {
+	if enum == nil {
+		return false
+	}
+	got := make(map[string]bool)
+	for _, v := range enum.Values {
+		if s, ok := v.Value.(string); ok {
+			got[s] = true
+		}
+	}
+	for _, want := range wants {
+		if !got[want] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDraft3DisallowInlineSchemaGeneratesNotBranches(t *testing.T) {
+	input := `{
+		"disallow": [
+			"string",
+			{"type":"object", "properties":{"foo":{"type":"string"}}}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var notDef *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok {
+			notDef = d
+			break
+		}
+	}
+	if notDef == nil {
+		t.Fatalf("expected NotSchemaDef")
+	}
+	if len(notDef.NotBranches) != 2 {
+		t.Fatalf("expected 2 not branches, got %d", len(notDef.NotBranches))
+	}
+	if len(notDef.NotBranches[0].Types) != 1 || notDef.NotBranches[0].Types[0] != "string" {
+		t.Fatalf("first branch = %#v, want string type branch", notDef.NotBranches[0])
+	}
+	if len(notDef.NotBranches[1].Properties) != 1 || notDef.NotBranches[1].Properties[0].Name != "foo" || notDef.NotBranches[1].Properties[0].JSONType != "string" {
+		t.Fatalf("second branch = %#v, want foo:string property branch", notDef.NotBranches[1])
+	}
+}
+
+func TestDraft3DisallowInlineSchemaGeneratesSimpleValidationBranches(t *testing.T) {
+	input := `{
+		"disallow": [
+			{"type":"integer", "minimum":10},
+			{"type":"string", "minLength":3},
+			{"type":"array", "maxItems":1}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var notDef *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok {
+			notDef = d
+			break
+		}
+	}
+	if notDef == nil {
+		t.Fatalf("expected NotSchemaDef")
+	}
+	if len(notDef.NotBranches) != 3 {
+		t.Fatalf("expected 3 not branches, got %d", len(notDef.NotBranches))
+	}
+	wants := []struct {
+		jsonType string
+		ruleType string
+	}{
+		{"integer", "minimum"},
+		{"string", "minLength"},
+		{"array", "maxItems"},
+	}
+	for i, want := range wants {
+		branch := notDef.NotBranches[i]
+		if len(branch.Types) != 1 || branch.Types[0] != want.jsonType {
+			t.Fatalf("branch %d types = %#v, want %q", i, branch.Types, want.jsonType)
+		}
+		if len(branch.Validations) != 1 || branch.Validations[0].RuleType != want.ruleType {
+			t.Fatalf("branch %d validations = %#v, want rule %q", i, branch.Validations, want.ruleType)
+		}
+	}
+}
+
+func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"additionalItems": {"type":"number"},
+		"unevaluatedItems": {"type":"string"}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok {
+			alias = d
+			break
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected InferredAliasDef")
+	}
+	if alias.UnevaluatedItems == nil {
+		t.Fatalf("expected unevaluatedItems validation")
+	}
+	if alias.UnevaluatedItems.AllEvaluated {
+		t.Fatalf("additionalItems without tuple items must not mark all items evaluated")
+	}
+	if alias.UnevaluatedItems.ValueType != "string" {
+		t.Fatalf("unevaluatedItems value type = %q, want string", alias.UnevaluatedItems.ValueType)
+	}
+}
+
+func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/derived",
+		"$ref": "./baseSchema",
+		"$defs": {
+			"derived": {
+				"$dynamicAnchor": "addons",
+				"prefixItems": [true, {"type":"string"}]
+			},
+			"baseSchema": {
+				"$id": "./baseSchema",
+				"unevaluatedItems": false,
+				"type": "array",
+				"prefixItems": [{"type":"string"}],
+				"$dynamicRef": "#addons",
+				"$defs": {
+					"defaultAddons": {"$dynamicAnchor": "addons"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var base *AliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == "BaseSchema" {
+			base = d
+			break
+		}
+	}
+	if base == nil {
+		t.Fatalf("expected BaseSchema AliasDef")
+	}
+	if base.UnevaluatedItems == nil || !base.UnevaluatedItems.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedItems on BaseSchema, got %#v", base.UnevaluatedItems)
+	}
+	if base.UnevaluatedItems.EvaluatedCount != 2 {
+		t.Fatalf("evaluated count = %d, want 2", base.UnevaluatedItems.EvaluatedCount)
+	}
+}
+
+func TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"$id": "https://example.com/extended-tree",
+		"$recursiveAnchor": true,
+		"$ref": "./tree",
+		"items": [true, true, {"type":"string"}],
+		"$defs": {
+			"tree": {
+				"$id": "./tree",
+				"$recursiveAnchor": true,
+				"type": "array",
+				"items": [
+					{"type":"number"},
+					{"unevaluatedItems": false, "$recursiveRef": "#"}
+				]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var item *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok && d.Name == "TreeItem1" {
+			item = d
+			break
+		}
+	}
+	if item == nil {
+		t.Fatalf("expected TreeItem1 InferredAliasDef")
+	}
+	if item.UnevaluatedItems == nil || !item.UnevaluatedItems.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedItems on TreeItem1, got %#v", item.UnevaluatedItems)
+	}
+	if item.UnevaluatedItems.EvaluatedCount != 3 {
+		t.Fatalf("evaluated count = %d, want 3", item.UnevaluatedItems.EvaluatedCount)
+	}
+}
+
+func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/derived",
+		"$ref": "./baseSchema",
+		"$defs": {
+			"derived": {
+				"$dynamicAnchor": "addons",
+				"properties": {"bar": {"type":"string"}}
+			},
+			"baseSchema": {
+				"$id": "./baseSchema",
+				"unevaluatedProperties": false,
+				"properties": {"foo": {"type":"string"}},
+				"$dynamicRef": "#addons",
+				"$defs": {
+					"defaultAddons": {"$dynamicAnchor": "addons"}
+				}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var base *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "BaseSchema" {
+			base = d
+			break
+		}
+	}
+	if base == nil {
+		t.Fatalf("expected BaseSchema StructDef")
+	}
+	if base.UnevaluatedProperties == nil {
+		t.Fatalf("expected unevaluatedProperties definition")
+	}
+	if !containsString(base.UnevaluatedProperties.EvaluatedNames, "foo") || !containsString(base.UnevaluatedProperties.EvaluatedNames, "bar") {
+		t.Fatalf("evaluated names = %#v, want foo and bar", base.UnevaluatedProperties.EvaluatedNames)
+	}
+}
+
+func TestPropertyRecursiveRefWithUnevaluatedPropertiesGeneratesWrapper(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2019-09/schema",
+		"$id": "https://example.com/extended-tree",
+		"$recursiveAnchor": true,
+		"$ref": "./tree",
+		"properties": {"name": {"type":"string"}},
+		"$defs": {
+			"tree": {
+				"$id": "./tree",
+				"$recursiveAnchor": true,
+				"type": "object",
+				"properties": {
+					"node": true,
+					"branches": {
+						"unevaluatedProperties": false,
+						"$recursiveRef": "#"
+					}
+				},
+				"required": ["node"]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft201909})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var wrapper *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "TreeBranches" {
+			wrapper = d
+			break
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected TreeBranches StructDef")
+	}
+	if wrapper.UnevaluatedProperties == nil || !wrapper.UnevaluatedProperties.IsForbidden {
+		t.Fatalf("expected forbidden unevaluatedProperties on wrapper, got %#v", wrapper.UnevaluatedProperties)
+	}
+	if !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "node") || !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "name") {
+		t.Fatalf("evaluated names = %#v, want node and name", wrapper.UnevaluatedProperties.EvaluatedNames)
+	}
+}
+
+func TestInferredArrayExtractsNestedRemoteItemType(t *testing.T) {
+	input := `{
+		"id": "http://localhost:1234/",
+		"items": {
+			"id": "baseUriChange/",
+			"items": {"$ref": "folderInteger.json"}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	remote := &schema.Schema{Type: schema.TypeList{"integer"}}
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{
+		"http://localhost:1234/baseUriChange/folderInteger.json": remote,
+	})
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03, Resolver: resolver})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *InferredAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*InferredAliasDef); ok && d.Name == "Root" {
+			alias = d
+			break
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected root InferredAliasDef")
+	}
+	if alias.ItemsNested == nil || alias.ItemsNested.ItemsType != "integer" {
+		t.Fatalf("nested items = %#v, want integer", alias.ItemsNested)
+	}
+	if alias.InferredGoType.GoTypeName() != "[]any" {
+		t.Fatalf("inferred Go type = %q, want []any", alias.InferredGoType.GoTypeName())
+	}
+}
+
+func TestMetaschemaWithoutValidationVocabularyKeepsApplicators(t *testing.T) {
+	input := `{
+		"$schema": "http://example.test/meta-no-validation",
+		"properties": {
+			"badProperty": false,
+			"numberProperty": {"minimum": 10}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	meta := &schema.Schema{
+		ID: "http://example.test/meta-no-validation",
+		Vocabulary: map[string]bool{
+			"https://json-schema.org/draft/2020-12/vocab/applicator": true,
+			"https://json-schema.org/draft/2020-12/vocab/core":       true,
+		},
+	}
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{
+		"http://example.test/meta-no-validation": meta,
+	})
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012, Resolver: resolver})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected root StructDef")
+	}
+	if len(root.Validations) != 1 || root.Validations[0].RuleType != "forbidden" || root.Validations[0].JSONName != "badProperty" {
+		t.Fatalf("validations = %#v, want only badProperty forbidden", root.Validations)
+	}
+}
+
+func TestDraft3SchemaValuedTypeGeneratesTypeBranch(t *testing.T) {
+	input := `{
+		"type": [
+			"integer",
+			{"properties": {"foo": {"type": "null"}}}
+		]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var typeDef *TypeOnlySchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*TypeOnlySchemaDef); ok && d.Name == "Root" {
+			typeDef = d
+			break
+		}
+	}
+	if typeDef == nil {
+		t.Fatalf("expected root TypeOnlySchemaDef")
+	}
+	if len(typeDef.AllowedTypes) != 1 || typeDef.AllowedTypes[0] != "integer" {
+		t.Fatalf("allowed types = %#v, want integer", typeDef.AllowedTypes)
+	}
+	if len(typeDef.TypeBranches) != 1 || len(typeDef.TypeBranches[0].Properties) != 1 {
+		t.Fatalf("type branches = %#v, want one property branch", typeDef.TypeBranches)
+	}
+	prop := typeDef.TypeBranches[0].Properties[0]
+	if prop.Name != "foo" || prop.JSONType != "null" {
+		t.Fatalf("branch property = %#v, want foo:null", prop)
+	}
+}
+
+func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
+	input := `{
+		"$defs": {
+			"target": {
+				"type": "object",
+				"properties": {"elements": {"type": "array"}},
+				"required": ["elements"],
+				"additionalProperties": false
+			}
+		},
+		"$ref": "#/$defs/target"
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *AliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected root AliasDef")
+	}
+	if root.ValidateAs != "Target" {
+		t.Fatalf("ValidateAs = %q, want Target", root.ValidateAs)
+	}
+	if root.UnmarshalAs != "Target" {
+		t.Fatalf("UnmarshalAs = %q, want Target", root.UnmarshalAs)
+	}
+	if root.MarshalAs != "Target" {
+		t.Fatalf("MarshalAs = %q, want Target", root.MarshalAs)
+	}
+}
+
+func TestOptionalRefToPrimitiveAliasDoesNotBecomePointer(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"nickname": {"$ref": "#/$defs/name"}
+		},
+		"$defs": {
+			"name": {"type": "string"}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012, OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected Root StructDef")
+	}
+	for _, field := range root.Fields {
+		if field.JSONName == "nickname" {
+			if field.Type.GoTypeName() != "Name" {
+				t.Fatalf("nickname type = %q, want Name", field.Type.GoTypeName())
+			}
+			return
+		}
+	}
+	t.Fatalf("expected nickname field")
+}
+
+func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
+	input := `{"type":"integer"}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft03})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	root, ok := ir.TypeDefs[0].(*AliasDef)
+	if !ok {
+		t.Fatalf("root type = %T, want AliasDef", ir.TypeDefs[0])
+	}
+	if !root.StrictInteger {
+		t.Fatalf("StrictInteger = false, want true")
+	}
+}
 
 // ---------- Naming tests ----------
 
@@ -413,13 +1327,15 @@ func TestGenerate_RefResolution(t *testing.T) {
 	}
 
 	billingField := fieldMap["billing_address"]
-	if billingField.Type.GoTypeName() != "Address" {
-		t.Errorf("billing_address type = %q, want %q", billingField.Type.GoTypeName(), "Address")
+	if billingField.Type.GoTypeName() != "*Address" {
+		t.Errorf("billing_address type = %q, want %q", billingField.Type.GoTypeName(), "*Address")
 	}
 
-	// Should be a NamedType
-	if _, ok := billingField.Type.(*NamedType); !ok {
-		t.Errorf("billing_address type should be *NamedType, got %T", billingField.Type)
+	// Should be a PointerType wrapping a NamedType
+	if pt, ok := billingField.Type.(*PointerType); !ok {
+		t.Errorf("billing_address type should be *PointerType, got %T", billingField.Type)
+	} else if _, ok := pt.Inner.(*NamedType); !ok {
+		t.Errorf("billing_address inner type should be *NamedType, got %T", pt.Inner)
 	}
 }
 
@@ -472,8 +1388,8 @@ func TestGenerate_NestedObject(t *testing.T) {
 		}
 		for _, f := range sd.Fields {
 			if f.JSONName == "address" {
-				if f.Type.GoTypeName() != "CompanyAddress" {
-					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "CompanyAddress")
+				if f.Type.GoTypeName() != "*CompanyAddress" {
+					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "*CompanyAddress")
 				}
 			}
 		}

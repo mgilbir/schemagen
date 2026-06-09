@@ -82,6 +82,7 @@ type StructDef struct {
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
 	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
+	ObjectOneOfs          []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -129,6 +130,7 @@ type DependentPropertyType struct {
 // that should be called from the parent struct's Validate().
 type ValidatableFieldDef struct {
 	FieldName   string // Go field name (PascalCase)
+	JSONName    string // JSON property name (for error path context)
 	GoType      GoType // the Go type of the field (for zero-value comparison)
 	IsPointer   bool   // true if the field is a pointer type (needs nil check)
 	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
@@ -208,6 +210,9 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
 // conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
 func (d *StructDef) NeedsRawProps() bool {
+	if len(d.ObjectOneOfs) > 0 {
+		return true
+	}
 	if d.UnevaluatedProperties == nil {
 		return false
 	}
@@ -232,6 +237,9 @@ func (d *StructDef) NeedsRawProps() bool {
 // validation, dependent schema/required validation, propertyNames validation,
 // or unevaluatedProperties with conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
+	if len(d.ObjectOneOfs) > 0 {
+		return true
+	}
 	if len(d.DependentSchemas) > 0 {
 		return true
 	}
@@ -253,6 +261,26 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		}
 	}
 	return false
+}
+
+// ObjectOneOfDef describes one object-level oneOf group whose variants should be
+// checked against raw JSON properties after a schema has been flattened.
+type ObjectOneOfDef struct {
+	Branches []ObjectOneOfBranch
+}
+
+// ObjectOneOfBranch describes one variant in an object-level oneOf group.
+type ObjectOneOfBranch struct {
+	RequiredKeys []string
+	Checks       []ObjectPropertyCheck
+}
+
+// ObjectPropertyCheck describes a JSON property constraint used to match an
+// object-level oneOf branch. Checks only apply when the property is present.
+type ObjectPropertyCheck struct {
+	JSONName      string
+	JSONType      string
+	AllowedValues []string // JSON-encoded enum/const values
 }
 
 // PatternPropertyDef describes a patternProperties entry on a struct.
@@ -377,8 +405,9 @@ type OneOfDef struct {
 	FieldName          string // exported field name on parent struct
 	JSONName           string // JSON property name
 	Variants           []OneOfVariant
-	DiscriminatorField string            // JSON property name used as discriminator (empty = use required-fields heuristic)
-	DiscriminatorMap   map[string]int    // maps discriminator value → variant index (when DiscriminatorField is set)
+	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
+	DiscriminatorMap   map[string]int // maps discriminator value → variant index (when DiscriminatorField is set)
+	Required           bool           // true when this oneOf's JSONName is in the parent schema's required array
 }
 
 // HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.
@@ -416,9 +445,11 @@ type EnumValue struct {
 
 // TupleItemDef describes one position in a tuple-form array (prefixItems/items-as-array).
 // The generated Validate() method will re-unmarshal each element into the position's
-// type and call its Validate() method.
+// type and call its Validate() method, or check JSON type for simple schemas.
 type TupleItemDef struct {
 	TypeName string // Go type name for this position (e.g., "Item", "SubItem")
+	JSONType string // simple JSON type constraint (e.g., "integer", "string", "number", "boolean", "null", "array", "object")
+	IsFalse  bool   // boolean false schema — reject any value at this position
 }
 
 // AliasDef represents a defined type (type Name Underlying).
@@ -433,13 +464,26 @@ type AliasDef struct {
 	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
 	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
 	TupleItems        []TupleItemDef     // per-position type validation for tuple arrays (prefixItems / items-as-array)
-	NoMethods         bool               // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
-	NeedsNullCheck    bool               // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonMatching bool               // true when schema has no explicit type — silently accept non-matching JSON data
+	Contains          *ContainsDef       // contains sub-schema validation
+	MinContains       *int               // minContains (default 1 if contains is present)
+	MaxContains       *int               // maxContains
+	UnevaluatedItems  *UnevaluatedItemsDef
+	ValidateAs        string // named underlying type whose Validate method should be delegated to
+	UnmarshalAs       string // named underlying type whose UnmarshalJSON behavior should be delegated to
+	MarshalAs         string // named underlying type whose MarshalJSON behavior should be delegated to
+	StrictInteger     bool   // true when integer JSON must use an integer token, not 1.0/1e0
+	NoMethods         bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
+	NeedsNullCheck    bool   // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonMatching bool   // true when schema has no explicit type — silently accept non-matching JSON data
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }
 func (d *AliasDef) typeDef()         {}
+
+// HasContainsValidation returns true if the AliasDef has contains validation.
+func (d *AliasDef) HasContainsValidation() bool {
+	return d.Contains != nil
+}
 
 // CanHaveMethods returns true if this defined type can have methods attached.
 // The NoMethods flag is set by resolveAliasMethodability() after generation,
@@ -462,6 +506,11 @@ func (d *AliasDef) HasTupleItems() bool {
 	return len(d.TupleItems) > 0
 }
 
+// HasUnevaluatedItems returns true if this alias has unevaluatedItems validation.
+func (d *AliasDef) HasUnevaluatedItems() bool {
+	return d.UnevaluatedItems != nil
+}
+
 // InferredAliasDef represents a type where the Go type was inferred from
 // constraint keywords (not explicitly declared via "type"). It generates a
 // wrapper struct that accepts any JSON value but provides typed access for
@@ -475,6 +524,7 @@ type InferredAliasDef struct {
 	Validations      []ValidationRule // constraint rules (minimum, maxLength, etc.)
 	AnyOfVariants    [][]ValidationRule
 	OneOfVariants    [][]ValidationRule
+	ValidateAs       string
 	NeedsNullCheck   bool
 
 	// Item-level validation for inferred arrays:
@@ -482,6 +532,7 @@ type InferredAliasDef struct {
 	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
 	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
 	ItemsChecks          []ContainsCheck     // per-element validation checks from items sub-schema (multipleOf, minimum, etc.)
+	ItemsNested          *NestedItemsDef     // per-element nested array item validation from an items sub-schema
 	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
 	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
 	AdditionalItemsType  string              // additionalItems as simple JSON type
@@ -490,6 +541,16 @@ type InferredAliasDef struct {
 	Contains    *ContainsDef // contains sub-schema validation
 	MinContains *int         // minContains (default 1 when contains is present)
 	MaxContains *int         // maxContains (nil = no upper bound)
+
+	// UnevaluatedItems validation for inferred arrays:
+	UnevaluatedItems *UnevaluatedItemsDef // unevaluatedItems constraint (Draft 2019-09+)
+}
+
+// NestedItemsDef describes nested array item validation for schemas like
+// {"items":{"items":{"$ref":"..."}}}. It covers a narrow but common case
+// where outer array elements are arrays whose own elements have constraints.
+type NestedItemsDef struct {
+	ItemsType string
 }
 
 // ContainsDef describes a contains constraint on an array.
@@ -497,14 +558,68 @@ type ContainsDef struct {
 	IsFalse   bool            // contains: false — no element can ever match
 	IsTrue    bool            // contains: true — every element matches
 	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
+	EnumJSON  []string        // JSON-encoded enum values for multi-value matching
 	Checks    []ContainsCheck // per-element validation checks
 }
 
 // ContainsCheck describes one validation check applied to each element
 // when evaluating whether it matches the contains sub-schema.
 type ContainsCheck struct {
-	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum"
+	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern"
 	Value     any    // the constraint value
+}
+
+// UnevaluatedItemsDef describes an unevaluatedItems constraint on an array.
+// Items are "evaluated" if covered by items, prefixItems, additionalItems, contains,
+// or by sub-schemas in allOf/$ref/anyOf/oneOf/if-then-else.
+type UnevaluatedItemsDef struct {
+	IsForbidden       bool            // unevaluatedItems: false — reject any unevaluated items
+	IsAllowed         bool            // unevaluatedItems: true — allow any unevaluated item (no-op)
+	AllEvaluated      bool            // true when items (uniform) or additionalItems covers all positions
+	EvaluatedCount    int             // number of statically evaluated positions (from prefixItems/tuple)
+	ContainsEvaluates bool            // true when adjacent contains marks matching items as evaluated (runtime check)
+	ValueType         string          // JSON type constraint on unevaluated items (e.g., "string", "integer")
+	Checks            []ContainsCheck // validation checks on each unevaluated item
+	// ConditionalEvals holds runtime-conditional evaluation branches (allOf prefixItems, anyOf/oneOf items, if/then/else)
+	ConditionalEvals []UnevalItemsConditionalEval
+}
+
+// HasUnevaluatedItems returns true if the InferredAliasDef has unevaluatedItems validation.
+func (d *InferredAliasDef) HasUnevaluatedItems() bool {
+	return d.UnevaluatedItems != nil
+}
+
+// UnevalItemsConditionalEval describes a conditional evaluation branch for unevaluatedItems.
+// At runtime, if a branch matches, its evaluated item count is used.
+type UnevalItemsConditionalEval struct {
+	Kind string // "allOf", "anyOf", "oneOf", "ifThenElse", "ref", "contains"
+	// For allOf/$ref: items are always evaluated (static)
+	EvaluatedCount int  // number of additional evaluated positions from this branch
+	AllEvaluated   bool // branch covers all items (has uniform items)
+	// For anyOf/oneOf: branches are tried at runtime
+	Branches []UnevalItemsBranch
+	// For ifThenElse:
+	IfItemChecks  []IfItemConstCheck // runtime checks on array items to evaluate the if-condition
+	IfEvalCount   int                // items evaluated by the if-schema itself (its prefixItems length)
+	IfAllEval     bool               // if-schema covers all items
+	ThenEvalCount int                // items evaluated by then branch
+	ThenAllEval   bool               // then branch covers all items
+	ElseEvalCount int                // items evaluated by else branch
+	ElseAllEval   bool               // else branch covers all items
+	// For contains:
+	ContainsAllEval bool // if contains evaluates all items
+}
+
+// IfItemConstCheck describes a const check on a specific array position for if-condition evaluation.
+type IfItemConstCheck struct {
+	Index     int    // array position to check (0-based)
+	JSONValue string // expected JSON-marshaled value (e.g., `"bar"`)
+}
+
+// UnevalItemsBranch describes one branch in an anyOf/oneOf for unevaluatedItems evaluation.
+type UnevalItemsBranch struct {
+	EvaluatedCount int  // number of evaluated positions in this branch
+	AllEvaluated   bool // branch covers all items (has uniform items)
 }
 
 // InferredTupleItem describes a per-position item schema for inferred arrays.
@@ -517,7 +632,7 @@ type InferredTupleItem struct {
 // HasItemValidation returns true if the InferredAliasDef has any item-level validation.
 func (d *InferredAliasDef) HasItemValidation() bool {
 	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
-		len(d.ItemsChecks) > 0 ||
+		len(d.ItemsChecks) > 0 || d.ItemsNested != nil ||
 		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
 }
 
@@ -585,8 +700,20 @@ func (d *BigIntAliasDef) typeDef()         {}
 type NotSchemaDef struct {
 	Name        string
 	Description string
-	IsForbidden bool     // not:{} or not:true — reject everything
-	NotTypes    []string // not:{type:X} — reject values of these JSON types
+	IsForbidden bool              // not:{} or not:true — reject everything
+	NotTypes    []string          // not:{type:X} — reject values of these JSON types
+	NotBranches []NotSchemaBranch // not:anyOf branches from draft3 disallow arrays
+}
+
+type NotSchemaBranch struct {
+	Types       []string
+	Properties  []NotPropertyBranch
+	Validations []ValidationRule
+}
+
+type NotPropertyBranch struct {
+	Name     string
+	JSONType string
 }
 
 func (d *NotSchemaDef) TypeName() string { return d.Name }
@@ -599,7 +726,19 @@ func (d *NotSchemaDef) typeDef()         {}
 type TypeOnlySchemaDef struct {
 	Name         string
 	Description  string
-	AllowedTypes []string // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
+	TypeBranches []TypeSchemaBranch // Draft 3 schema-valued alternatives in the type array
+}
+
+type TypeSchemaBranch struct {
+	AllowedTypes []string
+	Properties   []TypeSchemaProperty
+}
+
+type TypeSchemaProperty struct {
+	Name     string
+	JSONType string
+	Required bool
 }
 
 func (d *TypeOnlySchemaDef) TypeName() string { return d.Name }
@@ -609,9 +748,10 @@ func (d *TypeOnlySchemaDef) typeDef()         {}
 
 // File represents a generated Go source file.
 type File struct {
-	PackageName string
-	TypeDefs    []TypeDef
-	Imports     []Import
+	PackageName          string
+	TypeDefs             []TypeDef
+	Imports              []Import
+	ValidationCapability ValidationCapability
 }
 
 // Import represents a Go import.

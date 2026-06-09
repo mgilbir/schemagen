@@ -9,7 +9,7 @@ import (
 
 type DatabaseConfig struct {
 	Host                 string                     `json:"host"`
-	Port                 int64                      `json:"port,omitempty"`
+	Port                 *int64                     `json:"port,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -158,7 +158,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 func (c Config) Validate() error {
 	if c.Database != nil {
 		if err := c.Database.Validate(); err != nil {
-			return err
+			return fmt.Errorf("database.%w", err)
 		}
 	}
 	return nil

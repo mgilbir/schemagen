@@ -3,8 +3,11 @@
 // {{.Name}} - {{.Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
 {{template "alias_unmarshal" .}}
+{{- end}}
+{{- if and .CanHaveMethods .MarshalAs}}
+{{template "alias_marshal" .}}
 {{- end}}
 {{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
@@ -20,7 +23,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
 	}
 	{{- end}}
-	{{- if .IsIntegerType}}
+	{{- if .UnmarshalAs}}
+	var _target {{.UnmarshalAs}}
+	if _err := json.Unmarshal(data, &_target); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.Name}}(_target)
+	return nil
+	{{- else if .IsIntegerType}}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
@@ -34,6 +44,9 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
+	{{- if .StrictInteger}}
+	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	{{- end}}
 	// Try float with zero fractional part (e.g., 1.0).
 	if _f, _fErr := _n.Float64(); _fErr == nil {
 		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
@@ -49,11 +62,24 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 }
 {{- end}}
 
+{{define "alias_marshal"}}
+{{- $recv := receiverName .Name -}}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	return json.Marshal({{.MarshalAs}}({{$recv}}))
+}
+{{- end}}
+
 {{define "alias_validate"}}
 {{- $recv := receiverName .Name -}}
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .ValidateAs}}
+	if _err := ({{.ValidateAs}}({{$recv}})).Validate(); _err != nil {
+		return fmt.Errorf("value: %w", _err)
+	}
+	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} {
@@ -94,7 +120,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched {
+	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched {
 		return fmt.Errorf("value: %q does not match pattern %s", {{$recv}}, {{printf "%q" .Value}})
 	}
 	{{- end}}
@@ -128,8 +154,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .HasTupleItems}}
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range {{$recv}} {
+		_ = _elem
 		{{- range $i, $ti := .TupleItems}}
-		{{- if $ti.TypeName}}
+		{{- if $ti.IsFalse}}
+		if _idx == {{$i}} {
+			return fmt.Errorf("items[%d]: value is not allowed (schema is false)", _idx)
+		}
+		{{- else if $ti.TypeName}}
 		if _idx == {{$i}} {
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
@@ -142,6 +173,39 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if _vErr := _typed.Validate(); _vErr != nil {
 				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
 			}
+		}
+		{{- else if $ti.JSONType}}
+		if _idx == {{$i}} {
+			{{- if eq $ti.JSONType "integer"}}
+			_cv, _cvOk := _elem.(float64)
+			if !_cvOk || _cv != math.Trunc(_cv) {
+				return fmt.Errorf("items[%d]: expected integer, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "number"}}
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "string"}}
+			if _, _cvOk := _elem.(string); !_cvOk {
+				return fmt.Errorf("items[%d]: expected string, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "boolean"}}
+			if _, _cvOk := _elem.(bool); !_cvOk {
+				return fmt.Errorf("items[%d]: expected boolean, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "null"}}
+			if _elem != nil {
+				return fmt.Errorf("items[%d]: expected null, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "array"}}
+			if _, _cvOk := _elem.([]any); !_cvOk {
+				return fmt.Errorf("items[%d]: expected array, got %T", _idx, _elem)
+			}
+			{{- else if eq $ti.JSONType "object"}}
+			if _, _cvOk := _elem.(map[string]any); !_cvOk {
+				return fmt.Errorf("items[%d]: expected object, got %T", _idx, _elem)
+			}
+			{{- end}}
 		}
 		{{- end}}
 		{{- end}}
@@ -180,7 +244,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
+			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}) < {{.Value}} { variantValid = false }
@@ -230,7 +294,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if matched, _ := ecma262.MatchString({{printf "%q" .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
+			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}) < {{.Value}} { variantValid = false }
@@ -244,6 +308,249 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 		if oneOfCount != 1 {
 			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+		}
+	}
+	{{- end}}
+	{{- if .HasContainsValidation}}
+	// contains validation: count elements matching the contains sub-schema.
+	{
+		{{- if .Contains.IsFalse}}
+		// contains: false — no element can ever match.
+		return fmt.Errorf("contains: no element matches (schema is false)")
+		{{- else}}
+		_containsCount := 0
+		{{- if .Contains.IsTrue}}
+		_containsCount = len({{$recv}})
+		{{- else if .Contains.ConstJSON}}
+		for _, _cElem := range {{$recv}} {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
+				_containsCount++
+			}
+		}
+		{{- else if .Contains.EnumJSON}}
+		for _, _cElem := range {{$recv}} {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil {
+				_cStr := string(_cBytes)
+				{{- range .Contains.EnumJSON}}
+				if _cStr == {{printf "%q" .}} {
+					_containsCount++
+					continue
+				}
+				{{- end}}
+			}
+		}
+		{{- else if .Contains.Checks}}
+		for _, _cElem := range {{$recv}} {
+			_cMatch := true
+			{{- range .Contains.Checks}}
+			{{- if eq .CheckType "type"}}
+			{{- if eq .Value "integer"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "number"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "string"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) < 2 || _cBytes[0] != '"' {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "boolean"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				_cs := string(_cBytes)
+				if _cs != "true" && _cs != "false" {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "null"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if string(_cBytes) != "null" {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "array"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) == 0 || _cBytes[0] != '[' {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "object"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) == 0 || _cBytes[0] != '{' {
+					_cMatch = false
+				}
+			}
+			{{- end}}
+			{{- else if eq .CheckType "minimum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maximum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMinimum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMaximum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "multipleOf"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil {
+					_cMatch = false
+				} else {
+					_cq := _cf / {{.Value}}
+					if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+						_cMatch = false
+					}
+				}
+			}
+			{{- else if eq .CheckType "minLength"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maxLength"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "pattern"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil {
+					_cMatch = false
+				} else {
+					_cRe := regexp.MustCompile({{printf "%q" .Value}})
+					if !_cRe.MatchString(_cs) {
+						_cMatch = false
+					}
+				}
+			}
+			{{- end}}
+			{{- end}}
+			if _cMatch {
+				_containsCount++
+			}
+		}
+		{{- end}}
+		{{- if and .MinContains (eq (deref .MinContains) 0)}}
+		{{- /* minContains=0 means contains always passes for minContains check */}}
+		{{- else if .MinContains}}
+		if _containsCount < {{deref .MinContains}} {
+			return fmt.Errorf("contains: %d matching elements, minimum is {{deref .MinContains}}", _containsCount)
+		}
+		{{- else}}
+		if _containsCount < 1 {
+			return fmt.Errorf("contains: no element matches the contains schema")
+		}
+		{{- end}}
+		{{- if .MaxContains}}
+		if _containsCount > {{deref .MaxContains}} {
+			return fmt.Errorf("contains: %d matching elements, maximum is {{deref .MaxContains}}", _containsCount)
+		}
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
+	{{- if .HasUnevaluatedItems}}
+	// unevaluatedItems validation
+	{
+		evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
+		allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
+		if !allEvaluated && len({{$recv}}) > evaluatedCount {
+			{{- if .UnevaluatedItems.IsForbidden}}
+			return fmt.Errorf("unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len({{$recv}})-evaluatedCount, evaluatedCount)
+			{{- else}}
+			for _ui := evaluatedCount; _ui < len({{$recv}}); _ui++ {
+				_uiElem := any({{$recv}}[_ui])
+				_ = _uiElem
+				{{- if .UnevaluatedItems.ValueType}}
+				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
+				if _uiMarshalErr != nil {
+					return fmt.Errorf("unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
+				}
+				{{- if eq .UnevaluatedItems.ValueType "string"}}
+				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "integer"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "number"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
+				_uiString := string(_uiBytes)
+				if _uiString != "true" && _uiString != "false" {
+					return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "object"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an object", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "array"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
+					return fmt.Errorf("unevaluatedItems[%d]: must be an array", _ui)
+				}
+				{{- else if eq .UnevaluatedItems.ValueType "null"}}
+				if string(_uiBytes) != "null" {
+					return fmt.Errorf("unevaluatedItems[%d]: must be null", _ui)
+				}
+				{{- end}}
+				{{- end}}
+			}
+			{{- end}}
 		}
 	}
 	{{- end}}

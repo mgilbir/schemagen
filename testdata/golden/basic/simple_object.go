@@ -9,9 +9,9 @@ import (
 
 // Person - A person record
 type Person struct {
-	Active bool `json:"active,omitempty"`
+	Active *bool `json:"active,omitempty"`
 	// Age in years
-	Age int64 `json:"age,omitempty"`
+	Age *int64 `json:"age,omitempty"`
 	// Email address
 	Email string `json:"email"`
 	// Full name

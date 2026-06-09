@@ -123,42 +123,47 @@ func (s *Schema) Normalize() {
 	s.normalizeChildren()
 }
 
-// normalizeDisallow converts Draft 3's "disallow" to "not" with type constraints.
-// "disallow" can be a single type string or an array of type strings/schemas.
-// Only simple type strings are handled; inline schema objects in the disallow
-// array are ignored (they'd require complex not-schema generation).
+// normalizeDisallow converts Draft 3's "disallow" to an equivalent "not" schema.
+// A single type becomes not:{type:T}. An array becomes not:{anyOf:[...]},
+// preserving inline schema objects instead of dropping them.
 func (s *Schema) normalizeDisallow() {
 	trimmed := trimJSONWhitespace(s.Disallow)
 	if len(trimmed) == 0 {
 		return
 	}
 
-	var types []string
 	if trimmed[0] == '"' {
 		// Single type string: "disallow": "integer"
 		var t string
 		if json.Unmarshal(s.Disallow, &t) == nil {
-			types = []string{t}
+			s.Not = &Schema{Type: TypeList{t}}
 		}
+		return
 	} else if trimmed[0] == '[' {
 		// Array of strings or schemas: "disallow": ["integer", "boolean"]
-		// Only extract string elements; ignore inline schema objects.
 		var raw []json.RawMessage
 		if json.Unmarshal(s.Disallow, &raw) == nil {
+			var branches []*Schema
 			for _, elem := range raw {
 				elemTrimmed := trimJSONWhitespace(elem)
 				if len(elemTrimmed) > 0 && elemTrimmed[0] == '"' {
 					var t string
 					if json.Unmarshal(elem, &t) == nil {
-						types = append(types, t)
+						branches = append(branches, &Schema{Type: TypeList{t}})
 					}
+					continue
+				}
+				var branch Schema
+				if json.Unmarshal(elem, &branch) == nil {
+					branches = append(branches, &branch)
 				}
 			}
+			if len(branches) == 1 {
+				s.Not = branches[0]
+			} else if len(branches) > 1 {
+				s.Not = &Schema{AnyOf: branches}
+			}
 		}
-	}
-
-	if len(types) > 0 {
-		s.Not = &Schema{Type: types}
 	}
 }
 
@@ -236,6 +241,11 @@ func (s *Schema) normalizeDependencies() {
 // normalizeChildren recursively normalizes all nested sub-schemas.
 func (s *Schema) normalizeChildren() {
 	for _, sub := range s.Properties {
+		if sub != nil {
+			sub.Normalize()
+		}
+	}
+	for _, sub := range s.TypeSchemas {
 		if sub != nil {
 			sub.Normalize()
 		}

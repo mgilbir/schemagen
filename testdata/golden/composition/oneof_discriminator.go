@@ -82,6 +82,15 @@ func (c ClickEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks ClickEvent against its JSON Schema constraints.
 func (c ClickEvent) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(c.Kind)
+		if _constErr != nil {
+			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"click\"" {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", string(_constGot))
+		}
+	}
 	return nil
 }
 
@@ -158,6 +167,15 @@ func (k KeypressEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks KeypressEvent against its JSON Schema constraints.
 func (k KeypressEvent) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(k.Kind)
+		if _constErr != nil {
+			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"keypress\"" {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", string(_constGot))
+		}
+	}
 	return nil
 }
 
@@ -234,6 +252,15 @@ func (s ScrollEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks ScrollEvent against its JSON Schema constraints.
 func (s ScrollEvent) Validate() error {
+	{
+		_constGot, _constErr := json.Marshal(s.Kind)
+		if _constErr != nil {
+			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+		}
+		if string(_constGot) != "\"scroll\"" {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", string(_constGot))
+		}
+	}
 	return nil
 }
 
@@ -358,7 +385,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 		}
 		// Check required JSON properties are present (only for JSON objects, not null).
 		if raw != nil {
-			for _, req := range []string{"id"} {
+			for _, req := range []string{"id", "payload"} {
 				if _, ok := raw[req]; !ok {
 					return fmt.Errorf("%s: required property is missing", req)
 				}

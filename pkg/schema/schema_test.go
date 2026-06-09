@@ -8,6 +8,58 @@ import (
 	"testing"
 )
 
+func TestBuildResourceGraphIndexesResourcesAndDynamicAnchors(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://example.com/root",
+		"$defs": {
+			"base": {
+				"$dynamicAnchor": "node",
+				"type": "object"
+			},
+			"legacy": {
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"$id": "legacy.json",
+				"$anchor": "legacyAnchor",
+				"type": "object"
+			}
+		}
+	}`
+
+	var s Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	s.Normalize()
+
+	graph := BuildResourceGraph(&s, nil, DraftUnknown)
+	if len(graph.Resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(graph.Resources))
+	}
+
+	root := graph.Resources["https://example.com/root"]
+	if root == nil {
+		t.Fatalf("missing root resource")
+	}
+	if root.Draft != Draft202012 {
+		t.Fatalf("root draft = %v, want %v", root.Draft, Draft202012)
+	}
+	if root.DynamicAnchors["node"] == nil {
+		t.Fatalf("missing dynamic anchor node")
+	}
+
+	legacy := graph.Resources["https://example.com/legacy.json"]
+	if legacy == nil {
+		t.Fatalf("missing legacy resource")
+	}
+	if legacy.Draft != Draft07 {
+		t.Fatalf("legacy draft = %v, want %v", legacy.Draft, Draft07)
+	}
+	if legacy.Anchors["legacyAnchor"] == nil {
+		t.Fatalf("missing legacy anchor")
+	}
+}
+
 func TestParseSimpleObjectSchema(t *testing.T) {
 	input := `{
 		"type": "object",
@@ -74,6 +126,27 @@ func TestTypeListFromArray(t *testing.T) {
 	}
 	if s.Type[0] != "string" || s.Type[1] != "null" {
 		t.Errorf("expected [string, null], got %v", s.Type)
+	}
+}
+
+func TestTypeListPreservesDraft3SchemaAlternatives(t *testing.T) {
+	input := `{"type": ["integer", {"properties": {"foo": {"type": "null"}}}]}`
+
+	var s Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	s.Normalize()
+
+	if len(s.Type) != 1 || s.Type[0] != "integer" {
+		t.Fatalf("expected primitive type [integer], got %v", s.Type)
+	}
+	if len(s.TypeSchemas) != 1 {
+		t.Fatalf("expected 1 schema-valued type alternative, got %d", len(s.TypeSchemas))
+	}
+	foo := s.TypeSchemas[0].Properties["foo"]
+	if foo == nil || len(foo.Type) != 1 || foo.Type[0] != "null" {
+		t.Fatalf("expected foo:null schema branch, got %#v", foo)
 	}
 }
 

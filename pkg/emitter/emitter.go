@@ -32,9 +32,10 @@ func New() (*Emitter, error) {
 // Emit takes a generator.File and returns gofmt-formatted Go source code.
 func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 	data := fileData{
-		PackageName: f.PackageName,
-		Imports:     f.Imports,
-		TypeDefs:    wrapTypeDefs(f.TypeDefs),
+		PackageName:          f.PackageName,
+		Imports:              f.Imports,
+		TypeDefs:             wrapTypeDefs(f.TypeDefs),
+		ValidationCapability: f.ValidationCapability,
 	}
 
 	var buf bytes.Buffer
@@ -51,9 +52,18 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 
 // fileData is the data passed to the top-level file template.
 type fileData struct {
-	PackageName string
-	Imports     []generator.Import
-	TypeDefs    []typeDefWrapper
+	PackageName          string
+	Imports              []generator.Import
+	TypeDefs             []typeDefWrapper
+	ValidationCapability generator.ValidationCapability
+}
+
+func (d fileData) HasValidationCapability() bool {
+	return d.NeedsValidationRuntime()
+}
+
+func (d fileData) NeedsValidationRuntime() bool {
+	return d.ValidationCapability.RequiresRuntime && d.ValidationCapability.Mode != generator.ValidationModeStatic
 }
 
 // HasOneOf returns true if any struct in the file has oneOf fields.

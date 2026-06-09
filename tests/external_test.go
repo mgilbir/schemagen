@@ -138,6 +138,9 @@ func remotesResolver(t *testing.T) schema.SchemaResolver {
 // requireTestSuite skips the test if the external test suite is not downloaded.
 func requireTestSuite(t *testing.T) {
 	t.Helper()
+	if os.Getenv("SCHEMAGEN_RUN_EXTERNAL") != "1" {
+		t.Skip("external JSON Schema Test Suite disabled; set SCHEMAGEN_RUN_EXTERNAL=1 or run make test-external")
+	}
 	if _, err := os.Stat(jstsBaseDir); os.IsNotExist(err) {
 		t.Skip("JSON Schema Test Suite not found. Run 'make download-test-suite' to enable external tests.")
 	}

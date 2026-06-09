@@ -1,0 +1,9 @@
+{
+  "delay": "PT1H",
+  "condition": "ready",
+  "type": "notify",
+  "title": "Heads up",
+  "message": "Check the plan",
+  "notify": ["owner", "team"],
+  "default": true
+}

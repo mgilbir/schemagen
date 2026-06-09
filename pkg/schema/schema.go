@@ -48,7 +48,7 @@ func (f FlexInt) Int() int {
 // TypeList represents a JSON Schema "type" value, which can be either a single
 // string (e.g. "string") or an array of strings (e.g. ["string", "null"]).
 // Draft 3 also allows an array of schemas as type values; those schemas are
-// ignored for type extraction, but the string type names are preserved.
+// preserved separately on Schema.TypeSchemas.
 type TypeList []string
 
 func (t *TypeList) UnmarshalJSON(data []byte) error {
@@ -67,7 +67,7 @@ func (t *TypeList) UnmarshalJSON(data []byte) error {
 	}
 
 	// Draft 3: try array that may contain schemas or strings.
-	// Extract string elements and schema objects with "type" fields.
+	// Schema-valued alternatives are captured by Schema.UnmarshalJSON.
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("type must be a string or array of strings: %s", string(data))
@@ -81,15 +81,6 @@ func (t *TypeList) UnmarshalJSON(data []byte) error {
 			types = append(types, s)
 			continue
 		}
-		// Try as schema with a "type" field.
-		var probe struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(elem, &probe) == nil && probe.Type != "" {
-			types = append(types, probe.Type)
-			continue
-		}
-		// Skip elements we can't extract type info from.
 	}
 	*t = TypeList(types)
 	return nil
@@ -283,14 +274,16 @@ type Schema struct {
 	BooleanSchema *bool `json:"-"`
 
 	// Core identifiers
-	ID       string `json:"$id,omitempty"`
-	LegacyID string `json:"id,omitempty"` // Draft 3/4 use "id" instead of "$id"
-	Schema   string `json:"$schema,omitempty"`
-	Ref      string `json:"$ref,omitempty"`
-	Anchor   string `json:"$anchor,omitempty"` // Draft 2019-09+
+	ID         string          `json:"$id,omitempty"`
+	LegacyID   string          `json:"id,omitempty"` // Draft 3/4 use "id" instead of "$id"
+	Schema     string          `json:"$schema,omitempty"`
+	Vocabulary map[string]bool `json:"$vocabulary,omitempty"`
+	Ref        string          `json:"$ref,omitempty"`
+	Anchor     string          `json:"$anchor,omitempty"` // Draft 2019-09+
 
 	// Type
-	Type TypeList `json:"type,omitempty"`
+	Type        TypeList  `json:"type,omitempty"`
+	TypeSchemas []*Schema `json:"-"` // Draft 3 schema-valued entries in the type array
 
 	// Composition
 	AllOf         []*Schema      `json:"allOf,omitempty"`
@@ -469,6 +462,25 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		s.ConstIsNull = true
 	}
 
+	// Draft 3 allows schema-valued entries in the type array. Preserve them so
+	// validation can treat the type keyword as an anyOf over primitive names and
+	// schema branches.
+	if typeRaw, ok := raw["type"]; ok {
+		var elems []json.RawMessage
+		if json.Unmarshal(typeRaw, &elems) == nil {
+			for _, elem := range elems {
+				var typeName string
+				if json.Unmarshal(elem, &typeName) == nil {
+					continue
+				}
+				var typeSchema Schema
+				if json.Unmarshal(elem, &typeSchema) == nil && !typeSchema.IsBooleanSchema() {
+					s.TypeSchemas = append(s.TypeSchemas, &typeSchema)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -516,6 +528,9 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 
 	// Recurse into all child schemas.
 	for _, sub := range s.Properties {
+		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	}
+	for _, sub := range s.TypeSchemas {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
 	for _, sub := range s.PatternProperties {

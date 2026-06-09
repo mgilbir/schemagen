@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UnevaluatedItemsTest",
+  "type": "object",
+  "properties": {
+    "strict_tuple": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "string" },
+        { "type": "integer" }
+      ],
+      "unevaluatedItems": false
+    },
+    "typed_overflow": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "string" },
+        { "type": "number" }
+      ],
+      "unevaluatedItems": { "type": "string" }
+    },
+    "allof_extended_tuple": {
+      "allOf": [
+        {
+          "type": "array",
+          "prefixItems": [
+            { "type": "string" }
+          ]
+        },
+        {
+          "type": "array",
+          "prefixItems": [
+            { "type": "string" },
+            { "type": "integer" }
+          ]
+        }
+      ],
+      "unevaluatedItems": false
+    }
+  }
+}

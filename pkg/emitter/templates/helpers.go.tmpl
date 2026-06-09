@@ -14,6 +14,53 @@ func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
 }
 {{- end}}
 
+{{define "validation_capability"}}
+// SchemagenValidationMode reports the validation strategy used for this file.
+const SchemagenValidationMode = {{printf "%q" .ValidationCapability.Mode}}
+
+// SchemagenValidationRuntimeFeatures lists JSON Schema features that may need
+// runtime annotation tracking for full spec-compliant validation.
+func SchemagenValidationRuntimeFeatures() []string {
+	return {{stringList .ValidationCapability.RuntimeFeatures}}
+}
+
+{{- if .NeedsValidationRuntime}}
+// SchemagenValidationCapability reports generated validation completeness.
+func SchemagenValidationCapability() validationruntime.Capability {
+	return validationruntime.Capability{
+		Mode:            {{printf "%q" .ValidationCapability.Mode}},
+		RequiresRuntime: {{if .ValidationCapability.RequiresRuntime}}true{{else}}false{{end}},
+		RuntimeFeatures: {{validationFeatures .ValidationCapability.RuntimeFeatures}},
+		Unsupported:     {{validationFeatures .ValidationCapability.Unsupported}},
+		ResourceCount:   {{.ValidationCapability.ResourceCount}},
+	}
+}
+{{- else}}
+// SchemagenValidationCapability reports generated validation completeness.
+func SchemagenValidationCapability() struct {
+	Mode            string
+	RequiresRuntime bool
+	RuntimeFeatures []string
+	Unsupported     []string
+	ResourceCount   int
+} {
+	return struct {
+		Mode            string
+		RequiresRuntime bool
+		RuntimeFeatures []string
+		Unsupported     []string
+		ResourceCount   int
+	}{
+		Mode:            {{printf "%q" .ValidationCapability.Mode}},
+		RequiresRuntime: {{if .ValidationCapability.RequiresRuntime}}true{{else}}false{{end}},
+		RuntimeFeatures: {{stringList .ValidationCapability.RuntimeFeatures}},
+		Unsupported:     {{stringList .ValidationCapability.Unsupported}},
+		ResourceCount:   {{.ValidationCapability.ResourceCount}},
+	}
+}
+{{- end}}
+{{- end}}
+
 {{define "oneof_discriminator_helper"}}
 // oneofDiscriminatorValue extracts the string value of a discriminator property from JSON data.
 func oneofDiscriminatorValue(data json.RawMessage, prop string) (string, error) {

@@ -141,6 +141,7 @@ func (r *LocalResolver) allSubSchemas(s *Schema) []*Schema {
 	for _, k := range sortedKeys(s.Properties) {
 		subs = append(subs, s.Properties[k])
 	}
+	subs = append(subs, s.TypeSchemas...)
 	for _, k := range sortedKeys(s.Defs) {
 		subs = append(subs, s.Defs[k])
 	}

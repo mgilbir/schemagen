@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Record",
+  "description": "Object with pattern properties and additional properties typed",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "patternProperties": {
+    "^x-": {
+      "type": "string",
+      "description": "Extension fields"
+    },
+    "^num_": {
+      "type": "integer",
+      "description": "Numeric fields"
+    }
+  },
+  "additionalProperties": {
+    "type": "boolean"
+  },
+  "required": ["id"]
+}
