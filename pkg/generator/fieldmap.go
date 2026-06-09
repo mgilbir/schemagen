@@ -7,6 +7,19 @@ import (
 	"unicode"
 )
 
+// reservedFieldNames are identifiers the emitter generates on a struct as
+// methods or synthesized fields. A field-map override that targets one of these
+// would produce uncompilable Go (a field redeclaring a method, or colliding
+// with the overflow field), so overrides to these names are rejected up front.
+// Keyed by name → human-readable description of what it collides with.
+var reservedFieldNames = map[string]string{
+	"Validate":             "the generated Validate method",
+	"MarshalJSON":          "the generated MarshalJSON method",
+	"UnmarshalJSON":        "the generated UnmarshalJSON method",
+	"SetDefaults":          "the generated SetDefaults method",
+	"AdditionalProperties": "the generated additional-properties overflow field",
+}
+
 // FieldNameMap maps a Go type name to a set of property overrides, where each
 // override pins a JSON property name to a specific Go struct field name.
 //

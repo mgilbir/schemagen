@@ -1480,12 +1480,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		goFieldNames[propName] = goName
 	}
-	// An override may collide with another field's name; that would produce
-	// uncompilable Go, so reject it with an actionable error rather than silently
-	// suffixing (which would defeat the override).
+	// An override may collide with another field's name, with a generated method,
+	// or with the synthesized overflow field; any of these produce uncompilable
+	// Go, so reject them with an actionable error rather than silently suffixing
+	// (which would defeat the override).
 	finalNames := make(map[string]string, len(propNames)) // Go name → JSON name
 	for _, propName := range propNames {
 		goName := goFieldNames[propName]
+		if overridden[propName] {
+			if reason, reserved := reservedFieldNames[goName]; reserved {
+				return fmt.Errorf("type %s: field-map override maps property %q to %q, which collides with %s; choose a different name",
+					name, propName, goName, reason)
+			}
+		}
 		if other, dup := finalNames[goName]; dup {
 			return fmt.Errorf("type %s: field name %q for property %q collides with property %q (check --field-map overrides)",
 				name, goName, propName, other)

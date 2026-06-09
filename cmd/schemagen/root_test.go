@@ -243,6 +243,34 @@ func TestGenerateFieldMapUnusedEntryWarns(t *testing.T) {
 	}
 }
 
+func TestGenerateFieldMapUnknownFileKeyWarns(t *testing.T) {
+	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
+
+	tmpDir := t.TempDir()
+	mapPath := filepath.Join(tmpDir, "names.json")
+	// Top-level key "Person" is a type name, not a schema file base name (a
+	// common mistake), so it names no generated file and the section is dead.
+	mapContent := `{"Person": {"Person": {"name": "FullName"}}}`
+	if err := os.WriteFile(mapPath, []byte(mapContent), 0o644); err != nil {
+		t.Fatalf("write field map: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", tmpDir, "--field-map", mapPath, schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "does not match any generated schema file") || !strings.Contains(out, `"Person"`) {
+		t.Errorf("expected unknown-file-key warning, got: %s", out)
+	}
+}
+
 func TestGenerateVerboseOutput(t *testing.T) {
 	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
 

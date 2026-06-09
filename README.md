@@ -110,8 +110,13 @@ Notes:
 - Only the listed properties are overridden; everything else uses the derived name.
 - The JSON tag always keeps the original property name, so round-trip serialization is unaffected.
 - Override values must be valid **exported** Go identifiers (struct fields must be exported to (un)marshal).
-- If an override would collide with another field's name, generation fails with an error rather than silently renaming.
-- Entries that match no generated property (e.g. a typo in a type or property name) emit a `warning:` on stderr but do not fail the run.
+- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` overflow field.
+- Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. These warnings are shown even if generation later fails.
+
+Limitations:
+
+- **Type keys must be the generated Go type name.** For top-level and `$defs` types these are stable and predictable. Types synthesized for nested inline objects (named `ParentType` + `FieldName`), `oneOf`/`anyOf` wrappers, and enums use internal naming that may change as a schema evolves — overriding their fields is possible but more fragile. Note that overriding a field that holds a nested object also renames the nested type, which in turn changes the key needed to reach *its* fields.
+- **File keys match by base name.** Two input schemas with the same file name in different directories share one override section (they also already write to the same output file).
 
 ### Regular Expressions
 

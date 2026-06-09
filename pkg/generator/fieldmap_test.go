@@ -87,6 +87,26 @@ func TestFieldNameOverrideCollisionIsError(t *testing.T) {
 	}
 }
 
+func TestFieldNameOverrideReservedNameIsError(t *testing.T) {
+	// Each of these would produce uncompilable Go (field colliding with a
+	// generated method or the synthesized overflow field).
+	for _, reserved := range []string{"Validate", "MarshalJSON", "UnmarshalJSON", "SetDefaults", "AdditionalProperties"} {
+		t.Run(reserved, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.FieldNames = FieldNameMap{"Person": {"first_name": reserved}}
+
+			gen := New(cfg)
+			_, err := gen.Generate(personSchema())
+			if err == nil {
+				t.Fatalf("expected error for reserved override %q, got nil", reserved)
+			}
+			if !strings.Contains(err.Error(), "collides") {
+				t.Errorf("error = %q, want it to mention a collision", err.Error())
+			}
+		})
+	}
+}
+
 func TestFieldNameOverrideNotAppliedForOtherType(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.FieldNames = FieldNameMap{

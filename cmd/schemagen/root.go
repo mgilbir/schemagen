@@ -68,9 +68,13 @@ func newGenerateCmd() *cobra.Command {
 					return err
 				}
 			}
-			// Track which (file, type, property) overrides were applied so we can
-			// warn about entries that never matched a generated property.
+			// Track which (file, type, property) overrides were applied, and which
+			// schema files were actually generated, so we can warn about entries
+			// that never matched. Reported via defer so warnings still surface even
+			// if generation fails partway through.
 			appliedByFile := make(map[string]map[string]map[string]bool)
+			processedFiles := make(map[string]bool)
+			defer warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
 
 			// Ensure output directory exists.
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -109,6 +113,7 @@ func newGenerateCmd() *cobra.Command {
 
 				// Field-name overrides are keyed by the schema file's base name.
 				fileKey := filepath.Base(schemaPath)
+				processedFiles[fileKey] = true
 
 				cfg := generator.Config{
 					PackageName:      pkgName,
@@ -169,10 +174,6 @@ func newGenerateCmd() *cobra.Command {
 				}
 			}
 
-			// Warn about field-map entries that never matched a generated property
-			// (likely a typo in the file name, type name, or property name).
-			warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile)
-
 			return nil
 		},
 	}
@@ -191,22 +192,32 @@ func newGenerateCmd() *cobra.Command {
 	return cmd
 }
 
-// warnUnusedFieldMap emits a warning for every field-map override that was never
-// applied during generation, sorted for deterministic output.
-func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied map[string]map[string]map[string]bool) {
-	var unused []string
+// warnUnusedFieldMap emits warnings for field-map config that never took effect:
+// top-level keys that don't name any generated schema file (often a typo or a
+// missing nesting level), and individual overrides that matched no property. All
+// warnings are sorted for deterministic output.
+func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied map[string]map[string]map[string]bool, processedFiles map[string]bool) {
+	var warnings []string
 	for file, types := range fieldMap {
+		if !processedFiles[file] {
+			// The whole section is dead: warn once for the file rather than
+			// emitting a confusing "matched no property" line per entry.
+			warnings = append(warnings, fmt.Sprintf(
+				"field-map key %q does not match any generated schema file (expected a schema file base name)", file))
+			continue
+		}
 		for typeName, props := range types {
 			for prop := range props {
 				if !applied[file][typeName][prop] {
-					unused = append(unused, fmt.Sprintf("%s/%s.%s", file, typeName, prop))
+					warnings = append(warnings, fmt.Sprintf(
+						"field-map entry %q matched no property", fmt.Sprintf("%s/%s.%s", file, typeName, prop)))
 				}
 			}
 		}
 	}
-	sort.Strings(unused)
-	for _, entry := range unused {
-		fmt.Fprintf(w, "warning: field-map entry %q matched no property\n", entry)
+	sort.Strings(warnings)
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "warning: %s\n", msg)
 	}
 }
 
