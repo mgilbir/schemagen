@@ -175,6 +175,102 @@ func TestGenerateSimpleSchema(t *testing.T) {
 	}
 }
 
+func TestGenerateWithFieldMap(t *testing.T) {
+	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
+
+	tmpDir := t.TempDir()
+	mapPath := filepath.Join(tmpDir, "names.json")
+	mapContent := `{
+		"simple_object.json": {
+			"Person": {"name": "FullName"}
+		}
+	}`
+	if err := os.WriteFile(mapPath, []byte(mapContent), 0o644); err != nil {
+		t.Fatalf("write field map: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", tmpDir, "--field-map", mapPath, schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(tmpDir, "simple_object.go"))
+	if err != nil {
+		t.Fatalf("expected output file: %v", err)
+	}
+	src := string(content)
+	// Field renamed, but JSON tag preserved.
+	if !strings.Contains(src, "FullName ") {
+		t.Error("generated code missing renamed FullName field")
+	}
+	if !strings.Contains(src, `json:"name`) {
+		t.Error("generated code should preserve the original JSON tag \"name\"")
+	}
+	if strings.Contains(buf.String(), "warning:") {
+		t.Errorf("did not expect a warning, got: %s", buf.String())
+	}
+}
+
+func TestGenerateFieldMapUnusedEntryWarns(t *testing.T) {
+	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
+
+	tmpDir := t.TempDir()
+	mapPath := filepath.Join(tmpDir, "names.json")
+	// "Persn" is a typo and matches no type.
+	mapContent := `{"simple_object.json": {"Persn": {"name": "FullName"}}}`
+	if err := os.WriteFile(mapPath, []byte(mapContent), 0o644); err != nil {
+		t.Fatalf("write field map: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", tmpDir, "--field-map", mapPath, schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "warning:") || !strings.Contains(out, "simple_object.json/Persn.name") {
+		t.Errorf("expected unused-entry warning, got: %s", out)
+	}
+}
+
+func TestGenerateFieldMapUnknownFileKeyWarns(t *testing.T) {
+	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
+
+	tmpDir := t.TempDir()
+	mapPath := filepath.Join(tmpDir, "names.json")
+	// Top-level key "Person" is a type name, not a schema file base name (a
+	// common mistake), so it names no generated file and the section is dead.
+	mapContent := `{"Person": {"Person": {"name": "FullName"}}}`
+	if err := os.WriteFile(mapPath, []byte(mapContent), 0o644); err != nil {
+		t.Fatalf("write field map: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", tmpDir, "--field-map", mapPath, schemaPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "does not match any generated schema file") || !strings.Contains(out, `"Person"`) {
+		t.Errorf("expected unknown-file-key warning, got: %s", out)
+	}
+}
+
 func TestGenerateVerboseOutput(t *testing.T) {
 	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
 

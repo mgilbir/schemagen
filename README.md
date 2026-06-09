@@ -56,6 +56,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
 | `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
+| `--field-map` | | | Path to a JSON file pinning JSON properties to specific Go field names (see below) |
 | `--verbose` | `-v` | `false` | Print progress information |
 
 ### Remote References
@@ -84,6 +85,38 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 `schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
 
 Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
+
+### Field Name Overrides
+
+By default, `schemagen` derives Go field names from JSON property names (e.g. `first_name` → `FirstName`). When migrating an existing codebase to schema-generated types, you may need specific field names to stay compatible with code that already references them. Use `--field-map` to pin individual properties to chosen Go field names:
+
+```bash
+schemagen generate --field-map names.json person.json address.json
+```
+
+The config is JSON, keyed by **schema file base name → Go type name → JSON property name → Go field name**:
+
+```json
+{
+  "person.json": {
+    "Person":  { "first_name": "GivenName" },
+    "Address": { "zip": "PostalCode" }
+  }
+}
+```
+
+Notes:
+
+- Only the listed properties are overridden; everything else uses the derived name.
+- The JSON tag always keeps the original property name, so round-trip serialization is unaffected.
+- Override values must be valid **exported** Go identifiers (struct fields must be exported to (un)marshal).
+- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` overflow field.
+- Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. These warnings are shown even if generation later fails.
+
+Limitations:
+
+- **Type keys must be the generated Go type name.** For top-level and `$defs` types these are stable and predictable. Types synthesized for nested inline objects (named `ParentType` + `FieldName`), `oneOf`/`anyOf` wrappers, and enums use internal naming that may change as a schema evolves — overriding their fields is possible but more fragile. Note that overriding a field that holds a nested object also renames the nested type, which in turn changes the key needed to reach *its* fields.
+- **File keys match by base name.** Two input schemas with the same file name in different directories share one override section (they also already write to the same output file).
 
 ### Regular Expressions
 

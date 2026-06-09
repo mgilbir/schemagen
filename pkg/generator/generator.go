@@ -45,6 +45,11 @@ type Generator struct {
 	// cycles: if a resolved ref points to a type that references a type in this
 	// set, a pointer must be used to break the cycle.
 	structsInProgress map[string]bool
+
+	// appliedOverrides records which FieldNames overrides were actually used,
+	// keyed by type name → JSON property name. The CLI inspects this after
+	// generation to warn about configured overrides that matched no property.
+	appliedOverrides map[string]map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
@@ -1396,6 +1401,29 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	return nil
 }
 
+// fieldNameFor returns the Go field name for a JSON property of the given type.
+// A configured override (from Config.FieldNames) wins over the derived name and
+// is recorded as applied so the caller can report unused overrides.
+func (g *Generator) fieldNameFor(typeName, jsonProp string) (name string, overridden bool) {
+	if override, ok := g.config.FieldNames.Override(typeName, jsonProp); ok {
+		if g.appliedOverrides == nil {
+			g.appliedOverrides = make(map[string]map[string]bool)
+		}
+		if g.appliedOverrides[typeName] == nil {
+			g.appliedOverrides[typeName] = make(map[string]bool)
+		}
+		g.appliedOverrides[typeName][jsonProp] = true
+		return override, true
+	}
+	return JSONPropertyToGoName(jsonProp), false
+}
+
+// AppliedOverrides reports the FieldNames overrides that were applied during
+// generation, keyed by type name → JSON property name.
+func (g *Generator) AppliedOverrides() map[string]map[string]bool {
+	return g.appliedOverrides
+}
+
 // generateStructDef produces a StructDef from an object schema.
 // It also handles oneOf properties within the struct.
 // When acceptNonObject is true and the schema has no explicit "type":"object",
@@ -1426,22 +1454,50 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// Sort property names for deterministic output.
 	propNames := sortedKeys(s.Properties)
 
-	// First pass: compute Go field names and deduplicate collisions.
+	// First pass: compute Go field names, honoring configured overrides.
 	goFieldNames := make(map[string]string, len(propNames)) // JSON name → Go name
+	overridden := make(map[string]bool, len(propNames))     // JSON name → came from an override
+	derived := make(map[string]string, len(propNames))      // JSON name → name before suffixing
+	for _, propName := range propNames {
+		goName, isOverride := g.fieldNameFor(name, propName)
+		derived[propName] = goName
+		overridden[propName] = isOverride
+	}
+	// Second pass: deduplicate only derived (non-overridden) names by appending a
+	// numeric suffix. Overrides are pinned by the user and never suffixed.
 	nameCount := make(map[string]int)
 	for _, propName := range propNames {
-		goName := JSONPropertyToGoName(propName)
-		nameCount[goName]++
+		if !overridden[propName] {
+			nameCount[derived[propName]]++
+		}
 	}
-	// Second pass: assign unique names by appending numeric suffix when collisions exist.
 	nameSeen := make(map[string]int)
 	for _, propName := range propNames {
-		goName := JSONPropertyToGoName(propName)
-		if nameCount[goName] > 1 {
+		goName := derived[propName]
+		if !overridden[propName] && nameCount[goName] > 1 {
 			nameSeen[goName]++
 			goName = fmt.Sprintf("%s%d", goName, nameSeen[goName])
 		}
 		goFieldNames[propName] = goName
+	}
+	// An override may collide with another field's name, with a generated method,
+	// or with the synthesized overflow field; any of these produce uncompilable
+	// Go, so reject them with an actionable error rather than silently suffixing
+	// (which would defeat the override).
+	finalNames := make(map[string]string, len(propNames)) // Go name → JSON name
+	for _, propName := range propNames {
+		goName := goFieldNames[propName]
+		if overridden[propName] {
+			if reason, reserved := reservedFieldNames[goName]; reserved {
+				return fmt.Errorf("type %s: field-map override maps property %q to %q, which collides with %s; choose a different name",
+					name, propName, goName, reason)
+			}
+		}
+		if other, dup := finalNames[goName]; dup {
+			return fmt.Errorf("type %s: field name %q for property %q collides with property %q (check --field-map overrides)",
+				name, goName, propName, other)
+		}
+		finalNames[goName] = propName
 	}
 
 	for _, propName := range propNames {

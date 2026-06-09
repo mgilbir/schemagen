@@ -2,8 +2,10 @@ package schemagen
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -35,6 +37,7 @@ func newGenerateCmd() *cobra.Command {
 		allowRemoteRefs  bool
 		draftStr         string
 		validationStr    string
+		fieldMapPath     string
 	)
 
 	cmd := &cobra.Command{
@@ -56,6 +59,22 @@ func newGenerateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// Load optional field-name overrides. Keyed by schema-file base name.
+			var fieldMap generator.FieldMapFile
+			if fieldMapPath != "" {
+				fieldMap, err = generator.LoadFieldMapFile(fieldMapPath)
+				if err != nil {
+					return err
+				}
+			}
+			// Track which (file, type, property) overrides were applied, and which
+			// schema files were actually generated, so we can warn about entries
+			// that never matched. Reported via defer so warnings still surface even
+			// if generation fails partway through.
+			appliedByFile := make(map[string]map[string]map[string]bool)
+			processedFiles := make(map[string]bool)
+			defer warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
 
 			// Ensure output directory exists.
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -92,6 +111,10 @@ func newGenerateCmd() *cobra.Command {
 					resolver = fileResolver
 				}
 
+				// Field-name overrides are keyed by the schema file's base name.
+				fileKey := filepath.Base(schemaPath)
+				processedFiles[fileKey] = true
+
 				cfg := generator.Config{
 					PackageName:      pkgName,
 					OutputDir:        outputDir,
@@ -101,6 +124,7 @@ func newGenerateCmd() *cobra.Command {
 					Resolver:         resolver,
 					Draft:            draft,
 					Validation:       validationMode,
+					FieldNames:       fieldMap[fileKey],
 				}
 				gen := generator.New(cfg)
 
@@ -108,6 +132,21 @@ func newGenerateCmd() *cobra.Command {
 				ir, err := gen.Generate(s)
 				if err != nil {
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
+				}
+
+				// Record applied overrides for unused-entry reporting.
+				if applied := gen.AppliedOverrides(); len(applied) > 0 {
+					if appliedByFile[fileKey] == nil {
+						appliedByFile[fileKey] = make(map[string]map[string]bool)
+					}
+					for typeName, props := range applied {
+						if appliedByFile[fileKey][typeName] == nil {
+							appliedByFile[fileKey][typeName] = make(map[string]bool)
+						}
+						for prop := range props {
+							appliedByFile[fileKey][typeName][prop] = true
+						}
+					}
 				}
 
 				// 5. Create emitter
@@ -147,9 +186,39 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
 	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
+	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
+}
+
+// warnUnusedFieldMap emits warnings for field-map config that never took effect:
+// top-level keys that don't name any generated schema file (often a typo or a
+// missing nesting level), and individual overrides that matched no property. All
+// warnings are sorted for deterministic output.
+func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied map[string]map[string]map[string]bool, processedFiles map[string]bool) {
+	var warnings []string
+	for file, types := range fieldMap {
+		if !processedFiles[file] {
+			// The whole section is dead: warn once for the file rather than
+			// emitting a confusing "matched no property" line per entry.
+			warnings = append(warnings, fmt.Sprintf(
+				"field-map key %q does not match any generated schema file (expected a schema file base name)", file))
+			continue
+		}
+		for typeName, props := range types {
+			for prop := range props {
+				if !applied[file][typeName][prop] {
+					warnings = append(warnings, fmt.Sprintf(
+						"field-map entry %q matched no property", fmt.Sprintf("%s/%s.%s", file, typeName, prop)))
+				}
+			}
+		}
+	}
+	sort.Strings(warnings)
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "warning: %s\n", msg)
+	}
 }
 
 // parseDraft converts a user-supplied draft version string to a schema.Draft value.
