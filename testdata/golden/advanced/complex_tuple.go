@@ -92,16 +92,8 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			e._jsonKeys[k] = true
-		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"level"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		for _k := range raw {
+			e._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"code":  true,
@@ -143,6 +135,17 @@ func (e EventRecordItem2) MarshalJSON() ([]byte, error) {
 
 // Validate checks EventRecordItem2 against its JSON Schema constraints.
 func (e EventRecordItem2) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if e._jsonKeys != nil {
+		for _, _req := range []string{"level"} {
+			if !e._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if e._jsonKeys["code"] {
 		if e.Code != nil && float64(*e.Code) < 100 {
 			return fmt.Errorf("code: value %v is less than minimum 100", *e.Code)

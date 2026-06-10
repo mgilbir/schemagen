@@ -16,6 +16,7 @@ type TreeNode struct {
 	// Node value
 	Value                string                     `json:"value"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (t *TreeNode) UnmarshalJSON(data []byte) error {
@@ -37,13 +38,9 @@ func (t *TreeNode) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"value"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		t._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			t._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"children": true,
@@ -86,6 +83,17 @@ func (t TreeNode) MarshalJSON() ([]byte, error) {
 
 // Validate checks TreeNode against its JSON Schema constraints.
 func (t TreeNode) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if t._jsonKeys != nil {
+		for _, _req := range []string{"value"} {
+			if !t._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	for _i, _item := range t.Children {
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("children[%d].%w", _i, err)

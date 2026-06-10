@@ -36,16 +36,8 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			m._jsonKeys[k] = true
-		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"count", "temperature"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		for _k := range raw {
+			m._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"count":       true,
@@ -88,6 +80,17 @@ func (m Measurement) MarshalJSON() ([]byte, error) {
 
 // Validate checks Measurement against its JSON Schema constraints.
 func (m Measurement) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if m._jsonKeys != nil {
+		for _, _req := range []string{"count", "temperature"} {
+			if !m._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	{
 		q := float64(m.Count) / 5
 		if math.Abs(q-math.Round(q)) > 1e-9 {

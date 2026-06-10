@@ -11,6 +11,7 @@ type DatabaseConfig struct {
 	Host                 string                     `json:"host"`
 	Port                 *int64                     `json:"port,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
@@ -32,13 +33,9 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"host"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		d._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			d._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"host": true,
@@ -80,6 +77,17 @@ func (d DatabaseConfig) MarshalJSON() ([]byte, error) {
 
 // Validate checks DatabaseConfig against its JSON Schema constraints.
 func (d DatabaseConfig) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if d._jsonKeys != nil {
+		for _, _req := range []string{"host"} {
+			if !d._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -87,6 +95,7 @@ type Config struct {
 	Database             *DatabaseConfig            `json:"database"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -108,13 +117,9 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		c._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			c._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"database": true,
@@ -156,6 +161,17 @@ func (c Config) MarshalJSON() ([]byte, error) {
 
 // Validate checks Config against its JSON Schema constraints.
 func (c Config) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if c._jsonKeys != nil {
+		for _, _req := range []string{"name"} {
+			if !c._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if c.Database != nil {
 		if err := c.Database.Validate(); err != nil {
 			return fmt.Errorf("database.%w", err)

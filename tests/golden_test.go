@@ -388,6 +388,25 @@ func main() {
 			input:   ` + "`" + `{"name":"","address":{"street":"Main","city":"NY"}}` + "`" + `,
 			wantErr: "name:",
 		},
+		{
+			// A required property missing from a nested object must be reported
+			// with the parent's path, as a validation error (not a parse error).
+			name:    "nested_missing_required",
+			input:   ` + "`" + `{"name":"Acme","address":{"city":"NY"}}` + "`" + `,
+			wantErr: "address.street: required property is missing",
+		},
+		{
+			// A required property missing from an array element carries the index.
+			name:    "array_element_missing_required",
+			input:   ` + "`" + `{"name":"Acme","address":{"street":"Main","city":"NY"},"employees":[{"age":25}]}` + "`" + `,
+			wantErr: "employees[0].name: required property is missing",
+		},
+		{
+			// A required property missing at the root is reported without a prefix.
+			name:    "root_missing_required",
+			input:   ` + "`" + `{"name":"Acme"}` + "`" + `,
+			wantErr: "address: required property is missing",
+		},
 	}
 
 	var errs []string

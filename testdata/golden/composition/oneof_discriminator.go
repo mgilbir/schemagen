@@ -12,6 +12,7 @@ type ClickEvent struct {
 	X                    int64                      `json:"x"`
 	Y                    int64                      `json:"y"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (c *ClickEvent) UnmarshalJSON(data []byte) error {
@@ -33,13 +34,9 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"kind", "x", "y"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		c._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			c._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"kind": true,
@@ -82,6 +79,17 @@ func (c ClickEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks ClickEvent against its JSON Schema constraints.
 func (c ClickEvent) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if c._jsonKeys != nil {
+		for _, _req := range []string{"kind", "x", "y"} {
+			if !c._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	{
 		_constGot, _constErr := json.Marshal(c.Kind)
 		if _constErr != nil {
@@ -98,6 +106,7 @@ type KeypressEvent struct {
 	Key                  string                     `json:"key"`
 	Kind                 string                     `json:"kind"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
@@ -119,13 +128,9 @@ func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"key", "kind"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		k._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			k._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"key":  true,
@@ -167,6 +172,17 @@ func (k KeypressEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks KeypressEvent against its JSON Schema constraints.
 func (k KeypressEvent) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if k._jsonKeys != nil {
+		for _, _req := range []string{"key", "kind"} {
+			if !k._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	{
 		_constGot, _constErr := json.Marshal(k.Kind)
 		if _constErr != nil {
@@ -183,6 +199,7 @@ type ScrollEvent struct {
 	Delta                float64                    `json:"delta"`
 	Kind                 string                     `json:"kind"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
@@ -204,13 +221,9 @@ func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"delta", "kind"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		s._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			s._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"delta": true,
@@ -252,6 +265,17 @@ func (s ScrollEvent) MarshalJSON() ([]byte, error) {
 
 // Validate checks ScrollEvent against its JSON Schema constraints.
 func (s ScrollEvent) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if s._jsonKeys != nil {
+		for _, _req := range []string{"delta", "kind"} {
+			if !s._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	{
 		_constGot, _constErr := json.Marshal(s.Kind)
 		if _constErr != nil {
@@ -268,6 +292,7 @@ type Event struct {
 	ID                   string                     `json:"id"`
 	Payload              isEvent_Payload            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 // isEvent_Payload is a sealed interface for the Payload field of Event.
@@ -383,13 +408,9 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"id", "payload"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		e._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			e._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"id":      true,
@@ -455,6 +476,17 @@ func (e Event) MarshalJSON() ([]byte, error) {
 
 // Validate checks Event against its JSON Schema constraints.
 func (e Event) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if e._jsonKeys != nil {
+		for _, _req := range []string{"id", "payload"} {
+			if !e._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 

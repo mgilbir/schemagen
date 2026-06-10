@@ -49,6 +49,7 @@ type Task struct {
 	Status               TaskStatus                 `json:"status"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (t *Task) UnmarshalJSON(data []byte) error {
@@ -70,13 +71,9 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"status", "title"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		t._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			t._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"priority": true,
@@ -119,6 +116,17 @@ func (t Task) MarshalJSON() ([]byte, error) {
 
 // Validate checks Task against its JSON Schema constraints.
 func (t Task) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if t._jsonKeys != nil {
+		for _, _req := range []string{"status", "title"} {
+			if !t._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if t.Priority != "" {
 		if err := t.Priority.Validate(); err != nil {
 			return fmt.Errorf("priority.%w", err)

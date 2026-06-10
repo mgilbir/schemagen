@@ -11,6 +11,7 @@ type ArrayTypesMetadataItem struct {
 	Key                  string                     `json:"key"`
 	Value                string                     `json:"value"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
@@ -32,13 +33,9 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"key", "value"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		a._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			a._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"key":   true,
@@ -80,6 +77,17 @@ func (a ArrayTypesMetadataItem) MarshalJSON() ([]byte, error) {
 
 // Validate checks ArrayTypesMetadataItem against its JSON Schema constraints.
 func (a ArrayTypesMetadataItem) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if a._jsonKeys != nil {
+		for _, _req := range []string{"key", "value"} {
+			if !a._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 

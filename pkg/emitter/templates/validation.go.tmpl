@@ -137,6 +137,19 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		return nil
 	}
 	{{- end}}
+	{{- if $struct.HasRequiredFields}}
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if {{$recv}}._jsonKeys != nil {
+		for _, _req := range []string{ {{- range $i, $r := $struct.RequiredJSON}}{{if $i}}, {{end}}{{printf "%q" $r}}{{- end -}} } {
+			if !{{$recv}}._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
+	{{- end}}
 	{{- range $struct.Validations}}
 	{{- if .Optional}}
 	if {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {

@@ -10,6 +10,7 @@ import (
 type Circle struct {
 	Radius               float64                    `json:"radius"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
@@ -31,13 +32,9 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"radius"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		c._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			c._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"radius": true,
@@ -78,6 +75,17 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 
 // Validate checks Circle against its JSON Schema constraints.
 func (c Circle) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if c._jsonKeys != nil {
+		for _, _req := range []string{"radius"} {
+			if !c._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -85,6 +93,7 @@ type Rectangle struct {
 	Height               float64                    `json:"height"`
 	Width                float64                    `json:"width"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
@@ -106,13 +115,9 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"height", "width"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		r._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			r._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"height": true,
@@ -154,6 +159,17 @@ func (r Rectangle) MarshalJSON() ([]byte, error) {
 
 // Validate checks Rectangle against its JSON Schema constraints.
 func (r Rectangle) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if r._jsonKeys != nil {
+		for _, _req := range []string{"height", "width"} {
+			if !r._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -161,6 +177,7 @@ type Drawing struct {
 	Name                 string                     `json:"name"`
 	Shape                isDrawing_Shape            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 // isDrawing_Shape is a sealed interface for the Shape field of Drawing.
@@ -266,13 +283,9 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name", "shape"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		d._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			d._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"name":  true,
@@ -332,6 +345,17 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 
 // Validate checks Drawing against its JSON Schema constraints.
 func (d Drawing) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if d._jsonKeys != nil {
+		for _, _req := range []string{"name", "shape"} {
+			if !d._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 

@@ -50,16 +50,8 @@ func (n *NetworkConfig) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			n._jsonKeys[k] = true
-		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name", "primary_ip"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		for _k := range raw {
+			n._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"admin_email":  true,
@@ -112,6 +104,17 @@ func (n NetworkConfig) MarshalJSON() ([]byte, error) {
 
 // Validate checks NetworkConfig against its JSON Schema constraints.
 func (n NetworkConfig) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if n._jsonKeys != nil {
+		for _, _req := range []string{"name", "primary_ip"} {
+			if !n._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if n._jsonKeys["admin_email"] {
 		if n.AdminEmail != nil && *n.AdminEmail != "" {
 			if _, err := mail.ParseAddress(*n.AdminEmail); err != nil {

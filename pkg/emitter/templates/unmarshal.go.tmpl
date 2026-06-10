@@ -127,22 +127,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		}
 		{{- if $struct.NeedsJSONKeys}}
 		{{$recv}}._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			{{$recv}}._jsonKeys[k] = true
+		for _k := range raw {
+			{{$recv}}._jsonKeys[_k] = true
 		}
 		{{- end}}
 		{{- if $struct.NeedsRawProps}}
 		{{$recv}}._jsonRawProps = raw
-		{{- end}}
-		{{- if $struct.HasRequiredFields}}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{ {{- range $i, $r := $struct.RequiredJSON}}{{if $i}}, {{end}}{{printf "%q" $r}}{{- end -}} } {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
-		}
 		{{- end}}
 		{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
 		knownFields := map[string]bool{
