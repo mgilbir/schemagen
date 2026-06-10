@@ -11,7 +11,7 @@ import (
 
 type Metadata struct {
 	Created              time.Time                  `json:"created"`
-	Tags                 *[]string                  `json:"tags,omitempty"`
+	Tags                 []string                   `json:"tags,omitempty"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
@@ -178,7 +178,7 @@ func (p Person) Validate() error {
 type Section struct {
 	Body                 *string                    `json:"body,omitempty"`
 	Heading              string                     `json:"heading"`
-	Subsections          *[]Section                 `json:"subsections,omitempty"`
+	Subsections          []Section                  `json:"subsections,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -250,11 +250,9 @@ func (s Section) MarshalJSON() ([]byte, error) {
 
 // Validate checks Section against its JSON Schema constraints.
 func (s Section) Validate() error {
-	if s.Subsections != nil {
-		for _i, _item := range *s.Subsections {
-			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("subsections[%d].%w", _i, err)
-			}
+	for _i, _item := range s.Subsections {
+		if err := _item.Validate(); err != nil {
+			return fmt.Errorf("subsections[%d].%w", _i, err)
 		}
 	}
 	return nil

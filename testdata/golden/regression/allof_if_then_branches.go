@@ -171,9 +171,9 @@ type Trigger struct {
 	Default_             any                        `json:"default,omitempty"`
 	Delay                *string                    `json:"delay,omitempty"`
 	Message              *string                    `json:"message,omitempty"`
-	Notify               *[]string                  `json:"notify,omitempty"`
+	Notify               []string                   `json:"notify,omitempty"`
 	Title                *string                    `json:"title,omitempty"`
-	Tool                 *[]TriggerToolItem         `json:"tool,omitempty"`
+	Tool                 []TriggerToolItem          `json:"tool,omitempty"`
 	Type_                TriggerType_               `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
@@ -243,11 +243,9 @@ func (t Trigger) MarshalJSON() ([]byte, error) {
 
 // Validate checks Trigger against its JSON Schema constraints.
 func (t Trigger) Validate() error {
-	if t.Tool != nil {
-		for _i, _item := range *t.Tool {
-			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("tool[%d].%w", _i, err)
-			}
+	for _i, _item := range t.Tool {
+		if err := _item.Validate(); err != nil {
+			return fmt.Errorf("tool[%d].%w", _i, err)
 		}
 	}
 	if t.Type_ != "" {

@@ -84,9 +84,9 @@ func (a ArrayTypesMetadataItem) Validate() error {
 }
 
 type ArrayTypes struct {
-	Metadata             *[]ArrayTypesMetadataItem  `json:"metadata,omitempty"`
-	Scores               *[]float64                 `json:"scores,omitempty"`
-	Tags                 *[]string                  `json:"tags,omitempty"`
+	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitempty"`
+	Scores               []float64                  `json:"scores,omitempty"`
+	Tags                 []string                   `json:"tags,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -150,11 +150,9 @@ func (a ArrayTypes) MarshalJSON() ([]byte, error) {
 
 // Validate checks ArrayTypes against its JSON Schema constraints.
 func (a ArrayTypes) Validate() error {
-	if a.Metadata != nil {
-		for _i, _item := range *a.Metadata {
-			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("metadata[%d].%w", _i, err)
-			}
+	for _i, _item := range a.Metadata {
+		if err := _item.Validate(); err != nil {
+			return fmt.Errorf("metadata[%d].%w", _i, err)
 		}
 	}
 	return nil

@@ -1543,14 +1543,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if omitEmpty && g.isNullableComposition(propSchema) {
 			omitEmpty = false
 		}
-		// For optional array/slice fields with omitempty, wrap in a pointer (*[]T)
-		// so that absent → nil (omitted) while {"foo": []} → &[]T{} (preserved).
-		// Without this, omitempty treats nil and empty slices identically.
-		// Check both the Go type directly and the resolved schema type, since
-		// $ref properties resolve to NamedType even when the target is an array.
-		if omitEmpty && g.isArrayProperty(goType, propSchema) {
-			goType = &PointerType{Inner: goType}
-		}
+		// Optional array/slice fields are left as []T: a slice is already nilable,
+		// so omitempty omits it when nil. (Absent and an explicit empty [] both
+		// serialize as omitted — they are not distinguished.)
 		// For optional struct fields with omitempty, wrap in a pointer (*T) so that
 		// absent → nil (omitted). encoding/json's omitempty never considers struct
 		// values as empty, and types with custom MarshalJSON are always marshaled
@@ -3325,6 +3320,14 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &PointerType{Inner: &NamedType{Name: nestedName}}, nil
 		}
+		// Nullable array → delegate to resolveType, which preserves the element
+		// type via its array-with-items branch. Without this, the fallback below
+		// resolves to PrimitiveTypeFromSchema("array") == []any and the items
+		// schema (and any named element struct) is dropped, collapsing a
+		// ["array","null"] property to *[]any.
+		if inner == "array" {
+			return g.resolveType(s, parentName+fieldName), nil
+		}
 		baseType := PrimitiveTypeFromSchema(inner)
 		if baseType == nil {
 			baseType = &PrimitiveType{Name: "any"}
@@ -3411,6 +3414,17 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		if inner == "object" && hasProperties(s) {
 			_ = g.generateTypeDef(contextName, s)
 			return &PointerType{Inner: &NamedType{Name: contextName}}
+		}
+		// Nullable array: recurse into items so the element type is preserved
+		// (mirrors the non-nullable array branch below). Without this, a
+		// ["array","null"] union falls through to PrimitiveTypeFromSchema and
+		// loses its items, collapsing to *[]any. No outer pointer is needed: a
+		// slice's nil value already represents JSON null, so []T round-trips
+		// null/empty/populated faithfully (unlike nullable scalars/objects,
+		// whose zero values are indistinguishable from null).
+		if inner == "array" && s.Items != nil && s.Items.Schema != nil {
+			itemType := g.resolveType(s.Items.Schema, contextName+"Item")
+			return &ArrayType{ItemType: itemType}
 		}
 		baseType := PrimitiveTypeFromSchema(inner)
 		if baseType == nil {
@@ -4237,39 +4251,6 @@ func needsManualJSON(jsonName string) bool {
 		// Any non-printable control character
 		if r < 0x20 {
 			return true
-		}
-	}
-	return false
-}
-
-// isArrayType returns true if the GoType is a slice/array type.
-func isArrayType(t GoType) bool {
-	if t == nil {
-		return false
-	}
-	_, ok := t.(*ArrayType)
-	return ok
-}
-
-// isArrayProperty returns true if the Go type or the property schema indicates
-// an array type. This handles both direct ArrayType and NamedType aliases to
-// arrays (e.g., when the property uses $ref to an array-typed definition).
-func (g *Generator) isArrayProperty(goType GoType, propSchema *schema.Schema) bool {
-	if isArrayType(goType) {
-		return true
-	}
-	// Check the property schema's type.
-	if propSchema != nil {
-		if primarySchemaType(propSchema) == "array" {
-			return true
-		}
-		// Follow $ref to check the target schema.
-		if effRef := propSchema.EffectiveRef(); effRef != "" {
-			if resolved := g.resolveRefInContext(effRef, propSchema); resolved != nil {
-				if primarySchemaType(resolved) == "array" {
-					return true
-				}
-			}
 		}
 	}
 	return false

@@ -10,7 +10,7 @@ import (
 // TreeNode - A recursive tree structure
 type TreeNode struct {
 	// Child nodes
-	Children *[]*TreeNode `json:"children,omitempty"`
+	Children []*TreeNode `json:"children,omitempty"`
 	// Parent node reference
 	Parent *TreeNode `json:"parent,omitempty"`
 	// Node value
@@ -86,11 +86,9 @@ func (t TreeNode) MarshalJSON() ([]byte, error) {
 
 // Validate checks TreeNode against its JSON Schema constraints.
 func (t TreeNode) Validate() error {
-	if t.Children != nil {
-		for _i, _item := range *t.Children {
-			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("children[%d].%w", _i, err)
-			}
+	for _i, _item := range t.Children {
+		if err := _item.Validate(); err != nil {
+			return fmt.Errorf("children[%d].%w", _i, err)
 		}
 	}
 	if t.Parent != nil {

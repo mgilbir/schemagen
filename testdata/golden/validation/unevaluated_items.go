@@ -8,9 +8,9 @@ import (
 )
 
 type UnevaluatedItemsTest struct {
-	AllofExtendedTuple   *[]any                     `json:"allof_extended_tuple,omitempty"`
-	StrictTuple          *[]any                     `json:"strict_tuple,omitempty"`
-	TypedOverflow        *[]any                     `json:"typed_overflow,omitempty"`
+	AllofExtendedTuple   []any                      `json:"allof_extended_tuple,omitempty"`
+	StrictTuple          []any                      `json:"strict_tuple,omitempty"`
+	TypedOverflow        []any                      `json:"typed_overflow,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -80,8 +80,8 @@ func (u UnevaluatedItemsTest) MarshalJSON() ([]byte, error) {
 // Validate checks UnevaluatedItemsTest against its JSON Schema constraints.
 func (u UnevaluatedItemsTest) Validate() error {
 	if u._jsonKeys["strict_tuple"] {
-		if u.StrictTuple != nil && len(*u.StrictTuple) > 2 {
-			return fmt.Errorf("strict_tuple: has %d items, maximum is 2", len(*u.StrictTuple))
+		if len(u.StrictTuple) > 2 {
+			return fmt.Errorf("strict_tuple: has %d items, maximum is 2", len(u.StrictTuple))
 		}
 	}
 	return nil

@@ -57,6 +57,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_oneof_variants", "testdata/schemas/regression/allof_oneof_variants.json", "testdata/golden/regression/allof_oneof_variants.go"},
 		{"regression/allof_oneof_crossed_types", "testdata/schemas/regression/allof_oneof_crossed_types.json", "testdata/golden/regression/allof_oneof_crossed_types.go"},
 		{"regression/allof_if_then_branches", "testdata/schemas/regression/allof_if_then_branches.json", "testdata/golden/regression/allof_if_then_branches.go"},
+		{"regression/nullable_array_items", "testdata/schemas/regression/nullable_array_items.json", "testdata/golden/regression/nullable_array_items.go"},
 	}
 }
 

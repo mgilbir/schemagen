@@ -52,7 +52,7 @@ type Config struct {
 	// Optional name that can be null
 	Name *string `json:"name"`
 	// Optional list of tags
-	Tags *[]any `json:"tags"`
+	Tags []string `json:"tags"`
 	// Schema version, always 2.0
 	Version              ConfigVersion              `json:"version"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`

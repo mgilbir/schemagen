@@ -11,7 +11,7 @@ import (
 type UserProfile struct {
 	Age                  *int64                     `json:"age,omitempty"`
 	Bio                  *string                    `json:"bio,omitempty"`
-	Tags                 *[]string                  `json:"tags,omitempty"`
+	Tags                 []string                   `json:"tags,omitempty"`
 	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -106,8 +106,8 @@ func (u UserProfile) Validate() error {
 		}
 	}
 	if u._jsonKeys["tags"] {
-		if u.Tags != nil && len(*u.Tags) > 10 {
-			return fmt.Errorf("tags: has %d items, maximum is 10", len(*u.Tags))
+		if len(u.Tags) > 10 {
+			return fmt.Errorf("tags: has %d items, maximum is 10", len(u.Tags))
 		}
 	}
 	if utf8.RuneCountInString(u.Username) < 3 {

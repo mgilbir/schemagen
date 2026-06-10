@@ -110,6 +110,73 @@ func TestOptionalStringWithOmitEmptyUsesPointer(t *testing.T) {
 	}
 }
 
+func TestNullableArrayPropertyPreservesItemType(t *testing.T) {
+	// Regression: a nullable array node (["array","null"]) must still recurse
+	// into items and generate a named element struct, rather than collapsing to
+	// *[]any (which happened because PrimitiveTypeFromSchema("array") == []any).
+	input := `{
+		"title": "Export",
+		"type": "object",
+		"properties": {
+			"rows": {
+				"type": ["array", "null"],
+				"items": {
+					"type": ["object", "null"],
+					"properties": {"id": {"type":"string"}}
+				}
+			},
+			"tags": {
+				"type": ["array", "null"],
+				"items": {"type": ["string", "null"]}
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var export *StructDef
+	var hasItemStruct bool
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok {
+			if d.Name == "Export" {
+				export = d
+			}
+			if d.Name == "ExportRowsItem" {
+				hasItemStruct = true
+			}
+		}
+	}
+	if export == nil {
+		t.Fatalf("expected Export struct")
+	}
+	if !hasItemStruct {
+		t.Fatalf("expected a named ExportRowsItem struct for the nullable array items")
+	}
+
+	fields := make(map[string]FieldDef)
+	for _, f := range export.Fields {
+		fields[f.JSONName] = f
+	}
+	// A slice is already nilable, so a nullable array needs no outer pointer:
+	// []*T, not *[]*T. The inner *T stays because the items are ["object","null"].
+	if got := fields["rows"].Type.GoTypeName(); got != "[]*ExportRowsItem" {
+		t.Fatalf("rows type = %q, want []*ExportRowsItem (not *[]any or *[]*…)", got)
+	}
+	if got := fields["tags"].Type.GoTypeName(); got != "[]*string" {
+		t.Fatalf("tags type = %q, want []*string (not *[]any or *[]*…)", got)
+	}
+}
+
 func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
 	input := `{
 		"title": "Field",
@@ -190,8 +257,8 @@ func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
 	if fields["choices"].Required || fields["min"].Required || fields["max"].Required {
 		t.Fatalf("variant-specific fields must not become globally required")
 	}
-	if got := fields["choices"].Type.GoTypeName(); got != "*[]string" {
-		t.Fatalf("choices type = %q, want *[]string", got)
+	if got := fields["choices"].Type.GoTypeName(); got != "[]string" {
+		t.Fatalf("choices type = %q, want []string", got)
 	}
 	if got := fields["min"].Type.GoTypeName(); got != "*float64" {
 		t.Fatalf("min type = %q, want *float64", got)
@@ -1491,15 +1558,17 @@ func TestGenerate_ArrayWithItems(t *testing.T) {
 		fieldMap[f.JSONName] = f
 	}
 
-	// Optional array fields with omitempty are wrapped in *[]T to preserve empty arrays.
+	// Array fields are plain []T: a slice is already nilable, so no outer pointer
+	// is needed. (Presence/empty constraints are a validation concern, not a type
+	// shape concern.)
 	membersField := fieldMap["members"]
-	if membersField.Type.GoTypeName() != "*[]string" {
-		t.Errorf("members type = %q, want %q", membersField.Type.GoTypeName(), "*[]string")
+	if membersField.Type.GoTypeName() != "[]string" {
+		t.Errorf("members type = %q, want %q", membersField.Type.GoTypeName(), "[]string")
 	}
 
 	scoresField := fieldMap["scores"]
-	if scoresField.Type.GoTypeName() != "*[]int64" {
-		t.Errorf("scores type = %q, want %q", scoresField.Type.GoTypeName(), "*[]int64")
+	if scoresField.Type.GoTypeName() != "[]int64" {
+		t.Errorf("scores type = %q, want %q", scoresField.Type.GoTypeName(), "[]int64")
 	}
 }
 
