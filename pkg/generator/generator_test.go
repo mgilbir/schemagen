@@ -242,6 +242,59 @@ func TestOptionalNamedSliceFieldPresenceGuardUsesNil(t *testing.T) {
 	}
 }
 
+func TestOptionalNullableEnumFieldPresenceGuardUsesNil(t *testing.T) {
+	// Regression: an optional property whose enum contains null becomes a
+	// raw enum backed by json.RawMessage (a byte slice). zeroForPrimitive
+	// previously fell back to `""` for json.RawMessage, so the emitted
+	// presence guard was `field != ""`, which does not compile.
+	input := `{
+		"title": "Banner",
+		"type": "object",
+		"properties": {
+			"message": {"type":"string"},
+			"tone": {"enum": ["info", "warning", null]}
+		},
+		"required": ["message"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var banner *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Banner" {
+			banner = d
+			break
+		}
+	}
+	if banner == nil {
+		t.Fatalf("expected Banner struct")
+	}
+
+	var tone *ValidatableFieldDef
+	for i := range banner.ValidatableFields {
+		if banner.ValidatableFields[i].JSONName == "tone" {
+			tone = &banner.ValidatableFields[i]
+			break
+		}
+	}
+	if tone == nil {
+		t.Fatalf("expected tone to be a validatable field; got %+v", banner.ValidatableFields)
+	}
+	if tone.OmitEmpty && tone.ZeroLiteral != "nil" {
+		t.Fatalf("tone presence guard zero literal = %q, want \"nil\" (json.RawMessage-backed raw enum)", tone.ZeroLiteral)
+	}
+}
+
 func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
 	input := `{
 		"title": "Field",

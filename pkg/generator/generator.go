@@ -5316,6 +5316,10 @@ func zeroForPrimitive(name string) string {
 		return "0"
 	case "bool":
 		return "false"
+	case "json.RawMessage":
+		// A byte slice: its zero value is nil, not "". Raw (heterogeneous)
+		// enums and multi-type wrappers are backed by json.RawMessage.
+		return "nil"
 	default:
 		return `""`
 	}

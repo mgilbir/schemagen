@@ -77,6 +77,15 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/enum/string_enum.json",
 		},
 		{
+			// Regression: an optional property whose enum contains null
+			// becomes a raw enum backed by json.RawMessage (a byte slice).
+			// Its presence guard must be `!= nil`, not `!= ""` — otherwise
+			// the generated code fails to compile.
+			Name:        "enum/optional_nullable_enum",
+			SchemaPath:  "testdata/schemas/enum/optional_nullable_enum.json",
+			FixturePath: "testdata/fixtures/enum/optional_nullable_enum.json",
+		},
+		{
 			Name:        "basic/primitive_types",
 			SchemaPath:  "testdata/schemas/basic/primitive_types.json",
 			FixturePath: "testdata/fixtures/basic/primitive_types.json",
