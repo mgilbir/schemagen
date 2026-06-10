@@ -177,6 +177,71 @@ func TestNullableArrayPropertyPreservesItemType(t *testing.T) {
 	}
 }
 
+func TestOptionalNamedSliceFieldPresenceGuardUsesNil(t *testing.T) {
+	// Regression: an optional property whose type is a named slice with its own
+	// Validate() method (here `tracks` -> `type TrackList []TrackListItem`) must
+	// get a nil-based presence guard. zeroLiteralForType previously fell back to
+	// `""` for a slice-backed alias, so the emitted guard was `field != ""`,
+	// which does not compile for a slice type.
+	input := `{
+		"title": "Playlist",
+		"type": "object",
+		"definitions": {
+			"trackList": {
+				"type": "array",
+				"minItems": 1,
+				"items": {
+					"type": "object",
+					"properties": {"title": {"type":"string","minLength":1}},
+					"required": ["title"]
+				}
+			}
+		},
+		"properties": {
+			"name": {"type":"string"},
+			"tracks": {"$ref": "#/definitions/trackList"}
+		},
+		"required": ["name"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var playlist *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Playlist" {
+			playlist = d
+			break
+		}
+	}
+	if playlist == nil {
+		t.Fatalf("expected Playlist struct")
+	}
+
+	var tracks *ValidatableFieldDef
+	for i := range playlist.ValidatableFields {
+		if playlist.ValidatableFields[i].JSONName == "tracks" {
+			tracks = &playlist.ValidatableFields[i]
+			break
+		}
+	}
+	if tracks == nil {
+		t.Fatalf("expected tracks to be a validatable field; got %+v", playlist.ValidatableFields)
+	}
+	if tracks.OmitEmpty && tracks.ZeroLiteral != "nil" {
+		t.Fatalf("tracks presence guard zero literal = %q, want \"nil\" (slice-backed named type)", tracks.ZeroLiteral)
+	}
+}
+
 func TestAllOfMergesOneOfVariantProperties(t *testing.T) {
 	input := `{
 		"title": "Field",

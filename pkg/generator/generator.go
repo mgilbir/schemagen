@@ -5269,6 +5269,9 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 	switch v := t.(type) {
 	case *PointerType:
 		return "nil"
+	case *ArrayType, *MapType:
+		// Slices and maps have a nil zero value, not "".
+		return "nil"
 	case *PrimitiveType:
 		return zeroForPrimitive(v.Name)
 	case *NamedType:
@@ -5279,7 +5282,11 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 				case *EnumDef:
 					return zeroForPrimitive(d.BaseType.GoTypeName())
 				case *AliasDef:
-					return zeroForPrimitive(d.Underlying.GoTypeName())
+					// Recurse so an alias backed by a slice/map/pointer
+					// (e.g. `type Condition []any`) yields "nil" rather
+					// than the "" fallback, which would emit an invalid
+					// `field != ""` presence guard for a slice field.
+					return g.zeroLiteralForType(d.Underlying)
 				case *StructDef:
 					// Structs don't have a meaningful zero literal for comparison.
 					return ""
