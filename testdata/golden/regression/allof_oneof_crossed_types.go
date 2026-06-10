@@ -54,8 +54,8 @@ func (c *Crossed) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			c._jsonKeys[k] = true
+		for _k := range raw {
+			c._jsonKeys[_k] = true
 		}
 		c._jsonRawProps = raw
 		knownFields := map[string]bool{

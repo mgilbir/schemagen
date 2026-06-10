@@ -13,6 +13,7 @@ type FieldBase struct {
 	Name                 string                     `json:"name"`
 	Type_                string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (f *FieldBase) UnmarshalJSON(data []byte) error {
@@ -34,13 +35,9 @@ func (f *FieldBase) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name", "type"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		f._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			f._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"label": true,
@@ -83,6 +80,17 @@ func (f FieldBase) MarshalJSON() ([]byte, error) {
 
 // Validate checks FieldBase against its JSON Schema constraints.
 func (f FieldBase) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if f._jsonKeys != nil {
+		for _, _req := range []string{"name", "type"} {
+			if !f._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -137,18 +145,10 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			d._jsonKeys[k] = true
+		for _k := range raw {
+			d._jsonKeys[_k] = true
 		}
 		d._jsonRawProps = raw
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name", "type"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
-		}
 		knownFields := map[string]bool{
 			"choices": true,
 			"default": true,
@@ -195,6 +195,17 @@ func (d DiaryField) MarshalJSON() ([]byte, error) {
 
 // Validate checks DiaryField against its JSON Schema constraints.
 func (d DiaryField) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if d._jsonKeys != nil {
+		for _, _req := range []string{"name", "type"} {
+			if !d._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	// object-level oneOf: exactly one flattened variant must match.
 	{
 		_oneOfMatches := 0

@@ -14,6 +14,7 @@ type Metadata struct {
 	Tags                 []string                   `json:"tags,omitempty"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
@@ -35,13 +36,9 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"created", "title"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		m._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			m._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"created": true,
@@ -84,6 +81,17 @@ func (m Metadata) MarshalJSON() ([]byte, error) {
 
 // Validate checks Metadata against its JSON Schema constraints.
 func (m Metadata) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if m._jsonKeys != nil {
+		for _, _req := range []string{"created", "title"} {
+			if !m._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -114,16 +122,8 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			p._jsonKeys[k] = true
-		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		for _k := range raw {
+			p._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"email": true,
@@ -165,6 +165,17 @@ func (p Person) MarshalJSON() ([]byte, error) {
 
 // Validate checks Person against its JSON Schema constraints.
 func (p Person) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if p._jsonKeys != nil {
+		for _, _req := range []string{"name"} {
+			if !p._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if p._jsonKeys["email"] {
 		if p.Email != nil && *p.Email != "" {
 			if _, err := mail.ParseAddress(*p.Email); err != nil {
@@ -180,6 +191,7 @@ type Section struct {
 	Heading              string                     `json:"heading"`
 	Subsections          []Section                  `json:"subsections,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (s *Section) UnmarshalJSON(data []byte) error {
@@ -201,13 +213,9 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"heading"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		s._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			s._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"body":        true,
@@ -250,6 +258,17 @@ func (s Section) MarshalJSON() ([]byte, error) {
 
 // Validate checks Section against its JSON Schema constraints.
 func (s Section) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if s._jsonKeys != nil {
+		for _, _req := range []string{"heading"} {
+			if !s._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	for _i, _item := range s.Subsections {
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("subsections[%d].%w", _i, err)
@@ -264,6 +283,7 @@ type Document struct {
 	Metadata             Metadata                   `json:"metadata"`
 	Sections             []Section                  `json:"sections"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (d *Document) UnmarshalJSON(data []byte) error {
@@ -285,13 +305,9 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"metadata", "sections"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		d._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			d._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"author":   true,
@@ -334,6 +350,17 @@ func (d Document) MarshalJSON() ([]byte, error) {
 
 // Validate checks Document against its JSON Schema constraints.
 func (d Document) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if d._jsonKeys != nil {
+		for _, _req := range []string{"metadata", "sections"} {
+			if !d._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if d.Author != nil {
 		if err := d.Author.Validate(); err != nil {
 			return fmt.Errorf("author.%w", err)

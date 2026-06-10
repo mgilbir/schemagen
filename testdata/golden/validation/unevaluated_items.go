@@ -35,8 +35,8 @@ func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			u._jsonKeys[k] = true
+		for _k := range raw {
+			u._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"allof_extended_tuple": true,

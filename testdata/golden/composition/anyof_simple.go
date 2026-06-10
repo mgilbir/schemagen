@@ -83,6 +83,7 @@ type SearchResult struct {
 	ID                   string                     `json:"id"`
 	Result               *SearchResultResult        `json:"result,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
@@ -104,13 +105,9 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"id"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		s._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			s._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"id":     true,
@@ -152,6 +149,17 @@ func (s SearchResult) MarshalJSON() ([]byte, error) {
 
 // Validate checks SearchResult against its JSON Schema constraints.
 func (s SearchResult) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if s._jsonKeys != nil {
+		for _, _req := range []string{"id"} {
+			if !s._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if s.Result != nil {
 		if err := s.Result.Validate(); err != nil {
 			return fmt.Errorf("result.%w", err)

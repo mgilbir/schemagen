@@ -12,6 +12,7 @@ type Address struct {
 	Street               string                     `json:"street"`
 	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (a *Address) UnmarshalJSON(data []byte) error {
@@ -33,13 +34,9 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"city", "street"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		a._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			a._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"city":   true,
@@ -82,6 +79,17 @@ func (a Address) MarshalJSON() ([]byte, error) {
 
 // Validate checks Address against its JSON Schema constraints.
 func (a Address) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if a._jsonKeys != nil {
+		for _, _req := range []string{"city", "street"} {
+			if !a._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -90,6 +98,7 @@ type Item struct {
 	Price                float64                    `json:"price"`
 	Quantity             int64                      `json:"quantity"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (i *Item) UnmarshalJSON(data []byte) error {
@@ -111,13 +120,9 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"name", "price", "quantity"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		i._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			i._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"name":     true,
@@ -160,6 +165,17 @@ func (i Item) MarshalJSON() ([]byte, error) {
 
 // Validate checks Item against its JSON Schema constraints.
 func (i Item) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if i._jsonKeys != nil {
+		for _, _req := range []string{"name", "price", "quantity"} {
+			if !i._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	return nil
 }
 
@@ -169,6 +185,7 @@ type Order struct {
 	OrderID              string                     `json:"order_id"`
 	ShippingAddress      Address                    `json:"shipping_address"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (o *Order) UnmarshalJSON(data []byte) error {
@@ -190,13 +207,9 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"items", "order_id", "shipping_address"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		o._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			o._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"billing_address":  true,
@@ -240,6 +253,17 @@ func (o Order) MarshalJSON() ([]byte, error) {
 
 // Validate checks Order against its JSON Schema constraints.
 func (o Order) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if o._jsonKeys != nil {
+		for _, _req := range []string{"items", "order_id", "shipping_address"} {
+			if !o._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if o.BillingAddress != nil {
 		if err := o.BillingAddress.Validate(); err != nil {
 			return fmt.Errorf("billing_address.%w", err)

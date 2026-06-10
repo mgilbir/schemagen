@@ -237,6 +237,12 @@ func (d *StructDef) NeedsRawProps() bool {
 // validation, dependent schema/required validation, propertyNames validation,
 // or unevaluatedProperties with conditional evaluation or cousin isolation.
 func (d *StructDef) NeedsJSONKeys() bool {
+	if d.HasRequiredFields() {
+		// Required-property presence is checked in Validate() via _jsonKeys so the
+		// error is path-qualified by the parent and reported as a validation error
+		// rather than a parse error.
+		return true
+	}
 	if len(d.ObjectOneOfs) > 0 {
 		return true
 	}

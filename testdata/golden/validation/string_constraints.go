@@ -37,16 +37,8 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u._jsonKeys = make(map[string]bool, len(raw))
-		for k := range raw {
-			u._jsonKeys[k] = true
-		}
-		// Check required JSON properties are present (only for JSON objects, not null).
-		if raw != nil {
-			for _, req := range []string{"username"} {
-				if _, ok := raw[req]; !ok {
-					return fmt.Errorf("%s: required property is missing", req)
-				}
-			}
+		for _k := range raw {
+			u._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"age":      true,
@@ -90,6 +82,17 @@ func (u UserProfile) MarshalJSON() ([]byte, error) {
 
 // Validate checks UserProfile against its JSON Schema constraints.
 func (u UserProfile) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if u._jsonKeys != nil {
+		for _, _req := range []string{"username"} {
+			if !u._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
 	if u._jsonKeys["age"] {
 		if u.Age != nil && float64(*u.Age) < 0 {
 			return fmt.Errorf("age: value %v is less than minimum 0", *u.Age)
