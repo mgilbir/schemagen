@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NullableArrayItems",
+  "description": "Regression: a nullable array node (\"type\":[\"array\",\"null\"]) must still generate a named item struct for object items and preserve scalar element types, rather than collapsing to *[]any. Mirrors the explode/child-table flattening shape.",
+  "type": "object",
+  "properties": {
+    "rows": {
+      "type": ["array", "null"],
+      "items": {
+        "type": ["object", "null"],
+        "properties": {
+          "id": { "type": "string" },
+          "qty": { "type": "integer" }
+        },
+        "required": ["id"]
+      }
+    },
+    "tags": {
+      "type": ["array", "null"],
+      "items": { "type": ["string", "null"] }
+    },
+    "scores": {
+      "type": ["array", "null"],
+      "items": { "type": "number" }
+    }
+  }
+}

@@ -146,6 +146,13 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/advanced/recursive_tree.json",
 		},
 		{
+			// Nullable arrays ([]*T / []T, no omitempty) preserve null, a null
+			// element, and an explicit empty [] across a round-trip.
+			Name:        "regression/nullable_array_items",
+			SchemaPath:  "testdata/schemas/regression/nullable_array_items.json",
+			FixturePath: "testdata/fixtures/regression/nullable_array_items.json",
+		},
+		{
 			Name:        "advanced/pattern_properties",
 			SchemaPath:  "testdata/schemas/advanced/pattern_properties.json",
 			FixturePath: "testdata/fixtures/advanced/pattern_properties.json",

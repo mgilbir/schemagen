@@ -203,7 +203,7 @@ func (c CompanyEmployeesItem) Validate() error {
 // Company - Schema with nested objects for testing JSON path in error messages
 type Company struct {
 	Address              CompanyAddress             `json:"address"`
-	Employees            *[]CompanyEmployeesItem    `json:"employees,omitempty"`
+	Employees            []CompanyEmployeesItem     `json:"employees,omitempty"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
@@ -285,11 +285,9 @@ func (c Company) Validate() error {
 	if err := c.Address.Validate(); err != nil {
 		return fmt.Errorf("address.%w", err)
 	}
-	if c.Employees != nil {
-		for _i, _item := range *c.Employees {
-			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("employees[%d].%w", _i, err)
-			}
+	for _i, _item := range c.Employees {
+		if err := _item.Validate(); err != nil {
+			return fmt.Errorf("employees[%d].%w", _i, err)
 		}
 	}
 	return nil
