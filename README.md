@@ -69,6 +69,8 @@ schemagen generate schema.json --allow-remote-refs
 
 This enables the HTTP resolver, which fetches and caches remote schemas at generation time. Remote resolution is disabled by default for security and reproducibility reasons -- schemas should ideally be vendored locally.
 
+> **Security note:** with `--allow-remote-refs`, `$ref` URLs from the input schema are fetched with no host allowlist. Running it on an untrusted schema is a server-side request forgery (SSRF) vector -- a `$ref` can point the fetch at internal services or cloud metadata endpoints. Only enable it for schemas you trust, and prefer vendoring remote schemas locally. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree; refs that escape it are rejected.
+
 ### Draft Override
 
 `schemagen` auto-detects the JSON Schema draft version from the `$schema` URI in your schema file. If your schema lacks a `$schema` field or you need to force a specific draft version, use `--draft`:
@@ -83,6 +85,8 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 ### Validation Strategy
 
 `schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
+
+`--validation runtime` is accepted but currently behaves identically to `hybrid`; it only records a different `Mode` string in the generated capability metadata. It is reserved for a future full-runtime validation path.
 
 Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
 
@@ -124,12 +128,17 @@ JSON Schema `pattern`, `patternProperties`, and `propertyNames.pattern` use ECMA
 
 ## How It Works
 
-The generation pipeline has four stages:
+Input is JSON only. `.yaml`/`.yml` files are rejected (YAML is not yet supported); files with any other extension are parsed as JSON.
+
+The generation pipeline has these stages:
 
 1. **Load** -- Parse the JSON Schema file (`pkg/schema`)
 2. **Normalize** -- Canonicalize the schema (resolve shorthand forms, infer types from structural keywords)
-3. **Generate IR** -- Convert the normalized schema into an intermediate representation of Go types (`pkg/generator`)
-4. **Emit** -- Render the IR into formatted Go source code using templates (`pkg/emitter`)
+3. **Resolve scopes** -- Compute base URIs, document roots, and the resource/anchor graph so scoped `$id` and `$ref` resolution work (`pkg/schema`)
+4. **Generate IR** -- Convert the normalized schema into an intermediate representation of Go types, resolving `$ref` targets (`pkg/generator`)
+5. **Emit** -- Render the IR into formatted Go source code using templates (`pkg/emitter`)
+
+Note that generation performs I/O: `$ref` targets are read from the local filesystem (confined to the schema's directory subtree), and, when `--allow-remote-refs` is set, fetched over the network.
 
 ## Development
 

@@ -278,7 +278,8 @@ func parseValidationMode(s string) (generator.ValidationMode, error) {
 }
 
 // deriveOutputFilename converts a schema filename to a Go source filename.
-// e.g. "person.json" -> "person.go", "my-schema.yaml" -> "my_schema.go"
+// e.g. "person.json" -> "person.go", "my-schema.json" -> "my_schema.go"
+// (the extension is dropped regardless of its value; only JSON input is supported).
 func deriveOutputFilename(schemaPath string) string {
 	base := filepath.Base(schemaPath)
 	ext := filepath.Ext(base)
