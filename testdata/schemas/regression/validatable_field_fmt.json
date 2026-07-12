@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ValidatableFieldFmt",
+  "$ref": "#/$defs/Base",
+  "properties": {
+    "foo": {"$ref": "#/$defs/Inner"}
+  },
+  "$defs": {
+    "Base": {"properties": {"x": {"type": "string"}}},
+    "Inner": {"properties": {"bar": {"type": "string"}}}
+  }
+}

@@ -397,6 +397,11 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			// Validatable fields emit fmt.Errorf to wrap the nested error path,
+			// so the file needs fmt even when the struct has no other fmt use.
+			if len(sd.ValidatableFields) > 0 {
+				needsFmt = true
+			}
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
