@@ -53,7 +53,17 @@ func FuncMap() template.FuncMap {
 		"validationValue":    validationValueFunc,
 		"validationNonNil":   validationNonNilFunc,
 		"validationStringSet": validationStringSetFunc,
+		"jsonErrorName":       jsonErrorNameFunc,
 	}
+}
+
+// jsonErrorNameFunc escapes a JSON property name for safe embedding inside a Go
+// double-quoted fmt format string. It applies Go string-literal escaping
+// (quotes, backslashes, control characters) and doubles percent signs so they
+// are not interpreted as format verbs. Without this, a property name containing
+// a quote, backslash, or percent produces uncompilable or misformatted code.
+func jsonErrorNameFunc(s string) string {
+	return strings.ReplaceAll(goStringLiteralFunc(s), "%", "%%")
 }
 
 func validationValueFunc(recv string, rule generator.ValidationRule) string {
