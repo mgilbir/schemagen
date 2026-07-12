@@ -60,6 +60,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/nullable_array_items", "testdata/schemas/regression/nullable_array_items.json", "testdata/golden/regression/nullable_array_items.go"},
 		{"regression/draft3_type_union", "testdata/schemas/regression/draft3_type_union.json", "testdata/golden/regression/draft3_type_union.go"},
 		{"regression/property_count", "testdata/schemas/regression/property_count.json", "testdata/golden/regression/property_count.go"},
+		{"regression/allof_tightest_constraints", "testdata/schemas/regression/allof_tightest_constraints.json", "testdata/golden/regression/allof_tightest_constraints.go"},
 	}
 }
 
