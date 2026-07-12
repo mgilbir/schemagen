@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -747,18 +748,21 @@ func NewCompositeResolver(resolvers ...SchemaResolver) *CompositeResolver {
 	return &CompositeResolver{resolvers: resolvers}
 }
 
-// ResolveSchema implements SchemaResolver by trying each resolver in order.
+// ResolveSchema implements SchemaResolver by trying each resolver in order and
+// returning the first success. On failure it joins every resolver's error so
+// the caller sees the informative one (e.g. the file resolver's "no such file")
+// instead of only the last resolver's (often a generic "unsupported scheme").
 func (c *CompositeResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, error) {
-	var lastErr error
+	var errs []error
 	for _, r := range c.resolvers {
 		s, err := r.ResolveSchema(ref, baseURI)
 		if err == nil {
 			return s, nil
 		}
-		lastErr = err
+		errs = append(errs, err)
 	}
-	if lastErr != nil {
-		return nil, lastErr
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("resolving %q: %w", ref, errors.Join(errs...))
 	}
 	return nil, fmt.Errorf("no resolvers configured")
 }

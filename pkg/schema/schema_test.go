@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1135,5 +1136,26 @@ func TestFileResolverConfinesToBaseDir(t *testing.T) {
 		if _, err := r.ResolveSchema(ref, nil); err == nil {
 			t.Errorf("ref %q escaped base directory but was not refused", ref)
 		}
+	}
+}
+
+func TestCompositeResolverJoinsErrors(t *testing.T) {
+	// FileResolver will fail (no such file); HTTPResolver will fail (scheme).
+	// The joined error must surface the file resolver's message, not only the
+	// last resolver's.
+	fileR := NewFileResolver(t.TempDir())
+	httpR := NewHTTPResolver()
+	c := NewCompositeResolver(fileR, httpR)
+
+	_, err := c.ResolveSchema("missing.json", nil)
+	if err == nil {
+		t.Fatal("expected error resolving a missing file")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "FileResolver") {
+		t.Errorf("joined error should include the file resolver failure, got: %v", err)
+	}
+	if !strings.Contains(msg, "missing.json") {
+		t.Errorf("joined error should reference the ref, got: %v", err)
 	}
 }
