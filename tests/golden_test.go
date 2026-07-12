@@ -67,6 +67,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/validatable_field_fmt", "testdata/schemas/regression/validatable_field_fmt.json", "testdata/golden/regression/validatable_field_fmt.go"},
 		{"regression/quoted_property_name", "testdata/schemas/regression/quoted_property_name.json", "testdata/golden/regression/quoted_property_name.go"},
 		{"regression/optional_empty_array", "testdata/schemas/regression/optional_empty_array.json", "testdata/golden/regression/optional_empty_array.go"},
+		{"regression/dynamicref_recursive", "testdata/schemas/regression/dynamicref_recursive.json", "testdata/golden/regression/dynamicref_recursive.go"},
 		{"regression/oneof_optional_const", "testdata/schemas/regression/oneof_optional_const.json", "testdata/golden/regression/oneof_optional_const.go"},
 	}
 }

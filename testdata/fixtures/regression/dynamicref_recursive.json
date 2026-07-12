@@ -1,0 +1,8 @@
+{
+  "foo": "pass",
+  "bar": {
+    "baz": {
+      "foo": "fail"
+    }
+  }
+}
