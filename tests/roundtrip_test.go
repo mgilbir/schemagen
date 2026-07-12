@@ -905,3 +905,34 @@ func TestAllOfTightestConstraints(t *testing.T) {
 		},
 	)
 }
+
+// TestAnyOfRequiredBranches checks that an anyOf whose variants are
+// distinguished by required properties rejects an object matching no branch,
+// rather than validating everything (the merged struct used to drop the
+// per-branch constraints).
+func TestAnyOfRequiredBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_required_branches.json",
+		[]string{
+			`{"a":"x"}`,
+			`{"b":"y"}`,
+			`{"a":"x","b":"y"}`,
+		},
+		[]string{
+			`{}`,
+			`{"c":"z"}`,
+		},
+	)
+}
+
+// TestAnyOfRequiredOnly covers an anyOf whose branches are distinguished only
+// by required properties (no type checks). The generated validator must not
+// import "bytes" (which is only used by property checks), and must still reject
+// an object matching neither branch.
+func TestAnyOfRequiredOnly(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_required_only.json",
+		[]string{`{"a":1}`, `{"b":2}`, `{"a":1,"b":2}`},
+		[]string{`{}`, `{"c":3}`},
+	)
+}

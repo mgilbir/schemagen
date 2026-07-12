@@ -3,6 +3,7 @@
 package testpkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -13,6 +14,8 @@ type SearchResultResult struct {
 	Title                *string                    `json:"title,omitempty"`
 	URL                  *string                    `json:"url,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
 func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
@@ -34,6 +37,11 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		s._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			s._jsonKeys[_k] = true
+		}
+		s._jsonRawProps = raw
 		knownFields := map[string]bool{
 			"description": true,
 			"name":        true,
@@ -76,6 +84,165 @@ func (s SearchResultResult) MarshalJSON() ([]byte, error) {
 
 // Validate checks SearchResultResult against its JSON Schema constraints.
 func (s SearchResultResult) Validate() error {
+	// object-level anyOf: at least one flattened variant must match.
+	{
+		_anyOfMatches := 0
+		{
+			_branchMatches := true
+			if _branchMatches {
+				if _raw, _ok := s._jsonRawProps["title"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "string" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := s._jsonRawProps["url"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "string" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				_anyOfMatches++
+			}
+		}
+		{
+			_branchMatches := true
+			if _branchMatches {
+				if _raw, _ok := s._jsonRawProps["description"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "string" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				if _raw, _ok := s._jsonRawProps["name"]; _ok {
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"':
+							_jt = "string"
+						case '{':
+							_jt = "object"
+						case '[':
+							_jt = "array"
+						case 't', 'f':
+							_jt = "boolean"
+						case 'n':
+							_jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					if _jt != "string" {
+						_branchMatches = false
+					}
+				}
+			}
+			if _branchMatches {
+				_anyOfMatches++
+			}
+		}
+		if _anyOfMatches < 1 {
+			return fmt.Errorf("anyOf: no variant matched")
+		}
+	}
 	return nil
 }
 

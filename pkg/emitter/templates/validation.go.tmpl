@@ -539,6 +539,82 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- range $ai, $anyOf := $struct.ObjectAnyOfs}}
+	// object-level anyOf: at least one flattened variant must match.
+	{
+		_anyOfMatches := 0
+		{{- range $bi, $branch := $anyOf.Branches}}
+		{
+			_branchMatches := true
+			{{- range $branch.RequiredKeys}}
+			if !{{$recv}}._jsonKeys[{{printf "%q" .}}] {
+				_branchMatches = false
+			}
+			{{- end}}
+			{{- range $branch.Checks}}
+			if _branchMatches {
+				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
+					{{- if .JSONType}}
+					_jt := "unknown"
+					_b := bytes.TrimSpace(_raw)
+					if len(_b) > 0 {
+						switch _b[0] {
+						case '"': _jt = "string"
+						case '{': _jt = "object"
+						case '[': _jt = "array"
+						case 't', 'f': _jt = "boolean"
+						case 'n': _jt = "null"
+						default:
+							_jt = "number"
+							_isInt := true
+							for _, _c := range _b {
+								if _c == '.' || _c == 'e' || _c == 'E' {
+									_isInt = false
+									break
+								}
+							}
+							if _isInt {
+								_jt = "integer"
+							}
+						}
+					}
+					{{- if eq .JSONType "number"}}
+					if _jt != "number" && _jt != "integer" {
+						_branchMatches = false
+					}
+					{{- else}}
+					if _jt != {{printf "%q" .JSONType}} {
+						_branchMatches = false
+					}
+					{{- end}}
+					{{- end}}
+					{{- if .AllowedValues}}
+					if _branchMatches {
+						_valueMatches := false
+						switch string(bytes.TrimSpace(_raw)) {
+						{{- range .AllowedValues}}
+						case {{printf "%q" .}}:
+							_valueMatches = true
+						{{- end}}
+						}
+						if !_valueMatches {
+							_branchMatches = false
+						}
+					}
+					{{- end}}
+				}
+			}
+			{{- end}}
+			if _branchMatches {
+				_anyOfMatches++
+			}
+		}
+		{{- end}}
+		if _anyOfMatches < 1 {
+			return fmt.Errorf("anyOf: no variant matched")
+		}
+	}
+	{{- end}}
 	{{- if $struct.HasPatternPropertyValidation}}
 	// patternProperties validation: check matched values against sub-schema constraints.
 	if len({{$recv}}.PatternProperties) > 0 {
