@@ -2,6 +2,7 @@ package generator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -1928,5 +1929,60 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if !cfg.OmitEmpty {
 		t.Error("OmitEmpty should be true by default")
+	}
+}
+
+// TestGenerateDoesNotMutateInputSchema ensures a const/const-null property
+// schema is not mutated in place (a synthesized Enum used to leak onto the
+// shared node), so a second Generate over the same tree is deterministic.
+func TestGenerateDoesNotMutateInputSchema(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "Config",
+		"type": "object",
+		"properties": {
+			"version": {"const": "2.0"},
+			"kind": {"const": null}
+		},
+		"required": ["version"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	version := s.Properties["version"]
+	kind := s.Properties["kind"]
+	if len(version.Enum) != 0 || len(kind.Enum) != 0 {
+		t.Fatalf("precondition: property schemas already carry an Enum")
+	}
+
+	emit := func() string {
+		gen := New(Config{PackageName: "testpkg"})
+		ir, err := gen.Generate(&s)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		var names []string
+		for _, td := range ir.TypeDefs {
+			names = append(names, td.TypeName())
+		}
+		return strings.Join(names, ",")
+	}
+
+	first := emit()
+
+	if len(version.Enum) != 0 {
+		t.Errorf("version schema mutated: Enum = %v", version.Enum)
+	}
+	if len(kind.Enum) != 0 {
+		t.Errorf("kind schema mutated: Enum = %v", kind.Enum)
+	}
+
+	second := emit()
+	if first != second {
+		t.Errorf("Generate not idempotent:\n first:  %s\n second: %s", first, second)
 	}
 }
