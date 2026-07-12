@@ -63,6 +63,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_tightest_constraints", "testdata/schemas/regression/allof_tightest_constraints.json", "testdata/golden/regression/allof_tightest_constraints.go"},
 		{"regression/anyof_required_branches", "testdata/schemas/regression/anyof_required_branches.json", "testdata/golden/regression/anyof_required_branches.go"},
 		{"regression/anyof_required_only", "testdata/schemas/regression/anyof_required_only.json", "testdata/golden/regression/anyof_required_only.go"},
+		{"regression/validatable_field_fmt", "testdata/schemas/regression/validatable_field_fmt.json", "testdata/golden/regression/validatable_field_fmt.go"},
 	}
 }
 
