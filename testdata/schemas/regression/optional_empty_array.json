@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OptionalEmptyArray",
+  "type": "object",
+  "properties": {
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "labels": {"type": "array", "items": {"type": "string"}}
+  }
+}

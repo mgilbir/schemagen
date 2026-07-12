@@ -11,7 +11,7 @@ import (
 
 type Metadata struct {
 	Created              time.Time                  `json:"created"`
-	Tags                 []string                   `json:"tags,omitempty"`
+	Tags                 []string                   `json:"tags,omitzero"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -189,7 +189,7 @@ func (p Person) Validate() error {
 type Section struct {
 	Body                 *string                    `json:"body,omitempty"`
 	Heading              string                     `json:"heading"`
-	Subsections          []Section                  `json:"subsections,omitempty"`
+	Subsections          []Section                  `json:"subsections,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }

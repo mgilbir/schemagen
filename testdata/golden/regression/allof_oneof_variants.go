@@ -112,7 +112,7 @@ func (d DiaryFieldWidget) Validate() error {
 }
 
 type DiaryField struct {
-	Choices              []string                   `json:"choices,omitempty"`
+	Choices              []string                   `json:"choices,omitzero"`
 	Default_             any                        `json:"default,omitempty"`
 	Label                *string                    `json:"label,omitempty"`
 	Max                  *float64                   `json:"max,omitempty"`

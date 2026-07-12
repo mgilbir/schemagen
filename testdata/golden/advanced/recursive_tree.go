@@ -10,7 +10,7 @@ import (
 // TreeNode - A recursive tree structure
 type TreeNode struct {
 	// Child nodes
-	Children []*TreeNode `json:"children,omitempty"`
+	Children []*TreeNode `json:"children,omitzero"`
 	// Parent node reference
 	Parent *TreeNode `json:"parent,omitempty"`
 	// Node value

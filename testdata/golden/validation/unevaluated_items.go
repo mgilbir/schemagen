@@ -8,9 +8,9 @@ import (
 )
 
 type UnevaluatedItemsTest struct {
-	AllofExtendedTuple   []any                      `json:"allof_extended_tuple,omitempty"`
-	StrictTuple          []any                      `json:"strict_tuple,omitempty"`
-	TypedOverflow        []any                      `json:"typed_overflow,omitempty"`
+	AllofExtendedTuple   []any                      `json:"allof_extended_tuple,omitzero"`
+	StrictTuple          []any                      `json:"strict_tuple,omitzero"`
+	TypedOverflow        []any                      `json:"typed_overflow,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
