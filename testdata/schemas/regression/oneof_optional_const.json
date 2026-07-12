@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfOptionalConst",
+  "type": "object",
+  "properties": {
+    "p": {
+      "oneOf": [
+        {"properties": {"kind": {"const": "a"}, "x": {"type": "string"}}, "required": ["x"]},
+        {"properties": {"kind": {"const": "b"}, "y": {"type": "string"}}, "required": ["y"]}
+      ]
+    }
+  }
+}
