@@ -936,3 +936,60 @@ func TestAnyOfRequiredOnly(t *testing.T) {
 		[]string{`{}`, `{"c":3}`},
 	)
 }
+
+// TestOneOfOptionalConstUnmarshal covers a oneOf whose variants share a const
+// property that is NOT required. The heuristic discriminator must not fire on
+// it (dispatching on a missing optional property would reject valid data);
+// unmarshaling falls back to the try-each-variant path keyed on the distinct
+// required fields.
+func TestOneOfOptionalConstUnmarshal(t *testing.T) {
+	schemaPath := "testdata/schemas/regression/oneof_optional_const.json"
+	generated := generateFromSchema(t, schemaPath)
+	if strings.Contains(string(generated), "oneofDiscriminatorValue") {
+		t.Fatalf("optional const property must not become a discriminator")
+	}
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	mainGo := fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// kind is omitted but each object matches exactly one variant via its
+	// required field, so unmarshaling must succeed.
+	for _, in := range []string{`+"`"+`{"p":{"x":"hi"}}`+"`"+`, `+"`"+`{"p":{"y":"yo"}}`+"`"+`, `+"`"+`{"p":{"kind":"a","x":"hi"}}`+"`"+`} {
+		var v %s
+		if err := json.Unmarshal([]byte(in), &v); err != nil {
+			fmt.Fprintf(os.Stderr, "unmarshal %%s failed: %%v\n", in, err)
+			os.Exit(1)
+		}
+	}
+	fmt.Println("PASS")
+}
+`, rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "oneof_optional_const_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("oneof optional-const test failed:\n%s\nerror: %v", string(output), err)
+	}
+	if strings.TrimSpace(string(output)) != "PASS" {
+		t.Fatalf("unexpected output:\n%s", output)
+	}
+}
