@@ -312,7 +312,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "maxProperties"}}
 	{
-		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
+		// Count properties actually present in the source JSON. _jsonKeys is
+		// populated by UnmarshalJSON; when nil (value not built from JSON) fall
+		// back to the overflow map count.
+		totalProps := len({{$recv}}.AdditionalProperties)
+		if {{$recv}}._jsonKeys != nil {
+			totalProps = len({{$recv}}._jsonKeys)
+		}
 		if totalProps > {{.Value}} {
 			return fmt.Errorf("too many properties: %d exceeds maximum {{.Value}}", totalProps)
 		}
@@ -320,7 +326,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "minProperties"}}
 	{
-		totalProps := {{len $struct.Fields}} + len({{$recv}}.AdditionalProperties)
+		totalProps := len({{$recv}}.AdditionalProperties)
+		if {{$recv}}._jsonKeys != nil {
+			totalProps = len({{$recv}}._jsonKeys)
+		}
 		if totalProps < {{.Value}} {
 			return fmt.Errorf("too few properties: %d is less than minimum {{.Value}}", totalProps)
 		}

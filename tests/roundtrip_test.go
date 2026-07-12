@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -792,4 +793,100 @@ func main() {
 	fmt.Println("PASS")
 }
 `, rootType, rootType, rootType, rootType)
+}
+
+// runValidationCases generates code for schemaPath, then compiles and runs a
+// small program that asserts every input in valid passes Validate() and every
+// input in invalid fails it. Used by focused validation regression tests.
+func runValidationCases(t *testing.T, schemaPath string, valid, invalid []string) {
+	t.Helper()
+	generated := generateFromSchema(t, schemaPath)
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	mainGo := fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	valid := []string{%s}
+	invalid := []string{%s}
+	for _, input := range valid {
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			fmt.Fprintf(os.Stderr, "valid unmarshal failed for %%s: %%v\n", input, err)
+			os.Exit(1)
+		}
+		if err := obj.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "valid should pass %%s: %%v\n", input, err)
+			os.Exit(1)
+		}
+	}
+	for _, input := range invalid {
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			continue // unmarshal-time rejection is an acceptable failure mode
+		}
+		if err := obj.Validate(); err == nil {
+			fmt.Fprintf(os.Stderr, "invalid should fail validation: %%s\n", input)
+			os.Exit(1)
+		}
+	}
+	fmt.Println("PASS")
+}
+`, goStringSliceElems(valid), goStringSliceElems(invalid), rootType, rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "validation_cases_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("validation cases failed:\n%s\nerror: %v", string(output), err)
+	}
+	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+		t.Fatalf("validation cases output:\n%s", outputStr)
+	}
+}
+
+// goStringSliceElems renders items as comma-separated Go string literals for
+// embedding inside a []string{...} composite literal.
+func goStringSliceElems(items []string) string {
+	quoted := make([]string, len(items))
+	for i, s := range items {
+		quoted[i] = strconv.Quote(s)
+	}
+	return strings.Join(quoted, ", ")
+}
+
+// TestPropertyCountValidation checks that minProperties/maxProperties on a
+// struct with declared properties count the properties actually present in the
+// JSON, not the number of declared fields.
+func TestPropertyCountValidation(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/property_count.json",
+		[]string{
+			`{"a":"x"}`,
+			`{"a":"x","b":"y"}`,
+			`{"a":"x","extra":"y"}`,
+		},
+		[]string{
+			`{}`,
+			`{"a":"x","b":"y","c":"z"}`,
+		},
+	)
 }
