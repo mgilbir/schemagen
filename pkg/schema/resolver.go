@@ -534,6 +534,30 @@ func NewFileResolver(baseDir string) *FileResolver {
 	}
 }
 
+// withinBase reports whether target resolves to a path inside the resolver's
+// base directory subtree. Both are made absolute and cleaned first so that
+// "../" traversal and symlink-free path tricks cannot escape the root. An empty
+// baseDir (no confinement configured) permits any path.
+func (f *FileResolver) withinBase(target string) bool {
+	if f.baseDir == "" {
+		return true
+	}
+	absBase, err := filepath.Abs(f.baseDir)
+	if err != nil {
+		return false
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	absBase = filepath.Clean(absBase)
+	absTarget = filepath.Clean(absTarget)
+	if absTarget == absBase {
+		return true
+	}
+	return strings.HasPrefix(absTarget, absBase+string(filepath.Separator))
+}
+
 // ResolveSchema implements SchemaResolver. It handles file:// URLs and relative file paths.
 func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, error) {
 	// Parse ref.
@@ -566,6 +590,13 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		} else {
 			filePath = filepath.Join(f.baseDir, relPath)
 		}
+	}
+
+	// Confine reads to the resolver's base directory subtree. A $ref path that
+	// escapes it (via "../" sequences or an absolute file:// path) would let an
+	// untrusted schema read arbitrary files during generation, so it is rejected.
+	if !f.withinBase(filePath) {
+		return nil, fmt.Errorf("FileResolver: refusing to read %q outside base directory %q", filePath, f.baseDir)
 	}
 
 	// Check cache.
