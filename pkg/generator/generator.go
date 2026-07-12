@@ -206,10 +206,15 @@ func (g *Generator) addRequiredImports() {
 
 	for _, td := range g.output.TypeDefs {
 		if sd, ok := td.(*StructDef); ok {
-			if len(sd.ObjectOneOfs) > 0 {
+			if len(sd.ObjectOneOfs) > 0 || len(sd.ObjectAnyOfs) > 0 {
 				needsJSON = true
 				needsFmt = true
-				needsBytes = true
+				// bytes.TrimSpace is only emitted for branch property checks
+				// (JSON type / allowed value); a group whose branches are keyed
+				// solely on required properties does not use it.
+				if objectBranchesHaveChecks(sd.ObjectOneOfs, sd.ObjectAnyOfs) {
+					needsBytes = true
+				}
 			}
 			if sd.NeedsUnmarshal {
 				needsJSON = true // UnmarshalJSON always uses json.Unmarshal
@@ -1889,6 +1894,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
+	// anyOf that sits alongside direct properties is flattened into this struct;
+	// attach object-level anyOf checks so "at least one branch must match" is
+	// enforced. The properties-less anyOf path is handled in generateAnyOfDef.
+	objectAnyOfs := g.extractObjectAnyOfDefs(s)
+	if len(objectAnyOfs) > 0 {
+		needsUnmarshal = true
+	}
+
 	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
 	// unevaluatedProperties need separate validation scoped to their branch.
 	cousinChecks := g.collectCousinUnevalChecks(s)
@@ -1927,6 +1940,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		UnevaluatedProperties: unevalProps,
 		CousinUnevalChecks:    cousinChecks,
 		ObjectOneOfs:          objectOneOfs,
+		ObjectAnyOfs:          objectAnyOfs,
 		RequiredJSON:          requiredJSON,
 		NeedsMarshal:          needsMarshal,
 		NeedsUnmarshal:        needsUnmarshal,
@@ -2315,6 +2329,23 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema) []ObjectOneOfDef {
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
 		if def := g.objectOneOfDefFromVariants(resolved.OneOf); def != nil {
+			defs = append(defs, *def)
+		}
+	}
+	return defs
+}
+
+func (g *Generator) extractObjectAnyOfDefs(s *schema.Schema) []ObjectAnyOfDef {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var defs []ObjectAnyOfDef
+	if def := g.objectAnyOfDefFromVariants(s.AnyOf); def != nil {
+		defs = append(defs, *def)
+	}
+	for _, sub := range s.AllOf {
+		resolved := g.resolveSchemaForApplicator(sub)
+		if def := g.objectAnyOfDefFromVariants(resolved.AnyOf); def != nil {
 			defs = append(defs, *def)
 		}
 	}
@@ -2913,7 +2944,58 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	}
 
 	// anyOf is type-agnostic: don't silently accept non-object data.
-	return g.generateStructDef(name, merged, false)
+	if err := g.generateStructDef(name, merged, false); err != nil {
+		return err
+	}
+
+	// Merging variant properties into one permissive struct loses the "at least
+	// one branch must match" constraint. Attach an object-level anyOf check
+	// (>=1 branch, evaluated over the raw JSON) so validation enforces it. When
+	// any branch has no matchable criteria (required keys / const / type checks),
+	// that branch matches any object and the whole anyOf is unconstrained, so the
+	// check is skipped to avoid false rejections.
+	if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
+		if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
+			if sd, ok := last.(*StructDef); ok {
+				sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
+				sd.NeedsUnmarshal = true
+			}
+		}
+	}
+	return nil
+}
+
+// objectBranchesHaveChecks reports whether any oneOf/anyOf branch carries a
+// property check (JSON type or allowed value), which is what the generated
+// validator inspects with bytes.TrimSpace. Branches keyed only on required
+// property presence do not need the bytes import.
+func objectBranchesHaveChecks(oneOfs []ObjectOneOfDef, anyOfs []ObjectAnyOfDef) bool {
+	for _, g := range oneOfs {
+		for _, b := range g.Branches {
+			if len(b.Checks) > 0 {
+				return true
+			}
+		}
+	}
+	for _, g := range anyOfs {
+		for _, b := range g.Branches {
+			if len(b.Checks) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// objectAnyOfDefFromVariants builds an ObjectAnyOfDef from anyOf variants,
+// reusing the oneOf branch extraction. Returns nil when the branches are not
+// all distinguishable by required keys or property checks.
+func (g *Generator) objectAnyOfDefFromVariants(variants []*schema.Schema) *ObjectAnyOfDef {
+	def := g.objectOneOfDefFromVariants(variants)
+	if def == nil {
+		return nil
+	}
+	return &ObjectAnyOfDef{Branches: def.Branches}
 }
 
 // generateOneOfForProperty creates a OneOfDef for a property with oneOf variants.

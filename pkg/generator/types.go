@@ -83,6 +83,7 @@ type StructDef struct {
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
 	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
 	ObjectOneOfs          []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
+	ObjectAnyOfs          []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -210,7 +211,7 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
 // conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
 func (d *StructDef) NeedsRawProps() bool {
-	if len(d.ObjectOneOfs) > 0 {
+	if len(d.ObjectOneOfs) > 0 || len(d.ObjectAnyOfs) > 0 {
 		return true
 	}
 	if d.UnevaluatedProperties == nil {
@@ -243,7 +244,7 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		// rather than a parse error.
 		return true
 	}
-	if len(d.ObjectOneOfs) > 0 {
+	if len(d.ObjectOneOfs) > 0 || len(d.ObjectAnyOfs) > 0 {
 		return true
 	}
 	if len(d.DependentSchemas) > 0 {
@@ -289,6 +290,13 @@ func (d *StructDef) HasPropertyCountValidation() bool {
 // ObjectOneOfDef describes one object-level oneOf group whose variants should be
 // checked against raw JSON properties after a schema has been flattened.
 type ObjectOneOfDef struct {
+	Branches []ObjectOneOfBranch
+}
+
+// ObjectAnyOfDef describes one object-level anyOf group. It shares the branch
+// shape with ObjectOneOfDef but requires at least one branch to match rather
+// than exactly one.
+type ObjectAnyOfDef struct {
 	Branches []ObjectOneOfBranch
 }
 
