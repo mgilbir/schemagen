@@ -4528,12 +4528,18 @@ func needsManualJSON(jsonName string) bool {
 // is not an array) or the schema is an object with properties. Used to wrap optional
 // struct fields in pointers for correct omitempty behavior.
 func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) bool {
-	// Check if it's a NamedType (which means it's a generated struct or enum).
-	// Exclude arrays (NamedType wrapping a slice) and primitives.
-	if nt, ok := goType.(*NamedType); ok {
-		return g.isStructType(nt.Name)
+	// A named type already emitted as a struct is an object property.
+	if nt, ok := goType.(*NamedType); ok && g.isStructType(nt.Name) {
+		return true
 	}
-	// Check the property schema for object type.
+	// Otherwise fall through to the property schema. The named type may be a
+	// struct that is still mid-generation — this happens with mutually recursive
+	// $ref/$dynamicRef chains (A → B → A), where the target struct has not been
+	// appended to output.TypeDefs yet. Inspecting the resolved schema still
+	// recognizes it as an optional object so the field is pointer-wrapped rather
+	// than materializing as an always-present value struct (which marshals to
+	// "{}" even when absent). Enum and slice/map aliases resolve to non-object
+	// schemas here, so they are correctly not treated as object properties.
 	if propSchema != nil {
 		if primarySchemaType(propSchema) == "object" && hasProperties(propSchema) {
 			return true

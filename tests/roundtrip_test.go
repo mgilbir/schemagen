@@ -181,6 +181,14 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/regression/optional_empty_array.json",
 		},
 		{
+			// Mutually recursive $ref/$dynamicRef: a nested optional object field
+			// must be pointer-wrapped even while its struct is mid-generation, so
+			// an absent nested object is omitted rather than materialized as "{}".
+			Name:        "regression/dynamicref_recursive",
+			SchemaPath:  "testdata/schemas/regression/dynamicref_recursive.json",
+			FixturePath: "testdata/fixtures/regression/dynamicref_recursive.json",
+		},
+		{
 			Name:        "advanced/pattern_properties",
 			SchemaPath:  "testdata/schemas/advanced/pattern_properties.json",
 			FixturePath: "testdata/fixtures/advanced/pattern_properties.json",
