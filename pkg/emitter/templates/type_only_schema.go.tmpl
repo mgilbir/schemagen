@@ -51,6 +51,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if _, _ok := _v.([]any); !_ok { _branchMatches = false }
 		{{- end}}
 		{{- end}}
+		{{- if $branch.Properties}}
 		_obj, _objOk := _v.(map[string]any)
 		if !_objOk {
 			_branchMatches = false
@@ -81,6 +82,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- end}}
 			}
 		}
+		{{- end}}
 		{{- end}}
 		if _branchMatches {
 			_typeBranchValid = true
