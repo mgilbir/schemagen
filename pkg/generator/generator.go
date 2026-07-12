@@ -1770,16 +1770,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
-	// Add struct-level property count validations.
+	// Add struct-level property count validations. These count present JSON keys
+	// (tracked in _jsonKeys), so they require the custom unmarshaler.
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "maxProperties", Value: s.MaxProperties.Int(),
 		})
+		needsUnmarshal = true
 	}
 	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "minProperties", Value: s.MinProperties.Int(),
 		})
+		needsUnmarshal = true
 	}
 
 	// Extract dependent schema constraints.

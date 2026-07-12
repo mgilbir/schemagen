@@ -265,6 +265,23 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		if v.Optional {
 			return true
 		}
+		// minProperties/maxProperties count present JSON keys, which are tracked
+		// in _jsonKeys. Without it the count would be a compile-time constant
+		// (number of declared fields) rather than the number of present ones.
+		if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasPropertyCountValidation reports whether the struct carries a
+// minProperties or maxProperties constraint that must count present JSON keys.
+func (d *StructDef) HasPropertyCountValidation() bool {
+	for _, v := range d.Validations {
+		if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+			return true
+		}
 	}
 	return false
 }
