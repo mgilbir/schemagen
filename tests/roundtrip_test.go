@@ -280,6 +280,7 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/defaults",
 		"testdata/golden/advanced",
 		"testdata/golden/bigint",
+		"testdata/golden/regression",
 	}
 
 	// We can't compile all files together since they may have conflicting type names
