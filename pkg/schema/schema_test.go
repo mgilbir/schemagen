@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -1102,5 +1104,36 @@ func TestHTTPResolverInComposite(t *testing.T) {
 	}
 	if resolved.Minimum == nil || *resolved.Minimum != 0 {
 		t.Error("expected minimum 0")
+	}
+}
+
+func TestFileResolverConfinesToBaseDir(t *testing.T) {
+	base := t.TempDir()
+	// A schema inside the base directory (allowed).
+	if err := os.WriteFile(filepath.Join(base, "leaf.json"),
+		[]byte(`{"type":"object","properties":{"x":{"type":"string"}}}`), 0o644); err != nil {
+		t.Fatalf("writing leaf: %v", err)
+	}
+	// A sensitive file outside the base directory (must not be readable via $ref).
+	outside := filepath.Join(filepath.Dir(base), "secret.json")
+	if err := os.WriteFile(outside, []byte(`{"type":"string"}`), 0o644); err != nil {
+		t.Fatalf("writing outside file: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(outside) })
+
+	r := NewFileResolver(base)
+
+	if _, err := r.ResolveSchema("leaf.json", nil); err != nil {
+		t.Fatalf("in-base ref should resolve, got: %v", err)
+	}
+
+	for _, ref := range []string{
+		"../secret.json",
+		"../../secret.json",
+		"file://" + outside,
+	} {
+		if _, err := r.ResolveSchema(ref, nil); err == nil {
+			t.Errorf("ref %q escaped base directory but was not refused", ref)
+		}
 	}
 }
