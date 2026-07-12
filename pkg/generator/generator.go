@@ -3,6 +3,7 @@ package generator
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -2662,53 +2663,173 @@ func countBooleanSchemas(subs []*schema.Schema) (trueCount, falseCount int) {
 	return
 }
 
-// mergeConstraints propagates validation constraint fields from src into dst,
-// using "first set wins" semantics so that the earliest sub-schema's value is
-// kept when multiple sub-schemas define the same constraint.
+// mergeConstraints propagates validation constraint fields from src into dst.
+// A value from an allOf sub-schema must be satisfied simultaneously with the
+// others, so overlapping constraints are combined to the *tightest* bound (max
+// of lower bounds, min of upper bounds) rather than kept first-set-wins — which
+// would silently drop every branch's constraint but the first.
 func mergeConstraints(dst, src *schema.Schema) {
-	// Numeric constraints
-	if dst.Minimum == nil && src.Minimum != nil {
-		dst.Minimum = src.Minimum
-	}
-	if dst.Maximum == nil && src.Maximum != nil {
-		dst.Maximum = src.Maximum
-	}
-	if dst.ExclusiveMinimum == nil && src.ExclusiveMinimum != nil {
-		dst.ExclusiveMinimum = src.ExclusiveMinimum
-	}
-	if dst.ExclusiveMaximum == nil && src.ExclusiveMaximum != nil {
-		dst.ExclusiveMaximum = src.ExclusiveMaximum
-	}
-	if dst.MultipleOf == nil && src.MultipleOf != nil {
-		dst.MultipleOf = src.MultipleOf
-	}
-	// String constraints
-	if dst.MinLength == nil && src.MinLength != nil {
-		dst.MinLength = src.MinLength
-	}
-	if dst.MaxLength == nil && src.MaxLength != nil {
-		dst.MaxLength = src.MaxLength
-	}
+	// Numeric constraints: keep the tighter bound.
+	dst.Minimum = tighterLowerFloat(dst.Minimum, src.Minimum)
+	dst.Maximum = tighterUpperFloat(dst.Maximum, src.Maximum)
+	dst.ExclusiveMinimum = tighterExclusive(dst.ExclusiveMinimum, src.ExclusiveMinimum, true)
+	dst.ExclusiveMaximum = tighterExclusive(dst.ExclusiveMaximum, src.ExclusiveMaximum, false)
+	dst.MultipleOf = combineMultipleOf(dst.MultipleOf, src.MultipleOf)
+	// String constraints.
+	dst.MinLength = tighterLowerFlexInt(dst.MinLength, src.MinLength)
+	dst.MaxLength = tighterUpperFlexInt(dst.MaxLength, src.MaxLength)
 	if dst.Pattern == nil && src.Pattern != nil {
+		// Two distinct patterns must both match; a single regex can't express
+		// that in general, so the first is kept (a known narrow limitation).
 		dst.Pattern = src.Pattern
 	}
-	// Array constraints
-	if dst.MinItems == nil && src.MinItems != nil {
-		dst.MinItems = src.MinItems
-	}
-	if dst.MaxItems == nil && src.MaxItems != nil {
-		dst.MaxItems = src.MaxItems
-	}
-	if dst.UniqueItems == nil && src.UniqueItems != nil {
+	// Array constraints.
+	dst.MinItems = tighterLowerFlexInt(dst.MinItems, src.MinItems)
+	dst.MaxItems = tighterUpperFlexInt(dst.MaxItems, src.MaxItems)
+	if src.UniqueItems != nil && *src.UniqueItems {
+		t := true
+		dst.UniqueItems = &t
+	} else if dst.UniqueItems == nil && src.UniqueItems != nil {
 		dst.UniqueItems = src.UniqueItems
 	}
-	// Object constraints
-	if dst.MinProperties == nil && src.MinProperties != nil {
-		dst.MinProperties = src.MinProperties
+	// Object constraints.
+	dst.MinProperties = tighterLowerFlexInt(dst.MinProperties, src.MinProperties)
+	dst.MaxProperties = tighterUpperFlexInt(dst.MaxProperties, src.MaxProperties)
+}
+
+// tighterLowerFloat returns the larger of two lower bounds (the tighter one).
+// The returned pointer is one of the inputs; neither is mutated.
+func tighterLowerFloat(a, b *float64) *float64 {
+	if a == nil {
+		return b
 	}
-	if dst.MaxProperties == nil && src.MaxProperties != nil {
-		dst.MaxProperties = src.MaxProperties
+	if b == nil {
+		return a
 	}
+	if *b > *a {
+		return b
+	}
+	return a
+}
+
+// tighterUpperFloat returns the smaller of two upper bounds (the tighter one).
+func tighterUpperFloat(a, b *float64) *float64 {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if *b < *a {
+		return b
+	}
+	return a
+}
+
+// tighterLowerFlexInt returns the larger of two lower bounds.
+func tighterLowerFlexInt(a, b *schema.FlexInt) *schema.FlexInt {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if b.Int() > a.Int() {
+		return b
+	}
+	return a
+}
+
+// tighterUpperFlexInt returns the smaller of two upper bounds.
+func tighterUpperFlexInt(a, b *schema.FlexInt) *schema.FlexInt {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if b.Int() < a.Int() {
+		return b
+	}
+	return a
+}
+
+// tighterExclusive combines two exclusiveMinimum/exclusiveMaximum values. Both
+// carry a numeric bound (Draft 6+) or a boolean flag (Draft 4). When both are
+// numeric, the tighter bound is kept (max for minimum, min for maximum). When
+// either uses the boolean form the first is retained (they aren't comparable
+// without the sibling minimum/maximum, and mixing draft dialects in one allOf
+// is not a case worth special handling).
+func tighterExclusive(a, b *schema.SchemaOrFloat, lower bool) *schema.SchemaOrFloat {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	if a.Number == nil || b.Number == nil {
+		return a
+	}
+	if lower {
+		if *b.Number > *a.Number {
+			return b
+		}
+		return a
+	}
+	if *b.Number < *a.Number {
+		return b
+	}
+	return a
+}
+
+// combineMultipleOf combines two multipleOf divisors: a value must be divisible
+// by both. For integral divisors this is their least common multiple. When one
+// divisor is an exact multiple of the other, the larger (tighter) one is kept.
+// Otherwise (incompatible non-integral divisors) the first is retained.
+func combineMultipleOf(a, b *float64) *float64 {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	av, bv := *a, *b
+	if av == 0 || bv == 0 {
+		return a
+	}
+	if av == math.Trunc(av) && bv == math.Trunc(bv) {
+		l := lcmInt64(int64(av), int64(bv))
+		f := float64(l)
+		return &f
+	}
+	if q := av / bv; q == math.Trunc(q) { // av is a multiple of bv → av is tighter
+		return a
+	}
+	if q := bv / av; q == math.Trunc(q) { // bv is a multiple of av → bv is tighter
+		return b
+	}
+	return a
+}
+
+// lcmInt64 returns the least common multiple of two non-negative integers.
+func lcmInt64(a, b int64) int64 {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	if a == 0 || b == 0 {
+		return 0
+	}
+	return a / gcdInt64(a, b) * b
+}
+
+func gcdInt64(a, b int64) int64 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 // generateAnyOfDef merges all anyOf sub-schemas into a single struct.

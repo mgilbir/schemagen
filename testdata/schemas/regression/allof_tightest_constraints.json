@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfTightestConstraints",
+  "type": "integer",
+  "allOf": [
+    {"minimum": 5, "multipleOf": 2},
+    {"minimum": 10, "multipleOf": 3}
+  ]
+}

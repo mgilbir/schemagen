@@ -890,3 +890,18 @@ func TestPropertyCountValidation(t *testing.T) {
 		},
 	)
 }
+
+// TestAllOfTightestConstraints checks that overlapping numeric constraints from
+// multiple allOf branches are combined to the tightest bound (and multipleOf to
+// the least common multiple), rather than keeping only the first branch's value.
+func TestAllOfTightestConstraints(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_tightest_constraints.json",
+		[]string{`12`, `18`, `24`},
+		[]string{
+			`7`,  // below the tighter minimum (10)
+			`8`,  // >= 10 but only a multiple of 2, not lcm(2,3)=6
+			`10`, // >= 10 but not a multiple of 6
+		},
+	)
+}
