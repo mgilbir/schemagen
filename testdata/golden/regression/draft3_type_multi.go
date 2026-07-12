@@ -5,32 +5,31 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
-// Draft3typeUnion accepts any JSON value and validates that it is one of the allowed types.
-type Draft3typeUnion struct {
+// Draft3typeMulti accepts any JSON value and validates that it is one of the allowed types.
+type Draft3typeMulti struct {
 	_raw json.RawMessage
 }
 
-func (d *Draft3typeUnion) UnmarshalJSON(data []byte) error {
+func (d *Draft3typeMulti) UnmarshalJSON(data []byte) error {
 	d._raw = append(d._raw[:0], data...)
 	return nil
 }
 
-func (d Draft3typeUnion) MarshalJSON() ([]byte, error) {
+func (d Draft3typeMulti) MarshalJSON() ([]byte, error) {
 	if len(d._raw) == 0 {
 		return []byte("null"), nil
 	}
 	return d._raw, nil
 }
 
-func (d Draft3typeUnion) Raw() json.RawMessage { return d._raw }
+func (d Draft3typeMulti) Raw() json.RawMessage { return d._raw }
 
-func (d Draft3typeUnion) String() string { return string(d._raw) }
+func (d Draft3typeMulti) String() string { return string(d._raw) }
 
-// Validate checks Draft3typeUnion against its JSON Schema type constraint.
-func (d Draft3typeUnion) Validate() error {
+// Validate checks Draft3typeMulti against its JSON Schema type constraint.
+func (d Draft3typeMulti) Validate() error {
 	var _v any
 	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
@@ -53,6 +52,26 @@ func (d Draft3typeUnion) Validate() error {
 			_typeBranchValid = true
 		}
 	}
+	{
+		_branchMatches := true
+		{
+			// A schema-valued type branch lists one or more allowed JSON types;
+			// the value matches when it is any one of them.
+			_typeOk := false
+			if _, _ok := _v.([]any); _ok {
+				_typeOk = true
+			}
+			if _v == nil {
+				_typeOk = true
+			}
+			if !_typeOk {
+				_branchMatches = false
+			}
+		}
+		if _branchMatches {
+			_typeBranchValid = true
+		}
+	}
 	if _typeBranchValid {
 		return nil
 	}
@@ -61,10 +80,8 @@ func (d Draft3typeUnion) Validate() error {
 	}
 	switch _tv := _v.(type) {
 	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
-			return fmt.Errorf("type: expected integer, got number")
-		}
-		return nil
+		_ = _tv
+		return fmt.Errorf("type: number is not allowed")
 	case string:
 		_ = _tv
 		return fmt.Errorf("type: string is not allowed")

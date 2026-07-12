@@ -59,6 +59,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_if_then_branches", "testdata/schemas/regression/allof_if_then_branches.json", "testdata/golden/regression/allof_if_then_branches.go"},
 		{"regression/nullable_array_items", "testdata/schemas/regression/nullable_array_items.json", "testdata/golden/regression/nullable_array_items.go"},
 		{"regression/draft3_type_union", "testdata/schemas/regression/draft3_type_union.json", "testdata/golden/regression/draft3_type_union.go"},
+		{"regression/draft3_type_multi", "testdata/schemas/regression/draft3_type_multi.json", "testdata/golden/regression/draft3_type_multi.go"},
 		{"regression/property_count", "testdata/schemas/regression/property_count.json", "testdata/golden/regression/property_count.go"},
 		{"regression/allof_tightest_constraints", "testdata/schemas/regression/allof_tightest_constraints.json", "testdata/golden/regression/allof_tightest_constraints.go"},
 		{"regression/anyof_required_branches", "testdata/schemas/regression/anyof_required_branches.json", "testdata/golden/regression/anyof_required_branches.go"},

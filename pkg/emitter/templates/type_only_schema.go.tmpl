@@ -34,22 +34,30 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range $bi, $branch := .TypeBranches}}
 	{
 		_branchMatches := true
-		{{- range $branch.AllowedTypes}}
-		{{- if eq . "object"}}
-		if _, _ok := _v.(map[string]any); !_ok { _branchMatches = false }
-		{{- else if eq . "integer"}}
-		if _f, _ok := _v.(float64); !_ok || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
-		{{- else if eq . "number"}}
-		if _, _ok := _v.(float64); !_ok { _branchMatches = false }
-		{{- else if eq . "string"}}
-		if _, _ok := _v.(string); !_ok { _branchMatches = false }
-		{{- else if eq . "boolean"}}
-		if _, _ok := _v.(bool); !_ok { _branchMatches = false }
-		{{- else if eq . "null"}}
-		if _v != nil { _branchMatches = false }
-		{{- else if eq . "array"}}
-		if _, _ok := _v.([]any); !_ok { _branchMatches = false }
-		{{- end}}
+		{{- if $branch.AllowedTypes}}
+		{
+			// A schema-valued type branch lists one or more allowed JSON types;
+			// the value matches when it is any one of them.
+			_typeOk := false
+			{{- range $branch.AllowedTypes}}
+			{{- if eq . "object"}}
+			if _, _ok := _v.(map[string]any); _ok { _typeOk = true }
+			{{- else if eq . "integer"}}
+			if _f, _ok := _v.(float64); _ok && _f == math.Trunc(_f) && !math.IsInf(_f, 0) { _typeOk = true }
+			{{- else if eq . "number"}}
+			if _, _ok := _v.(float64); _ok { _typeOk = true }
+			{{- else if eq . "string"}}
+			if _, _ok := _v.(string); _ok { _typeOk = true }
+			{{- else if eq . "boolean"}}
+			if _, _ok := _v.(bool); _ok { _typeOk = true }
+			{{- else if eq . "null"}}
+			if _v == nil { _typeOk = true }
+			{{- else if eq . "array"}}
+			if _, _ok := _v.([]any); _ok { _typeOk = true }
+			{{- end}}
+			{{- end}}
+			if !_typeOk { _branchMatches = false }
+		}
 		{{- end}}
 		{{- if $branch.Properties}}
 		_obj, _objOk := _v.(map[string]any)
