@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuotedPropertyName",
+  "type": "object",
+  "properties": {
+    "foo\"bar": {"$ref": "#/definitions/num"},
+    "pct%d": {"type": "string", "minLength": 1}
+  },
+  "definitions": {
+    "num": {"type": "number", "minimum": 0}
+  }
+}

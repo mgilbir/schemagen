@@ -158,66 +158,66 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if eq .RuleType "minLength"}}
 	{{- if .IsPointer}}
 	if {{validationNonNil $recv .}} && utf8.RuneCountInString({{$value}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
 	{{- else}}
 	if utf8.RuneCountInString({{$value}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: length %d is less than minimum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
 	{{- if .IsPointer}}
 	if {{validationNonNil $recv .}} && utf8.RuneCountInString({{$value}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
 	{{- else}}
 	if utf8.RuneCountInString({{$value}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString({{$value}}))
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v is less than minimum {{.Value}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{.Value}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v is less than minimum {{.Value}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{.Value}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) <= {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v must be greater than {{.Value}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{.Value}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) <= {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v must be greater than {{.Value}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) >= {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v must be less than {{.Value}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{.Value}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if float64({{$recv}}.{{.FieldName}}) >= {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: value %v must be less than {{.Value}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{.Value}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
@@ -227,13 +227,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		if {{$recv}}.{{.FieldName}} != nil {
 		q := float64(*{{$recv}}.{{.FieldName}}) / {{.Value}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", *{{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{.Value}}", *{{$recv}}.{{.FieldName}})
 		}
 		}
 		{{- else}}
 		q := float64({{$recv}}.{{.FieldName}}) / {{.Value}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{.JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
 		}
 		{{- end}}
 	}
@@ -242,34 +242,34 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if .IsPointer}}
 	if {{validationNonNil $recv .}} {
 		if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
-			return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
 		}
 	}
 	{{- else}}
 	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
-		return fmt.Errorf("{{.JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && len(*{{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: has %d items, minimum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: has %d items, minimum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
 	}
 	{{- else}}
 	if len({{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: has %d items, minimum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: has %d items, minimum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && len(*{{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: has %d items, maximum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: has %d items, maximum is {{.Value}}", len(*{{$recv}}.{{.FieldName}}))
 	}
 	{{- else}}
 	if len({{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{.JSONName}}: has %d items, maximum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: has %d items, maximum is {{.Value}}", len({{$recv}}.{{.FieldName}}))
 	}
 	{{- end}}
 	{{- end}}
@@ -284,11 +284,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		for i, item := range arr {
 			b, err := json.Marshal(item)
 			if err != nil {
-				return fmt.Errorf("{{.JSONName}}: uniqueItems check: marshal error at index %d: %w", i, err)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", i, err)
 			}
 			key := string(b)
 			if seen[key] {
-				return fmt.Errorf("{{.JSONName}}: items are not unique (duplicate at index %d)", i)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", i)
 			}
 			seen[key] = true
 		}
@@ -296,17 +296,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "forbidden"}}
 	if {{$recv}}.{{.FieldName}} != nil {
-		return fmt.Errorf("{{.JSONName}}: property is forbidden (not: {})")
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (not: {})")
 	}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
 	{
 		_constGot, _constErr := json.Marshal({{$recv}}.{{.FieldName}})
 		if _constErr != nil {
-			return fmt.Errorf("{{.JSONName}}: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != {{printf "%q" .Value}} {
-			return fmt.Errorf("{{.JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, string(_constGot))
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, string(_constGot))
 		}
 	}
 	{{- end}}
@@ -339,7 +339,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if eq .Value "date"}}
 	if {{validationStringSet $recv .}} {
 		if _, _err := time.Parse("2006-01-02", {{$value}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$value}}, _err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$value}}, _err)
 		}
 	}
 	{{- end}}
@@ -353,102 +353,102 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 		}
 		if !_valid {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "email"}}
 	if {{validationStringSet $recv .}} {
 		if _, err := mail.ParseAddress({{$value}}); err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "idn-email"}}
 	if {{validationStringSet $recv .}} {
 		if _, err := mail.ParseAddress({{$value}}); err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "uri"}}
 	if {{validationStringSet $recv .}} {
 		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid URI", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
 	if {{validationStringSet $recv .}} {
 		if _, _err := url.Parse({{$value}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid URI reference", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid URI reference", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "iri"}}
 	if {{validationStringSet $recv .}} {
 		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid IRI", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IRI", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "uuid"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid UUID", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid UUID", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "hostname"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid hostname", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "idn-hostname"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid hostname", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid hostname", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "json-pointer"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid JSON Pointer", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid JSON Pointer", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "relative-json-pointer"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid relative JSON Pointer", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid relative JSON Pointer", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "regex"}}
 	if {{validationStringSet $recv .}} {
 		if _, _err := regexp.Compile({{$value}}); _err != nil {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid regex: %w", {{$value}}, _err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid regex: %w", {{$value}}, _err)
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "duration"}}
 	if {{validationStringSet $recv .}} {
 		if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{.JSONName}}: value %q is not a valid ISO 8601 duration", {{$value}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid ISO 8601 duration", {{$value}})
 		}
 	}
 	{{- end}}
 	{{- if eq .Value "ipv4"}}
 	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is4() {
-		return fmt.Errorf("{{.JSONName}}: value %q is not a valid IPv4 address", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- if eq .Value "ipv6"}}
 	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is6() {
-		return fmt.Errorf("{{.JSONName}}: value %q is not a valid IPv6 address", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
@@ -766,31 +766,31 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	if {{$recv}}.{{.FieldName}} != nil {
 		for _i, _item := range *{{$recv}}.{{.FieldName}} {
 			if err := _item.Validate(); err != nil {
-				return fmt.Errorf("{{.JSONName}}[%d].%w", _i, err)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%d].%w", _i, err)
 			}
 		}
 	}
 	{{- else if .IsSlice}}
 	for _i, _item := range {{$recv}}.{{.FieldName}} {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("{{.JSONName}}[%d].%w", _i, err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%d].%w", _i, err)
 		}
 	}
 	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-			return fmt.Errorf("{{.JSONName}}.%w", err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 		}
 	}
 	{{- else if and .OmitEmpty .ZeroLiteral}}
 	if {{$recv}}.{{.FieldName}} != {{.ZeroLiteral}} {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-			return fmt.Errorf("{{.JSONName}}.%w", err)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 		}
 	}
 	{{- else}}
 	if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
-		return fmt.Errorf("{{.JSONName}}.%w", err)
+		return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 	}
 	{{- end}}
 	{{- end}}
