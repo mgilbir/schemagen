@@ -76,6 +76,13 @@ func newGenerateCmd() *cobra.Command {
 			processedFiles := make(map[string]bool)
 			defer warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
 
+			// Reject input sets where two schemas map to the same output file
+			// (same base name in different directories). Without this the second
+			// silently overwrites the first.
+			if err := checkOutputCollisions(args); err != nil {
+				return err
+			}
+
 			// Ensure output directory exists.
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
 				return fmt.Errorf("creating output directory: %w", err)
@@ -219,6 +226,22 @@ func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied ma
 	for _, msg := range warnings {
 		fmt.Fprintf(w, "warning: %s\n", msg)
 	}
+}
+
+// checkOutputCollisions reports an error if two distinct input schema paths
+// would derive the same output file name. deriveOutputFilename uses only the
+// base name, so a/user.json and b/user.json both write to user.go; the second
+// would silently clobber the first. A schema listed twice is not a collision.
+func checkOutputCollisions(args []string) error {
+	seen := make(map[string]string, len(args))
+	for _, schemaPath := range args {
+		out := deriveOutputFilename(schemaPath)
+		if prev, ok := seen[out]; ok && prev != schemaPath {
+			return fmt.Errorf("input schemas %q and %q both map to output file %q; rename one or generate them into separate directories", prev, schemaPath, out)
+		}
+		seen[out] = schemaPath
+	}
+	return nil
 }
 
 // parseDraft converts a user-supplied draft version string to a schema.Draft value.
