@@ -179,9 +179,9 @@ type Trigger struct {
 	Default_             any                        `json:"default,omitempty"`
 	Delay                *string                    `json:"delay,omitempty"`
 	Message              *string                    `json:"message,omitempty"`
-	Notify               []string                   `json:"notify,omitempty"`
+	Notify               []string                   `json:"notify,omitzero"`
 	Title                *string                    `json:"title,omitempty"`
-	Tool                 []TriggerToolItem          `json:"tool,omitempty"`
+	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
 	Type_                TriggerType_               `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }

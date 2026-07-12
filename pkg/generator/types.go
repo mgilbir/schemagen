@@ -424,6 +424,7 @@ type FieldDef struct {
 	JSONName       string // JSON property name (original)
 	Type           GoType // resolved Go type
 	OmitEmpty      bool
+	OmitZero       bool   // use ",omitzero" instead of ",omitempty" (optional slice/map fields, to preserve a present-but-empty collection while still omitting an absent one)
 	Required       bool
 	Description    string
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)

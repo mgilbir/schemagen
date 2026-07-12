@@ -11,7 +11,7 @@ import (
 type UserProfile struct {
 	Age                  *int64                     `json:"age,omitempty"`
 	Bio                  *string                    `json:"bio,omitempty"`
-	Tags                 []string                   `json:"tags,omitempty"`
+	Tags                 []string                   `json:"tags,omitzero"`
 	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation

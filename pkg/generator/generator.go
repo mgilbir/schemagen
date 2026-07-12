@@ -1591,6 +1591,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		manualJSON := needsManualJSON(propName)
 
+		// Optional slice/map fields use ",omitzero" rather than ",omitempty" so a
+		// present-but-empty collection ([] or {}) survives a marshal round-trip
+		// while an absent one is still omitted. After unmarshal a present empty
+		// collection is non-nil and an absent one is nil, and omitzero omits only
+		// the nil (zero) value. omitempty would drop both, conflating absent with
+		// empty. (Slices stay []T — no pointer — so nil-safe access is preserved.)
+		omitZero := omitEmpty && g.isCollectionType(goType)
+
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
 		if propSchema.Default != nil {
@@ -1602,6 +1610,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			JSONName:       propName,
 			Type:           goType,
 			OmitEmpty:      omitEmpty,
+			OmitZero:       omitZero,
 			Required:       required,
 			Description:    propSchema.Description,
 			ManualJSON:     manualJSON,
@@ -5491,6 +5500,30 @@ func (g *Generator) isArrayAlias(name string) bool {
 			_, ok := d.Underlying.(*ArrayType)
 			return ok
 		}
+	}
+	return false
+}
+
+// isMapAlias reports whether a named type is an alias whose underlying type is a map.
+func (g *Generator) isMapAlias(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == name {
+			_, ok := d.Underlying.(*MapType)
+			return ok
+		}
+	}
+	return false
+}
+
+// isCollectionType reports whether a Go type is a slice or map (directly or via a
+// named alias). Such optional fields use ",omitzero" so a present-but-empty
+// collection is preserved on marshal.
+func (g *Generator) isCollectionType(t GoType) bool {
+	switch v := t.(type) {
+	case *ArrayType, *MapType:
+		return true
+	case *NamedType:
+		return g.isArrayAlias(v.Name) || g.isMapAlias(v.Name)
 	}
 	return false
 }

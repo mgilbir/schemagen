@@ -209,7 +209,7 @@ func (c CompanyEmployeesItem) Validate() error {
 // Company - Schema with nested objects for testing JSON path in error messages
 type Company struct {
 	Address              CompanyAddress             `json:"address"`
-	Employees            []CompanyEmployeesItem     `json:"employees,omitempty"`
+	Employees            []CompanyEmployeesItem     `json:"employees,omitzero"`
 	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation

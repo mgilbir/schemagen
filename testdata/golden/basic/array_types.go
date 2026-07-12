@@ -92,9 +92,9 @@ func (a ArrayTypesMetadataItem) Validate() error {
 }
 
 type ArrayTypes struct {
-	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitempty"`
-	Scores               []float64                  `json:"scores,omitempty"`
-	Tags                 []string                   `json:"tags,omitempty"`
+	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitzero"`
+	Scores               []float64                  `json:"scores,omitzero"`
+	Tags                 []string                   `json:"tags,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 

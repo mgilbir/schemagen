@@ -174,6 +174,13 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/regression/nullable_array_items.json",
 		},
 		{
+			// Optional (non-nullable) array uses ",omitzero": a present-but-empty
+			// array (tags:[]) is preserved while an absent one (labels) is omitted.
+			Name:        "regression/optional_empty_array",
+			SchemaPath:  "testdata/schemas/regression/optional_empty_array.json",
+			FixturePath: "testdata/fixtures/regression/optional_empty_array.json",
+		},
+		{
 			Name:        "advanced/pattern_properties",
 			SchemaPath:  "testdata/schemas/advanced/pattern_properties.json",
 			FixturePath: "testdata/fixtures/advanced/pattern_properties.json",
