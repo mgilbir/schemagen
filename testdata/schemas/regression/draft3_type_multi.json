@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "title": "Draft3TypeMulti",
+  "type": [
+    {"type": ["string"]},
+    {"type": ["array", "null"]}
+  ]
+}

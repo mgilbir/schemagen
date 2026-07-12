@@ -937,6 +937,18 @@ func TestAnyOfRequiredOnly(t *testing.T) {
 	)
 }
 
+// TestDraft3TypeMultiBranch covers a draft-3 schema-valued type union where one
+// branch lists multiple JSON types ({"type":["array","null"]}). The types
+// within a branch are alternatives (OR), so an array or null must validate
+// while an integer must not.
+func TestDraft3TypeMultiBranch(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_type_multi.json",
+		[]string{`"foo"`, `[1,2,3]`, `null`, `[]`},
+		[]string{`1`, `true`, `{}`},
+	)
+}
+
 // TestOneOfOptionalConstUnmarshal covers a oneOf whose variants share a const
 // property that is NOT required. The heuristic discriminator must not fire on
 // it (dispatching on a missing optional property would reject valid data);
