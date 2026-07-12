@@ -779,3 +779,46 @@ func TestGenerateDraftFlagInHelp(t *testing.T) {
 		t.Errorf("help output missing draft value examples, got:\n%s", output)
 	}
 }
+
+func TestGenerateOutputFilenameCollision(t *testing.T) {
+	tmpDir := t.TempDir()
+	dirA := filepath.Join(tmpDir, "a")
+	dirB := filepath.Join(tmpDir, "b")
+	for _, d := range []string{dirA, dirB} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	schemaJSON := `{"type":"object","properties":{"x":{"type":"string"}}}`
+	aPath := filepath.Join(dirA, "user.json")
+	bPath := filepath.Join(dirB, "user.json")
+	if err := os.WriteFile(aPath, []byte(schemaJSON), 0o644); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := os.WriteFile(bPath, []byte(schemaJSON), 0o644); err != nil {
+		t.Fatalf("write b: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", filepath.Join(tmpDir, "out"), aPath, bPath})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for colliding output filenames")
+	}
+	if !strings.Contains(err.Error(), "user.go") {
+		t.Errorf("expected collision error naming user.go, got: %v", err)
+	}
+
+	// The same file listed twice is not a collision.
+	cmd2 := NewRootCmd()
+	cmd2.SetOut(new(bytes.Buffer))
+	cmd2.SetErr(new(bytes.Buffer))
+	cmd2.SetArgs([]string{"generate", "--output-dir", filepath.Join(tmpDir, "out2"), aPath, aPath})
+	if err := cmd2.Execute(); err != nil {
+		t.Errorf("same file twice should not be a collision, got: %v", err)
+	}
+}
