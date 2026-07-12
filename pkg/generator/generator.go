@@ -912,13 +912,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Const -> treat as single-element enum for validation purposes.
 	if g.validationKeywordsEnabled() {
-		if s.Const != nil && len(s.Enum) == 0 {
-			s.Enum = []any{*s.Const}
-		} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
-			// Handle {"const": null}: Go's json.Unmarshal sets *any to nil for null,
-			// so s.Const is nil even though const was present. Use ConstIsNull flag.
-			s.Enum = []any{nil}
-		}
+		s = promoteConstToEnum(s)
 	}
 
 	// Enum type
@@ -1402,6 +1396,31 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	return nil
 }
 
+// promoteConstToEnum returns a schema whose Enum encodes a lone const value so
+// that const can be validated as a single-value enum. It never mutates s: when
+// promotion applies it returns a shallow copy. Schema nodes are shared across
+// $ref targets and reused across Generate calls, so mutating the input in place
+// would leak a synthesized Enum into unrelated types (or a second generation of
+// the same tree). When s already has an Enum, or no const, s is returned as-is.
+func promoteConstToEnum(s *schema.Schema) *schema.Schema {
+	if len(s.Enum) > 0 {
+		return s
+	}
+	if s.Const != nil {
+		c := *s
+		c.Enum = []any{*s.Const}
+		return &c
+	}
+	// {"const": null}: Go's json.Unmarshal leaves *any nil for null, so s.Const
+	// is nil even though const was present. ConstIsNull records that.
+	if s.ConstIsNull {
+		c := *s
+		c.Enum = []any{nil}
+		return &c
+	}
+	return s
+}
+
 // fieldNameFor returns the Go field name for a JSON property of the given type.
 // A configured override (from Config.FieldNames) wins over the derived name and
 // is recorded as applied so the caller can report unused overrides.
@@ -1726,6 +1745,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			if ft, ok := fieldTypes[rules[i].FieldName]; ok {
 				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" && rules[i].RuleType != "forbidden" {
 					continue
+				}
+				// A const promoted to a single-value enum type is enforced by that
+				// type's own Validate(); an additional const rule on the field would
+				// be redundant.
+				if rules[i].RuleType == "const" {
+					if nt, isNamed := ft.(*NamedType); isNamed && g.isEnumType(nt.Name) {
+						continue
+					}
 				}
 			}
 			filtered = append(filtered, rules[i])
@@ -3315,11 +3342,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// determine the Go type). When type IS specified, keep the natural Go type
 	// and rely on the "const" validation rule for enforcement.
 	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
-		if s.Const != nil && len(s.Enum) == 0 {
-			s.Enum = []any{*s.Const}
-		} else if s.ConstIsNull && s.Const == nil && len(s.Enum) == 0 {
-			s.Enum = []any{nil}
-		}
+		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum → generate enum type
