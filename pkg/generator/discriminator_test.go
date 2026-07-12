@@ -81,12 +81,14 @@ func TestDetectHeuristicDiscriminator(t *testing.T) {
 					"kind": {Const: &clickConst},
 					"x":    {},
 				},
+				Required: schema.RequiredList{"kind"},
 			},
 			{
 				Properties: map[string]*schema.Schema{
 					"kind": {Const: &keypressConst},
 					"key":  {},
 				},
+				Required: schema.RequiredList{"kind"},
 			},
 		}
 
@@ -110,6 +112,76 @@ func TestDetectHeuristicDiscriminator(t *testing.T) {
 		}
 		if oneOfDef.Variants[1].DiscriminatorValue != "keypress" {
 			t.Errorf("Variants[1].DiscriminatorValue = %q, want %q", oneOfDef.Variants[1].DiscriminatorValue, "keypress")
+		}
+	})
+
+	// Test: shared const property that is NOT required in the variants — no
+	// discriminator, because dispatch would reject objects that omit the
+	// optional property (a const only constrains a property when present).
+	t.Run("optional_const_property_no_discriminator", func(t *testing.T) {
+		clickConst := any("click")
+		keypressConst := any("keypress")
+
+		variants := []*schema.Schema{
+			{
+				Properties: map[string]*schema.Schema{
+					"kind": {Const: &clickConst},
+					"x":    {},
+				},
+				Required: schema.RequiredList{"x"},
+			},
+			{
+				Properties: map[string]*schema.Schema{
+					"kind": {Const: &keypressConst},
+					"key":  {},
+				},
+				Required: schema.RequiredList{"key"},
+			},
+		}
+
+		oneOfDef := &OneOfDef{
+			Variants: []OneOfVariant{
+				{FieldName: "Click"},
+				{FieldName: "Keypress"},
+			},
+		}
+
+		g.detectHeuristicDiscriminator(oneOfDef, variants)
+
+		if oneOfDef.DiscriminatorField != "" {
+			t.Errorf("DiscriminatorField = %q, want empty (optional const must not be a discriminator)", oneOfDef.DiscriminatorField)
+		}
+	})
+
+	// Test: two shared required const properties both qualify — the chosen field
+	// must be deterministic (sorted order → the lexicographically first).
+	t.Run("deterministic_when_multiple_candidates", func(t *testing.T) {
+		aConst, bConst := any("a"), any("b")
+		xConst, yConst := any("x"), any("y")
+
+		variants := []*schema.Schema{
+			{
+				Properties: map[string]*schema.Schema{
+					"kind": {Const: &aConst},
+					"tag":  {Const: &xConst},
+				},
+				Required: schema.RequiredList{"kind", "tag"},
+			},
+			{
+				Properties: map[string]*schema.Schema{
+					"kind": {Const: &bConst},
+					"tag":  {Const: &yConst},
+				},
+				Required: schema.RequiredList{"kind", "tag"},
+			},
+		}
+
+		for i := 0; i < 20; i++ {
+			oneOfDef := &OneOfDef{Variants: []OneOfVariant{{FieldName: "A"}, {FieldName: "B"}}}
+			g.detectHeuristicDiscriminator(oneOfDef, variants)
+			if oneOfDef.DiscriminatorField != "kind" {
+				t.Fatalf("DiscriminatorField = %q, want %q (must be deterministic across runs)", oneOfDef.DiscriminatorField, "kind")
+			}
 		}
 	})
 

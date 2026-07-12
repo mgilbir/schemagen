@@ -3125,7 +3125,19 @@ func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*sch
 }
 
 // detectHeuristicDiscriminator looks for a shared property across all variants
-// where each variant has a distinct const or single-value enum for that property.
+// where each variant has a distinct const or single-value enum for that property
+// AND requires that property.
+//
+// The "required in every variant" condition matters for correctness: the
+// generated discriminator-based UnmarshalJSON demands the property be present.
+// A const on an optional property only constrains it when present, so keying
+// dispatch on an optional property would reject objects that legitimately omit
+// it. When the property is not required in all variants, no discriminator is
+// detected and unmarshaling falls back to the try-each-variant path (gated by
+// each variant's required fields), which handles that case correctly.
+//
+// Candidate properties are examined in sorted order so the chosen field is
+// deterministic when more than one qualifies.
 func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []*schema.Schema) {
 	// Collect resolved schemas for all variants
 	resolvedVariants := make([]*schema.Schema, len(variants))
@@ -3137,14 +3149,17 @@ func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []
 		resolvedVariants[i] = resolved
 	}
 
-	// Find candidate properties that exist in ALL variants
-	firstProps := resolvedVariants[0].Properties
-	for propName := range firstProps {
+	// Find candidate properties that exist in (and are required by) ALL variants.
+	for _, propName := range sortedKeys(resolvedVariants[0].Properties) {
 		allHaveConst := true
 		seenValues := make(map[string]int)
 		values := make([]string, len(resolvedVariants))
 
 		for i, resolved := range resolvedVariants {
+			if !variantRequiresProperty(resolved, propName) {
+				allHaveConst = false
+				break
+			}
 			propSchema, ok := resolved.Properties[propName]
 			if !ok {
 				allHaveConst = false
@@ -3173,6 +3188,16 @@ func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []
 			return
 		}
 	}
+}
+
+// variantRequiresProperty reports whether the schema lists prop in its required array.
+func variantRequiresProperty(s *schema.Schema, prop string) bool {
+	for _, r := range s.Required {
+		if r == prop {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveVariantSchema resolves a variant schema (following $ref if needed) to get
