@@ -1,7 +1,7 @@
 {{define "bigint_alias"}}
 {{- $recv := receiverName .Name -}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 // {{.Name}} holds an integer value with arbitrary-precision support (int64 + *big.Int).
 type {{.Name}} struct {

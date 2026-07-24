@@ -1,7 +1,7 @@
 {{define "inferred_alias"}}
 {{- $recv := receiverName .Name -}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 // {{.Name}} accepts any JSON value. Constraints apply only when the value is {{.InferredJSONType}}.
 type {{.Name}} struct {

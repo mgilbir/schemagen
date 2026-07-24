@@ -6,7 +6,7 @@
 
 {{define "enum_const"}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} {{goType .BaseType}}
 
@@ -30,7 +30,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 
 {{define "enum_raw"}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}

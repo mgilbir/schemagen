@@ -1,6 +1,6 @@
 {{define "alias"}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
