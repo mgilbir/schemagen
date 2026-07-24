@@ -16,6 +16,7 @@ type Config struct {
 	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
 	Validation    ValidationMode        // Controls static vs hybrid/runtime validation planning.
 	FieldNames    FieldNameMap          // Optional per-type overrides pinning JSON properties to specific Go field names.
+	LenientRefs   bool                  // When true, $refs that no resolver can serve degrade to any instead of failing generation.
 }
 
 // DefaultConfig returns sensible defaults.

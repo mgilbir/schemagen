@@ -1015,3 +1015,54 @@ func TestGenerateItemsOneOfCrossDocumentVariants(t *testing.T) {
 		t.Errorf("same-named cross-document variants collapsed onto one type:\n%s", src)
 	}
 }
+
+// writeUnresolvableRefFixture writes a schema whose $ref no resolver can serve.
+func writeUnresolvableRefFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gadget.json")
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "app://models/gadget.json",
+		"type": "object",
+		"properties": {
+			"widget": {"$ref": "app://models/widget.json#/definitions/widget"}
+		}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestGenerateFailsOnUnresolvedRef(t *testing.T) {
+	mainPath := writeUnresolvableRefFixture(t)
+
+	err := runGenerateArgs(t, mainPath, "-o", t.TempDir())
+	if err == nil {
+		t.Fatal("expected generation to fail on an unresolvable $ref")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "app://models/widget.json#/definitions/widget") {
+		t.Errorf("error should name the unresolved ref, got: %v", msg)
+	}
+	if !strings.Contains(msg, "--lenient-refs") {
+		t.Errorf("error should mention the --lenient-refs escape hatch, got: %v", msg)
+	}
+}
+
+func TestGenerateLenientRefsDegradesToAny(t *testing.T) {
+	mainPath := writeUnresolvableRefFixture(t)
+	outDir := t.TempDir()
+
+	if err := runGenerateArgs(t, mainPath, "-o", outDir, "-p", "models", "--lenient-refs"); err != nil {
+		t.Fatalf("generate --lenient-refs: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "gadget.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "Widget") {
+		t.Errorf("expected a Widget field in the degraded output:\n%s", out)
+	}
+}

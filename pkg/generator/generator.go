@@ -58,6 +58,12 @@ type Generator struct {
 	// so callers can detect a name already taken by a different schema and
 	// pick a disambiguated one instead of silently reusing the wrong type.
 	typeSchemas map[string]*schema.Schema
+	// unresolvedRefs records $ref values that resolveRefInContext could not
+	// resolve anywhere (local defs, anchors, document roots, or the external
+	// resolver). Unless Config.LenientRefs is set, Generate fails when this
+	// is non-empty: an unresolvable ref means the generated code silently
+	// degrades (any-typed fields, incomplete validation).
+	unresolvedRefs map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
@@ -68,6 +74,7 @@ func New(cfg Config) *Generator {
 		generating:        make(map[string]bool),
 		structsInProgress: make(map[string]bool),
 		typeSchemas:       make(map[string]*schema.Schema),
+		unresolvedRefs:    make(map[string]bool),
 	}
 }
 
@@ -190,7 +197,37 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.output.ValidationCapability = analyzeValidationCapability(s, g.resourceGraph, g.config.Validation)
 	g.addRequiredImports()
 
+	// Unless lenient, refuse to hand back an IR that was degraded by
+	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
+	if !g.config.LenientRefs && len(g.unresolvedRefs) > 0 {
+		refs := make([]string, 0, len(g.unresolvedRefs))
+		for ref := range g.unresolvedRefs {
+			refs = append(refs, ref)
+		}
+		sort.Strings(refs)
+		return nil, &UnresolvedRefsError{Refs: refs}
+	}
+
 	return g.output, nil
+}
+
+// UnresolvedRefsError reports $refs that no resolver could serve during
+// generation. Callers can set Config.LenientRefs to accept the degraded
+// output instead.
+type UnresolvedRefsError struct {
+	Refs []string
+}
+
+func (e *UnresolvedRefsError) Error() string {
+	return fmt.Sprintf("cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+}
+
+func quoteAll(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = fmt.Sprintf("%q", s)
+	}
+	return out
 }
 
 // addRequiredImports scans generated TypeDefs and adds necessary imports.
@@ -4152,6 +4189,7 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 			return s
 		}
 	}
+	g.unresolvedRefs[ref] = true
 	return nil
 }
 

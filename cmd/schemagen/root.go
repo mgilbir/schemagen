@@ -1,6 +1,7 @@
 package schemagen
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,6 +44,7 @@ func newGenerateCmd() *cobra.Command {
 		draftStr         string
 		validationStr    string
 		fieldMapPath     string
+		lenientRefs      bool
 	)
 
 	cmd := &cobra.Command{
@@ -150,12 +152,17 @@ func newGenerateCmd() *cobra.Command {
 					Draft:            draft,
 					Validation:       validationMode,
 					FieldNames:       fieldMap[fileKey],
+					LenientRefs:      lenientRefs,
 				}
 				gen := generator.New(cfg)
 
 				// 4. Generate IR
 				ir, err := gen.Generate(s)
 				if err != nil {
+					var unresolved *generator.UnresolvedRefsError
+					if errors.As(err, &unresolved) {
+						return fmt.Errorf("generating IR for %s: %w\n(provide the referenced documents via --ref-schema, enable --allow-remote-refs, or pass --lenient-refs to degrade unresolved refs to any)", schemaPath, err)
+					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
 
@@ -220,6 +227,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
+	cmd.Flags().BoolVar(&lenientRefs, "lenient-refs", false, "Degrade $refs that no resolver can serve to any instead of failing generation")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
 	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
