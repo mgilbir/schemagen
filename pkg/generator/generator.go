@@ -3865,7 +3865,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		// null/empty/populated faithfully (unlike nullable scalars/objects,
 		// whose zero values are indistinguishable from null).
 		if inner == "array" && s.Items != nil && s.Items.Schema != nil {
-			itemType := g.resolveType(s.Items.Schema, contextName+"Item")
+			itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 			return &ArrayType{ItemType: itemType}
 		}
 		baseType := PrimitiveTypeFromSchema(inner)
@@ -3902,7 +3902,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// Array with items
 	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil {
-		itemType := g.resolveType(s.Items.Schema, contextName+"Item")
+		itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 		return &ArrayType{ItemType: itemType}
 	}
 
@@ -4877,6 +4877,25 @@ func (g *Generator) constrainsObjectShape(s *schema.Schema) bool {
 // hasProperties returns true if the schema defines any properties.
 func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
+}
+
+// resolveArrayItemType resolves the Go type for an array's items schema.
+// An inline oneOf-only items schema describing an object union is materialized
+// as a named sealed-interface type — the same output an items $ref to a named
+// oneOf definition already produces — instead of collapsing to any and losing
+// the element typing entirely.
+//
+// The guard mirrors generateTypeDef's own struct condition (oneOfDescribesObject
+// with no properties of its own), so the name introduced here is always backed
+// by the sealed struct. A constraint-only oneOf over scalars does not qualify
+// and falls through to the alias paths, where its branches attach to the
+// declared or inferred type.
+func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
+	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
+		_ = g.generateTypeDef(itemContext, items)
+		return &NamedType{Name: itemContext}
+	}
+	return g.resolveType(items, itemContext)
 }
 
 func hasRefStructuralSiblings(s *schema.Schema) bool {

@@ -1,0 +1,8 @@
+{
+    "name": "test canvas",
+    "shapes": [
+        { "kind": "circle", "radius": 2.5 },
+        { "kind": "rectangle", "width": 3, "height": 4 },
+        { "kind": "circle", "radius": 1 }
+    ]
+}

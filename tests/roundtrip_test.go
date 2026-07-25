@@ -62,6 +62,11 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/composition/oneof_simple_rect.json",
 		},
 		{
+			Name:        "composition/oneof_array_items",
+			SchemaPath:  "testdata/schemas/composition/oneof_array_items.json",
+			FixturePath: "testdata/fixtures/composition/oneof_array_items.json",
+		},
+		{
 			// Regression: an optional property whose type is a $ref to a
 			// constrained array definition becomes a named slice type with its
 			// own Validate() (e.g. `type TrackList []TrackListItem`). The
