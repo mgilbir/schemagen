@@ -109,6 +109,15 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	if s.Title != "" {
 		g.rootTypeName = SchemaNameToGoName(s.Title)
 	}
+	if g.config.RootTypeName != "" {
+		// An explicit override is used verbatim — callers may need an exact
+		// name (e.g. to stay compatible with previously generated code) that
+		// SchemaNameToGoName's initialism rules would rewrite.
+		if !isExportedGoIdentifier(g.config.RootTypeName) {
+			return nil, fmt.Errorf("root type name %q is not an exported Go identifier", g.config.RootTypeName)
+		}
+		g.rootTypeName = g.config.RootTypeName
+	}
 
 	// Store root schema's $id for detecting self-references.
 	g.rootID = s.ID

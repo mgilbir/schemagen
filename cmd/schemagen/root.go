@@ -45,6 +45,8 @@ func newGenerateCmd() *cobra.Command {
 		validationStr    string
 		fieldMapPath     string
 		lenientRefs      bool
+		rootName         string
+		rootNameFromFile bool
 	)
 
 	cmd := &cobra.Command{
@@ -65,6 +67,12 @@ func newGenerateCmd() *cobra.Command {
 			validationMode, err := parseValidationMode(validationStr)
 			if err != nil {
 				return err
+			}
+
+			// An explicit --root-name can only apply to a single schema;
+			// with several inputs it would name every root identically.
+			if rootName != "" && len(args) > 1 {
+				return fmt.Errorf("--root-name applies to a single schema file, got %d (use --root-name-from-filename for multiple)", len(args))
 			}
 
 			// Load optional field-name overrides. Keyed by schema-file base name.
@@ -142,6 +150,14 @@ func newGenerateCmd() *cobra.Command {
 				fileKey := filepath.Base(schemaPath)
 				processedFiles[fileKey] = true
 
+				rootTypeName := rootName
+				if rootNameFromFile {
+					// e.g. "trigger_fixture.json" → "TriggerFixtureJSON"; the
+					// extension is kept as a naming word so person.json and
+					// person.yaml derive distinct type names.
+					rootTypeName = generator.SchemaNameToGoName(fileKey)
+				}
+
 				cfg := generator.Config{
 					PackageName:      pkgName,
 					OutputDir:        outputDir,
@@ -153,6 +169,7 @@ func newGenerateCmd() *cobra.Command {
 					Validation:       validationMode,
 					FieldNames:       fieldMap[fileKey],
 					LenientRefs:      lenientRefs,
+					RootTypeName:     rootTypeName,
 				}
 				gen := generator.New(cfg)
 
@@ -231,7 +248,10 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
 	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
+	cmd.Flags().StringVar(&rootName, "root-name", "", "Exact Go type name for the root schema, used verbatim (single schema file only; default: schema title, or Root)")
+	cmd.Flags().BoolVar(&rootNameFromFile, "root-name-from-filename", false, "Derive each root type name from the schema filename (Go initialism rules apply), e.g. topic.json → TopicJSON")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
+	cmd.MarkFlagsMutuallyExclusive("root-name", "root-name-from-filename")
 
 	return cmd
 }

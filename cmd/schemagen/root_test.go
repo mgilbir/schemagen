@@ -1066,3 +1066,126 @@ func TestGenerateLenientRefsDegradesToAny(t *testing.T) {
 		t.Errorf("expected a Widget field in the degraded output:\n%s", out)
 	}
 }
+
+func writeSimpleSchema(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {"name": {"type": "string"}}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func execGenerate(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(append([]string{"generate"}, args...))
+	return cmd.Execute()
+}
+
+func TestGenerateRootName(t *testing.T) {
+	path := writeSimpleSchema(t, "person.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "Employee"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "person.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type Employee struct") {
+		t.Errorf("expected root type Employee, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameFromFilename(t *testing.T) {
+	path := writeSimpleSchema(t, "trigger_fixture.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name-from-filename"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "trigger_fixture.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type TriggerFixtureJSON struct") {
+		t.Errorf("expected root type TriggerFixtureJSON, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameOverridesTitle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "titled.json")
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Some Title",
+		"type": "object",
+		"properties": {"name": {"type": "string"}}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "Wanted"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "titled.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type Wanted struct") {
+		t.Errorf("--root-name should override the schema title, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameRejectsMultipleSchemas(t *testing.T) {
+	a := writeSimpleSchema(t, "a.json")
+	b := writeSimpleSchema(t, "b.json")
+
+	err := execGenerate(t, a, b, "-o", t.TempDir(), "--root-name", "X")
+	if err == nil {
+		t.Fatal("expected an error for --root-name with multiple schemas")
+	}
+	if !strings.Contains(err.Error(), "--root-name-from-filename") {
+		t.Errorf("error should point at --root-name-from-filename, got: %v", err)
+	}
+}
+
+func TestGenerateRootNameUsedVerbatim(t *testing.T) {
+	// Initialism rules must not rewrite an explicit name (TopicJson must
+	// not become TopicJSON) — exact names matter when replacing previously
+	// generated code.
+	path := writeSimpleSchema(t, "topic.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "TopicJson"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "topic.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type TopicJson struct") {
+		t.Errorf("expected verbatim root type TopicJson, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameRejectsInvalidIdentifier(t *testing.T) {
+	path := writeSimpleSchema(t, "person.json")
+
+	for _, bad := range []string{"lowercase", "Has Space", "1Digit"} {
+		if err := execGenerate(t, path, "-o", t.TempDir(), "--root-name", bad); err == nil {
+			t.Errorf("expected an error for root name %q", bad)
+		}
+	}
+}

@@ -17,6 +17,7 @@ type Config struct {
 	Validation    ValidationMode        // Controls static vs hybrid/runtime validation planning.
 	FieldNames    FieldNameMap          // Optional per-type overrides pinning JSON properties to specific Go field names.
 	LenientRefs   bool                  // When true, $refs that no resolver can serve degrade to any instead of failing generation.
+	RootTypeName  string                // Overrides the root type name (default: the schema title, or "Root" when there is none).
 }
 
 // DefaultConfig returns sensible defaults.
