@@ -1986,3 +1986,62 @@ func TestGenerateDoesNotMutateInputSchema(t *testing.T) {
 		t.Errorf("Generate not idempotent:\n first:  %s\n second: %s", first, second)
 	}
 }
+
+// TestIntegerConstraintOnlyOneOfPreservesTypeAndVariants is a regression for the
+// dispatch arm that turned {"type":"integer","oneOf":[...]} into `type Root any`,
+// dropping the declared type, its constraints, and the oneOf itself. The schema
+// must instead produce an int64 AliasDef whose OneOfVariants are populated.
+func TestIntegerConstraintOnlyOneOfPreservesTypeAndVariants(t *testing.T) {
+	input := `{"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *AliasDef
+	for _, td := range ir.TypeDefs {
+		if a, ok := td.(*AliasDef); ok && a.Name == "Root" {
+			root = a
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected an AliasDef named Root, got %#v", ir.TypeDefs)
+	}
+	pt, ok := root.Underlying.(*PrimitiveType)
+	if !ok || pt.Name != "int64" {
+		t.Fatalf("Root underlying = %#v, want *PrimitiveType{int64} (not any)", root.Underlying)
+	}
+	if len(root.OneOfVariants) != 2 {
+		t.Fatalf("Root.OneOfVariants = %#v, want 2 non-empty variants", root.OneOfVariants)
+	}
+}
+
+// TestNullPropertySchemaReturnsError is a regression for the nil pointer panic on
+// {"properties":{"a":null}}: a null property schema must produce an actionable
+// error naming the property, not crash the generator.
+func TestNullPropertySchemaReturnsError(t *testing.T) {
+	input := `{"type":"object","properties":{"a":null}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	_, err := gen.Generate(&s)
+	if err == nil {
+		t.Fatalf("expected an error for a null property schema, got nil")
+	}
+	if !strings.Contains(err.Error(), `"a"`) {
+		t.Fatalf("error %q does not mention the property name %q", err.Error(), "a")
+	}
+}

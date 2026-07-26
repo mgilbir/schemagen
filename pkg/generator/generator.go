@@ -1025,9 +1025,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// oneOf without properties in parent or any variant → alias to `any`
-	// (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]} can hold any JSON value)
-	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) {
+	// oneOf without properties in parent or any variant, and with no usable type
+	// information → alias to `any` (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]}
+	// can hold any JSON value). When the schema declares (or implies via sibling
+	// constraints) a primary type, fall through to the primitive/array alias paths
+	// below so the declared type and the oneOf branches are both preserved.
+	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) &&
+		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
@@ -1037,8 +1041,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Object with properties, patternProperties, oneOf fields, or unevaluatedProperties → struct
-	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 || s.UnevaluatedProperties != nil {
+	// Object with properties, patternProperties, object oneOf variants, or
+	// unevaluatedProperties → struct. A oneOf whose variants are constraint-only
+	// (no properties) is not an object union and must not force a struct — those
+	// fall through to the primitive/array alias paths so the oneOf branches attach
+	// to the declared/inferred type.
+	if hasProperties(s) || len(s.PatternProperties) > 0 || g.oneOfHasProperties(s) || s.UnevaluatedProperties != nil {
 		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
 		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
@@ -1190,6 +1198,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Description:    s.Description,
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
 				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(s),
 				NeedsNullCheck: !schemaAllowsNull(s),
 			})
@@ -1202,9 +1211,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		goType := g.resolveType(s, name)
 		var rules []ValidationRule
 		var anyOfVariants [][]ValidationRule
+		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
 			rules = extractAliasValidationRules(s, goType)
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
+			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
 		// Mark as generated BEFORE buildTupleItemDefs so that any recursive
 		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
@@ -1250,6 +1261,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				InferredJSONType:     primaryType,
 				Validations:          rules,
 				AnyOfVariants:        anyOfVariants,
+				OneOfVariants:        oneOfVariants,
 				NeedsNullCheck:       !schemaAllowsNull(s),
 				ItemsFalse:           itemsFalse,
 				ItemsType:            itemsType,
@@ -1281,6 +1293,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Description:      s.Description,
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
+				OneOfVariants:    oneOfVariants,
 				TupleItems:       tupleItems,
 				Contains:         containsDef,
 				MinContains:      minContains,
@@ -1534,6 +1547,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		propSchema := s.Properties[propName]
 		goFieldName := goFieldNames[propName]
 		required := requiredSet[propName]
+
+		// A null JSON value for a property schema (e.g. {"properties":{"a":null}})
+		// is not a valid schema — a property schema must be an object or a boolean.
+		// Reject it with an actionable error rather than dereferencing nil below.
+		if propSchema == nil {
+			return fmt.Errorf("property %q: schema is null (a property schema must be an object or boolean)", propName)
+		}
 
 		// Check if this property uses oneOf
 		if propSchema != nil && len(propSchema.OneOf) > 0 {
@@ -5212,6 +5232,9 @@ func schemaHasExplicitType(s *schema.Schema, typeName string) bool {
 
 // isNullable returns true if the schema's type list includes "null".
 func isNullable(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
 	for _, t := range s.Type {
 		if t == "null" {
 			return true
@@ -5222,6 +5245,9 @@ func isNullable(s *schema.Schema) bool {
 
 // nonNullType returns the first type in the type list that is not "null".
 func nonNullType(s *schema.Schema) string {
+	if s == nil {
+		return ""
+	}
 	for _, t := range s.Type {
 		if t != "null" {
 			return t

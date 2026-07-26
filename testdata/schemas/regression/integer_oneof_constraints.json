@@ -1,0 +1,1 @@
+{"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]}

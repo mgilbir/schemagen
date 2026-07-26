@@ -921,6 +921,25 @@ func TestAllOfTightestConstraints(t *testing.T) {
 	)
 }
 
+// TestIntegerOneOfConstraints checks that a schema declaring an integer type
+// alongside a constraint-only oneOf preserves both the declared type and the
+// oneOf branches: a value matching zero branches is rejected, a value matching
+// exactly one branch passes, and a non-integer is rejected at unmarshal.
+// Regression for the dispatch arm that previously produced `type Root any`.
+func TestIntegerOneOfConstraints(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_oneof_constraints.json",
+		[]string{
+			`12`, // >= 10 only → exactly 1 branch
+			`3`,  // <= 5 only → exactly 1 branch
+		},
+		[]string{
+			`7`,   // matches neither branch (>5 and <10) → 0 branches
+			`"x"`, // string is rejected at unmarshal for an integer type
+		},
+	)
+}
+
 // TestAnyOfRequiredBranches checks that an anyOf whose variants are
 // distinguished by required properties rejects an object matching no branch,
 // rather than validating everything (the merged struct used to drop the
