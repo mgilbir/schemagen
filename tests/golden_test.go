@@ -72,6 +72,9 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/integer_oneof_constraints", "testdata/schemas/regression/integer_oneof_constraints.json", "testdata/golden/regression/integer_oneof_constraints.go"},
 		{"regression/oneof_required_only_object", "testdata/schemas/regression/oneof_required_only_object.json", "testdata/golden/regression/oneof_required_only_object.go"},
 		{"regression/oneof_string_length_variants", "testdata/schemas/regression/oneof_string_length_variants.json", "testdata/golden/regression/oneof_string_length_variants.go"},
+		{"regression/pp_pattern_ecma", "testdata/schemas/regression/pp_pattern_ecma.json", "testdata/golden/regression/pp_pattern_ecma.go"},
+		{"regression/unevaluated_properties_pattern", "testdata/schemas/regression/unevaluated_properties_pattern.json", "testdata/golden/regression/unevaluated_properties_pattern.go"},
+		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
 	}
 }
 

@@ -940,6 +940,56 @@ func TestIntegerOneOfConstraints(t *testing.T) {
 	)
 }
 
+// TestPatternPropertiesPatternECMA checks that a `pattern` constraint on a
+// patternProperties value schema compiles (it previously emitted a std-regexp
+// call without importing "regexp") and is evaluated with ECMA-262 semantics:
+// the lookahead `(?=a)` matches under ecma262 where std RE2 would panic.
+// Regression for audit finding C2.
+func TestPatternPropertiesPatternECMA(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pp_pattern_ecma.json",
+		[]string{
+			`{"v1":"aaa"}`,
+		},
+		[]string{
+			`{"v1":"b"}`,
+		},
+	)
+}
+
+// TestUnevaluatedPropertiesPattern checks that a `pattern` constraint on a
+// schema-valued unevaluatedProperties compiles and validates via ECMA-262.
+// The pattern constrains the property value; `"xfoo"` matches `^x`, `"yfoo"`
+// does not. Regression for audit finding C2.
+func TestUnevaluatedPropertiesPattern(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_properties_pattern.json",
+		[]string{
+			`{"a":"s","extra":"xfoo"}`,
+		},
+		[]string{
+			`{"a":"s","extra":"yfoo"}`,
+		},
+	)
+}
+
+// TestPatternPropertiesTypeList checks that a patternProperties value schema
+// with a type list (`["string","null"]`) accepts a value whose JSON type
+// matches any listed type, rather than only the first. Regression for audit
+// finding C8, which previously rejected legal `null`.
+func TestPatternPropertiesTypeList(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pp_type_list.json",
+		[]string{
+			`{"v1":null}`,
+			`{"v1":"s"}`,
+		},
+		[]string{
+			`{"v1":5}`,
+		},
+	)
+}
+
 // TestAnyOfRequiredBranches checks that an anyOf whose variants are
 // distinguished by required properties rejects an object matching no branch,
 // rather than validating everything (the merged struct used to drop the

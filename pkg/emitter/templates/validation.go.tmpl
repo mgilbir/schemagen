@@ -65,8 +65,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{
 			var s string
 			if err := json.Unmarshal(v, &s); err == nil {
-				re := regexp.MustCompile({{printf "%q" .Value}})
-				if !re.MatchString(s) {
+				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 					return fmt.Errorf("value does not match pattern {{.Value}}")
 				}
 			}
@@ -116,7 +115,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					}
 				}
 			}
-			{{- $want := ppTypeValue .Value}}
+			{{- $wants := ppTypeValues .Value}}
+			{{- if eq (len $wants) 1}}
+			{{- $want := index $wants 0}}
 			{{- if eq $want "integer"}}
 			if jt != "integer" {
 				return fmt.Errorf("value must be integer")
@@ -128,6 +129,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- else}}
 			if jt != {{printf "%q" $want}} {
 				return fmt.Errorf("value must be {{$want}}")
+			}
+			{{- end}}
+			{{- else}}
+			_ppTypeOK := false
+			{{- range $wants}}
+			{{- if eq . "integer"}}
+			if jt == "integer" { _ppTypeOK = true }
+			{{- else if eq . "number"}}
+			if jt == "integer" || jt == "number" { _ppTypeOK = true }
+			{{- else}}
+			if jt == {{printf "%q" .}} { _ppTypeOK = true }
+			{{- end}}
+			{{- end}}
+			if !_ppTypeOK {
+				return fmt.Errorf("value must be one of: {{ppTypeValuesMsg .Value}}")
 			}
 			{{- end}}
 		}
@@ -660,7 +676,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 							}
 						}
 					}
-					{{- $want := ppTypeValue .Value}}
+					{{- $wants := ppTypeValues .Value}}
+					{{- if eq (len $wants) 1}}
+					{{- $want := index $wants 0}}
 					{{- if eq $want "integer"}}
 					if jt != "integer" {
 						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, k)
@@ -672,6 +690,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- else}}
 					if jt != {{printf "%q" $want}} {
 						return fmt.Errorf("patternProperties %s: key %q value must be {{$want}}", {{printf "%q" $pp.Pattern}}, k)
+					}
+					{{- end}}
+					{{- else}}
+					_ppTypeOK := false
+					{{- range $wants}}
+					{{- if eq . "integer"}}
+					if jt == "integer" { _ppTypeOK = true }
+					{{- else if eq . "number"}}
+					if jt == "integer" || jt == "number" { _ppTypeOK = true }
+					{{- else}}
+					if jt == {{printf "%q" .}} { _ppTypeOK = true }
+					{{- end}}
+					{{- end}}
+					if !_ppTypeOK {
+						return fmt.Errorf("patternProperties %s: key %q value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, k)
 					}
 					{{- end}}
 				}
@@ -747,8 +780,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{
 					var s string
 					if err := json.Unmarshal(v, &s); err == nil {
-						re := regexp.MustCompile({{printf "%q" .Value}})
-						if !re.MatchString(s) {
+						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
 						}
 					}
@@ -1212,8 +1244,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 {{- end}}
 {{- if eq .RuleType "pattern"}}
 				{
-					_re := regexp.MustCompile({{printf "%q" .Value}})
-					if !_re.MatchString(_uVal) {
+					if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uVal); !matched {
 						return fmt.Errorf("unevaluated property %q: value does not match pattern %s", k, {{printf "%q" .Value}})
 					}
 				}
