@@ -1126,6 +1126,13 @@ func TestJSONPropertyToGoName(t *testing.T) {
 		{"css_class", "CSSClass"},
 		// Special characters stripped
 		{"$ref", "Ref"},
+		// Property names that lowercase to a Go keyword must NOT get a trailing
+		// underscore once capitalized: exported identifiers can never collide with
+		// (all-lowercase) Go keywords (regression for C11).
+		{"type", "Type"},
+		{"default", "Default"},
+		{"range", "Range"},
+		{"func", "Func"},
 		{"foo\"bar", "FooBar"},
 		{"foo\\bar", "FooBar"},
 		{"foo\nbar", "FooBar"},

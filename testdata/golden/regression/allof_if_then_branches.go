@@ -157,32 +157,32 @@ func (t TriggerToolItem) Validate() error {
 	return nil
 }
 
-type TriggerType_ string
+type TriggerType string
 
 const (
-	TriggerType_Tool   TriggerType_ = "tool"
-	TriggerType_Notify TriggerType_ = "notify"
+	TriggerTypeTool   TriggerType = "tool"
+	TriggerTypeNotify TriggerType = "notify"
 )
 
-// Validate checks TriggerType_ against its JSON Schema constraints.
-func (t TriggerType_) Validate() error {
+// Validate checks TriggerType against its JSON Schema constraints.
+func (t TriggerType) Validate() error {
 	switch t {
-	case TriggerType_Tool, TriggerType_Notify:
+	case TriggerTypeTool, TriggerTypeNotify:
 		return nil
 	default:
-		return fmt.Errorf("invalid TriggerType_ value: %v", t)
+		return fmt.Errorf("invalid TriggerType value: %v", t)
 	}
 }
 
 type Trigger struct {
 	Condition            *string                    `json:"condition,omitempty"`
-	Default_             any                        `json:"default,omitempty"`
+	Default              any                        `json:"default,omitempty"`
 	Delay                *string                    `json:"delay,omitempty"`
 	Message              *string                    `json:"message,omitempty"`
 	Notify               []string                   `json:"notify,omitzero"`
 	Title                *string                    `json:"title,omitempty"`
 	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
-	Type_                TriggerType_               `json:"type,omitempty"`
+	Type                 TriggerType                `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -256,8 +256,8 @@ func (t Trigger) Validate() error {
 			return fmt.Errorf("tool[%d].%w", _i, err)
 		}
 	}
-	if t.Type_ != "" {
-		if err := t.Type_.Validate(); err != nil {
+	if t.Type != "" {
+		if err := t.Type.Validate(); err != nil {
 			return fmt.Errorf("type.%w", err)
 		}
 	}

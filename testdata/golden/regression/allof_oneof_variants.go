@@ -11,7 +11,7 @@ import (
 type FieldBase struct {
 	Label                *string                    `json:"label,omitempty"`
 	Name                 string                     `json:"name"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -113,12 +113,12 @@ func (d DiaryFieldWidget) Validate() error {
 
 type DiaryField struct {
 	Choices              []string                   `json:"choices,omitzero"`
-	Default_             any                        `json:"default,omitempty"`
+	Default              any                        `json:"default,omitempty"`
 	Label                *string                    `json:"label,omitempty"`
 	Max                  *float64                   `json:"max,omitempty"`
 	Min                  *float64                   `json:"min,omitempty"`
 	Name                 string                     `json:"name"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	Widget               DiaryFieldWidget           `json:"widget,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation

@@ -9,7 +9,7 @@ import (
 
 type Circle struct {
 	Radius               float64                    `json:"radius"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -89,7 +89,7 @@ func (c Circle) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(c.Type_)
+		_constGot, _constErr := json.Marshal(c.Type)
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
@@ -102,7 +102,7 @@ func (c Circle) Validate() error {
 
 type Square struct {
 	Side                 float64                    `json:"side"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -182,7 +182,7 @@ func (s Square) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(s.Type_)
+		_constGot, _constErr := json.Marshal(s.Type)
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
@@ -196,7 +196,7 @@ func (s Square) Validate() error {
 type Triangle struct {
 	Base                 float64                    `json:"base"`
 	Height               float64                    `json:"height"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
@@ -277,7 +277,7 @@ func (t Triangle) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(t.Type_)
+		_constGot, _constErr := json.Marshal(t.Type)
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
