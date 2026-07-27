@@ -990,6 +990,95 @@ func TestPatternPropertiesTypeList(t *testing.T) {
 	)
 }
 
+// TestFieldNameCollisions is a compile-and-run regression for audit finding C3:
+// property names that derive to a generated member (Validate method, the
+// AdditionalProperties overflow field) or to a Go keyword (type) must produce
+// compilable code that round-trips losslessly and whose Validate() still works.
+// The renamed Go fields keep their original JSON tags, so the wire format is
+// unaffected — a value with all three colliding properties plus an unknown key
+// (captured by the overflow field) survives an unmarshal→marshal cycle intact.
+func TestFieldNameCollisions(t *testing.T) {
+	schemaPath := "testdata/schemas/regression/field_name_collisions.json"
+	generated := generateFromSchema(t, schemaPath)
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	mainGo := generateFieldNameCollisionsMain(rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "field_name_collisions_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("field-name-collision test failed:\n%s\nerror: %v", string(output), err)
+	}
+	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+		t.Fatalf("field-name-collision output:\n%s", outputStr)
+	}
+}
+
+func generateFieldNameCollisionsMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+)
+
+func main() {
+	input := `+"`"+`{"validate":"x","additionalProperties":true,"type":"t","extra":1}`+"`"+`
+
+	var obj %s
+	if err := json.Unmarshal([]byte(input), &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate() (the generated method, distinct from the "validate" property
+	// field) must succeed for this valid document.
+	if err := obj.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Validate should pass: %%v\n", err)
+		os.Exit(1)
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	var original, result any
+	if err := json.Unmarshal([]byte(input), &original); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal original: %%v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal result: %%v\n", err)
+		os.Exit(1)
+	}
+	if !reflect.DeepEqual(original, result) {
+		fmt.Fprintf(os.Stderr, "ROUND-TRIP MISMATCH\nOriginal:      %%s\nRound-tripped: %%s\n", input, string(out))
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`, rootType)
+}
+
 // TestAnyOfRequiredBranches checks that an anyOf whose variants are
 // distinguished by required properties rejects an object matching no branch,
 // rather than validating everything (the merged struct used to drop the

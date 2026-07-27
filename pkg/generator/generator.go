@@ -1527,7 +1527,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	}
 	// Second pass: deduplicate only derived (non-overridden) names by appending a
 	// numeric suffix. Overrides are pinned by the user and never suffixed.
+	//
+	// The generated-member names (Validate/MarshalJSON/UnmarshalJSON/SetDefaults
+	// methods and the AdditionalProperties/PatternProperties overflow fields) are
+	// pre-occupied so that a DERIVED field name colliding with one of them is
+	// renamed by the same numeric-suffix mechanism used for property-name clashes.
+	// The JSON tag keeps the original property name, so the wire format is
+	// unaffected. We reserve these names UNCONDITIONALLY — even when this struct
+	// does not actually generate the corresponding member (e.g. no overflow field
+	// because additionalProperties is absent) — because it is simpler and the only
+	// cost is a numeric suffix on an exported field that would otherwise be one of
+	// these reserved words. Field-map overrides are handled separately below and
+	// still ERROR on these names (see reservedFieldNames).
 	nameCount := make(map[string]int)
+	for _, member := range generatedMemberNames {
+		nameCount[member] = 1
+	}
 	for _, propName := range propNames {
 		if !overridden[propName] {
 			nameCount[derived[propName]]++

@@ -114,7 +114,7 @@ Notes:
 - Only the listed properties are overridden; everything else uses the derived name.
 - The JSON tag always keeps the original property name, so round-trip serialization is unaffected.
 - Override values must be valid **exported** Go identifiers (struct fields must be exported to (un)marshal).
-- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` overflow field.
+- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` or `PatternProperties` overflow fields.
 - Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. These warnings are shown even if generation later fails.
 
 Limitations:

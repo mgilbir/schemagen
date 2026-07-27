@@ -18,6 +18,23 @@ var reservedFieldNames = map[string]string{
 	"UnmarshalJSON":        "the generated UnmarshalJSON method",
 	"SetDefaults":          "the generated SetDefaults method",
 	"AdditionalProperties": "the generated additional-properties overflow field",
+	"PatternProperties":    "the generated pattern-properties overflow field",
+}
+
+// generatedMemberNames lists the exported members (methods and synthesized
+// overflow fields) the emitter may place on any generated struct. The
+// derived-name dedup pass in generateStructDef treats these as pre-occupied so
+// that a derived property field name colliding with one is auto-renamed via the
+// numeric-suffix mechanism (unlike field-map overrides, which are user-pinned
+// and instead error via reservedFieldNames). Reserved unconditionally; see the
+// comment at the dedup pass for the rationale.
+var generatedMemberNames = []string{
+	"Validate",
+	"MarshalJSON",
+	"UnmarshalJSON",
+	"SetDefaults",
+	"AdditionalProperties",
+	"PatternProperties",
 }
 
 // FieldNameMap maps a Go type name to a set of property overrides, where each

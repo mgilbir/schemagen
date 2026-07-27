@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FieldNameCollisions",
+  "type": "object",
+  "properties": {
+    "validate": {"type": "string"},
+    "additionalProperties": {"type": "boolean"},
+    "type": {"type": "string"}
+  },
+  "required": ["validate"],
+  "additionalProperties": true
+}

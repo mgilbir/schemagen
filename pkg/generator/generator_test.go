@@ -2094,6 +2094,69 @@ func TestRequiredOnlyOneOfGeneratesObjectUnion(t *testing.T) {
 	}
 }
 
+// TestPropertyNameCollidesWithGeneratedMember is a regression for C3: property
+// names that derive to a generated member (Validate method, AdditionalProperties
+// overflow field, etc.) must not collide — the derived field name is renamed via
+// the numeric-suffix mechanism while the JSON tag keeps the original property
+// name, so the wire format is unaffected.
+func TestPropertyNameCollidesWithGeneratedMember(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"validate": {"type": "string"},
+			"additionalProperties": {"type": "boolean"},
+			"pattern_properties": {"type": "string"}
+		},
+		"required": ["validate"],
+		"additionalProperties": true,
+		"patternProperties": {"^x": {"type": "string"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	file, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("Generate() returned an error for colliding property names: %v", err)
+	}
+
+	sd := file.TypeDefs[0].(*StructDef)
+
+	// JSON tags (JSONName) must be preserved verbatim for every property.
+	for _, jsonName := range []string{"validate", "additionalProperties", "pattern_properties"} {
+		f, ok := fieldByJSONName(sd, jsonName)
+		if !ok {
+			t.Fatalf("no field with JSON name %q", jsonName)
+		}
+		// The derived Go name must NOT be a bare generated-member name.
+		for _, member := range generatedMemberNames {
+			if f.Name == member {
+				t.Errorf("property %q kept Go field name %q, which collides with generated member %q", jsonName, f.Name, member)
+			}
+		}
+	}
+
+	// No two Go field names may be equal, and none may equal a generated member.
+	seen := map[string]string{}
+	taken := map[string]bool{}
+	for _, m := range generatedMemberNames {
+		taken[m] = true
+	}
+	for _, f := range sd.Fields {
+		if prev, dup := seen[f.Name]; dup {
+			t.Errorf("Go field name %q used for both %q and %q", f.Name, prev, f.JSONName)
+		}
+		seen[f.Name] = f.JSONName
+		if taken[f.Name] {
+			t.Errorf("Go field name %q for property %q collides with a generated member", f.Name, f.JSONName)
+		}
+	}
+}
+
 // TestNullPropertySchemaReturnsError is a regression for the nil pointer panic on
 // {"properties":{"a":null}}: a null property schema must produce an actionable
 // error naming the property, not crash the generator.
