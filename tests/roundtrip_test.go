@@ -1310,3 +1310,46 @@ func main() {
 `
 	runGeneratedMainProgram(t, "testdata/schemas/regression/struct_reuse.json", "struct_reuse_test", mainGo)
 }
+
+
+// TestHandBuiltAnyOfValidate is a regression guard for C6: object-level anyOf
+// branch matching depends on JSON key presence, so a hand-constructed value
+// (nil _jsonKeys) must skip the check, while a value built by json.Unmarshal
+// must still enforce it.
+func TestHandBuiltAnyOfValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Hand-constructed value with a valid field set: presence is untracked
+	// (_jsonKeys is nil), so the anyOf branch check is skipped and Validate
+	// must pass.
+	s := "x"
+	built := AnyOfRequiredBranches{A: &s}
+	if err := built.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built Validate should pass: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Value built from JSON that matches no anyOf branch: presence IS tracked,
+	// so the check must still hard-fail (from-JSON path keeps enforcing).
+	var fromJSON AnyOfRequiredBranches
+	if err := json.Unmarshal([]byte(` + "`" + `{}` + "`" + `), &fromJSON); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal {}: %v\n", err)
+		os.Exit(1)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		fmt.Fprintf(os.Stderr, "unmarshaled {} should fail Validate but passed\n")
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/anyof_required_branches.json", "handbuilt_anyof_test", mainGo)
+}

@@ -88,7 +88,10 @@ func (s SearchResultResult) MarshalJSON() ([]byte, error) {
 // Validate checks SearchResultResult against its JSON Schema constraints.
 func (s SearchResultResult) Validate() error {
 	// object-level anyOf: at least one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if s._jsonKeys != nil {
 		_anyOfMatches := 0
 		{
 			_branchMatches := true

@@ -90,6 +90,12 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 
 Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
 
+#### Validation contract
+
+`Validate()` is authoritative for values produced by `json.Unmarshal`: the generated `UnmarshalJSON` records which JSON keys were present, and that presence information drives the presence-dependent checks.
+
+For **hand-constructed** values (built directly in Go rather than decoded from JSON), JSON key presence is unknown, so presence-dependent checks are skipped: required properties, optional-field constraints, object-level `oneOf`/`anyOf` branch matching, and `dependent*`/`unevaluated*` checks. Type-level and value-range constraints on fields that are set still apply. If you need full validation of a programmatically built value, marshal it to JSON and unmarshal it back before calling `Validate()`.
+
 ### Field Name Overrides
 
 By default, `schemagen` derives Go field names from JSON property names (e.g. `first_name` → `FirstName`). When migrating an existing codebase to schema-generated types, you may need specific field names to stay compatible with code that already references them. Use `--field-map` to pin individual properties to chosen Go field names:

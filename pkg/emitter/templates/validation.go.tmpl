@@ -481,7 +481,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- range $oi, $oneOf := $struct.ObjectOneOfs}}
 	// object-level oneOf: exactly one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if {{$recv}}._jsonKeys != nil {
 		_oneOfMatches := 0
 		{{- range $bi, $branch := $oneOf.Branches}}
 		{
@@ -557,7 +560,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- range $ai, $anyOf := $struct.ObjectAnyOfs}}
 	// object-level anyOf: at least one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if {{$recv}}._jsonKeys != nil {
 		_anyOfMatches := 0
 		{{- range $bi, $branch := $anyOf.Branches}}
 		{
@@ -1099,7 +1105,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 			}
 			{{- end}}
-			if _oneOfMatchCount != 1 {
+			// Presence-dependent: skip the exactly-one-branch hard-fail for
+			// hand-constructed values (nil _jsonKeys), consistent with the
+			// required-property policy.
+			if {{$recv}}._jsonKeys != nil && _oneOfMatchCount != 1 {
 				return fmt.Errorf("oneOf: expected exactly 1 matching branch, got %d", _oneOfMatchCount)
 			}
 			_ = _oneOfMatchIdx
