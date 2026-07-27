@@ -20,6 +20,8 @@ type ServerConfig struct {
 }
 
 func (s *ServerConfig) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ServerConfig")
 	}

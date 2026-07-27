@@ -15,6 +15,8 @@ type DatabaseConfig struct {
 }
 
 func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
+	d.AdditionalProperties = nil
+	d._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type DatabaseConfig")
 	}
@@ -99,6 +101,8 @@ type Config struct {
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Config")
 	}

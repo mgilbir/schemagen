@@ -18,6 +18,8 @@ type Metadata struct {
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
+	m.AdditionalProperties = nil
+	m._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Metadata")
 	}
@@ -103,6 +105,8 @@ type Person struct {
 }
 
 func (p *Person) UnmarshalJSON(data []byte) error {
+	p.AdditionalProperties = nil
+	p._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Person")
 	}
@@ -195,6 +199,8 @@ type Section struct {
 }
 
 func (s *Section) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Section")
 	}
@@ -287,6 +293,8 @@ type Document struct {
 }
 
 func (d *Document) UnmarshalJSON(data []byte) error {
+	d.AdditionalProperties = nil
+	d._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Document")
 	}

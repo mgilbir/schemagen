@@ -16,6 +16,8 @@ type UnevaluatedItemsTest struct {
 }
 
 func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
+	u.AdditionalProperties = nil
+	u._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type UnevaluatedItemsTest")
 	}

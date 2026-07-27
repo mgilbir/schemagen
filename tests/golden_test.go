@@ -76,6 +76,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/unevaluated_properties_pattern", "testdata/schemas/regression/unevaluated_properties_pattern.json", "testdata/golden/regression/unevaluated_properties_pattern.go"},
 		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
 		{"regression/field_name_collisions", "testdata/schemas/regression/field_name_collisions.json", "testdata/golden/regression/field_name_collisions.go"},
+		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
 	}
 }
 

@@ -14,6 +14,7 @@ type OptionalEmptyArray struct {
 }
 
 func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type OptionalEmptyArray")
 	}

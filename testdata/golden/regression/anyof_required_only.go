@@ -16,6 +16,9 @@ type AnyOfRequiredOnly struct {
 }
 
 func (a *AnyOfRequiredOnly) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
+	a._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AnyOfRequiredOnly")
 	}

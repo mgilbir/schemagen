@@ -14,6 +14,8 @@ type Circle struct {
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Circle")
 	}
@@ -97,6 +99,8 @@ type Rectangle struct {
 }
 
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
+	r.AdditionalProperties = nil
+	r._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Rectangle")
 	}
@@ -223,6 +227,9 @@ func (d *Drawing) GetRectangle() *Rectangle {
 }
 
 func (d *Drawing) UnmarshalJSON(data []byte) error {
+	d.AdditionalProperties = nil
+	d._jsonKeys = nil
+	d.Shape = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Drawing")
 	}

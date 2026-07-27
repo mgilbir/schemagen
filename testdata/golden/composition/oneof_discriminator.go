@@ -16,6 +16,8 @@ type ClickEvent struct {
 }
 
 func (c *ClickEvent) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ClickEvent")
 	}
@@ -110,6 +112,8 @@ type KeypressEvent struct {
 }
 
 func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
+	k.AdditionalProperties = nil
+	k._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type KeypressEvent")
 	}
@@ -203,6 +207,8 @@ type ScrollEvent struct {
 }
 
 func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ScrollEvent")
 	}
@@ -356,6 +362,9 @@ func (e *Event) GetScrollEvent() *ScrollEvent {
 }
 
 func (e *Event) UnmarshalJSON(data []byte) error {
+	e.AdditionalProperties = nil
+	e._jsonKeys = nil
+	e.Payload = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Event")
 	}

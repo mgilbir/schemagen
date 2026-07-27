@@ -35,6 +35,9 @@ type Crossed struct {
 }
 
 func (c *Crossed) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
+	c._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Crossed")
 	}

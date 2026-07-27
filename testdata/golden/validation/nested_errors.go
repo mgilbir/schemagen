@@ -19,6 +19,8 @@ type CompanyAddress struct {
 }
 
 func (c *CompanyAddress) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type CompanyAddress")
 	}
@@ -117,6 +119,8 @@ type CompanyEmployeesItem struct {
 }
 
 func (c *CompanyEmployeesItem) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type CompanyEmployeesItem")
 	}
@@ -216,6 +220,8 @@ type Company struct {
 }
 
 func (c *Company) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Company")
 	}

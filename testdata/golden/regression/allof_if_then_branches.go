@@ -14,6 +14,7 @@ type Base struct {
 }
 
 func (b *Base) UnmarshalJSON(data []byte) error {
+	b.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Base")
 	}
@@ -82,6 +83,8 @@ type TriggerToolItem struct {
 }
 
 func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
+	t.AdditionalProperties = nil
+	t._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type TriggerToolItem")
 	}
@@ -187,6 +190,7 @@ type Trigger struct {
 }
 
 func (t *Trigger) UnmarshalJSON(data []byte) error {
+	t.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Trigger")
 	}

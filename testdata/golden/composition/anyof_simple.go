@@ -19,6 +19,9 @@ type SearchResultResult struct {
 }
 
 func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
+	s._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type SearchResultResult")
 	}
@@ -254,6 +257,8 @@ type SearchResult struct {
 }
 
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type SearchResult")
 	}

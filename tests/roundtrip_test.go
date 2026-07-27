@@ -1215,3 +1215,98 @@ func TestOneOfStringLengthVariants(t *testing.T) {
 		},
 	)
 }
+
+// runGeneratedMainProgram compiles the generated types for schemaPath together
+// with the supplied main() body and asserts the program prints "PASS".
+func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string) {
+	t.Helper()
+	generated := generateFromSchema(t, schemaPath)
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, moduleName); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s failed:\n%s\nerror: %v", moduleName, string(output), err)
+	}
+	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+		t.Fatalf("%s output:\n%s", moduleName, outputStr)
+	}
+}
+
+// TestStructReuseResetsState is a regression guard for C5: reusing a value
+// across json.Unmarshal calls must not resurrect stale synthesized state
+// (overflow maps, the sticky non-object flag, or presence tracking) from a
+// previous document.
+func TestStructReuseResetsState(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	// Scenario 1: overflow (additionalProperties) map must not leak across
+	// decodes. "stale" lands in the overflow map on the first decode; it must
+	// be gone after the second decode of an object without it.
+	var r StructReuse
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":1,"stale":true}` + "`" + `), &r); err != nil {
+		fmt.Fprintf(os.Stderr, "first unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":2}` + "`" + `), &r); err != nil {
+		fmt.Fprintf(os.Stderr, "second unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(r)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != ` + "`" + `{"a":2}` + "`" + ` {
+		fmt.Fprintf(os.Stderr, "overflow reuse: got %s, want {\"a\":2}\n", string(out))
+		os.Exit(1)
+	}
+
+	// Scenario 2: the sticky non-object flag must not discard a subsequent
+	// object document. Decode a bare number, then an object, into the same var.
+	var n StructReuse
+	if err := json.Unmarshal([]byte(` + "`" + `42` + "`" + `), &n); err != nil {
+		fmt.Fprintf(os.Stderr, "nonobject unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":3}` + "`" + `), &n); err != nil {
+		fmt.Fprintf(os.Stderr, "object-after-nonobject unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	out2, err := json.Marshal(n)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal2: %v\n", err)
+		os.Exit(1)
+	}
+	if !strings.Contains(string(out2), ` + "`" + `"a":3` + "`" + `) || string(out2) == "42" {
+		fmt.Fprintf(os.Stderr, "nonobject reuse: got %s, want an object containing \"a\":3\n", string(out2))
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/struct_reuse.json", "struct_reuse_test", mainGo)
+}

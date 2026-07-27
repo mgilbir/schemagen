@@ -13,6 +13,7 @@ type Extended struct {
 }
 
 func (e *Extended) UnmarshalJSON(data []byte) error {
+	e.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Extended")
 	}
@@ -84,6 +85,7 @@ type Bar struct {
 }
 
 func (b *Bar) UnmarshalJSON(data []byte) error {
+	b.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Bar")
 	}
@@ -172,6 +174,7 @@ type Root struct {
 }
 
 func (r *Root) UnmarshalJSON(data []byte) error {
+	r.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Root")
 	}

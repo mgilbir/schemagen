@@ -17,6 +17,9 @@ type AnyOfRequiredBranches struct {
 }
 
 func (a *AnyOfRequiredBranches) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
+	a._jsonRawProps = nil
 	type Alias AnyOfRequiredBranches
 	aux := &struct {
 		*Alias

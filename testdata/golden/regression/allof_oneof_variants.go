@@ -17,6 +17,8 @@ type FieldBase struct {
 }
 
 func (f *FieldBase) UnmarshalJSON(data []byte) error {
+	f.AdditionalProperties = nil
+	f._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type FieldBase")
 	}
@@ -126,6 +128,9 @@ type DiaryField struct {
 }
 
 func (d *DiaryField) UnmarshalJSON(data []byte) error {
+	d.AdditionalProperties = nil
+	d._jsonKeys = nil
+	d._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type DiaryField")
 	}
