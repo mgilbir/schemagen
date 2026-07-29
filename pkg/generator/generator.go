@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -52,6 +53,11 @@ type Generator struct {
 	// keyed by type name → JSON property name. The CLI inspects this after
 	// generation to warn about configured overrides that matched no property.
 	appliedOverrides map[string]map[string]bool
+
+	// typeSchemas records which schema node claimed each generated type name,
+	// so callers can detect a name already taken by a different schema and
+	// pick a disambiguated one instead of silently reusing the wrong type.
+	typeSchemas map[string]*schema.Schema
 }
 
 // New creates a new Generator with the given configuration.
@@ -61,6 +67,7 @@ func New(cfg Config) *Generator {
 		generated:         make(map[string]bool),
 		generating:        make(map[string]bool),
 		structsInProgress: make(map[string]bool),
+		typeSchemas:       make(map[string]*schema.Schema),
 	}
 }
 
@@ -970,6 +977,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	if g.generated[name] {
 		return nil
+	}
+	if _, ok := g.typeSchemas[name]; !ok {
+		g.typeSchemas[name] = s
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
@@ -3442,6 +3452,11 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		refSchema := g.resolveRefInContext(effRef, variant)
 		if refSchema != nil {
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
+			// Definitions in different documents may share a name (each
+			// document declaring e.g. #/definitions/element); without
+			// disambiguation every variant would silently reuse whichever
+			// type claimed the name first.
+			goName = g.uniqueTypeName(goName, refSchema)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return oneOfVariantResult{}, err
 			}
@@ -7891,4 +7906,46 @@ func hasStructuralKeywords(s *schema.Schema) bool {
 		return true
 	}
 	return false
+}
+
+// uniqueTypeName returns name if it is unclaimed or already claimed by s;
+// otherwise it disambiguates — first by prefixing the owning document's name
+// (element in field.json → FieldElement), then with a numeric suffix — so
+// same-named definitions from different documents do not silently collapse
+// onto a single generated type.
+func (g *Generator) uniqueTypeName(name string, s *schema.Schema) string {
+	claimed, ok := g.typeSchemas[name]
+	if !ok || claimed == s {
+		return name
+	}
+	if doc := documentGoName(s); doc != "" && !strings.HasPrefix(name, doc) {
+		candidate := doc + name
+		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
+			return candidate
+		}
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s%d", name, i)
+		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
+			return candidate
+		}
+	}
+}
+
+// documentGoName derives a Go name prefix from the document a schema node
+// belongs to: the basename of its base URI without extension.
+func documentGoName(s *schema.Schema) string {
+	u := s.BaseURI
+	if s.DocumentRoot != nil && s.DocumentRoot.BaseURI != nil {
+		u = s.DocumentRoot.BaseURI
+	}
+	if u == nil {
+		return ""
+	}
+	base := path.Base(u.Path)
+	if base == "." || base == "/" || base == "" {
+		return ""
+	}
+	base = strings.TrimSuffix(base, path.Ext(base))
+	return SchemaNameToGoName(base)
 }

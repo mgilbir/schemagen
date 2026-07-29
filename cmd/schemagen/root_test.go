@@ -928,3 +928,90 @@ func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
 		t.Fatalf("%d files declare shared helpers, want exactly 1", helperFiles)
 	}
 }
+
+func runGenerateArgs(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(append([]string{"generate"}, args...))
+	return cmd.Execute()
+}
+
+// TestGenerateItemsOneOfCrossDocumentVariants covers two regressions at once:
+// an inline oneOf in array-items position must produce a typed sealed wrapper
+// (not []any), and same-named definitions from different documents must
+// materialize as distinct types instead of silently reusing the first one.
+func TestGenerateItemsOneOfCrossDocumentVariants(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("board.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Board",
+		"type": "object",
+		"properties": {
+			"elements": {
+				"type": "array",
+				"items": {
+					"oneOf": [
+						{"$ref": "alpha.json#/definitions/element"},
+						{"$ref": "beta.json#/definitions/element"}
+					]
+				}
+			}
+		}
+	}`)
+	write("alpha.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"element": {
+				"type": "object",
+				"properties": {"kind": {"enum": ["alpha"]}, "alpha": {"type": "string"}},
+				"required": ["kind", "alpha"]
+			}
+		}
+	}`)
+	write("beta.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"element": {
+				"type": "object",
+				"properties": {"kind": {"enum": ["beta"]}, "beta": {"type": "number"}},
+				"required": ["kind", "beta"]
+			}
+		}
+	}`)
+
+	outDir := t.TempDir()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", filepath.Join(dir, "board.json"), "-o", outDir, "-p", "board"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	out, err := os.ReadFile(filepath.Join(outDir, "board.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+
+	if !strings.Contains(src, "[]BoardElementsItem") {
+		t.Errorf("items oneOf should produce a typed element slice, got:\n%s", src)
+	}
+	// Two distinct variant types, disambiguated by owning document.
+	if !strings.Contains(src, "type Element struct") || !strings.Contains(src, "type BetaElement struct") {
+		t.Errorf("expected distinct Element and BetaElement variant types, got:\n%s", src)
+	}
+	if strings.Contains(src, "Element2 *Element") {
+		t.Errorf("same-named cross-document variants collapsed onto one type:\n%s", src)
+	}
+}
