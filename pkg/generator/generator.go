@@ -64,6 +64,11 @@ type Generator struct {
 	// is non-empty: an unresolvable ref means the generated code silently
 	// degrades (any-typed fields, incomplete validation).
 	unresolvedRefs map[string]bool
+
+	// resolvedRefs records $ref values that resolved successfully in at least
+	// one context, so a ref that failed against one context but succeeded
+	// against another is not reported as unresolvable.
+	resolvedRefs map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
@@ -75,6 +80,7 @@ func New(cfg Config) *Generator {
 		structsInProgress: make(map[string]bool),
 		typeSchemas:       make(map[string]*schema.Schema),
 		unresolvedRefs:    make(map[string]bool),
+		resolvedRefs:      make(map[string]bool),
 	}
 }
 
@@ -85,6 +91,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	}
 	g.generated = make(map[string]bool)
 	g.generating = make(map[string]bool)
+	// Ref-resolution bookkeeping is per schema: carrying entries over would
+	// report an earlier schema's unresolved refs against a later one.
+	g.unresolvedRefs = make(map[string]bool)
+	g.resolvedRefs = make(map[string]bool)
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -199,13 +209,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 
 	// Unless lenient, refuse to hand back an IR that was degraded by
 	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
-	if !g.config.LenientRefs && len(g.unresolvedRefs) > 0 {
-		refs := make([]string, 0, len(g.unresolvedRefs))
-		for ref := range g.unresolvedRefs {
-			refs = append(refs, ref)
+	if !g.config.LenientRefs {
+		if refs := g.neverResolvedRefs(); len(refs) > 0 {
+			return nil, &UnresolvedRefsError{Refs: refs}
 		}
-		sort.Strings(refs)
-		return nil, &UnresolvedRefsError{Refs: refs}
 	}
 
 	return g.output, nil
@@ -220,6 +227,20 @@ type UnresolvedRefsError struct {
 
 func (e *UnresolvedRefsError) Error() string {
 	return fmt.Sprintf("cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+}
+
+// neverResolvedRefs returns the sorted $refs that failed to resolve and never
+// resolved in any other context.
+func (g *Generator) neverResolvedRefs() []string {
+	refs := make([]string, 0, len(g.unresolvedRefs))
+	for ref := range g.unresolvedRefs {
+		if g.resolvedRefs[ref] {
+			continue
+		}
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+	return refs
 }
 
 func quoteAll(ss []string) []string {
@@ -4070,8 +4091,24 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 
 // resolveRefInContext resolves a $ref string using the given context schema's
 // BaseURI and DocumentRoot for scoped resolution. This handles the case where
-// a subschema with $id changes the base URI and document root for fragment resolution.
+// a subschema with $id changes the base URI and document root for fragment
+// resolution.
+//
+// It also records the outcome. A ref is reported as unresolved only if no
+// attempt anywhere resolved it: resolution depends on the context schema, and
+// most callers probe optimistically and handle a nil result, so a failure
+// against one context is not evidence that the ref is unresolvable.
 func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
+	resolved := g.resolveRefInContextUncounted(ref, ctx)
+	if resolved != nil {
+		g.resolvedRefs[ref] = true
+	} else {
+		g.unresolvedRefs[ref] = true
+	}
+	return resolved
+}
+
+func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema) *schema.Schema {
 	// Determine the effective base URI and document root from context.
 	ctxBase := g.baseURI
 	ctxDocRoot := g.rootSchema
@@ -4189,7 +4226,6 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 			return s
 		}
 	}
-	g.unresolvedRefs[ref] = true
 	return nil
 }
 

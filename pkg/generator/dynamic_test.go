@@ -14,7 +14,11 @@ func generateOne(t *testing.T, input string) []TypeDef {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	s.Normalize()
-	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	// These cases assert which TypeDef a schema shape selects, and run with no
+	// resolver configured, so some inputs carry $refs that cannot resolve here.
+	// LenientRefs keeps that from failing generation for reasons unrelated to
+	// what is being tested; unresolvable-ref reporting has its own tests.
+	ir, err := New(Config{PackageName: "testpkg", LenientRefs: true}).Generate(&s)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

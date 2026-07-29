@@ -161,7 +161,7 @@ func newGenerateCmd() *cobra.Command {
 				if err != nil {
 					var unresolved *generator.UnresolvedRefsError
 					if errors.As(err, &unresolved) {
-						return fmt.Errorf("generating IR for %s: %w\n(provide the referenced documents via --ref-schema, enable --allow-remote-refs, or pass --lenient-refs to degrade unresolved refs to any)", schemaPath, err)
+						return fmt.Errorf("generating IR for %s: %w\n(place the referenced documents alongside the schema, enable --allow-remote-refs for http(s) refs, or pass --lenient-refs to degrade unresolved refs to any)", schemaPath, err)
 					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
