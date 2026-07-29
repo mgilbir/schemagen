@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Message",
+  "type": "object",
+  "properties": {
+    "payload": {
+      "oneOf": [
+        {"$ref": "#/definitions/grouped"},
+        {"$ref": "#/definitions/solo"}
+      ]
+    }
+  },
+  "required": ["payload"],
+  "definitions": {
+    "grouped": {
+      "oneOf": [
+        {"$ref": "#/definitions/alpha"},
+        {"$ref": "#/definitions/beta"}
+      ]
+    },
+    "alpha": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "alpha"},
+        "shared": {"type": "string"}
+      },
+      "required": ["kind", "shared"]
+    },
+    "beta": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "beta"},
+        "shared": {"type": "string"}
+      },
+      "required": ["kind", "shared"]
+    },
+    "solo": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "solo"},
+        "shared": {"type": "string"}
+      },
+      "required": ["kind", "shared"]
+    }
+  }
+}

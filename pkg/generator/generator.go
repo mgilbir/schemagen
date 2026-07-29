@@ -3241,6 +3241,9 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 					claimed[i] = true
 					discMap[discValue] = i
 					oneOfDef.Variants[i].DiscriminatorValue = discValue
+					// Each variant is claimed at most once above, so this is a
+					// single-element set; the template reads DiscriminatorValues.
+					oneOfDef.Variants[i].DiscriminatorValues = []string{discValue}
 					break
 				}
 			}
@@ -3314,6 +3317,7 @@ func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*sch
 		}
 		discMap[val] = i
 		oneOfDef.Variants[i].DiscriminatorValue = val
+		oneOfDef.Variants[i].DiscriminatorValues = []string{val}
 	}
 }
 
@@ -3332,51 +3336,51 @@ func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*sch
 // Candidate properties are examined in sorted order so the chosen field is
 // deterministic when more than one qualifies.
 func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []*schema.Schema) {
-	// Collect resolved schemas for all variants
+	// Collect resolved schemas for all variants. A variant may itself be a
+	// oneOf (no properties of its own); it is discriminable when every one
+	// of its sub-variants is, contributing the union of their values.
 	resolvedVariants := make([]*schema.Schema, len(variants))
 	for i, v := range variants {
 		resolved := g.resolveVariantSchema(v)
-		if resolved == nil || len(resolved.Properties) == 0 {
+		if resolved == nil {
 			return
 		}
 		resolvedVariants[i] = resolved
 	}
 
-	// Find candidate properties that exist in (and are required by) ALL variants.
-	for _, propName := range sortedKeys(resolvedVariants[0].Properties) {
-		allHaveConst := true
+	// Candidate properties come from the first variant (descending into a
+	// nested oneOf's first sub-variant when it has no properties of its own).
+	for _, propName := range g.discriminatorCandidateProps(resolvedVariants[0], 0) {
 		seenValues := make(map[string]int)
-		values := make([]string, len(resolvedVariants))
+		valueSets := make([][]string, len(resolvedVariants))
+		valid := true
 
 		for i, resolved := range resolvedVariants {
-			if !variantRequiresProperty(resolved, propName) {
-				allHaveConst = false
+			vals := g.discriminatorValuesForVariant(resolved, propName, 0)
+			if len(vals) == 0 {
+				valid = false
 				break
 			}
-			propSchema, ok := resolved.Properties[propName]
-			if !ok {
-				allHaveConst = false
+			for _, val := range vals {
+				if _, dup := seenValues[val]; dup {
+					valid = false
+					break
+				}
+				seenValues[val] = i
+			}
+			if !valid {
 				break
 			}
-			val := extractDiscriminatorValue(propSchema)
-			if val == "" {
-				allHaveConst = false
-				break
-			}
-			if _, dup := seenValues[val]; dup {
-				allHaveConst = false
-				break
-			}
-			seenValues[val] = i
-			values[i] = val
+			valueSets[i] = vals
 		}
 
-		if allHaveConst && len(seenValues) == len(variants) {
+		if valid {
 			// Found a valid heuristic discriminator
 			oneOfDef.DiscriminatorField = propName
 			oneOfDef.DiscriminatorMap = seenValues
-			for i, val := range values {
-				oneOfDef.Variants[i].DiscriminatorValue = val
+			for i, vals := range valueSets {
+				oneOfDef.Variants[i].DiscriminatorValue = vals[0]
+				oneOfDef.Variants[i].DiscriminatorValues = vals
 			}
 			return
 		}
@@ -7948,4 +7952,84 @@ func documentGoName(s *schema.Schema) string {
 	}
 	base = strings.TrimSuffix(base, path.Ext(base))
 	return SchemaNameToGoName(base)
+}
+
+// discriminatorCandidateProps returns the property names to consider as
+// discriminators, taken from the variant's own properties or, for a
+// properties-less nested oneOf, from its first sub-variant.
+func (g *Generator) discriminatorCandidateProps(resolved *schema.Schema, depth int) []string {
+	if resolved == nil || depth > maxDiscriminatorNesting {
+		return nil
+	}
+	if len(resolved.Properties) > 0 {
+		return sortedKeys(resolved.Properties)
+	}
+	if len(resolved.OneOf) > 0 {
+		return g.discriminatorCandidateProps(g.resolveVariantSchema(resolved.OneOf[0]), depth+1)
+	}
+	return nil
+}
+
+const maxDiscriminatorNesting = 4
+
+// discriminatorValuesForVariant returns every value propName may take when it
+// selects the variant: the property must be required and constrained to
+// string values by const or enum. A variant that is itself a oneOf without
+// properties contributes the union of its sub-variants' values, and only
+// discriminates when every sub-variant does (sub-variants sharing a value is
+// fine — any of them still selects this variant).
+func (g *Generator) discriminatorValuesForVariant(resolved *schema.Schema, propName string, depth int) []string {
+	if resolved == nil || depth > maxDiscriminatorNesting {
+		return nil
+	}
+	if len(resolved.Properties) > 0 {
+		if !variantRequiresProperty(resolved, propName) {
+			return nil
+		}
+		return extractDiscriminatorValueSet(resolved.Properties[propName])
+	}
+	if len(resolved.OneOf) == 0 {
+		return nil
+	}
+	var union []string
+	seen := make(map[string]bool)
+	for _, sub := range resolved.OneOf {
+		vals := g.discriminatorValuesForVariant(g.resolveVariantSchema(sub), propName, depth+1)
+		if len(vals) == 0 {
+			return nil
+		}
+		for _, val := range vals {
+			if !seen[val] {
+				seen[val] = true
+				union = append(union, val)
+			}
+		}
+	}
+	return union
+}
+
+// extractDiscriminatorValueSet returns the string values a property schema
+// pins via const or enum; nil when any value is not a string.
+func extractDiscriminatorValueSet(propSchema *schema.Schema) []string {
+	if propSchema == nil {
+		return nil
+	}
+	if propSchema.Const != nil {
+		if s, ok := (*propSchema.Const).(string); ok {
+			return []string{s}
+		}
+		return nil
+	}
+	if len(propSchema.Enum) > 0 {
+		vals := make([]string, 0, len(propSchema.Enum))
+		for _, e := range propSchema.Enum {
+			s, ok := e.(string)
+			if !ok {
+				return nil
+			}
+			vals = append(vals, s)
+		}
+		return vals
+	}
+	return nil
 }

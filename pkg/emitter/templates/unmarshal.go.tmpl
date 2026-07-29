@@ -95,8 +95,8 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			}
 			switch discVal {
 			{{- range $i, $v := $oof.Variants}}
-			{{- if $v.DiscriminatorValue}}
-			case "{{$v.DiscriminatorValue}}":
+			{{- if $v.DiscriminatorValues}}
+			case {{requiredFieldsList $v.DiscriminatorValues}}:
 				var candidate {{goType $v.Type}}
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
 					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)

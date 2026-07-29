@@ -453,7 +453,12 @@ type OneOfVariant struct {
 	FieldName          string   // exported field inside wrapper
 	Type               GoType   // the actual type of this variant
 	RequiredFields     []string // JSON field names that must be present for this variant to match
-	DiscriminatorValue string   // the value of the discriminator field that selects this variant (empty if no discriminator)
+	DiscriminatorValue string   // first discriminator value selecting this variant (empty if no discriminator)
+	// DiscriminatorValues holds every discriminator value selecting this
+	// variant. A variant that is itself a oneOf can be selected by several
+	// values (the union of its sub-variants' values), and a variant may
+	// constrain the discriminator with a multi-value enum.
+	DiscriminatorValues []string
 }
 
 // EnumDef represents an enum type.
