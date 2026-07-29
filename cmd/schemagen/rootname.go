@@ -33,14 +33,28 @@ type rootNameSpec struct {
 	bare string
 
 	used map[string]bool
+
+	// Keys seeded from a config file, grouped by the entry that supplied them.
+	// One entry contributes several keys ($id and path) but only the
+	// highest-precedence one can match, so an unused key is not evidence of a
+	// problem — the entry as a whole is what may have matched nothing.
+	configEntries []configRootName
+	configKeys    map[string]bool
+}
+
+// configRootName is one config entry's contribution, kept for reporting.
+type configRootName struct {
+	label string
+	keys  []string
 }
 
 func newRootNameSpec() *rootNameSpec {
 	return &rootNameSpec{
-		byID:   map[string]string{},
-		byFile: map[string]string{},
-		byBase: map[string]string{},
-		used:   map[string]bool{},
+		byID:       map[string]string{},
+		byFile:     map[string]string{},
+		byBase:     map[string]string{},
+		used:       map[string]bool{},
+		configKeys: map[string]bool{},
 	}
 }
 
@@ -130,6 +144,31 @@ func (r *rootNameSpec) lookup(argPath, docID string) string {
 	return ""
 }
 
+// flagTargets reports whether a --root-name flag already names the document a
+// config entry selects. Only flag keys are present when the config is seeded.
+func (r *rootNameSpec) flagTargets(d ConfigDocument) bool {
+	if r.bare != "" {
+		// The bare form names the single input, whatever it is.
+		return true
+	}
+	if d.ID != "" {
+		if _, ok := r.byID[strings.TrimSuffix(d.ID, "#")]; ok {
+			return true
+		}
+	}
+	if d.Path != "" {
+		for _, key := range []string{d.Path, absOrSelf(d.Path), filepath.Base(d.Path)} {
+			if _, ok := r.byFile[key]; ok {
+				return true
+			}
+			if _, ok := r.byBase[key]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // warnUnused reports keys that matched no input, which is almost always a typo.
 // Mirrors how unused --field-map entries are reported.
 //
@@ -144,7 +183,7 @@ func (r *rootNameSpec) warnUnused(w io.Writer) {
 	var unused []string
 	for _, m := range []map[string]string{r.byID, r.byFile, r.byBase} {
 		for key := range m {
-			if !r.used[key] {
+			if !r.used[key] && !r.configKeys[key] {
 				unused = append(unused, key)
 			}
 		}
@@ -155,6 +194,19 @@ func (r *rootNameSpec) warnUnused(w io.Writer) {
 	sort.Strings(unused)
 	for _, key := range unused {
 		fmt.Fprintf(w, "warning: --root-name %q matched no input schema\n", key)
+	}
+
+	for _, entry := range r.configEntries {
+		matched := false
+		for _, key := range entry.keys {
+			if r.used[key] {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			fmt.Fprintf(w, "warning: config rootName for %q matched no input schema\n", entry.label)
+		}
 	}
 }
 
@@ -168,4 +220,48 @@ func docIDOf(s *schema.Schema) string {
 		return id
 	}
 	return strings.TrimSuffix(s.LegacyID, "#")
+}
+
+// seedFromConfig adds root names from a config file. Flag-provided keys already
+// present are left alone, so an explicit flag overrides the file.
+func (r *rootNameSpec) seedFromConfig(cfg *ConfigFile) {
+	if r == nil || cfg == nil {
+		return
+	}
+	for _, d := range cfg.Documents {
+		if d.RootName == "" {
+			continue
+		}
+		// An explicit flag naming this document wins outright. Comparing key by
+		// key would let a config entry keyed by path beat a flag keyed by $id,
+		// since path is the more specific namespace — source has to dominate
+		// namespace, or "flags override the config" would not hold.
+		if r.flagTargets(d) {
+			continue
+		}
+		entry := configRootName{label: d.ID}
+		if entry.label == "" {
+			entry.label = d.Path
+		}
+		add := func(m map[string]string, key string) {
+			if key == "" {
+				return
+			}
+			if _, taken := m[key]; !taken {
+				m[key] = d.RootName
+			}
+			r.configKeys[key] = true
+			entry.keys = append(entry.keys, key)
+		}
+		if d.ID != "" {
+			add(r.byID, strings.TrimSuffix(d.ID, "#"))
+		}
+		if d.Path != "" {
+			add(r.byFile, d.Path)
+			if abs := absOrSelf(d.Path); abs != d.Path {
+				add(r.byFile, abs)
+			}
+		}
+		r.configEntries = append(r.configEntries, entry)
+	}
 }

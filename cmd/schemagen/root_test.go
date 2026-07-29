@@ -98,7 +98,9 @@ func TestGenerateRequiresArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no args provided, got nil")
 	}
-	if !strings.Contains(err.Error(), "requires at least 1 arg") {
+	// Inputs may also come from --config, so the requirement is enforced in
+	// RunE rather than by a cobra arg count, and the message says both ways.
+	if !strings.Contains(err.Error(), "no input schemas") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

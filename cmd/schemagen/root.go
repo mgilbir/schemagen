@@ -51,13 +51,51 @@ func newGenerateCmd() *cobra.Command {
 		sharedTypes      bool
 		schemaPkgFlags   []string
 		schemaOutFlags   []string
+		configPath       string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "generate [schema files...]",
 		Short: "Generate Go source files from JSON Schema definitions",
-		Args:  cobra.MinimumNArgs(1),
+		// Inputs may come from --config instead of the command line, so the
+		// count is validated in RunE rather than here.
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && configPath == "" {
+				return fmt.Errorf("no input schemas: pass them as arguments, or supply them via --config")
+			}
+
+			// A config supplies settings for documents and defaults for the
+			// run. Anything set explicitly on the command line wins, which
+			// Flags().Changed distinguishes from "left at its default".
+			var cfg *ConfigFile
+			if configPath != "" {
+				var err error
+				cfg, err = LoadConfigFile(configPath)
+				if err != nil {
+					return err
+				}
+				applyString(cmd, "output-dir", cfg.OutputDir, &outputDir)
+				applyString(cmd, "package", cfg.Package, &pkgName)
+				applyString(cmd, "draft", cfg.Draft, &draftStr)
+				applyString(cmd, "validation", cfg.Validation, &validationStr)
+				applyBool(cmd, "omit-empty", cfg.OmitEmpty, &omitEmpty)
+				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
+				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
+				applyBool(cmd, "allow-remote-refs", cfg.AllowRemoteRefs, &allowRemoteRefs)
+				applyBool(cmd, "lenient-refs", cfg.LenientRefs, &lenientRefs)
+				applyBool(cmd, "shared-types", cfg.SharedTypes, &sharedTypes)
+				applyBool(cmd, "root-name-from-filename", cfg.RootNameFromFilename, &rootNameFromFile)
+
+				// With no inputs given, the config's documents are the inputs.
+				if len(args) == 0 {
+					args = cfg.inputPaths()
+					if len(args) == 0 {
+						return fmt.Errorf("no input schemas: pass them as arguments, or give config %s documents with a \"path\"", configPath)
+					}
+				}
+			}
+
 			// Parse draft override if specified.
 			var draft schema.Draft
 			if draftStr != "" {
@@ -77,6 +115,7 @@ func newGenerateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			rootNames.seedFromConfig(cfg)
 			if err := rootNames.validate(len(args)); err != nil {
 				return err
 			}
@@ -85,8 +124,16 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("--shared-types and --schema-package currently require --validation static (per-file validation capability reporting would collide)")
 			}
 
-			// --schema-package activates multi-package generation.
+			// --schema-package activates multi-package generation. Config
+			// entries seed the maps; flags overwrite per $id.
 			schemaPackages := make(map[string]string)
+			schemaOutputsFromConfig := map[string]string{}
+			if cfg != nil {
+				for id, pkg := range cfg.schemaPackages() {
+					schemaPackages[id] = pkg
+				}
+				schemaOutputsFromConfig = cfg.schemaOutputs()
+			}
 			for _, sp := range schemaPkgFlags {
 				id, pkg, ok := strings.Cut(sp, "=")
 				if !ok || id == "" || pkg == "" {
@@ -95,6 +142,9 @@ func newGenerateCmd() *cobra.Command {
 				schemaPackages[strings.TrimSuffix(id, "#")] = pkg
 			}
 			schemaOutputs := make(map[string]string)
+			for id, out := range schemaOutputsFromConfig {
+				schemaOutputs[id] = out
+			}
 			for _, so := range schemaOutFlags {
 				id, outPath, ok := strings.Cut(so, "=")
 				if !ok || id == "" || outPath == "" {
@@ -114,6 +164,8 @@ func newGenerateCmd() *cobra.Command {
 					return err
 				}
 			}
+			fieldNames := newFieldNameSpec(cfg, fieldMap)
+
 			// Track which (file, type, property) overrides were applied, and which
 			// schema files were actually generated, so we can warn about entries
 			// that never matched. Reported via defer so warnings still surface even
@@ -155,7 +207,7 @@ func newGenerateCmd() *cobra.Command {
 					verbose:          verbose,
 					draft:            draft,
 					validationMode:   validationMode,
-					fieldMap:         fieldMap,
+					fieldNames:       fieldNames,
 					lenientRefs:      lenientRefs,
 					processedFiles:   processedFiles,
 					appliedByFile:    appliedByFile,
@@ -274,7 +326,6 @@ func newGenerateCmd() *cobra.Command {
 						Resolver:         resolver,
 						Draft:            draft,
 						Validation:       validationMode,
-						FieldNames:       fieldMap[fileKey],
 						LenientRefs:      lenientRefs,
 					})
 				}
@@ -293,7 +344,7 @@ func newGenerateCmd() *cobra.Command {
 				// 4. Generate IR
 				ir, err := gen.Generate(s,
 					generator.WithRootTypeName(rootTypeName),
-					generator.WithFieldNames(fieldMap[fileKey]),
+					generator.WithFieldNames(fieldNames.lookup(schemaPath, docIDOf(s))),
 				)
 				if err != nil {
 					var unresolved *generator.UnresolvedRefsError
@@ -373,6 +424,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&sharedTypes, "shared-types", false, "Generate all schemas into one Go package sharing materialized types and helpers (each schema needs a distinct root type name; requires --validation static)")
 	cmd.Flags().StringArrayVar(&schemaPkgFlags, "schema-package", nil, "Assign a schema document to a Go package: \"<document $id>=<Go import path>\". Repeatable; activates multi-package generation where cross-package $refs emit imports instead of copies. Generation order is derived from the $refs between documents")
 	cmd.Flags().StringArrayVar(&schemaOutFlags, "schema-output", nil, "Output file for a schema document: \"<document $id>=<file path>\" (default: <output-dir>/<package>/<derived name>.go). Requires --schema-package")
+	cmd.Flags().StringVar(&configPath, "config", "", "Path to a JSON generation config (per-document package/output/root name/field names, plus defaults). Flags override it; see README")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
@@ -482,7 +534,7 @@ type multiPackageParams struct {
 	verbose          bool
 	draft            schema.Draft
 	validationMode   generator.ValidationMode
-	fieldMap         generator.FieldMapFile
+	fieldNames       *fieldNameSpec
 	lenientRefs      bool
 	// Shared with the caller so --field-map entries that matched nothing can be
 	// reported: without these, every top-level key looks unused in a
@@ -652,7 +704,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 
 			ir, err := gen.Generate(in.s,
 				generator.WithRootTypeName(rootTypeName),
-				generator.WithFieldNames(p.fieldMap[fileKey]),
+				generator.WithFieldNames(p.fieldNames.lookup(in.path, in.id)),
 			)
 			if err != nil {
 				var unresolved *generator.UnresolvedRefsError

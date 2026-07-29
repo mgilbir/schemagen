@@ -63,6 +63,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--shared-types` | | `false` | Generate all schemas into one Go package, sharing materialized types and helpers (see below) |
 | `--schema-package` | | | Assign a document to a Go package: `<document $id>=<Go import path>`. Repeatable; activates multi-package generation (see below) |
 | `--schema-output` | | | Output file for a document: `<document $id>=<file path>`. Requires `--schema-package` |
+| `--config` | | | Path to a JSON generation config (see below). Flags override it |
 | `--verbose` | `-v` | `false` | Print progress information |
 
 ### Unresolvable References
@@ -146,6 +147,56 @@ Notes:
   `--schema-output`.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
+
+### Config File
+
+Multi-document generation otherwise needs one repeatable flag per document per
+concern, which stops being reviewable well before it stops being typeable.
+`--config` moves that to a JSON file:
+
+```json
+{
+  "outputDir": "./gen",
+  "validation": "static",
+  "documents": [
+    {
+      "path": "schemas/common.json",
+      "id": "https://example.com/common.json",
+      "package": "example.com/m/common",
+      "output": "./gen/common/common.go",
+      "rootName": "Common",
+      "fieldNames": { "Common": { "postal_code": "PostalCode" } }
+    },
+    {
+      "path": "schemas/person.json",
+      "id": "https://example.com/person.json",
+      "package": "example.com/m/person",
+      "rootName": "Person"
+    }
+  ]
+}
+```
+
+```bash
+schemagen generate --config schemagen.json
+```
+
+- **Precedence** is *explicit flag > config > default*, per setting. A flag
+  naming a document overrides that document's settings without discarding the
+  rest of the file.
+- **Inputs** come from the command line as usual; with none given, every entry
+  that has a `path` becomes an input, in file order.
+- **Selectors**: an entry needs an `id`, a `path`, or both. `package` and
+  `output` are assigned per document `$id`, so entries setting either must
+  declare `id`.
+- **Unknown fields are rejected**, so a mistyped key fails the run instead of
+  silently doing nothing. An entry matching no input is reported as a warning.
+- The config is used only when `--config` names it: there is no auto-discovery,
+  so a build never changes behaviour because of a stray file in the working
+  directory.
+- `--field-map` keeps working and takes precedence over a document's
+  `fieldNames`. The config form is preferred, since it keys by document rather
+  than by file base name, which is not unique across an input set.
 
 ### Remote References
 
