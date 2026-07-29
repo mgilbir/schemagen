@@ -7,14 +7,6 @@ import (
 	"testing"
 )
 
-// writeFile writes a test fixture, failing the test if it cannot.
-func writeFile(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestParseRootNameFlagsSplitsOnLastEquals(t *testing.T) {
 	// Both $ids and file names may contain "=", but a Go type name never does.
 	spec, err := parseRootNameFlags([]string{
@@ -104,6 +96,86 @@ func TestRootNameSpecWarnsOnKeysThatMatchedNothing(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "used.json") {
 		t.Errorf("a key that matched should not be reported, got: %q", out.String())
+	}
+}
+
+// writeSameNamedInputs writes two documents that share a file base name.
+func writeSameNamedInputs(t *testing.T) (oneDir, twoDir string) {
+	t.Helper()
+	dir := t.TempDir()
+	oneDir, twoDir = filepath.Join(dir, "one"), filepath.Join(dir, "two")
+	for _, d := range []string{oneDir, twoDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(oneDir, "common.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/one/common.json", "title": "C1", "type": "object",
+		"properties": {"a": {"type": "string"}}, "required": ["a"]
+	}`)
+	writeFile(t, filepath.Join(twoDir, "common.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/two/common.json", "title": "C2", "type": "object",
+		"properties": {"b": {"type": "integer"}}, "required": ["b"]
+	}`)
+	return oneDir, twoDir
+}
+
+// Two inputs sharing a base name could not be given different root type names,
+// because the key could not tell them apart. An $id key can.
+func TestRootNameByIDDistinguishesSameNamedInputs(t *testing.T) {
+	oneDir, twoDir := writeSameNamedInputs(t)
+	out := t.TempDir()
+	if err := runGenerateArgs(t,
+		filepath.Join(oneDir, "common.json"), filepath.Join(twoDir, "common.json"),
+		"-o", out,
+		"--schema-package", "https://ex.test/one/common.json=example.com/m/onepkg",
+		"--schema-package", "https://ex.test/two/common.json=example.com/m/twopkg",
+		"--root-name", "id:https://ex.test/one/common.json=OneCommon",
+		"--root-name", "id:https://ex.test/two/common.json=TwoCommon",
+	); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	oneOut, err := os.ReadFile(filepath.Join(out, "onepkg", "common.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	twoOut, err := os.ReadFile(filepath.Join(out, "twopkg", "common.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(oneOut), "type OneCommon struct") {
+		t.Errorf("onepkg should use its $id-keyed name:\n%s", oneOut)
+	}
+	if !strings.Contains(string(twoOut), "type TwoCommon struct") {
+		t.Errorf("twopkg should use its $id-keyed name:\n%s", twoOut)
+	}
+}
+
+// A base-name key still names every input sharing that base name, which is what
+// the flag has always done: same-named documents in different packages are
+// distinct Go types even with the same identifier.
+func TestRootNameByBaseNameStillAppliesToAllMatches(t *testing.T) {
+	oneDir, twoDir := writeSameNamedInputs(t)
+	out := t.TempDir()
+	if err := runGenerateArgs(t,
+		filepath.Join(oneDir, "common.json"), filepath.Join(twoDir, "common.json"),
+		"-o", out,
+		"--schema-package", "https://ex.test/one/common.json=example.com/m/onepkg",
+		"--schema-package", "https://ex.test/two/common.json=example.com/m/twopkg",
+		"--root-name", "common.json=CommonJson",
+	); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, pkg := range []string{"onepkg", "twopkg"} {
+		body, err := os.ReadFile(filepath.Join(out, pkg, "common.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), "type CommonJson struct") {
+			t.Errorf("%s should use the base-name-keyed root name:\n%s", pkg, body)
+		}
 	}
 }
 

@@ -16,17 +16,28 @@ type PrimitiveType struct {
 func (t *PrimitiveType) GoTypeName() string { return t.Name }
 func (t *PrimitiveType) IsPointer() bool    { return false }
 
-// NamedType references a generated type by name.
+// NamedType references a generated type by name, optionally qualified with
+// the import alias of another generated package.
 type NamedType struct {
-	Name    string
-	Pointer bool
+	Name     string
+	Pointer  bool
+	PkgAlias string // import alias when the type lives in another generated package
+
+	// Validation info carried over from the owning package for qualified
+	// types (the local typedef lookup cannot see foreign definitions).
+	foreignZeroLiteral string
+	foreignValidatable bool
 }
 
 func (t *NamedType) GoTypeName() string {
-	if t.Pointer {
-		return "*" + t.Name
+	name := t.Name
+	if t.PkgAlias != "" {
+		name = t.PkgAlias + "." + name
 	}
-	return t.Name
+	if t.Pointer {
+		return "*" + name
+	}
+	return name
 }
 func (t *NamedType) IsPointer() bool { return t.Pointer }
 

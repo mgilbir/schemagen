@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -47,6 +48,9 @@ func newGenerateCmd() *cobra.Command {
 		lenientRefs      bool
 		rootNameFlags    []string
 		rootNameFromFile bool
+		sharedTypes      bool
+		schemaPkgFlags   []string
+		schemaOutFlags   []string
 	)
 
 	cmd := &cobra.Command{
@@ -77,6 +81,30 @@ func newGenerateCmd() *cobra.Command {
 				return err
 			}
 			defer rootNames.warnUnused(cmd.ErrOrStderr())
+			if (sharedTypes || len(schemaPkgFlags) > 0) && validationMode != generator.ValidationModeStatic {
+				return fmt.Errorf("--shared-types and --schema-package currently require --validation static (per-file validation capability reporting would collide)")
+			}
+
+			// --schema-package activates multi-package generation.
+			schemaPackages := make(map[string]string)
+			for _, sp := range schemaPkgFlags {
+				id, pkg, ok := strings.Cut(sp, "=")
+				if !ok || id == "" || pkg == "" {
+					return fmt.Errorf("--schema-package %q: expected <document $id>=<Go import path>", sp)
+				}
+				schemaPackages[strings.TrimSuffix(id, "#")] = pkg
+			}
+			schemaOutputs := make(map[string]string)
+			for _, so := range schemaOutFlags {
+				id, outPath, ok := strings.Cut(so, "=")
+				if !ok || id == "" || outPath == "" {
+					return fmt.Errorf("--schema-output %q: expected <document $id>=<output file path>", so)
+				}
+				schemaOutputs[strings.TrimSuffix(id, "#")] = outPath
+			}
+			if len(schemaOutputs) > 0 && len(schemaPackages) == 0 {
+				return fmt.Errorf("--schema-output requires --schema-package mappings")
+			}
 
 			// Load optional field-name overrides. Keyed by schema-file base name.
 			var fieldMap generator.FieldMapFile
@@ -96,14 +124,42 @@ func newGenerateCmd() *cobra.Command {
 
 			// Reject input sets where two schemas map to the same output file
 			// (same base name in different directories). Without this the second
-			// silently overwrites the first.
-			if err := checkOutputCollisions(args); err != nil {
-				return err
+			// silently overwrites the first. Multi-package runs place files in
+			// per-package directories and check the resolved paths instead.
+			if len(schemaPackages) == 0 {
+				if err := checkOutputCollisions(args); err != nil {
+					return err
+				}
 			}
 
 			// Ensure output directory exists.
 			if err := os.MkdirAll(outputDir, 0o755); err != nil {
 				return fmt.Errorf("creating output directory: %w", err)
+			}
+
+			if len(schemaPackages) > 0 && cmd.Flags().Changed("package") {
+				return fmt.Errorf("--package cannot be combined with --schema-package: each package is named after the last segment of its --schema-package import path")
+			}
+
+			if len(schemaPackages) > 0 {
+				return runMultiPackage(cmd.OutOrStdout(), args, multiPackageParams{
+					schemaPackages:   schemaPackages,
+					schemaOutputs:    schemaOutputs,
+					rootNames:        rootNames,
+					rootNameFromFile: rootNameFromFile,
+					outputDir:        outputDir,
+					omitEmpty:        omitEmpty,
+					strictProperties: strictProperties,
+					bigInt:           bigInt,
+					allowRemoteRefs:  allowRemoteRefs,
+					verbose:          verbose,
+					draft:            draft,
+					validationMode:   validationMode,
+					fieldMap:         fieldMap,
+					lenientRefs:      lenientRefs,
+					processedFiles:   processedFiles,
+					appliedByFile:    appliedByFile,
+				})
 			}
 
 			// One emitter for the whole run: constructing it parses the full
@@ -119,65 +175,126 @@ func newGenerateCmd() *cobra.Command {
 			// that happens to need them.
 			var helpers generator.HelperSet
 
+			// In shared-types mode all schemas run through one generator so
+			// types materialized by an earlier schema are referenced, not
+			// re-emitted. The inputs are pre-loaded and indexed by $id so a
+			// cross-input $ref resolves to the same loaded instance as the
+			// input itself (instance identity is what the generated-types
+			// registry keys on).
+			var sharedGen *generator.Generator
+			inputByPath := make(map[string]*schema.Schema)
+			if sharedTypes {
+				inputByID := make(map[string]*schema.Schema)
+				for _, schemaPath := range args {
+					s, err := schema.LoadFromFile(schemaPath)
+					if err != nil {
+						return fmt.Errorf("loading %s: %w", schemaPath, err)
+					}
+					s.Normalize()
+					s.ComputeBaseURIs(nil, s)
+					inputByPath[schemaPath] = s
+					id := strings.TrimSuffix(s.ID, "#")
+					if id == "" {
+						id = strings.TrimSuffix(s.LegacyID, "#")
+					}
+					if id != "" {
+						if _, ok := inputByID[id]; ok {
+							return fmt.Errorf("duplicate $id %q across input schemas", id)
+						}
+						inputByID[id] = s
+					}
+				}
+				absPath, _ := filepath.Abs(args[0])
+				resolvers := []schema.SchemaResolver{
+					schema.NewMappingResolver(inputByID),
+					schema.NewFileResolver(filepath.Dir(absPath)),
+				}
+				if allowRemoteRefs {
+					resolvers = append(resolvers, schema.NewHTTPResolver())
+				}
+				sharedGen = generator.New(generator.Config{
+					PackageName:      pkgName,
+					OutputDir:        outputDir,
+					OmitEmpty:        omitEmpty,
+					StrictProperties: strictProperties,
+					BigIntSupport:    bigInt,
+					Resolver:         schema.NewCompositeResolver(resolvers...),
+					Draft:            draft,
+					Validation:       validationMode,
+					LenientRefs:      lenientRefs,
+					SharedTypes:      true,
+				})
+			}
+
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
-				}
-
-				// 1. Load schema
-				s, err := schema.LoadFromFile(schemaPath)
-				if err != nil {
-					return fmt.Errorf("loading %s: %w", schemaPath, err)
-				}
-
-				// 2. Normalize
-				s.Normalize()
-
-				// 3. Create generator with config, including a file resolver
-				//    rooted at the schema file's directory.
-				absPath, _ := filepath.Abs(schemaPath)
-				schemaDir := filepath.Dir(absPath)
-				fileResolver := schema.NewFileResolver(schemaDir)
-
-				// Build resolver chain. File resolver is always available;
-				// HTTP resolver is opt-in via --allow-remote-refs.
-				var resolver schema.SchemaResolver
-				if allowRemoteRefs {
-					httpResolver := schema.NewHTTPResolver()
-					resolver = schema.NewCompositeResolver(fileResolver, httpResolver)
-				} else {
-					resolver = fileResolver
 				}
 
 				// Field-name overrides are keyed by the schema file's base name.
 				fileKey := filepath.Base(schemaPath)
 				processedFiles[fileKey] = true
 
+				var gen *generator.Generator
+				var s *schema.Schema
+				if sharedTypes {
+					gen = sharedGen
+					s = inputByPath[schemaPath]
+				} else {
+					// 1. Load schema
+					var err error
+					s, err = schema.LoadFromFile(schemaPath)
+					if err != nil {
+						return fmt.Errorf("loading %s: %w", schemaPath, err)
+					}
+
+					// 2. Normalize
+					s.Normalize()
+
+					// 3. Create generator with config, including a file resolver
+					//    rooted at the schema file's directory.
+					absPath, _ := filepath.Abs(schemaPath)
+					fileResolver := schema.NewFileResolver(filepath.Dir(absPath))
+
+					// Build resolver chain. File resolver is always available;
+					// HTTP resolver is opt-in via --allow-remote-refs.
+					var resolver schema.SchemaResolver
+					if allowRemoteRefs {
+						resolver = schema.NewCompositeResolver(fileResolver, schema.NewHTTPResolver())
+					} else {
+						resolver = fileResolver
+					}
+
+					gen = generator.New(generator.Config{
+						PackageName:      pkgName,
+						OutputDir:        outputDir,
+						OmitEmpty:        omitEmpty,
+						StrictProperties: strictProperties,
+						BigIntSupport:    bigInt,
+						Resolver:         resolver,
+						Draft:            draft,
+						Validation:       validationMode,
+						FieldNames:       fieldMap[fileKey],
+						LenientRefs:      lenientRefs,
+					})
+				}
+
+				// The $id is only known once the schema is loaded, and it is a
+				// --root-name key, so the name is resolved here rather than
+				// before the branch above.
 				rootTypeName := rootNames.lookup(schemaPath, docIDOf(s))
 				if rootTypeName == "" && rootNameFromFile {
-					// e.g. "http_api_url.json" → "HTTPAPIURLJSON"; the
-					// extension is kept as a naming word so person.json and
-					// person.yaml derive distinct type names.
+					// e.g. "http_api_url.json" → "HTTPAPIURLJSON"; the extension
+					// is kept as a naming word so person.json and person.yaml
+					// derive distinct type names.
 					rootTypeName = generator.SchemaNameToGoName(fileKey)
 				}
 
-				cfg := generator.Config{
-					PackageName:      pkgName,
-					OutputDir:        outputDir,
-					OmitEmpty:        omitEmpty,
-					StrictProperties: strictProperties,
-					BigIntSupport:    bigInt,
-					Resolver:         resolver,
-					Draft:            draft,
-					Validation:       validationMode,
-					FieldNames:       fieldMap[fileKey],
-					LenientRefs:      lenientRefs,
-					RootTypeName:     rootTypeName,
-				}
-				gen := generator.New(cfg)
-
 				// 4. Generate IR
-				ir, err := gen.Generate(s)
+				ir, err := gen.Generate(s,
+					generator.WithRootTypeName(rootTypeName),
+					generator.WithFieldNames(fieldMap[fileKey]),
+				)
 				if err != nil {
 					var unresolved *generator.UnresolvedRefsError
 					if errors.As(err, &unresolved) {
@@ -253,6 +370,9 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
 	cmd.Flags().StringArrayVar(&rootNameFlags, "root-name", nil, "Exact Go type name for a root schema, used verbatim. A bare name (single input only), or a repeatable \"<key>=<Name>\" pair where <key> is the schema file base name, \"id:<document $id>\" or \"file:<schema path>\" — most specific wins (default: schema title, or Root)")
 	cmd.Flags().BoolVar(&rootNameFromFile, "root-name-from-filename", false, "Derive each root type name from the schema filename (Go initialism rules apply), e.g. person.json → PersonJSON, http_api_url.json → HTTPAPIURLJSON")
+	cmd.Flags().BoolVar(&sharedTypes, "shared-types", false, "Generate all schemas into one Go package sharing materialized types and helpers (each schema needs a distinct root type name; requires --validation static)")
+	cmd.Flags().StringArrayVar(&schemaPkgFlags, "schema-package", nil, "Assign a schema document to a Go package: \"<document $id>=<Go import path>\". Repeatable; activates multi-package generation where cross-package $refs emit imports instead of copies. Generation order is derived from the $refs between documents")
+	cmd.Flags().StringArrayVar(&schemaOutFlags, "schema-output", nil, "Output file for a schema document: \"<document $id>=<file path>\" (default: <output-dir>/<package>/<derived name>.go). Requires --schema-package")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
@@ -346,4 +466,254 @@ func deriveOutputFilename(schemaPath string) string {
 	// Replace hyphens with underscores for valid Go filenames.
 	name = strings.ReplaceAll(name, "-", "_")
 	return name + ".go"
+}
+
+// multiPackageParams carries the settings for a multi-package generation run.
+type multiPackageParams struct {
+	schemaPackages   map[string]string // document $id → Go import path
+	schemaOutputs    map[string]string // document $id → output file path
+	rootNames        *rootNameSpec     // resolves each input's root type name
+	rootNameFromFile bool
+	outputDir        string
+	omitEmpty        bool
+	strictProperties bool
+	bigInt           bool
+	allowRemoteRefs  bool
+	verbose          bool
+	draft            schema.Draft
+	validationMode   generator.ValidationMode
+	fieldMap         generator.FieldMapFile
+	lenientRefs      bool
+	// Shared with the caller so --field-map entries that matched nothing can be
+	// reported: without these, every top-level key looks unused in a
+	// multi-package run.
+	processedFiles map[string]bool
+	appliedByFile  map[string]map[string]map[string]bool
+}
+
+// runMultiPackage generates several Go packages in one run. Every input schema
+// is pre-loaded once and indexed by $id, so cross-package $refs resolve to the
+// instances being generated and emit qualified references with imports instead
+// of materialized copies. Packages are generated in an order derived from the
+// $refs between documents, and a $ref into a document owned by another package
+// of the run that was not generated there is an error rather than a silently
+// duplicated type.
+func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
+	type input struct {
+		path string
+		s    *schema.Schema
+		id   string
+		pkg  string
+	}
+
+	inputs := make([]*input, 0, len(args))
+	byID := make(map[string]*schema.Schema)
+	for _, schemaPath := range args {
+		s, err := schema.LoadFromFile(schemaPath)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", schemaPath, err)
+		}
+		s.Normalize()
+		s.ComputeBaseURIs(nil, s)
+		id := strings.TrimSuffix(s.ID, "#")
+		if id == "" {
+			id = strings.TrimSuffix(s.LegacyID, "#")
+		}
+		if id == "" {
+			return fmt.Errorf("multi-package generation requires every schema to declare $id; %s has none", schemaPath)
+		}
+		pkg := p.schemaPackages[id]
+		if pkg == "" {
+			return fmt.Errorf("no --schema-package mapping for %s ($id %q)", schemaPath, id)
+		}
+		if _, ok := byID[id]; ok {
+			return fmt.Errorf("duplicate $id %q across input schemas", id)
+		}
+		byID[id] = s
+		inputs = append(inputs, &input{path: schemaPath, s: s, id: id, pkg: pkg})
+	}
+
+	// Resolve $refs through the instances this run already loaded, and root a
+	// file resolver at every input's directory so a sibling-relative ref inside
+	// any input resolves, not just inside the first one.
+	resolvers := []schema.SchemaResolver{schema.NewMappingResolver(byID)}
+	for _, dir := range inputDirs(args) {
+		resolvers = append(resolvers, schema.NewFileResolver(dir))
+	}
+	if p.allowRemoteRefs {
+		resolvers = append(resolvers, schema.NewHTTPResolver())
+	}
+	// Whatever spelling a ref uses, a document this run owns must come back as
+	// the instance already loaded for it: the cross-package registry keys types
+	// by node identity, so a second copy would go unrecognized and be
+	// duplicated locally.
+	resolver := newCanonicalInstanceResolver(schema.NewCompositeResolver(resolvers...), byID)
+	// A $ref may target a subschema carrying its own $id, which is a resource
+	// root in its own right and cannot be traced back to the file containing
+	// it. Register every resource $id inside each input against that input's
+	// package so such refs are still recognized as foreign.
+	registry := generator.NewCrossPackageRegistry(p.schemaPackages)
+	for _, in := range inputs {
+		registry.RegisterDocument(in.s, in.pkg)
+	}
+
+	// Group inputs by package, keeping command-line order within each package.
+	var pkgOrder []string
+	pkgInputs := make(map[string][]*input)
+	for _, in := range inputs {
+		if _, ok := pkgInputs[in.pkg]; !ok {
+			pkgOrder = append(pkgOrder, in.pkg)
+		}
+		pkgInputs[in.pkg] = append(pkgInputs[in.pkg], in)
+	}
+
+	// Order packages so each is generated after the packages it $refs into: a
+	// ref into a package that has not been generated yet would silently emit a
+	// local copy of the type instead of importing it. Deriving the order also
+	// means callers no longer have to hand-maintain a dependency-first command
+	// line.
+	docs := make([]packageDoc, 0, len(inputs))
+	for _, in := range inputs {
+		docs = append(docs, packageDoc{id: in.id, pkg: in.pkg, path: in.path, schema: in.s})
+	}
+	orderedPkgs, err := orderPackagesByDependencies(pkgOrder, docs, p.schemaPackages)
+	if err != nil {
+		return err
+	}
+	if p.verbose && !slices.Equal(orderedPkgs, pkgOrder) {
+		fmt.Fprintf(out, "Reordered packages by $ref dependencies: %s\n", strings.Join(orderedPkgs, ", "))
+	}
+	pkgOrder = orderedPkgs
+
+	// Reject resolved output-path collisions before generating anything, and
+	// require each output directory to hold exactly one package: files in one
+	// directory share a package clause, so two import paths writing there
+	// produce a directory Go cannot compile. Default paths use the import
+	// path's last segment, so distinct import paths ending in the same segment
+	// land in the same directory — comparing whole file paths does not catch it.
+	outPaths := make(map[string]string)
+	dirPackages := make(map[string]string)
+	for _, in := range inputs {
+		outPath := p.schemaOutputs[in.id]
+		if outPath == "" {
+			outPath = filepath.Join(p.outputDir, generator.PackageNameForImportPath(in.pkg), deriveOutputFilename(in.path))
+		}
+		if other, ok := outPaths[outPath]; ok {
+			return fmt.Errorf("input schemas %q and %q both write to %q; set distinct --schema-output paths", other, in.path, outPath)
+		}
+		outPaths[outPath] = in.path
+
+		dir := filepath.Dir(outPath)
+		if other, ok := dirPackages[dir]; ok && other != in.pkg {
+			return fmt.Errorf("packages %q and %q both write into %q; a directory holds one Go package, so give them distinct --schema-output directories", other, in.pkg, dir)
+		}
+		dirPackages[dir] = in.pkg
+	}
+
+	em, err := emitter.New()
+	if err != nil {
+		return fmt.Errorf("creating emitter: %w", err)
+	}
+
+	for _, pkg := range pkgOrder {
+		gen := generator.New(generator.Config{
+			PackageName:      generator.PackageNameForImportPath(pkg),
+			OutputDir:        p.outputDir,
+			OmitEmpty:        p.omitEmpty,
+			StrictProperties: p.strictProperties,
+			BigIntSupport:    p.bigInt,
+			Resolver:         resolver,
+			Draft:            p.draft,
+			Validation:       p.validationMode,
+			LenientRefs:      p.lenientRefs,
+			SharedTypes:      true,
+			ImportPath:       pkg,
+			CrossPackage:     registry,
+		})
+
+		// Helpers are package-level functions, so each generated package gets
+		// its own helper file. Every input of a package writes into the same
+		// directory (enforced above), so one file per package is enough.
+		var helpers generator.HelperSet
+		var pkgDir string
+		for _, in := range pkgInputs[pkg] {
+			if p.verbose {
+				fmt.Fprintf(out, "Processing %s -> %s\n", in.path, pkg)
+			}
+			fileKey := filepath.Base(in.path)
+			if p.processedFiles != nil {
+				p.processedFiles[fileKey] = true
+			}
+
+			rootTypeName := p.rootNames.lookup(in.path, in.id)
+			if rootTypeName == "" && p.rootNameFromFile {
+				rootTypeName = generator.SchemaNameToGoName(fileKey)
+			}
+
+			ir, err := gen.Generate(in.s,
+				generator.WithRootTypeName(rootTypeName),
+				generator.WithFieldNames(p.fieldMap[fileKey]),
+			)
+			if err != nil {
+				var unresolved *generator.UnresolvedRefsError
+				if errors.As(err, &unresolved) {
+					return fmt.Errorf("generating IR for %s: %w\n(provide the referenced documents as inputs, enable --allow-remote-refs, or pass --lenient-refs to degrade unresolved refs to any)", in.path, err)
+				}
+				return fmt.Errorf("generating IR for %s: %w", in.path, err)
+			}
+
+			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
+				if p.appliedByFile[fileKey] == nil {
+					p.appliedByFile[fileKey] = make(map[string]map[string]bool)
+				}
+				for typeName, props := range applied {
+					if p.appliedByFile[fileKey][typeName] == nil {
+						p.appliedByFile[fileKey][typeName] = make(map[string]bool)
+					}
+					for prop := range props {
+						p.appliedByFile[fileKey][typeName][prop] = true
+					}
+				}
+			}
+
+			helpers.Merge(ir.Helpers())
+
+			src, err := em.Emit(ir)
+			if err != nil {
+				return fmt.Errorf("emitting code for %s: %w", in.path, err)
+			}
+
+			outPath := p.schemaOutputs[in.id]
+			if outPath == "" {
+				// Default layout: one sub-directory per package.
+				outPath = filepath.Join(p.outputDir, generator.PackageNameForImportPath(pkg), deriveOutputFilename(in.path))
+			}
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return fmt.Errorf("creating output directory for %s: %w", outPath, err)
+			}
+			if err := os.WriteFile(outPath, src, 0o644); err != nil {
+				return fmt.Errorf("writing %s: %w", outPath, err)
+			}
+			pkgDir = filepath.Dir(outPath)
+			if p.verbose {
+				fmt.Fprintf(out, "  -> %s\n", outPath)
+			}
+		}
+
+		// One helper file per generated package.
+		helperSrc, needed, err := em.EmitHelpers(generator.PackageNameForImportPath(pkg), helpers)
+		if err != nil {
+			return err
+		}
+		if needed {
+			helperPath := filepath.Join(pkgDir, helperFileName)
+			if err := os.WriteFile(helperPath, helperSrc, 0o644); err != nil {
+				return fmt.Errorf("writing %s: %w", helperPath, err)
+			}
+			if p.verbose {
+				fmt.Fprintf(out, "  -> %s\n", helperPath)
+			}
+		}
+	}
+	return nil
 }
