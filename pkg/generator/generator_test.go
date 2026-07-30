@@ -2024,6 +2024,69 @@ func TestIntegerConstraintOnlyOneOfPreservesTypeAndVariants(t *testing.T) {
 	}
 }
 
+// TestConstraintOnlyOneOfImportsUTF8 guards the import side of the arm above: the
+// oneOf branch checks emitted for a string alias call utf8.RuneCountInString, so
+// "unicode/utf8" must be imported. The import scan covered Validations and
+// AnyOfVariants but not OneOfVariants, producing uncompilable output.
+func TestConstraintOnlyOneOfImportsUTF8(t *testing.T) {
+	input := `{"type":"string","oneOf":[{"minLength":2},{"maxLength":4}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "unicode/utf8") {
+		t.Fatalf("imports = %v, want unicode/utf8 (oneOf branches call utf8.RuneCountInString)", paths)
+	}
+}
+
+// TestRequiredOnlyOneOfGeneratesObjectUnion is a regression for the dispatch arm
+// that keyed "is this an object union?" off oneOf variants having properties. A
+// variant carrying only required keys constrains the object just as much, and
+// narrowing the check dropped the branch validation entirely — Validate() became
+// `return nil`, accepting objects that match both branches or neither.
+func TestRequiredOnlyOneOfGeneratesObjectUnion(t *testing.T) {
+	input := `{"type":"object","oneOf":[{"required":["foo","bar"]},{"required":["foo","baz"]}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.ObjectOneOfs) != 1 {
+		t.Fatalf("Root.ObjectOneOfs = %#v, want exactly 1 oneOf group", root.ObjectOneOfs)
+	}
+	if got := len(root.ObjectOneOfs[0].Branches); got != 2 {
+		t.Fatalf("oneOf group has %d branches, want 2", got)
+	}
+}
+
 // TestNullPropertySchemaReturnsError is a regression for the nil pointer panic on
 // {"properties":{"a":null}}: a null property schema must produce an actionable
 // error naming the property, not crash the generator.

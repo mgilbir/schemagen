@@ -1039,3 +1039,40 @@ func main() {
 		t.Fatalf("unexpected output:\n%s", output)
 	}
 }
+
+// TestOneOfRequiredOnlyObject covers a oneOf whose variants constrain only the
+// object's required keys, with no properties anywhere in the schema. Such a
+// oneOf is still an object union: the generated type must enforce
+// exactly-one-branch rather than accepting everything.
+func TestOneOfRequiredOnlyObject(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_required_only_object.json",
+		[]string{
+			`{"foo":1,"bar":2}`, // first branch only
+			`{"foo":1,"baz":3}`, // second branch only
+		},
+		[]string{
+			`{}`,                        // neither branch
+			`{"foo":1}`,                 // neither branch
+			`{"foo":1,"bar":2,"baz":3}`, // both branches → 2 matches
+		},
+	)
+}
+
+// TestOneOfStringLengthVariants covers a constraint-only oneOf attached to a
+// declared string type. The branch checks use utf8.RuneCountInString, so the
+// generated file must import "unicode/utf8" — it previously did not and failed
+// to compile.
+func TestOneOfStringLengthVariants(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_string_length_variants.json",
+		[]string{
+			`"a"`,      // maxLength branch only
+			`"abcdef"`, // minLength branch only
+		},
+		[]string{
+			`"abc"`, // both branches → 2 matches
+			`3`,     // not a string
+		},
+	)
+}

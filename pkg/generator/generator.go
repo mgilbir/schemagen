@@ -520,6 +520,25 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(ad.OneOfVariants) > 0 {
+				needsFmt = true // oneOf error message uses fmt.Errorf
+				for _, variant := range ad.OneOfVariants {
+					for _, v := range variant {
+						if v.RuleType == "pattern" {
+							needsRegexp = true
+						}
+						if v.RuleType == "multipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "uniqueItems" {
+							needsJSON = true
+						}
+						if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+							needsUTF8 = true
+						}
+					}
+				}
+			}
 			// Contains validation imports.
 			if ad.Contains != nil {
 				if ad.Contains.ConstJSON != "" {
@@ -1025,12 +1044,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// oneOf without properties in parent or any variant, and with no usable type
-	// information → alias to `any` (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]}
+	// oneOf that describes no object in parent or any variant, and with no usable
+	// type information → alias to `any` (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]}
 	// can hold any JSON value). When the schema declares (or implies via sibling
 	// constraints) a primary type, fall through to the primitive/array alias paths
 	// below so the declared type and the oneOf branches are both preserved.
-	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) &&
+	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfDescribesObject(s) &&
 		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -1043,10 +1062,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Object with properties, patternProperties, object oneOf variants, or
 	// unevaluatedProperties → struct. A oneOf whose variants are constraint-only
-	// (no properties) is not an object union and must not force a struct — those
-	// fall through to the primitive/array alias paths so the oneOf branches attach
-	// to the declared/inferred type.
-	if hasProperties(s) || len(s.PatternProperties) > 0 || g.oneOfHasProperties(s) || s.UnevaluatedProperties != nil {
+	// (they say nothing about object shape) is not an object union and must not
+	// force a struct — those fall through to the primitive/array alias paths so
+	// the oneOf branches attach to the declared/inferred type.
+	if hasProperties(s) || len(s.PatternProperties) > 0 || g.oneOfDescribesObject(s) || s.UnevaluatedProperties != nil {
 		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
 		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
@@ -4672,19 +4691,50 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	return false
 }
 
-// oneOfHasProperties returns true if any oneOf variant has properties.
-func (g *Generator) oneOfHasProperties(s *schema.Schema) bool {
+// oneOfDescribesObject returns true if any oneOf variant constrains the shape of
+// an object. That covers variants with properties, but also variants carrying only
+// object-applicable keywords — {"required":["a","b"]} constrains an object even
+// though it declares no properties. Such a oneOf is an object union and must be
+// generated as a struct so the branch checks are emitted; a constraint-only oneOf
+// over scalars (e.g. [{"minimum":10},{"maximum":5}]) is not, and falls through to
+// the alias paths where its branches attach to the declared/inferred type.
+func (g *Generator) oneOfDescribesObject(s *schema.Schema) bool {
 	for _, sub := range s.OneOf {
-		if len(sub.Properties) > 0 {
+		if g.constrainsObjectShape(sub) {
 			return true
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if len(r.Properties) > 0 {
+				if g.constrainsObjectShape(r) {
 					return true
 				}
 			}
 		}
+	}
+	return false
+}
+
+// constrainsObjectShape reports whether a schema says something about the shape of
+// an object: properties/patternProperties, an explicit "object" type, or one of the
+// keywords that only apply to objects. Mirrors the object-keyword list that
+// inferTypeFromConstraints uses to infer type "object".
+func (g *Generator) constrainsObjectShape(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if len(s.Properties) > 0 || len(s.PatternProperties) > 0 {
+		return true
+	}
+	if primarySchemaType(s) == "object" {
+		return true
+	}
+	if s.AdditionalProperties != nil || s.UnevaluatedProperties != nil || s.PropertyNames != nil {
+		return true
+	}
+	if g.validationKeywordsEnabled() && (len(s.Required) > 0 ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.MinProperties != nil || s.MaxProperties != nil) {
+		return true
 	}
 	return false
 }

@@ -70,6 +70,8 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/dynamicref_recursive", "testdata/schemas/regression/dynamicref_recursive.json", "testdata/golden/regression/dynamicref_recursive.go"},
 		{"regression/oneof_optional_const", "testdata/schemas/regression/oneof_optional_const.json", "testdata/golden/regression/oneof_optional_const.go"},
 		{"regression/integer_oneof_constraints", "testdata/schemas/regression/integer_oneof_constraints.json", "testdata/golden/regression/integer_oneof_constraints.go"},
+		{"regression/oneof_required_only_object", "testdata/schemas/regression/oneof_required_only_object.json", "testdata/golden/regression/oneof_required_only_object.go"},
+		{"regression/oneof_string_length_variants", "testdata/schemas/regression/oneof_string_length_variants.json", "testdata/golden/regression/oneof_string_length_variants.go"},
 	}
 }
 
