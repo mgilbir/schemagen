@@ -26,7 +26,8 @@ type Generator struct {
 	resolver                   schema.SchemaResolver // external resolver for non-local refs
 	baseURI                    *url.URL              // base URI for the root document (from $id or file path)
 	rootSchema                 *schema.Schema        // the root schema for local ref resolution
-	draft                      schema.Draft          // detected draft version of the root schema
+	draft                      schema.Draft          // effective draft version of the root schema
+	draftOverridden            bool                  // true when Config.Draft explicitly set the draft (takes precedence over $schema)
 	resourceGraph              *schema.ResourceGraph // document/dialect/anchor graph for validation planning
 	validationKeywordsDisabled bool                  // true when the declared metaschema omits the validation vocabulary
 
@@ -73,8 +74,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
+		g.draftOverridden = true
 	} else {
 		g.draft = schema.DetectDraft(s)
+		g.draftOverridden = false
 	}
 
 	// Determine root type name.
@@ -1656,7 +1659,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
 		if propSchema.Default != nil {
-			defaultLiteral = defaultToGoLiteral(*propSchema.Default, goType)
+			lit, err := defaultToGoLiteral(*propSchema.Default, goType)
+			if err != nil {
+				return fmt.Errorf("property %q: %w", propName, err)
+			}
+			defaultLiteral = lit
 		}
 
 		fields = append(fields, FieldDef{
@@ -5777,6 +5784,20 @@ func declaresValidationVocabulary(vocabulary map[string]bool) bool {
 
 func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 	if s == nil {
+		return g.draft
+	}
+	if g.draftOverridden {
+		// An explicit --draft (Config.Draft) is the user's statement about the
+		// document they passed in. It takes precedence over the root document's
+		// own $schema and over any $schema-less node. The one exception: an
+		// embedded or remote resource that establishes its own $id-scoped
+		// document root with an explicit $schema keeps its dialect, so
+		// cross-draft $ref semantics are preserved.
+		if root := s.DocumentRoot; root != nil && root != g.rootSchema {
+			if d := schema.DetectDraft(root); d != schema.DraftUnknown {
+				return d
+			}
+		}
 		return g.draft
 	}
 	if d := schema.DetectDraft(s); d != schema.DraftUnknown {

@@ -1106,6 +1106,127 @@ func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
 	}
 }
 
+// An explicit Config.Draft is the caller's statement about the document, so it
+// must win over the document's own $schema in per-node draft decisions — not
+// just in the paths that read g.draft directly.
+func TestExplicitDraftOverridesDocumentSchemaKeyword(t *testing.T) {
+	input := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "array",
+		"prefixItems": [{"type":"string"}, {"type":"string"}]
+	}`
+
+	tupleLen := func(t *testing.T, cfg Config) int {
+		t.Helper()
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(input), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+
+		ir, err := New(cfg).Generate(&s)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*AliasDef); ok {
+				return len(d.TupleItems)
+			}
+		}
+		t.Fatalf("expected AliasDef in %d type defs", len(ir.TypeDefs))
+		return 0
+	}
+
+	if got := tupleLen(t, Config{PackageName: "testpkg"}); got != 0 {
+		t.Fatalf("without override: TupleItems = %d, want 0 (prefixItems is not a draft-07 keyword)", got)
+	}
+	if got := tupleLen(t, Config{PackageName: "testpkg", Draft: schema.Draft202012}); got != 2 {
+		t.Fatalf("with --draft 2020-12: TupleItems = %d, want 2", got)
+	}
+}
+
+// The one exception to Config.Draft precedence: an embedded resource that
+// establishes its own $id-scoped document root with an explicit $schema keeps
+// its own dialect, so cross-draft $ref semantics survive the override.
+func TestExplicitDraftDoesNotOverrideEmbeddedResourceDialect(t *testing.T) {
+	input := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://example.com/root",
+		"type": "object",
+		"properties": {
+			"legacy": {"$ref": "#/$defs/legacy"}
+		},
+		"$defs": {
+			"legacy": {
+				"$id": "https://example.com/legacy",
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"type": "array",
+				"prefixItems": [{"type":"string"}, {"type":"string"}]
+			},
+			"modern": {
+				"type": "array",
+				"prefixItems": [{"type":"string"}, {"type":"string"}]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", Draft: schema.Draft202012}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	tuples := map[string]int{}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok {
+			tuples[d.Name] = len(d.TupleItems)
+		}
+	}
+
+	// The embedded resource declares its own dialect, so the override does not reach it.
+	if got, ok := tuples["Legacy"]; !ok {
+		t.Fatalf("expected AliasDef named Legacy, got %v", tuples)
+	} else if got != 0 {
+		t.Fatalf("embedded draft-07 resource: TupleItems = %d, want 0 (its own $schema wins)", got)
+	}
+	// A node inside the root document has no dialect of its own, so the override applies.
+	if got, ok := tuples["Modern"]; !ok {
+		t.Fatalf("expected AliasDef named Modern, got %v", tuples)
+	} else if got != 2 {
+		t.Fatalf("root-document node: TupleItems = %d, want 2 (override applies)", got)
+	}
+}
+
+// A default that violates its own declared type must be reported, not silently
+// truncated into a different value.
+func TestFractionalDefaultOnIntegerPropertyIsRejected(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"retries": {"type": "integer", "default": 4.5}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	_, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err == nil {
+		t.Fatalf("expected error for fractional default on an integer property")
+	}
+	if !strings.Contains(err.Error(), "retries") {
+		t.Fatalf("error %q does not name the offending property", err)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {

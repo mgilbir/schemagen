@@ -82,6 +82,8 @@ schemagen generate modern.json --draft 2020-12
 
 This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics).
 
+`--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
+
 ### Validation Strategy
 
 `schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
