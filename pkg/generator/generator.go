@@ -3140,16 +3140,33 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 		discMap := make(map[string]int)
 
 		if len(s.Discriminator.Mapping) > 0 {
-			// Use explicit mapping: value → $ref or type name
-			for discValue, ref := range s.Discriminator.Mapping {
-				// Find which variant index corresponds to this ref
+			// Mapping values are either a $ref ("#/$defs/Dog") or a bare schema
+			// name ("Dog"). Match a $ref variant on its ref, then fall back to
+			// the generated Go type name so that name-form values and inline
+			// (ref-less) variants resolve too — matching only on EffectiveRef
+			// silently left those unmapped.
+			//
+			// Keys are visited in sorted order and each variant is claimed at
+			// most once: with map iteration order, two mapping values that can
+			// match the same variant produced different output run to run.
+			claimed := make(map[int]bool, len(variants))
+			for _, discValue := range sortedMappingKeys(s.Discriminator.Mapping) {
+				ref := s.Discriminator.Mapping[discValue]
+				if ref == "" {
+					continue
+				}
+				wantName := refToGoName(ref)
 				for i, variant := range variants {
-					variantRef := variant.EffectiveRef()
-					if variantRef == ref || refToGoName(variantRef) == refToGoName(ref) {
-						discMap[discValue] = i
-						oneOfDef.Variants[i].DiscriminatorValue = discValue
-						break
+					if claimed[i] {
+						continue
 					}
+					if !variantMatchesMapping(variant, oneOfDef.Variants[i], ref, wantName) {
+						continue
+					}
+					claimed[i] = true
+					discMap[discValue] = i
+					oneOfDef.Variants[i].DiscriminatorValue = discValue
+					break
 				}
 			}
 		} else {
@@ -3167,6 +3184,37 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 
 	// 2. Heuristic detection: find a shared property with distinct const/enum values
 	g.detectHeuristicDiscriminator(oneOfDef, variants)
+}
+
+// sortedMappingKeys returns the discriminator mapping's keys in a stable order
+// so that generation is deterministic.
+func sortedMappingKeys(mapping map[string]string) []string {
+	keys := make([]string, 0, len(mapping))
+	for k := range mapping {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// variantMatchesMapping reports whether a oneOf variant is the one an OpenAPI
+// discriminator mapping value names. ref is the raw mapping value and wantName
+// its Go-name form.
+func variantMatchesMapping(variant *schema.Schema, generated OneOfVariant, ref, wantName string) bool {
+	if variantRef := variant.EffectiveRef(); variantRef != "" {
+		if variantRef == ref || refToGoName(variantRef) == wantName {
+			return true
+		}
+	}
+	// Name form, or an inline variant that has no ref to compare against: the
+	// generated Go type carries the name the mapping refers to. Object variants
+	// are pointer-wrapped (*Dog), so compare against the pointee.
+	if wantName != "" && generated.Type != nil {
+		if strings.TrimPrefix(generated.Type.GoTypeName(), "*") == wantName {
+			return true
+		}
+	}
+	return false
 }
 
 // inferDiscriminatorValues extracts discriminator values from each variant's property.

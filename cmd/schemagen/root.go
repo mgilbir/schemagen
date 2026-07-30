@@ -88,6 +88,14 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("creating output directory: %w", err)
 			}
 
+			// One emitter for the whole run: constructing it parses the full
+			// template set, which does not depend on the input schema. Emit is
+			// read-only with respect to the emitter, so it is reused per file.
+			em, err := emitter.New()
+			if err != nil {
+				return fmt.Errorf("creating emitter: %w", err)
+			}
+
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
@@ -156,19 +164,13 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 
-				// 5. Create emitter
-				em, err := emitter.New()
-				if err != nil {
-					return fmt.Errorf("creating emitter: %w", err)
-				}
-
-				// 6. Emit Go code
+				// 5. Emit Go code (emitter created once, above the loop)
 				src, err := em.Emit(ir)
 				if err != nil {
 					return fmt.Errorf("emitting code for %s: %w", schemaPath, err)
 				}
 
-				// 7. Write output file
+				// 6. Write output file
 				outFile := deriveOutputFilename(schemaPath)
 				outPath := filepath.Join(outputDir, outFile)
 

@@ -822,3 +822,50 @@ func TestGenerateOutputFilenameCollision(t *testing.T) {
 		t.Errorf("same file twice should not be a collision, got: %v", err)
 	}
 }
+
+// TestGenerateMultipleSchemasMatchesSingleRuns guards the shared emitter: it is
+// now constructed once per run instead of once per input file, so a multi-file
+// run must still produce byte-identical output to generating each file on its
+// own. Any state the emitter carried between files would show up here.
+func TestGenerateMultipleSchemasMatchesSingleRuns(t *testing.T) {
+	schema1 := findTestdataSchema(t, "basic/simple_object.json")
+	schema2 := findTestdataSchema(t, "advanced/pattern_properties.json")
+
+	run := func(t *testing.T, args ...string) string {
+		t.Helper()
+		dir := t.TempDir()
+		cmd := NewRootCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(buf)
+		cmd.SetArgs(append([]string{"generate", "--output-dir", dir}, args...))
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("generate %v: %v\n%s", args, err, buf.String())
+		}
+		return dir
+	}
+
+	together := run(t, schema1, schema2)
+	apart1 := run(t, schema1)
+	apart2 := run(t, schema2)
+
+	for _, tc := range []struct {
+		file    string
+		aloneIn string
+	}{
+		{"simple_object.go", apart1},
+		{"pattern_properties.go", apart2},
+	} {
+		combined, err := os.ReadFile(filepath.Join(together, tc.file))
+		if err != nil {
+			t.Fatalf("reading %s from the combined run: %v", tc.file, err)
+		}
+		alone, err := os.ReadFile(filepath.Join(tc.aloneIn, tc.file))
+		if err != nil {
+			t.Fatalf("reading %s from its single run: %v", tc.file, err)
+		}
+		if !bytes.Equal(combined, alone) {
+			t.Errorf("%s differs between a combined run and a single-file run", tc.file)
+		}
+	}
+}

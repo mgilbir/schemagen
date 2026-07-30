@@ -348,16 +348,18 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		return r.walkPath(current.Else, rest, originalRef)
 
 	case "additionalProperties":
-		if current.AdditionalProperties == nil || current.AdditionalProperties.Schema == nil {
+		target := current.AdditionalProperties.AsSchema()
+		if target == nil {
 			return nil, fmt.Errorf("schema has no additionalProperties schema: %s", originalRef)
 		}
-		return r.walkPath(current.AdditionalProperties.Schema, rest, originalRef)
+		return r.walkPath(target, rest, originalRef)
 
 	case "additionalItems":
-		if current.AdditionalItems == nil || current.AdditionalItems.Schema == nil {
+		target := current.AdditionalItems.AsSchema()
+		if target == nil {
 			return nil, fmt.Errorf("schema has no additionalItems schema: %s", originalRef)
 		}
-		return r.walkPath(current.AdditionalItems.Schema, rest, originalRef)
+		return r.walkPath(target, rest, originalRef)
 
 	case "patternProperties":
 		if len(rest) == 0 {
@@ -422,14 +424,14 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		// arbitrary keywords referenced via JSON Pointer $ref).
 		if current.Extensions != nil {
 			if raw, ok := current.Extensions[key]; ok {
-				var sub Schema
-				if err := json.Unmarshal(raw, &sub); err != nil {
+				sub, err := current.extensionSchema(key, raw)
+				if err != nil {
 					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
 				}
 				if len(rest) == 0 {
-					return &sub, nil
+					return sub, nil
 				}
-				return r.walkPath(&sub, rest, originalRef)
+				return r.walkPath(sub, rest, originalRef)
 			}
 		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)

@@ -1309,3 +1309,84 @@ func TestHTTPResolverBoundsRedirectChain(t *testing.T) {
 		t.Fatalf("error = %v, want it to mention the redirect limit", err)
 	}
 }
+
+// TestLocalResolverRefIntoBooleanKeyword covers JSON-pointer refs that land on a
+// boolean-valued keyword. Booleans are schemas in draft 6+, so
+// "#/additionalProperties" against {"additionalProperties": false} must resolve
+// to the false schema rather than reporting that no schema is there.
+func TestLocalResolverRefIntoBooleanKeyword(t *testing.T) {
+	root := &Schema{}
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"additionalProperties": false,
+		"additionalItems": true
+	}`), root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	root.Normalize()
+
+	r := NewLocalResolver(root)
+
+	ap, err := r.ResolveLocal("#/additionalProperties")
+	if err != nil {
+		t.Fatalf("resolving #/additionalProperties: %v", err)
+	}
+	if !ap.IsFalseSchema() {
+		t.Errorf("#/additionalProperties = %#v, want the false schema", ap)
+	}
+
+	ai, err := r.ResolveLocal("#/additionalItems")
+	if err != nil {
+		t.Fatalf("resolving #/additionalItems: %v", err)
+	}
+	if !ai.IsTrueSchema() {
+		t.Errorf("#/additionalItems = %#v, want the true schema", ai)
+	}
+
+	// Repeated resolution must return the same node: cycle detection compares
+	// schema pointers, so a fresh node each time would defeat it.
+	again, err := r.ResolveLocal("#/additionalProperties")
+	if err != nil {
+		t.Fatalf("re-resolving #/additionalProperties: %v", err)
+	}
+	if again != ap {
+		t.Errorf("repeated resolution returned a different node (%p vs %p)", again, ap)
+	}
+}
+
+// TestLocalResolverExtensionRefIsStableAndNormalized covers the two problems
+// with re-parsing an Extensions entry on every resolution: the nodes had
+// distinct identities, and they never went through Normalize, so legacy
+// constructs inside an extension stayed un-canonicalized.
+func TestLocalResolverExtensionRefIsStableAndNormalized(t *testing.T) {
+	root := &Schema{}
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"x-shared": {"type": "object", "divisibleBy": 3, "extends": {"type": "object"}}
+	}`), root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	root.Normalize()
+
+	r := NewLocalResolver(root)
+
+	first, err := r.ResolveLocal("#/x-shared")
+	if err != nil {
+		t.Fatalf("resolving #/x-shared: %v", err)
+	}
+	second, err := r.ResolveLocal("#/x-shared")
+	if err != nil {
+		t.Fatalf("re-resolving #/x-shared: %v", err)
+	}
+	if first != second {
+		t.Errorf("two refs to the same extension returned different nodes (%p vs %p)", first, second)
+	}
+
+	// Normalize maps the draft-3/4 spellings onto their modern equivalents.
+	if first.MultipleOf == nil {
+		t.Errorf("divisibleBy inside an extension was not normalized to multipleOf")
+	}
+	if len(first.AllOf) == 0 {
+		t.Errorf("extends inside an extension was not normalized to allOf")
+	}
+}
