@@ -1311,7 +1311,6 @@ func main() {
 	runGeneratedMainProgram(t, "testdata/schemas/regression/struct_reuse.json", "struct_reuse_test", mainGo)
 }
 
-
 // TestHandBuiltAnyOfValidate is a regression guard for C6: object-level anyOf
 // branch matching depends on JSON key presence, so a hand-constructed value
 // (nil _jsonKeys) must skip the check, while a value built by json.Unmarshal

@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
