@@ -77,6 +77,14 @@ type Generator struct {
 	// pick a disambiguated one instead of silently reusing the wrong type.
 	typeSchemas map[string]*schema.Schema
 
+	// nodeTypeNames is the inverse of typeSchemas: the canonical Go name a
+	// schema node was first materialized under. A self-referential document
+	// (every meta-schema is one) is reached by a different context-derived name
+	// on each traversal, so without this a "$ref":"#" inside it mints a fresh
+	// type every time -- the name growing by one segment per level -- and
+	// generation never terminates.
+	nodeTypeNames map[*schema.Schema]string
+
 	// rootNameOverride is the per-call root type name from WithRootTypeName;
 	// unlike Config.RootTypeName it is reset on every Generate call.
 	rootNameOverride string
@@ -97,6 +105,7 @@ func New(cfg Config) *Generator {
 		resolvedRefs:       make(map[string]bool),
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
+		nodeTypeNames:      make(map[*schema.Schema]string),
 	}
 }
 
@@ -1184,6 +1193,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 	if _, ok := g.typeSchemas[name]; !ok {
 		g.typeSchemas[name] = s
+	}
+	if _, ok := g.nodeTypeNames[s]; !ok {
+		g.nodeTypeNames[s] = name
 	}
 	g.config.CrossPackage.RecordType(s, g.config.ImportPath, name)
 
@@ -4101,8 +4113,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}
 		}
 		if inner == "object" && hasProperties(s) {
-			_ = g.generateTypeDef(contextName, s)
-			return &PointerType{Inner: &NamedType{Name: contextName}}
+			return &PointerType{Inner: &NamedType{Name: g.materializeNamed(s, contextName)}}
 		}
 		// Nullable array: recurse into items so the element type is preserved
 		// (mirrors the non-nullable array branch below). Without this, a
@@ -4124,13 +4135,11 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// Object with properties → nested struct (explicit type:"object" or inferred from properties keyword)
 	if primaryType == "object" && hasProperties(s) {
-		_ = g.generateTypeDef(contextName, s)
-		return &NamedType{Name: contextName}
+		return &NamedType{Name: g.materializeNamed(s, contextName)}
 	}
 	// Properties without explicit type → pointer to struct (nil when absent, enabling omitempty)
 	if primaryType == "" && hasProperties(s) {
-		_ = g.generateTypeDef(contextName, s)
-		return &PointerType{Inner: &NamedType{Name: contextName}}
+		return &PointerType{Inner: &NamedType{Name: g.materializeNamed(s, contextName)}}
 	}
 
 	// allOf / anyOf-with-properties without direct properties → delegate to generateTypeDef
@@ -4138,6 +4147,9 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
 	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
 	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
+	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+		return &NamedType{Name: canonical}
+	}
 	if !g.generating[contextName] && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		g.generating[contextName] = true
 		_ = g.generateTypeDef(contextName, s)
@@ -4168,6 +4180,24 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	}
 
 	return &PrimitiveType{Name: "any"}
+}
+
+// materializeNamed generates s under contextName and returns the name to
+// reference it by -- unless the node was already materialized, in which case its
+// first (canonical) name is reused.
+//
+// A self-referential document reaches the same node by a different route at
+// every level: in a JSON Schema meta-schema, {"$ref":"#"} inside a property
+// pulls the document root's properties back in, so that property is re-entered
+// with the context name one segment longer each time. Keyed on the name alone,
+// the generated/in-progress guards never fire; the node is regenerated forever
+// and the names grow without bound. Keying on node identity terminates it.
+func (g *Generator) materializeNamed(s *schema.Schema, contextName string) string {
+	if canonical, ok := g.nodeTypeNames[s]; ok {
+		return canonical
+	}
+	_ = g.generateTypeDef(contextName, s)
+	return contextName
 }
 
 // buildDocumentRoots walks the schema tree and registers every node that declares
@@ -4811,6 +4841,13 @@ func extractTypeName(t GoType) string {
 func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fallback string) string {
 	if resolved == nil {
 		return fallback
+	}
+	// A node already materialized under a name keeps it. Each traversal of a
+	// self-referential document arrives with a different context-derived
+	// fallback, so deriving a fresh name here is what let "$ref":"#" inside a
+	// fetched meta-schema recurse without end.
+	if existing, ok := g.nodeTypeNames[resolved]; ok {
+		return existing
 	}
 	// Only re-derive the name when the ref would produce a misleading name.
 	// This happens primarily for fragment-only refs like "#" or "#/..." that
