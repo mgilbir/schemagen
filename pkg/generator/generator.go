@@ -4379,6 +4379,23 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 	}
 	// 6. Try external resolver with the raw ref (handles absolute URIs, etc.).
 	if g.resolver != nil {
+		// Load the document itself before the fragment, exactly as step 5 does.
+		// A resolver may resolve the fragment for us and hand back the *sub*schema
+		// (MappingResolver does), and registering that as though it were the
+		// document makes it its own DocumentRoot -- so its siblings fall out of
+		// scope and a later "#anchor" or "$dynamicAnchor" lookup misses them.
+		if refURL, parseErr := url.Parse(ref); parseErr == nil && refURL.Fragment != "" {
+			frag := refURL.Fragment
+			docURL := *refURL
+			docURL.Fragment = ""
+			if docSchema, err := g.resolver.ResolveSchema(docURL.String(), ctxBase); err == nil {
+				g.registerRemoteSchema(docSchema, &docURL)
+				local := schema.NewLocalResolver(docSchema)
+				if resolved, err := local.Resolve("#" + frag); err == nil {
+					return resolved
+				}
+			}
+		}
 		if s, err := g.resolver.ResolveSchema(ref, ctxBase); err == nil {
 			// Register the remote schema so its internal $ref chains resolve.
 			if refURL, parseErr := url.Parse(ref); parseErr == nil {

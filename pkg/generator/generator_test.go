@@ -2364,3 +2364,41 @@ func TestAbsoluteRefToIDBearingSubschemaWithoutDocumentID(t *testing.T) {
 		})
 	}
 }
+
+// A resolver may resolve a ref's fragment itself and hand back the *sub*schema
+// rather than the document (MappingResolver does). Registering that subschema as
+// though it were the document made it its own DocumentRoot, putting its siblings
+// out of scope -- so a $dynamicRef to a $dynamicAnchor declared beside it could
+// not be found, and the reference degraded to any.
+func TestDynamicRefFindsAnchorBesideTargetInFetchedDocument(t *testing.T) {
+	var remote schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"$id": "http://example.com/detached-dynamicref.json",
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$defs": {
+			"foo": {"$dynamicRef": "#detached"},
+			"detached": {"$dynamicAnchor": "detached", "type": "integer"}
+		}
+	}`), &remote); err != nil {
+		t.Fatal(err)
+	}
+	remote.Normalize()
+
+	const docURI = "http://example.com/detached-dynamicref.json"
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{docURI: &remote})
+
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$ref": "`+docURI+`#/$defs/foo"
+	}`), &root); err != nil {
+		t.Fatal(err)
+	}
+	root.Normalize()
+	root.ComputeBaseURIs(nil, &root)
+
+	// Not lenient: the $dynamicRef must resolve, not degrade.
+	if _, err := New(Config{PackageName: "testpkg", Resolver: resolver}).Generate(&root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+}
