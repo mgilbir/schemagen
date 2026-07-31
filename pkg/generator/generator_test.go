@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -2400,5 +2401,62 @@ func TestDynamicRefFindsAnchorBesideTargetInFetchedDocument(t *testing.T) {
 	// Not lenient: the $dynamicRef must resolve, not degrade.
 	if _, err := New(Config{PackageName: "testpkg", Resolver: resolver}).Generate(&root); err != nil {
 		t.Fatalf("generate: %v", err)
+	}
+}
+
+// A self-referential document reached through a resolver used to recurse without
+// end. Every JSON Schema meta-schema is such a document: {"$ref":"#"} inside a
+// property pulls the document root's properties back in, so that property is
+// re-entered with a context name one segment longer each time
+// (SchemaAdditionalItems, SchemaAdditionalItemsAdditionalItems, ...). The
+// generated/in-progress guards are keyed on the name, so they never fired, and
+// generation consumed memory until the process was killed.
+func TestSelfReferentialFetchedDocumentTerminates(t *testing.T) {
+	// The shape that matters, reduced from the draft-04 meta-schema: a property
+	// whose anyOf refs the document root, which has that property.
+	var meta schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"id": "http://example.com/meta.json",
+		"type": "object",
+		"properties": {
+			"additionalItems": {"anyOf": [{"type": "boolean"}, {"$ref": "#"}]}
+		}
+	}`), &meta); err != nil {
+		t.Fatal(err)
+	}
+	meta.Normalize()
+
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{
+		"http://example.com/meta.json": &meta,
+	})
+
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(`{"$ref": "http://example.com/meta.json#"}`), &root); err != nil {
+		t.Fatal(err)
+	}
+	root.Normalize()
+	root.ComputeBaseURIs(nil, &root)
+
+	done := make(chan int, 1)
+	go func() {
+		ir, err := New(Config{PackageName: "testpkg", Resolver: resolver, LenientRefs: true, Draft: schema.Draft04}).Generate(&root)
+		if err != nil {
+			done <- -1
+			return
+		}
+		done <- len(ir.TypeDefs)
+	}()
+
+	select {
+	case n := <-done:
+		if n < 0 {
+			t.Fatal("generate returned an error")
+		}
+		// The exact count is not the point; terminating with a bounded set is.
+		if n > 50 {
+			t.Errorf("produced %d type defs for a 2-node document; names are still being re-derived per traversal", n)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("generation did not terminate: self-reference is recursing without bound")
 	}
 }
