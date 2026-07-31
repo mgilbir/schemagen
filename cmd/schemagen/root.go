@@ -15,6 +15,11 @@ import (
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
+// helperFileName is where shared helper functions are written. One file per
+// destination package: the helpers are package-level, so emitting them per
+// schema breaks any package containing two schemas that need the same one.
+const helperFileName = "schemagen_helpers.go"
+
 // NewRootCmd creates the root cobra command with a "generate" subcommand.
 func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
@@ -96,6 +101,11 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("creating emitter: %w", err)
 			}
 
+			// Shared helpers are package-level functions, so they are written
+			// once for the whole destination package rather than into each file
+			// that happens to need them.
+			var helpers generator.HelperSet
+
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
@@ -164,6 +174,8 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 
+				helpers.Merge(ir.Helpers())
+
 				// 5. Emit Go code (emitter created once, above the loop)
 				src, err := em.Emit(ir)
 				if err != nil {
@@ -180,6 +192,21 @@ func newGenerateCmd() *cobra.Command {
 
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "  -> %s\n", outPath)
+				}
+			}
+
+			// 7. Write the shared helper file, if anything referenced one.
+			helperSrc, needed, err := em.EmitHelpers(pkgName, helpers)
+			if err != nil {
+				return err
+			}
+			if needed {
+				helperPath := filepath.Join(outputDir, helperFileName)
+				if err := os.WriteFile(helperPath, helperSrc, 0o644); err != nil {
+					return fmt.Errorf("writing %s: %w", helperPath, err)
+				}
+				if verbose {
+					fmt.Fprintf(cmd.OutOrStdout(), "  -> %s\n", helperPath)
 				}
 			}
 

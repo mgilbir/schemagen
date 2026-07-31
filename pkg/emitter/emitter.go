@@ -50,6 +50,53 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 	return src, nil
 }
 
+// EmitHelpers renders the shared helper file for a destination package.
+//
+// Helper functions are package-level, so a package containing two schemas that
+// both need one would declare it twice and fail to compile. They live in a
+// single file per package instead. Returns ok=false when the set is empty and
+// no file should be written.
+func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) ([]byte, bool, error) {
+	if helpers.Empty() {
+		return nil, false, nil
+	}
+
+	// Imports are fixed by which helpers are included, not by the schemas.
+	var imports []generator.Import
+	if helpers.Dynamic || helpers.OneOf || helpers.OneOfDiscriminator {
+		imports = append(imports, generator.Import{Path: "encoding/json"})
+	}
+	if helpers.OneOfDiscriminator {
+		imports = append(imports, generator.Import{Path: "fmt"})
+	}
+	if helpers.Dynamic {
+		imports = append(imports, generator.Import{Path: "math"})
+	}
+
+	data := helperFileData{
+		PackageName: packageName,
+		Imports:     imports,
+		Helpers:     helpers,
+	}
+
+	var buf bytes.Buffer
+	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
+		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
+	}
+	src, err := format.Source(buf.Bytes())
+	if err != nil {
+		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, buf.String())
+	}
+	return src, true, nil
+}
+
+// helperFileData is the data passed to the shared helper file template.
+type helperFileData struct {
+	PackageName string
+	Imports     []generator.Import
+	Helpers     generator.HelperSet
+}
+
 // fileData is the data passed to the top-level file template.
 type fileData struct {
 	PackageName          string

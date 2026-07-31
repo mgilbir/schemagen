@@ -591,11 +591,12 @@ func (g *Generator) addRequiredImports() {
 		if dsd, ok := td.(*DynamicSchemaDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage, decode to any
 			needsFmt = true  // Validate() errors
-			// The _dyn* helper block is emitted whole and its _dynIsInteger uses
-			// math.Trunc, so math is required whenever any dynamic schema is
-			// present -- not only when a check happens to mention integer or
-			// multipleOf.
-			needsMath = true
+			// math is needed in this file only for a multipleOf check's math.Mod.
+			// The integer type test lives in the shared helper file, which
+			// carries its own math import.
+			if dsd.NeedsMultipleOf() {
+				needsMath = true
+			}
 			if dsd.NeedsUTF8() {
 				needsUTF8 = true
 			}

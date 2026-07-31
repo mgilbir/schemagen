@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // UntypedOneOfBranches accepts any JSON value. The schema declares no type of its own, so
@@ -50,59 +49,4 @@ func (u UntypedOneOfBranches) Validate() error {
 		}
 	}
 	return nil
-}
-
-// The helpers below evaluate JSON Schema constraints against a value decoded
-// into `any`, for schemas that declare no type of their own. json.Unmarshal
-// produces float64 for every JSON number; the int cases cover values built in
-// Go rather than decoded.
-func _dynNumber(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case json.Number:
-		f, err := n.Float64()
-		return f, err == nil
-	}
-	return 0, false
-}
-
-func _dynIsNumber(v any) bool { _, ok := _dynNumber(v); return ok }
-
-func _dynIsInteger(v any) bool {
-	f, ok := _dynNumber(v)
-	return ok && f == math.Trunc(f)
-}
-
-func _dynIsString(v any) bool { _, ok := v.(string); return ok }
-
-func _dynIsBool(v any) bool { _, ok := v.(bool); return ok }
-
-func _dynIsObject(v any) bool { _, ok := v.(map[string]any); return ok }
-
-func _dynIsArray(v any) bool { _, ok := v.([]any); return ok }
-
-// _dynNumOK applies a numeric constraint. A non-number satisfies it vacuously:
-// JSON Schema keywords only constrain values of the type they apply to.
-func _dynNumOK(v any, ok func(float64) bool) bool {
-	f, isNum := _dynNumber(v)
-	if !isNum {
-		return true
-	}
-	return ok(f)
-}
-
-// _dynStrOK applies a string constraint, vacuously true for non-strings.
-func _dynStrOK(v any, ok func(string) bool) bool {
-	s, isStr := v.(string)
-	if !isStr {
-		return true
-	}
-	return ok(s)
 }

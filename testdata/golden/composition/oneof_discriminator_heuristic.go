@@ -498,34 +498,3 @@ func (s Shape) Validate() error {
 	}
 	return nil
 }
-
-// oneofHasRequiredFields checks if a JSON object contains all the specified field names.
-func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return false
-	}
-	for _, f := range fields {
-		if _, ok := obj[f]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-// oneofDiscriminatorValue extracts the string value of a discriminator property from JSON data.
-func oneofDiscriminatorValue(data json.RawMessage, prop string) (string, error) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return "", fmt.Errorf("discriminator: cannot parse as object: %w", err)
-	}
-	raw, ok := obj[prop]
-	if !ok {
-		return "", fmt.Errorf("discriminator property %q is missing", prop)
-	}
-	var val string
-	if err := json.Unmarshal(raw, &val); err != nil {
-		return "", fmt.Errorf("discriminator property %q is not a string: %w", prop, err)
-	}
-	return val, nil
-}

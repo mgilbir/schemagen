@@ -792,6 +792,12 @@ func (d *DynamicSchemaDef) NeedsPattern() bool {
 	return d.anyCheck(func(c DynamicCheck) bool { return c.Kind == "pattern" })
 }
 
+// NeedsMultipleOf reports whether any check needs math.Mod in the generated
+// file itself.
+func (d *DynamicSchemaDef) NeedsMultipleOf() bool {
+	return d.anyCheck(func(c DynamicCheck) bool { return c.Kind == "multipleOf" })
+}
+
 // NeedsUTF8 reports whether any check measures string length.
 func (d *DynamicSchemaDef) NeedsUTF8() bool {
 	return d.anyCheck(func(c DynamicCheck) bool { return c.Kind == "minLength" || c.Kind == "maxLength" })

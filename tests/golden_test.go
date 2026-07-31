@@ -234,6 +234,7 @@ func TestBigIntRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 
@@ -368,6 +369,7 @@ func TestValidationErrorPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 
@@ -535,6 +537,7 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 

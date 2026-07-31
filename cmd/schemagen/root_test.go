@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -867,5 +868,63 @@ func TestGenerateMultipleSchemasMatchesSingleRuns(t *testing.T) {
 		if !bytes.Equal(combined, alone) {
 			t.Errorf("%s differs between a combined run and a single-file run", tc.file)
 		}
+	}
+}
+
+// TestGenerateMultipleSchemasSharingHelpersCompiles is a regression for shared
+// helper functions being emitted into every file that needed them: two schemas
+// in one package then declared the same package-level function twice and the
+// generated package did not compile. The helpers now live in one file per
+// destination package.
+func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
+	dir := t.TempDir()
+	// Three schemas with overlapping helper needs: a struct-level oneOf (needs
+	// oneofHasRequiredFields), and two untyped applicator schemas (need the
+	// _dyn* predicates), one of which also forces math into its own file.
+	sources := map[string]string{
+		"a.json": `{"title":"A","type":"object","properties":{"p":{"oneOf":[{"type":"string"},{"type":"integer"}]}}}`,
+		"b.json": `{"title":"B","oneOf":[{"type":"integer"},{"minimum":2}]}`,
+		"c.json": `{"title":"C","oneOf":[{"multipleOf":3},{"maximum":1}]}`,
+	}
+	var args []string
+	for name, body := range sources {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
+		args = append(args, p)
+	}
+	sort.Strings(args)
+
+	outDir := filepath.Join(dir, "out")
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(append([]string{"generate", "--output-dir", outDir, "--package", "gen"}, args...))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("generate: %v\n%s", err, buf.String())
+	}
+
+	// The helper file is written once, not per schema.
+	if _, err := os.Stat(filepath.Join(outDir, "schemagen_helpers.go")); err != nil {
+		t.Fatalf("expected a shared helper file: %v", err)
+	}
+	entries, err := os.ReadDir(outDir)
+	if err != nil {
+		t.Fatalf("reading output dir: %v", err)
+	}
+	var helperFiles int
+	for _, e := range entries {
+		body, err := os.ReadFile(filepath.Join(outDir, e.Name()))
+		if err != nil {
+			t.Fatalf("reading %s: %v", e.Name(), err)
+		}
+		if bytes.Contains(body, []byte("func _dynNumber(")) || bytes.Contains(body, []byte("func oneofHasRequiredFields(")) {
+			helperFiles++
+		}
+	}
+	if helperFiles != 1 {
+		t.Fatalf("%d files declare shared helpers, want exactly 1", helperFiles)
 	}
 }

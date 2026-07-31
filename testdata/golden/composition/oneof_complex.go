@@ -638,17 +638,3 @@ func (n Notification) Validate() error {
 	}
 	return nil
 }
-
-// oneofHasRequiredFields checks if a JSON object contains all the specified field names.
-func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return false
-	}
-	for _, f := range fields {
-		if _, ok := obj[f]; !ok {
-			return false
-		}
-	}
-	return true
-}

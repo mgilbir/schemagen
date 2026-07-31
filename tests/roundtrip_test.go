@@ -248,6 +248,7 @@ func TestRoundTrip(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 				t.Fatalf("writing types.go: %v", err)
 			}
+			writeSharedHelpers(t, tmpDir, generatedMain)
 
 			// Write the fixture JSON
 			if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), fixtureData, 0o644); err != nil {
@@ -332,6 +333,7 @@ func TestCompile(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(singleTmpDir, entry.Name()), []byte(content), 0o644); err != nil {
 					t.Fatalf("writing file: %v", err)
 				}
+				writeSharedHelpers(t, singleTmpDir, content)
 
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
@@ -491,6 +493,7 @@ func TestDefaults(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	// Minimal JSON: only the required field "name"
 	minimalJSON := `{"name":"myserver"}`
@@ -635,6 +638,7 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := generateUnevaluatedItemsMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
@@ -670,6 +674,7 @@ func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := generateAllOfOneOfCrossedTypesMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
@@ -823,6 +828,7 @@ func runValidationCases(t *testing.T, schemaPath string, valid, invalid []string
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := fmt.Sprintf(`package main
 
 import (
@@ -1007,6 +1013,7 @@ func TestFieldNameCollisions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := generateFieldNameCollisionsMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
@@ -1139,6 +1146,7 @@ func TestOneOfOptionalConstUnmarshal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := fmt.Sprintf(`package main
 
 import (
@@ -1227,6 +1235,7 @@ func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
 	}
