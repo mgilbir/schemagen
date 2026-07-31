@@ -2,6 +2,7 @@ package emitter
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 	"unicode"
@@ -45,6 +46,7 @@ func FuncMap() template.FuncMap {
 		"goStringLiteral":     goStringLiteralFunc,
 		"goStringQuote":       goStringQuoteFunc,
 		"ecmaPattern":         ecmaPatternLiteralFunc,
+		"dynNum":              dynNumFunc,
 		"hasManualFields":     hasManualFieldsFunc,
 		"ppTypeValue":         ppTypeValueFunc,
 		"ppTypeValues":        ppTypeValuesFunc,
@@ -323,4 +325,29 @@ func requiredFieldsListFunc(fields []string) string {
 		quoted[i] = fmt.Sprintf("%q", f)
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// dynNumFunc renders a JSON Schema numeric constraint as a Go float64 literal.
+// strconv with 'g' and -1 precision round-trips the value exactly, and the
+// explicit decimal point keeps whole numbers typed as float64 rather than an
+// untyped integer constant.
+func dynNumFunc(v any) string {
+	var f float64
+	switch n := v.(type) {
+	case float64:
+		f = n
+	case float32:
+		f = float64(n)
+	case int:
+		f = float64(n)
+	case int64:
+		f = float64(n)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }

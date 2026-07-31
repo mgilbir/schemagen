@@ -1352,3 +1352,39 @@ func main() {
 `
 	runGeneratedMainProgram(t, "testdata/schemas/regression/anyof_required_branches.json", "handbuilt_anyof_test", mainGo)
 }
+
+// TestUntypedOneOfBranches covers a schema that constrains values purely through
+// oneOf while declaring no type of its own. It used to generate `type X any`,
+// which Go forbids methods on, so every branch was silently dropped and any
+// value was accepted. The expectations are the JSON Schema Test Suite's own for
+// this schema (draft2020-12/oneOf.json, first group).
+func TestUntypedOneOfBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/untyped_oneof_branches.json",
+		[]string{
+			`1`,   // integer branch only
+			`2.5`, // minimum branch only (>=2 but not an integer)
+		},
+		[]string{
+			`3`,   // both branches match
+			`1.5`, // neither branch matches
+		},
+	)
+}
+
+// TestUntypedIfThen covers the same class for if/then. Note the vacuous-success
+// rule: a non-number satisfies both the if and the then, because numeric
+// keywords do not constrain values of other types.
+func TestUntypedIfThen(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/untyped_if_then.json",
+		[]string{
+			`-5`,      // if matches (<0) and then holds (>=-10)
+			`3`,       // if does not match, no else to satisfy
+			`"hello"`, // numeric keywords do not apply to strings
+		},
+		[]string{
+			`-100`, // if matches (<0) but then fails (< -10)
+		},
+	)
+}

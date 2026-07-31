@@ -588,6 +588,21 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if dsd, ok := td.(*DynamicSchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage, decode to any
+			needsFmt = true  // Validate() errors
+			// The _dyn* helper block is emitted whole and its _dynIsInteger uses
+			// math.Trunc, so math is required whenever any dynamic schema is
+			// present -- not only when a check happens to mention integer or
+			// multipleOf.
+			needsMath = true
+			if dsd.NeedsUTF8() {
+				needsUTF8 = true
+			}
+			if dsd.NeedsPattern() {
+				needsRegexp = true
+			}
+		}
 		if nsd, ok := td.(*NotSchemaDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage
 			needsFmt = true  // Validate() errors
@@ -1054,6 +1069,16 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// below so the declared type and the oneOf branches are both preserved.
 	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfDescribesObject(s) &&
 		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" {
+		// The branches still constrain the value even though the parent declares
+		// no type: {"oneOf":[{"type":"integer"},{"minimum":2}]} rejects 1 and
+		// rejects "foo". A bare `type X any` cannot carry a Validate() method
+		// (Go forbids methods on interface-underlying types), so when the
+		// branches are expressible, wrap the raw JSON in a struct instead.
+		if def := g.dynamicSchemaDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
@@ -1425,7 +1450,17 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Fallback: alias to any
+	// Fallback: alias to any. Before giving up on validation entirely, check
+	// whether the schema still constrains the value through applicators
+	// (oneOf/anyOf/if-then-else) with no type of its own. `type X any` cannot
+	// carry a Validate() method, so those constraints would be dropped silently;
+	// a raw-JSON wrapper keeps them enforceable.
+	if def := g.dynamicSchemaDef(name, s); def != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		return nil
+	}
+
 	goType := &PrimitiveType{Name: "any"}
 	var rules []ValidationRule
 	if g.validationKeywordsEnabled() {
@@ -2251,7 +2286,14 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			})
 			return nil
 		}
-		// No type inferrable → alias to `any` (permissive fallback).
+		// No type inferrable → alias to `any` (permissive fallback), unless the
+		// schema's applicators still constrain the value, in which case wrap the
+		// raw JSON so a Validate() can be attached.
+		if def := g.dynamicSchemaDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
@@ -3009,6 +3051,14 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// a struct — fall back to an alias to `any` so that the value can hold any
 	// of the variant types.
 	if len(merged.Properties) == 0 {
+		// The variants still constrain the value even with no properties to
+		// merge, so prefer a wrapper carrying a Validate() over a bare
+		// `type X any` that drops them.
+		if def := g.dynamicSchemaDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,

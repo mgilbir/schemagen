@@ -66,6 +66,17 @@ func (d fileData) NeedsValidationRuntime() bool {
 	return d.ValidationCapability.RequiresRuntime && d.ValidationCapability.Mode != generator.ValidationModeStatic
 }
 
+// HasDynamicSchema returns true if the file contains a schema validated against
+// an untyped value, which needs the _dyn* helpers.
+func (d fileData) HasDynamicSchema() bool {
+	for _, td := range d.TypeDefs {
+		if _, ok := td.Def.(*generator.DynamicSchemaDef); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // HasOneOf returns true if any struct in the file has oneOf fields.
 func (d fileData) HasOneOf() bool {
 	for _, td := range d.TypeDefs {
@@ -171,6 +182,18 @@ func (w typeDefWrapper) IsBigIntAlias() bool {
 // AsBigIntAlias returns the wrapped TypeDef as a *generator.BigIntAliasDef, or nil.
 func (w typeDefWrapper) AsBigIntAlias() *generator.BigIntAliasDef {
 	d, _ := w.Def.(*generator.BigIntAliasDef)
+	return d
+}
+
+// IsDynamicSchema reports whether the wrapped TypeDef is a *generator.DynamicSchemaDef.
+func (w typeDefWrapper) IsDynamicSchema() bool {
+	_, ok := w.Def.(*generator.DynamicSchemaDef)
+	return ok
+}
+
+// AsDynamicSchema returns the wrapped TypeDef as a *generator.DynamicSchemaDef, or nil.
+func (w typeDefWrapper) AsDynamicSchema() *generator.DynamicSchemaDef {
+	d, _ := w.Def.(*generator.DynamicSchemaDef)
 	return d
 }
 

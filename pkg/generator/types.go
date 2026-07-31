@@ -748,6 +748,69 @@ type NotPropertyBranch struct {
 	JSONType string
 }
 
+// DynamicCheck is one constraint evaluated against a decoded JSON value whose
+// Go type is not known statically. Kind names the JSON Schema keyword; Value is
+// its argument.
+//
+// Evaluation follows JSON Schema semantics: every keyword except "type" is
+// vacuously satisfied by a value of an inapplicable type, so {"minimum":2} is
+// satisfied by "abc".
+type DynamicCheck struct {
+	Kind  string // "type", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
+	Value any
+}
+
+// DynamicSchemaDef represents a root schema that constrains values through
+// applicators (oneOf/anyOf/if-then-else) while declaring no type of its own.
+//
+// Such a schema accepts any JSON value, so the natural Go type is `any` -- but
+// Go forbids methods on a type whose underlying type is an interface, which is
+// why these schemas used to generate a bare `type X any` with no Validate() and
+// silently dropped every constraint. Wrapping the raw JSON in a struct, exactly
+// as NotSchemaDef does for root-level "not", makes a Validate() method possible.
+type DynamicSchemaDef struct {
+	Name        string
+	Description string
+
+	OneOf [][]DynamicCheck // exactly one branch must match
+	AnyOf [][]DynamicCheck // at least one branch must match
+
+	HasIfThenElse bool
+	If            []DynamicCheck
+	Then          []DynamicCheck
+	Else          []DynamicCheck
+	HasThen       bool
+	HasElse       bool
+}
+
+func (d *DynamicSchemaDef) TypeName() string { return d.Name }
+func (d *DynamicSchemaDef) typeDef()         {}
+
+// NeedsPattern reports whether any check uses "pattern", which requires the
+// ECMA-262 regexp import in the generated file.
+func (d *DynamicSchemaDef) NeedsPattern() bool {
+	return d.anyCheck(func(c DynamicCheck) bool { return c.Kind == "pattern" })
+}
+
+// NeedsUTF8 reports whether any check measures string length.
+func (d *DynamicSchemaDef) NeedsUTF8() bool {
+	return d.anyCheck(func(c DynamicCheck) bool { return c.Kind == "minLength" || c.Kind == "maxLength" })
+}
+
+func (d *DynamicSchemaDef) anyCheck(pred func(DynamicCheck) bool) bool {
+	groups := [][][]DynamicCheck{d.OneOf, d.AnyOf, {d.If, d.Then, d.Else}}
+	for _, g := range groups {
+		for _, branch := range g {
+			for _, c := range branch {
+				if pred(c) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (d *NotSchemaDef) TypeName() string { return d.Name }
 func (d *NotSchemaDef) typeDef()         {}
 
