@@ -1,0 +1,115 @@
+{{define "dynamic_schema"}}
+{{- $recv := receiverName .Name -}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+// {{.Name}} accepts any JSON value. The schema declares no type of its own, so
+// the constraints come entirely from its applicators and are checked against
+// the decoded value by Validate.
+type {{.Name}} struct {
+	_raw json.RawMessage
+}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
+	return nil
+}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if len({{$recv}}._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return {{$recv}}._raw, nil
+}
+
+func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }
+
+func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	var _v any
+	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+		return fmt.Errorf("cannot decode value: %w", _err)
+	}
+	{{- if .OneOf}}
+	{
+		_matches := 0
+		{{- range $bi, $branch := .OneOf}}
+		if {{template "dyn_branch" $branch}} {
+			_matches++
+		}
+		{{- end}}
+		if _matches != 1 {
+			return fmt.Errorf("oneOf: value matches %d variants, expected exactly 1", _matches)
+		}
+	}
+	{{- end}}
+	{{- if .AnyOf}}
+	{
+		_matches := 0
+		{{- range $bi, $branch := .AnyOf}}
+		if {{template "dyn_branch" $branch}} {
+			_matches++
+		}
+		{{- end}}
+		if _matches == 0 {
+			return fmt.Errorf("anyOf: value matches no variant")
+		}
+	}
+	{{- end}}
+	{{- if .HasIfThenElse}}
+	if {{template "dyn_branch" .If}} {
+		{{- if .HasThen}}
+		if !({{template "dyn_branch" .Then}}) {
+			return fmt.Errorf("then: value does not satisfy the then schema")
+		}
+		{{- end}}
+	} else {
+		{{- if .HasElse}}
+		if !({{template "dyn_branch" .Else}}) {
+			return fmt.Errorf("else: value does not satisfy the else schema")
+		}
+		{{- end}}
+	}
+	{{- end}}
+	return nil
+}
+{{- end}}
+
+{{/*
+dyn_branch renders a boolean expression that is true when the decoded value _v
+satisfies every check in the branch. An empty branch matches everything.
+
+Every keyword except "type" is vacuously satisfied by a value of an
+inapplicable type, per JSON Schema: {"minimum":2} accepts "abc". That is why
+each numeric and string check is written as "not of this type, OR constraint
+holds".
+*/}}
+{{define "dyn_branch"}}
+{{- if not .}}true
+{{- else}}
+{{- range $i, $c := .}}{{if $i}} && {{end}}
+{{- if eq $c.Kind "type"}}
+{{- if eq $c.Value "integer"}}_dynIsInteger(_v)
+{{- else if eq $c.Value "number"}}_dynIsNumber(_v)
+{{- else if eq $c.Value "string"}}_dynIsString(_v)
+{{- else if eq $c.Value "boolean"}}_dynIsBool(_v)
+{{- else if eq $c.Value "object"}}_dynIsObject(_v)
+{{- else if eq $c.Value "array"}}_dynIsArray(_v)
+{{- else if eq $c.Value "null"}}_v == nil
+{{- else}}true
+{{- end}}
+{{- else if eq $c.Kind "minimum"}}_dynNumOK(_v, func(f float64) bool { return f >= {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "maximum"}}_dynNumOK(_v, func(f float64) bool { return f <= {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "exclusiveMinimum"}}_dynNumOK(_v, func(f float64) bool { return f > {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "exclusiveMaximum"}}_dynNumOK(_v, func(f float64) bool { return f < {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "multipleOf"}}_dynNumOK(_v, func(f float64) bool { return math.Mod(f, {{dynNum $c.Value}}) == 0 })
+{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= {{$c.Value}} })
+{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) <= {{$c.Value}} })
+{{- else if eq $c.Kind "pattern"}}_dynStrOK(_v, func(s string) bool { _m, _ := ecma262.MatchString({{ecmaPattern $c.Value}}, ecmaflags.Unicode, s); return _m })
+{{- else}}true
+{{- end}}
+{{- end}}
+{{- end}}
+{{- end}}

@@ -248,6 +248,7 @@ func TestRoundTrip(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 				t.Fatalf("writing types.go: %v", err)
 			}
+			writeSharedHelpers(t, tmpDir, generatedMain)
 
 			// Write the fixture JSON
 			if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), fixtureData, 0o644); err != nil {
@@ -332,6 +333,7 @@ func TestCompile(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(singleTmpDir, entry.Name()), []byte(content), 0o644); err != nil {
 					t.Fatalf("writing file: %v", err)
 				}
+				writeSharedHelpers(t, singleTmpDir, content)
 
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
@@ -491,6 +493,7 @@ func TestDefaults(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	// Minimal JSON: only the required field "name"
 	minimalJSON := `{"name":"myserver"}`
@@ -635,6 +638,7 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := generateUnevaluatedItemsMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
@@ -670,6 +674,7 @@ func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := generateAllOfOneOfCrossedTypesMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
@@ -823,6 +828,7 @@ func runValidationCases(t *testing.T, schemaPath string, valid, invalid []string
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := fmt.Sprintf(`package main
 
 import (
@@ -1007,6 +1013,7 @@ func TestFieldNameCollisions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := generateFieldNameCollisionsMain(rootType)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
@@ -1139,6 +1146,7 @@ func TestOneOfOptionalConstUnmarshal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	mainGo := fmt.Sprintf(`package main
 
 import (
@@ -1227,6 +1235,7 @@ func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
 	}
@@ -1351,4 +1360,69 @@ func main() {
 }
 `
 	runGeneratedMainProgram(t, "testdata/schemas/regression/anyof_required_branches.json", "handbuilt_anyof_test", mainGo)
+}
+
+// TestUntypedOneOfBranches covers a schema that constrains values purely through
+// oneOf while declaring no type of its own. It used to generate `type X any`,
+// which Go forbids methods on, so every branch was silently dropped and any
+// value was accepted. The expectations are the JSON Schema Test Suite's own for
+// this schema (draft2020-12/oneOf.json, first group).
+func TestUntypedOneOfBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/untyped_oneof_branches.json",
+		[]string{
+			`1`,   // integer branch only
+			`2.5`, // minimum branch only (>=2 but not an integer)
+		},
+		[]string{
+			`3`,   // both branches match
+			`1.5`, // neither branch matches
+		},
+	)
+}
+
+// TestUntypedIfThen covers the same class for if/then. Note the vacuous-success
+// rule: a non-number satisfies both the if and the then, because numeric
+// keywords do not constrain values of other types.
+func TestUntypedIfThen(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/untyped_if_then.json",
+		[]string{
+			`-5`,      // if matches (<0) and then holds (>=-10)
+			`3`,       // if does not match, no else to satisfy
+			`"hello"`, // numeric keywords do not apply to strings
+		},
+		[]string{
+			`-100`, // if matches (<0) but then fails (< -10)
+		},
+	)
+}
+
+// TestUnevaluatedItemsWithAnyOf covers unevaluatedItems whose evaluated set
+// depends on which anyOf branches match the value being validated — the case
+// static analysis cannot decide. Expectations are the JSON Schema Test Suite's
+// own (draft2020-12/unevaluatedItems.json).
+func TestUnevaluatedItemsWithAnyOf(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_items_anyof.json",
+		[]string{
+			`["foo","bar"]`,       // one branch matches, nothing unevaluated
+			`["foo","bar","baz"]`, // both branches match, nothing unevaluated
+		},
+		[]string{
+			`["foo","bar",42]`,       // index 2 unevaluated
+			`["foo","bar","baz",42]`, // index 3 unevaluated
+		},
+	)
+}
+
+// TestUnevaluatedItemsCousins covers annotation scope: the unevaluatedItems in
+// the second allOf branch is a cousin of the first and cannot see its
+// annotations, so any non-empty array fails.
+func TestUnevaluatedItemsCousins(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_items_cousins.json",
+		[]string{`[]`},
+		[]string{`[1]`, `["anything"]`},
+	)
 }

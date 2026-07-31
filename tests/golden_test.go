@@ -77,6 +77,10 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
 		{"regression/field_name_collisions", "testdata/schemas/regression/field_name_collisions.json", "testdata/golden/regression/field_name_collisions.go"},
 		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
+		{"regression/untyped_oneof_branches", "testdata/schemas/regression/untyped_oneof_branches.json", "testdata/golden/regression/untyped_oneof_branches.go"},
+		{"regression/untyped_if_then", "testdata/schemas/regression/untyped_if_then.json", "testdata/golden/regression/untyped_if_then.go"},
+		{"regression/unevaluated_items_anyof", "testdata/schemas/regression/unevaluated_items_anyof.json", "testdata/golden/regression/unevaluated_items_anyof.go"},
+		{"regression/unevaluated_items_cousins", "testdata/schemas/regression/unevaluated_items_cousins.json", "testdata/golden/regression/unevaluated_items_cousins.go"},
 	}
 }
 
@@ -232,6 +236,7 @@ func TestBigIntRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 
@@ -366,6 +371,7 @@ func TestValidationErrorPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 
@@ -533,6 +539,7 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
 		t.Fatalf("writing types.go: %v", err)
 	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
 
 	mainGo := `package main
 

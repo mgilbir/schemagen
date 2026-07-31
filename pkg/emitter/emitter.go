@@ -50,6 +50,56 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 	return src, nil
 }
 
+// EmitHelpers renders the shared helper file for a destination package.
+//
+// Helper functions are package-level, so a package containing two schemas that
+// both need one would declare it twice and fail to compile. They live in a
+// single file per package instead. Returns ok=false when the set is empty and
+// no file should be written.
+func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) ([]byte, bool, error) {
+	if helpers.Empty() {
+		return nil, false, nil
+	}
+
+	// Imports are fixed by which helpers are included, not by the schemas.
+	var imports []generator.Import
+	if helpers.Dynamic || helpers.OneOf || helpers.OneOfDiscriminator {
+		imports = append(imports, generator.Import{Path: "encoding/json"})
+	}
+	if helpers.OneOfDiscriminator {
+		imports = append(imports, generator.Import{Path: "fmt"})
+	}
+	if helpers.Dynamic {
+		imports = append(imports, generator.Import{Path: "math"})
+	}
+	if helpers.Annotations {
+		imports = append(imports, generator.Import{Path: "reflect"})
+	}
+
+	data := helperFileData{
+		PackageName: packageName,
+		Imports:     imports,
+		Helpers:     helpers,
+	}
+
+	var buf bytes.Buffer
+	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
+		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
+	}
+	src, err := format.Source(buf.Bytes())
+	if err != nil {
+		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, buf.String())
+	}
+	return src, true, nil
+}
+
+// helperFileData is the data passed to the shared helper file template.
+type helperFileData struct {
+	PackageName string
+	Imports     []generator.Import
+	Helpers     generator.HelperSet
+}
+
 // fileData is the data passed to the top-level file template.
 type fileData struct {
 	PackageName          string
@@ -64,6 +114,17 @@ func (d fileData) HasValidationCapability() bool {
 
 func (d fileData) NeedsValidationRuntime() bool {
 	return d.ValidationCapability.RequiresRuntime && d.ValidationCapability.Mode != generator.ValidationModeStatic
+}
+
+// HasDynamicSchema returns true if the file contains a schema validated against
+// an untyped value, which needs the _dyn* helpers.
+func (d fileData) HasDynamicSchema() bool {
+	for _, td := range d.TypeDefs {
+		if _, ok := td.Def.(*generator.DynamicSchemaDef); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // HasOneOf returns true if any struct in the file has oneOf fields.
@@ -171,6 +232,30 @@ func (w typeDefWrapper) IsBigIntAlias() bool {
 // AsBigIntAlias returns the wrapped TypeDef as a *generator.BigIntAliasDef, or nil.
 func (w typeDefWrapper) AsBigIntAlias() *generator.BigIntAliasDef {
 	d, _ := w.Def.(*generator.BigIntAliasDef)
+	return d
+}
+
+// IsAnnotationSchema reports whether the wrapped TypeDef is a *generator.AnnotationSchemaDef.
+func (w typeDefWrapper) IsAnnotationSchema() bool {
+	_, ok := w.Def.(*generator.AnnotationSchemaDef)
+	return ok
+}
+
+// AsAnnotationSchema returns the wrapped TypeDef as a *generator.AnnotationSchemaDef, or nil.
+func (w typeDefWrapper) AsAnnotationSchema() *generator.AnnotationSchemaDef {
+	d, _ := w.Def.(*generator.AnnotationSchemaDef)
+	return d
+}
+
+// IsDynamicSchema reports whether the wrapped TypeDef is a *generator.DynamicSchemaDef.
+func (w typeDefWrapper) IsDynamicSchema() bool {
+	_, ok := w.Def.(*generator.DynamicSchemaDef)
+	return ok
+}
+
+// AsDynamicSchema returns the wrapped TypeDef as a *generator.DynamicSchemaDef, or nil.
+func (w typeDefWrapper) AsDynamicSchema() *generator.DynamicSchemaDef {
+	d, _ := w.Def.(*generator.DynamicSchemaDef)
 	return d
 }
 

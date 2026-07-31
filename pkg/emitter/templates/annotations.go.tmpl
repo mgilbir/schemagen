@@ -1,0 +1,267 @@
+{{define "annotation_helpers"}}
+// The types below evaluate the array-annotation subset of JSON Schema at
+// runtime. unevaluatedItems depends on which items sibling applicators actually
+// evaluated for the value in hand, which is not knowable at generation time:
+// {"anyOf":[A,B],"unevaluatedItems":false} evaluates whatever the branches that
+// *matched this value* evaluated.
+//
+// Only schemas whose whole subtree fits this model are compiled to it; anything
+// else keeps the static checks.
+
+type _schemaNode struct {
+	Boolean *bool // a bare true/false schema
+
+	Type       string
+	Const      *string // JSON encoding of the const value
+	MultipleOf *float64
+	Minimum    *float64
+	Maximum    *float64
+
+	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
+	Items       *_schemaNode  // items as a single schema: applies past the tuple
+	Contains    *_schemaNode
+	MinContains *int
+	MaxContains *int
+
+	AllOf []_schemaNode
+	AnyOf []_schemaNode
+	OneOf []_schemaNode
+
+	If   *_schemaNode
+	Then *_schemaNode
+	Else *_schemaNode
+
+	UnevaluatedItems *_schemaNode
+}
+
+// _evalResult is one node's verdict plus the item indices it evaluated.
+type _evalResult struct {
+	ok        bool
+	evaluated map[int]bool
+}
+
+func _newEval(ok bool) _evalResult { return _evalResult{ok: ok, evaluated: map[int]bool{}} }
+
+func (r *_evalResult) absorb(other _evalResult) {
+	for i := range other.evaluated {
+		r.evaluated[i] = true
+	}
+}
+
+// _evalNode reports whether v satisfies n, together with the item annotations
+// produced. Annotations from a subschema count only when that subschema
+// matched: a failed anyOf branch contributes nothing.
+func _evalNode(n *_schemaNode, v any) _evalResult {
+	if n == nil {
+		return _newEval(true)
+	}
+	if n.Boolean != nil {
+		return _newEval(*n.Boolean)
+	}
+
+	res := _newEval(true)
+
+	if n.Type != "" && !_dynTypeMatches(n.Type, v) {
+		res.ok = false
+		return res
+	}
+	if n.Const != nil && !_dynEqualsJSON(v, *n.Const) {
+		res.ok = false
+		return res
+	}
+	if n.MultipleOf != nil && !_dynNumOK(v, func(f float64) bool { return _dynMultipleOf(f, *n.MultipleOf) }) {
+		res.ok = false
+		return res
+	}
+	if n.Minimum != nil && !_dynNumOK(v, func(f float64) bool { return f >= *n.Minimum }) {
+		res.ok = false
+		return res
+	}
+	if n.Maximum != nil && !_dynNumOK(v, func(f float64) bool { return f <= *n.Maximum }) {
+		res.ok = false
+		return res
+	}
+
+	arr, isArray := v.([]any)
+
+	// Tuple positions, then items for the remainder.
+	if isArray && len(n.PrefixItems) > 0 {
+		for i, sub := range n.PrefixItems {
+			if i >= len(arr) {
+				break
+			}
+			sub := sub
+			r := _evalNode(&sub, arr[i])
+			if !r.ok {
+				res.ok = false
+				return res
+			}
+			res.evaluated[i] = true
+		}
+	}
+	if isArray && n.Items != nil {
+		for i := len(n.PrefixItems); i < len(arr); i++ {
+			r := _evalNode(n.Items, arr[i])
+			if !r.ok {
+				res.ok = false
+				return res
+			}
+			res.evaluated[i] = true
+		}
+	}
+
+	// contains: matching indices are evaluated, and the count gates the node.
+	if isArray && n.Contains != nil {
+		count := 0
+		for i, elem := range arr {
+			if _evalNode(n.Contains, elem).ok {
+				res.evaluated[i] = true
+				count++
+			}
+		}
+		min := 1
+		if n.MinContains != nil {
+			min = *n.MinContains
+		}
+		if count < min || (n.MaxContains != nil && count > *n.MaxContains) {
+			res.ok = false
+			return res
+		}
+	}
+
+	// In-place applicators contribute their annotations to this node.
+	for i := range n.AllOf {
+		sub := n.AllOf[i]
+		r := _evalNode(&sub, v)
+		if !r.ok {
+			res.ok = false
+			return res
+		}
+		res.absorb(r)
+	}
+	if len(n.AnyOf) > 0 {
+		any := false
+		for i := range n.AnyOf {
+			sub := n.AnyOf[i]
+			r := _evalNode(&sub, v)
+			if r.ok {
+				any = true
+				res.absorb(r)
+			}
+		}
+		if !any {
+			res.ok = false
+			return res
+		}
+	}
+	if len(n.OneOf) > 0 {
+		matches := 0
+		var matched _evalResult
+		for i := range n.OneOf {
+			sub := n.OneOf[i]
+			r := _evalNode(&sub, v)
+			if r.ok {
+				matches++
+				matched = r
+			}
+		}
+		if matches != 1 {
+			res.ok = false
+			return res
+		}
+		res.absorb(matched)
+	}
+	if n.If != nil {
+		r := _evalNode(n.If, v)
+		if r.ok {
+			res.absorb(r)
+			if n.Then != nil {
+				tr := _evalNode(n.Then, v)
+				if !tr.ok {
+					res.ok = false
+					return res
+				}
+				res.absorb(tr)
+			}
+		} else if n.Else != nil {
+			er := _evalNode(n.Else, v)
+			if !er.ok {
+				res.ok = false
+				return res
+			}
+			res.absorb(er)
+		}
+	}
+
+	// unevaluatedItems sees only what *this* node's own subschemas evaluated.
+	// A sibling's annotations are invisible: in
+	// {"allOf":[{"prefixItems":[true]},{"unevaluatedItems":false}]} the second
+	// branch is a cousin of the first and sees nothing, so any non-empty array
+	// fails.
+	if isArray && n.UnevaluatedItems != nil {
+		for i := range arr {
+			if res.evaluated[i] {
+				continue
+			}
+			r := _evalNode(n.UnevaluatedItems, arr[i])
+			if !r.ok {
+				res.ok = false
+				return res
+			}
+			res.evaluated[i] = true
+		}
+	}
+
+	return res
+}
+
+func _node(n _schemaNode) *_schemaNode { return &n }
+func _boolPtr(b bool) *bool            { return &b }
+func _strPtr(s string) *string         { return &s }
+func _intPtr(i int) *int               { return &i }
+func _floatPtr(f float64) *float64     { return &f }
+
+func _dynTypeMatches(t string, v any) bool {
+	switch t {
+	case "integer":
+		return _dynIsInteger(v)
+	case "number":
+		return _dynIsNumber(v)
+	case "string":
+		return _dynIsString(v)
+	case "boolean":
+		return _dynIsBool(v)
+	case "object":
+		return _dynIsObject(v)
+	case "array":
+		return _dynIsArray(v)
+	case "null":
+		return v == nil
+	}
+	return true
+}
+
+// _dynEqualsJSON compares a decoded value against a const by re-encoding it, so
+// equality follows JSON semantics rather than Go's.
+func _dynEqualsJSON(v any, want string) bool {
+	got, err := json.Marshal(v)
+	if err != nil {
+		return false
+	}
+	var a, b any
+	if json.Unmarshal(got, &a) != nil || json.Unmarshal([]byte(want), &b) != nil {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// _dynMultipleOf avoids the floating point error that plain math.Mod shows for
+// values such as 4.5 / 1.5.
+func _dynMultipleOf(f, by float64) bool {
+	if by == 0 {
+		return false
+	}
+	q := f / by
+	return q == math.Trunc(q)
+}
+{{- end}}

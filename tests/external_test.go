@@ -417,6 +417,9 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write types: %w", err)
 	}
+	if err := writeSharedHelpersErr(tmpDir, content); err != nil {
+		return fmt.Errorf("write helpers: %w", err)
+	}
 	if err := writeTestGoMod(tmpDir, "compile_test"); err != nil {
 		return err
 	}
@@ -471,6 +474,9 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	mainContent := strings.Replace(string(src), "package testpkg", "package main", 1)
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(mainContent), 0o644); err != nil {
 		return fmt.Errorf("write types: %w", err)
+	}
+	if err := writeSharedHelpersErr(tmpDir, mainContent); err != nil {
+		return fmt.Errorf("write helpers: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
 		return fmt.Errorf("write fixture: %w", err)
@@ -604,6 +610,9 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 	mainContent := strings.Replace(code, "package testpkg", "package main", 1)
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(mainContent), 0o644); err != nil {
 		return fmt.Errorf("write types: %w", err)
+	}
+	if err := writeSharedHelpersErr(tmpDir, mainContent); err != nil {
+		return fmt.Errorf("write helpers: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
 		return fmt.Errorf("write fixture: %w", err)
