@@ -113,7 +113,11 @@ type packageDoc struct {
 // packageEdge records why one package depends on another, so a cycle can be
 // reported in terms of the refs that formed it.
 type packageEdge struct {
+	// FromDoc is the document holding the $ref; ToDoc is the document it
+	// reaches, owned by ToPkg. Cycle reporting names ToDoc, since that is the
+	// document that has to move to break the cycle.
 	FromDoc string
+	ToDoc   string
 	Ref     string
 	ToPkg   string
 }
@@ -135,7 +139,7 @@ func packageDependencies(docs []packageDoc, docPackages map[string]string) map[s
 				if targetPkg == d.pkg {
 					break // same package: not a dependency
 				}
-				deps[d.pkg] = append(deps[d.pkg], packageEdge{FromDoc: d.id, Ref: site.Ref, ToPkg: targetPkg})
+				deps[d.pkg] = append(deps[d.pkg], packageEdge{FromDoc: d.id, ToDoc: candidate, Ref: site.Ref, ToPkg: targetPkg})
 				break // first matching candidate wins
 			}
 		}
@@ -209,7 +213,7 @@ func cycleError(remaining map[string]bool, deps map[string][]packageEdge) error 
 	for _, pkg := range stuck {
 		for _, e := range deps[pkg] {
 			if remaining[e.ToPkg] {
-				lines = append(lines, fmt.Sprintf("%s references %q (package %s) via %q", pkg, e.FromDoc, e.ToPkg, e.Ref))
+				lines = append(lines, fmt.Sprintf("%s (%q) references %q (package %s) via %q", pkg, e.FromDoc, e.ToDoc, e.ToPkg, e.Ref))
 			}
 		}
 	}

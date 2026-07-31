@@ -458,4 +458,15 @@ func TestCycleErrorNamesDocumentsAndRefs(t *testing.T) {
 			t.Errorf("cycle error should mention %q, got: %v", want, msg)
 		}
 	}
+	// Each line must pair a package with the document it reaches, not with its
+	// own. Asserting only that both URIs appear somewhere passes even when the
+	// referencing and referenced documents are swapped.
+	for _, want := range []string{
+		`example.com/m/xpkg ("https://ex.test/x.json") references "https://ex.test/y.json" (package example.com/m/ypkg)`,
+		`example.com/m/ypkg ("https://ex.test/y.json") references "https://ex.test/x.json" (package example.com/m/xpkg)`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("cycle error should contain %q, got: %v", want, msg)
+		}
+	}
 }
