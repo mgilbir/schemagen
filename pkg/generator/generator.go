@@ -4901,11 +4901,18 @@ func (g *Generator) resolveRelativeURI(ref string) string {
 // resolveRelativeURIAgainst resolves a relative URI against the given base URI.
 // Returns the resolved absolute URI string, or "" if resolution is not possible.
 func resolveRelativeURIAgainst(ref string, base *url.URL) string {
-	if base == nil {
-		return ""
-	}
 	refURL, err := url.Parse(ref)
 	if err != nil {
+		return ""
+	}
+	if base == nil {
+		// An absolute ref resolves to itself against any base, so a document
+		// that declares no $id (leaving the base nil) must still be able to
+		// look it up. Returning "" here hid $id-bearing subschemas of such a
+		// document from every URI-keyed lookup, even though they were indexed.
+		if refURL.IsAbs() {
+			return refURL.String()
+		}
 		return ""
 	}
 	return base.ResolveReference(refURL).String()
