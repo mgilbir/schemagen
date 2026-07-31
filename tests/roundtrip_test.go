@@ -275,7 +275,7 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatalf("round-trip test failed:\n%s\nerror: %v", string(output), err)
 			}
 
-			outputStr := strings.TrimSpace(string(output))
+			outputStr := programOutput(output)
 			if outputStr != "PASS" {
 				t.Fatalf("round-trip test output:\n%s", outputStr)
 			}
@@ -517,7 +517,7 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("defaults test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("defaults test output:\n%s", outputStr)
 	}
@@ -654,7 +654,7 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 		t.Fatalf("unevaluatedItems validation test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("unevaluatedItems validation test output:\n%s", outputStr)
 	}
@@ -686,7 +686,7 @@ func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("crossed-types validation test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("crossed-types validation output:\n%s", outputStr)
 	}
 }
@@ -873,7 +873,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("validation cases failed:\n%s\nerror: %v", string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("validation cases output:\n%s", outputStr)
 	}
 }
@@ -919,6 +919,164 @@ func TestAllOfTightestConstraints(t *testing.T) {
 			`10`, // >= 10 but not a multiple of 6
 		},
 	)
+}
+
+// TestIntegerOneOfConstraints checks that a schema declaring an integer type
+// alongside a constraint-only oneOf preserves both the declared type and the
+// oneOf branches: a value matching zero branches is rejected, a value matching
+// exactly one branch passes, and a non-integer is rejected at unmarshal.
+// Regression for the dispatch arm that previously produced `type Root any`.
+func TestIntegerOneOfConstraints(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_oneof_constraints.json",
+		[]string{
+			`12`, // >= 10 only → exactly 1 branch
+			`3`,  // <= 5 only → exactly 1 branch
+		},
+		[]string{
+			`7`,   // matches neither branch (>5 and <10) → 0 branches
+			`"x"`, // string is rejected at unmarshal for an integer type
+		},
+	)
+}
+
+// TestPatternPropertiesPatternECMA checks that a `pattern` constraint on a
+// patternProperties value schema compiles (it previously emitted a std-regexp
+// call without importing "regexp") and is evaluated with ECMA-262 semantics:
+// the lookahead `(?=a)` matches under ecma262 where std RE2 would panic.
+// Regression for audit finding C2.
+func TestPatternPropertiesPatternECMA(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pp_pattern_ecma.json",
+		[]string{
+			`{"v1":"aaa"}`,
+		},
+		[]string{
+			`{"v1":"b"}`,
+		},
+	)
+}
+
+// TestUnevaluatedPropertiesPattern checks that a `pattern` constraint on a
+// schema-valued unevaluatedProperties compiles and validates via ECMA-262.
+// The pattern constrains the property value; `"xfoo"` matches `^x`, `"yfoo"`
+// does not. Regression for audit finding C2.
+func TestUnevaluatedPropertiesPattern(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_properties_pattern.json",
+		[]string{
+			`{"a":"s","extra":"xfoo"}`,
+		},
+		[]string{
+			`{"a":"s","extra":"yfoo"}`,
+		},
+	)
+}
+
+// TestPatternPropertiesTypeList checks that a patternProperties value schema
+// with a type list (`["string","null"]`) accepts a value whose JSON type
+// matches any listed type, rather than only the first. Regression for audit
+// finding C8, which previously rejected legal `null`.
+func TestPatternPropertiesTypeList(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pp_type_list.json",
+		[]string{
+			`{"v1":null}`,
+			`{"v1":"s"}`,
+		},
+		[]string{
+			`{"v1":5}`,
+		},
+	)
+}
+
+// TestFieldNameCollisions is a compile-and-run regression for audit finding C3:
+// property names that derive to a generated member (Validate method, the
+// AdditionalProperties overflow field) or to a Go keyword (type) must produce
+// compilable code that round-trips losslessly and whose Validate() still works.
+// The renamed Go fields keep their original JSON tags, so the wire format is
+// unaffected — a value with all three colliding properties plus an unknown key
+// (captured by the overflow field) survives an unmarshal→marshal cycle intact.
+func TestFieldNameCollisions(t *testing.T) {
+	schemaPath := "testdata/schemas/regression/field_name_collisions.json"
+	generated := generateFromSchema(t, schemaPath)
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	mainGo := generateFieldNameCollisionsMain(rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "field_name_collisions_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("field-name-collision test failed:\n%s\nerror: %v", string(output), err)
+	}
+	if outputStr := programOutput(output); outputStr != "PASS" {
+		t.Fatalf("field-name-collision output:\n%s", outputStr)
+	}
+}
+
+func generateFieldNameCollisionsMain(rootType string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+)
+
+func main() {
+	input := `+"`"+`{"validate":"x","additionalProperties":true,"type":"t","extra":1}`+"`"+`
+
+	var obj %s
+	if err := json.Unmarshal([]byte(input), &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	// Validate() (the generated method, distinct from the "validate" property
+	// field) must succeed for this valid document.
+	if err := obj.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Validate should pass: %%v\n", err)
+		os.Exit(1)
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %%v\n", err)
+		os.Exit(1)
+	}
+
+	var original, result any
+	if err := json.Unmarshal([]byte(input), &original); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal original: %%v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal result: %%v\n", err)
+		os.Exit(1)
+	}
+	if !reflect.DeepEqual(original, result) {
+		fmt.Fprintf(os.Stderr, "ROUND-TRIP MISMATCH\nOriginal:      %%s\nRound-tripped: %%s\n", input, string(out))
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`, rootType)
 }
 
 // TestAnyOfRequiredBranches checks that an anyOf whose variants are
@@ -1016,7 +1174,181 @@ func main() {
 	if err != nil {
 		t.Fatalf("oneof optional-const test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if strings.TrimSpace(string(output)) != "PASS" {
+	if programOutput(output) != "PASS" {
 		t.Fatalf("unexpected output:\n%s", output)
 	}
+}
+
+// TestOneOfRequiredOnlyObject covers a oneOf whose variants constrain only the
+// object's required keys, with no properties anywhere in the schema. Such a
+// oneOf is still an object union: the generated type must enforce
+// exactly-one-branch rather than accepting everything.
+func TestOneOfRequiredOnlyObject(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_required_only_object.json",
+		[]string{
+			`{"foo":1,"bar":2}`, // first branch only
+			`{"foo":1,"baz":3}`, // second branch only
+		},
+		[]string{
+			`{}`,                        // neither branch
+			`{"foo":1}`,                 // neither branch
+			`{"foo":1,"bar":2,"baz":3}`, // both branches → 2 matches
+		},
+	)
+}
+
+// TestOneOfStringLengthVariants covers a constraint-only oneOf attached to a
+// declared string type. The branch checks use utf8.RuneCountInString, so the
+// generated file must import "unicode/utf8" — it previously did not and failed
+// to compile.
+func TestOneOfStringLengthVariants(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_string_length_variants.json",
+		[]string{
+			`"a"`,      // maxLength branch only
+			`"abcdef"`, // minLength branch only
+		},
+		[]string{
+			`"abc"`, // both branches → 2 matches
+			`3`,     // not a string
+		},
+	)
+}
+
+// runGeneratedMainProgram compiles the generated types for schemaPath together
+// with the supplied main() body and asserts the program prints "PASS".
+func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string) {
+	t.Helper()
+	generated := generateFromSchema(t, schemaPath)
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, moduleName); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s failed:\n%s\nerror: %v", moduleName, string(output), err)
+	}
+	if outputStr := programOutput(output); outputStr != "PASS" {
+		t.Fatalf("%s output:\n%s", moduleName, outputStr)
+	}
+}
+
+// TestStructReuseResetsState is a regression guard for C5: reusing a value
+// across json.Unmarshal calls must not resurrect stale synthesized state
+// (overflow maps, the sticky non-object flag, or presence tracking) from a
+// previous document.
+func TestStructReuseResetsState(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	// Scenario 1: overflow (additionalProperties) map must not leak across
+	// decodes. "stale" lands in the overflow map on the first decode; it must
+	// be gone after the second decode of an object without it.
+	var r StructReuse
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":1,"stale":true}` + "`" + `), &r); err != nil {
+		fmt.Fprintf(os.Stderr, "first unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":2}` + "`" + `), &r); err != nil {
+		fmt.Fprintf(os.Stderr, "second unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(r)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != ` + "`" + `{"a":2}` + "`" + ` {
+		fmt.Fprintf(os.Stderr, "overflow reuse: got %s, want {\"a\":2}\n", string(out))
+		os.Exit(1)
+	}
+
+	// Scenario 2: the sticky non-object flag must not discard a subsequent
+	// object document. Decode a bare number, then an object, into the same var.
+	var n StructReuse
+	if err := json.Unmarshal([]byte(` + "`" + `42` + "`" + `), &n); err != nil {
+		fmt.Fprintf(os.Stderr, "nonobject unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":3}` + "`" + `), &n); err != nil {
+		fmt.Fprintf(os.Stderr, "object-after-nonobject unmarshal: %v\n", err)
+		os.Exit(1)
+	}
+	out2, err := json.Marshal(n)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshal2: %v\n", err)
+		os.Exit(1)
+	}
+	if !strings.Contains(string(out2), ` + "`" + `"a":3` + "`" + `) || string(out2) == "42" {
+		fmt.Fprintf(os.Stderr, "nonobject reuse: got %s, want an object containing \"a\":3\n", string(out2))
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/struct_reuse.json", "struct_reuse_test", mainGo)
+}
+
+// TestHandBuiltAnyOfValidate is a regression guard for C6: object-level anyOf
+// branch matching depends on JSON key presence, so a hand-constructed value
+// (nil _jsonKeys) must skip the check, while a value built by json.Unmarshal
+// must still enforce it.
+func TestHandBuiltAnyOfValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Hand-constructed value with a valid field set: presence is untracked
+	// (_jsonKeys is nil), so the anyOf branch check is skipped and Validate
+	// must pass.
+	s := "x"
+	built := AnyOfRequiredBranches{A: &s}
+	if err := built.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built Validate should pass: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Value built from JSON that matches no anyOf branch: presence IS tracked,
+	// so the check must still hard-fail (from-JSON path keeps enforcing).
+	var fromJSON AnyOfRequiredBranches
+	if err := json.Unmarshal([]byte(` + "`" + `{}` + "`" + `), &fromJSON); err != nil {
+		fmt.Fprintf(os.Stderr, "unmarshal {}: %v\n", err)
+		os.Exit(1)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		fmt.Fprintf(os.Stderr, "unmarshaled {} should fail Validate but passed\n")
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/anyof_required_branches.json", "handbuilt_anyof_test", mainGo)
 }

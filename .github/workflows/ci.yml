@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # gofmt exits 0 even when it has complaints, so fail on non-empty output.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            gofmt -d $unformatted
+            exit 1
+          fi
+
+      # Several tests build and run a throwaway module that imports the ECMA-262
+      # regexp package. That dependency is only reachable from generated code,
+      # so `go build ./...` never fetches it and the first such test would do the
+      # download itself. Pull everything up front: a network problem then fails
+      # here, plainly, instead of inside a test.
+      - name: download dependencies
+        run: go mod download
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+      # The JSON Schema Test Suite conformance run is gated behind
+      # SCHEMAGEN_RUN_EXTERNAL and is not part of this job: it needs the suite
+      # cloned (make download-test-suite) and takes ~25 minutes. Run it locally
+      # with `make test-external` before merging generator or emitter changes.
+      - name: test
+        run: go test ./... -count=1

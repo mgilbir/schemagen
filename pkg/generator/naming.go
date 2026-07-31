@@ -121,8 +121,12 @@ func sanitizeGoIdentifier(name string) string {
 		result = "X" + result
 	}
 
-	// Avoid Go reserved keywords.
-	if goKeywords[strings.ToLower(result)] {
+	// Avoid Go reserved keywords. The check is case-SENSITIVE: only an
+	// identifier that is literally a keyword needs escaping. Callers capitalize
+	// output for exported fields/types ("type" → "Type"), and a capitalized name
+	// can never equal an (all-lowercase) Go keyword, so this fires only for the
+	// hypothetical unexported case and serves purely as a safety net.
+	if goKeywords[result] {
 		result = result + "_"
 	}
 

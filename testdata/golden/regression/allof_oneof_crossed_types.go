@@ -35,6 +35,9 @@ type Crossed struct {
 }
 
 func (c *Crossed) UnmarshalJSON(data []byte) error {
+	c.AdditionalProperties = nil
+	c._jsonKeys = nil
+	c._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Crossed")
 	}
@@ -100,7 +103,10 @@ func (c Crossed) MarshalJSON() ([]byte, error) {
 // Validate checks Crossed against its JSON Schema constraints.
 func (c Crossed) Validate() error {
 	// object-level oneOf: exactly one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if c._jsonKeys != nil {
 		_oneOfMatches := 0
 		{
 			_branchMatches := true

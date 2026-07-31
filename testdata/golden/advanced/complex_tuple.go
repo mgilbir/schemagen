@@ -73,6 +73,8 @@ type EventRecordItem2 struct {
 }
 
 func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
+	e.AdditionalProperties = nil
+	e._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type EventRecordItem2")
 	}

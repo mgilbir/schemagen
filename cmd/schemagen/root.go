@@ -88,6 +88,14 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("creating output directory: %w", err)
 			}
 
+			// One emitter for the whole run: constructing it parses the full
+			// template set, which does not depend on the input schema. Emit is
+			// read-only with respect to the emitter, so it is reused per file.
+			em, err := emitter.New()
+			if err != nil {
+				return fmt.Errorf("creating emitter: %w", err)
+			}
+
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
@@ -156,19 +164,13 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 
-				// 5. Create emitter
-				em, err := emitter.New()
-				if err != nil {
-					return fmt.Errorf("creating emitter: %w", err)
-				}
-
-				// 6. Emit Go code
+				// 5. Emit Go code (emitter created once, above the loop)
 				src, err := em.Emit(ir)
 				if err != nil {
 					return fmt.Errorf("emitting code for %s: %w", schemaPath, err)
 				}
 
-				// 7. Write output file
+				// 6. Write output file
 				outFile := deriveOutputFilename(schemaPath)
 				outPath := filepath.Join(outputDir, outFile)
 
@@ -188,7 +190,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&outputDir, "output-dir", "o", ".", "Output directory for generated files")
 	cmd.Flags().StringVarP(&pkgName, "package", "p", "generated", "Go package name for generated code")
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
-	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false (no overflow map for extra JSON keys)")
+	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")

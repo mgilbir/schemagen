@@ -16,6 +16,9 @@ type AnyOfRequiredOnly struct {
 }
 
 func (a *AnyOfRequiredOnly) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
+	a._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AnyOfRequiredOnly")
 	}
@@ -80,7 +83,10 @@ func (a AnyOfRequiredOnly) MarshalJSON() ([]byte, error) {
 // Validate checks AnyOfRequiredOnly against its JSON Schema constraints.
 func (a AnyOfRequiredOnly) Validate() error {
 	// object-level anyOf: at least one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if a._jsonKeys != nil {
 		_anyOfMatches := 0
 		{
 			_branchMatches := true

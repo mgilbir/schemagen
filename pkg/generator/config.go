@@ -12,7 +12,7 @@ type Config struct {
 	//                      but Validate rejects them. When false (default), absent additionalProperties
 	//                      follows JSON Schema spec (defaults to true), so overflow properties are accepted.
 	Resolver      schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
-	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI.
+	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI, except for embedded/remote resources that declare both $id and their own $schema.
 	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
 	Validation    ValidationMode        // Controls static vs hybrid/runtime validation planning.
 	FieldNames    FieldNameMap          // Optional per-type overrides pinning JSON properties to specific Go field names.

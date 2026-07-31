@@ -15,6 +15,9 @@ type Base struct {
 }
 
 func (b *Base) UnmarshalJSON(data []byte) error {
+	b.AdditionalProperties = nil
+	b._nonObject = false
+	b._rawNonObject = nil
 	// Schema has no explicit "type":"object" — object constraints are type-conditional.
 	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
@@ -98,6 +101,9 @@ type Inner struct {
 }
 
 func (i *Inner) UnmarshalJSON(data []byte) error {
+	i.AdditionalProperties = nil
+	i._nonObject = false
+	i._rawNonObject = nil
 	// Schema has no explicit "type":"object" — object constraints are type-conditional.
 	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
@@ -180,6 +186,7 @@ type ValidatableFieldFmt struct {
 }
 
 func (v *ValidatableFieldFmt) UnmarshalJSON(data []byte) error {
+	v.AdditionalProperties = nil
 	type Alias ValidatableFieldFmt
 	aux := &struct {
 		*Alias

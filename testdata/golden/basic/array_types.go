@@ -15,6 +15,8 @@ type ArrayTypesMetadataItem struct {
 }
 
 func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ArrayTypesMetadataItem")
 	}
@@ -99,6 +101,7 @@ type ArrayTypes struct {
 }
 
 func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ArrayTypes")
 	}

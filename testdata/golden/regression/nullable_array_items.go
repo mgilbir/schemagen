@@ -15,6 +15,8 @@ type NullableArrayItemsRowsItem struct {
 }
 
 func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
+	n.AdditionalProperties = nil
+	n._jsonKeys = nil
 	type Alias NullableArrayItemsRowsItem
 	aux := &struct {
 		*Alias
@@ -97,6 +99,7 @@ type NullableArrayItems struct {
 }
 
 func (n *NullableArrayItems) UnmarshalJSON(data []byte) error {
+	n.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableArrayItems")
 	}

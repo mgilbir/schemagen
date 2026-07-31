@@ -14,6 +14,8 @@ type Metadata struct {
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
+	m.AdditionalProperties = nil
+	m._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Metadata")
 	}

@@ -19,6 +19,9 @@ type Record struct {
 }
 
 func (r *Record) UnmarshalJSON(data []byte) error {
+	r.AdditionalProperties = nil
+	r.PatternProperties = nil
+	r._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Record")
 	}

@@ -65,8 +65,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{
 			var s string
 			if err := json.Unmarshal(v, &s); err == nil {
-				re := regexp.MustCompile({{printf "%q" .Value}})
-				if !re.MatchString(s) {
+				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 					return fmt.Errorf("value does not match pattern {{.Value}}")
 				}
 			}
@@ -116,7 +115,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					}
 				}
 			}
-			{{- $want := ppTypeValue .Value}}
+			{{- $wants := ppTypeValues .Value}}
+			{{- if eq (len $wants) 1}}
+			{{- $want := index $wants 0}}
 			{{- if eq $want "integer"}}
 			if jt != "integer" {
 				return fmt.Errorf("value must be integer")
@@ -128,6 +129,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- else}}
 			if jt != {{printf "%q" $want}} {
 				return fmt.Errorf("value must be {{$want}}")
+			}
+			{{- end}}
+			{{- else}}
+			_ppTypeOK := false
+			{{- range $wants}}
+			{{- if eq . "integer"}}
+			if jt == "integer" { _ppTypeOK = true }
+			{{- else if eq . "number"}}
+			if jt == "integer" || jt == "number" { _ppTypeOK = true }
+			{{- else}}
+			if jt == {{printf "%q" .}} { _ppTypeOK = true }
+			{{- end}}
+			{{- end}}
+			if !_ppTypeOK {
+				return fmt.Errorf("value must be one of: {{ppTypeValuesMsg .Value}}")
 			}
 			{{- end}}
 		}
@@ -465,7 +481,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- range $oi, $oneOf := $struct.ObjectOneOfs}}
 	// object-level oneOf: exactly one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if {{$recv}}._jsonKeys != nil {
 		_oneOfMatches := 0
 		{{- range $bi, $branch := $oneOf.Branches}}
 		{
@@ -541,7 +560,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- range $ai, $anyOf := $struct.ObjectAnyOfs}}
 	// object-level anyOf: at least one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if {{$recv}}._jsonKeys != nil {
 		_anyOfMatches := 0
 		{{- range $bi, $branch := $anyOf.Branches}}
 		{
@@ -660,7 +682,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 							}
 						}
 					}
-					{{- $want := ppTypeValue .Value}}
+					{{- $wants := ppTypeValues .Value}}
+					{{- if eq (len $wants) 1}}
+					{{- $want := index $wants 0}}
 					{{- if eq $want "integer"}}
 					if jt != "integer" {
 						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, k)
@@ -672,6 +696,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- else}}
 					if jt != {{printf "%q" $want}} {
 						return fmt.Errorf("patternProperties %s: key %q value must be {{$want}}", {{printf "%q" $pp.Pattern}}, k)
+					}
+					{{- end}}
+					{{- else}}
+					_ppTypeOK := false
+					{{- range $wants}}
+					{{- if eq . "integer"}}
+					if jt == "integer" { _ppTypeOK = true }
+					{{- else if eq . "number"}}
+					if jt == "integer" || jt == "number" { _ppTypeOK = true }
+					{{- else}}
+					if jt == {{printf "%q" .}} { _ppTypeOK = true }
+					{{- end}}
+					{{- end}}
+					if !_ppTypeOK {
+						return fmt.Errorf("patternProperties %s: key %q value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, k)
 					}
 					{{- end}}
 				}
@@ -747,8 +786,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{
 					var s string
 					if err := json.Unmarshal(v, &s); err == nil {
-						re := regexp.MustCompile({{printf "%q" .Value}})
-						if !re.MatchString(s) {
+						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
 						}
 					}
@@ -1067,7 +1105,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 			}
 			{{- end}}
-			if _oneOfMatchCount != 1 {
+			// Presence-dependent: skip the exactly-one-branch hard-fail for
+			// hand-constructed values (nil _jsonKeys), consistent with the
+			// required-property policy.
+			if {{$recv}}._jsonKeys != nil && _oneOfMatchCount != 1 {
 				return fmt.Errorf("oneOf: expected exactly 1 matching branch, got %d", _oneOfMatchCount)
 			}
 			_ = _oneOfMatchIdx
@@ -1212,8 +1253,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 {{- end}}
 {{- if eq .RuleType "pattern"}}
 				{
-					_re := regexp.MustCompile({{printf "%q" .Value}})
-					if !_re.MatchString(_uVal) {
+					if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uVal); !matched {
 						return fmt.Errorf("unevaluated property %q: value does not match pattern %s", k, {{printf "%q" .Value}})
 					}
 				}

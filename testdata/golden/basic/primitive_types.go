@@ -17,6 +17,7 @@ type PrimitiveTypes struct {
 }
 
 func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
+	p.AdditionalProperties = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type PrimitiveTypes")
 	}

@@ -15,6 +15,8 @@ type Member struct {
 }
 
 func (m *Member) UnmarshalJSON(data []byte) error {
+	m.AdditionalProperties = nil
+	m._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Member")
 	}
@@ -99,6 +101,8 @@ type Team struct {
 }
 
 func (t *Team) UnmarshalJSON(data []byte) error {
+	t.AdditionalProperties = nil
+	t._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Team")
 	}

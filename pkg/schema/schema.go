@@ -98,6 +98,32 @@ func (t TypeList) MarshalJSON() ([]byte, error) {
 type SchemaOrBool struct {
 	Schema *Schema
 	Bool   *bool
+
+	// boolSchema memoizes the *Schema materialized by AsSchema for the boolean
+	// form, so repeated resolutions return the same node.
+	boolSchema *Schema
+}
+
+// AsSchema returns the value as a *Schema, materializing the boolean form.
+// Booleans are schemas in draft 6+, so {"additionalProperties": false} is a
+// legal JSON-pointer $ref target. The materialized node is memoized: cycle
+// detection compares schema pointers, so a fresh node per resolution would
+// break it. Returns nil when neither form is set.
+func (s *SchemaOrBool) AsSchema() *Schema {
+	if s == nil {
+		return nil
+	}
+	if s.Schema != nil {
+		return s.Schema
+	}
+	if s.Bool == nil {
+		return nil
+	}
+	if s.boolSchema == nil {
+		b := *s.Bool
+		s.boolSchema = &Schema{BooleanSchema: &b}
+	}
+	return s.boolSchema
 }
 
 func (s *SchemaOrBool) UnmarshalJSON(data []byte) error {
@@ -379,6 +405,10 @@ type Schema struct {
 	// JSON Pointer $ref (e.g., "#/unknown-keyword") can resolve into them.
 	Extensions map[string]json.RawMessage `json:"-"`
 
+	// extensionSchemas memoizes Extensions entries parsed as schemas by
+	// extensionSchema, keyed by keyword.
+	extensionSchemas map[string]*Schema
+
 	// DetectedDraft is set during parsing to record which draft was detected/used.
 	DetectedDraft Draft `json:"-"`
 
@@ -613,6 +643,27 @@ func (s *Schema) EffectiveRef() string {
 		return s.RecursiveRef
 	}
 	return ""
+}
+
+// extensionSchema parses the raw JSON of an unknown keyword as a schema so a
+// JSON-pointer $ref can target it. The result is normalized (draft-3 and other
+// legacy constructs inside an extension are canonicalized like anywhere else)
+// and memoized on the parent: two refs to the same extension must yield the
+// same node, because cycle detection compares schema pointers.
+func (s *Schema) extensionSchema(key string, raw json.RawMessage) (*Schema, error) {
+	if cached, ok := s.extensionSchemas[key]; ok {
+		return cached, nil
+	}
+	var sub Schema
+	if err := json.Unmarshal(raw, &sub); err != nil {
+		return nil, err
+	}
+	sub.Normalize()
+	if s.extensionSchemas == nil {
+		s.extensionSchemas = make(map[string]*Schema)
+	}
+	s.extensionSchemas[key] = &sub
+	return &sub, nil
 }
 
 // IsBooleanSchema returns true if this schema is a bare true/false.

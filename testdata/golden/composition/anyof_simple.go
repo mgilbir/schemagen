@@ -19,6 +19,9 @@ type SearchResultResult struct {
 }
 
 func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
+	s._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type SearchResultResult")
 	}
@@ -85,7 +88,10 @@ func (s SearchResultResult) MarshalJSON() ([]byte, error) {
 // Validate checks SearchResultResult against its JSON Schema constraints.
 func (s SearchResultResult) Validate() error {
 	// object-level anyOf: at least one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if s._jsonKeys != nil {
 		_anyOfMatches := 0
 		{
 			_branchMatches := true
@@ -254,6 +260,8 @@ type SearchResult struct {
 }
 
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type SearchResult")
 	}

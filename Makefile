@@ -36,8 +36,12 @@ download-test-suite:
 		echo "JSON Schema Test Suite already present at $(JSTS_DIR)"; \
 	fi
 
+# The suite compiles and runs a generated program per test group, so wall time
+# tracks machine load: ~25 min on an idle 16-core box, and it has been observed
+# to blow through a 30m limit under load. The timeout is generous on purpose --
+# a run killed at the deadline reports no failures and looks like a pass.
 test-external: download-test-suite
-	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 30m
+	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
 
 clean:
 	rm -rf bin/

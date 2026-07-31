@@ -34,6 +34,8 @@ type QuotedPropertyName struct {
 }
 
 func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
+	q.AdditionalProperties = nil
+	q._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type QuotedPropertyName")
 	}

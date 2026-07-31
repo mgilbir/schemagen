@@ -26,7 +26,8 @@ type Generator struct {
 	resolver                   schema.SchemaResolver // external resolver for non-local refs
 	baseURI                    *url.URL              // base URI for the root document (from $id or file path)
 	rootSchema                 *schema.Schema        // the root schema for local ref resolution
-	draft                      schema.Draft          // detected draft version of the root schema
+	draft                      schema.Draft          // effective draft version of the root schema
+	draftOverridden            bool                  // true when Config.Draft explicitly set the draft (takes precedence over $schema)
 	resourceGraph              *schema.ResourceGraph // document/dialect/anchor graph for validation planning
 	validationKeywordsDisabled bool                  // true when the declared metaschema omits the validation vocabulary
 
@@ -73,8 +74,10 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
+		g.draftOverridden = true
 	} else {
 		g.draft = schema.DetectDraft(s)
+		g.draftOverridden = false
 	}
 
 	// Determine root type name.
@@ -504,6 +507,25 @@ func (g *Generator) addRequiredImports() {
 			if len(ad.AnyOfVariants) > 0 {
 				needsFmt = true // anyOf error message uses fmt.Errorf
 				for _, variant := range ad.AnyOfVariants {
+					for _, v := range variant {
+						if v.RuleType == "pattern" {
+							needsRegexp = true
+						}
+						if v.RuleType == "multipleOf" {
+							needsMath = true
+						}
+						if v.RuleType == "uniqueItems" {
+							needsJSON = true
+						}
+						if v.RuleType == "minLength" || v.RuleType == "maxLength" {
+							needsUTF8 = true
+						}
+					}
+				}
+			}
+			if len(ad.OneOfVariants) > 0 {
+				needsFmt = true // oneOf error message uses fmt.Errorf
+				for _, variant := range ad.OneOfVariants {
 					for _, v := range variant {
 						if v.RuleType == "pattern" {
 							needsRegexp = true
@@ -1025,9 +1047,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	// oneOf without properties in parent or any variant → alias to `any`
-	// (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]} can hold any JSON value)
-	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfHasProperties(s) {
+	// oneOf that describes no object in parent or any variant, and with no usable
+	// type information → alias to `any` (e.g. {"oneOf": [{"maximum": 3}, {"minimum": 5}]}
+	// can hold any JSON value). When the schema declares (or implies via sibling
+	// constraints) a primary type, fall through to the primitive/array alias paths
+	// below so the declared type and the oneOf branches are both preserved.
+	if len(s.OneOf) > 0 && !hasProperties(s) && !g.oneOfDescribesObject(s) &&
+		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 			Name:        name,
@@ -1037,8 +1063,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// Object with properties, patternProperties, oneOf fields, or unevaluatedProperties → struct
-	if hasProperties(s) || len(s.PatternProperties) > 0 || len(s.OneOf) > 0 || s.UnevaluatedProperties != nil {
+	// Object with properties, patternProperties, object oneOf variants, or
+	// unevaluatedProperties → struct. A oneOf whose variants are constraint-only
+	// (they say nothing about object shape) is not an object union and must not
+	// force a struct — those fall through to the primitive/array alias paths so
+	// the oneOf branches attach to the declared/inferred type.
+	if hasProperties(s) || len(s.PatternProperties) > 0 || g.oneOfDescribesObject(s) || s.UnevaluatedProperties != nil {
 		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
 		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
@@ -1190,6 +1220,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Description:    s.Description,
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
+				OneOfVariants:  oneOfVariants,
 				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(s),
 				NeedsNullCheck: !schemaAllowsNull(s),
 			})
@@ -1202,9 +1233,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		goType := g.resolveType(s, name)
 		var rules []ValidationRule
 		var anyOfVariants [][]ValidationRule
+		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
 			rules = extractAliasValidationRules(s, goType)
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
+			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
 		// Mark as generated BEFORE buildTupleItemDefs so that any recursive
 		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
@@ -1250,6 +1283,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				InferredJSONType:     primaryType,
 				Validations:          rules,
 				AnyOfVariants:        anyOfVariants,
+				OneOfVariants:        oneOfVariants,
 				NeedsNullCheck:       !schemaAllowsNull(s),
 				ItemsFalse:           itemsFalse,
 				ItemsType:            itemsType,
@@ -1281,6 +1315,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Description:      s.Description,
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
+				OneOfVariants:    oneOfVariants,
 				TupleItems:       tupleItems,
 				Contains:         containsDef,
 				MinContains:      minContains,
@@ -1495,7 +1530,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	}
 	// Second pass: deduplicate only derived (non-overridden) names by appending a
 	// numeric suffix. Overrides are pinned by the user and never suffixed.
+	//
+	// The generated-member names (Validate/MarshalJSON/UnmarshalJSON/SetDefaults
+	// methods and the AdditionalProperties/PatternProperties overflow fields) are
+	// pre-occupied so that a DERIVED field name colliding with one of them is
+	// renamed by the same numeric-suffix mechanism used for property-name clashes.
+	// The JSON tag keeps the original property name, so the wire format is
+	// unaffected. We reserve these names UNCONDITIONALLY — even when this struct
+	// does not actually generate the corresponding member (e.g. no overflow field
+	// because additionalProperties is absent) — because it is simpler and the only
+	// cost is a numeric suffix on an exported field that would otherwise be one of
+	// these reserved words. Field-map overrides are handled separately below and
+	// still ERROR on these names (see reservedFieldNames).
 	nameCount := make(map[string]int)
+	for _, member := range generatedMemberNames {
+		nameCount[member] = 1
+	}
 	for _, propName := range propNames {
 		if !overridden[propName] {
 			nameCount[derived[propName]]++
@@ -1534,6 +1584,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		propSchema := s.Properties[propName]
 		goFieldName := goFieldNames[propName]
 		required := requiredSet[propName]
+
+		// A null JSON value for a property schema (e.g. {"properties":{"a":null}})
+		// is not a valid schema — a property schema must be an object or a boolean.
+		// Reject it with an actionable error rather than dereferencing nil below.
+		if propSchema == nil {
+			return fmt.Errorf("property %q: schema is null (a property schema must be an object or boolean)", propName)
+		}
 
 		// Check if this property uses oneOf
 		if propSchema != nil && len(propSchema.OneOf) > 0 {
@@ -1602,7 +1659,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
 		if propSchema.Default != nil {
-			defaultLiteral = defaultToGoLiteral(*propSchema.Default, goType)
+			lit, err := defaultToGoLiteral(*propSchema.Default, goType)
+			if err != nil {
+				return fmt.Errorf("property %q: %w", propName, err)
+			}
+			defaultLiteral = lit
 		}
 
 		fields = append(fields, FieldDef{
@@ -3079,16 +3140,33 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 		discMap := make(map[string]int)
 
 		if len(s.Discriminator.Mapping) > 0 {
-			// Use explicit mapping: value → $ref or type name
-			for discValue, ref := range s.Discriminator.Mapping {
-				// Find which variant index corresponds to this ref
+			// Mapping values are either a $ref ("#/$defs/Dog") or a bare schema
+			// name ("Dog"). Match a $ref variant on its ref, then fall back to
+			// the generated Go type name so that name-form values and inline
+			// (ref-less) variants resolve too — matching only on EffectiveRef
+			// silently left those unmapped.
+			//
+			// Keys are visited in sorted order and each variant is claimed at
+			// most once: with map iteration order, two mapping values that can
+			// match the same variant produced different output run to run.
+			claimed := make(map[int]bool, len(variants))
+			for _, discValue := range sortedMappingKeys(s.Discriminator.Mapping) {
+				ref := s.Discriminator.Mapping[discValue]
+				if ref == "" {
+					continue
+				}
+				wantName := refToGoName(ref)
 				for i, variant := range variants {
-					variantRef := variant.EffectiveRef()
-					if variantRef == ref || refToGoName(variantRef) == refToGoName(ref) {
-						discMap[discValue] = i
-						oneOfDef.Variants[i].DiscriminatorValue = discValue
-						break
+					if claimed[i] {
+						continue
 					}
+					if !variantMatchesMapping(variant, oneOfDef.Variants[i], ref, wantName) {
+						continue
+					}
+					claimed[i] = true
+					discMap[discValue] = i
+					oneOfDef.Variants[i].DiscriminatorValue = discValue
+					break
 				}
 			}
 		} else {
@@ -3106,6 +3184,37 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 
 	// 2. Heuristic detection: find a shared property with distinct const/enum values
 	g.detectHeuristicDiscriminator(oneOfDef, variants)
+}
+
+// sortedMappingKeys returns the discriminator mapping's keys in a stable order
+// so that generation is deterministic.
+func sortedMappingKeys(mapping map[string]string) []string {
+	keys := make([]string, 0, len(mapping))
+	for k := range mapping {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// variantMatchesMapping reports whether a oneOf variant is the one an OpenAPI
+// discriminator mapping value names. ref is the raw mapping value and wantName
+// its Go-name form.
+func variantMatchesMapping(variant *schema.Schema, generated OneOfVariant, ref, wantName string) bool {
+	if variantRef := variant.EffectiveRef(); variantRef != "" {
+		if variantRef == ref || refToGoName(variantRef) == wantName {
+			return true
+		}
+	}
+	// Name form, or an inline variant that has no ref to compare against: the
+	// generated Go type carries the name the mapping refers to. Object variants
+	// are pointer-wrapped (*Dog), so compare against the pointee.
+	if wantName != "" && generated.Type != nil {
+		if strings.TrimPrefix(generated.Type.GoTypeName(), "*") == wantName {
+			return true
+		}
+	}
+	return false
 }
 
 // inferDiscriminatorValues extracts discriminator values from each variant's property.
@@ -4652,19 +4761,50 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 	return false
 }
 
-// oneOfHasProperties returns true if any oneOf variant has properties.
-func (g *Generator) oneOfHasProperties(s *schema.Schema) bool {
+// oneOfDescribesObject returns true if any oneOf variant constrains the shape of
+// an object. That covers variants with properties, but also variants carrying only
+// object-applicable keywords — {"required":["a","b"]} constrains an object even
+// though it declares no properties. Such a oneOf is an object union and must be
+// generated as a struct so the branch checks are emitted; a constraint-only oneOf
+// over scalars (e.g. [{"minimum":10},{"maximum":5}]) is not, and falls through to
+// the alias paths where its branches attach to the declared/inferred type.
+func (g *Generator) oneOfDescribesObject(s *schema.Schema) bool {
 	for _, sub := range s.OneOf {
-		if len(sub.Properties) > 0 {
+		if g.constrainsObjectShape(sub) {
 			return true
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if len(r.Properties) > 0 {
+				if g.constrainsObjectShape(r) {
 					return true
 				}
 			}
 		}
+	}
+	return false
+}
+
+// constrainsObjectShape reports whether a schema says something about the shape of
+// an object: properties/patternProperties, an explicit "object" type, or one of the
+// keywords that only apply to objects. Mirrors the object-keyword list that
+// inferTypeFromConstraints uses to infer type "object".
+func (g *Generator) constrainsObjectShape(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if len(s.Properties) > 0 || len(s.PatternProperties) > 0 {
+		return true
+	}
+	if primarySchemaType(s) == "object" {
+		return true
+	}
+	if s.AdditionalProperties != nil || s.UnevaluatedProperties != nil || s.PropertyNames != nil {
+		return true
+	}
+	if g.validationKeywordsEnabled() && (len(s.Required) > 0 ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
+		s.MinProperties != nil || s.MaxProperties != nil) {
+		return true
 	}
 	return false
 }
@@ -5212,6 +5352,9 @@ func schemaHasExplicitType(s *schema.Schema, typeName string) bool {
 
 // isNullable returns true if the schema's type list includes "null".
 func isNullable(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
 	for _, t := range s.Type {
 		if t == "null" {
 			return true
@@ -5222,6 +5365,9 @@ func isNullable(s *schema.Schema) bool {
 
 // nonNullType returns the first type in the type list that is not "null".
 func nonNullType(s *schema.Schema) string {
+	if s == nil {
+		return ""
+	}
 	for _, t := range s.Type {
 		if t != "null" {
 			return t
@@ -5686,6 +5832,20 @@ func declaresValidationVocabulary(vocabulary map[string]bool) bool {
 
 func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 	if s == nil {
+		return g.draft
+	}
+	if g.draftOverridden {
+		// An explicit --draft (Config.Draft) is the user's statement about the
+		// document they passed in. It takes precedence over the root document's
+		// own $schema and over any $schema-less node. The one exception: an
+		// embedded or remote resource that establishes its own $id-scoped
+		// document root with an explicit $schema keeps its dialect, so
+		// cross-draft $ref semantics are preserved.
+		if root := s.DocumentRoot; root != nil && root != g.rootSchema {
+			if d := schema.DetectDraft(root); d != schema.DraftUnknown {
+				return d
+			}
+		}
 		return g.draft
 	}
 	if d := schema.DetectDraft(s); d != schema.DraftUnknown {

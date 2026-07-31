@@ -1106,6 +1106,127 @@ func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
 	}
 }
 
+// An explicit Config.Draft is the caller's statement about the document, so it
+// must win over the document's own $schema in per-node draft decisions — not
+// just in the paths that read g.draft directly.
+func TestExplicitDraftOverridesDocumentSchemaKeyword(t *testing.T) {
+	input := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "array",
+		"prefixItems": [{"type":"string"}, {"type":"string"}]
+	}`
+
+	tupleLen := func(t *testing.T, cfg Config) int {
+		t.Helper()
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(input), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+
+		ir, err := New(cfg).Generate(&s)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*AliasDef); ok {
+				return len(d.TupleItems)
+			}
+		}
+		t.Fatalf("expected AliasDef in %d type defs", len(ir.TypeDefs))
+		return 0
+	}
+
+	if got := tupleLen(t, Config{PackageName: "testpkg"}); got != 0 {
+		t.Fatalf("without override: TupleItems = %d, want 0 (prefixItems is not a draft-07 keyword)", got)
+	}
+	if got := tupleLen(t, Config{PackageName: "testpkg", Draft: schema.Draft202012}); got != 2 {
+		t.Fatalf("with --draft 2020-12: TupleItems = %d, want 2", got)
+	}
+}
+
+// The one exception to Config.Draft precedence: an embedded resource that
+// establishes its own $id-scoped document root with an explicit $schema keeps
+// its own dialect, so cross-draft $ref semantics survive the override.
+func TestExplicitDraftDoesNotOverrideEmbeddedResourceDialect(t *testing.T) {
+	input := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://example.com/root",
+		"type": "object",
+		"properties": {
+			"legacy": {"$ref": "#/$defs/legacy"}
+		},
+		"$defs": {
+			"legacy": {
+				"$id": "https://example.com/legacy",
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"type": "array",
+				"prefixItems": [{"type":"string"}, {"type":"string"}]
+			},
+			"modern": {
+				"type": "array",
+				"prefixItems": [{"type":"string"}, {"type":"string"}]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", Draft: schema.Draft202012}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	tuples := map[string]int{}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok {
+			tuples[d.Name] = len(d.TupleItems)
+		}
+	}
+
+	// The embedded resource declares its own dialect, so the override does not reach it.
+	if got, ok := tuples["Legacy"]; !ok {
+		t.Fatalf("expected AliasDef named Legacy, got %v", tuples)
+	} else if got != 0 {
+		t.Fatalf("embedded draft-07 resource: TupleItems = %d, want 0 (its own $schema wins)", got)
+	}
+	// A node inside the root document has no dialect of its own, so the override applies.
+	if got, ok := tuples["Modern"]; !ok {
+		t.Fatalf("expected AliasDef named Modern, got %v", tuples)
+	} else if got != 2 {
+		t.Fatalf("root-document node: TupleItems = %d, want 2 (override applies)", got)
+	}
+}
+
+// A default that violates its own declared type must be reported, not silently
+// truncated into a different value.
+func TestFractionalDefaultOnIntegerPropertyIsRejected(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"retries": {"type": "integer", "default": 4.5}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	_, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err == nil {
+		t.Fatalf("expected error for fractional default on an integer property")
+	}
+	if !strings.Contains(err.Error(), "retries") {
+		t.Fatalf("error %q does not name the offending property", err)
+	}
+}
+
 // ---------- Naming tests ----------
 
 func TestJSONPropertyToGoName(t *testing.T) {
@@ -1126,6 +1247,13 @@ func TestJSONPropertyToGoName(t *testing.T) {
 		{"css_class", "CSSClass"},
 		// Special characters stripped
 		{"$ref", "Ref"},
+		// Property names that lowercase to a Go keyword must NOT get a trailing
+		// underscore once capitalized: exported identifiers can never collide with
+		// (all-lowercase) Go keywords (regression for C11).
+		{"type", "Type"},
+		{"default", "Default"},
+		{"range", "Range"},
+		{"func", "Func"},
 		{"foo\"bar", "FooBar"},
 		{"foo\\bar", "FooBar"},
 		{"foo\nbar", "FooBar"},
@@ -1984,5 +2112,190 @@ func TestGenerateDoesNotMutateInputSchema(t *testing.T) {
 	second := emit()
 	if first != second {
 		t.Errorf("Generate not idempotent:\n first:  %s\n second: %s", first, second)
+	}
+}
+
+// TestIntegerConstraintOnlyOneOfPreservesTypeAndVariants is a regression for the
+// dispatch arm that turned {"type":"integer","oneOf":[...]} into `type Root any`,
+// dropping the declared type, its constraints, and the oneOf itself. The schema
+// must instead produce an int64 AliasDef whose OneOfVariants are populated.
+func TestIntegerConstraintOnlyOneOfPreservesTypeAndVariants(t *testing.T) {
+	input := `{"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *AliasDef
+	for _, td := range ir.TypeDefs {
+		if a, ok := td.(*AliasDef); ok && a.Name == "Root" {
+			root = a
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected an AliasDef named Root, got %#v", ir.TypeDefs)
+	}
+	pt, ok := root.Underlying.(*PrimitiveType)
+	if !ok || pt.Name != "int64" {
+		t.Fatalf("Root underlying = %#v, want *PrimitiveType{int64} (not any)", root.Underlying)
+	}
+	if len(root.OneOfVariants) != 2 {
+		t.Fatalf("Root.OneOfVariants = %#v, want 2 non-empty variants", root.OneOfVariants)
+	}
+}
+
+// TestConstraintOnlyOneOfImportsUTF8 guards the import side of the arm above: the
+// oneOf branch checks emitted for a string alias call utf8.RuneCountInString, so
+// "unicode/utf8" must be imported. The import scan covered Validations and
+// AnyOfVariants but not OneOfVariants, producing uncompilable output.
+func TestConstraintOnlyOneOfImportsUTF8(t *testing.T) {
+	input := `{"type":"string","oneOf":[{"minLength":2},{"maxLength":4}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "unicode/utf8") {
+		t.Fatalf("imports = %v, want unicode/utf8 (oneOf branches call utf8.RuneCountInString)", paths)
+	}
+}
+
+// TestRequiredOnlyOneOfGeneratesObjectUnion is a regression for the dispatch arm
+// that keyed "is this an object union?" off oneOf variants having properties. A
+// variant carrying only required keys constrains the object just as much, and
+// narrowing the check dropped the branch validation entirely — Validate() became
+// `return nil`, accepting objects that match both branches or neither.
+func TestRequiredOnlyOneOfGeneratesObjectUnion(t *testing.T) {
+	input := `{"type":"object","oneOf":[{"required":["foo","bar"]},{"required":["foo","baz"]}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.ObjectOneOfs) != 1 {
+		t.Fatalf("Root.ObjectOneOfs = %#v, want exactly 1 oneOf group", root.ObjectOneOfs)
+	}
+	if got := len(root.ObjectOneOfs[0].Branches); got != 2 {
+		t.Fatalf("oneOf group has %d branches, want 2", got)
+	}
+}
+
+// TestPropertyNameCollidesWithGeneratedMember is a regression for C3: property
+// names that derive to a generated member (Validate method, AdditionalProperties
+// overflow field, etc.) must not collide — the derived field name is renamed via
+// the numeric-suffix mechanism while the JSON tag keeps the original property
+// name, so the wire format is unaffected.
+func TestPropertyNameCollidesWithGeneratedMember(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"validate": {"type": "string"},
+			"additionalProperties": {"type": "boolean"},
+			"pattern_properties": {"type": "string"}
+		},
+		"required": ["validate"],
+		"additionalProperties": true,
+		"patternProperties": {"^x": {"type": "string"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	file, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("Generate() returned an error for colliding property names: %v", err)
+	}
+
+	sd := file.TypeDefs[0].(*StructDef)
+
+	// JSON tags (JSONName) must be preserved verbatim for every property.
+	for _, jsonName := range []string{"validate", "additionalProperties", "pattern_properties"} {
+		f, ok := fieldByJSONName(sd, jsonName)
+		if !ok {
+			t.Fatalf("no field with JSON name %q", jsonName)
+		}
+		// The derived Go name must NOT be a bare generated-member name.
+		for _, member := range generatedMemberNames {
+			if f.Name == member {
+				t.Errorf("property %q kept Go field name %q, which collides with generated member %q", jsonName, f.Name, member)
+			}
+		}
+	}
+
+	// No two Go field names may be equal, and none may equal a generated member.
+	seen := map[string]string{}
+	taken := map[string]bool{}
+	for _, m := range generatedMemberNames {
+		taken[m] = true
+	}
+	for _, f := range sd.Fields {
+		if prev, dup := seen[f.Name]; dup {
+			t.Errorf("Go field name %q used for both %q and %q", f.Name, prev, f.JSONName)
+		}
+		seen[f.Name] = f.JSONName
+		if taken[f.Name] {
+			t.Errorf("Go field name %q for property %q collides with a generated member", f.Name, f.JSONName)
+		}
+	}
+}
+
+// TestNullPropertySchemaReturnsError is a regression for the nil pointer panic on
+// {"properties":{"a":null}}: a null property schema must produce an actionable
+// error naming the property, not crash the generator.
+func TestNullPropertySchemaReturnsError(t *testing.T) {
+	input := `{"type":"object","properties":{"a":null}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg"})
+	_, err := gen.Generate(&s)
+	if err == nil {
+		t.Fatalf("expected an error for a null property schema, got nil")
+	}
+	if !strings.Contains(err.Error(), `"a"`) {
+		t.Fatalf("error %q does not mention the property name %q", err.Error(), "a")
 	}
 }

@@ -33,6 +33,10 @@ type OneOfOptionalConstPOption0 struct {
 }
 
 func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
+	o._jsonKeys = nil
+	o._nonObject = false
+	o._rawNonObject = nil
 	// Schema has no explicit "type":"object" — object constraints are type-conditional.
 	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
@@ -155,6 +159,10 @@ type OneOfOptionalConstPOption1 struct {
 }
 
 func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
+	o._jsonKeys = nil
+	o._nonObject = false
+	o._rawNonObject = nil
 	// Schema has no explicit "type":"object" — object constraints are type-conditional.
 	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
@@ -298,6 +306,7 @@ func (o *OneOfOptionalConst) GetOneOfOptionalConstPOption1() *OneOfOptionalConst
 }
 
 func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
+	o.P = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type OneOfOptionalConst")
 	}

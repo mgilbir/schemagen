@@ -14,6 +14,8 @@ type EmailTarget struct {
 }
 
 func (e *EmailTarget) UnmarshalJSON(data []byte) error {
+	e.AdditionalProperties = nil
+	e._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type EmailTarget")
 	}
@@ -97,6 +99,8 @@ type HTMLContent struct {
 }
 
 func (h *HTMLContent) UnmarshalJSON(data []byte) error {
+	h.AdditionalProperties = nil
+	h._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type HTMLContent")
 	}
@@ -180,6 +184,8 @@ type SmsTarget struct {
 }
 
 func (s *SmsTarget) UnmarshalJSON(data []byte) error {
+	s.AdditionalProperties = nil
+	s._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type SmsTarget")
 	}
@@ -262,6 +268,8 @@ type TextContent struct {
 }
 
 func (t *TextContent) UnmarshalJSON(data []byte) error {
+	t.AdditionalProperties = nil
+	t._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type TextContent")
 	}
@@ -430,6 +438,10 @@ func (n *Notification) GetSmsTarget() *SmsTarget {
 }
 
 func (n *Notification) UnmarshalJSON(data []byte) error {
+	n.AdditionalProperties = nil
+	n._jsonKeys = nil
+	n.Content = nil
+	n.Target = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Notification")
 	}

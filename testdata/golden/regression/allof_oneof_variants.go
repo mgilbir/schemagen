@@ -11,12 +11,14 @@ import (
 type FieldBase struct {
 	Label                *string                    `json:"label,omitempty"`
 	Name                 string                     `json:"name"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (f *FieldBase) UnmarshalJSON(data []byte) error {
+	f.AdditionalProperties = nil
+	f._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type FieldBase")
 	}
@@ -113,12 +115,12 @@ func (d DiaryFieldWidget) Validate() error {
 
 type DiaryField struct {
 	Choices              []string                   `json:"choices,omitzero"`
-	Default_             any                        `json:"default,omitempty"`
+	Default              any                        `json:"default,omitempty"`
 	Label                *string                    `json:"label,omitempty"`
 	Max                  *float64                   `json:"max,omitempty"`
 	Min                  *float64                   `json:"min,omitempty"`
 	Name                 string                     `json:"name"`
-	Type_                string                     `json:"type"`
+	Type                 string                     `json:"type"`
 	Widget               DiaryFieldWidget           `json:"widget,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -126,6 +128,9 @@ type DiaryField struct {
 }
 
 func (d *DiaryField) UnmarshalJSON(data []byte) error {
+	d.AdditionalProperties = nil
+	d._jsonKeys = nil
+	d._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type DiaryField")
 	}
@@ -207,7 +212,10 @@ func (d DiaryField) Validate() error {
 		}
 	}
 	// object-level oneOf: exactly one flattened variant must match.
-	{
+	// This check depends on JSON key presence (_jsonKeys), so it is skipped
+	// for hand-constructed values (nil _jsonKeys), consistent with how the
+	// required-property check above treats untracked presence.
+	if d._jsonKeys != nil {
 		_oneOfMatches := 0
 		{
 			_branchMatches := true

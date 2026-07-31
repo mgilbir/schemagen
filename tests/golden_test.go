@@ -69,6 +69,14 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/optional_empty_array", "testdata/schemas/regression/optional_empty_array.json", "testdata/golden/regression/optional_empty_array.go"},
 		{"regression/dynamicref_recursive", "testdata/schemas/regression/dynamicref_recursive.json", "testdata/golden/regression/dynamicref_recursive.go"},
 		{"regression/oneof_optional_const", "testdata/schemas/regression/oneof_optional_const.json", "testdata/golden/regression/oneof_optional_const.go"},
+		{"regression/integer_oneof_constraints", "testdata/schemas/regression/integer_oneof_constraints.json", "testdata/golden/regression/integer_oneof_constraints.go"},
+		{"regression/oneof_required_only_object", "testdata/schemas/regression/oneof_required_only_object.json", "testdata/golden/regression/oneof_required_only_object.go"},
+		{"regression/oneof_string_length_variants", "testdata/schemas/regression/oneof_string_length_variants.json", "testdata/golden/regression/oneof_string_length_variants.go"},
+		{"regression/pp_pattern_ecma", "testdata/schemas/regression/pp_pattern_ecma.json", "testdata/golden/regression/pp_pattern_ecma.go"},
+		{"regression/unevaluated_properties_pattern", "testdata/schemas/regression/unevaluated_properties_pattern.json", "testdata/golden/regression/unevaluated_properties_pattern.go"},
+		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
+		{"regression/field_name_collisions", "testdata/schemas/regression/field_name_collisions.json", "testdata/golden/regression/field_name_collisions.go"},
+		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
 	}
 }
 
@@ -341,7 +349,7 @@ func main() {
 		t.Fatalf("BigInt round-trip test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("BigInt round-trip test output:\n%s", outputStr)
 	}
@@ -464,7 +472,7 @@ func main() {
 		t.Fatalf("validation error path test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("validation error path test output:\n%s", outputStr)
 	}
@@ -574,7 +582,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("nested remote items test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if strings.TrimSpace(string(output)) != "PASS" {
+	if programOutput(output) != "PASS" {
 		t.Fatalf("nested remote items output:\n%s", string(output))
 	}
 }

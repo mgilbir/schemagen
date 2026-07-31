@@ -21,6 +21,8 @@ type Person struct {
 }
 
 func (p *Person) UnmarshalJSON(data []byte) error {
+	p.AdditionalProperties = nil
+	p._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Person")
 	}

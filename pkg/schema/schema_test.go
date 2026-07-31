@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -1157,5 +1157,236 @@ func TestCompositeResolverJoinsErrors(t *testing.T) {
 	}
 	if !strings.Contains(msg, "missing.json") {
 		t.Errorf("joined error should reference the ref, got: %v", err)
+	}
+}
+
+// TestFileResolverRefusesSymlinkEscape covers the case a purely lexical prefix
+// check misses: a symlink that lives inside the base directory but points
+// outside it. The lexical form of the path is confined; the file it names is
+// not, so confinement has to resolve symlinks.
+func TestFileResolverRefusesSymlinkEscape(t *testing.T) {
+	base := t.TempDir()
+	outsideDir := t.TempDir()
+
+	outside := filepath.Join(outsideDir, "secret.json")
+	if err := os.WriteFile(outside, []byte(`{"type":"string"}`), 0o644); err != nil {
+		t.Fatalf("writing outside file: %v", err)
+	}
+
+	// A symlink inside the base pointing at the file outside it.
+	link := filepath.Join(base, "link.json")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// A symlinked *directory* inside the base, reached by a normal-looking path.
+	dirLink := filepath.Join(base, "sub")
+	if err := os.Symlink(outsideDir, dirLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	r := NewFileResolver(base)
+	for _, ref := range []string{"link.json", "sub/secret.json"} {
+		if _, err := r.ResolveSchema(ref, nil); err == nil {
+			t.Errorf("ref %q escaped the base directory via symlink but was not refused", ref)
+		}
+	}
+
+	// A real file inside the base must still resolve, including when the base
+	// directory itself is reached through a symlink (macOS /var → /private/var).
+	if err := os.WriteFile(filepath.Join(base, "leaf.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatalf("writing leaf: %v", err)
+	}
+	if _, err := r.ResolveSchema("leaf.json", nil); err != nil {
+		t.Fatalf("in-base ref should resolve, got: %v", err)
+	}
+}
+
+// TestHTTPResolverCapsResponseSize covers the unbounded io.ReadAll: a hostile
+// endpoint could otherwise exhaust memory during generation.
+func TestHTTPResolverCapsResponseSize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"type":"object","description":"` + strings.Repeat("x", 4096) + `"}`))
+	}))
+	defer server.Close()
+
+	small := NewHTTPResolver(WithHTTPClient(server.Client()), WithMaxResponseBytes(512))
+	if _, err := small.ResolveSchema(server.URL+"/big.json", nil); err == nil {
+		t.Fatal("oversized response was accepted, want an error")
+	} else if !strings.Contains(err.Error(), "response limit") {
+		t.Fatalf("error = %v, want it to mention the response limit", err)
+	}
+
+	// The same document is fine under a cap that accommodates it.
+	big := NewHTTPResolver(WithHTTPClient(server.Client()), WithMaxResponseBytes(1<<20))
+	if _, err := big.ResolveSchema(server.URL+"/big.json", nil); err != nil {
+		t.Fatalf("resolve under a sufficient cap failed: %v", err)
+	}
+}
+
+// TestHTTPResolverRejectsNonJSONContentType keeps an HTML error page from being
+// reported as a JSON parse failure.
+func TestHTTPResolverRejectsNonJSONContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(`<html><body>not found</body></html>`))
+	}))
+	defer server.Close()
+
+	r := NewHTTPResolver(WithHTTPClient(server.Client()))
+	if _, err := r.ResolveSchema(server.URL+"/schema.json", nil); err == nil {
+		t.Fatal("HTML response was accepted, want an error")
+	} else if !strings.Contains(err.Error(), "Content-Type") {
+		t.Fatalf("error = %v, want it to name the Content-Type", err)
+	}
+}
+
+// TestHTTPResolverAcceptsJSONContentTypeVariants guards the Content-Type check
+// against being too strict: schema hosts commonly use +json suffixes, and some
+// send no Content-Type at all.
+func TestHTTPResolverAcceptsJSONContentTypeVariants(t *testing.T) {
+	for _, ct := range []string{
+		"application/json",
+		"application/json; charset=utf-8",
+		"application/schema+json",
+		"Application/JSON",
+		"", // omitted entirely
+	} {
+		t.Run("ct="+ct, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if ct != "" {
+					w.Header().Set("Content-Type", ct)
+				} else {
+					// Stop Go from sniffing a Content-Type onto the response.
+					w.Header()["Content-Type"] = nil
+				}
+				w.Write([]byte(`{"type":"object"}`))
+			}))
+			defer server.Close()
+
+			r := NewHTTPResolver(WithHTTPClient(server.Client()))
+			if _, err := r.ResolveSchema(server.URL+"/schema.json", nil); err != nil {
+				t.Fatalf("Content-Type %q was rejected: %v", ct, err)
+			}
+		})
+	}
+}
+
+// TestHTTPResolverRefusesHTTPSDowngradeRedirect covers the redirect policy: a
+// remote schema must not be able to move the fetch onto a plaintext connection.
+func TestHTTPResolverRefusesHTTPSDowngradeRedirect(t *testing.T) {
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"type":"string"}`))
+	}))
+	defer plain.Close()
+
+	tls := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+"/downgraded.json", http.StatusFound)
+	}))
+	defer tls.Close()
+
+	r := NewHTTPResolver(WithHTTPClient(tls.Client()))
+	if _, err := r.ResolveSchema(tls.URL+"/schema.json", nil); err == nil {
+		t.Fatal("https→http redirect was followed, want an error")
+	} else if !strings.Contains(err.Error(), "refusing redirect") {
+		t.Fatalf("error = %v, want it to mention the refused redirect", err)
+	}
+}
+
+// TestHTTPResolverBoundsRedirectChain covers the hop limit on a redirect loop.
+func TestHTTPResolverBoundsRedirectChain(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, server.URL+"/next.json", http.StatusFound)
+	}))
+	defer server.Close()
+
+	r := NewHTTPResolver(WithHTTPClient(server.Client()))
+	if _, err := r.ResolveSchema(server.URL+"/schema.json", nil); err == nil {
+		t.Fatal("redirect loop was followed indefinitely, want an error")
+	} else if !strings.Contains(err.Error(), "stopped after") {
+		t.Fatalf("error = %v, want it to mention the redirect limit", err)
+	}
+}
+
+// TestLocalResolverRefIntoBooleanKeyword covers JSON-pointer refs that land on a
+// boolean-valued keyword. Booleans are schemas in draft 6+, so
+// "#/additionalProperties" against {"additionalProperties": false} must resolve
+// to the false schema rather than reporting that no schema is there.
+func TestLocalResolverRefIntoBooleanKeyword(t *testing.T) {
+	root := &Schema{}
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"additionalProperties": false,
+		"additionalItems": true
+	}`), root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	root.Normalize()
+
+	r := NewLocalResolver(root)
+
+	ap, err := r.ResolveLocal("#/additionalProperties")
+	if err != nil {
+		t.Fatalf("resolving #/additionalProperties: %v", err)
+	}
+	if !ap.IsFalseSchema() {
+		t.Errorf("#/additionalProperties = %#v, want the false schema", ap)
+	}
+
+	ai, err := r.ResolveLocal("#/additionalItems")
+	if err != nil {
+		t.Fatalf("resolving #/additionalItems: %v", err)
+	}
+	if !ai.IsTrueSchema() {
+		t.Errorf("#/additionalItems = %#v, want the true schema", ai)
+	}
+
+	// Repeated resolution must return the same node: cycle detection compares
+	// schema pointers, so a fresh node each time would defeat it.
+	again, err := r.ResolveLocal("#/additionalProperties")
+	if err != nil {
+		t.Fatalf("re-resolving #/additionalProperties: %v", err)
+	}
+	if again != ap {
+		t.Errorf("repeated resolution returned a different node (%p vs %p)", again, ap)
+	}
+}
+
+// TestLocalResolverExtensionRefIsStableAndNormalized covers the two problems
+// with re-parsing an Extensions entry on every resolution: the nodes had
+// distinct identities, and they never went through Normalize, so legacy
+// constructs inside an extension stayed un-canonicalized.
+func TestLocalResolverExtensionRefIsStableAndNormalized(t *testing.T) {
+	root := &Schema{}
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"x-shared": {"type": "object", "divisibleBy": 3, "extends": {"type": "object"}}
+	}`), root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	root.Normalize()
+
+	r := NewLocalResolver(root)
+
+	first, err := r.ResolveLocal("#/x-shared")
+	if err != nil {
+		t.Fatalf("resolving #/x-shared: %v", err)
+	}
+	second, err := r.ResolveLocal("#/x-shared")
+	if err != nil {
+		t.Fatalf("re-resolving #/x-shared: %v", err)
+	}
+	if first != second {
+		t.Errorf("two refs to the same extension returned different nodes (%p vs %p)", first, second)
+	}
+
+	// Normalize maps the draft-3/4 spellings onto their modern equivalents.
+	if first.MultipleOf == nil {
+		t.Errorf("divisibleBy inside an extension was not normalized to multipleOf")
+	}
+	if len(first.AllOf) == 0 {
+		t.Errorf("extends inside an extension was not normalized to allOf")
 	}
 }

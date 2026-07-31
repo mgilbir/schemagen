@@ -69,7 +69,9 @@ schemagen generate schema.json --allow-remote-refs
 
 This enables the HTTP resolver, which fetches and caches remote schemas at generation time. Remote resolution is disabled by default for security and reproducibility reasons -- schemas should ideally be vendored locally.
 
-> **Security note:** with `--allow-remote-refs`, `$ref` URLs from the input schema are fetched with no host allowlist. Running it on an untrusted schema is a server-side request forgery (SSRF) vector -- a `$ref` can point the fetch at internal services or cloud metadata endpoints. Only enable it for schemas you trust, and prefer vendoring remote schemas locally. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree; refs that escape it are rejected.
+> **Security note:** with `--allow-remote-refs`, `$ref` URLs from the input schema are fetched with no host allowlist. Running it on an untrusted schema is a server-side request forgery (SSRF) vector -- a `$ref` can point the fetch at internal services or cloud metadata endpoints. Only enable it for schemas you trust, and prefer vendoring remote schemas locally.
+>
+> Within that limit, remote fetches are bounded: responses are capped at 10 MiB, redirect chains at 5 hops with `https` → `http` downgrades refused, and a non-JSON `Content-Type` is rejected rather than parsed. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree, with symlinks resolved before the check, so a link inside the subtree cannot read outside it.
 
 ### Draft Override
 
@@ -82,13 +84,23 @@ schemagen generate modern.json --draft 2020-12
 
 This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics).
 
+`--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
+
 ### Validation Strategy
 
-`schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with runtime validation capability metadata and enable shared runtime primitives for features that need annotation tracking, such as `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
+`schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with validation capability metadata recording which features may need runtime annotation tracking for full spec compliance -- `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.
+
+Both modes emit the same self-contained static checks. `hybrid` adds the metadata; it does not change how a value is validated, and there is no separate runtime validator to opt into.
 
 `--validation runtime` is accepted but currently behaves identically to `hybrid`; it only records a different `Mode` string in the generated capability metadata. It is reserved for a future full-runtime validation path.
 
 Generated files expose `SchemagenValidationCapability()` and `SchemagenValidationRuntimeFeatures()` so callers can detect when a schema uses features that may require runtime annotation tracking for full JSON Schema compliance.
+
+#### Validation contract
+
+`Validate()` is authoritative for values produced by `json.Unmarshal`: the generated `UnmarshalJSON` records which JSON keys were present, and that presence information drives the presence-dependent checks.
+
+For **hand-constructed** values (built directly in Go rather than decoded from JSON), JSON key presence is unknown, so presence-dependent checks are skipped: required properties, optional-field constraints, object-level `oneOf`/`anyOf` branch matching, and `dependent*`/`unevaluated*` checks. Type-level and value-range constraints on fields that are set still apply. If you need full validation of a programmatically built value, marshal it to JSON and unmarshal it back before calling `Validate()`.
 
 ### Field Name Overrides
 
@@ -114,7 +126,7 @@ Notes:
 - Only the listed properties are overridden; everything else uses the derived name.
 - The JSON tag always keeps the original property name, so round-trip serialization is unaffected.
 - Override values must be valid **exported** Go identifiers (struct fields must be exported to (un)marshal).
-- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` overflow field.
+- Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` or `PatternProperties` overflow fields.
 - Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. These warnings are shown even if generation later fails.
 
 Limitations:

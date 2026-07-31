@@ -15,6 +15,8 @@ type AddressLocation struct {
 }
 
 func (a *AddressLocation) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AddressLocation")
 	}
@@ -102,6 +104,8 @@ type Address struct {
 }
 
 func (a *Address) UnmarshalJSON(data []byte) error {
+	a.AdditionalProperties = nil
+	a._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Address")
 	}

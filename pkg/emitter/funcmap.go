@@ -39,19 +39,21 @@ func FuncMap() template.FuncMap {
 			}
 			return false
 		},
-		"requiredFieldsList": requiredFieldsListFunc,
-		"hasRequiredFields":  func(fields []string) bool { return len(fields) > 0 },
-		"isRawMessage":       isRawMessageFunc,
-		"goStringLiteral":    goStringLiteralFunc,
-		"goStringQuote":      goStringQuoteFunc,
-		"ecmaPattern":        ecmaPatternLiteralFunc,
-		"hasManualFields":    hasManualFieldsFunc,
-		"ppTypeValue":        ppTypeValueFunc,
-		"deref":              derefIntFunc,
-		"validationFeatures": validationFeaturesFunc,
-		"stringList":         stringListFunc,
-		"validationValue":    validationValueFunc,
-		"validationNonNil":   validationNonNilFunc,
+		"requiredFieldsList":  requiredFieldsListFunc,
+		"hasRequiredFields":   func(fields []string) bool { return len(fields) > 0 },
+		"isRawMessage":        isRawMessageFunc,
+		"goStringLiteral":     goStringLiteralFunc,
+		"goStringQuote":       goStringQuoteFunc,
+		"ecmaPattern":         ecmaPatternLiteralFunc,
+		"hasManualFields":     hasManualFieldsFunc,
+		"ppTypeValue":         ppTypeValueFunc,
+		"ppTypeValues":        ppTypeValuesFunc,
+		"ppTypeValuesMsg":     ppTypeValuesMsgFunc,
+		"deref":               derefIntFunc,
+		"validationFeatures":  validationFeaturesFunc,
+		"stringList":          stringListFunc,
+		"validationValue":     validationValueFunc,
+		"validationNonNil":    validationNonNilFunc,
 		"validationStringSet": validationStringSetFunc,
 		"jsonErrorName":       jsonErrorNameFunc,
 	}
@@ -278,6 +280,29 @@ func ppTypeValueFunc(v any) string {
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// ppTypeValuesFunc returns the full list of allowed type names from a
+// patternProperties "ppType" validation rule value. The value can be a single
+// string or a []string for a multi-type constraint (e.g. ["string","null"]).
+func ppTypeValuesFunc(v any) []string {
+	switch val := v.(type) {
+	case string:
+		return []string{val}
+	case []string:
+		if len(val) > 0 {
+			return val
+		}
+		return []string{"any"}
+	default:
+		return []string{fmt.Sprintf("%v", val)}
+	}
+}
+
+// ppTypeValuesMsgFunc renders the allowed type list for an error message,
+// e.g. ["string","null"] → `string, null`.
+func ppTypeValuesMsgFunc(v any) string {
+	return strings.Join(ppTypeValuesFunc(v), ", ")
 }
 
 // derefIntFunc dereferences an *int pointer for use in templates.

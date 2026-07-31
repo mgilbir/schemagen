@@ -20,6 +20,8 @@ type TreeNode struct {
 }
 
 func (t *TreeNode) UnmarshalJSON(data []byte) error {
+	t.AdditionalProperties = nil
+	t._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type TreeNode")
 	}

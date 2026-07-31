@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -245,4 +246,124 @@ func TestDetectHeuristicDiscriminator(t *testing.T) {
 			t.Errorf("DiscriminatorField = %q, want empty (duplicate values)", oneOfDef.DiscriminatorField)
 		}
 	})
+}
+
+// TestExplicitMappingMatchesInlineVariants covers an OpenAPI discriminator
+// mapping whose values name schemas that are declared inline in the oneOf
+// rather than referenced with $ref. Matching only on EffectiveRef left every
+// such variant unmapped, so the explicit discriminator was silently discarded
+// and dispatch fell back to the required-fields heuristic.
+func TestExplicitMappingMatchesInlineVariants(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"pet": {
+				"discriminator": {"propertyName": "kind", "mapping": {"dog": "Dog", "cat": "Cat"}},
+				"oneOf": [
+					{"type": "object", "title": "Dog", "properties": {"kind": {"type": "string"}, "bark": {"type": "string"}}, "required": ["kind"]},
+					{"type": "object", "title": "Cat", "properties": {"kind": {"type": "string"}, "meow": {"type": "string"}}, "required": ["kind"]}
+				]
+			}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var oneOf *OneOfDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok {
+			for i := range sd.OneOfs {
+				if sd.OneOfs[i].FieldName == "Pet" {
+					oneOf = &sd.OneOfs[i]
+				}
+			}
+		}
+	}
+	if oneOf == nil {
+		t.Fatalf("expected a oneOf for the Pet field")
+	}
+	if oneOf.DiscriminatorField != "kind" {
+		t.Fatalf("DiscriminatorField = %q, want \"kind\"", oneOf.DiscriminatorField)
+	}
+	want := map[string]int{"dog": 0, "cat": 1}
+	if len(oneOf.DiscriminatorMap) != len(want) {
+		t.Fatalf("DiscriminatorMap = %v, want %v", oneOf.DiscriminatorMap, want)
+	}
+	for value, idx := range want {
+		if got, ok := oneOf.DiscriminatorMap[value]; !ok || got != idx {
+			t.Errorf("DiscriminatorMap[%q] = %d (present=%v), want %d", value, got, ok, idx)
+		}
+	}
+	for i, wantValue := range []string{"dog", "cat"} {
+		if oneOf.Variants[i].DiscriminatorValue != wantValue {
+			t.Errorf("variant %d DiscriminatorValue = %q, want %q", i, oneOf.Variants[i].DiscriminatorValue, wantValue)
+		}
+	}
+}
+
+// TestExplicitMappingIsDeterministic guards the sorted-key iteration: when two
+// mapping values could claim the same variant, map iteration order made the
+// result vary between runs.
+func TestExplicitMappingIsDeterministic(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"pet": {
+				"discriminator": {"propertyName": "kind", "mapping": {"d": "Dog", "c": "Cat", "b": "Bird", "a": "Ant"}},
+				"oneOf": [
+					{"type": "object", "title": "Dog", "properties": {"kind": {"type": "string"}}, "required": ["kind"]},
+					{"type": "object", "title": "Cat", "properties": {"kind": {"type": "string"}}, "required": ["kind"]},
+					{"type": "object", "title": "Bird", "properties": {"kind": {"type": "string"}}, "required": ["kind"]},
+					{"type": "object", "title": "Ant", "properties": {"kind": {"type": "string"}}, "required": ["kind"]}
+				]
+			}
+		}
+	}`
+
+	first := ""
+	for run := 0; run < 20; run++ {
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(input), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+
+		ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+
+		var got string
+		for _, td := range ir.TypeDefs {
+			if sd, ok := td.(*StructDef); ok {
+				for _, o := range sd.OneOfs {
+					if o.FieldName != "Pet" {
+						continue
+					}
+					for _, v := range o.Variants {
+						got += v.DiscriminatorValue + ","
+					}
+				}
+			}
+		}
+		if run == 0 {
+			first = got
+			continue
+		}
+		if got != first {
+			t.Fatalf("run %d produced %q, first run produced %q", run, got, first)
+		}
+	}
+	if first == "" {
+		t.Fatal("no discriminator values were assigned")
+	}
 }

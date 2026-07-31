@@ -31,6 +31,8 @@ type NetworkConfig struct {
 }
 
 func (n *NetworkConfig) UnmarshalJSON(data []byte) error {
+	n.AdditionalProperties = nil
+	n._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NetworkConfig")
 	}

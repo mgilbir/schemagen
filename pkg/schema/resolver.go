@@ -348,16 +348,18 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		return r.walkPath(current.Else, rest, originalRef)
 
 	case "additionalProperties":
-		if current.AdditionalProperties == nil || current.AdditionalProperties.Schema == nil {
+		target := current.AdditionalProperties.AsSchema()
+		if target == nil {
 			return nil, fmt.Errorf("schema has no additionalProperties schema: %s", originalRef)
 		}
-		return r.walkPath(current.AdditionalProperties.Schema, rest, originalRef)
+		return r.walkPath(target, rest, originalRef)
 
 	case "additionalItems":
-		if current.AdditionalItems == nil || current.AdditionalItems.Schema == nil {
+		target := current.AdditionalItems.AsSchema()
+		if target == nil {
 			return nil, fmt.Errorf("schema has no additionalItems schema: %s", originalRef)
 		}
-		return r.walkPath(current.AdditionalItems.Schema, rest, originalRef)
+		return r.walkPath(target, rest, originalRef)
 
 	case "patternProperties":
 		if len(rest) == 0 {
@@ -422,14 +424,14 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		// arbitrary keywords referenced via JSON Pointer $ref).
 		if current.Extensions != nil {
 			if raw, ok := current.Extensions[key]; ok {
-				var sub Schema
-				if err := json.Unmarshal(raw, &sub); err != nil {
+				sub, err := current.extensionSchema(key, raw)
+				if err != nil {
 					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
 				}
 				if len(rest) == 0 {
-					return &sub, nil
+					return sub, nil
 				}
-				return r.walkPath(&sub, rest, originalRef)
+				return r.walkPath(sub, rest, originalRef)
 			}
 		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)
@@ -536,8 +538,10 @@ func NewFileResolver(baseDir string) *FileResolver {
 }
 
 // withinBase reports whether target resolves to a path inside the resolver's
-// base directory subtree. Both are made absolute and cleaned first so that
-// "../" traversal and symlink-free path tricks cannot escape the root. An empty
+// base directory subtree. Both are made absolute and cleaned so that "../"
+// traversal cannot escape the root, and both have their symlinks resolved so
+// that a link *inside* the base directory cannot point outside it — a lexical
+// prefix check alone would accept base/link.json → /etc/passwd. An empty
 // baseDir (no confinement configured) permits any path.
 func (f *FileResolver) withinBase(target string) bool {
 	if f.baseDir == "" {
@@ -551,12 +555,36 @@ func (f *FileResolver) withinBase(target string) bool {
 	if err != nil {
 		return false
 	}
-	absBase = filepath.Clean(absBase)
-	absTarget = filepath.Clean(absTarget)
+	absBase = resolveSymlinks(filepath.Clean(absBase))
+	absTarget = resolveSymlinks(filepath.Clean(absTarget))
 	if absTarget == absBase {
 		return true
 	}
 	return strings.HasPrefix(absTarget, absBase+string(filepath.Separator))
+}
+
+// resolveSymlinks returns path with every symlink in it resolved. The path need
+// not exist: the deepest existing ancestor is resolved and the remaining
+// (non-existent) segments are appended unchanged, which is enough to confine
+// the read — a missing file fails on open regardless. Falls back to the input
+// when nothing along the path can be resolved.
+func resolveSymlinks(path string) string {
+	rest := ""
+	for cur := path; ; {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			if rest == "" {
+				return resolved
+			}
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached the root without resolving anything.
+			return path
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
 }
 
 // ResolveSchema implements SchemaResolver. It handles file:// URLs and relative file paths.
@@ -634,11 +662,23 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 
 // ---------- HTTPResolver (remote HTTP/HTTPS) ----------
 
+// DefaultMaxResponseBytes caps how much of a remote schema document is read.
+// Remote resolution is opt-in (--allow-remote-refs) and points at URLs taken
+// from the input schema, so an unbounded read lets a hostile or broken endpoint
+// exhaust memory during generation.
+const DefaultMaxResponseBytes int64 = 10 << 20 // 10 MiB
+
+// maxRedirects bounds the redirect chain for a single fetch. Each hop can send
+// the request to a host the input schema never named, so the chain is kept
+// short and is not allowed to downgrade https to http.
+const maxRedirects = 5
+
 // HTTPResolver resolves $ref URIs by fetching JSON Schema documents over HTTP/HTTPS.
 // It caches fetched schemas in memory to avoid redundant network requests.
 type HTTPResolver struct {
-	client *http.Client
-	cache  map[string]*Schema
+	client           *http.Client
+	cache            map[string]*Schema
+	maxResponseBytes int64
 }
 
 // HTTPResolverOption configures an HTTPResolver.
@@ -651,17 +691,44 @@ func WithHTTPClient(client *http.Client) HTTPResolverOption {
 	}
 }
 
+// WithMaxResponseBytes caps the size of a fetched schema document. A value <= 0
+// removes the cap.
+func WithMaxResponseBytes(n int64) HTTPResolverOption {
+	return func(r *HTTPResolver) {
+		r.maxResponseBytes = n
+	}
+}
+
 // NewHTTPResolver creates an HTTPResolver that fetches schemas over HTTP/HTTPS.
-// By default it uses a client with a 30-second timeout.
+// By default it uses a client with a 30-second timeout, a bounded redirect
+// chain that refuses https→http downgrades, and a 10 MiB response cap.
 func NewHTTPResolver(opts ...HTTPResolverOption) *HTTPResolver {
 	r := &HTTPResolver{
-		client: &http.Client{Timeout: 30 * time.Second},
-		cache:  make(map[string]*Schema),
+		client:           &http.Client{Timeout: 30 * time.Second},
+		cache:            make(map[string]*Schema),
+		maxResponseBytes: DefaultMaxResponseBytes,
 	}
 	for _, opt := range opts {
 		opt(r)
 	}
+	// Apply the redirect policy to whichever client we ended up with, but never
+	// override one the caller configured deliberately.
+	if r.client != nil && r.client.CheckRedirect == nil {
+		r.client.CheckRedirect = checkRedirect
+	}
 	return r
+}
+
+// checkRedirect bounds the redirect chain and refuses a downgrade from https to
+// http, which would silently move a fetch onto an unprotected connection.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from https to %q (%s)", req.URL.Scheme, req.URL.Redacted())
+	}
+	return nil
 }
 
 // ResolveSchema implements SchemaResolver. It handles http:// and https:// URLs.
@@ -714,9 +781,16 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("HTTPResolver: fetching %q: HTTP %d", docKey, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// An HTML error page parses as neither schema nor useful error, so reject a
+	// clearly non-JSON body up front. An absent Content-Type is tolerated: some
+	// schema hosts omit it, and json.Unmarshal is the real check either way.
+	if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
+		return nil, fmt.Errorf("HTTPResolver: %q returned Content-Type %q, want JSON", docKey, ct)
+	}
+
+	body, err := h.readCapped(resp.Body, docKey)
 	if err != nil {
-		return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+		return nil, err
 	}
 
 	var s Schema
@@ -733,6 +807,43 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	}
 
 	return &s, nil
+}
+
+// readCapped reads at most maxResponseBytes from body, erroring rather than
+// truncating when the document is larger — a silently truncated schema would
+// surface as a confusing parse error.
+func (h *HTTPResolver) readCapped(body io.Reader, docKey string) ([]byte, error) {
+	if h.maxResponseBytes <= 0 {
+		data, err := io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+		}
+		return data, nil
+	}
+	// Read one byte past the cap so exceeding it is distinguishable from
+	// exactly reaching it.
+	data, err := io.ReadAll(io.LimitReader(body, h.maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+	}
+	if int64(len(data)) > h.maxResponseBytes {
+		return nil, fmt.Errorf("HTTPResolver: %q exceeds the %d byte response limit", docKey, h.maxResponseBytes)
+	}
+	return data, nil
+}
+
+// isJSONContentType reports whether a Content-Type header names a JSON media
+// type: application/json, application/schema+json, and any other "+json"
+// structured suffix. Parameters (charset, profile) are ignored.
+func isJSONContentType(ct string) bool {
+	mediaType := ct
+	if i := strings.IndexByte(mediaType, ';'); i >= 0 {
+		mediaType = mediaType[:i]
+	}
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	return mediaType == "application/json" ||
+		mediaType == "text/json" ||
+		strings.HasSuffix(mediaType, "+json")
 }
 
 // ---------- CompositeResolver (chain of resolvers) ----------
