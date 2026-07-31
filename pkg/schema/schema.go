@@ -650,20 +650,68 @@ func (s *Schema) EffectiveRef() string {
 // legacy constructs inside an extension are canonicalized like anywhere else)
 // and memoized on the parent: two refs to the same extension must yield the
 // same node, because cycle detection compares schema pointers.
-func (s *Schema) extensionSchema(key string, raw json.RawMessage) (*Schema, error) {
-	if cached, ok := s.extensionSchemas[key]; ok {
+//
+// tokens are the JSON Pointer segments still to be walked *inside* the keyword's
+// value. They matter because the keyword itself need not be a schema: "examples"
+// holds an array, and {"examples":[{"type":"string"}]} is targeted as
+// "#/examples/0", so the element is the schema and the array is not.
+func (s *Schema) extensionSchema(key string, tokens []string, raw json.RawMessage) (*Schema, error) {
+	// Memoize per (keyword, path): "#/examples/0" and "#/examples/1" are
+	// different nodes, so keying on the keyword alone would alias them.
+	cacheKey := key
+	if len(tokens) > 0 {
+		cacheKey = key + "/" + strings.Join(tokens, "/")
+	}
+	if cached, ok := s.extensionSchemas[cacheKey]; ok {
 		return cached, nil
 	}
+
+	target, err := walkRawJSON(raw, tokens)
+	if err != nil {
+		return nil, err
+	}
 	var sub Schema
-	if err := json.Unmarshal(raw, &sub); err != nil {
+	if err := json.Unmarshal(target, &sub); err != nil {
 		return nil, err
 	}
 	sub.Normalize()
 	if s.extensionSchemas == nil {
 		s.extensionSchemas = make(map[string]*Schema)
 	}
-	s.extensionSchemas[key] = &sub
+	s.extensionSchemas[cacheKey] = &sub
 	return &sub, nil
+}
+
+// walkRawJSON follows JSON Pointer tokens through raw JSON, indexing arrays by
+// number and objects by key. It stops at the first token that cannot be
+// followed, so a caller can still parse what it reached.
+func walkRawJSON(raw json.RawMessage, tokens []string) (json.RawMessage, error) {
+	current := raw
+	for i, token := range tokens {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(current, &arr); err == nil {
+			idx, err := parseIndex(token)
+			if err != nil {
+				return nil, fmt.Errorf("segment %q is not an array index", token)
+			}
+			if idx >= len(arr) {
+				return nil, fmt.Errorf("index %d out of range (length %d)", idx, len(arr))
+			}
+			current = arr[idx]
+			continue
+		}
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(current, &obj); err == nil {
+			next, ok := obj[token]
+			if !ok {
+				return nil, fmt.Errorf("no member %q", token)
+			}
+			current = next
+			continue
+		}
+		return nil, fmt.Errorf("cannot descend into segment %q at position %d", token, i)
+	}
+	return current, nil
 }
 
 // IsBooleanSchema returns true if this schema is a bare true/false.

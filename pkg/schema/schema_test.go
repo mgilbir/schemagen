@@ -1447,3 +1447,85 @@ func TestLocalResolverAnchorScoping(t *testing.T) {
 		t.Error("an anchor under a scope-changing id must not leak into the parent scope")
 	}
 }
+
+// A $ref may point inside a keyword whose value is not itself a schema.
+// {"examples":[{"type":"string"}]} referenced as "#/examples/0" needs the array
+// indexed before the element is parsed; parsing the whole keyword value failed
+// with "cannot unmarshal array into Go value of type schemaAlias".
+func TestLocalResolverRefIntoExtensionCollection(t *testing.T) {
+	tests := []struct {
+		name     string
+		doc      string
+		ref      string
+		wantType string
+	}{
+		{"array element", `{"$id":"/base","examples":[{"type":"string"}]}`, "#/examples/0", "string"},
+		{"later array element", `{"examples":[{"type":"integer"},{"type":"string"}]}`, "#/examples/1", "string"},
+		{"object member", `{"x-defs":{"a":{"type":"boolean"}}}`, "#/x-defs/a", "boolean"},
+		// A vendor keyword whose value *is* a schema still resolves through the
+		// schema path, with the remaining tokens naming schema fields.
+		{"schema-valued keyword", `{"x-thing":{"properties":{"p":{"type":"number"}}}}`, "#/x-thing/properties/p", "number"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var s Schema
+			if err := json.Unmarshal([]byte(tt.doc), &s); err != nil {
+				t.Fatal(err)
+			}
+			s.Normalize()
+			got, err := NewLocalResolver(&s).Resolve(tt.ref)
+			if err != nil {
+				t.Fatalf("resolving %s: %v", tt.ref, err)
+			}
+			if len(got.Type) != 1 || got.Type[0] != tt.wantType {
+				t.Errorf("type = %v, want [%s]", got.Type, tt.wantType)
+			}
+		})
+	}
+}
+
+// Extension subschemas are memoized so that repeated refs yield the same node
+// (cycle detection compares pointers). The memo key must include the pointer
+// path, or distinct array elements would alias onto whichever was parsed first.
+func TestLocalResolverExtensionElementsDoNotAlias(t *testing.T) {
+	var s Schema
+	if err := json.Unmarshal([]byte(`{"examples":[{"type":"integer"},{"type":"string"}]}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	s.Normalize()
+	r := NewLocalResolver(&s)
+
+	first, err := r.Resolve("#/examples/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.Resolve("#/examples/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("distinct array elements resolved to the same node")
+	}
+	again, err := r.Resolve("#/examples/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != again {
+		t.Error("the same pointer must resolve to the same node on re-resolution")
+	}
+}
+
+// Out-of-range and non-existent members are errors, not silent successes.
+func TestLocalResolverRefIntoExtensionCollectionErrors(t *testing.T) {
+	var s Schema
+	if err := json.Unmarshal([]byte(`{"examples":[{"type":"string"}],"x-defs":{"a":{"type":"boolean"}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	s.Normalize()
+	r := NewLocalResolver(&s)
+	for _, ref := range []string{"#/examples/5", "#/examples/notanindex", "#/x-defs/missing"} {
+		if _, err := r.Resolve(ref); err == nil {
+			t.Errorf("%s should not resolve", ref)
+		}
+	}
+}
