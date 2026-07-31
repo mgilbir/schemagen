@@ -1,11 +1,11 @@
 {{define "struct"}}
 {{- if .Description}}
-// {{.Name}} - {{.Description}}
+// {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} struct {
 {{- range .Fields}}
 	{{- if .Description}}
-	// {{.Description}}
+	// {{comment "\t" .Description}}
 	{{- end}}
 	{{- if .ManualJSON}}
 	{{.Name}} {{goType .Type}} `json:"-"`

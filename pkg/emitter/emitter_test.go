@@ -664,3 +664,39 @@ func programOutput(out []byte) string {
 	}
 	return strings.TrimSpace(strings.Join(kept, "\n"))
 }
+
+func TestEmitMultilineDescriptions(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name:        "Config",
+				Description: "First line.\nSecond line.",
+				Fields: []generator.FieldDef{
+					{
+						Name:        "Value",
+						JSONName:    "value",
+						Description: "Field first line.\nField second line.",
+						Type:        &generator.PrimitiveType{Name: "string"},
+					},
+				},
+			},
+		},
+	}
+
+	// Emit runs the output through go/format, so a description breaking out
+	// of its comment fails here.
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+	if !strings.Contains(src, "// Config - First line.\n// Second line.") {
+		t.Errorf("type description not continued as a comment:\n%s", src)
+	}
+	if !containsNormalized(src, "// Field second line.") {
+		t.Errorf("field description not continued as a comment:\n%s", src)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -52,25 +53,93 @@ type Generator struct {
 	// keyed by type name → JSON property name. The CLI inspects this after
 	// generation to warn about configured overrides that matched no property.
 	appliedOverrides map[string]map[string]bool
+
+	// unresolvedRefs records $ref values that resolveRefInContext could not
+	// resolve anywhere (local defs, anchors, document roots, or the external
+	// resolver). Unless Config.LenientRefs is set, Generate fails when this
+	// is non-empty: an unresolvable ref means the generated code silently
+	// degrades (any-typed fields, incomplete validation).
+	unresolvedRefs map[string]bool
+
+	// resolvedRefs records $ref values that resolved successfully in at least
+	// one context, so a ref that failed against one context but succeeded
+	// against another is not reported as unresolvable.
+	resolvedRefs map[string]bool
+
+	// crossPackageMisses records $ref targets owned by another package of a
+	// cross-package run that were not registered by that package. Generate
+	// fails on these: emitting a local copy instead would silently duplicate
+	// the type across packages.
+	crossPackageMisses map[crossPackageMiss]bool
+
+	// typeSchemas records which schema node claimed each generated type name,
+	// so callers can detect a name already taken by a different schema and
+	// pick a disambiguated one instead of silently reusing the wrong type.
+	typeSchemas map[string]*schema.Schema
+
+	// rootNameOverride is the per-call root type name from WithRootTypeName;
+	// unlike Config.RootTypeName it is reset on every Generate call.
+	rootNameOverride string
+
+	// crossImports maps foreign-package import paths to the aliases the
+	// current file references them by; reset on every Generate call.
+	crossImports map[string]string
 }
 
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
 	return &Generator{
-		config:            cfg,
-		generated:         make(map[string]bool),
-		generating:        make(map[string]bool),
-		structsInProgress: make(map[string]bool),
+		config:             cfg,
+		generated:          make(map[string]bool),
+		generating:         make(map[string]bool),
+		structsInProgress:  make(map[string]bool),
+		unresolvedRefs:     make(map[string]bool),
+		resolvedRefs:       make(map[string]bool),
+		crossPackageMisses: make(map[crossPackageMiss]bool),
+		typeSchemas:        make(map[string]*schema.Schema),
 	}
 }
 
 // Generate processes a schema and returns the IR File.
-func (g *Generator) Generate(s *schema.Schema) (*File, error) {
+func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, error) {
+	var options generateOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+	// Per-call overrides must not leak into the next Generate call in
+	// shared-types mode, where one generator runs several schemas. The root
+	// name lives on the generator; the options that do have to reach the
+	// config are restored when this call returns, so every option is
+	// consistently scoped to the single call that passed it.
+	g.rootNameOverride = options.rootTypeName
+	if options.resolver != nil {
+		prev := g.config.Resolver
+		g.config.Resolver = options.resolver
+		defer func() { g.config.Resolver = prev }()
+	}
+	if options.fieldNamesSet {
+		prev := g.config.FieldNames
+		g.config.FieldNames = options.fieldNames
+		defer func() { g.config.FieldNames = prev }()
+	}
+
 	g.output = &File{
 		PackageName: g.config.PackageName,
 	}
-	g.generated = make(map[string]bool)
+	// In shared-types mode the generated/typeSchemas registries survive
+	// across calls, so types materialized by an earlier schema of the same
+	// package are referenced instead of re-emitted.
+	if !g.config.SharedTypes {
+		g.generated = make(map[string]bool)
+	}
 	g.generating = make(map[string]bool)
+	g.crossImports = make(map[string]string)
+	// Ref-resolution bookkeeping is per schema: in shared-types mode the same
+	// generator runs several schemas, and carrying entries over would report an
+	// earlier schema's unresolved refs against a later one.
+	g.unresolvedRefs = make(map[string]bool)
+	g.resolvedRefs = make(map[string]bool)
+	g.crossPackageMisses = make(map[crossPackageMiss]bool)
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -84,6 +153,29 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.rootTypeName = "Root"
 	if s.Title != "" {
 		g.rootTypeName = SchemaNameToGoName(s.Title)
+	}
+	if override := g.rootNameOverride; override == "" {
+		override = g.config.RootTypeName
+		if override != "" {
+			// An explicit override is used verbatim — callers may need an
+			// exact name (e.g. to stay compatible with previously generated
+			// code) that SchemaNameToGoName's initialism rules would rewrite.
+			if !isExportedGoIdentifier(override) {
+				return nil, fmt.Errorf("root type name %q is not an exported Go identifier", override)
+			}
+			g.rootTypeName = override
+		}
+	} else {
+		if !isExportedGoIdentifier(override) {
+			return nil, fmt.Errorf("root type name %q is not an exported Go identifier", override)
+		}
+		g.rootTypeName = override
+	}
+	// In shared-types mode a root name already claimed by an earlier schema
+	// would be silently skipped by the generated-types registry; require the
+	// caller to name every schema's root distinctly.
+	if g.config.SharedTypes && g.generated[g.rootTypeName] {
+		return nil, fmt.Errorf("root type %q was already generated by an earlier schema in this package; give each schema a distinct root name", g.rootTypeName)
 	}
 
 	// Store root schema's $id for detecting self-references.
@@ -179,11 +271,130 @@ func (g *Generator) Generate(s *schema.Schema) (*File, error) {
 	g.populateValidatableFields()
 	g.populateAliasDelegates()
 
+	// Publish validation info about this call's types so packages generated
+	// later in a cross-package run can emit correct guards for them.
+	if g.config.CrossPackage != nil {
+		for _, td := range g.output.TypeDefs {
+			name := td.TypeName()
+			s := g.typeSchemas[name]
+			if s == nil {
+				continue
+			}
+			g.config.CrossPackage.noteTypeInfo(s,
+				g.zeroLiteralForType(&NamedType{Name: name}),
+				localTypeIsValidatable(td))
+		}
+	}
+
 	// Add imports based on what was generated.
 	g.output.ValidationCapability = analyzeValidationCapability(s, g.resourceGraph, g.config.Validation)
 	g.addRequiredImports()
 
+	// Unless lenient, refuse to hand back an IR that was degraded by
+	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
+	if !g.config.LenientRefs {
+		if refs := g.neverResolvedRefs(); len(refs) > 0 {
+			return nil, &UnresolvedRefsError{Refs: refs}
+		}
+	}
+
+	if len(g.crossPackageMisses) > 0 {
+		return nil, newCrossPackageMissError(g.crossPackageMisses)
+	}
+
+	// Imports of sibling generated packages (cross-package refs), sorted for
+	// deterministic output.
+	crossPaths := make([]string, 0, len(g.crossImports))
+	for importPath := range g.crossImports {
+		crossPaths = append(crossPaths, importPath)
+	}
+	sort.Strings(crossPaths)
+	for _, importPath := range crossPaths {
+		alias := g.crossImports[importPath]
+		if alias == PackageNameForImportPath(importPath) {
+			alias = "" // no alias needed when it matches the package name
+		}
+		g.output.Imports = append(g.output.Imports, Import{Path: importPath, Alias: alias})
+	}
+
 	return g.output, nil
+}
+
+// UnresolvedRefsError reports $refs that no resolver could serve during
+// generation. Callers can set Config.LenientRefs to accept the degraded
+// output instead.
+type UnresolvedRefsError struct {
+	Refs []string
+}
+
+func (e *UnresolvedRefsError) Error() string {
+	return fmt.Sprintf("cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+}
+
+// neverResolvedRefs returns the sorted $refs that failed to resolve and never
+// resolved in any other context. Resolution is context-dependent, so a ref is
+// only genuinely unresolvable if no attempt succeeded.
+// crossPackageMiss identifies a $ref into a document owned by another package
+// of the run whose type that package did not register.
+type crossPackageMiss struct {
+	Package  string
+	Document string
+}
+
+// CrossPackageMissError reports $ref targets that belong to another package of
+// a cross-package run but were not generated there, so they cannot be imported.
+type CrossPackageMissError struct {
+	Misses []string
+}
+
+func (e *CrossPackageMissError) Error() string {
+	return fmt.Sprintf("cross-package $ref targets not generated by their owning package: %s", strings.Join(e.Misses, ", "))
+}
+
+func newCrossPackageMissError(misses map[crossPackageMiss]bool) *CrossPackageMissError {
+	out := make([]string, 0, len(misses))
+	for m := range misses {
+		out = append(out, fmt.Sprintf("%q (owned by %q)", m.Document, m.Package))
+	}
+	sort.Strings(out)
+	return &CrossPackageMissError{Misses: out}
+}
+
+// documentIdentityOf returns the most specific URI identifying s, for
+// diagnostics.
+func documentIdentityOf(s *schema.Schema) string {
+	if s == nil {
+		return ""
+	}
+	for _, node := range []*schema.Schema{s, s.DocumentRoot} {
+		if node == nil {
+			continue
+		}
+		if ids := documentIdentities(node); len(ids) > 0 {
+			return ids[0]
+		}
+	}
+	return "<unidentified schema node>"
+}
+
+func (g *Generator) neverResolvedRefs() []string {
+	refs := make([]string, 0, len(g.unresolvedRefs))
+	for ref := range g.unresolvedRefs {
+		if g.resolvedRefs[ref] {
+			continue
+		}
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+	return refs
+}
+
+func quoteAll(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = fmt.Sprintf("%q", s)
+	}
+	return out
 }
 
 // addRequiredImports scans generated TypeDefs and adds necessary imports.
@@ -971,6 +1182,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if g.generated[name] {
 		return nil
 	}
+	if _, ok := g.typeSchemas[name]; !ok {
+		g.typeSchemas[name] = s
+	}
+	g.config.CrossPackage.RecordType(s, g.config.ImportPath, name)
 
 	// Const -> treat as single-element enum for validation purposes.
 	if g.validationKeywordsEnabled() {
@@ -3231,6 +3446,9 @@ func (g *Generator) applyDiscriminator(oneOfDef *OneOfDef, s *schema.Schema, var
 					claimed[i] = true
 					discMap[discValue] = i
 					oneOfDef.Variants[i].DiscriminatorValue = discValue
+					// Each variant is claimed at most once above, so this is a
+					// single-element set; the template reads DiscriminatorValues.
+					oneOfDef.Variants[i].DiscriminatorValues = []string{discValue}
 					break
 				}
 			}
@@ -3304,6 +3522,7 @@ func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*sch
 		}
 		discMap[val] = i
 		oneOfDef.Variants[i].DiscriminatorValue = val
+		oneOfDef.Variants[i].DiscriminatorValues = []string{val}
 	}
 }
 
@@ -3322,51 +3541,51 @@ func (g *Generator) inferDiscriminatorValues(oneOfDef *OneOfDef, variants []*sch
 // Candidate properties are examined in sorted order so the chosen field is
 // deterministic when more than one qualifies.
 func (g *Generator) detectHeuristicDiscriminator(oneOfDef *OneOfDef, variants []*schema.Schema) {
-	// Collect resolved schemas for all variants
+	// Collect resolved schemas for all variants. A variant may itself be a
+	// oneOf (no properties of its own); it is discriminable when every one
+	// of its sub-variants is, contributing the union of their values.
 	resolvedVariants := make([]*schema.Schema, len(variants))
 	for i, v := range variants {
 		resolved := g.resolveVariantSchema(v)
-		if resolved == nil || len(resolved.Properties) == 0 {
+		if resolved == nil {
 			return
 		}
 		resolvedVariants[i] = resolved
 	}
 
-	// Find candidate properties that exist in (and are required by) ALL variants.
-	for _, propName := range sortedKeys(resolvedVariants[0].Properties) {
-		allHaveConst := true
+	// Candidate properties come from the first variant (descending into a
+	// nested oneOf's first sub-variant when it has no properties of its own).
+	for _, propName := range g.discriminatorCandidateProps(resolvedVariants[0], 0) {
 		seenValues := make(map[string]int)
-		values := make([]string, len(resolvedVariants))
+		valueSets := make([][]string, len(resolvedVariants))
+		valid := true
 
 		for i, resolved := range resolvedVariants {
-			if !variantRequiresProperty(resolved, propName) {
-				allHaveConst = false
+			vals := g.discriminatorValuesForVariant(resolved, propName, 0)
+			if len(vals) == 0 {
+				valid = false
 				break
 			}
-			propSchema, ok := resolved.Properties[propName]
-			if !ok {
-				allHaveConst = false
+			for _, val := range vals {
+				if _, dup := seenValues[val]; dup {
+					valid = false
+					break
+				}
+				seenValues[val] = i
+			}
+			if !valid {
 				break
 			}
-			val := extractDiscriminatorValue(propSchema)
-			if val == "" {
-				allHaveConst = false
-				break
-			}
-			if _, dup := seenValues[val]; dup {
-				allHaveConst = false
-				break
-			}
-			seenValues[val] = i
-			values[i] = val
+			valueSets[i] = vals
 		}
 
-		if allHaveConst && len(seenValues) == len(variants) {
+		if valid {
 			// Found a valid heuristic discriminator
 			oneOfDef.DiscriminatorField = propName
 			oneOfDef.DiscriminatorMap = seenValues
-			for i, val := range values {
-				oneOfDef.Variants[i].DiscriminatorValue = val
+			for i, vals := range valueSets {
+				oneOfDef.Variants[i].DiscriminatorValue = vals[0]
+				oneOfDef.Variants[i].DiscriminatorValues = vals
 			}
 			return
 		}
@@ -3441,7 +3660,25 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		goName := refToGoName(effRef)
 		refSchema := g.resolveRefInContext(effRef, variant)
 		if refSchema != nil {
+			// A ref into a document owned by another package of this run
+			// references that package's type instead of materializing a copy.
+			// The variant name carries the package to stay unique when
+			// several packages export same-named types (field.Element,
+			// header.Element → FieldElement, HeaderElement).
+			if foreign, ok := g.foreignTypeFor(refSchema); ok {
+				foreign.Pointer = true
+				return oneOfVariantResult{
+					Name:           SchemaNameToGoName(foreign.PkgAlias) + foreign.Name,
+					Type:           foreign,
+					RequiredFields: refSchema.Required,
+				}, nil
+			}
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
+			// Definitions in different documents may share a name (each
+			// document declaring e.g. #/definitions/element); without
+			// disambiguation every variant would silently reuse whichever
+			// type claimed the name first.
+			goName = g.uniqueTypeName(goName, refSchema)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return oneOfVariantResult{}, err
 			}
@@ -3657,6 +3894,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if effRef := variant.EffectiveRef(); effRef != "" {
 				goName := refToGoName(effRef)
 				if refSchema := g.resolveRefInContext(effRef, variant); refSchema != nil {
+					if foreign, ok := g.foreignTypeFor(refSchema); ok {
+						foreign.Pointer = true
+						return foreign, nil
+					}
 					if err := g.generateTypeDef(goName, refSchema); err != nil {
 						return nil, err
 					}
@@ -3725,6 +3966,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// Ensure the referenced type gets generated.
 		refSchema := g.resolveEffectiveRefSchema(s)
 		if refSchema != nil {
+			if foreign, ok := g.foreignTypeFor(refSchema); ok {
+				return foreign, nil
+			}
 			pushed := g.pushDynamicScope(refSchema)
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
@@ -3810,6 +4054,9 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 		goName := refToGoName(effRef)
 		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+			if foreign, ok := g.foreignTypeFor(refSchema); ok {
+				return foreign
+			}
 			pushed := g.pushDynamicScope(refSchema)
 			// If the ref resolved to a scoped document root (not the main root),
 			// derive the Go name from that schema rather than the raw ref string.
@@ -3865,7 +4112,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		// null/empty/populated faithfully (unlike nullable scalars/objects,
 		// whose zero values are indistinguishable from null).
 		if inner == "array" && s.Items != nil && s.Items.Schema != nil {
-			itemType := g.resolveType(s.Items.Schema, contextName+"Item")
+			itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 			return &ArrayType{ItemType: itemType}
 		}
 		baseType := PrimitiveTypeFromSchema(inner)
@@ -3902,7 +4149,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// Array with items
 	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil {
-		itemType := g.resolveType(s.Items.Schema, contextName+"Item")
+		itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 		return &ArrayType{ItemType: itemType}
 	}
 
@@ -4014,8 +4261,24 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 
 // resolveRefInContext resolves a $ref string using the given context schema's
 // BaseURI and DocumentRoot for scoped resolution. This handles the case where
-// a subschema with $id changes the base URI and document root for fragment resolution.
+// a subschema with $id changes the base URI and document root for fragment
+// resolution.
+//
+// It also records the outcome. A ref is reported as unresolved only if no
+// attempt anywhere resolved it: resolution depends on the context schema, and
+// most callers probe optimistically and handle a nil result, so a failure
+// against one context is not evidence that the ref is unresolvable.
 func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
+	resolved := g.resolveRefInContextUncounted(ref, ctx)
+	if resolved != nil {
+		g.resolvedRefs[ref] = true
+	} else {
+		g.unresolvedRefs[ref] = true
+	}
+	return resolved
+}
+
+func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema) *schema.Schema {
 	// Determine the effective base URI and document root from context.
 	ctxBase := g.baseURI
 	ctxDocRoot := g.rootSchema
@@ -4879,6 +5142,25 @@ func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
 }
 
+// resolveArrayItemType resolves the Go type for an array's items schema.
+// An inline oneOf-only items schema describing an object union is materialized
+// as a named sealed-interface type — the same output an items $ref to a named
+// oneOf definition already produces — instead of collapsing to any and losing
+// the element typing entirely.
+//
+// The guard mirrors generateTypeDef's own struct condition (oneOfDescribesObject
+// with no properties of its own), so the name introduced here is always backed
+// by the sealed struct. A constraint-only oneOf over scalars does not qualify
+// and falls through to the alias paths, where its branches attach to the
+// declared or inferred type.
+func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
+	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
+		_ = g.generateTypeDef(itemContext, items)
+		return &NamedType{Name: itemContext}
+	}
+	return g.resolveType(items, itemContext)
+}
+
 func hasRefStructuralSiblings(s *schema.Schema) bool {
 	if s == nil {
 		return false
@@ -5559,23 +5841,25 @@ func enumValueSuffix(v any) string {
 // populateValidatableFields is a post-pass that identifies struct fields whose
 // types have Validate() methods and adds them to StructDef.ValidatableFields.
 // Must run after resolveAliasMethodability so NoMethods flags are set.
+// localTypeIsValidatable reports whether a generated type def carries a
+// Validate() method.
+func localTypeIsValidatable(td TypeDef) bool {
+	switch d := td.(type) {
+	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef:
+		return true
+	case *AliasDef:
+		return d.CanHaveMethods()
+	default:
+		return false
+	}
+}
+
 func (g *Generator) populateValidatableFields() {
 	// Build set of type names that have Validate() methods.
 	validatableTypes := make(map[string]bool)
 	for _, td := range g.output.TypeDefs {
-		switch d := td.(type) {
-		case *EnumDef:
-			validatableTypes[d.Name] = true
-		case *StructDef:
-			validatableTypes[d.Name] = true
-		case *AliasDef:
-			if d.CanHaveMethods() {
-				validatableTypes[d.Name] = true
-			}
-		case *InferredAliasDef:
-			validatableTypes[d.Name] = true // wrapper struct always has Validate()
-		case *BigIntAliasDef:
-			validatableTypes[d.Name] = true // wrapper struct always has Validate()
+		if localTypeIsValidatable(td) {
+			validatableTypes[td.TypeName()] = true
 		}
 	}
 
@@ -5588,8 +5872,11 @@ func (g *Generator) populateValidatableFields() {
 		for _, f := range sd.Fields {
 			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
-			if typeName != "" && validatableTypes[typeName] {
+			if typeName != "" && (validatableTypes[typeName] || crossPackageValidatable(f.Type)) {
 				zeroLit := g.zeroLiteralForType(f.Type)
+				if foreignZero, ok := crossPackageZeroLiteral(f.Type); ok {
+					zeroLit = foreignZero
+				}
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName:   f.Name,
 					JSONName:    f.JSONName,
@@ -5602,7 +5889,7 @@ func (g *Generator) populateValidatableFields() {
 			}
 			// Slice of named type (or pointer to slice of named type).
 			elemName := sliceElementTypeName(f.Type)
-			if elemName != "" && validatableTypes[elemName] {
+			if elemName != "" && (validatableTypes[elemName] || crossPackageValidatable(f.Type)) {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName: f.Name,
 					JSONName:  f.JSONName,
@@ -5756,6 +6043,45 @@ func namedTypeName(t GoType) string {
 	default:
 		return ""
 	}
+}
+
+// crossPackageNamed returns the qualified NamedType inside t (through
+// pointers and slice elements), if any.
+func crossPackageNamed(t GoType) *NamedType {
+	switch v := t.(type) {
+	case *NamedType:
+		if v.PkgAlias != "" {
+			return v
+		}
+	case *PointerType:
+		return crossPackageNamed(v.Inner)
+	case *ArrayType:
+		return crossPackageNamed(v.ItemType)
+	}
+	return nil
+}
+
+// crossPackageValidatable reports whether t references a type from another
+// generated package that carries a Validate() method (per the owning
+// package's registry entry).
+func crossPackageValidatable(t GoType) bool {
+	nt := crossPackageNamed(t)
+	return nt != nil && nt.foreignValidatable
+}
+
+// crossPackageZeroLiteral returns the zero literal recorded by the owning
+// package for a qualified type, qualified with the local import alias where
+// it names the type itself.
+func crossPackageZeroLiteral(t GoType) (string, bool) {
+	nt := crossPackageNamed(t)
+	if nt == nil {
+		return "", false
+	}
+	zero := nt.foreignZeroLiteral
+	if zero == nt.Name+"{}" {
+		zero = nt.PkgAlias + "." + zero
+	}
+	return zero, true
 }
 
 // sliceElementTypeName extracts the element type name from a slice GoType.
@@ -7872,4 +8198,245 @@ func hasStructuralKeywords(s *schema.Schema) bool {
 		return true
 	}
 	return false
+}
+
+// uniqueTypeName returns name if it is unclaimed or already claimed by s;
+// otherwise it disambiguates — first by prefixing the owning document's name
+// (element in field.json → FieldElement), then with a numeric suffix — so
+// same-named definitions from different documents do not silently collapse
+// onto a single generated type.
+func (g *Generator) uniqueTypeName(name string, s *schema.Schema) string {
+	claimed, ok := g.typeSchemas[name]
+	if !ok || claimed == s {
+		return name
+	}
+	if doc := documentGoName(s); doc != "" && !strings.HasPrefix(name, doc) {
+		candidate := doc + name
+		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
+			return candidate
+		}
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s%d", name, i)
+		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
+			return candidate
+		}
+	}
+}
+
+// documentGoName derives a Go name prefix from the document a schema node
+// belongs to: the basename of its base URI without extension.
+func documentGoName(s *schema.Schema) string {
+	u := s.BaseURI
+	if s.DocumentRoot != nil && s.DocumentRoot.BaseURI != nil {
+		u = s.DocumentRoot.BaseURI
+	}
+	if u == nil {
+		return ""
+	}
+	base := path.Base(u.Path)
+	if base == "." || base == "/" || base == "" {
+		return ""
+	}
+	base = strings.TrimSuffix(base, path.Ext(base))
+	return SchemaNameToGoName(base)
+}
+
+// discriminatorCandidateProps returns the property names to consider as
+// discriminators, taken from the variant's own properties or, for a
+// properties-less nested oneOf, from its first sub-variant.
+func (g *Generator) discriminatorCandidateProps(resolved *schema.Schema, depth int) []string {
+	if resolved == nil || depth > maxDiscriminatorNesting {
+		return nil
+	}
+	if len(resolved.Properties) > 0 {
+		return sortedKeys(resolved.Properties)
+	}
+	if len(resolved.OneOf) > 0 {
+		return g.discriminatorCandidateProps(g.resolveVariantSchema(resolved.OneOf[0]), depth+1)
+	}
+	return nil
+}
+
+const maxDiscriminatorNesting = 4
+
+// discriminatorValuesForVariant returns every value propName may take when it
+// selects the variant: the property must be required and constrained to
+// string values by const or enum. A variant that is itself a oneOf without
+// properties contributes the union of its sub-variants' values, and only
+// discriminates when every sub-variant does (sub-variants sharing a value is
+// fine — any of them still selects this variant).
+func (g *Generator) discriminatorValuesForVariant(resolved *schema.Schema, propName string, depth int) []string {
+	if resolved == nil || depth > maxDiscriminatorNesting {
+		return nil
+	}
+	if len(resolved.Properties) > 0 {
+		if !variantRequiresProperty(resolved, propName) {
+			return nil
+		}
+		return extractDiscriminatorValueSet(resolved.Properties[propName])
+	}
+	if len(resolved.OneOf) == 0 {
+		return nil
+	}
+	var union []string
+	seen := make(map[string]bool)
+	for _, sub := range resolved.OneOf {
+		vals := g.discriminatorValuesForVariant(g.resolveVariantSchema(sub), propName, depth+1)
+		if len(vals) == 0 {
+			return nil
+		}
+		for _, val := range vals {
+			if !seen[val] {
+				seen[val] = true
+				union = append(union, val)
+			}
+		}
+	}
+	return union
+}
+
+// extractDiscriminatorValueSet returns the string values a property schema
+// pins via const or enum; nil when any value is not a string.
+func extractDiscriminatorValueSet(propSchema *schema.Schema) []string {
+	if propSchema == nil {
+		return nil
+	}
+	if propSchema.Const != nil {
+		if s, ok := (*propSchema.Const).(string); ok {
+			return []string{s}
+		}
+		return nil
+	}
+	if len(propSchema.Enum) > 0 {
+		vals := make([]string, 0, len(propSchema.Enum))
+		for _, e := range propSchema.Enum {
+			s, ok := e.(string)
+			if !ok {
+				return nil
+			}
+			vals = append(vals, s)
+		}
+		return vals
+	}
+	return nil
+}
+
+// GenerateOption customizes a single Generate call, overriding the
+// corresponding Config value for that call only in spirit (the option is
+// applied to the generator's config; per-call use is intended for
+// shared-types generation where several schemas run through one Generator).
+type GenerateOption func(*generateOptions)
+
+type generateOptions struct {
+	rootTypeName  string
+	resolver      schema.SchemaResolver
+	fieldNames    FieldNameMap
+	fieldNamesSet bool
+}
+
+// WithRootTypeName overrides Config.RootTypeName for this Generate call.
+func WithRootTypeName(name string) GenerateOption {
+	return func(o *generateOptions) { o.rootTypeName = name }
+}
+
+// WithResolver overrides Config.Resolver for this Generate call.
+func WithResolver(r schema.SchemaResolver) GenerateOption {
+	return func(o *generateOptions) { o.resolver = r }
+}
+
+// WithFieldNames overrides Config.FieldNames for this Generate call, also
+// when m is nil (clearing any previously applied override).
+func WithFieldNames(m FieldNameMap) GenerateOption {
+	return func(o *generateOptions) {
+		o.fieldNames = m
+		o.fieldNamesSet = true
+	}
+}
+
+// foreignTypeFor returns a qualified reference when the resolved schema was
+// generated by another package of a cross-package run. The referencing file
+// gains an import for that package. Returns false when cross-package mode is
+// off, the document belongs to this package, or the target has not been
+// generated yet (the caller then materializes a local copy, so ordering
+// packages dependency-first is what avoids duplication).
+func (g *Generator) foreignTypeFor(resolved *schema.Schema) (*NamedType, bool) {
+	reg := g.config.CrossPackage
+	if reg == nil || resolved == nil {
+		return nil, false
+	}
+	pkg := reg.packageFor(resolved)
+	if pkg == "" || pkg == g.config.ImportPath {
+		return nil, false
+	}
+	qt, ok := reg.lookup(resolved)
+	if !ok || qt.ImportPath != pkg {
+		// The document is owned by another package of this run, so the type
+		// belongs there — but it was not registered by its owner (or was
+		// claimed by a package that does not own it). Materializing a local
+		// copy here would duplicate the type silently and leave consumers of
+		// the two packages with incompatible Go types, so record it and let
+		// Generate report it.
+		g.crossPackageMisses[crossPackageMiss{Package: pkg, Document: documentIdentityOf(resolved)}] = true
+		return nil, false
+	}
+	alias := g.importAlias(qt.ImportPath)
+	return &NamedType{
+		Name:               qt.Name,
+		PkgAlias:           alias,
+		foreignZeroLiteral: qt.ZeroLiteral,
+		foreignValidatable: qt.Validatable,
+	}, true
+}
+
+// importAlias returns (and records) the alias under which importPath is
+// imported by the file being generated, deduplicating base-name conflicts
+// with a numeric suffix.
+func (g *Generator) importAlias(importPath string) string {
+	if alias, ok := g.crossImports[importPath]; ok {
+		return alias
+	}
+	base := PackageNameForImportPath(importPath)
+	alias := base
+	for i := 2; ; i++ {
+		taken := reservedImportNames[alias]
+		if !taken {
+			for _, existing := range g.crossImports {
+				if existing == alias {
+					taken = true
+					break
+				}
+			}
+		}
+		if !taken {
+			break
+		}
+		alias = fmt.Sprintf("%s%d", base, i)
+	}
+	g.crossImports[importPath] = alias
+	return alias
+}
+
+// reservedImportNames are the package names the generated file may import for
+// its own use (see addRequiredImports and the emitter templates). A foreign
+// package whose last path segment collides with one of these must be aliased:
+// the two would otherwise be imported under the same name and the file would
+// not compile. The set is fixed rather than derived from the import list
+// because addRequiredImports runs after aliases have been assigned.
+var reservedImportNames = map[string]bool{
+	"big":               true, // math/big
+	"bytes":             true,
+	"ecma262":           true, // github.com/mgilbir/goecma262
+	"flags":             true, // github.com/mgilbir/goecma262/flags
+	"fmt":               true,
+	"json":              true, // encoding/json
+	"mail":              true, // net/mail
+	"math":              true,
+	"netip":             true, // net/netip
+	"regexp":            true,
+	"strings":           true,
+	"time":              true,
+	"url":               true, // net/url
+	"utf8":              true, // unicode/utf8
+	"validationruntime": true,
 }

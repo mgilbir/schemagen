@@ -62,6 +62,27 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/composition/oneof_simple_rect.json",
 		},
 		{
+			Name:        "composition/oneof_array_items",
+			SchemaPath:  "testdata/schemas/composition/oneof_array_items.json",
+			FixturePath: "testdata/fixtures/composition/oneof_array_items.json",
+		},
+		{
+			// Regression: a oneOf variant that is itself a oneOf used to
+			// disable discriminator detection, so the parent fell back to
+			// trial unmarshalling. Because "const" is not enforced during
+			// unmarshalling, sibling variants with identical required fields
+			// both matched and the document failed to decode with
+			// "multiple oneOf variants matched".
+			//
+			// The fixture deliberately selects "beta", the *second* value of
+			// the nested union: that case is only emitted when the variant
+			// carries the full DiscriminatorValues set, so an implementation
+			// keeping only the singular first value fails here.
+			Name:        "composition/oneof_nested_variants",
+			SchemaPath:  "testdata/schemas/composition/oneof_nested_variants.json",
+			FixturePath: "testdata/fixtures/composition/oneof_nested_variants.json",
+		},
+		{
 			// Regression: an optional property whose type is a $ref to a
 			// constrained array definition becomes a named slice type with its
 			// own Validate() (e.g. `type TrackList []TrackListItem`). The

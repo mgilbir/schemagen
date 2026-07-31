@@ -390,7 +390,15 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
+	// The suite exercises refs this harness cannot serve: meta-schemas
+	// (json-schema.org/...), and anchors or pointers inside remote documents
+	// supplied through the resolver, whose $anchors are not registered. Those
+	// refs degrade to any, which is what this harness measured before
+	// unresolvable refs became fatal. LenientRefs keeps that baseline, so the
+	// suite goes on measuring generated-validator conformance rather than
+	// re-asserting the CLI's ref policy -- erroring out of generation would
+	// turn a degraded-but-measurable case into an unmeasured one.
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt, LenientRefs: true}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -444,7 +452,15 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
+	// The suite exercises refs this harness cannot serve: meta-schemas
+	// (json-schema.org/...), and anchors or pointers inside remote documents
+	// supplied through the resolver, whose $anchors are not registered. Those
+	// refs degrade to any, which is what this harness measured before
+	// unresolvable refs became fatal. LenientRefs keeps that baseline, so the
+	// suite goes on measuring generated-validator conformance rather than
+	// re-asserting the CLI's ref policy -- erroring out of generation would
+	// turn a degraded-but-measurable case into an unmeasured one.
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt, LenientRefs: true}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -570,7 +586,15 @@ func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.Schem
 	}
 	s.Normalize()
 
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt}
+	// The suite exercises refs this harness cannot serve: meta-schemas
+	// (json-schema.org/...), and anchors or pointers inside remote documents
+	// supplied through the resolver, whose $anchors are not registered. Those
+	// refs degrade to any, which is what this harness measured before
+	// unresolvable refs became fatal. LenientRefs keeps that baseline, so the
+	// suite goes on measuring generated-validator conformance rather than
+	// re-asserting the CLI's ref policy -- erroring out of generation would
+	// turn a degraded-but-measurable case into an unmeasured one.
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt, LenientRefs: true}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {

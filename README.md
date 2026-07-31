@@ -57,7 +57,146 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
 | `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
 | `--field-map` | | | Path to a JSON file pinning JSON properties to specific Go field names (see below) |
+| `--lenient-refs` | | `false` | Degrade `$ref`s that no resolver can serve to `any` instead of failing generation |
+| `--root-name` | | | Exact Go type name for a root schema, used verbatim. A bare name (single input only), or a repeatable `<key>=<Name>` pair (see below) |
+| `--root-name-from-filename` | | `false` | Derive each root type name from the schema filename, e.g. `person.json` → `PersonJSON` |
+| `--shared-types` | | `false` | Generate all schemas into one Go package, sharing materialized types and helpers (see below) |
+| `--schema-package` | | | Assign a document to a Go package: `<document $id>=<Go import path>`. Repeatable; activates multi-package generation (see below) |
+| `--schema-output` | | | Output file for a document: `<document $id>=<file path>`. Requires `--schema-package` |
+| `--config` | | | Path to a JSON generation config (see below). Flags override it |
 | `--verbose` | `-v` | `false` | Print progress information |
+
+### Unresolvable References
+
+A `$ref` that no resolver can serve fails generation by default, naming the
+refs it could not resolve. Previously such refs degraded silently: property and
+items positions became `any`, ref-only definitions emitted references to types
+that were never generated, and validation lost the referenced constraints — so
+the output looked plausible while dropping type information. Pass
+`--lenient-refs` to restore the degrading behaviour.
+
+### Root Type Names
+
+By default the root type is named after the schema `title`, falling back to
+`Root`. `--root-name` overrides it, and its key may name the document three
+ways — the most specific match wins:
+
+| Key | Matches |
+|-----|---------|
+| `file:<schema path>` | the path as given on the command line (or its absolute form) |
+| `id:<document $id>` | the document's `$id` |
+| `<schema base name>` | the file's base name (the original behaviour) |
+
+A bare `--root-name Name` applies to a single input.
+
+Base names are not unique across an input set — two directories can each hold a
+`common.json` — so a base-name key names *every* input sharing it. That is
+usually what you want when those documents land in different Go packages, since
+same-named types in different packages are distinct. Use `id:` or `file:` when
+they need different names, or when they share one package:
+
+```bash
+schemagen generate one/common.json two/common.json -o out \
+  --schema-package 'https://example.com/one/common.json=example.com/m/one' \
+  --schema-package 'https://example.com/two/common.json=example.com/m/two' \
+  --root-name 'id:https://example.com/one/common.json=OneCommon' \
+  --root-name 'id:https://example.com/two/common.json=TwoCommon'
+```
+
+Keys are split on the last `=`, so `$ids` and file names containing one work. A
+key repeated with a different name is an error, and a key that matches no input
+is reported as a warning.
+
+### Several Schemas, One Package
+
+`--shared-types` runs every input through one generator, so a type materialized
+by an earlier schema is referenced by the rest instead of re-emitted, and
+package-level helpers are emitted once. Each schema needs a distinct root type
+name (`--root-name`, or `--root-name-from-filename`), and the mode currently
+requires `--validation static`.
+
+```bash
+schemagen generate person.json address.json \
+  -o out -p models --shared-types \
+  --root-name person.json=Person --root-name address.json=Address
+```
+
+### Several Schemas, Several Packages
+
+`--schema-package` assigns each document to a Go import path. A `$ref` that
+crosses into a document owned by another package emits a qualified reference and
+an import, instead of materializing a second copy of the type — so consumers of
+either package see the same Go type for the same JSON shape.
+
+```bash
+schemagen generate common.json person.json \
+  -o out \
+  --schema-package 'https://example.com/common.json=example.com/m/common' \
+  --schema-package 'https://example.com/person.json=example.com/m/person' \
+  --root-name common.json=Common --root-name person.json=Person
+```
+
+Notes:
+
+- Every input must declare `$id`; that is how documents are matched to packages.
+- Generation order is derived from the `$refs` between documents, so inputs can
+  be listed in any order. Documents that reference each other across packages
+  cannot be ordered — Go has no import cycles — and are reported as an error.
+- Each output directory holds exactly one package. By default a document is
+  written to `<output-dir>/<last segment of its import path>/`; override with
+  `--schema-output`.
+- The mode currently requires `--validation static`, and `--package` does not
+  apply (each package is named after its import path).
+
+### Config File
+
+Multi-document generation otherwise needs one repeatable flag per document per
+concern, which stops being reviewable well before it stops being typeable.
+`--config` moves that to a JSON file:
+
+```json
+{
+  "outputDir": "./gen",
+  "validation": "static",
+  "documents": [
+    {
+      "path": "schemas/common.json",
+      "id": "https://example.com/common.json",
+      "package": "example.com/m/common",
+      "output": "./gen/common/common.go",
+      "rootName": "Common",
+      "fieldNames": { "Common": { "postal_code": "PostalCode" } }
+    },
+    {
+      "path": "schemas/person.json",
+      "id": "https://example.com/person.json",
+      "package": "example.com/m/person",
+      "rootName": "Person"
+    }
+  ]
+}
+```
+
+```bash
+schemagen generate --config schemagen.json
+```
+
+- **Precedence** is *explicit flag > config > default*, per setting. A flag
+  naming a document overrides that document's settings without discarding the
+  rest of the file.
+- **Inputs** come from the command line as usual; with none given, every entry
+  that has a `path` becomes an input, in file order.
+- **Selectors**: an entry needs an `id`, a `path`, or both. `package` and
+  `output` are assigned per document `$id`, so entries setting either must
+  declare `id`.
+- **Unknown fields are rejected**, so a mistyped key fails the run instead of
+  silently doing nothing. An entry matching no input is reported as a warning.
+- The config is used only when `--config` names it: there is no auto-discovery,
+  so a build never changes behaviour because of a stray file in the working
+  directory.
+- `--field-map` keeps working and takes precedence over a document's
+  `fieldNames`. The config form is preferred, since it keys by document rather
+  than by file base name, which is not unique across an input set.
 
 ### Remote References
 

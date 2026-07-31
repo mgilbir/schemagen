@@ -98,7 +98,9 @@ func TestGenerateRequiresArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no args provided, got nil")
 	}
-	if !strings.Contains(err.Error(), "requires at least 1 arg") {
+	// Inputs may also come from --config, so the requirement is enforced in
+	// RunE rather than by a cobra arg count, and the message says both ways.
+	if !strings.Contains(err.Error(), "no input schemas") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -926,5 +928,266 @@ func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
 	}
 	if helperFiles != 1 {
 		t.Fatalf("%d files declare shared helpers, want exactly 1", helperFiles)
+	}
+}
+
+// writeUnresolvableRefFixture writes a schema whose $ref no resolver can serve.
+func writeUnresolvableRefFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gadget.json")
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "app://models/gadget.json",
+		"type": "object",
+		"properties": {
+			"widget": {"$ref": "app://models/widget.json#/definitions/widget"}
+		}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func runGenerateArgs(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(append([]string{"generate"}, args...))
+	return cmd.Execute()
+}
+
+func TestGenerateFailsOnUnresolvedRef(t *testing.T) {
+	mainPath := writeUnresolvableRefFixture(t)
+
+	err := runGenerateArgs(t, mainPath, "-o", t.TempDir())
+	if err == nil {
+		t.Fatal("expected generation to fail on an unresolvable $ref")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "app://models/widget.json#/definitions/widget") {
+		t.Errorf("error should name the unresolved ref, got: %v", msg)
+	}
+	if !strings.Contains(msg, "--lenient-refs") {
+		t.Errorf("error should mention the --lenient-refs escape hatch, got: %v", msg)
+	}
+}
+
+func TestGenerateLenientRefsDegradesToAny(t *testing.T) {
+	mainPath := writeUnresolvableRefFixture(t)
+	outDir := t.TempDir()
+
+	if err := runGenerateArgs(t, mainPath, "-o", outDir, "-p", "models", "--lenient-refs"); err != nil {
+		t.Fatalf("generate --lenient-refs: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "gadget.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "Widget") {
+		t.Errorf("expected a Widget field in the degraded output:\n%s", out)
+	}
+}
+
+func writeSimpleSchema(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {"name": {"type": "string"}}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func execGenerate(t *testing.T, args ...string) error {
+	t.Helper()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(append([]string{"generate"}, args...))
+	return cmd.Execute()
+}
+
+func TestGenerateRootName(t *testing.T) {
+	path := writeSimpleSchema(t, "person.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "Employee"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "person.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type Employee struct") {
+		t.Errorf("expected root type Employee, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameFromFilename(t *testing.T) {
+	path := writeSimpleSchema(t, "trigger_fixture.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name-from-filename"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "trigger_fixture.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type TriggerFixtureJSON struct") {
+		t.Errorf("expected root type TriggerFixtureJSON, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameOverridesTitle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "titled.json")
+	src := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Some Title",
+		"type": "object",
+		"properties": {"name": {"type": "string"}}
+	}`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "Wanted"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "titled.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type Wanted struct") {
+		t.Errorf("--root-name should override the schema title, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameRejectsMultipleSchemas(t *testing.T) {
+	a := writeSimpleSchema(t, "a.json")
+	b := writeSimpleSchema(t, "b.json")
+
+	err := execGenerate(t, a, b, "-o", t.TempDir(), "--root-name", "X")
+	if err == nil {
+		t.Fatal("expected an error for --root-name with multiple schemas")
+	}
+	if !strings.Contains(err.Error(), "--root-name-from-filename") {
+		t.Errorf("error should point at --root-name-from-filename, got: %v", err)
+	}
+}
+
+func TestGenerateRootNameUsedVerbatim(t *testing.T) {
+	// Initialism rules must not rewrite an explicit name (TopicJson must
+	// not become TopicJSON) — exact names matter when replacing previously
+	// generated code.
+	path := writeSimpleSchema(t, "topic.json")
+	outDir := t.TempDir()
+
+	if err := execGenerate(t, path, "-o", outDir, "--root-name", "TopicJson"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(outDir, "topic.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "type TopicJson struct") {
+		t.Errorf("expected verbatim root type TopicJson, got:\n%s", out)
+	}
+}
+
+func TestGenerateRootNameRejectsInvalidIdentifier(t *testing.T) {
+	path := writeSimpleSchema(t, "person.json")
+
+	for _, bad := range []string{"lowercase", "Has Space", "1Digit"} {
+		if err := execGenerate(t, path, "-o", t.TempDir(), "--root-name", bad); err == nil {
+			t.Errorf("expected an error for root name %q", bad)
+		}
+	}
+}
+
+// TestGenerateItemsOneOfCrossDocumentVariants covers two regressions at once:
+// an inline oneOf in array-items position must produce a typed sealed wrapper
+// (not []any), and same-named definitions from different documents must
+// materialize as distinct types instead of silently reusing the first one.
+func TestGenerateItemsOneOfCrossDocumentVariants(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("board.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Board",
+		"type": "object",
+		"properties": {
+			"elements": {
+				"type": "array",
+				"items": {
+					"oneOf": [
+						{"$ref": "alpha.json#/definitions/element"},
+						{"$ref": "beta.json#/definitions/element"}
+					]
+				}
+			}
+		}
+	}`)
+	write("alpha.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"element": {
+				"type": "object",
+				"properties": {"kind": {"enum": ["alpha"]}, "alpha": {"type": "string"}},
+				"required": ["kind", "alpha"]
+			}
+		}
+	}`)
+	write("beta.json", `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"element": {
+				"type": "object",
+				"properties": {"kind": {"enum": ["beta"]}, "beta": {"type": "number"}},
+				"required": ["kind", "beta"]
+			}
+		}
+	}`)
+
+	outDir := t.TempDir()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", filepath.Join(dir, "board.json"), "-o", outDir, "-p", "board"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	out, err := os.ReadFile(filepath.Join(outDir, "board.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+
+	if !strings.Contains(src, "[]BoardElementsItem") {
+		t.Errorf("items oneOf should produce a typed element slice, got:\n%s", src)
+	}
+	// Two distinct variant types, disambiguated by owning document.
+	if !strings.Contains(src, "type Element struct") || !strings.Contains(src, "type BetaElement struct") {
+		t.Errorf("expected distinct Element and BetaElement variant types, got:\n%s", src)
+	}
+	if strings.Contains(src, "Element2 *Element") {
+		t.Errorf("same-named cross-document variants collapsed onto one type:\n%s", src)
 	}
 }

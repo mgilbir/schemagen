@@ -24,6 +24,7 @@ import (
 //   - "isOneOfRequired": returns true if the given oneOf field is required on its parent struct
 func FuncMap() template.FuncMap {
 	return template.FuncMap{
+		"comment":      commentFunc,
 		"goType":       goTypeFunc,
 		"enumValue":    enumValueFunc,
 		"receiverName": receiverNameFunc,
@@ -59,6 +60,16 @@ func FuncMap() template.FuncMap {
 		"validationStringSet": validationStringSetFunc,
 		"jsonErrorName":       jsonErrorNameFunc,
 	}
+}
+
+// commentFunc renders text as the tail of a Go line comment. Text spanning
+// several lines (schema descriptions may contain newlines) is continued with
+// a "//" prefix at the given indent, so the emitted source stays valid Go
+// instead of breaking out of the comment.
+func commentFunc(indent, text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.ReplaceAll(text, "\n", "\n"+indent+"// ")
 }
 
 // jsonErrorNameFunc escapes a JSON property name for safe embedding inside a Go

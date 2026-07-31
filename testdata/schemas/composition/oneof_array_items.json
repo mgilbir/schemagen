@@ -1,0 +1,37 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Canvas",
+    "type": "object",
+    "properties": {
+        "name": { "type": "string" },
+        "shapes": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    { "$ref": "#/definitions/circle" },
+                    { "$ref": "#/definitions/rectangle" }
+                ]
+            }
+        }
+    },
+    "required": ["shapes"],
+    "definitions": {
+        "circle": {
+            "type": "object",
+            "properties": {
+                "kind": { "const": "circle" },
+                "radius": { "type": "number" }
+            },
+            "required": ["kind", "radius"]
+        },
+        "rectangle": {
+            "type": "object",
+            "properties": {
+                "kind": { "const": "rectangle" },
+                "width": { "type": "number" },
+                "height": { "type": "number" }
+            },
+            "required": ["kind", "width", "height"]
+        }
+    }
+}
