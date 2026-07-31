@@ -588,6 +588,10 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 		}
+		if _, ok := td.(*AnnotationSchemaDef); ok {
+			needsJSON = true // UnmarshalJSON, MarshalJSON, decode to any
+			needsFmt = true  // Validate() errors
+		}
 		if dsd, ok := td.(*DynamicSchemaDef); ok {
 			needsJSON = true // UnmarshalJSON, MarshalJSON, json.RawMessage, decode to any
 			needsFmt = true  // Validate() errors
@@ -954,6 +958,16 @@ func usesNetIPType(t GoType) bool {
 // generateTypeDef creates the appropriate TypeDef for a schema and adds it to
 // the output File. It skips schemas that have already been generated.
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
+	// unevaluatedItems next to in-place applicators cannot be decided
+	// statically: which items count as evaluated depends on which branches
+	// match the value. Route those to the runtime evaluator before any other
+	// arm claims the schema.
+	if def := g.annotationSchemaDef(name, s); def != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		return nil
+	}
+
 	if g.generated[name] {
 		return nil
 	}

@@ -783,6 +783,23 @@ type DynamicSchemaDef struct {
 	HasElse       bool
 }
 
+// AnnotationSchemaDef represents a schema whose unevaluatedItems depends on
+// which items its in-place applicators evaluated for the value being validated.
+//
+// That set is a property of the instance, not of the schema, so it cannot be
+// computed at generation time: {"anyOf":[A,B],"unevaluatedItems":false} allows
+// whatever the branches that matched *this value* evaluated. The schema is
+// emitted as a data literal and interpreted by the runtime evaluator in the
+// package's shared helper file.
+type AnnotationSchemaDef struct {
+	Name        string
+	Description string
+	NodeLiteral string // Go composite literal for the root _schemaNode
+}
+
+func (d *AnnotationSchemaDef) TypeName() string { return d.Name }
+func (d *AnnotationSchemaDef) typeDef()         {}
+
 func (d *DynamicSchemaDef) TypeName() string { return d.Name }
 func (d *DynamicSchemaDef) typeDef()         {}
 

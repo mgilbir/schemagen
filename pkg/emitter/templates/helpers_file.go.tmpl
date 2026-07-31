@@ -12,6 +12,9 @@ import (
 {{- if .Helpers.Dynamic}}
 {{template "dyn_helpers"}}
 {{- end}}
+{{- if .Helpers.Annotations}}
+{{template "annotation_helpers"}}
+{{- end}}
 {{- if .Helpers.OneOf}}
 {{template "oneof_helpers"}}
 {{- end}}

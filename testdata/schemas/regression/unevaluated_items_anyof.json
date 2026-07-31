@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UnevaluatedItemsAnyOf",
+  "prefixItems": [{"const": "foo"}],
+  "anyOf": [
+    {"prefixItems": [true, {"const": "bar"}]},
+    {"prefixItems": [true, true, {"const": "baz"}]}
+  ],
+  "unevaluatedItems": false
+}

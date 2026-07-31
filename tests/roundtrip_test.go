@@ -1397,3 +1397,32 @@ func TestUntypedIfThen(t *testing.T) {
 		},
 	)
 }
+
+// TestUnevaluatedItemsWithAnyOf covers unevaluatedItems whose evaluated set
+// depends on which anyOf branches match the value being validated — the case
+// static analysis cannot decide. Expectations are the JSON Schema Test Suite's
+// own (draft2020-12/unevaluatedItems.json).
+func TestUnevaluatedItemsWithAnyOf(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_items_anyof.json",
+		[]string{
+			`["foo","bar"]`,       // one branch matches, nothing unevaluated
+			`["foo","bar","baz"]`, // both branches match, nothing unevaluated
+		},
+		[]string{
+			`["foo","bar",42]`,       // index 2 unevaluated
+			`["foo","bar","baz",42]`, // index 3 unevaluated
+		},
+	)
+}
+
+// TestUnevaluatedItemsCousins covers annotation scope: the unevaluatedItems in
+// the second allOf branch is a cousin of the first and cannot see its
+// annotations, so any non-empty array fails.
+func TestUnevaluatedItemsCousins(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/unevaluated_items_cousins.json",
+		[]string{`[]`},
+		[]string{`[1]`, `["anything"]`},
+	)
+}

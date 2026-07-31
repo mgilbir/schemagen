@@ -27,6 +27,11 @@ func sharedHelpersFor(content string) generator.HelperSet {
 			break
 		}
 	}
+	// The annotation evaluator calls the _dyn* predicates, so it pulls both in.
+	if strings.Contains(content, "_schemaNode") || strings.Contains(content, "_evalNode(") {
+		set.Annotations = true
+		set.Dynamic = true
+	}
 	return set
 }
 

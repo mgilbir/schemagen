@@ -156,16 +156,6 @@ var knownValidationFailures = map[string]string{
 	// validate at runtime, or evaluating contains annotations in nested contexts.
 	// (unevaluatedItems with if/then/else — FIXED via runtime if-condition evaluation with IfItemConstChecks)
 	// (unevaluatedItems can see annotations from if without then and else — FIXED via IfEvalCount tracking)
-	"draft2019-09/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                             "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2019-09/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2019-09/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                    "unevaluatedItems: requires cousin scope isolation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with nested items/with invalid additional item":                                           "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems with anyOf/when one schema matches and has unevaluated items":                             "unevaluatedItems: requires runtime anyOf branch evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems can't see inside cousins/always fails":                                                    "unevaluatedItems: requires cousin scope isolation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems depends on multiple nested contains/7 not evaluated, fails unevaluatedItems":              "unevaluatedItems: requires runtime nested contains evaluation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/only a's are valid":         "unevaluatedItems: requires runtime if/contains annotation propagation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's and b's are valid":      "unevaluatedItems: requires runtime if/contains annotation propagation",
-	"draft2020-12/unevaluatedItems/unevaluatedItems and contains interact to control item dependency relationship/a's, b's and c's are valid": "unevaluatedItems: requires runtime if/contains annotation propagation",
 
 	// cross-draft: cross-draft ref processing issues (0 entries)
 	// (draft2019-09/optional/cross-draft/refs to future drafts — FIXED via InferredAliasDef item validation)

@@ -79,6 +79,8 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
 		{"regression/untyped_oneof_branches", "testdata/schemas/regression/untyped_oneof_branches.json", "testdata/golden/regression/untyped_oneof_branches.go"},
 		{"regression/untyped_if_then", "testdata/schemas/regression/untyped_if_then.json", "testdata/golden/regression/untyped_if_then.go"},
+		{"regression/unevaluated_items_anyof", "testdata/schemas/regression/unevaluated_items_anyof.json", "testdata/golden/regression/unevaluated_items_anyof.go"},
+		{"regression/unevaluated_items_cousins", "testdata/schemas/regression/unevaluated_items_cousins.json", "testdata/golden/regression/unevaluated_items_cousins.go"},
 	}
 }
 

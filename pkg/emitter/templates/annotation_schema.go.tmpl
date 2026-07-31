@@ -1,0 +1,43 @@
+{{define "annotation_schema"}}
+{{- $recv := receiverName .Name -}}
+{{- if .Description}}
+// {{.Name}} - {{.Description}}
+{{- end}}
+// {{.Name}} accepts any JSON value. Its unevaluatedItems constraint depends on
+// which items the schema's applicators evaluate for the value being validated,
+// so the schema is held as data and interpreted at validation time.
+type {{.Name}} struct {
+	_raw json.RawMessage
+}
+
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
+	return nil
+}
+
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if len({{$recv}}._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return {{$recv}}._raw, nil
+}
+
+func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }
+
+func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
+
+// {{.Name}}Schema is the schema {{.Name}} validates against.
+var {{.Name}}Schema = {{.NodeLiteral}}
+
+// Validate checks {{.Name}} against its JSON Schema constraints.
+func ({{$recv}} {{.Name}}) Validate() error {
+	var _v any
+	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+		return fmt.Errorf("cannot decode value: %w", _err)
+	}
+	if !_evalNode(&{{.Name}}Schema, _v).ok {
+		return fmt.Errorf("value does not satisfy the schema")
+	}
+	return nil
+}
+{{- end}}

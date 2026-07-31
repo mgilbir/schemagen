@@ -72,6 +72,9 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	if helpers.Dynamic {
 		imports = append(imports, generator.Import{Path: "math"})
 	}
+	if helpers.Annotations {
+		imports = append(imports, generator.Import{Path: "reflect"})
+	}
 
 	data := helperFileData{
 		PackageName: packageName,
@@ -229,6 +232,18 @@ func (w typeDefWrapper) IsBigIntAlias() bool {
 // AsBigIntAlias returns the wrapped TypeDef as a *generator.BigIntAliasDef, or nil.
 func (w typeDefWrapper) AsBigIntAlias() *generator.BigIntAliasDef {
 	d, _ := w.Def.(*generator.BigIntAliasDef)
+	return d
+}
+
+// IsAnnotationSchema reports whether the wrapped TypeDef is a *generator.AnnotationSchemaDef.
+func (w typeDefWrapper) IsAnnotationSchema() bool {
+	_, ok := w.Def.(*generator.AnnotationSchemaDef)
+	return ok
+}
+
+// AsAnnotationSchema returns the wrapped TypeDef as a *generator.AnnotationSchemaDef, or nil.
+func (w typeDefWrapper) AsAnnotationSchema() *generator.AnnotationSchemaDef {
+	d, _ := w.Def.(*generator.AnnotationSchemaDef)
 	return d
 }
 

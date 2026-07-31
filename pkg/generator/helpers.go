@@ -10,11 +10,12 @@ type HelperSet struct {
 	OneOf              bool // oneofHasRequiredFields
 	OneOfDiscriminator bool // oneofDiscriminatorValue
 	Dynamic            bool // _dyn* value predicates
+	Annotations        bool // _schemaNode and the runtime annotation evaluator
 }
 
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
-	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic
+	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.Annotations
 }
 
 // Merge folds another set into this one.
@@ -22,6 +23,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.OneOf = h.OneOf || other.OneOf
 	h.OneOfDiscriminator = h.OneOfDiscriminator || other.OneOfDiscriminator
 	h.Dynamic = h.Dynamic || other.Dynamic
+	h.Annotations = h.Annotations || other.Annotations
 }
 
 // Helpers reports which shared helpers this file's generated code calls.
@@ -30,6 +32,10 @@ func (f *File) Helpers() HelperSet {
 	for _, td := range f.TypeDefs {
 		switch d := td.(type) {
 		case *DynamicSchemaDef:
+			set.Dynamic = true
+		case *AnnotationSchemaDef:
+			// The evaluator calls the _dyn* predicates.
+			set.Annotations = true
 			set.Dynamic = true
 		case *StructDef:
 			if len(d.OneOfs) > 0 {
