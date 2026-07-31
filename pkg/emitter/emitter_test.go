@@ -643,7 +643,24 @@ func main() {
 	if err != nil {
 		t.Fatalf("generated code failed: %v\n%s", err, string(output))
 	}
-	if strings.TrimSpace(string(output)) != "ok" {
-		t.Fatalf("output = %q, want ok", strings.TrimSpace(string(output)))
+	if programOutput(output) != "ok" {
+		t.Fatalf("output = %q, want ok", programOutput(output))
 	}
+}
+
+// programOutput returns the output of a generated test program with Go
+// toolchain progress lines removed. A cold module cache makes the throwaway
+// module's build print "go: downloading ..." onto the same stream as the
+// program's own output, which would fail an exact-match assertion for reasons
+// that have nothing to do with the generated code.
+func programOutput(out []byte) string {
+	lines := strings.Split(string(out), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "go: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
 }

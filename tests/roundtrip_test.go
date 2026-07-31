@@ -275,7 +275,7 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatalf("round-trip test failed:\n%s\nerror: %v", string(output), err)
 			}
 
-			outputStr := strings.TrimSpace(string(output))
+			outputStr := programOutput(output)
 			if outputStr != "PASS" {
 				t.Fatalf("round-trip test output:\n%s", outputStr)
 			}
@@ -517,7 +517,7 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("defaults test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("defaults test output:\n%s", outputStr)
 	}
@@ -654,7 +654,7 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 		t.Fatalf("unevaluatedItems validation test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("unevaluatedItems validation test output:\n%s", outputStr)
 	}
@@ -686,7 +686,7 @@ func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("crossed-types validation test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("crossed-types validation output:\n%s", outputStr)
 	}
 }
@@ -873,7 +873,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("validation cases failed:\n%s\nerror: %v", string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("validation cases output:\n%s", outputStr)
 	}
 }
@@ -1023,7 +1023,7 @@ func TestFieldNameCollisions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("field-name-collision test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("field-name-collision output:\n%s", outputStr)
 	}
 }
@@ -1174,7 +1174,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("oneof optional-const test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if strings.TrimSpace(string(output)) != "PASS" {
+	if programOutput(output) != "PASS" {
 		t.Fatalf("unexpected output:\n%s", output)
 	}
 }
@@ -1242,7 +1242,7 @@ func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string
 	if err != nil {
 		t.Fatalf("%s failed:\n%s\nerror: %v", moduleName, string(output), err)
 	}
-	if outputStr := strings.TrimSpace(string(output)); outputStr != "PASS" {
+	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("%s output:\n%s", moduleName, outputStr)
 	}
 }

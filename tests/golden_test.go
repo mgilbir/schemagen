@@ -349,7 +349,7 @@ func main() {
 		t.Fatalf("BigInt round-trip test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("BigInt round-trip test output:\n%s", outputStr)
 	}
@@ -472,7 +472,7 @@ func main() {
 		t.Fatalf("validation error path test failed:\n%s\nerror: %v", string(output), err)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
+	outputStr := programOutput(output)
 	if outputStr != "PASS" {
 		t.Fatalf("validation error path test output:\n%s", outputStr)
 	}
@@ -582,7 +582,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("nested remote items test failed:\n%s\nerror: %v", string(output), err)
 	}
-	if strings.TrimSpace(string(output)) != "PASS" {
+	if programOutput(output) != "PASS" {
 		t.Fatalf("nested remote items output:\n%s", string(output))
 	}
 }

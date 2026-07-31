@@ -491,7 +491,7 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 	if err != nil {
 		return fmt.Errorf("round-trip: %s\n%s", err, string(output))
 	}
-	if strings.TrimSpace(string(output)) != "PASS" {
+	if programOutput(output) != "PASS" {
 		return fmt.Errorf("round-trip mismatch:\n%s", string(output))
 	}
 	return nil
@@ -625,7 +625,7 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) erro
 		return fmt.Errorf("run: %s\n%s", err, string(output))
 	}
 
-	result := strings.TrimSpace(string(output))
+	result := programOutput(output)
 	if expectValid {
 		if result != "VALID" {
 			return fmt.Errorf("expected VALID but got: %s", result)
