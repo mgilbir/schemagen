@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # The CI workflow shipped pinned three majors behind current on checkout and
+  # two on setup-go, which nobody noticed until the pins were read by hand.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
