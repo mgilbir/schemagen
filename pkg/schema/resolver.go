@@ -109,22 +109,63 @@ func (r *LocalResolver) resolve(ref string) (*Schema, error) {
 	return r.walkPath(r.root, parts, ref)
 }
 
-// findAnchor searches the schema tree for a $anchor matching the given name.
+// plainNameFragment returns the anchor name an id declares when it is a
+// plain-name fragment such as "#foo", or "" for anything else.
+//
+// Drafts before 2019-09 had no "$anchor": a location-independent identifier was
+// written as {"id": "#foo"}, which names the subschema *without* changing the
+// base URI. "#" is the document root and "#/..." is a JSON Pointer, so neither
+// is an anchor; a non-fragment id like "http://example.com/x.json" changes
+// scope rather than naming a node.
+func plainNameFragment(id string) string {
+	if !strings.HasPrefix(id, "#") {
+		return ""
+	}
+	name := id[1:]
+	if name == "" || strings.HasPrefix(name, "/") {
+		return ""
+	}
+	return name
+}
+
+// anchorNameOf returns the name under which s can be reached as a plain "#name"
+// anchor. Normalize copies a legacy "id" into ID, so both are consulted.
+func anchorNameOf(s *Schema) string {
+	if s.Anchor != "" {
+		return s.Anchor
+	}
+	if name := plainNameFragment(s.ID); name != "" {
+		return name
+	}
+	return plainNameFragment(s.LegacyID)
+}
+
+// changesScope reports whether a subschema's id starts a new document scope.
+// Only a scope-changing id hides the subtree from the parent's anchor search —
+// a plain-name fragment id names a node inside the *current* scope, so the
+// subtree must still be searched.
+func changesScope(s *Schema) bool {
+	return s.ID != "" && plainNameFragment(s.ID) == ""
+}
+
+// findAnchor searches the schema tree for a $anchor matching the given name,
+// or for the pre-2019-09 spelling of the same thing ({"id": "#name"}).
+//
+// The legacy form matters most for documents reached through a SchemaResolver:
+// the generator's own anchor index covers the root document and does understand
+// "id", but a resolver-fetched document is not in that index and is searched
+// here instead.
 func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 	if s == nil {
 		return nil, fmt.Errorf("anchor %q not found", anchor)
 	}
-	if s.Anchor == anchor {
+	if anchorNameOf(s) == anchor {
 		return s, nil
 	}
-	// Search in all sub-schema locations, but skip sub-schemas that declare
-	// their own $id — those create a separate document scope, and their
-	// anchors belong to that scope, not the parent's.
+	// Search in all sub-schema locations, but skip sub-schemas that start their
+	// own document scope — their anchors belong to that scope, not the parent's.
 	for _, sub := range r.allSubSchemas(s) {
-		if sub.ID != "" {
-			// This sub-schema declares its own $id, creating a new document
-			// scope. All anchors within it (including its own) belong to that
-			// scope, not the parent's. Skip entirely.
+		if changesScope(sub) {
 			continue
 		}
 		if found, err := r.findAnchor(sub, anchor); err == nil {

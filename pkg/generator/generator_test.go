@@ -2299,3 +2299,40 @@ func TestNullPropertySchemaReturnsError(t *testing.T) {
 		t.Fatalf("error %q does not mention the property name %q", err.Error(), "a")
 	}
 }
+
+// A $ref reaching into a resolver-fetched document, whose target then refs a
+// plain-name anchor of its own document. The generator's anchor index only
+// covers the root document, so the inner "#foo" is resolved by LocalResolver
+// against the fetched document -- which used to miss the pre-2019-09 spelling
+// ({"id": "#foo"}) and silently degrade the type to any.
+func TestRefIntoRemoteDocumentResolvesLegacyAnchor(t *testing.T) {
+	var remote schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"definitions": {
+			"refToInteger": {"$ref": "#foo"},
+			"A": {"id": "#foo", "type": "integer"}
+		}
+	}`), &remote); err != nil {
+		t.Fatal(err)
+	}
+	remote.Normalize()
+
+	const docURI = "http://example.com/legacy/locationIndependentIdentifier.json"
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{docURI: &remote})
+
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"properties": {"v": {"$ref": "`+docURI+`#/definitions/refToInteger"}}
+	}`), &root); err != nil {
+		t.Fatal(err)
+	}
+	root.Normalize()
+
+	// Not lenient: an unresolved ref must surface as an error rather than as a
+	// silently any-typed field.
+	g := New(Config{PackageName: "testpkg", Resolver: resolver, Draft: schema.Draft04})
+	if _, err := g.Generate(&root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+}

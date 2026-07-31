@@ -1390,3 +1390,60 @@ func TestLocalResolverExtensionRefIsStableAndNormalized(t *testing.T) {
 		t.Errorf("extends inside an extension was not normalized to allOf")
 	}
 }
+
+// Drafts before 2019-09 had no "$anchor": a location-independent identifier was
+// written as {"id": "#foo"}. LocalResolver must find it, because a document
+// reached through a SchemaResolver is searched here rather than through the
+// generator's own anchor index (which does understand "id", but only covers the
+// root document).
+func TestLocalResolverFindsLegacyIDAnchor(t *testing.T) {
+	var s Schema
+	if err := json.Unmarshal([]byte(`{
+		"definitions": {
+			"refToInteger": {"$ref": "#foo"},
+			"A": {"id": "#foo", "type": "integer"}
+		}
+	}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	s.Normalize()
+
+	got, err := NewLocalResolver(&s).Resolve("#foo")
+	if err != nil {
+		t.Fatalf("resolving legacy id anchor: %v", err)
+	}
+	if len(got.Type) != 1 || got.Type[0] != "integer" {
+		t.Errorf("resolved to the wrong node: type = %v, want [integer]", got.Type)
+	}
+}
+
+// A plain-name fragment id names a node inside the current scope, so the search
+// must descend into it. Only a scope-changing id (an actual URI) hides its
+// subtree from the parent's anchor search.
+func TestLocalResolverAnchorScoping(t *testing.T) {
+	var s Schema
+	if err := json.Unmarshal([]byte(`{
+		"definitions": {
+			"inFragmentScope": {"id": "#named", "definitions": {
+				"nested": {"$anchor": "reachable", "type": "string"}
+			}},
+			"inOwnScope": {"id": "http://example.com/other.json", "definitions": {
+				"nested": {"$anchor": "hidden", "type": "string"}
+			}}
+		}
+	}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	s.Normalize()
+	r := NewLocalResolver(&s)
+
+	if _, err := r.Resolve("#named"); err != nil {
+		t.Errorf("a plain-name fragment id should be findable: %v", err)
+	}
+	if _, err := r.Resolve("#reachable"); err != nil {
+		t.Errorf("an anchor under a fragment-id node stays in the parent scope: %v", err)
+	}
+	if _, err := r.Resolve("#hidden"); err == nil {
+		t.Error("an anchor under a scope-changing id must not leak into the parent scope")
+	}
+}
