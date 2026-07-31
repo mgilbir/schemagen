@@ -26,6 +26,10 @@ const jstsRemotesDir = "../testdata/external/JSON-Schema-Test-Suite/remotes"
 // remoteBaseURL is the base URL that the JSTS expects for remote schemas.
 const remoteBaseURL = "http://localhost:1234"
 
+// metaSchemaDir holds the JSON Schema meta-schemas, fetched by
+// "make download-metaschemas". The suite refers to them but does not ship them.
+const metaSchemaDir = "../testdata/external/metaschemas"
+
 // goecma262 module metadata for temp go.mod files.
 const (
 	goecma262Version = "v0.0.0-20260219184840-8bfa4bb752b0"
@@ -124,13 +128,54 @@ func loadRemoteSchemas(t *testing.T) map[string]*schema.Schema {
 	return schemas
 }
 
-// remotesResolver returns a SchemaResolver for the test suite's remote schemas.
+// loadMetaSchemas reads the downloaded meta-schemas, keyed by the $id each one
+// declares rather than by its filename. The download URL and the URI a $ref
+// resolves to are then the same string by construction, so there is no
+// path-to-URI table to drift. Drafts before 2019-09 spell it "id", and several
+// carry a trailing "#" that MappingResolver strips before lookup.
+func loadMetaSchemas(t *testing.T) map[string]*schema.Schema {
+	t.Helper()
+	schemas := make(map[string]*schema.Schema)
+	entries, err := os.ReadDir(metaSchemaDir)
+	if err != nil {
+		return schemas
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(metaSchemaDir, e.Name()))
+		if err != nil {
+			t.Fatalf("reading meta-schema %s: %v", e.Name(), err)
+		}
+		var s schema.Schema
+		if err := json.Unmarshal(data, &s); err != nil {
+			t.Fatalf("parsing meta-schema %s: %v", e.Name(), err)
+		}
+		s.Normalize()
+		id := s.ID
+		if id == "" {
+			id = s.LegacyID
+		}
+		if id == "" {
+			t.Fatalf("meta-schema %s declares no $id", e.Name())
+		}
+		schemas[strings.TrimSuffix(id, "#")] = &s
+	}
+	return schemas
+}
+
+// remotesResolver returns a SchemaResolver for the test suite's remote schemas
+// and the meta-schemas they reference.
 // Returns nil if remotes can't be loaded.
 func remotesResolver(t *testing.T) schema.SchemaResolver {
 	t.Helper()
 	schemas := loadRemoteSchemas(t)
 	if len(schemas) == 0 {
 		return nil
+	}
+	for uri, s := range loadMetaSchemas(t) {
+		schemas[uri] = s
 	}
 	return schema.NewMappingResolver(schemas)
 }
@@ -143,6 +188,12 @@ func requireTestSuite(t *testing.T) {
 	}
 	if _, err := os.Stat(jstsBaseDir); os.IsNotExist(err) {
 		t.Skip("JSON Schema Test Suite not found. Run 'make download-test-suite' to enable external tests.")
+	}
+	// The suite refers to meta-schemas it does not ship. Without them a large
+	// batch of refs cannot resolve, which would look like a wave of real
+	// failures rather than a missing prerequisite.
+	if _, err := os.Stat(metaSchemaDir); os.IsNotExist(err) {
+		t.Skip("meta-schemas not found. Run 'make download-metaschemas' to enable external tests.")
 	}
 }
 
