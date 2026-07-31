@@ -465,14 +465,27 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		// arbitrary keywords referenced via JSON Pointer $ref).
 		if current.Extensions != nil {
 			if raw, ok := current.Extensions[key]; ok {
-				sub, err := current.extensionSchema(key, raw)
+				// Try the whole value as a schema first, then walk any remaining
+				// pointer inside it. That is the right order for a keyword whose
+				// value *is* a schema (a vendor keyword holding "properties",
+				// say), where the remaining tokens name schema fields.
+				if sub, err := current.extensionSchema(key, nil, raw); err == nil {
+					if len(rest) == 0 {
+						return sub, nil
+					}
+					if target, err := r.walkPath(sub, rest, originalRef); err == nil {
+						return target, nil
+					}
+				}
+				// Otherwise the keyword holds a collection and the *element* is
+				// the schema: "examples" is an array, so "#/examples/0" must
+				// index it before parsing. This also covers a keyword whose
+				// value is a plain object of schemas.
+				sub, err := current.extensionSchema(key, rest, raw)
 				if err != nil {
 					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
 				}
-				if len(rest) == 0 {
-					return sub, nil
-				}
-				return r.walkPath(sub, rest, originalRef)
+				return sub, nil
 			}
 		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)
