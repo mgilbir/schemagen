@@ -509,3 +509,38 @@ func TestMultiPackageErrorPaths(t *testing.T) {
 		})
 	}
 }
+
+// A document that refers to itself and is reached through a $ref -- the shape of
+// every JSON Schema meta-schema. Generation used to recurse without bound and
+// exhaust memory; once that terminated, the output still failed to build with
+// "invalid recursive type", because the self-reference was emitted by value.
+// Only compiling it catches the second half.
+func TestSelfReferentialDocumentCompiles(t *testing.T) {
+	src := t.TempDir()
+	// Reduced from the draft-04 meta-schema: a property whose anyOf refs the
+	// document root, which in turn declares that property.
+	writeFile(t, filepath.Join(src, "meta.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/meta.json",
+		"type": "object",
+		"properties": {
+			"additionalItems": {"anyOf": [{"type": "boolean"}, {"$ref": "#"}]},
+			"items": {"anyOf": [{"$ref": "#"}, {"type": "array", "items": {"$ref": "#"}}]},
+			"title": {"type": "string"}
+		}
+	}`)
+	writeFile(t, filepath.Join(src, "root.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/root.json",
+		"title": "Doc",
+		"$ref": "meta.json"
+	}`)
+
+	out := t.TempDir()
+	if err := runGenerateArgs(t, filepath.Join(src, "root.json"), "-o", out, "-p", "gen"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if buildOut, err := buildGenerated(t, out, "example.com/selfref"); err != nil {
+		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
+	}
+}

@@ -85,6 +85,12 @@ type Generator struct {
 	// generation never terminates.
 	nodeTypeNames map[*schema.Schema]string
 
+	// nodesInProgress marks schema nodes whose type is still being generated
+	// further up the stack. A reference back to one of those closes a cycle, so
+	// it must be emitted as a pointer -- Go rejects a struct that contains
+	// itself by value ("invalid recursive type").
+	nodesInProgress map[*schema.Schema]bool
+
 	// rootNameOverride is the per-call root type name from WithRootTypeName;
 	// unlike Config.RootTypeName it is reset on every Generate call.
 	rootNameOverride string
@@ -106,6 +112,7 @@ func New(cfg Config) *Generator {
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
 		nodeTypeNames:      make(map[*schema.Schema]string),
+		nodesInProgress:    make(map[*schema.Schema]bool),
 	}
 }
 
@@ -1197,6 +1204,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if _, ok := g.nodeTypeNames[s]; !ok {
 		g.nodeTypeNames[s] = name
 	}
+	// Keyed on the node as it arrived: promoteConstToEnum below may rebind s.
+	inProgressNode := s
+	g.nodesInProgress[inProgressNode] = true
+	defer delete(g.nodesInProgress, inProgressNode)
 	g.config.CrossPackage.RecordType(s, g.config.ImportPath, name)
 
 	// Const -> treat as single-element enum for validation purposes.
@@ -4113,7 +4124,8 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}
 		}
 		if inner == "object" && hasProperties(s) {
-			return &PointerType{Inner: &NamedType{Name: g.materializeNamed(s, contextName)}}
+			n, _ := g.materializeNamed(s, contextName)
+			return &PointerType{Inner: &NamedType{Name: n}}
 		}
 		// Nullable array: recurse into items so the element type is preserved
 		// (mirrors the non-nullable array branch below). Without this, a
@@ -4135,11 +4147,13 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 
 	// Object with properties → nested struct (explicit type:"object" or inferred from properties keyword)
 	if primaryType == "object" && hasProperties(s) {
-		return &NamedType{Name: g.materializeNamed(s, contextName)}
+		n, cyclic := g.materializeNamed(s, contextName)
+		return namedOrPointer(n, cyclic)
 	}
 	// Properties without explicit type → pointer to struct (nil when absent, enabling omitempty)
 	if primaryType == "" && hasProperties(s) {
-		return &PointerType{Inner: &NamedType{Name: g.materializeNamed(s, contextName)}}
+		n, _ := g.materializeNamed(s, contextName)
+		return &PointerType{Inner: &NamedType{Name: n}}
 	}
 
 	// allOf / anyOf-with-properties without direct properties → delegate to generateTypeDef
@@ -4148,7 +4162,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
 	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
 	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
-		return &NamedType{Name: canonical}
+		return namedOrPointer(canonical, g.nodesInProgress[s])
 	}
 	if !g.generating[contextName] && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		g.generating[contextName] = true
@@ -4192,12 +4206,24 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 // with the context name one segment longer each time. Keyed on the name alone,
 // the generated/in-progress guards never fire; the node is regenerated forever
 // and the names grow without bound. Keying on node identity terminates it.
-func (g *Generator) materializeNamed(s *schema.Schema, contextName string) string {
+// It also reports whether the reference closes a cycle -- the node is still
+// being generated further up the stack -- in which case the caller must emit a
+// pointer, since Go rejects a type that contains itself by value.
+func (g *Generator) materializeNamed(s *schema.Schema, contextName string) (string, bool) {
 	if canonical, ok := g.nodeTypeNames[s]; ok {
-		return canonical
+		return canonical, g.nodesInProgress[s]
 	}
 	_ = g.generateTypeDef(contextName, s)
-	return contextName
+	return contextName, false
+}
+
+// namedOrPointer builds a reference to name, pointer-wrapped when it closes a
+// recursive cycle.
+func namedOrPointer(name string, cyclic bool) GoType {
+	if cyclic {
+		return &PointerType{Inner: &NamedType{Name: name}}
+	}
+	return &NamedType{Name: name}
 }
 
 // buildDocumentRoots walks the schema tree and registers every node that declares
