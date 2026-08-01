@@ -1237,6 +1237,29 @@ func TestMultiTypeWithSiblings(t *testing.T) {
 	)
 }
 
+// TestNullEntryInCollection covers a JSON null sitting in a slice or a map
+// whose elements are pointers. encoding/json stores a nil without ever calling
+// the element type's UnmarshalJSON, so the validation loop used to call a
+// value-receiver Validate through that nil and panic. A null is now judged
+// against the element schema: rejected where the schema names a type that
+// excludes null, passed over where it admits one.
+func TestNullEntryInCollection(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/null_entry_in_collection.json",
+		[]string{
+			`{}`,
+			`{"kids":[]}`,
+			`{"kids":[{"name":"a"}]}`,
+			`{"byName":{"a":{"name":"b"}}}`,
+			`{"loose":[null]}`,
+		},
+		[]string{
+			`{"kids":[null]}`,
+			`{"byName":{"a":null}}`,
+		},
+	)
+}
+
 // TestOneOfOptionalConstUnmarshal covers a oneOf whose variants share a const
 // property that is NOT required. The heuristic discriminator must not fire on
 // it (dispatching on a missing optional property would reject valid data);

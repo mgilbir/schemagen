@@ -6135,12 +6135,14 @@ func (g *Generator) populateValidatableFields() {
 			elemName := sliceElementTypeName(f.Type)
 			if elemName != "" && (validatableTypes[elemName] || crossPackageValidatable(f.Type)) {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
-					FieldName: f.Name,
-					JSONName:  f.JSONName,
-					GoType:    f.Type,
-					IsPointer: f.Type.IsPointer(),
-					IsSlice:   true,
-					OmitEmpty: f.OmitEmpty,
+					FieldName:       f.Name,
+					JSONName:        f.JSONName,
+					GoType:          f.Type,
+					IsPointer:       f.Type.IsPointer(),
+					IsSlice:         true,
+					ElemIsPointer:   sliceElementIsPointer(f.Type),
+					ElemRejectsNull: g.typeRejectsNull(elemName),
+					OmitEmpty:       f.OmitEmpty,
 				})
 				continue
 			}
@@ -6149,12 +6151,14 @@ func (g *Generator) populateValidatableFields() {
 			valueName := mapValueTypeName(f.Type)
 			if valueName != "" && (validatableTypes[valueName] || crossPackageValidatable(f.Type)) {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
-					FieldName: f.Name,
-					JSONName:  f.JSONName,
-					GoType:    f.Type,
-					IsPointer: f.Type.IsPointer(),
-					IsMap:     true,
-					OmitEmpty: f.OmitEmpty,
+					FieldName:       f.Name,
+					JSONName:        f.JSONName,
+					GoType:          f.Type,
+					IsPointer:       f.Type.IsPointer(),
+					IsMap:           true,
+					ElemIsPointer:   mapValueIsPointer(f.Type),
+					ElemRejectsNull: g.typeRejectsNull(valueName),
+					OmitEmpty:       f.OmitEmpty,
 				})
 			}
 		}
@@ -6404,6 +6408,19 @@ func (g *Generator) typeRejectsNull(name string) bool {
 		}
 	}
 	return false
+}
+
+// mapValueIsPointer reports whether a map's values are pointers.
+func mapValueIsPointer(t GoType) bool {
+	inner := t
+	if pt, ok := inner.(*PointerType); ok {
+		inner = pt.Inner
+	}
+	mt, ok := inner.(*MapType)
+	if !ok {
+		return false
+	}
+	return mt.ValueType.IsPointer()
 }
 
 // zeroLiteralForType returns the Go zero value literal for a given type.

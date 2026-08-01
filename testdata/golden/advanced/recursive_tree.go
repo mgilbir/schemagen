@@ -97,6 +97,9 @@ func (t TreeNode) Validate() error {
 		}
 	}
 	for _i, _item := range t.Children {
+		if _item == nil {
+			return fmt.Errorf("children[%d]: null is not allowed", _i)
+		}
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("children[%d].%w", _i, err)
 		}

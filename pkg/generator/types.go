@@ -141,12 +141,23 @@ type DependentPropertyType struct {
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
 // that should be called from the parent struct's Validate().
 type ValidatableFieldDef struct {
-	FieldName   string // Go field name (PascalCase)
-	JSONName    string // JSON property name (for error path context)
-	GoType      GoType // the Go type of the field (for zero-value comparison)
-	IsPointer   bool   // true if the field is a pointer type (needs nil check)
-	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
-	IsMap       bool   // true if the field is a map of validatable values (needs iteration, keyed error path)
+	FieldName string // Go field name (PascalCase)
+	JSONName  string // JSON property name (for error path context)
+	GoType    GoType // the Go type of the field (for zero-value comparison)
+	IsPointer bool   // true if the field is a pointer type (needs nil check)
+	IsSlice   bool   // true if the field is a slice of validatable elements (needs iteration)
+	IsMap     bool   // true if the field is a map of validatable values (needs iteration, keyed error path)
+
+	// ElemIsPointer is set when a slice's elements or a map's values are
+	// pointers. encoding/json turns a JSON null into a nil entry without
+	// consulting the element type's UnmarshalJSON, so the emitted loop meets a
+	// nil it must not call a value-receiver Validate through.
+	ElemIsPointer bool
+	// ElemRejectsNull is set when the element type's own schema does not admit
+	// null, which makes that nil entry a validation failure rather than
+	// something to pass over.
+	ElemRejectsNull bool
+
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
 }
