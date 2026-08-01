@@ -814,6 +814,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}[%d].%w", _i, err)
 		}
 	}
+	{{- else if and .IsMap .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil {
+		for _k, _val := range *{{$recv}}.{{.FieldName}} {
+			if err := _val.Validate(); err != nil {
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%q].%w", _k, err)
+			}
+		}
+	}
+	{{- else if .IsMap}}
+	for _k, _val := range {{$recv}}.{{.FieldName}} {
+		if err := _val.Validate(); err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%q].%w", _k, err)
+		}
+	}
 	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {

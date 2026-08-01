@@ -146,6 +146,7 @@ type ValidatableFieldDef struct {
 	GoType      GoType // the Go type of the field (for zero-value comparison)
 	IsPointer   bool   // true if the field is a pointer type (needs nil check)
 	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
+	IsMap       bool   // true if the field is a map of validatable values (needs iteration, keyed error path)
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
 }

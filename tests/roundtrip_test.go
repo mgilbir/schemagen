@@ -1150,6 +1150,25 @@ func TestDraft3TypeMultiBranch(t *testing.T) {
 	)
 }
 
+// TestAdditionalPropertiesTypedValues covers an object property whose whole
+// shape is additionalProperties. Its values carry a schema, so the field is a
+// map of that type and every value is validated; map[string]any would accept
+// anything the schema forbids.
+func TestAdditionalPropertiesTypedValues(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/additional_properties_typed_values.json",
+		[]string{
+			`{}`,
+			`{"definitions":{}}`,
+			`{"definitions":{"a":{"name":"xy"}}}`,
+		},
+		[]string{
+			`{"definitions":{"a":{"name":"x"}}}`,
+			`{"definitions":{"a":{}}}`,
+		},
+	)
+}
+
 // TestDraft3TypeUnionProperty covers a property whose draft-3 "type" array
 // mixes a schema alternative with "array" — the shape the draft-3 meta-schema
 // gives "items". The property must accept both an object matching the

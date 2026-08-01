@@ -4130,7 +4130,11 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			return &PrimitiveType{Name: "json.RawMessage"}
 		}
 		goName := refToGoName(effRef)
-		if refSchema := g.resolveRefInContext(effRef, s); refSchema != nil {
+		// resolveEffectiveRefSchema, not resolveRefInContext: a $recursiveRef
+		// resolves against the dynamic scope, and resolving it statically here
+		// would pick the document that lexically contains it rather than the
+		// one the reference was entered from.
+		if refSchema := g.resolveEffectiveRefSchema(s); refSchema != nil {
 			if foreign, ok := g.foreignTypeFor(refSchema); ok {
 				return foreign
 			}
@@ -4231,6 +4235,24 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil {
 		itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 		return &ArrayType{ItemType: itemType}
+	}
+
+	// Object whose whole shape is additionalProperties: no declared property
+	// names, every value governed by one schema. That is a map, and its value
+	// type is the one the schema names -- map[string]any would drop the schema
+	// and with it any validation of what the object holds.
+	//
+	// Only when the value schema materializes into a generated type, since that
+	// is what the parent's Validate dispatches to. A value schema that resolves
+	// to a bare Go type carries nothing to dispatch on, and retyping the field
+	// for it would change the generated API without validating anything more.
+	if primaryType == "object" && !hasProperties(s) && len(s.PatternProperties) == 0 &&
+		s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil &&
+		!s.AdditionalProperties.Schema.IsBooleanSchema() {
+		valueType := g.resolveArrayItemType(s.AdditionalProperties.Schema, contextName+"Value")
+		if namedTypeName(valueType) != "" {
+			return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
+		}
 	}
 
 	// Primitive or default
@@ -6120,6 +6142,20 @@ func (g *Generator) populateValidatableFields() {
 					IsSlice:   true,
 					OmitEmpty: f.OmitEmpty,
 				})
+				continue
+			}
+			// Map of named type: an object whose shape is additionalProperties,
+			// so every value carries the same schema and validates against it.
+			valueName := mapValueTypeName(f.Type)
+			if valueName != "" && (validatableTypes[valueName] || crossPackageValidatable(f.Type)) {
+				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
+					FieldName: f.Name,
+					JSONName:  f.JSONName,
+					GoType:    f.Type,
+					IsPointer: f.Type.IsPointer(),
+					IsMap:     true,
+					OmitEmpty: f.OmitEmpty,
+				})
 			}
 		}
 	}
@@ -6318,6 +6354,56 @@ func sliceElementTypeName(t GoType) string {
 		return ""
 	}
 	return namedTypeName(st.ItemType)
+}
+
+// mapValueTypeName extracts the name of a map's value type when it is a named
+// type (possibly behind a pointer). Returns "" for anything else.
+func mapValueTypeName(t GoType) string {
+	inner := t
+	if pt, ok := inner.(*PointerType); ok {
+		inner = pt.Inner
+	}
+	mt, ok := inner.(*MapType)
+	if !ok {
+		return ""
+	}
+	return namedTypeName(mt.ValueType)
+}
+
+// sliceElementIsPointer reports whether a slice's elements are pointers.
+func sliceElementIsPointer(t GoType) bool {
+	inner := t
+	if pt, ok := inner.(*PointerType); ok {
+		inner = pt.Inner
+	}
+	st, ok := inner.(*ArrayType)
+	if !ok {
+		return false
+	}
+	return st.ItemType.IsPointer()
+}
+
+// typeRejectsNull reports whether a generated type's schema declared a type
+// that does not include null, so a JSON null in that position is invalid rather
+// than merely absent. Types that carry no such answer report false, which
+// leaves a null passed over rather than wrongly rejected.
+func (g *Generator) typeRejectsNull(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != name {
+			continue
+		}
+		switch d := td.(type) {
+		case *StructDef:
+			return d.NeedsNullCheck
+		case *AliasDef:
+			return d.NeedsNullCheck
+		case *InferredAliasDef:
+			return d.NeedsNullCheck
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // zeroLiteralForType returns the Go zero value literal for a given type.
