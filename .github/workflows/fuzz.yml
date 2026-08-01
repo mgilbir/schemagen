@@ -69,9 +69,13 @@ jobs:
       #
       # go test writes failing inputs to tests/testdata/fuzz/<FuzzName>/ (the
       # generated non-failing corpus lives in the build cache and is not worth
-      # keeping). On a clean run this directory holds only the committed seeds,
-      # so the upload is harmless noise; if-no-files-found: ignore keeps the
-      # job quiet when the fuzz target has no testdata directory at all.
+      # keeping). Nothing is committed there -- seeds live as readable .json
+      # under testdata/schemas/adversarial, which FuzzGenerate walks -- so on a
+      # clean run the directory does not exist at all and if-no-files-found:
+      # ignore keeps the job quiet. Anything uploaded here is therefore a real
+      # find. Treat it as a starting point rather than the reproducer: when a
+      # crash kills the minimizer, go saves the last input *sent*, which is
+      # often truncated and does not reproduce on its own.
       - name: upload crashers
         if: always()
         uses: actions/upload-artifact@v7
