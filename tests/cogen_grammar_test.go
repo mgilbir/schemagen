@@ -70,7 +70,7 @@ const coMaxDepth = 3
 
 // coKnownGaps records constructs the grammar avoids because schemagen is
 // already known to handle them incorrectly. They are excluded so the harness
-// reports regressions rather than re-reporting the same four defects on every
+// reports regressions rather than re-reporting the same defects on every
 // iteration, and each is reachable again by setting
 // SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
 // instead of being claims in a comment. Every one of them was found by this
@@ -96,24 +96,6 @@ func coGapItemConstraints() bool { return coIncludeKnownGaps }
 //	schema   {"type":"object","properties":{"a":{"type":"array","items":{"const":5}}}}
 //	instance {"a":[9998]}   accepted
 func coGapConstItems() bool { return coIncludeKnownGaps }
-
-// coGapAbsentNull: an optional {"type":"null"} property emits *any with a
-// plain `json:"nothing"` tag — no omitempty — so a property the input omitted
-// comes back as an explicit null and the round-trip fails. The grammar
-// therefore always puts null-typed properties in the instance.
-//
-//	schema   {"type":"object","properties":{"n":{"type":"null"}}}
-//	instance {}
-//	marshals {"n":null}
-func coGapAbsentNull() bool { return coIncludeKnownGaps }
-
-// coGapNullType: {"type":"null"} is not enforced at all. The field is *any,
-// which accepts any JSON value, and no validation rule is emitted, so no
-// mutation of a null-typed value can be rejected.
-//
-//	schema   {"type":"object","properties":{"n":{"type":"null"}},"required":["n"]}
-//	instance {"n":123}   accepted by both UnmarshalJSON and Validate
-func coGapNullType() bool { return coIncludeKnownGaps }
 
 // coGapZeroNamedPrimitive: an optional property whose Go type is a *named*
 // primitive (a $ref to a string/integer/number definition, or an inline
@@ -334,11 +316,6 @@ func (b *coBuilder) buildObject(depth, visible int) *coNode {
 		child := b.buildValue(depth+1, visible)
 		p := &coProp{name: names[i], node: child, required: b.chance(2)}
 		p.present = p.required || !b.chance(4)
-		// An absent null-typed property comes back as an explicit null and
-		// breaks the round-trip; see coGapAbsentNull.
-		if child.kind == coNull && !coGapAbsentNull() {
-			p.present = true
-		}
 		n.props = append(n.props, p)
 	}
 	return n
@@ -932,15 +909,10 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		})
 
 	case coNull:
-		// {"type":"null"} emits *any and no validation rule, so there is no
-		// edit a conforming generator could make that Validate would reject.
-		// See coGapNullType.
-		if coGapNullType() {
-			*out = append(*out, coMutation{
-				Keyword: "type", Path: path, Prop: prop, Value: 123,
-				Want: []string{prop},
-			})
-		}
+		*out = append(*out, coMutation{
+			Keyword: "type", Path: path, Prop: prop, Value: 123,
+			Want: []string{prop},
+		})
 
 	case coEnum:
 		*out = append(*out, coMutation{
@@ -1065,11 +1037,9 @@ func coReduce(d *coDoc) []*coDoc {
 					out = append(out, c)
 				}
 				if !n.props[j].required && n.props[j].present {
-					if n.props[j].node.kind != coNull || coGapAbsentNull() {
-						c := d.clone()
-						coNodesOf(c)[i].props[j].present = false
-						out = append(out, c)
-					}
+					c := d.clone()
+					coNodesOf(c)[i].props[j].present = false
+					out = append(out, c)
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {

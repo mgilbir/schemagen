@@ -2839,3 +2839,176 @@ func TestNullSubschemaMemoDoesNotWaveThroughSecondRef(t *testing.T) {
 		t.Fatalf("error %q does not locate the null subschema", err.Error())
 	}
 }
+
+// TestNullTypedPropertyIsEnforced pins the representation of a {"type":"null"}
+// property. It was *any carrying no validation rule at all: the field accepted
+// every JSON value and Validate() had nothing to say about it, so a schema
+// stating "this must be null" accepted an integer. It now resolves to the same
+// raw-value wrapper a *named* null-only schema already got, whose Validate
+// admits nothing but null.
+func TestNullTypedPropertyIsEnforced(t *testing.T) {
+	input := `{
+		"title": "Tombstone",
+		"type": "object",
+		"properties": {"n": {"type":"null"}},
+		"required": ["n"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var tombstone *StructDef
+	var wrapper *TypeOnlySchemaDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Tombstone" {
+				tombstone = d
+			}
+		case *TypeOnlySchemaDef:
+			if d.Name == "TombstoneN" {
+				wrapper = d
+			}
+		}
+	}
+	if tombstone == nil {
+		t.Fatalf("expected Tombstone struct")
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a TombstoneN raw-value wrapper for the null-typed property")
+	}
+	if len(wrapper.AllowedTypes) != 1 || wrapper.AllowedTypes[0] != "null" {
+		t.Fatalf("wrapper allowed types = %#v, want [null]", wrapper.AllowedTypes)
+	}
+
+	n, ok := fieldByJSONName(tombstone, "n")
+	if !ok {
+		t.Fatalf("expected field for property n")
+	}
+	if got := n.Type.GoTypeName(); got != "TombstoneN" {
+		t.Fatalf("null-typed field type = %q, want TombstoneN", got)
+	}
+	// The wrapper only enforces anything if the parent's Validate() calls it.
+	if !hasValidatableField(tombstone.ValidatableFields, "n") {
+		t.Fatalf("null-typed field is not validated by Tombstone: %#v", tombstone.ValidatableFields)
+	}
+}
+
+// TestOptionalNullTypedPropertyIsOmittedWhenAbsent covers the other half of the
+// same representation. The field carried a plain `json:"n"` tag — omitempty was
+// suppressed for null-typed properties, because a nil *any could not say whether
+// the input held a null or nothing at all — so a property the input omitted came
+// back as an explicit null. The wrapper keeps the bytes it was handed, which
+// tells the two apart, and ",omitzero" drops exactly the absent one.
+func TestOptionalNullTypedPropertyIsOmittedWhenAbsent(t *testing.T) {
+	input := `{
+		"title": "Tombstone",
+		"type": "object",
+		"properties": {"n": {"type":"null"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var tombstone *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Tombstone" {
+			tombstone = d
+		}
+	}
+	if tombstone == nil {
+		t.Fatalf("expected Tombstone struct")
+	}
+	n, ok := fieldByJSONName(tombstone, "n")
+	if !ok {
+		t.Fatalf("expected field for property n")
+	}
+	if !n.OmitEmpty {
+		t.Fatalf("optional null-typed field is emitted even when the input omitted it")
+	}
+	// ",omitzero", not ",omitempty": the wrapper is a struct, which omitempty
+	// never considers empty, and its MarshalJSON writes null for an absent value.
+	if !n.OmitZero {
+		t.Fatalf("optional null-typed field uses ,omitempty, want ,omitzero")
+	}
+}
+
+// TestNullVariantOfAOneOfStaysAPointer guards the trade the fix must not make.
+// A oneOf (or a type list) naming null beside one other alternative is the
+// idiomatic spelling of "nullable", and it resolves to a pointer to that
+// alternative — not to the raw-value wrapper a bare {"type":"null"} now gets.
+// omitempty stays suppressed there, because nil is the only thing such a field
+// has to say both "absent" and "null" with.
+func TestNullVariantOfAOneOfStaysAPointer(t *testing.T) {
+	input := `{
+		"title": "Banner",
+		"type": "object",
+		"properties": {
+			"note": {"oneOf": [{"type":"string"}, {"type":"null"}]},
+			"tone": {"type": ["string", "null"]}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var banner *StructDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Banner" {
+				banner = d
+			}
+		case *TypeOnlySchemaDef:
+			t.Fatalf("nullable-via-oneOf generated a raw-value wrapper %q", d.Name)
+		}
+	}
+	if banner == nil {
+		t.Fatalf("expected Banner struct")
+	}
+	for _, name := range []string{"note", "tone"} {
+		f, ok := fieldByJSONName(banner, name)
+		if !ok {
+			t.Fatalf("expected field for property %q", name)
+		}
+		if got := f.Type.GoTypeName(); got != "*string" {
+			t.Fatalf("%s type = %q, want *string", name, got)
+		}
+		if f.OmitEmpty || f.OmitZero {
+			t.Fatalf("%s is dropped when nil, which loses a present null", name)
+		}
+	}
+}
+
+func hasValidatableField(fields []ValidatableFieldDef, jsonName string) bool {
+	for _, f := range fields {
+		if f.JSONName == jsonName {
+			return true
+		}
+	}
+	return false
+}

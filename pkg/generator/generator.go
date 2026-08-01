@@ -1984,22 +1984,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 
 		omitEmpty := g.config.OmitEmpty && !required
-		// Never use omitempty for null-typed properties — omitempty strips nil values
-		// but {"foo": null} must be preserved in round-trip.
-		if omitEmpty && isNullOnly(propSchema) {
-			omitEmpty = false
-		}
-		// Suppress omitempty for properties whose schema explicitly includes null
-		// (via type list or anyOf/oneOf composition). These generate pointer types
-		// where omitempty would incorrectly drop JSON null values.
-		// NOTE: This does NOT suppress omitempty for all pointer types — recursive
-		// self-refs also produce pointers but should keep omitempty so that absent
-		// optional fields are omitted rather than emitted as null.
-		if omitEmpty && isNullable(propSchema) {
-			omitEmpty = false
-		}
-		if omitEmpty && g.isNullableComposition(propSchema) {
-			omitEmpty = false
+		// A null-only property resolves to the raw-value wrapper, which keeps the
+		// bytes it was handed: there a present null and an absent property are
+		// different values, and the ",omitzero" tag computed below drops exactly
+		// the absent one. Every other spelling of "may be null" resolves to a
+		// pointer, whose nil means both, so the suppressions apply to those.
+		nullSurvivesOmit := isNullOnly(propSchema) && g.isRawValueWrapperType(goType)
+		if omitEmpty && !nullSurvivesOmit {
+			// Suppress omitempty for properties whose schema explicitly includes null
+			// (via type list or anyOf/oneOf composition). These generate pointer types
+			// where omitempty would incorrectly drop JSON null values.
+			// NOTE: This does NOT suppress omitempty for all pointer types — recursive
+			// self-refs also produce pointers but should keep omitempty so that absent
+			// optional fields are omitted rather than emitted as null.
+			if isNullable(propSchema) || g.isNullableComposition(propSchema) {
+				omitEmpty = false
+			}
 		}
 		// Optional array/slice fields are left as []T: a slice is already nilable,
 		// so omitempty omits it when nil. (Absent and an explicit empty [] both
@@ -4241,6 +4241,12 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// only one of them would keep. Checked before the nullable case, which only
 	// handles a single non-null type.
 	if goType, ok := g.multiTypeUnionType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
+	// A property that must be null. Checked before the nullable case, whose
+	// pointer says neither of the two things this schema needs said.
+	if goType, ok := g.nullOnlyWrapperType(s, parentName+fieldName); ok {
 		return goType, nil
 	}
 
@@ -7452,6 +7458,38 @@ func (g *Generator) multiTypeUnionType(s *schema.Schema, contextName string) (Go
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	})
+	return &NamedType{Name: contextName}, true
+}
+
+// nullOnlyWrapperType represents a {"type":"null"} property as the same
+// raw-value wrapper the schema already becomes when it is named -- a $defs entry
+// or a document root, via extractTypeOnlySchemaDef -- so an inline occurrence is
+// not the one spelling that means less than the others.
+//
+// The pointer it would otherwise get says neither of the two things the schema
+// needs said. *any accepts every JSON value, so nothing rejects a property that
+// is not null; and encoding/json leaves the pointer nil for both a present null
+// and an absent key, so no tag can emit the first without inventing the second.
+// The wrapper keeps the bytes it was handed, which answers both: its Validate
+// admits nothing but null, and an absent property leaves it empty, which is its
+// zero value and so is dropped by the ",omitzero" tag the field carries.
+//
+// Only when "type" is the whole schema. A null-only schema stating anything else
+// is left to the paths that carry those keywords, since the wrapper expresses
+// the type constraint and nothing more.
+func (g *Generator) nullOnlyWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
+	if !isNullOnly(s) {
+		return nil, false
+	}
+	def := g.extractTypeOnlySchemaDef(contextName, s)
+	if def == nil {
+		return nil, false
+	}
+	if g.generated[contextName] {
+		return &NamedType{Name: contextName}, true
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
 	return &NamedType{Name: contextName}, true
 }
 
