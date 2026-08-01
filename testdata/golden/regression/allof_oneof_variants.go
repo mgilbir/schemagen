@@ -121,7 +121,7 @@ type DiaryField struct {
 	Min                  *float64                   `json:"min,omitempty"`
 	Name                 string                     `json:"name"`
 	Type                 string                     `json:"type"`
-	Widget               DiaryFieldWidget           `json:"widget,omitempty"`
+	Widget               *DiaryFieldWidget          `json:"widget,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
@@ -469,7 +469,7 @@ func (d DiaryField) Validate() error {
 			return fmt.Errorf("oneOf: matched %d variants, expected exactly 1", _oneOfMatches)
 		}
 	}
-	if d.Widget != "" {
+	if d.Widget != nil {
 		if err := d.Widget.Validate(); err != nil {
 			return fmt.Errorf("widget.%w", err)
 		}

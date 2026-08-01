@@ -45,7 +45,7 @@ func (t TaskStatus) Validate() error {
 }
 
 type Task struct {
-	Priority             TaskPriority               `json:"priority,omitempty"`
+	Priority             *TaskPriority              `json:"priority,omitempty"`
 	Status               TaskStatus                 `json:"status"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -129,7 +129,7 @@ func (t Task) Validate() error {
 			}
 		}
 	}
-	if t.Priority != "" {
+	if t.Priority != nil {
 		if err := t.Priority.Validate(); err != nil {
 			return fmt.Errorf("priority.%w", err)
 		}

@@ -27,7 +27,7 @@ func (n Num) Validate() error {
 }
 
 type QuotedPropertyName struct {
-	FooBar               Num                        `json:"-"`
+	FooBar               *Num                       `json:"-"`
 	PctD                 *string                    `json:"pct%d,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -103,7 +103,11 @@ func (q QuotedPropertyName) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	{
+	// The property name cannot go in a struct tag, so omitempty never reaches
+	// this field: an absent optional value has to be skipped by hand, or the
+	// null a nil pointer marshals to would be written as if the property were
+	// present with a null value.
+	if q.FooBar != nil {
 		raw, err := json.Marshal(q.FooBar)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", err)
@@ -123,7 +127,7 @@ func (q QuotedPropertyName) Validate() error {
 			return fmt.Errorf("pct%%d: length %d is less than minimum 1", utf8.RuneCountInString(*q.PctD))
 		}
 	}
-	if q.FooBar != 0 {
+	if q.FooBar != nil {
 		if err := q.FooBar.Validate(); err != nil {
 			return fmt.Errorf("foo\"bar.%w", err)
 		}

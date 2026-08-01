@@ -185,7 +185,7 @@ type Trigger struct {
 	Notify               []string                   `json:"notify,omitzero"`
 	Title                *string                    `json:"title,omitempty"`
 	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
-	Type                 TriggerType                `json:"type,omitempty"`
+	Type                 *TriggerType               `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -260,7 +260,7 @@ func (t Trigger) Validate() error {
 			return fmt.Errorf("tool[%d].%w", _i, err)
 		}
 	}
-	if t.Type != "" {
+	if t.Type != nil {
 		if err := t.Type.Validate(); err != nil {
 			return fmt.Errorf("type.%w", err)
 		}

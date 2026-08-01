@@ -53,7 +53,7 @@ const coMaxDepth = 3
 //	boolean         type
 //	null            type
 //	enum            2..4 members, all strings or all integers
-//	const           one string or integer member
+//	const           one string, integer or boolean member
 //	$defs + $ref    0..3 definitions; a definition body is an object, a
 //	                bounded string/integer/number, or an enum. Definition i
 //	                may $ref definitions < i, so the graph is acyclic.
@@ -96,28 +96,6 @@ func coGapItemConstraints() bool { return coIncludeKnownGaps }
 //	schema   {"type":"object","properties":{"a":{"type":"array","items":{"const":5}}}}
 //	instance {"a":[9998]}   accepted
 func coGapConstItems() bool { return coIncludeKnownGaps }
-
-// coGapZeroNamedPrimitive: an optional property whose Go type is a *named*
-// primitive (a $ref to a string/integer/number definition, or an inline
-// enum/const) is emitted as a non-pointer with omitempty, and its Validate
-// call is guarded by a `!= <zero>` test. A Go zero value therefore both
-// disappears from the marshalled output and escapes validation. The grammar
-// keeps such nodes away from the zero value: primitive definitions use
-// minLength >= 2 or a range whose low end is at least 3 steps above zero, and
-// enum/const members are never "", 0 or false.
-//
-//	schema   {"$defs":{"C":{"type":"integer","minimum":0}},
-//	          "type":"object","properties":{"c":{"$ref":"#/$defs/C"}}}
-//	instance {"c":0}
-//	marshals {}                      // round-trip loses the property
-//	          and Validate skips the minimum check for the same reason
-//
-// Unlike the other three, the toggle only makes this *reachable*, not
-// frequent: it needs a primitive definition, referenced from an optional
-// property, whose value lands exactly on the Go zero, and 400 iterations of
-// the widened grammar did not produce one. The reproducer above is the
-// demonstration; the toggle is not.
-func coGapZeroNamedPrimitive() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -172,13 +150,12 @@ type coNode struct {
 
 	// integer / number. Values live on a lattice of `step`; lo and hi are
 	// lattice points, and the emitted bounds are derived from them.
-	step             float64
-	lo, hi           float64
-	minStyle         coBoundStyle
-	maxStyle         coBoundStyle
-	emitMultipleOf   bool
-	numValue         float64
-	positiveRequired bool
+	step           float64
+	lo, hi         float64
+	minStyle       coBoundStyle
+	maxStyle       coBoundStyle
+	emitMultipleOf bool
+	numValue       float64
 
 	// boolean
 	boolValue bool
@@ -222,12 +199,17 @@ var coPropNames = []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtro
 
 var coDefNames = []string{"DefA", "DefB", "DefC"}
 
-var coEnumWords = []string{"red", "green", "blue", "amber", "cyan", "teal"}
+// coEnumWords includes the empty string for the same reason coEnumInts includes
+// zero: it is the Go zero of the named string type an enum or const generates,
+// and an optional property holding it is the case a value field with omitempty
+// used to lose.
+var coEnumWords = []string{"", "red", "green", "blue", "amber", "cyan", "teal"}
 
-// coEnumInts are distinct and positive: a zero member would be the Go zero of
-// the generated named type, which is the trap coGapZeroNamedPrimitive
-// describes.
-var coEnumInts = []int64{3, 5, 7, 11, 13, 17}
+// coEnumInts are distinct. Zero is among them on purpose: it is the Go zero of
+// the generated named type, so an optional property carrying it is the case
+// where omitempty on a value field would drop it from the output and skip the
+// enum's own Validate.
+var coEnumInts = []int64{0, 3, 5, 7, 11, 13, 17}
 
 const coOffString = "zzz_not_a_member"
 
@@ -288,20 +270,21 @@ func coBuild(seed uint64) *coDoc {
 
 func (b *coBuilder) chance(n int) bool { return b.rng.IntN(n) == 0 }
 
-// buildDefBody builds the body of a $defs entry. Primitive bodies become named
-// Go types whose optional uses carry omitempty and a zero-value guard, so they
-// are built to stay clear of the Go zero — see coGapZeroNamedPrimitive.
+// buildDefBody builds the body of a $defs entry. A primitive body becomes a
+// named Go type, and an optional property referencing one is the case where a
+// value landing on the Go zero used to vanish from the output; nothing here
+// steers away from that value any more.
 func (b *coBuilder) buildDefBody(depth, visible int) *coNode {
 	switch b.rng.IntN(5) {
 	case 0, 1:
 		return b.buildObject(depth, visible)
 	case 2:
-		return b.buildString(!coGapZeroNamedPrimitive())
+		return b.buildString()
 	case 3:
 		if b.chance(2) {
-			return b.buildNumeric(coInteger, !coGapZeroNamedPrimitive())
+			return b.buildNumeric(coInteger)
 		}
-		return b.buildNumeric(coNumber, !coGapZeroNamedPrimitive())
+		return b.buildNumeric(coNumber)
 	default:
 		return b.buildEnum()
 	}
@@ -336,11 +319,11 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	case coArray:
 		return b.buildArray(depth, visible)
 	case coString:
-		return b.buildString(false)
+		return b.buildString()
 	case coInteger:
-		return b.buildNumeric(coInteger, false)
+		return b.buildNumeric(coInteger)
 	case coNumber:
-		return b.buildNumeric(coNumber, false)
+		return b.buildNumeric(coNumber)
 	case coBoolean:
 		return &coNode{kind: coBoolean, boolValue: b.chance(2)}
 	case coNull:
@@ -382,11 +365,11 @@ func (b *coBuilder) buildElem(depth, visible int) *coNode {
 		if coGapItemConstraints() {
 			switch {
 			case b.chance(3):
-				return b.buildString(false)
+				return b.buildString()
 			case b.chance(2):
-				return b.buildNumeric(coInteger, false)
+				return b.buildNumeric(coInteger)
 			default:
-				return b.buildNumeric(coNumber, false)
+				return b.buildNumeric(coNumber)
 			}
 		}
 		// An unconstrained primitive has nothing for the missing per-element
@@ -423,7 +406,7 @@ func (b *coBuilder) buildArray(depth, visible int) *coNode {
 // buildString chooses either a length window or a pattern, never both: a
 // mutant has to violate exactly one keyword, and shortening a string to break
 // minLength would usually break the pattern at the same time.
-func (b *coBuilder) buildString(avoidZero bool) *coNode {
+func (b *coBuilder) buildString() *coNode {
 	n := &coNode{kind: coString, patIdx: -1}
 	if b.chance(3) {
 		n.patIdx = b.rng.IntN(len(coPatterns))
@@ -432,17 +415,9 @@ func (b *coBuilder) buildString(avoidZero bool) *coNode {
 		return n
 	}
 	n.lenLo = b.rng.IntN(5)
-	if avoidZero && n.lenLo < 2 {
-		// A shorter window would let the minLength mutant land on "", the Go
-		// zero of the named type; see coGapZeroNamedPrimitive.
-		n.lenLo = 2
-	}
 	n.lenHi = n.lenLo + b.rng.IntN(7)
 	n.emitMin = n.lenLo > 0 || b.chance(2)
 	n.emitMax = b.chance(2)
-	if avoidZero {
-		n.emitMin = true
-	}
 	if !n.emitMin && !n.emitMax {
 		n.emitMax = true
 	}
@@ -454,8 +429,8 @@ func (b *coBuilder) buildString(avoidZero bool) *coNode {
 // exactly one keyword: the minimum mutant is a lattice point one step below
 // the bound (so multipleOf still holds), and the multipleOf mutant sits inside
 // the bounds but off the lattice.
-func (b *coBuilder) buildNumeric(kind coKind, positive bool) *coNode {
-	n := &coNode{kind: kind, positiveRequired: positive}
+func (b *coBuilder) buildNumeric(kind coKind) *coNode {
+	n := &coNode{kind: kind}
 	if kind == coInteger {
 		n.step = []float64{1, 1, 2, 3, 5}[b.rng.IntN(5)]
 	} else {
@@ -464,20 +439,14 @@ func (b *coBuilder) buildNumeric(kind coKind, positive bool) *coNode {
 	// The span is at least four steps so that both bounds can be exclusive and
 	// still leave lattice points, and so the off-lattice multipleOf mutant fits.
 	span := float64(4+b.rng.IntN(9)) * n.step
-	if positive {
-		// Three steps of clearance keeps every mutant — including
-		// minimum-minus-one-step — strictly above zero.
-		n.lo = float64(3+b.rng.IntN(18)) * n.step
-	} else {
-		n.lo = float64(b.rng.IntN(41)-20) * n.step
-	}
+	// The window straddles zero, so both the instance value and the mutants may
+	// land on it. That is deliberate: zero is the Go zero of a named numeric
+	// type and the value an optional property used to lose.
+	n.lo = float64(b.rng.IntN(41)-20) * n.step
 	n.hi = n.lo + span
 
 	n.minStyle = []coBoundStyle{coBoundNone, coBoundInclusive, coBoundInclusive, coBoundExclusive}[b.rng.IntN(4)]
 	n.maxStyle = []coBoundStyle{coBoundNone, coBoundInclusive, coBoundInclusive, coBoundExclusive}[b.rng.IntN(4)]
-	if positive && n.minStyle == coBoundNone {
-		n.minStyle = coBoundInclusive
-	}
 	n.emitMultipleOf = n.step != 1 && !b.chance(4)
 
 	lo, hi := n.allowedRange()
@@ -531,17 +500,23 @@ func (b *coBuilder) buildEnum() *coNode {
 	return n
 }
 
-// buildConst never picks a boolean. A const of true emits a named bool type
-// whose only non-conforming value is false, which is the Go zero — the
-// optional-property guard would skip the check. See coGapZeroNamedPrimitive.
+// buildConst may pick a boolean. A const of true emits a named bool type whose
+// only non-conforming value is false, and a const of false the mirror image, so
+// either way the mutant is the Go zero or the value is — both of which an
+// optional property has to carry through the round trip and past Validate.
 func (b *coBuilder) buildConst() *coNode {
 	n := &coNode{kind: coConst}
-	if b.chance(2) {
+	switch b.rng.IntN(5) {
+	case 0, 1:
 		n.choices = []any{coEnumWords[b.rng.IntN(len(coEnumWords))]}
 		n.offValue = coOffString
-	} else {
+	case 2, 3:
 		n.choices = []any{coEnumInts[b.rng.IntN(len(coEnumInts))]}
 		n.offValue = coOffInt
+	default:
+		v := b.chance(2)
+		n.choices = []any{v}
+		n.offValue = !v
 	}
 	return n
 }

@@ -28,7 +28,7 @@ func (c CrossedKind) Validate() error {
 type Crossed struct {
 	A                    any                        `json:"a,omitempty"`
 	B                    any                        `json:"b,omitempty"`
-	Kind                 CrossedKind                `json:"kind,omitempty"`
+	Kind                 *CrossedKind               `json:"kind,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
@@ -310,7 +310,7 @@ func (c Crossed) Validate() error {
 			return fmt.Errorf("oneOf: matched %d variants, expected exactly 1", _oneOfMatches)
 		}
 	}
-	if c.Kind != "" {
+	if c.Kind != nil {
 		if err := c.Kind.Validate(); err != nil {
 			return fmt.Errorf("kind.%w", err)
 		}

@@ -2014,7 +2014,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// For optional scalar fields with omitempty, wrap in a pointer so that the
 		// zero value ("", false, 0, 0.0) is distinguishable from
 		// absent. Without this, omitempty conflates "absent" with "zero value".
-		if omitEmpty && !goType.IsPointer() && isZeroLossyPrimitive(goType) {
+		//
+		// A name over the primitive changes nothing about that: a $ref to a
+		// "type":"integer" definition, or an inline enum or const, produces a
+		// named type whose underlying is still int64, and a legitimate 0 in it
+		// is just as invisible to omitempty. It is worse there, in fact —
+		// because the named type carries a Validate(), Validate() on the owner
+		// guards the call with `!= <zero>` (see populateValidatableFields and
+		// the validatable-field arm of the validation template), so the zero
+		// value both vanished from the output and skipped every constraint the
+		// definition declares. The pointer removes both: nil is the absent
+		// value omitempty drops, and the guard becomes a nil check.
+		if omitEmpty && !goType.IsPointer() && (isZeroLossyPrimitive(goType) || g.isZeroLossyNamedType(goType)) {
 			goType = &PointerType{Inner: goType}
 		}
 		manualJSON := needsManualJSON(propName)
@@ -2212,7 +2223,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// type's own Validate(); an additional const rule on the field would
 				// be redundant.
 				if rules[i].RuleType == "const" {
-					if nt, isNamed := ft.(*NamedType); isNamed && g.isEnumType(nt.Name) {
+					// namedTypeName, not a type assertion: an optional field of
+					// such a type is pointer-wrapped so its zero value survives
+					// the round trip, and the enum behind the pointer is still
+					// the thing enforcing the const.
+					if name := namedTypeName(ft); name != "" && g.isEnumType(name) {
 						continue
 					}
 				}
@@ -5439,7 +5454,14 @@ func ruleTakesStringValue(ruleType string) bool {
 // underlying type is string, so `string(v)` converts it. Types not yet
 // registered, and wrapper structs such as InferredAliasDef, answer false: a
 // conversion emitted for those would not compile.
+//
+// A pointer is looked through: an optional property of such a type is
+// pointer-wrapped so its "" survives the round trip, and the rules that ask
+// this dereference the field before converting it.
 func (g *Generator) isStringBackedNamedType(t GoType) bool {
+	if pt, ok := t.(*PointerType); ok {
+		t = pt.Inner
+	}
 	nt, ok := t.(*NamedType)
 	if !ok {
 		return false
@@ -5514,6 +5536,74 @@ func isZeroLossyPrimitive(goType GoType) bool {
 	switch pt.Name {
 	case "string", "bool", "int64", "float64":
 		return true
+	}
+	return false
+}
+
+// isZeroLossyNamedType reports whether t names a generated type whose
+// underlying Go type is a zero-lossy primitive — a $ref to a "type":"string"
+// definition, an inline enum, a const promoted to a single-value enum. The name
+// does not give the value a nil to be absent in, so such a field loses a
+// legitimate "", 0 or false to omitempty exactly as a bare primitive would.
+//
+// The answer comes from the generated type rather than from the property's
+// schema because a $ref says nothing about the shape of its target. Both are
+// available by the time this is asked: resolvePropertyType generates a ref
+// target, and generateEnumDef an inline enum, before returning a name for it.
+func (g *Generator) isZeroLossyNamedType(t GoType) bool {
+	nt, ok := t.(*NamedType)
+	if !ok || nt.Pointer {
+		return false
+	}
+	if nt.PkgAlias != "" {
+		// A type owned by another package of a cross-package run. The owning
+		// generator published its zero literal, which is the same fact reached
+		// by the only route available here; a type whose owner has not been
+		// generated yet leaves the literal empty and answers no.
+		switch nt.foreignZeroLiteral {
+		case `""`, "0", "false":
+			return true
+		}
+		return false
+	}
+	return g.zeroLossyTypeName(nt.Name, 0)
+}
+
+func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
+	// Alias chains are short; the bound only stops a malformed cycle.
+	if depth > 16 {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != name {
+			continue
+		}
+		switch def := td.(type) {
+		case *AliasDef:
+			return g.zeroLossyGoType(def.Underlying, depth)
+		case *EnumDef:
+			// A heterogeneous enum is backed by json.RawMessage, whose zero is
+			// nil — absent already has a representation there.
+			return g.zeroLossyGoType(def.BaseType, depth)
+		default:
+			// Structs and the wrapper types (inferred, big-int, raw-value) have
+			// no zero literal at all: zeroLiteralForType returns "" for them and
+			// the caller wraps them for their own reasons, or not at all.
+			return false
+		}
+	}
+	return false
+}
+
+func (g *Generator) zeroLossyGoType(t GoType, depth int) bool {
+	switch u := t.(type) {
+	case *PrimitiveType:
+		return isZeroLossyPrimitive(u)
+	case *NamedType:
+		if u.Pointer || u.PkgAlias != "" {
+			return false
+		}
+		return g.zeroLossyTypeName(u.Name, depth+1)
 	}
 	return false
 }
