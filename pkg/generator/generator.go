@@ -98,6 +98,20 @@ type Generator struct {
 	// crossImports maps foreign-package import paths to the aliases the
 	// current file references them by; reset on every Generate call.
 	crossImports map[string]string
+
+	// nullChecked is the set of schema nodes already cleared of null
+	// subschemas, shared by every checkNullSubschemas call of one Generate so
+	// each node is walked once however many refs reach it.
+	nullChecked map[*schema.Schema]bool
+
+	// nullSubschemaErr holds the first null-subschema defect found in a
+	// document that arrived through ref resolution rather than through
+	// Generate's argument. Such a document never passed the up-front check --
+	// a vendor keyword is only parsed as a schema when a $ref reaches into it,
+	// and a resolver-fetched document was never part of the tree at all -- so
+	// it is checked on arrival and refused. Generate reports this in preference
+	// to the "cannot resolve $ref" that refusing it produces.
+	nullSubschemaErr error
 }
 
 // New creates a new Generator with the given configuration.
@@ -113,6 +127,7 @@ func New(cfg Config) *Generator {
 		typeSchemas:        make(map[string]*schema.Schema),
 		nodeTypeNames:      make(map[*schema.Schema]string),
 		nodesInProgress:    make(map[*schema.Schema]bool),
+		nullChecked:        make(map[*schema.Schema]bool),
 	}
 }
 
@@ -137,6 +152,20 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		prev := g.config.FieldNames
 		g.config.FieldNames = options.fieldNames
 		defer func() { g.config.FieldNames = prev }()
+	}
+
+	// Reject JSON nulls in schema positions before anything walks the tree.
+	// Every traversal below (anchor indexing, resource graph, type generation)
+	// assumes the elements of allOf/$defs/patternProperties/... are schemas, and
+	// a null element is a nil *schema.Schema that panics on first use. Checking
+	// once here, rather than at each of the dozen sites that iterate a schema
+	// container, keeps the diagnosis in one place and guarantees no site is
+	// missed. See checkNullSubschemas for why the nulls are an error and not
+	// something to skip over.
+	g.nullChecked = make(map[*schema.Schema]bool)
+	g.nullSubschemaErr = nil
+	if err := checkNullSubschemas(s, "#", g.nullChecked); err != nil {
+		return nil, err
 	}
 
 	g.output = &File{
@@ -305,6 +334,15 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Add imports based on what was generated.
 	g.output.ValidationCapability = analyzeValidationCapability(s, g.resourceGraph, g.config.Validation)
 	g.addRequiredImports()
+
+	// A null subschema in a document reached through a $ref is a defect in the
+	// input, not a ref that could not be served, so it is reported ahead of the
+	// unresolved-ref error it caused and regardless of LenientRefs: degrading a
+	// malformed document to `any` would be exactly the silent acceptance the
+	// up-front check exists to prevent.
+	if g.nullSubschemaErr != nil {
+		return nil, g.nullSubschemaErr
+	}
 
 	// Unless lenient, refuse to hand back an IR that was degraded by
 	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
@@ -1182,6 +1220,37 @@ func usesNetIPType(t GoType) bool {
 	return false
 }
 
+// refCycleAliasDef returns the definition to emit when a $ref (or $dynamicRef)
+// resolves to a node whose own type is still being generated further up the
+// stack, and nil when the reference is not part of such a cycle.
+//
+// Both ref arms of generateTypeDef resolve the target and then recurse into
+// generateTypeDef for it. Nothing stops that recursion on its own: the
+// re-entrancy guard is g.generated[name], which is set when a definition
+// *completes*, so a ref chain that leads back to a definition still in flight
+// re-enters the same arm forever. The result is "fatal error: stack overflow",
+// which no recover can catch -- it takes the process down, and {"$ref":"#"} is
+// enough to trigger it. The struct path never had this problem because it marks
+// nodesInProgress on entry; this reads that same mark for the ref paths.
+//
+// The reply is an alias to `any`, not an error. Reaching here means every arm
+// above declined every schema on the cycle, which is to say the cycle is made
+// only of $ref-only schemas and carries no constraint at all: a root of
+// {"$ref":"#"} asserts "valid if valid", which every JSON value satisfies. `any`
+// is what that schema describes, not a degradation of it. A cycle that does pass
+// through a schema with content never gets here -- that schema's arm claims it,
+// marks g.generated on entry, and the reference resolves to the named type.
+func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) TypeDef {
+	if !g.nodesInProgress[resolved] {
+		return nil
+	}
+	return &AliasDef{
+		Name:        name,
+		Underlying:  &PrimitiveType{Name: "any"},
+		Description: s.Description,
+	}
+}
+
 // generateTypeDef creates the appropriate TypeDef for a schema and adds it to
 // the output File. It skips schemas that have already been generated.
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
@@ -1357,6 +1426,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if effRef := s.EffectiveRef(); effRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
+			if def := g.refCycleAliasDef(name, s, resolved); def != nil {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, def)
+				return nil
+			}
 			pushed := g.pushDynamicScope(resolved)
 			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 			// Generate the referenced type definition (e.g., for remote $ref targets).
@@ -1397,6 +1471,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if s.DynamicRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
+			if def := g.refCycleAliasDef(name, s, resolved); def != nil {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, def)
+				return nil
+			}
 			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
@@ -2607,10 +2686,34 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 // constraints from allOf sub-schemas into the target schema. This handles cases
 // like remote schemas that themselves contain allOf with internal $ref chains.
 func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema) {
+	g.mergeAllOfBranches(target, allOf, make(map[*schema.Schema]bool))
+}
+
+// mergeAllOfBranches carries the set of schema nodes on the current merge path
+// so an allOf that refers back into itself terminates.
+//
+// allOf closes a loop in two independent ways and both are fatal untreated.
+// {"allOf":[{"$ref":"#/allOf/0"}]} makes the $ref chain below resolve to the
+// very node it started from: none of the structural keywords the break
+// condition tests are present, so the loop reassigns the same pointer forever
+// at constant stack and constant memory -- a silent hang, not a crash. And an
+// allOf whose $ref leads back to the schema that owns it re-enters this
+// function forever, which is a stack overflow. A node already on the path has
+// contributed everything it has to the target, so stopping at it loses nothing.
+//
+// The marks are removed again once a branch is done, so this is the path and
+// not everything ever seen. Two branches that legitimately merge the same node
+// -- allOf: [{$ref: X}, {$ref: X}] -- must each merge it, exactly as before.
+func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Schema, onPath map[*schema.Schema]bool) {
 	for _, sub := range allOf {
+		if onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
 		resolved := sub
 		// Follow $ref chains until we reach a schema with properties or no more refs.
 		var pushedCount int
+		chain := []*schema.Schema{sub}
 		for {
 			effRef := resolved.EffectiveRef()
 			if effRef == "" {
@@ -2620,6 +2723,11 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 			if r == nil {
 				break
 			}
+			if onPath[r] {
+				break
+			}
+			onPath[r] = true
+			chain = append(chain, r)
 			if g.pushDynamicScope(r) {
 				pushedCount++
 			}
@@ -2678,7 +2786,7 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		}
 		// Recursively merge nested allOf chains.
 		if len(resolved.AllOf) > 0 {
-			g.mergeAllOfInto(target, resolved.AllOf)
+			g.mergeAllOfBranches(target, resolved.AllOf, onPath)
 		}
 		// Merge object shape contributed by variants inside an allOf branch. This
 		// handles schemas like allOf: [$ref base, {oneOf: [variant objects]}]
@@ -2689,6 +2797,9 @@ func (g *Generator) mergeAllOfInto(target *schema.Schema, allOf []*schema.Schema
 		g.mergeConditionalBranchPropertiesInto(target, resolved)
 		for i := 0; i < pushedCount; i++ {
 			g.popDynamicScope()
+		}
+		for _, node := range chain {
+			delete(onPath, node)
 		}
 	}
 }
@@ -3799,25 +3910,12 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 
 	baseType := g.resolveBaseType(s)
 
-	var values []EnumValue
-	// First pass: compute raw constant names.
-	for _, v := range s.Enum {
-		constName := name + enumValueSuffix(v)
-		values = append(values, EnumValue{
-			Name:  constName,
+	constNames := enumConstNames(name, s.Enum)
+	values := make([]EnumValue, len(s.Enum))
+	for i, v := range s.Enum {
+		values[i] = EnumValue{
+			Name:  constNames[i],
 			Value: v,
-		})
-	}
-	// Second pass: deduplicate collisions by appending numeric suffix.
-	nameCount := make(map[string]int, len(values))
-	for _, ev := range values {
-		nameCount[ev.Name]++
-	}
-	nameSeen := make(map[string]int, len(values))
-	for i, ev := range values {
-		nameSeen[ev.Name]++
-		if nameCount[ev.Name] > 1 {
-			values[i].Name = fmt.Sprintf("%s%d", ev.Name, nameSeen[ev.Name])
 		}
 	}
 
@@ -3869,29 +3967,17 @@ func isHeterogeneousEnum(values []any) bool {
 // generateRawEnumDef generates a json.RawMessage-based enum for heterogeneous
 // enum values that cannot be represented as Go typed constants.
 func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
-	var values []EnumValue
-	for _, v := range s.Enum {
-		constName := name + enumValueSuffix(v)
+	constNames := enumConstNames(name, s.Enum)
+	values := make([]EnumValue, len(s.Enum))
+	for i, v := range s.Enum {
 		rawBytes, err := json.Marshal(v)
 		if err != nil {
 			rawBytes = []byte(fmt.Sprintf("%v", v))
 		}
-		values = append(values, EnumValue{
-			Name:    constName,
+		values[i] = EnumValue{
+			Name:    constNames[i],
 			Value:   v,
 			RawJSON: string(rawBytes),
-		})
-	}
-	// Deduplicate collision names.
-	nameCount := make(map[string]int, len(values))
-	for _, ev := range values {
-		nameCount[ev.Name]++
-	}
-	nameSeen := make(map[string]int, len(values))
-	for i, ev := range values {
-		nameSeen[ev.Name]++
-		if nameCount[ev.Name] > 1 {
-			values[i].Name = fmt.Sprintf("%s%d", ev.Name, nameSeen[ev.Name])
 		}
 	}
 
@@ -3911,6 +3997,33 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName string, ctxSchema *schema.Schema) (GoType, error) {
 	if s == nil {
 		return &PrimitiveType{Name: "any"}, nil
+	}
+
+	// A property whose schema *is* the node being generated further up the stack
+	// closes a cycle. This was the one route into type generation still keyed on
+	// the name alone.
+	//
+	// Several arms below name a nested type after the position it was reached
+	// from -- parentName + fieldName -- and hand it to generateTypeDef, whose
+	// re-entrancy guard is g.generated[name]. A cycle that comes back to the
+	// same *node* under a longer name therefore goes unrecognised. A $ref
+	// carrying a structural sibling is the cheapest way to build one:
+	// {"properties":{"a":{"$ref":"#","items":{"type":"string"}}}} is disqualified
+	// from both ref-only arms of generateTypeDef by the sibling (see
+	// refCycleAliasDef, which guards those), so it is merged into an implicit
+	// allOf instead; the merge pulls the root's own properties back in, and "a"
+	// is re-entered here as RootA, RootAA, RootAAA ... until the stack is gone.
+	// "fatal error: stack overflow" takes the process down and no recover
+	// intercepts it -- from 57 bytes of schema.
+	//
+	// resolveType already ends this cycle through materializeNamed; this is the
+	// same rule on the property path, reading the same nodesInProgress mark that
+	// generateTypeDef sets on entry. The answer is the name the node is already
+	// being generated under, so the merged shape is kept rather than degraded to
+	// `any`, and it is a pointer because Go rejects a type that contains itself
+	// by value.
+	if canonical, ok := g.nodeTypeNames[s]; ok && g.nodesInProgress[s] {
+		return &PointerType{Inner: &NamedType{Name: canonical}}, nil
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
@@ -4402,6 +4515,19 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 // against one context is not evidence that the ref is unresolvable.
 func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
 	resolved := g.resolveRefInContextUncounted(ref, ctx)
+	// A ref can be the first thing to materialize a schema: into a vendor
+	// keyword's raw JSON, or into a document the resolver fetched. Neither was
+	// present when Generate checked its argument, so a null subschema in one
+	// would reach the generator unexamined and panic. Refuse the node instead;
+	// the recorded error is what Generate reports.
+	if resolved != nil {
+		if err := checkNullSubschemas(resolved, ref, g.nullChecked); err != nil {
+			if g.nullSubschemaErr == nil {
+				g.nullSubschemaErr = err
+			}
+			resolved = nil
+		}
+	}
 	if resolved != nil {
 		g.resolvedRefs[ref] = true
 	} else {
@@ -6050,6 +6176,49 @@ func refToGoName(ref string) string {
 	}
 
 	return SchemaNameToGoName(name)
+}
+
+// enumConstNames derives the Go constant name for every value of an enum and
+// guarantees the names are distinct, in input order.
+//
+// Distinctness needs two mechanisms, and the second is not optional. Sanitizing
+// is lossy, so several values routinely reduce to the same identifier ("!" and
+// "!!" both become "X"); a group that shares a raw name is numbered 1..n. That
+// numbering alone is not enough, because a *different* value can sanitize
+// straight onto a name the numbering just handed out: "1" becomes "X1" on its
+// own (a leading digit is not a legal identifier start, so sanitizeGoIdentifier
+// prefixes "X"), which is exactly what the first member of an "X" pair becomes.
+// {"enum":["!","!!","1"]} used to emit RootX1, RootX2, RootX1 -- gofmt-clean Go
+// that does not compile ("RootX1 redeclared in this block", plus a duplicate
+// case in the generated switch) behind a zero exit code. The claimed set below
+// is what closes that hole: whatever a name is derived from, it is only used if
+// nothing has taken it yet.
+func enumConstNames(typeName string, values []any) []string {
+	raw := make([]string, len(values))
+	count := make(map[string]int, len(values))
+	for i, v := range values {
+		raw[i] = typeName + enumValueSuffix(v)
+		count[raw[i]]++
+	}
+
+	names := make([]string, len(values))
+	seen := make(map[string]int, len(values))
+	claimed := make(map[string]bool, len(values))
+	for i, base := range raw {
+		name := base
+		if count[base] > 1 {
+			seen[base]++
+			name = fmt.Sprintf("%s%d", base, seen[base])
+		}
+		// The underscore keeps the fallback out of the numbering scheme's own
+		// namespace, so bumping cannot land on a name a later group is owed.
+		for n := 2; claimed[name]; n++ {
+			name = fmt.Sprintf("%s_%d", base, n)
+		}
+		claimed[name] = true
+		names[i] = name
+	}
+	return names
 }
 
 // enumValueSuffix returns a suffix for an enum constant name from the value.
