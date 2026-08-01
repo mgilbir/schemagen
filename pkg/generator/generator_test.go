@@ -4006,6 +4006,49 @@ func TestInlineWrapperIsNotTakenForATypedProperty(t *testing.T) {
 	}
 }
 
+// TestEmptyNotPropertyLeavesNoForbiddenFieldRule pins the interaction that made
+// the whole external suite stop compiling. {"properties":{"foo":{"not":{}}}}
+// forbids the property outright, and extractValidationRules answers it with a
+// "forbidden" rule emitted as `field != nil`. Once the property became a
+// wrapper struct that guard stopped compiling -- `r.Foo != nil` against a
+// non-nilable type -- in 23 groups across every draft.
+//
+// The wrapper is the right home for the constraint, so the rule goes rather
+// than the wrapper: NotSchemaDef{IsForbidden} rejects every value it is handed
+// and accepts an absent one, which is what the schema says, and it is stricter
+// than the guard it replaces -- `!= nil` let a present JSON null through.
+func TestEmptyNotPropertyLeavesNoForbiddenFieldRule(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"properties": {"foo": {"not": {}}}
+	}`)
+
+	var wrapper *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok && d.Name == "DocFoo" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil || !wrapper.IsForbidden {
+		t.Fatalf("expected a forbidding DocFoo wrapper; got %v", ir.TypeDefs)
+	}
+
+	doc := structNamed(t, ir, "Doc")
+	if got := fieldRuleTypes(doc, "foo"); containsString(got, "forbidden") {
+		t.Fatalf("field rules for foo = %v: a `!= nil` guard does not compile against a wrapper struct", got)
+	}
+	// The wrapper only enforces anything if its owner calls it.
+	var validatable *ValidatableFieldDef
+	for i := range doc.ValidatableFields {
+		if doc.ValidatableFields[i].JSONName == "foo" {
+			validatable = &doc.ValidatableFields[i]
+		}
+	}
+	if validatable == nil {
+		t.Fatalf("expected foo to be a validatable field; got %+v", doc.ValidatableFields)
+	}
+}
+
 // TestScalarAllOfOnAPropertyReachesTheFieldRules pins the defect where an allOf
 // whose branches only bound a scalar was dropped. generateAllOfDef flattens
 // branches that carry object shape, but a branch that only tightens a string or

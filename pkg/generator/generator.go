@@ -2331,7 +2331,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// it. A field-level rule here would be both redundant and
 				// uncompilable: the field is a struct, not the slice or string
 				// the rule assumes.
-				if g.isRawValueWrapperType(ft) && rules[i].RuleType != "forbidden" {
+				//
+				// "forbidden" is no exception, though it used to be. It is
+				// emitted as `field != nil`, which needs a nilable field; a
+				// wrapper struct is not one, so the rule does not compile there
+				// either. Nothing is lost by dropping it: the only property
+				// schema that produces the rule is {"not":{}}, which is exactly
+				// the schema the wrapper is generated from, and the wrapper's
+				// own Validate says the same thing more completely -- `!= nil`
+				// misses a present JSON null, which {"not":{}} also forbids.
+				if g.isRawValueWrapperType(ft) {
 					continue
 				}
 				// A const promoted to a single-value enum type is enforced by that
