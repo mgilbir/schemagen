@@ -1,0 +1,1 @@
+{"$defs":{"my-type":{"type":"object","properties":{"a":{"type":"string"}}},"my_type":{"type":"object","properties":{"b":{"type":"integer"}}},"MyType":{"type":"object","properties":{"c":{"type":"boolean"}}}},"type":"object","properties":{"x":{"$ref":"#/$defs/my-type"},"y":{"$ref":"#/$defs/my_type"},"z":{"$ref":"#/$defs/MyType"}}}

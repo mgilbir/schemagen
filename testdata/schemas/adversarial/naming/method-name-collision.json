@@ -1,0 +1,1 @@
+{"type":"object","properties":{"Validate":{"type":"string"},"MarshalJSON":{"type":"string"},"UnmarshalJSON":{"type":"string"}}}

@@ -1,0 +1,1 @@
+{"type":"object","properties":{"uri":{"type":"string"},"URI":{"type":"integer"},"Uri":{"type":"boolean"}}}

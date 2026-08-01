@@ -1,0 +1,1 @@
+{"type":"object","if":{"properties":{"a":{"const":"x"}}},"then":{"properties":{"b":{"type":"string"}},"required":["b"]},"else":{"properties":{"c":{"type":"integer"}}},"properties":{"a":{"type":"string"}}}

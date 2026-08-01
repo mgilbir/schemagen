@@ -1,0 +1,1 @@
+{"type":"object","properties":{"type":{"type":"string"},"func":{"type":"string"},"range":{"type":"string"},"interface":{"type":"string"},"map":{"type":"string"},"select":{"type":"string"},"go":{"type":"string"},"chan":{"type":"string"}}}

@@ -1,0 +1,1 @@
+{"type":"object","required":["a"],"properties":{"a":{"type":"string"},"x":{"$ref":"#/required/0"}}}

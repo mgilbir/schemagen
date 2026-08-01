@@ -1,0 +1,1 @@
+{"$ref":"#/$defs/A","$defs":{"A":{"$ref":"#/$defs/A","items":{}}}}

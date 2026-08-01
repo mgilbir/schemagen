@@ -1,0 +1,1 @@
+{"$defs":{"a":{"if":{"$ref":"#/$defs/a"},"then":{"$ref":"#/$defs/a"}}},"$ref":"#/$defs/a"}

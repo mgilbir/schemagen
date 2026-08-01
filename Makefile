@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external
+.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external fuzz validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -91,6 +91,68 @@ download-metaschemas:
 # a run killed at the deadline reports no failures and looks like a pass.
 test-external: download-test-suite download-metaschemas
 	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
+
+# Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
+# finds a crash or something kills it, so a run without -fuzztime never returns
+# and cannot sit in a script. FUZZTIME is that bound. The 60s default is sized
+# for someone who wants a quick sanity pass before pushing; override it for a
+# real hunt with `make fuzz FUZZTIME=10m`. Nightly CI passes a much larger
+# value, which is where the actual searching gets done.
+#
+# Budget accordingly: the seed corpus is large enough that go spends roughly
+# the first 25s of any run just gathering baseline coverage before it mutates
+# anything, and that time comes out of FUZZTIME. At the 60s default only about
+# half the run is actually fuzzing, so anything below ~30s is a smoke test that
+# the harness still builds, not a search.
+#
+# Deliberately NOT a dependency of `test`: fuzzing is a search, not an
+# assertion. It spends its whole budget every time, finds nothing on a tree
+# that is already clean, and would make `make test` cost a fixed FUZZTIME for
+# no added signal. The regression half is already covered -- FuzzGenerate walks
+# testdata/schemas for seeds, so every reproducer under
+# testdata/schemas/adversarial replays as an ordinary test case under plain
+# `go test ./...`. So a bug found once stays caught without anyone re-running
+# the search.
+#
+# Minimise crashers by hand rather than committing what go test leaves in
+# tests/testdata/fuzz/: when a crash kills the minimizer, the file saved is the
+# last input *sent*, which is usually truncated and reproduces nothing. A
+# readable .json under testdata/schemas/adversarial is the better artifact, and
+# `make validate-seeds` can then confirm it is a legal document.
+#
+# -run '^$$' skips the package's ordinary tests; the fuzzing phase is selected
+# by -fuzz alone and is unaffected. -fuzztime is also not clipped by -timeout:
+# the test binary stops its timeout alarm before entering the fuzzing loop.
+FUZZTIME ?= 60s
+
+fuzz:
+	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
+
+# Checks that every fuzz seed under testdata/schemas/adversarial is a legal
+# JSON Schema document, by validating it as an *instance* against the
+# meta-schema for its own dialect.
+#
+# This matters because the corpus mixes two kinds of case. Some seeds are
+# deliberately malformed -- the property under test is that the generator
+# refuses them gracefully instead of panicking. The rest are meant to be legal
+# documents, and there the whole claim is that a *valid* schema crashed the
+# tool. Confusing the two silently downgrades a real defect, which has already
+# happened twice: four cycle seeds were written in draft-07 or draft-03 syntax
+# without declaring $schema, so they were not legal documents at all, and the
+# JSON Pointer overflow cases used empty containers 2020-12 forbids, which made
+# a crash on entirely valid input look like a malformed-input problem.
+#
+# Bowtie drives several independent implementations in containers and their
+# answers are compared: one library's opinion is not evidence, and a
+# disagreement is reported as "unknown" rather than resolved by picking a
+# favourite. It also reaches draft-03, which some modern validators drop
+# entirely.
+#
+# Deliberately not part of `make test` and not a Go dependency: it needs docker
+# and uv, neither of which should gate the build. Invalid seeds are reported,
+# not fatal -- only a seed that nothing could judge fails the check.
+validate-seeds: download-metaschemas
+	python3 scripts/validate-seeds.py
 
 clean:
 	rm -rf bin/

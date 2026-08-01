@@ -1,0 +1,1 @@
+{"type":"string","enum":["a-b","a_b","aB","AB","A B"]}

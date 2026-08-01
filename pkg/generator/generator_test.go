@@ -2296,8 +2296,11 @@ func TestNullPropertySchemaReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an error for a null property schema, got nil")
 	}
-	if !strings.Contains(err.Error(), `"a"`) {
-		t.Fatalf("error %q does not mention the property name %q", err.Error(), "a")
+	// The null is now caught by Generate's up-front sweep of every schema
+	// container, which names the offender by JSON Pointer rather than by
+	// property name alone -- a strictly more precise location.
+	if !strings.Contains(err.Error(), "#/properties/a") {
+		t.Fatalf("error %q does not locate the null property schema at %q", err.Error(), "#/properties/a")
 	}
 }
 
@@ -2458,5 +2461,381 @@ func TestSelfReferentialFetchedDocumentTerminates(t *testing.T) {
 		}
 	case <-time.After(20 * time.Second):
 		t.Fatal("generation did not terminate: self-reference is recursing without bound")
+	}
+}
+
+// generateJSON runs the parse → normalize → generate pipeline the CLI uses, so
+// a regression test exercises the same path a user's schema file takes.
+func generateJSON(t *testing.T, cfg Config, input string) (*File, error) {
+	t.Helper()
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	return New(cfg).Generate(&s)
+}
+
+// TestNullSubschemaInContainerReturnsError covers the null-element form of the
+// nil dereference across every keyword that holds a list or map of schemas.
+// json.Unmarshal turns each of these into a nil *Schema sitting inside the
+// container, which used to reach IsFalseSchema and friends and segfault the
+// CLI. Every one must instead come back as an error that points at the null.
+//
+// {"extends":[null]} is in the list because Normalize *manufactures* the nil:
+// it appends the parsed "extends" array straight onto AllOf, so a draft-3
+// document produces the defect that draft-3 documents cannot express directly.
+func TestNullSubschemaInContainerReturnsError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"allOf", `{"allOf":[null]}`, "#/allOf/0"},
+		{"anyOf", `{"anyOf":[null]}`, "#/anyOf/0"},
+		{"oneOf", `{"oneOf":[null]}`, "#/oneOf/0"},
+		{"defs", `{"$defs":{"a":null}}`, "#/$defs/a"},
+		{"definitions", `{"definitions":{"a":null}}`, "#/$defs/a"},
+		{"patternProperties", `{"patternProperties":{"^a":null}}`, "#/patternProperties/^a"},
+		{"dependentSchemas", `{"dependentSchemas":{"a":null}}`, "#/dependentSchemas/a"},
+		{"prefixItems", `{"prefixItems":[null]}`, "#/prefixItems/0"},
+		{"itemsArray", `{"items":[null]}`, "#/items/0"},
+		{"extends", `{"extends":[null]}`, "#/allOf/0"},
+		{"nestedInProperty", `{"type":"object","properties":{"a":{"allOf":[null]}}}`, "#/properties/a/allOf/0"},
+		{"nestedInItems", `{"type":"array","items":{"oneOf":[null]}}`, "#/items/oneOf/0"},
+		// A vendor keyword's value is only parsed as a schema when a $ref
+		// reaches into it, which is after Generate has checked its argument.
+		{"insideExtension", `{"examples":[{"allOf":[null]}],"$ref":"#/examples/0"}`, "#/examples/0/allOf/0"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := generateJSON(t, Config{PackageName: "testpkg"}, tc.input)
+			if err == nil {
+				t.Fatalf("expected an error for %s, got nil", tc.input)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not locate the null schema at %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+// TestRefCycleTerminates covers $ref cycles that used to run generateTypeDef,
+// mergeAllOfInto or its inner ref-following loop without end.
+//
+// These are not ordinary test failures. A runaway recursion ends in "fatal
+// error: stack overflow", which no recover intercepts -- it takes the whole
+// test binary down -- and the mergeAllOfInto loop does not even do that: it
+// spins at constant stack and constant memory forever. So the work runs on its
+// own goroutine behind a deadline, and a regression reports as a failed test
+// rather than as a dead or hung process.
+func TestRefCycleTerminates(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"rootSelfRef", `{"$ref":"#"}`},
+		{"rootSelfRefWithType", `{"type":"object","$ref":"#"}`},
+		{"defSelfRef", `{"$defs":{"a":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}`},
+		{"mutualDefs", `{"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}`},
+		{"threeCycle", `{"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/c"},"c":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}`},
+		{"anchorSelfRef", `{"$anchor":"x","$ref":"#x"}`},
+		{"idSelfRef", `{"$id":"http://a/","$ref":"http://a/"}`},
+		{"refIntoOwnProperties", `{"type":"object","properties":{"a":{"$ref":"#/properties/a"}}}`},
+		{"refIntoOwnItems", `{"type":"array","items":{"$ref":"#/items"}}`},
+		{"dynamicRefSelfAnchor", `{"$schema":"https://json-schema.org/draft/2020-12/schema","$dynamicAnchor":"a","$dynamicRef":"#a"}`},
+		{"recursiveRefSelfAnchor", `{"$schema":"https://json-schema.org/draft/2019-09/schema","$recursiveAnchor":true,"$recursiveRef":"#"}`},
+		{"allOfSelfRef", `{"$defs":{"a":{"allOf":[{"$ref":"#/$defs/a"}]}},"$ref":"#/$defs/a"}`},
+		{"allOfTwoRefsCycle", `{"$defs":{"a":{"allOf":[{"$ref":"#/$defs/b"}]},"b":{"allOf":[{"$ref":"#/$defs/a"}]}},"$ref":"#/$defs/a"}`},
+		// Cluster of its own: the ref resolves to the node the merge loop is
+		// already sitting on, and none of the structural keywords the loop's
+		// break condition tests are present, so it never advanced.
+		{"allOfRefToItself", `{"allOf":[{"$ref":"#/allOf/0"}]}`},
+		// Cluster of its own, again: a $ref with a *structural sibling*, sitting
+		// under "properties". The sibling disqualifies the schema from both
+		// ref-only arms of generateTypeDef -- the ones refCycleAliasDef guards --
+		// so it is routed to the implicit-allOf/struct path, and the property
+		// loop there hands the very same node back to resolvePropertyType under
+		// a name one segment longer. Nothing was keyed on node identity along
+		// that route, so the names grew and the recursion never closed.
+		{"refSiblingItemsSelf", `{"properties":{"a":{"$ref":"#","items":{"type":"string"}}}}`},
+		{"refSiblingItemsToDef", `{"properties":{"a":{"$ref":"#","items":{"$ref":"#/$defs/S"}}},"$defs":{"S":{"type":"object"}}}`},
+		{"refSiblingItemsSelfRef", `{"type":"object","properties":{"a":{"$ref":"#","items":{"$ref":"#"}}}}`},
+		// Every other keyword that hasRefStructuralSiblings recognizes reaches
+		// the same loop by the same route; "items" is not special.
+		{"refSiblingProperties", `{"properties":{"a":{"$ref":"#","properties":{"b":{"type":"string"}}}}}`},
+		{"refSiblingAdditionalProperties", `{"properties":{"a":{"$ref":"#","additionalProperties":{"type":"string"}}}}`},
+		{"refSiblingPatternProperties", `{"properties":{"a":{"$ref":"#","patternProperties":{"^b":{"type":"string"}}}}}`},
+		{"refSiblingPrefixItems", `{"properties":{"a":{"$ref":"#","prefixItems":[{"type":"string"}]}}}`},
+		{"refSiblingUnevaluatedProperties", `{"properties":{"a":{"$ref":"#","unevaluatedProperties":false}}}`},
+		// The same shape one level down, so the cycle closes on a $defs node
+		// rather than on the document root.
+		{"refSiblingItemsViaDefs", `{"$ref":"#/$defs/n","$defs":{"n":{"type":"object","properties":{"a":{"$ref":"#/$defs/n","items":{"type":"string"}}}}}}`},
+		// Draft-3 type alternatives, found by the fuzzer. A $ref inside the
+		// "type" array is materialized through resolveType, which is the one
+		// route into type generation that materializeNamed does not cover; the
+		// name derived from the ref string is the one already in flight, so the
+		// arm re-entered itself in a single hop.
+		{"typeSchemaRefSelfDef", `{"type":"object","$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}}`},
+		{"typeSchemaRefSelfDefRoot", `{"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}},"$ref":"#/$defs/C"}`},
+		{"typeSchemaRefMutualDefs", `{"$defs":{"A":{"type":[{"$ref":"#/$defs/B"}]},"B":{"type":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
+		// A subschema whose own $id makes its $ref resolve straight back to
+		// itself, found by the fuzzer. Nesting "0" under a base of "a:/0"
+		// re-normalizes it to "a:///0", which is a URI the root does not answer
+		// to -- so isSelfRefInContext says no, the ref resolves to the node it
+		// started from, and the applicator ref-following loops spin at constant
+		// stack. The legacy draft-4 "id" spelling is how the fuzzer found it;
+		// "$id" reaches the same place.
+		{"legacyIDRefResolvesToSelf", `{"id":"A:/0","properties":{"":{"id":"0","$ref":"0"}},"$ref":"0"}`},
+		{"idRefResolvesToSelf", `{"$id":"a:/0","properties":{"a":{"$id":"0","$ref":"0"}},"$ref":"0"}`},
+		// The same self-resolving node reached as an applicator variant, where
+		// it spun the second of those loops instead.
+		{"variantIDRefResolvesToSelfOneOf", `{"$id":"a:/0","allOf":[{"oneOf":[{"$id":"0","$ref":"0"}]}]}`},
+		{"variantIDRefResolvesToSelfAnyOf", `{"$id":"a:/0","allOf":[{"anyOf":[{"$id":"0","$ref":"0"}]}]}`},
+		{"variantIDRefResolvesToSelfThen", `{"$id":"a:/0","allOf":[{"then":{"$id":"0","$ref":"0"}}]}`},
+		// Cluster of its own: an ordinary $defs cycle closed through an
+		// applicator rather than through a ref chain. The variant merge
+		// descends into the resolved node's own oneOf/anyOf/allOf/then, so a
+		// node naming itself there re-entered the merge forever -- a stack
+		// overflow, not a spin.
+		{"variantMergeOneOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"oneOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeAnyOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"anyOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeAllOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeThenCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"then":{"$ref":"#/$defs/A"}}}}`},
+		// And the same cycle read by the branch collector that builds the
+		// runtime oneOf discriminator checks, which walks allOf on its own.
+		{"oneOfBranchAllOfCycle", `{"type":"object","oneOf":[{"$ref":"#/$defs/A"},{"required":["y"]}],"$defs":{"A":{"required":["x"],"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"oneOfBranchAllOfCycleUnderAllOf", `{"type":"object","allOf":[{"oneOf":[{"$ref":"#/$defs/A"},{"required":["y"]}]}],"$defs":{"A":{"required":["x"],"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		// Cluster of its own, found by the fuzzer: a $ref with an *array*
+		// structural sibling. The sibling routes the schema through the
+		// implicit-allOf arm, whose array branch asks whether the synthesized
+		// $ref branch is an array alias and generates it on demand to find out.
+		// That branch resolves back to the definition in flight, and the only
+		// guard on the on-demand generation was g.generated, which is not set
+		// until a definition completes.
+		{"refSiblingItemsAtRoot", `{"$ref":"#","items":{}}`},
+		{"refSiblingItemsTrueAtRoot", `{"$ref":"#","items":true}`},
+		{"refSiblingPrefixItemsAtRoot", `{"$ref":"#","prefixItems":[{}]}`},
+		{"refSiblingItemsArrayAtRoot", `{"$ref":"#","items":[{}]}`},
+		{"refSiblingUnevaluatedItemsAtRoot", `{"$ref":"#","unevaluatedItems":{}}`},
+		// The same shape one level down and across two definitions, so the
+		// cycle closes on a $defs node rather than on the document root.
+		{"refSiblingItemsSelfDef", `{"$ref":"#/$defs/A","$defs":{"A":{"$ref":"#/$defs/A","items":{}}}}`},
+		{"refSiblingItemsMutualDefs", `{"$defs":{"A":{"$ref":"#/$defs/B","items":{}},"B":{"$ref":"#/$defs/A","items":{}}},"$ref":"#/$defs/A"}`},
+		// Cluster of its own, found by the fuzzer: the unevaluatedItems and
+		// unevaluatedProperties analyses. Deciding what a value has already had
+		// evaluated means walking $ref and every in-place applicator, and none
+		// of those three walks -- the item counter, the evaluated-property
+		// collector, and the allOf property probe that routes the schema in the
+		// first place -- kept track of where it had been.
+		{"unevaluatedItemsSelfRef", `{"$ref":"#","unevaluatedItems":false}`},
+		{"unevaluatedItemsAllOfSelfRef", `{"type":"array","prefixItems":[{}],"unevaluatedItems":false,"allOf":[{"$ref":"#"}]}`},
+		{"unevaluatedItemsAllOfSelfDef", `{"$defs":{"A":{"prefixItems":[{}],"unevaluatedItems":false,"allOf":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
+		{"unevaluatedPropsAllOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"allOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsAnyOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"anyOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsOneOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"oneOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsIfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"if":{"$ref":"#"}}`},
+		{"unevaluatedPropsDependentSchemasSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"dependentSchemas":{"a":{"$ref":"#"}}}`},
+		{"unevaluatedPropsAllOfSelfDef", `{"$defs":{"A":{"properties":{"a":{}},"unevaluatedProperties":false,"allOf":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				// The result is deliberately not asserted: what is under test
+				// is that generation reaches a conclusion at all. A cycle made
+				// only of $ref-only schemas constrains nothing, so succeeding
+				// with an `any` alias is as acceptable as reporting an error.
+				_, _ = generateJSON(t, Config{PackageName: "testpkg"}, tc.input)
+			}()
+			select {
+			case <-done:
+			case <-time.After(20 * time.Second):
+				t.Fatalf("generation did not terminate for %s", tc.input)
+			}
+		})
+	}
+}
+
+// TestSelfReferentialStructStillResolvesToPointer guards the cycle fix from
+// overreaching. A recursive *object* is the shape the generator is supposed to
+// handle -- the struct arm claims it, and the back-reference becomes a pointer
+// field. If the ref-cycle guard were to fire here instead, the type would
+// collapse to `any` and every recursive schema in the corpus would lose its
+// shape, which is precisely what testdata/schemas/advanced/recursive_tree.json
+// and its golden exist to catch.
+func TestSelfReferentialStructStillResolvesToPointer(t *testing.T) {
+	input := `{"type":"object","properties":{"value":{"type":"string"},"parent":{"$ref":"#"}},"required":["value"]}`
+
+	file, err := generateJSON(t, Config{PackageName: "testpkg"}, input)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	sd, ok := file.TypeDefs[0].(*StructDef)
+	if !ok {
+		t.Fatalf("root type is %T, want a *StructDef", file.TypeDefs[0])
+	}
+	f, ok := fieldByJSONName(sd, "parent")
+	if !ok {
+		t.Fatalf("no field for the self-referential property %q", "parent")
+	}
+	if !f.Type.IsPointer() || namedTypeName(f.Type) != sd.Name {
+		t.Fatalf("self-reference typed as %s, want a pointer to %s", f.Type.GoTypeName(), sd.Name)
+	}
+}
+
+// TestRefWithSiblingCycleKeepsStructShape is the other half of the sibling-cycle
+// fix: terminating is necessary but not sufficient.
+//
+// The schema is a $ref back to the root carrying a structural sibling, so the
+// property's type is the merge of the root's own shape with that sibling -- a
+// struct, generated under a name of its own, whose "a" field closes the cycle
+// back onto itself. Breaking the recursion by degrading either end to `any` or
+// to json.RawMessage would also make generation terminate, and would silently
+// throw the shape away. What is asserted is the shape that survives: a named
+// struct, and a self-field that is a *pointer* to it, because Go rejects a
+// struct that contains itself by value and the generated package would not
+// compile.
+func TestRefWithSiblingCycleKeepsStructShape(t *testing.T) {
+	input := `{"type":"object","properties":{"a":{"$ref":"#","items":{"type":"string"}}}}`
+
+	file, err := generateJSON(t, Config{PackageName: "testpkg"}, input)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	root, ok := file.TypeDefs[0].(*StructDef)
+	if !ok {
+		t.Fatalf("root type is %T, want a *StructDef", file.TypeDefs[0])
+	}
+	rootField, ok := fieldByJSONName(root, "a")
+	if !ok {
+		t.Fatalf("no field for property %q on the root struct", "a")
+	}
+	nested := namedTypeName(rootField.Type)
+	if nested == "" {
+		t.Fatalf("property %q typed as %s, want a reference to a named type", "a", rootField.Type.GoTypeName())
+	}
+
+	var nestedDef *StructDef
+	for _, td := range file.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == nested {
+			nestedDef = sd
+			break
+		}
+	}
+	if nestedDef == nil {
+		t.Fatalf("property %q references %s, which is not a generated struct", "a", nested)
+	}
+
+	self, ok := fieldByJSONName(nestedDef, "a")
+	if !ok {
+		t.Fatalf("no field for property %q on %s; the merged shape was dropped", "a", nested)
+	}
+	if !self.Type.IsPointer() || namedTypeName(self.Type) != nested {
+		t.Fatalf("cycle-closing field typed as %s, want a pointer to %s", self.Type.GoTypeName(), nested)
+	}
+}
+
+// TestEnumConstantNamesAreUnique is the regression for generated code that was
+// gofmt-clean, exited 0 and did not compile.
+//
+// Sanitizing an enum value is lossy in two directions at once: several values
+// can reduce to one identifier ("!" and "!!" both become "X"), and a value can
+// reduce onto a name the collision numbering is about to hand out ("1" becomes
+// "X1", because a leading digit is not a legal identifier start). Numbering the
+// first group 1..n and never checking it against the second produced
+// "RootX1, RootX2, RootX1" -- "RootX1 redeclared in this block", plus a
+// duplicate case in the generated Validate switch.
+func TestEnumConstantNamesAreUnique(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"punctuationAndDigit", `{"type":"string","enum":["!","!!","1"]}`},
+		{"mixedScriptsAndEmpty", `{"type":"string","enum":["日本","🎉","","a-b","1","true","null"]}`},
+		{"allSanitizeToX", `{"type":"string","enum":["!","@","#","$"]}`},
+		{"digitsOnly", `{"type":"string","enum":["1","2","1x","2x"]}`},
+		// Heterogeneous values take the json.RawMessage enum path, which names
+		// its constants with the same helper and had the same defect.
+		{"heterogeneous", `{"enum":["!","!!","1",1,null,true,["a"],{"b":1}]}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := generateJSON(t, Config{PackageName: "testpkg"}, tc.input)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			var ed *EnumDef
+			for _, td := range file.TypeDefs {
+				if e, ok := td.(*EnumDef); ok {
+					ed = e
+					break
+				}
+			}
+			if ed == nil {
+				t.Fatalf("no EnumDef generated for %s", tc.input)
+			}
+			if len(ed.Values) == 0 {
+				t.Fatalf("EnumDef for %s has no values", tc.input)
+			}
+			seen := make(map[string]any, len(ed.Values))
+			for _, ev := range ed.Values {
+				if prev, dup := seen[ev.Name]; dup {
+					t.Errorf("constant name %q used for both %#v and %#v; the generated package would not compile",
+						ev.Name, prev, ev.Value)
+				}
+				seen[ev.Name] = ev.Value
+			}
+		})
+	}
+}
+
+// TestNullSubschemaMemoDoesNotWaveThroughSecondRef pins the bookkeeping of the
+// null check's memo, which is what makes it affordable to re-run on every ref
+// resolution.
+//
+// Two properties reference the same node of a fetched document, and that node
+// holds a null. The first resolution walks it, finds the null and refuses the
+// node. If the memo recorded nodes as it entered them rather than once their
+// subtree came back clean, the second resolution would find the node already
+// "checked", hand it to the generator, and the null would be dereferenced --
+// turning a reported error back into the segfault this all exists to prevent.
+func TestNullSubschemaMemoDoesNotWaveThroughSecondRef(t *testing.T) {
+	var remote schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"definitions": {
+			"outer": {"type": "object", "properties": {"ok": {"type": "string"}}, "allOf": [null]}
+		}
+	}`), &remote); err != nil {
+		t.Fatal(err)
+	}
+	remote.Normalize()
+
+	const docURI = "http://example.com/has-null.json"
+	resolver := schema.NewMappingResolver(map[string]*schema.Schema{docURI: &remote})
+
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"type": "object",
+		"properties": {
+			"a": {"$ref": "`+docURI+`#/definitions/outer"},
+			"b": {"$ref": "`+docURI+`#/definitions/outer"}
+		}
+	}`), &root); err != nil {
+		t.Fatal(err)
+	}
+	root.Normalize()
+
+	_, err := New(Config{PackageName: "testpkg", Resolver: resolver}).Generate(&root)
+	if err == nil {
+		t.Fatalf("expected an error for a null subschema in the fetched document, got nil")
+	}
+	if !strings.Contains(err.Error(), "allOf/0") {
+		t.Fatalf("error %q does not locate the null subschema", err.Error())
 	}
 }

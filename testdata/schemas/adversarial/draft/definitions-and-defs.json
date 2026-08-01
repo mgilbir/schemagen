@@ -1,0 +1,1 @@
+{"definitions":{"a":{"type":"string"}},"$defs":{"a":{"type":"integer"}},"type":"object","properties":{"x":{"$ref":"#/definitions/a"},"y":{"$ref":"#/$defs/a"}}}

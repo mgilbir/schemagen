@@ -1,0 +1,1 @@
+{"type":"object","prefixItems":[{"type":"string"}],"properties":{"a":{"$ref":"#/prefixItems/99"}}}

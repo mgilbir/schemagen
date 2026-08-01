@@ -1,0 +1,1 @@
+{"type":"object","oneOf":[{"$ref":"#/$defs/A"},{"required":["y"]}],"$defs":{"A":{"required":["x"],"allOf":[{"$ref":"#/$defs/A"}]}}}

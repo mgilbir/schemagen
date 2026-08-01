@@ -1,0 +1,1 @@
+{"$defs":{"n":{"type":"object","properties":{"next":{"$ref":"#/$defs/n"},"v":{"type":"string"}}}},"$ref":"#/$defs/n"}

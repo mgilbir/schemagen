@@ -1,0 +1,1 @@
+{"$defs":{"a":{"anyOf":[{"$ref":"#/$defs/a"}]}},"$ref":"#/$defs/a"}

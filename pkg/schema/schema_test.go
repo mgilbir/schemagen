@@ -1529,3 +1529,62 @@ func TestLocalResolverRefIntoExtensionCollectionErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveOverflowingIndexIsRefused covers array-index tokens too large for
+// an int. Accumulating them digit by digit wraps the value negative, and every
+// bound check in walkPath is a one-sided "idx >= len", which a negative index
+// passes -- so the subscript that followed panicked with "index out of range
+// [-9219744073709551616]" instead of reporting an unresolvable ref. The fuzzer
+// found it as {"items":[],"properties":{"":{"$ref":"#/items/9227000000000000000"}}}.
+//
+// The test asserts an error rather than a value: no array has such an element,
+// so refusing the ref is the same answer the bound check meant to give.
+func TestResolveOverflowingIndexIsRefused(t *testing.T) {
+	inner := &Schema{Type: TypeList{"string"}}
+	s := &Schema{
+		Items:       &SchemaOrSchemaArray{Schemas: []*Schema{inner}},
+		PrefixItems: []*Schema{inner},
+		AllOf:       []*Schema{inner},
+		AnyOf:       []*Schema{inner},
+		OneOf:       []*Schema{inner},
+	}
+	r := NewResolver(s)
+
+	// 9227000000000000000 is just past MaxInt64, so it wraps negative; the
+	// twenty-nines form overflows further and must be refused just the same.
+	refs := []string{
+		"#/items/9227000000000000000",
+		"#/prefixItems/9227000000000000000",
+		"#/allOf/9227000000000000000",
+		"#/anyOf/9227000000000000000",
+		"#/oneOf/9227000000000000000",
+		"#/items/18446744073709551617",
+		"#/items/99999999999999999999",
+	}
+	for _, ref := range refs {
+		if _, err := r.Resolve(ref); err == nil {
+			t.Errorf("expected error for out-of-range index ref %q", ref)
+		}
+	}
+}
+
+// TestResolveIndexStillWorksAtTheBoundary guards the overflow check from
+// overreaching: an index that fits must still resolve, and one that merely
+// exceeds the slice must still report out of range rather than being rejected
+// as unparseable.
+func TestResolveIndexStillWorksAtTheBoundary(t *testing.T) {
+	inner := &Schema{Type: TypeList{"string"}}
+	s := &Schema{AllOf: []*Schema{inner}}
+	r := NewResolver(s)
+
+	resolved, err := r.Resolve("#/allOf/0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved != inner {
+		t.Error("expected allOf[0] schema")
+	}
+	if _, err := r.Resolve("#/allOf/1"); err == nil {
+		t.Fatal("expected error for index past the end")
+	}
+}

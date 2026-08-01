@@ -1,0 +1,1 @@
+{"type":"object","properties":{"foo_bar":{"type":"string"},"fooBar":{"type":"integer"},"foo-bar":{"type":"boolean"},"FOO_BAR":{"type":"number"},"foo bar":{"type":"string"}}}

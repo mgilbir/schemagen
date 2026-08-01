@@ -1,0 +1,1 @@
+{"$defs":{"a":{"type":"string"}},"$ref":"#/$defs/a/b/c/d"}

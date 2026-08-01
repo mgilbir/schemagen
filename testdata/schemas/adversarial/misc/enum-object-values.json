@@ -1,0 +1,1 @@
+{"type":"object","enum":[{"a":1},{"b":2}],"properties":{"a":{"type":"integer"}}}

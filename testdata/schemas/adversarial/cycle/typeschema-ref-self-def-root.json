@@ -1,0 +1,1 @@
+{"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}},"$ref":"#/$defs/C"}
