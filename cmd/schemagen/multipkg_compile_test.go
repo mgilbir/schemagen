@@ -544,3 +544,40 @@ func TestSelfReferentialDocumentCompiles(t *testing.T) {
 		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
 	}
 }
+
+// An array definition whose items refer back to the document that declares the
+// property pointing at that definition. Resolving the item type re-enters
+// generation for the array under the same name, and the "already generated"
+// flag used to be set only after that descent returned -- so the array was
+// declared twice and the output did not build. Reaching the document through
+// allOf is what makes the second entry a fresh one rather than a cycle the
+// in-progress guard already covers.
+func TestArrayDefinitionReachedThroughItsOwnItemsCompiles(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "meta.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/meta.json",
+		"type": "object",
+		"properties": {
+			"allOf": {"$ref": "#/definitions/schemaArray"},
+			"title": {"type": "string"}
+		},
+		"definitions": {
+			"schemaArray": {"type": "array", "items": {"$ref": "#"}}
+		}
+	}`)
+	writeFile(t, filepath.Join(src, "root.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/root.json",
+		"title": "Doc",
+		"allOf": [{"$ref": "meta.json"}]
+	}`)
+
+	out := t.TempDir()
+	if err := runGenerateArgs(t, filepath.Join(src, "root.json"), "-o", out, "-p", "gen"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if buildOut, err := buildGenerated(t, out, "example.com/arraydup"); err != nil {
+		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
+	}
+}

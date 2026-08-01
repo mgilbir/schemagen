@@ -1508,6 +1508,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// Array type → alias (or defined type if it has validation constraints)
 	if primaryType == "array" {
+		// Mark as generated before resolving the item type, not after. Both
+		// resolveType and buildTupleItemDefs descend into this schema's items,
+		// and an item that refers back here re-enters generateTypeDef; without
+		// the flag already set, that re-entry runs to completion and appends a
+		// second, identical declaration under the same name -- which Go rejects
+		// as a redeclaration.
+		g.generated[name] = true
 		goType := g.resolveType(s, name)
 		var rules []ValidationRule
 		var anyOfVariants [][]ValidationRule
@@ -1517,10 +1524,6 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
 			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
-		// Mark as generated BEFORE buildTupleItemDefs so that any recursive
-		// $ref back to this type (via generateTypeDef inside buildTupleItemDefs)
-		// will short-circuit and not cause infinite recursion.
-		g.generated[name] = true
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
 			// Extract item-level validation constraints.
