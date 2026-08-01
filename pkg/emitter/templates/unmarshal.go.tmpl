@@ -110,6 +110,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- else}}
 			var oneofMatched int
 			var oneofLastErr error
+			{{- if $oof.HasVariantChecks}}
+			// A branch whose Go type accepted the value but whose own
+			// constraints rejected it is the near miss worth reporting, so it
+			// outranks a decode failure from a branch of some other type.
+			var oneofCheckErr error
+			{{- end}}
 			{{- range $i, $v := $oof.Variants}}
 
 			// Try variant: {{$v.FieldName}}
@@ -119,8 +125,55 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{- end}}
 					var candidate {{goType $v.Type}}
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+						{{- if $v.Checks}}
+						// The branch's own constraints decide the match too: decoding
+						// into the variant's Go type is not on its own a match.
+						oneofOK := true
+						{{- range $v.Checks}}
+						{{- if eq .RuleType "minLength"}}
+						if utf8.RuneCountInString(candidate) < {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "maxLength"}}
+						if utf8.RuneCountInString(candidate) > {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "pattern"}}
+						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, candidate); !matched { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "minimum"}}
+						if float64(candidate) < {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "maximum"}}
+						if float64(candidate) > {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "exclusiveMinimum"}}
+						if float64(candidate) <= {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "exclusiveMaximum"}}
+						if float64(candidate) >= {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "multipleOf"}}
+						{
+							_q := float64(candidate) / {{.Value}}
+							if math.Abs(_q - math.Round(_q)) > 1e-9 { oneofOK = false }
+						}
+						{{- end}}
+						{{- if eq .RuleType "minItems"}}
+						if len(candidate) < {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- if eq .RuleType "maxItems"}}
+						if len(candidate) > {{.Value}} { oneofOK = false }
+						{{- end}}
+						{{- end}}
+						if oneofOK {
+							{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+							oneofMatched++
+						} else {
+							oneofCheckErr = fmt.Errorf("variant {{$v.FieldName}}: value does not satisfy the variant's constraints")
+						}
+						{{- else}}
 						{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
 						oneofMatched++
+						{{- end}}
 					} else {
 						oneofLastErr = err
 					}
@@ -131,6 +184,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 
 			if oneofMatched == 0 {
+				{{- if $oof.HasVariantChecks}}
+				if oneofCheckErr != nil {
+					oneofLastErr = oneofCheckErr
+				}
+				{{- end}}
 				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 {

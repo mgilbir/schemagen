@@ -66,11 +66,12 @@ const coMaxDepth = 3
 //	                branch and typed there. On a property, two typed scalar
 //	                alternatives ({"type":"string","minLength":n} and
 //	                {"type":"integer","minimum":m}).
-//	oneOf           two forms. On the *root* object, the same discriminator
-//	                branches as anyOf (only the root: see
-//	                coGapNestedOneOfDropsSiblings). As a composition leaf, two
-//	                overlapping integer windows, so that a value matching
-//	                *both* branches is reachable and can be made a mutant.
+//	oneOf           three forms. On any object node, root or nested, the same
+//	                discriminator branches as anyOf. On a property, the same
+//	                two typed scalar alternatives as anyOf. As a composition
+//	                leaf, two overlapping integer windows, so that a value
+//	                matching *both* branches is reachable and can be made a
+//	                mutant.
 //	if/then/else    as a composition leaf, over an integer pivot: `if`
 //	                {minimum: P}, `then` {maximum: P+K}, `else` {minimum:
 //	                P-K}. Both outcomes of `if` are generated.
@@ -86,9 +87,11 @@ const coMaxDepth = 3
 // is placed to land on the positions that are enforced: object-level allOf /
 // anyOf / oneOf get flattened into the struct and checked against the raw JSON
 // keys, an inline anyOf of typed scalars becomes an alternatives wrapper whose
-// Validate the parent calls, and oneOf / if / not become a wrapper type --
-// either the root type, whose Validate the harness calls directly, or a $defs
-// entry whose Validate the referencing struct calls.
+// Validate the parent calls, an inline oneOf of typed scalars becomes a
+// sealed-interface union whose selection applies the branch constraints, and
+// oneOf / if / not become a wrapper type -- either the root type, whose
+// Validate the harness calls directly, or a $defs entry whose Validate the
+// referencing struct calls.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
@@ -151,43 +154,6 @@ func coGapInlineConditionalDropped() bool { return coIncludeKnownGaps }
 //	          "required":["a"]}
 //	instance {"a":"z"}               accepted
 func coGapScalarAllOfDropped() bool { return coIncludeKnownGaps }
-
-// coGapOneOfVariantConstraints: an inline oneOf of typed scalars on a property
-// becomes a sealed-interface union whose variant selection happens in
-// UnmarshalJSON and considers only whether the raw JSON decodes into the
-// variant's Go type. A branch's own constraints are not consulted, so a value
-// that decodes into one variant but violates that variant's constraints matches
-// it anyway, and nothing downstream rechecks. The grammar reaches oneOf over
-// scalars through the document root instead, where the dynamic evaluator does
-// apply the branch constraints.
-//
-//	schema   {"type":"object",
-//	          "properties":{"a":{"oneOf":[{"type":"string","minLength":3},
-//	                                      {"type":"integer","minimum":5}]}},
-//	          "required":["a"]}
-//	instance {"a":"z"}               accepted
-func coGapOneOfVariantConstraints() bool { return coIncludeKnownGaps }
-
-// coGapNestedOneOfDropsSiblings: a *property* whose schema is an object with
-// both its own `properties`/`required` and a `oneOf` is generated as a sealed
-// interface over the oneOf branches alone. The object's own properties never
-// appear in any generated type, so every constraint they carried is gone --
-// including `required`. The same schema at the document root is flattened
-// correctly and keeps both, which is where the grammar puts it.
-//
-//	schema   {"type":"object","properties":{
-//	           "f":{"type":"object","properties":{"h":{"type":"boolean"}},
-//	                "required":["h"],
-//	                "oneOf":[{"properties":{"tagOne":{"type":"integer"}},
-//	                          "required":["tagOne"]},
-//	                         {"properties":{"tagTwo":{"type":"string"}},
-//	                          "required":["tagTwo"]}]}}}
-//	instance {"f":{"tagOne":41}}     accepted, though "h" is required
-//
-// The generated type for "f" is an interface over RootFOption0{TagOne} and
-// RootFOption1{TagTwo}; neither mentions "h". anyOf in the same position is
-// flattened correctly, so this is specific to oneOf.
-func coGapNestedOneOfDropsSiblings() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -301,7 +267,9 @@ type coNode struct {
 	// coAltAnyOf: two typed scalar alternatives, a string one carrying
 	// minLength and an integer one carrying minimum. altUseStr says which one
 	// the instance takes. altOneOf spells the applicator "oneOf" instead of
-	// "anyOf"; it is only reachable under coGapOneOfVariantConstraints.
+	// "anyOf". The two alternatives are disjoint by type, so the branch the
+	// instance satisfies is the only one either applicator can match, and the
+	// same instance conforms under both spellings.
 	altStrMin int
 	altIntMin int64
 	altUseStr bool
@@ -548,9 +516,6 @@ func (b *coBuilder) buildObject(depth, visible int) *coNode {
 // and oneOf cases add exactly one property to the instance -- the discriminator
 // of the branch the document is meant to match.
 func (b *coBuilder) applyComposition(n *coNode, depth int) {
-	// A discriminated oneOf only survives generation at the document root; see
-	// coGapNestedOneOfDropsSiblings.
-	rootObject := depth == 0
 	switch b.rng.IntN(6) {
 	case 0, 1:
 		// Partition the properties across 1..2 allOf branches. The first
@@ -573,11 +538,6 @@ func (b *coBuilder) applyComposition(n *coNode, depth int) {
 		n.comp = coCompAnyOf
 		b.addDiscriminators(n)
 	case 3:
-		if !rootObject && !coGapNestedOneOfDropsSiblings() {
-			n.comp = coCompAnyOf
-			b.addDiscriminators(n)
-			return
-		}
 		n.comp = coCompOneOf
 		b.addDiscriminators(n)
 	default:
@@ -693,7 +653,7 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	case coArray:
 		return b.buildArray(depth, visible)
 	case coAltAnyOf:
-		return b.buildAltAnyOf(coGapOneOfVariantConstraints() && b.chance(2))
+		return b.buildAltAnyOf(b.chance(2))
 	case coIfElse:
 		return b.buildIfElse()
 	case coNot:
@@ -1402,24 +1362,43 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		// is satisfied and the document is invalid under anyOf and under oneOf
 		// alike.
 		//
-		// The rejection is reported as a type failure ("string is not
-		// allowed"), because the wrapper's last act, once no alternative has
+		// The two spellings reject in different places, because they generate
+		// different things.
+		//
+		// anyOf becomes an alternatives wrapper that keeps the raw JSON, so the
+		// rejection is a Validate() failure reported as a type failure ("string
+		// is not allowed"): the wrapper's last act, once no alternative has
 		// matched, is to name the JSON type it was handed. That is the message
 		// to assert on; asserting on the word "anyOf" would be asserting on a
 		// message the generator never emits here.
+		//
+		// oneOf becomes a sealed-interface union, and there the decision of
+		// which branch a value belongs to *is* the decode: the field holds one
+		// typed variant wrapper, so a value matching no branch has nothing to be
+		// stored as and UnmarshalJSON is the only place that can say so. The
+		// mutants are marked Loose for that reason and not because the check is
+		// weaker -- an accepted mutant is still a failure, which is the property
+		// under test. It does leave a hand-built value unguarded, since Validate
+		// does not descend into the union; that is a separate gap in the union
+		// shape, not something this position can settle. Want records the
+		// message the union does emit, for the day the site changes.
 		what := "anyOf"
+		want := []string{prop, "is not allowed"}
+		loose := false
 		if n.altOneOf {
 			what = "oneOf"
+			want = []string{"oneOf"}
+			loose = true
 		}
 		*out = append(*out, coMutation{
 			Keyword: what + "AllBranchesString", Path: path, Prop: prop,
 			Value: coFillString(n.altStrMin - 1),
-			Want:  []string{prop, "is not allowed"},
+			Want:  want, Loose: loose,
 		})
 		*out = append(*out, coMutation{
 			Keyword: what + "AllBranchesNumber", Path: path, Prop: prop,
 			Value: n.altIntMin - 1,
-			Want:  []string{prop, "is not allowed"},
+			Want:  want, Loose: loose,
 		})
 
 	case coOneOfWin:

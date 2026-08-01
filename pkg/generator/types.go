@@ -480,6 +480,18 @@ func (d *OneOfDef) HasDiscriminator() bool {
 	return d.DiscriminatorField != ""
 }
 
+// HasVariantChecks reports whether any variant carries branch constraints that
+// selection has to test. Templates use it to emit the extra bookkeeping only
+// where it is needed, leaving a union without such constraints unchanged.
+func (d *OneOfDef) HasVariantChecks() bool {
+	for _, v := range d.Variants {
+		if len(v.Checks) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
 	WrapperName        string   // TypeName_VariantName
@@ -492,6 +504,10 @@ type OneOfVariant struct {
 	// values (the union of its sub-variants' values), and a variant may
 	// constrain the discriminator with a multi-value enum.
 	DiscriminatorValues []string
+	// Checks are the branch's own constraints, expressed over the decoded
+	// candidate, that variant selection must satisfy before this variant counts
+	// as matched. See oneOfVariantChecks.
+	Checks []ValidationRule
 }
 
 // EnumDef represents an enum type.

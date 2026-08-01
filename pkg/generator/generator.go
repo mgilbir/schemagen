@@ -49,6 +49,16 @@ type Generator struct {
 	// set, a pointer must be used to break the cycle.
 	structsInProgress map[string]bool
 
+	// oneOfMemberNames counts the variant member names claimed on each parent
+	// type, so that two oneOf groups on the same struct cannot claim the same
+	// one. Every variant name becomes both a package-level wrapper type
+	// (Parent_Name) and a method (Parent.GetName), and the vocabulary primitive
+	// variants draw from is tiny — a struct with two scalar oneOf properties
+	// named both of them "String" and emitted Go that does not compile. Keyed by
+	// parent type name; the count drives the same numeric suffix already used
+	// for duplicates inside one group.
+	oneOfMemberNames map[string]map[string]int
+
 	// appliedOverrides records which FieldNames overrides were actually used,
 	// keyed by type name → JSON property name. The CLI inspects this after
 	// generation to warn about configured overrides that matched no property.
@@ -523,6 +533,22 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.OneOfs) > 0 {
 				needsJSON = true
 				needsFmt = true
+				// The per-variant constraint checks emitted into UnmarshalJSON
+				// use the same helpers the validation template does.
+				for _, oof := range sd.OneOfs {
+					for _, v := range oof.Variants {
+						for _, c := range v.Checks {
+							switch c.RuleType {
+							case "minLength", "maxLength":
+								needsUTF8 = true
+							case "pattern":
+								needsRegexp = true
+							case "multipleOf":
+								needsMath = true
+							}
+						}
+					}
+				}
 			}
 			// Check if any fields need manual JSON handling (control chars in names).
 			for _, f := range sd.Fields {
@@ -2016,8 +2042,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			return fmt.Errorf("property %q: schema is null (a property schema must be an object or boolean)", propName)
 		}
 
-		// Check if this property uses oneOf
-		if propSchema != nil && len(propSchema.OneOf) > 0 {
+		// Check if this property uses oneOf. Only when the union would carry the
+		// whole property schema: otherwise the siblings it declares — its own
+		// properties and required, most damagingly — never reach any generated
+		// type. See oneOfUnionKeepsWholeSchema.
+		if propSchema != nil && len(propSchema.OneOf) > 0 && oneOfUnionKeepsWholeSchema(propSchema) {
 			oneOfDef, err := g.generateOneOfForProperty(name, propName, goFieldName, propSchema)
 			if err != nil {
 				return fmt.Errorf("property %s (oneOf): %w", propName, err)
@@ -2117,8 +2146,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		})
 	}
 
-	// Handle top-level oneOf (not on a property but on the type itself)
-	if len(s.OneOf) > 0 && len(s.Properties) == 0 {
+	// Handle top-level oneOf (not on a property but on the type itself). Same
+	// rule as for a property: the union only stands in for the whole schema when
+	// the schema says nothing else. Otherwise the struct keeps its own fields and
+	// the branches are flattened into ObjectOneOfs below.
+	if len(s.OneOf) > 0 && len(s.Properties) == 0 && oneOfUnionKeepsWholeSchema(s) {
 		oneOfDef, err := g.generateOneOfForProperty(name, "", "Value", s)
 		if err != nil {
 			return fmt.Errorf("top-level oneOf: %w", err)
@@ -2169,11 +2201,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		needsMarshal = true
 		needsUnmarshal = true
-	} else if len(fields) > 0 || len(s.PatternProperties) > 0 {
+	} else if len(fields) > 0 || hasPropertyOneOf(oneOfs) || len(s.PatternProperties) > 0 {
 		// No additionalProperties specified: per JSON Schema spec, defaults to true.
 		// Add an overflow map to preserve extra properties for round-trip fidelity.
 		// In StrictProperties mode, mark as Forbidden so Validate() rejects them,
 		// but the data is still captured (not silently dropped).
+		//
+		// A oneOf on a *property* counts as much as a field: it leaves this
+		// struct through oneOfs rather than fields, so a struct whose properties
+		// are all unions used to look propertyless here and got no overflow map
+		// at all. Every key it did not declare was then dropped on marshal —
+		// including a key declared only inside one of its own object-level oneOf
+		// branches, which is exactly the key that decides which branch the value
+		// was in. A oneOf on the type itself does not count: MarshalJSON writes
+		// the selected variant as the whole object there, so there is no aux
+		// struct for an overflow map to be merged back into and nothing outside
+		// the variant to preserve.
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
 			Forbidden: g.config.StrictProperties,
@@ -3682,7 +3725,22 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 	interfaceName := ToOneOfInterfaceName(parentName, goFieldName)
 
 	var variants []OneOfVariant
-	usedNames := make(map[string]int) // track name occurrences for deduplication
+	// Name occurrences are tracked per parent type, not per oneOf group. Each
+	// variant name becomes a wrapper type (Parent_Name) and a method
+	// (Parent.GetName), both of which live on the parent rather than inside the
+	// group, so two groups on one struct claiming the same name — which two
+	// scalar oneOf properties do immediately, since primitive variants are all
+	// called String / Integer / Number / Boolean — emitted a redeclared type and
+	// a redeclared method. Widening the scope of the existing suffix mechanism
+	// resolves that the same way a duplicate inside one group is resolved.
+	usedNames := g.oneOfMemberNames[parentName]
+	if usedNames == nil {
+		if g.oneOfMemberNames == nil {
+			g.oneOfMemberNames = make(map[string]map[string]int)
+		}
+		usedNames = make(map[string]int)
+		g.oneOfMemberNames[parentName] = usedNames
+	}
 	for i, variant := range nonNullVariants {
 		result, err := g.resolveOneOfVariant(variant, parentName, goFieldName, i)
 		if err != nil {
@@ -3703,6 +3761,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			FieldName:      name,
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
+			Checks:         oneOfVariantChecks(variant, result.Type),
 		})
 	}
 
@@ -3948,6 +4007,73 @@ func extractDiscriminatorValue(propSchema *schema.Schema) string {
 		}
 	}
 	return ""
+}
+
+// hasPropertyOneOf reports whether any of the groups is a oneOf on a property
+// (it carries a JSON name) rather than one standing for the type itself.
+func hasPropertyOneOf(oneOfs []OneOfDef) bool {
+	for _, o := range oneOfs {
+		if o.JSONName != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// oneOfVariantChecks returns the constraints a oneOf variant declares that the
+// union's UnmarshalJSON can test directly against the decoded candidate.
+//
+// Variant selection otherwise asks only whether the raw JSON decodes into the
+// variant's Go type, and nothing downstream makes up for it: the wrapper holds a
+// plain Go string or int64, which carries no Validate, and the parent's Validate
+// does not descend into the union. So {"oneOf":[{"type":"string","minLength":3},
+// {"type":"integer","minimum":5}]} accepted "z" — it decodes as a string, and
+// minLength was never consulted anywhere. Testing the branch here is also what
+// gives oneOf's "exactly one" its meaning when two branches share a Go type,
+// which decodability alone cannot distinguish at all.
+//
+// Only keywords with a direct expression over the candidate's Go type are kept,
+// and only for the scalar and array types the union materializes by value. A
+// variant that resolved to `any` (a constraint-only branch) or to a named type
+// (a $ref or an inline object, whose own type carries the constraints) gets
+// none.
+func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule {
+	if variant == nil || goType == nil {
+		return nil
+	}
+	var kind string
+	switch t := goType.(type) {
+	case *PrimitiveType:
+		switch t.Name {
+		case "string":
+			kind = "string"
+		case "int64", "float64":
+			kind = "number"
+		}
+	case *ArrayType:
+		kind = "array"
+	}
+	if kind == "" {
+		return nil
+	}
+	var checks []ValidationRule
+	for _, r := range extractValidationRules("", "", variant) {
+		switch r.RuleType {
+		case "minLength", "maxLength", "pattern":
+			if kind == "string" {
+				checks = append(checks, r)
+			}
+		case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf":
+			if kind == "number" {
+				checks = append(checks, r)
+			}
+		case "minItems", "maxItems":
+			if kind == "array" {
+				checks = append(checks, r)
+			}
+		}
+	}
+	return checks
 }
 
 // oneOfVariantResult holds the result of resolving a oneOf variant.
@@ -4219,8 +4345,24 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return innerType, nil
 		}
-		// Multi-variant oneOf is handled by generateStructDef/generateOneOfForProperty
-		// and should not reach here (the caller skips it).
+		// A multi-variant oneOf reaches here when the caller declined to render it
+		// as a sealed-interface union because the schema asserts more than the
+		// union would carry (see oneOfUnionKeepsWholeSchema). When the branches
+		// still describe an object, materialize the named type so generateTypeDef
+		// builds a struct that keeps both: the schema's own object keywords, and
+		// the branches flattened into ObjectOneOfs. Without this the object arm
+		// below sees no properties of its own and collapses the whole schema —
+		// oneOf, required and all — to map[string]any.
+		//
+		// hasProperties is excluded because resolveType already materializes a
+		// named struct for it; a $ref is excluded so the ref arms keep it.
+		if !oneOfUnionKeepsWholeSchema(s) && s.EffectiveRef() == "" && !hasProperties(s) && g.oneOfDescribesObject(s) {
+			nestedName := parentName + fieldName
+			if err := g.generateTypeDef(nestedName, s); err != nil {
+				return nil, err
+			}
+			return &NamedType{Name: nestedName}, nil
+		}
 	}
 
 	// anyOf with null + single variant → pointer to the variant type (same as oneOf pattern above).
@@ -9196,6 +9338,38 @@ func (g *Generator) collectMultiBranchEval(kind string, subs []*schema.Schema) *
 		Kind:     kind,
 		Branches: branches,
 	}
+}
+
+// oneOfUnionKeepsWholeSchema reports whether rendering s's oneOf as a
+// sealed-interface union preserves everything s asserts about the value.
+//
+// generateOneOfForProperty builds that union out of s.OneOf and s.Discriminator
+// and nothing else: no field, no check and no error message carries any other
+// keyword s declares. So when s asserts anything beside the oneOf — its own
+// properties and required, an allOf, an enum, a minLength — the union is not a
+// translation of s, it is a translation of s.OneOf, and the rest is gone. The
+// caller must then take the ordinary type path instead, where the object-level
+// flattening (ObjectOneOfs) or the per-variant rule extraction
+// (extractOneOfVariantRules) attaches the branches to a type that keeps the
+// siblings. That is already what the document root does, and what anyOf in the
+// same position has always done.
+//
+// "type" is deliberately not counted. It names the Go representation the union
+// variants already commit to rather than adding an assertion of its own, and
+// {"type":"object","oneOf":[{"$ref":...},...]} is a spelling of the ordinary
+// discriminated union that must keep generating one.
+func oneOfUnionKeepsWholeSchema(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if hasTypeScopedConstraints(s) {
+		return false
+	}
+	// hasNonTypeScopedConstraints, minus the oneOf being rendered.
+	return len(s.AllOf) == 0 && len(s.AnyOf) == 0 &&
+		s.Not == nil && s.If == nil && s.Then == nil && s.Else == nil &&
+		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
+		len(s.Enum) == 0 && s.Const == nil && !s.ConstIsNull
 }
 
 // isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct

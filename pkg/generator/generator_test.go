@@ -2312,6 +2312,322 @@ func TestRequiredOnlyOneOfGeneratesObjectUnion(t *testing.T) {
 	}
 }
 
+// TestNestedOneOfKeepsItsSiblingProperties is a regression for a property whose
+// schema is an object with both its own properties/required and a oneOf. Every
+// such property was routed to the sealed-interface union, which is built from
+// the oneOf branches alone: the object's own properties never appeared in any
+// generated type, so "h" — and the `required` that named it — were gone, and
+// {"f":{"tagOne":41}} was accepted. The same schema at the document root, and
+// anyOf in the same position, were always flattened correctly; this brings the
+// property position in line with both.
+func TestNestedOneOfKeepsItsSiblingProperties(t *testing.T) {
+	input := `{"type":"object","properties":{
+		"f":{"type":"object","properties":{"h":{"type":"boolean"}},"required":["h"],
+		     "oneOf":[{"properties":{"tagOne":{"type":"integer"}},"required":["tagOne"]},
+		              {"properties":{"tagTwo":{"type":"string"}},"required":["tagTwo"]}]}}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root, nested *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok {
+			switch sd.Name {
+			case "Root":
+				root = sd
+			case "RootF":
+				nested = sd
+			}
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.OneOfs) != 0 {
+		t.Fatalf("Root.OneOfs = %#v, want none: the union would drop f's own properties", root.OneOfs)
+	}
+	if nested == nil {
+		t.Fatalf("expected a StructDef named RootF carrying f's own shape, got %#v", ir.TypeDefs)
+	}
+
+	var haveH bool
+	for _, f := range nested.Fields {
+		if f.JSONName == "h" {
+			haveH = true
+		}
+	}
+	if !haveH {
+		t.Fatalf("RootF.Fields = %#v, want a field for property \"h\"", nested.Fields)
+	}
+	if !containsString(nested.RequiredJSON, "h") {
+		t.Fatalf("RootF.RequiredJSON = %v, want it to contain \"h\"", nested.RequiredJSON)
+	}
+	if len(nested.ObjectOneOfs) != 1 {
+		t.Fatalf("RootF.ObjectOneOfs = %#v, want exactly 1 oneOf group", nested.ObjectOneOfs)
+	}
+	if got := len(nested.ObjectOneOfs[0].Branches); got != 2 {
+		t.Fatalf("oneOf group has %d branches, want 2", got)
+	}
+}
+
+// TestOneOfOnlyPropertyStillGeneratesUnion pins the shape the arm above must not
+// disturb. A property whose schema is nothing but a oneOf of object $refs is the
+// discriminated union real callers depend on, and it has to keep generating the
+// sealed interface — the sibling rule applies only when there are siblings.
+func TestOneOfOnlyPropertyStillGeneratesUnion(t *testing.T) {
+	input := `{"type":"object",
+		"$defs":{"C":{"type":"object","properties":{"radius":{"type":"number"}},"required":["radius"]},
+		         "R":{"type":"object","properties":{"w":{"type":"number"}},"required":["w"]}},
+		"properties":{"shape":{"oneOf":[{"$ref":"#/$defs/C"},{"$ref":"#/$defs/R"}]}},
+		"required":["shape"]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.OneOfs) != 1 {
+		t.Fatalf("Root.OneOfs = %#v, want exactly 1 sealed-interface union", root.OneOfs)
+	}
+	if got := len(root.OneOfs[0].Variants); got != 2 {
+		t.Fatalf("union has %d variants, want 2", got)
+	}
+}
+
+// TestOneOfVariantSelectionCarriesBranchConstraints is a regression for variant
+// selection in a union over typed scalars. Selection asked only whether the raw
+// JSON decoded into the variant's Go type, so {"a":"z"} matched the string branch
+// despite its minLength 3 — and nothing downstream rechecked, because the wrapper
+// holds a plain Go string with no Validate and the parent's Validate does not
+// descend into the union. The branch's own keywords have to reach the match.
+func TestOneOfVariantSelectionCarriesBranchConstraints(t *testing.T) {
+	input := `{"type":"object",
+		"properties":{"a":{"oneOf":[{"type":"string","minLength":3},
+		                            {"type":"integer","minimum":5}]}},
+		"required":["a"]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.OneOfs) != 1 || len(root.OneOfs[0].Variants) != 2 {
+		t.Fatalf("Root.OneOfs = %#v, want one union of 2 variants", root.OneOfs)
+	}
+
+	want := map[string]string{"String": "minLength", "Integer": "minimum"}
+	for _, v := range root.OneOfs[0].Variants {
+		ruleType, ok := want[v.FieldName]
+		if !ok {
+			t.Fatalf("unexpected variant %q", v.FieldName)
+		}
+		if len(v.Checks) != 1 || v.Checks[0].RuleType != ruleType {
+			t.Fatalf("variant %s Checks = %#v, want one %q check", v.FieldName, v.Checks, ruleType)
+		}
+	}
+}
+
+// TestOneOfVariantChecksSkipUncheckableVariants guards the other half of the arm
+// above: a check is only emitted when it has a direct expression over the
+// candidate's Go type. A constraint-only branch resolves to `any`, and emitting
+// utf8.RuneCountInString or float64() over that produces uncompilable output.
+func TestOneOfVariantChecksSkipUncheckableVariants(t *testing.T) {
+	input := `{"type":"object",
+		"properties":{"a":{"oneOf":[{"minLength":3},{"minimum":5}]}},
+		"required":["a"]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	for _, td := range ir.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for _, oof := range sd.OneOfs {
+			for _, v := range oof.Variants {
+				if pt, isPrim := v.Type.(*PrimitiveType); isPrim && pt.Name == "any" && len(v.Checks) > 0 {
+					t.Fatalf("variant %s is typed any but carries checks %#v", v.FieldName, v.Checks)
+				}
+			}
+		}
+	}
+}
+
+// TestTwoScalarOneOfsOnOneStructGetDistinctMembers is a regression for variant
+// naming. A variant's name becomes a package-level wrapper type (Parent_Name)
+// and a method (Parent.GetName), but duplicates were only resolved inside a
+// single oneOf group. Primitive variants all draw from the same four names, so
+// two scalar oneOf properties on one struct both claimed "String" and "Integer"
+// and the output did not compile: "Root_String redeclared in this block",
+// "method Root.GetString already declared".
+func TestTwoScalarOneOfsOnOneStructGetDistinctMembers(t *testing.T) {
+	input := `{"type":"object","properties":{
+		"bravo":{"oneOf":[{"type":"string","minLength":3},{"type":"integer","minimum":7}]},
+		"charlie":{"oneOf":[{"type":"string","minLength":3},{"type":"integer","minimum":-2}]}}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.OneOfs) != 2 {
+		t.Fatalf("Root.OneOfs = %#v, want 2 unions", root.OneOfs)
+	}
+
+	seenWrapper := map[string]string{}
+	seenField := map[string]string{}
+	for _, oof := range root.OneOfs {
+		for _, v := range oof.Variants {
+			if prev, dup := seenWrapper[v.WrapperName]; dup {
+				t.Fatalf("wrapper type %q claimed by both %s and %s", v.WrapperName, prev, oof.FieldName)
+			}
+			seenWrapper[v.WrapperName] = oof.FieldName
+			// The getter is Get<FieldName> on the parent, so the field names
+			// have to be distinct across groups too, not just the wrappers.
+			if prev, dup := seenField[v.FieldName]; dup {
+				t.Fatalf("getter Get%s claimed by both %s and %s", v.FieldName, prev, oof.FieldName)
+			}
+			seenField[v.FieldName] = oof.FieldName
+		}
+	}
+}
+
+// TestStructWhoseOnlyPropertyIsAUnionKeepsUnknownKeys is a regression for the
+// round-trip overflow map. A property rendered as a sealed interface leaves
+// generateStructDef through OneOfs rather than Fields, so a struct whose
+// properties are all unions looked propertyless to the arm that adds the map and
+// got none — every key it did not declare was dropped on marshal. That includes
+// a key declared only inside one of the struct's own object-level oneOf
+// branches, which is precisely the key that says which branch the value took.
+func TestStructWhoseOnlyPropertyIsAUnionKeepsUnknownKeys(t *testing.T) {
+	input := `{"type":"object",
+		"oneOf":[{"properties":{"tagOne":{"type":"integer"}},"required":["tagOne"]},
+		         {"properties":{"tagTwo":{"type":"boolean"}},"required":["tagTwo"]}],
+		"properties":{"charlie":{"oneOf":[{"type":"string","minLength":3},
+		                                  {"type":"integer","minimum":-9}]}}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.Fields) != 0 {
+		t.Fatalf("Root.Fields = %#v, want none (charlie is a union)", root.Fields)
+	}
+	if root.AdditionalProperties == nil {
+		t.Fatalf("Root has no overflow map, so tagOne/tagTwo are dropped on marshal")
+	}
+}
+
+// TestTypeLevelUnionGetsNoOverflowMap pins the other side of the arm above. When
+// the oneOf stands for the type itself rather than a property, MarshalJSON writes
+// the selected variant as the whole object: there is no aux struct to merge an
+// overflow map back into, so adding one would capture keys it could never emit.
+func TestTypeLevelUnionGetsNoOverflowMap(t *testing.T) {
+	input := `{"type":"object","oneOf":[{"required":["foo","bar"]},{"required":["foo","baz"]}]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	for _, td := range ir.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok || sd.Name != "Root" {
+			continue
+		}
+		if len(sd.OneOfs) != 1 || sd.OneOfs[0].JSONName != "" {
+			t.Fatalf("Root.OneOfs = %#v, want one type-level union", sd.OneOfs)
+		}
+		if sd.AdditionalProperties != nil {
+			t.Fatalf("Root has an overflow map its MarshalJSON never emits")
+		}
+	}
+}
+
 // TestPropertyNameCollidesWithGeneratedMember is a regression for C3: property
 // names that derive to a generated member (Validate method, AdditionalProperties
 // overflow field, etc.) must not collide — the derived field name is renamed via
