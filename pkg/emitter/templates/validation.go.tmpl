@@ -803,6 +803,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if and .IsSlice .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		for _i, _item := range *{{$recv}}.{{.FieldName}} {
+			{{- if .ElemIsPointer}}
+			if _item == nil {
+				{{- if .ElemRejectsNull}}
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%d]: null is not allowed", _i)
+				{{- else}}
+				continue // a JSON null left no value behind to check
+				{{- end}}
+			}
+			{{- end}}
 			if err := _item.Validate(); err != nil {
 				return fmt.Errorf("{{jsonErrorName .JSONName}}[%d].%w", _i, err)
 			}
@@ -810,8 +819,49 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- else if .IsSlice}}
 	for _i, _item := range {{$recv}}.{{.FieldName}} {
+		{{- if .ElemIsPointer}}
+		if _item == nil {
+			{{- if .ElemRejectsNull}}
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%d]: null is not allowed", _i)
+			{{- else}}
+			continue // a JSON null left no value behind to check
+			{{- end}}
+		}
+		{{- end}}
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}[%d].%w", _i, err)
+		}
+	}
+	{{- else if and .IsMap .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil {
+		for _k, _val := range *{{$recv}}.{{.FieldName}} {
+			{{- if .ElemIsPointer}}
+			if _val == nil {
+				{{- if .ElemRejectsNull}}
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
+				{{- else}}
+				continue // a JSON null left no value behind to check
+				{{- end}}
+			}
+			{{- end}}
+			if err := _val.Validate(); err != nil {
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%q].%w", _k, err)
+			}
+		}
+	}
+	{{- else if .IsMap}}
+	for _k, _val := range {{$recv}}.{{.FieldName}} {
+		{{- if .ElemIsPointer}}
+		if _val == nil {
+			{{- if .ElemRejectsNull}}
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
+			{{- else}}
+			continue // a JSON null left no value behind to check
+			{{- end}}
+		}
+		{{- end}}
+		if err := _val.Validate(); err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%q].%w", _k, err)
 		}
 	}
 	{{- else if .IsPointer}}

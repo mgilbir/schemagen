@@ -26,10 +26,20 @@ func (d Draft3typeMulti) MarshalJSON() ([]byte, error) {
 
 func (d Draft3typeMulti) Raw() json.RawMessage { return d._raw }
 
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (d Draft3typeMulti) IsZero() bool { return len(d._raw) == 0 }
+
 func (d Draft3typeMulti) String() string { return string(d._raw) }
 
 // Validate checks Draft3typeMulti against its JSON Schema type constraint.
 func (d Draft3typeMulti) Validate() error {
+	// No value was present. A constraint applies to a value that is there; an
+	// absent optional property is the parent's business (required), not this
+	// type's.
+	if len(d._raw) == 0 {
+		return nil
+	}
 	var _v any
 	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)

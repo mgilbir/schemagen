@@ -84,7 +84,10 @@ func jsonErrorNameFunc(s string) string {
 func validationValueFunc(recv string, rule generator.ValidationRule) string {
 	field := recv + "." + rule.FieldName
 	if rule.IsPointer {
-		return "*" + field
+		field = "*" + field
+	}
+	if rule.StringConvert {
+		return "string(" + field + ")"
 	}
 	return field
 }

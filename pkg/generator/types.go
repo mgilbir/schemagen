@@ -141,11 +141,23 @@ type DependentPropertyType struct {
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
 // that should be called from the parent struct's Validate().
 type ValidatableFieldDef struct {
-	FieldName   string // Go field name (PascalCase)
-	JSONName    string // JSON property name (for error path context)
-	GoType      GoType // the Go type of the field (for zero-value comparison)
-	IsPointer   bool   // true if the field is a pointer type (needs nil check)
-	IsSlice     bool   // true if the field is a slice of validatable elements (needs iteration)
+	FieldName string // Go field name (PascalCase)
+	JSONName  string // JSON property name (for error path context)
+	GoType    GoType // the Go type of the field (for zero-value comparison)
+	IsPointer bool   // true if the field is a pointer type (needs nil check)
+	IsSlice   bool   // true if the field is a slice of validatable elements (needs iteration)
+	IsMap     bool   // true if the field is a map of validatable values (needs iteration, keyed error path)
+
+	// ElemIsPointer is set when a slice's elements or a map's values are
+	// pointers. encoding/json turns a JSON null into a nil entry without
+	// consulting the element type's UnmarshalJSON, so the emitted loop meets a
+	// nil it must not call a value-receiver Validate through.
+	ElemIsPointer bool
+	// ElemRejectsNull is set when the element type's own schema does not admit
+	// null, which makes that nil entry a validation failure rather than
+	// something to pass over.
+	ElemRejectsNull bool
+
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
 }
@@ -424,6 +436,15 @@ type ValidationRule struct {
 	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern, bool for uniqueItems)
 	IsPointer bool   // true if the field is a pointer type (needs nil check + dereference)
 	Optional  bool   // true if the field is optional (not required) — validation is skipped when absent
+
+	// StringConvert is set on string-valued rules (minLength, maxLength,
+	// pattern, format) whose field is typed as a named string rather than
+	// string itself — a property that $refs a "type": "string" definition, for
+	// instance. Those rules hand the field to functions declared to take a
+	// string (ecma262.MatchString, url.Parse, utf8.RuneCountInString), and Go
+	// does not convert a named type implicitly, so the emitter wraps the value
+	// in an explicit conversion.
+	StringConvert bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }
@@ -861,12 +882,19 @@ type TypeOnlySchemaDef struct {
 	Name         string
 	Description  string
 	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
-	TypeBranches []TypeSchemaBranch // Draft 3 schema-valued alternatives in the type array
+	TypeBranches []TypeSchemaBranch // one per alternative: draft-3 schema-valued type entries, anyOf variants, or the types of a multi-type union
 }
 
 type TypeSchemaBranch struct {
 	AllowedTypes []string
 	Properties   []TypeSchemaProperty
+
+	// TypeName delegates the whole branch to a generated type: the raw value
+	// matches when it unmarshals into that type and the type's own Validate
+	// accepts it. A schema-valued alternative that is a $ref carries no inline
+	// type or properties to check, so without this the branch would enforce
+	// nothing.
+	TypeName string
 }
 
 type TypeSchemaProperty struct {

@@ -160,6 +160,9 @@ func (n NullableArrayItems) MarshalJSON() ([]byte, error) {
 // Validate checks NullableArrayItems against its JSON Schema constraints.
 func (n NullableArrayItems) Validate() error {
 	for _i, _item := range n.Rows {
+		if _item == nil {
+			continue // a JSON null left no value behind to check
+		}
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("rows[%d].%w", _i, err)
 		}

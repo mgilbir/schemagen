@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://ex.test/additional-properties-typed-values",
+  "title": "AdditionalPropertiesTypedValues",
+  "type": "object",
+  "properties": {
+    "definitions": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/definitions/entry"}
+    }
+  },
+  "definitions": {
+    "entry": {
+      "type": "object",
+      "properties": {"name": {"type": "string", "minLength": 2}},
+      "required": ["name"]
+    }
+  }
+}

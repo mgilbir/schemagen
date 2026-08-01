@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://ex.test/anyof-union-alternatives",
+  "title": "AnyOfUnionAlternatives",
+  "type": "object",
+  "properties": {
+    "type": {
+      "anyOf": [
+        {"$ref": "#/definitions/simpleTypes"},
+        {
+          "type": "array",
+          "items": {"$ref": "#/definitions/simpleTypes"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "simpleTypes": {
+      "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://ex.test/multitype-with-siblings",
+  "title": "MultiTypeWithSiblings",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": ["string", "array"],
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "minLength": 3
+    }
+  }
+}

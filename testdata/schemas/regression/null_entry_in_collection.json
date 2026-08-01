@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://ex.test/null-entry-in-collection",
+  "title": "NullEntryInCollection",
+  "type": "object",
+  "properties": {
+    "kids": {"type": "array", "items": {"$ref": "#"}},
+    "byName": {"type": "object", "additionalProperties": {"$ref": "#"}},
+    "loose": {
+      "type": "array",
+      "items": {"type": ["object", "null"], "properties": {"n": {"type": "string"}}}
+    },
+    "name": {"type": "string"}
+  }
+}
