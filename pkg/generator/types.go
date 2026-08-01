@@ -424,6 +424,15 @@ type ValidationRule struct {
 	Value     any    // the constraint value (int for lengths, float64 for min/max, string for pattern, bool for uniqueItems)
 	IsPointer bool   // true if the field is a pointer type (needs nil check + dereference)
 	Optional  bool   // true if the field is optional (not required) — validation is skipped when absent
+
+	// StringConvert is set on string-valued rules (minLength, maxLength,
+	// pattern, format) whose field is typed as a named string rather than
+	// string itself — a property that $refs a "type": "string" definition, for
+	// instance. Those rules hand the field to functions declared to take a
+	// string (ecma262.MatchString, url.Parse, utf8.RuneCountInString), and Go
+	// does not convert a named type implicitly, so the emitter wraps the value
+	// in an explicit conversion.
+	StringConvert bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

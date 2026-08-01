@@ -2125,6 +2125,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 						continue
 					}
 				}
+				// The string rules pass the field to functions that take a
+				// string; a field typed as a named string needs an explicit
+				// conversion for that to compile.
+				if ruleTakesStringValue(rules[i].RuleType) && g.isStringBackedNamedType(ft) {
+					rules[i].StringConvert = true
+				}
 			}
 			filtered = append(filtered, rules[i])
 		}
@@ -5080,6 +5086,68 @@ func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) b
 		}
 	}
 	return false
+}
+
+// ruleTakesStringValue reports whether a rule's emitted code hands the field
+// value to something declared to take a string (ecma262.MatchString,
+// utf8.RuneCountInString, url.Parse, time.Parse, ...). The ipv4/ipv6 formats
+// are the exception among "format" rules: they test a netip.Addr through its
+// own methods and never touch the string value, so a conversion flag on them
+// is inert rather than wrong.
+func ruleTakesStringValue(ruleType string) bool {
+	switch ruleType {
+	case "minLength", "maxLength", "pattern", "format":
+		return true
+	default:
+		return false
+	}
+}
+
+// isStringBackedNamedType reports whether t names a generated type whose
+// underlying type is string, so `string(v)` converts it. Types not yet
+// registered, and wrapper structs such as InferredAliasDef, answer false: a
+// conversion emitted for those would not compile.
+func (g *Generator) isStringBackedNamedType(t GoType) bool {
+	nt, ok := t.(*NamedType)
+	if !ok {
+		return false
+	}
+	return g.isStringBackedTypeName(nt.Name, 0)
+}
+
+func (g *Generator) isStringBackedTypeName(name string, depth int) bool {
+	// Alias chains are short; the bound only stops a malformed cycle.
+	if depth > 16 {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != name {
+			continue
+		}
+		switch def := td.(type) {
+		case *AliasDef:
+			return g.isStringBackedGoType(def.Underlying, depth)
+		case *EnumDef:
+			return g.isStringBackedGoType(def.BaseType, depth)
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func (g *Generator) isStringBackedGoType(t GoType, depth int) bool {
+	switch u := t.(type) {
+	case *PrimitiveType:
+		return u.Name == "string"
+	case *NamedType:
+		if u.Pointer || u.PkgAlias != "" {
+			return false
+		}
+		return g.isStringBackedTypeName(u.Name, depth+1)
+	default:
+		return false
+	}
 }
 
 // isEnumType returns true if a type name corresponds to an already-generated enum.

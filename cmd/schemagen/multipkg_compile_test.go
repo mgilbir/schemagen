@@ -581,3 +581,34 @@ func TestArrayDefinitionReachedThroughItsOwnItemsCompiles(t *testing.T) {
 		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
 	}
 }
+
+// A property that $refs a "type": "string" definition takes that definition's
+// named Go type, not string. Its own "pattern" (and the other string
+// constraints) hand the field to functions declared to take a string, which Go
+// does not convert to implicitly, so the emitted code has to say so.
+func TestNamedStringPropertyWithStringConstraintsCompiles(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "root.json"), `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/root.json",
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"id": {"$ref": "#/$defs/uriReferenceString", "pattern": "^[^#]*#?$"},
+			"anchor": {"$ref": "#/$defs/plainString", "minLength": 1, "maxLength": 8},
+			"home": {"$ref": "#/$defs/uriReferenceString"}
+		},
+		"$defs": {
+			"uriReferenceString": {"type": "string", "format": "uri-reference"},
+			"plainString": {"type": "string"}
+		}
+	}`)
+
+	out := t.TempDir()
+	if err := runGenerateArgs(t, filepath.Join(src, "root.json"), "-o", out, "-p", "gen"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if buildOut, err := buildGenerated(t, out, "example.com/namedstring"); err != nil {
+		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
+	}
+}
