@@ -314,6 +314,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Populate ValidatableFields on structs — identify fields whose types have Validate().
 	// Must run after resolveAliasMethodability so we know which types actually have methods.
 	g.populateValidatableFields()
+	g.resolveItemValidations()
 	g.populateAliasDelegates()
 
 	// Publish validation info about this call's types so packages generated
@@ -449,6 +450,32 @@ func quoteAll(ss []string) []string {
 		out[i] = fmt.Sprintf("%q", s)
 	}
 	return out
+}
+
+// noteItemValidationImports records what the emitted per-element checks need.
+// Every one of them wraps its failure in fmt.Errorf, and the individual rules
+// pull in the same packages their field-level counterparts do.
+func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, needsMath, needsUTF8, needsRegexp *bool) {
+	if len(defs) == 0 {
+		return
+	}
+	*needsFmt = true
+	for _, def := range defs {
+		for _, level := range def.Levels {
+			for _, rule := range level.Rules {
+				switch rule.RuleType {
+				case "minLength", "maxLength":
+					*needsUTF8 = true
+				case "pattern":
+					*needsRegexp = true
+				case "multipleOf":
+					*needsMath = true
+				case "const":
+					*needsJSON = true
+				}
+			}
+		}
+	}
 }
 
 // addRequiredImports scans generated TypeDefs and adds necessary imports.
@@ -670,6 +697,8 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.ValidatableFields) > 0 {
 				needsFmt = true
 			}
+			noteItemValidationImports(sd.ItemValidations,
+				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -738,6 +767,8 @@ func (g *Generator) addRequiredImports() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
 			}
+			noteItemValidationImports(ad.ItemValidations,
+				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
 			if ad.HasUnevaluatedItems() {
 				needsFmt = true
 				if ad.UnevaluatedItems.ContainsEvaluates || ad.UnevaluatedItems.ValueType != "" || len(ad.UnevaluatedItems.Checks) > 0 {
@@ -1663,7 +1694,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			containsDef, minContains, maxContains := extractContainsDef(s)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
-			if !g.validationKeywordsEnabled() {
+			var itemValidations []ItemValidationDef
+			if g.validationKeywordsEnabled() {
+				// The alias *is* the slice, so the checks hang off the
+				// receiver rather than off a field.
+				if iv := g.buildItemValidation("", "", goType, s); iv != nil {
+					itemValidations = append(itemValidations, *iv)
+				}
+			} else {
 				tupleItems = nil
 				containsDef = nil
 				minContains = nil
@@ -1678,6 +1716,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
 				TupleItems:       tupleItems,
+				ItemValidations:  itemValidations,
 				Contains:         containsDef,
 				MinContains:      minContains,
 				MaxContains:      maxContains,
@@ -1984,22 +2023,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 
 		omitEmpty := g.config.OmitEmpty && !required
-		// Never use omitempty for null-typed properties — omitempty strips nil values
-		// but {"foo": null} must be preserved in round-trip.
-		if omitEmpty && isNullOnly(propSchema) {
-			omitEmpty = false
-		}
-		// Suppress omitempty for properties whose schema explicitly includes null
-		// (via type list or anyOf/oneOf composition). These generate pointer types
-		// where omitempty would incorrectly drop JSON null values.
-		// NOTE: This does NOT suppress omitempty for all pointer types — recursive
-		// self-refs also produce pointers but should keep omitempty so that absent
-		// optional fields are omitted rather than emitted as null.
-		if omitEmpty && isNullable(propSchema) {
-			omitEmpty = false
-		}
-		if omitEmpty && g.isNullableComposition(propSchema) {
-			omitEmpty = false
+		// A null-only property resolves to the raw-value wrapper, which keeps the
+		// bytes it was handed: there a present null and an absent property are
+		// different values, and the ",omitzero" tag computed below drops exactly
+		// the absent one. Every other spelling of "may be null" resolves to a
+		// pointer, whose nil means both, so the suppressions apply to those.
+		nullSurvivesOmit := isNullOnly(propSchema) && g.isRawValueWrapperType(goType)
+		if omitEmpty && !nullSurvivesOmit {
+			// Suppress omitempty for properties whose schema explicitly includes null
+			// (via type list or anyOf/oneOf composition). These generate pointer types
+			// where omitempty would incorrectly drop JSON null values.
+			// NOTE: This does NOT suppress omitempty for all pointer types — recursive
+			// self-refs also produce pointers but should keep omitempty so that absent
+			// optional fields are omitted rather than emitted as null.
+			if isNullable(propSchema) || g.isNullableComposition(propSchema) {
+				omitEmpty = false
+			}
 		}
 		// Optional array/slice fields are left as []T: a slice is already nilable,
 		// so omitempty omits it when nil. (Absent and an explicit empty [] both
@@ -2014,7 +2053,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// For optional scalar fields with omitempty, wrap in a pointer so that the
 		// zero value ("", false, 0, 0.0) is distinguishable from
 		// absent. Without this, omitempty conflates "absent" with "zero value".
-		if omitEmpty && !goType.IsPointer() && isZeroLossyPrimitive(goType) {
+		//
+		// A name over the primitive changes nothing about that: a $ref to a
+		// "type":"integer" definition, or an inline enum or const, produces a
+		// named type whose underlying is still int64, and a legitimate 0 in it
+		// is just as invisible to omitempty. It is worse there, in fact —
+		// because the named type carries a Validate(), Validate() on the owner
+		// guards the call with `!= <zero>` (see populateValidatableFields and
+		// the validatable-field arm of the validation template), so the zero
+		// value both vanished from the output and skipped every constraint the
+		// definition declares. The pointer removes both: nil is the absent
+		// value omitempty drops, and the guard becomes a nil check.
+		if omitEmpty && !goType.IsPointer() && (isZeroLossyPrimitive(goType) || g.isZeroLossyNamedType(goType)) {
 			goType = &PointerType{Inner: goType}
 		}
 		manualJSON := needsManualJSON(propName)
@@ -2129,6 +2179,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 	var validations []ValidationRule
+	var itemValidations []ItemValidationDef
 
 	// Collect required JSON property names for presence-based validation.
 	// These are checked via the raw JSON keys during UnmarshalJSON.
@@ -2212,7 +2263,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// type's own Validate(); an additional const rule on the field would
 				// be redundant.
 				if rules[i].RuleType == "const" {
-					if nt, isNamed := ft.(*NamedType); isNamed && g.isEnumType(nt.Name) {
+					// namedTypeName, not a type assertion: an optional field of
+					// such a type is pointer-wrapped so its zero value survives
+					// the round trip, and the enum behind the pointer is still
+					// the thing enforcing the const.
+					if name := namedTypeName(ft); name != "" && g.isEnumType(name) {
 						continue
 					}
 				}
@@ -2233,6 +2288,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 		}
 		validations = append(validations, filtered...)
+
+		// Constraints under `items` land on no field of their own, so they are
+		// collected separately and checked element by element.
+		if g.validationKeywordsEnabled() {
+			if iv := g.buildItemValidation(goFieldName, propName, fieldTypes[goFieldName], propSchema); iv != nil {
+				itemValidations = append(itemValidations, *iv)
+			}
+		}
 	}
 
 	// Enable custom marshal/unmarshal if any field has a JSON name that
@@ -2399,6 +2462,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		DependentRequired:     depRequired,
 		PropertyNames:         propertyNamesDef,
 		Validations:           validations,
+		ItemValidations:       itemValidations,
 		NonObjectValidations:  nonObjRules,
 		UnevaluatedProperties: unevalProps,
 		CousinUnevalChecks:    cousinChecks,
@@ -4244,6 +4308,12 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return goType, nil
 	}
 
+	// A property that must be null. Checked before the nullable case, whose
+	// pointer says neither of the two things this schema needs said.
+	if goType, ok := g.nullOnlyWrapperType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
 	// Nullable type: ["string", "null"] → *string
 	if isNullable(s) {
 		inner := nonNullType(s)
@@ -4295,6 +4365,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if s == nil {
 		return &PrimitiveType{Name: "any"}
+	}
+
+	// Const with no explicit type -> single-member enum, exactly as
+	// resolvePropertyType does for a property. The const is what fixes the Go
+	// type, and the enum is what carries the check; without this an
+	// items:{"const":5} resolves to `any` and the const is enforced nowhere.
+	// The promotion returns a copy, but the enum arm below consumes it and
+	// returns, so it never reaches the node-identity bookkeeping further down.
+	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
+		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum
@@ -5433,7 +5513,14 @@ func ruleTakesStringValue(ruleType string) bool {
 // underlying type is string, so `string(v)` converts it. Types not yet
 // registered, and wrapper structs such as InferredAliasDef, answer false: a
 // conversion emitted for those would not compile.
+//
+// A pointer is looked through: an optional property of such a type is
+// pointer-wrapped so its "" survives the round trip, and the rules that ask
+// this dereference the field before converting it.
 func (g *Generator) isStringBackedNamedType(t GoType) bool {
+	if pt, ok := t.(*PointerType); ok {
+		t = pt.Inner
+	}
 	nt, ok := t.(*NamedType)
 	if !ok {
 		return false
@@ -5508,6 +5595,74 @@ func isZeroLossyPrimitive(goType GoType) bool {
 	switch pt.Name {
 	case "string", "bool", "int64", "float64":
 		return true
+	}
+	return false
+}
+
+// isZeroLossyNamedType reports whether t names a generated type whose
+// underlying Go type is a zero-lossy primitive — a $ref to a "type":"string"
+// definition, an inline enum, a const promoted to a single-value enum. The name
+// does not give the value a nil to be absent in, so such a field loses a
+// legitimate "", 0 or false to omitempty exactly as a bare primitive would.
+//
+// The answer comes from the generated type rather than from the property's
+// schema because a $ref says nothing about the shape of its target. Both are
+// available by the time this is asked: resolvePropertyType generates a ref
+// target, and generateEnumDef an inline enum, before returning a name for it.
+func (g *Generator) isZeroLossyNamedType(t GoType) bool {
+	nt, ok := t.(*NamedType)
+	if !ok || nt.Pointer {
+		return false
+	}
+	if nt.PkgAlias != "" {
+		// A type owned by another package of a cross-package run. The owning
+		// generator published its zero literal, which is the same fact reached
+		// by the only route available here; a type whose owner has not been
+		// generated yet leaves the literal empty and answers no.
+		switch nt.foreignZeroLiteral {
+		case `""`, "0", "false":
+			return true
+		}
+		return false
+	}
+	return g.zeroLossyTypeName(nt.Name, 0)
+}
+
+func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
+	// Alias chains are short; the bound only stops a malformed cycle.
+	if depth > 16 {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != name {
+			continue
+		}
+		switch def := td.(type) {
+		case *AliasDef:
+			return g.zeroLossyGoType(def.Underlying, depth)
+		case *EnumDef:
+			// A heterogeneous enum is backed by json.RawMessage, whose zero is
+			// nil — absent already has a representation there.
+			return g.zeroLossyGoType(def.BaseType, depth)
+		default:
+			// Structs and the wrapper types (inferred, big-int, raw-value) have
+			// no zero literal at all: zeroLiteralForType returns "" for them and
+			// the caller wraps them for their own reasons, or not at all.
+			return false
+		}
+	}
+	return false
+}
+
+func (g *Generator) zeroLossyGoType(t GoType, depth int) bool {
+	switch u := t.(type) {
+	case *PrimitiveType:
+		return isZeroLossyPrimitive(u)
+	case *NamedType:
+		if u.Pointer || u.PkgAlias != "" {
+			return false
+		}
+		return g.zeroLossyTypeName(u.Name, depth+1)
 	}
 	return false
 }
@@ -6493,6 +6648,207 @@ func (g *Generator) populateValidatableFields() {
 	}
 }
 
+// maxItemLevels bounds how many array dimensions a single ItemValidationDef
+// descends. Nothing in a well-formed schema comes near it; the bound only stops
+// a pathological input from generating an unbounded nest of loops.
+const maxItemLevels = 8
+
+// singleItemsSchema returns the sub-schema that governs every element of an
+// array schema, or nil when there is none to speak of. A tuple form, a boolean
+// items, and a 2020-12 prefixItems (where `items` governs only the tail) all
+// answer nil: those positions are validated elsewhere, and guessing here would
+// reject data the schema allows.
+func (g *Generator) singleItemsSchema(s *schema.Schema) *schema.Schema {
+	if s == nil || s.AdditionalItems != nil {
+		return nil
+	}
+	if len(s.PrefixItems) > 0 && g.supportsPrefixItems(s) {
+		return nil
+	}
+	if s.Items == nil || s.Items.Schema == nil || s.Items.Schema.IsBooleanSchema() {
+		return nil
+	}
+	return s.Items.Schema
+}
+
+// buildItemValidation walks a slice-typed field's Go type and its schema's
+// `items` chain in step, collecting the constraints that apply at each
+// dimension. Returns nil when nothing is left to check.
+//
+// The descent stops at a named element type: that type was generated from this
+// very sub-schema and answers for it through its own Validate. Whether such a
+// call is actually emitted is settled later, by resolveItemValidations, since
+// which types carry methods is only known once every type def exists.
+func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType GoType, s *schema.Schema) *ItemValidationDef {
+	if fieldType == nil {
+		return nil
+	}
+	base := fieldType
+	isPointer := false
+	if pt, ok := base.(*PointerType); ok {
+		base = pt.Inner
+		isPointer = true
+	}
+	arr, ok := base.(*ArrayType)
+	if !ok {
+		return nil
+	}
+
+	def := &ItemValidationDef{FieldName: fieldName, JSONName: jsonName, IsPointer: isPointer}
+	elemSchema := g.singleItemsSchema(s)
+	elemType := arr.ItemType
+	for elemSchema != nil && len(def.Levels) < maxItemLevels {
+		level := ItemLevel{
+			IndexVar:      fmt.Sprintf("_i%d", len(def.Levels)),
+			ElemVar:       fmt.Sprintf("_e%d", len(def.Levels)),
+			ElemIsPointer: elemType.IsPointer(),
+			ElemType:      elemType,
+			ElemTypeName:  namedTypeName(elemType),
+		}
+		if level.ElemTypeName == "" {
+			level.Rules = elementRules(elemType, elemSchema)
+		}
+		def.Levels = append(def.Levels, level)
+		if level.ElemTypeName != "" {
+			break
+		}
+		inner := elemType
+		if pt, ok := inner.(*PointerType); ok {
+			inner = pt.Inner
+		}
+		nested, isArray := inner.(*ArrayType)
+		if !isArray {
+			break
+		}
+		elemSchema = g.singleItemsSchema(elemSchema)
+		elemType = nested.ItemType
+	}
+	if !def.trim(ItemLevel.pending) {
+		return nil
+	}
+	return def
+}
+
+// elementRules keeps the constraints from an element schema that compile
+// against the element's Go type: the string keywords need a string, the numeric
+// keywords a number, the length keywords a slice. const goes through
+// json.Marshal, so it applies to any element the emitter can marshal back to
+// the form the const value was written in.
+func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
+	kind := elementGoKind(elemType)
+	var out []ValidationRule
+	for _, rule := range extractValidationRules("", "", s) {
+		switch rule.RuleType {
+		case "minLength", "maxLength", "pattern":
+			if kind != "string" {
+				continue
+			}
+		case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf":
+			if kind != "number" {
+				continue
+			}
+		case "minItems", "maxItems":
+			if kind != "slice" {
+				continue
+			}
+		case "const":
+			// json.RawMessage marshals back byte for byte, whitespace and all,
+			// so a textual comparison against the const would reject values the
+			// schema allows.
+			if kind == "raw" {
+				continue
+			}
+		default:
+			continue
+		}
+		out = append(out, rule)
+	}
+	return out
+}
+
+// elementGoKind classifies an element Go type by what an emitted check may
+// assume of it. An unclassified type ("") still admits the const check, which
+// needs nothing but json.Marshal.
+func elementGoKind(t GoType) string {
+	if pt, ok := t.(*PointerType); ok {
+		t = pt.Inner
+	}
+	switch v := t.(type) {
+	case *ArrayType:
+		return "slice"
+	case *PrimitiveType:
+		switch v.Name {
+		case "string":
+			return "string"
+		case "int64", "float64":
+			return "number"
+		case "json.RawMessage":
+			return "raw"
+		}
+	}
+	return ""
+}
+
+// resolveItemValidations settles the part of the per-element checks that could
+// only be decided once every type def existed: whether a named element type
+// carries a Validate to dispatch to. A struct field's outermost element is left
+// alone, since ValidatableFields already dispatches for it and a second call
+// would validate every element twice.
+func (g *Generator) resolveItemValidations() {
+	validatableTypes := make(map[string]bool)
+	for _, td := range g.output.TypeDefs {
+		if localTypeIsValidatable(td) {
+			validatableTypes[td.TypeName()] = true
+		}
+	}
+
+	for _, td := range g.output.TypeDefs {
+		var defs *[]ItemValidationDef
+		// An array alias has no field for ValidatableFields to reach, so its
+		// outermost element is this pass's responsibility.
+		ownsOutermost := false
+		switch d := td.(type) {
+		case *StructDef:
+			defs = &d.ItemValidations
+		case *AliasDef:
+			if !d.CanHaveMethods() {
+				d.ItemValidations = nil
+				continue
+			}
+			defs, ownsOutermost = &d.ItemValidations, true
+		default:
+			continue
+		}
+
+		kept := (*defs)[:0]
+		for i := range *defs {
+			def := &(*defs)[i]
+			for li := range def.Levels {
+				level := &def.Levels[li]
+				if level.ElemTypeName == "" || (li == 0 && !ownsOutermost) {
+					continue
+				}
+				// A name from another package is only answered by that
+				// package's record of it; the local table happening to hold
+				// the same name says nothing about the foreign type.
+				if foreign := crossPackageNamed(level.ElemType); foreign != nil {
+					level.CallValidate = foreign.foreignValidatable
+					continue
+				}
+				level.CallValidate = validatableTypes[level.ElemTypeName]
+			}
+			if def.trim(ItemLevel.carries) {
+				kept = append(kept, *def)
+			}
+		}
+		if len(kept) == 0 {
+			*defs = nil
+		} else {
+			*defs = kept
+		}
+	}
+}
+
 func (g *Generator) populateAliasDelegates() {
 	validatableTypes := make(map[string]bool)
 	unmarshalTypes := make(map[string]bool)
@@ -7452,6 +7808,38 @@ func (g *Generator) multiTypeUnionType(s *schema.Schema, contextName string) (Go
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	})
+	return &NamedType{Name: contextName}, true
+}
+
+// nullOnlyWrapperType represents a {"type":"null"} property as the same
+// raw-value wrapper the schema already becomes when it is named -- a $defs entry
+// or a document root, via extractTypeOnlySchemaDef -- so an inline occurrence is
+// not the one spelling that means less than the others.
+//
+// The pointer it would otherwise get says neither of the two things the schema
+// needs said. *any accepts every JSON value, so nothing rejects a property that
+// is not null; and encoding/json leaves the pointer nil for both a present null
+// and an absent key, so no tag can emit the first without inventing the second.
+// The wrapper keeps the bytes it was handed, which answers both: its Validate
+// admits nothing but null, and an absent property leaves it empty, which is its
+// zero value and so is dropped by the ",omitzero" tag the field carries.
+//
+// Only when "type" is the whole schema. A null-only schema stating anything else
+// is left to the paths that carry those keywords, since the wrapper expresses
+// the type constraint and nothing more.
+func (g *Generator) nullOnlyWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
+	if !isNullOnly(s) {
+		return nil, false
+	}
+	def := g.extractTypeOnlySchemaDef(contextName, s)
+	if def == nil {
+		return nil, false
+	}
+	if g.generated[contextName] {
+		return &NamedType{Name: contextName}, true
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
 	return &NamedType{Name: contextName}, true
 }
 

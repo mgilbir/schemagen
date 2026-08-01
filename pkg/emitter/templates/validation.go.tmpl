@@ -882,6 +882,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.ItemValidations}}
+	{{- template "item_validations" (mkItemCtx $recv $struct.ItemValidations)}}
+	{{- end}}
 	{{- if $struct.HasDependentSchemas}}
 	// dependentSchemas: when a trigger key is present, validate against the dependent sub-schema.
 	{{- range $dep := $struct.DependentSchemas}}
@@ -1264,6 +1267,122 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	return nil
+}
+{{- end}}
+
+{{- /* item_validations emits the per-element checks for every slice the schema
+       constrains through `items` but whose element Go type carries no Validate
+       of its own. The context is {Recv, Defs}: a receiver name and a
+       []ItemValidationDef.
+
+       A nil slice ranges zero times, so an absent optional property needs no
+       presence guard; a *[]T does need one, since ranging over a dereferenced
+       nil pointer panics. */}}
+{{define "item_validations"}}
+{{- $recv := .Recv}}
+{{- range $iv := .Defs}}
+{{- if $iv.IsPointer}}
+if {{$recv}}.{{$iv.FieldName}} != nil {
+{{- end}}
+{{- template "item_level" (mkItemLevelCtx $recv $iv 0)}}
+{{- if $iv.IsPointer}}
+}
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{- /* item_level emits one array dimension's loop and the checks that apply at
+       that depth, then recurses into the dimension below it. */}}
+{{define "item_level"}}
+{{- $recv := .Recv}}
+{{- $iv := .Def}}
+{{- $li := .Level}}
+{{- $lv := index $iv.Levels $li}}
+{{- $elem := itemElem $iv $li}}
+{{- $path := itemPath $iv $li}}
+{{- $args := itemArgs $iv $li}}
+for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
+	{{- if $lv.ElemIsPointer}}
+	if {{$lv.ElemVar}} == nil {
+		continue // a JSON null left no value behind to check
+	}
+	{{- end}}
+	{{- if $lv.CallValidate}}
+	{{- /* Not the dereferenced form: *x.Validate() parses as *(x.Validate()).
+	       A method call on a pointer needs no explicit indirection anyway. */}}
+	if _err := {{$lv.ElemVar}}.Validate(); _err != nil {
+		return fmt.Errorf("{{$path}}.%w", {{$args}}, _err)
+	}
+	{{- end}}
+	{{- range $lv.Rules}}
+	{{- if eq .RuleType "minLength"}}
+	if utf8.RuneCountInString(string({{$elem}})) < {{.Value}} {
+		return fmt.Errorf("{{$path}}: length %d is less than minimum {{.Value}}", {{$args}}, utf8.RuneCountInString(string({{$elem}})))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxLength"}}
+	if utf8.RuneCountInString(string({{$elem}})) > {{.Value}} {
+		return fmt.Errorf("{{$path}}: length %d exceeds maximum {{.Value}}", {{$args}}, utf8.RuneCountInString(string({{$elem}})))
+	}
+	{{- end}}
+	{{- if eq .RuleType "pattern"}}
+	if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$elem}})); !_matched {
+		return fmt.Errorf("{{$path}}: value %q does not match pattern %s", {{$args}}, {{$elem}}, {{printf "%q" .Value}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "minimum"}}
+	if float64({{$elem}}) < {{.Value}} {
+		return fmt.Errorf("{{$path}}: value %v is less than minimum {{.Value}}", {{$args}}, {{$elem}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "maximum"}}
+	if float64({{$elem}}) > {{.Value}} {
+		return fmt.Errorf("{{$path}}: value %v exceeds maximum {{.Value}}", {{$args}}, {{$elem}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMinimum"}}
+	if float64({{$elem}}) <= {{.Value}} {
+		return fmt.Errorf("{{$path}}: value %v must be greater than {{.Value}}", {{$args}}, {{$elem}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "exclusiveMaximum"}}
+	if float64({{$elem}}) >= {{.Value}} {
+		return fmt.Errorf("{{$path}}: value %v must be less than {{.Value}}", {{$args}}, {{$elem}})
+	}
+	{{- end}}
+	{{- if eq .RuleType "multipleOf"}}
+	{
+		_q := float64({{$elem}}) / {{.Value}}
+		if math.Abs(_q - math.Round(_q)) > 1e-9 {
+			return fmt.Errorf("{{$path}}: value %v is not a multiple of {{.Value}}", {{$args}}, {{$elem}})
+		}
+	}
+	{{- end}}
+	{{- if eq .RuleType "minItems"}}
+	if len({{$elem}}) < {{.Value}} {
+		return fmt.Errorf("{{$path}}: has %d items, minimum is {{.Value}}", {{$args}}, len({{$elem}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "maxItems"}}
+	if len({{$elem}}) > {{.Value}} {
+		return fmt.Errorf("{{$path}}: has %d items, maximum is {{.Value}}", {{$args}}, len({{$elem}}))
+	}
+	{{- end}}
+	{{- if eq .RuleType "const"}}
+	{
+		_constGot, _constErr := json.Marshal({{$elem}})
+		if _constErr != nil {
+			return fmt.Errorf("{{$path}}: failed to marshal for const check: %w", {{$args}}, _constErr)
+		}
+		if string(_constGot) != {{printf "%q" .Value}} {
+			return fmt.Errorf("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, string(_constGot))
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- if lt (add $li 1) (len $iv.Levels)}}
+	{{- template "item_level" (mkItemLevelCtx $recv $iv (add $li 1))}}
+	{{- end}}
 }
 {{- end}}
 

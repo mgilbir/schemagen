@@ -89,6 +89,7 @@ type StructDef struct {
 	PropertyNames         *PropertyNamesDef           // propertyNames constraint (Draft 6+)
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
+	ItemValidations       []ItemValidationDef       // per-element checks for slice fields whose element type has no Validate()
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
@@ -530,12 +531,13 @@ type AliasDef struct {
 	Underlying        GoType
 	Description       string
 	Validations       []ValidationRule
-	AnyOfVariants     [][]ValidationRule // each inner slice is one anyOf variant's rules; at least one must pass
-	OneOfVariants     [][]ValidationRule // each inner slice is one oneOf variant's rules; exactly one must pass
-	TupleItems        []TupleItemDef     // per-position type validation for tuple arrays (prefixItems / items-as-array)
-	Contains          *ContainsDef       // contains sub-schema validation
-	MinContains       *int               // minContains (default 1 if contains is present)
-	MaxContains       *int               // maxContains
+	AnyOfVariants     [][]ValidationRule  // each inner slice is one anyOf variant's rules; at least one must pass
+	OneOfVariants     [][]ValidationRule  // each inner slice is one oneOf variant's rules; exactly one must pass
+	TupleItems        []TupleItemDef      // per-position type validation for tuple arrays (prefixItems / items-as-array)
+	ItemValidations   []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema
+	Contains          *ContainsDef        // contains sub-schema validation
+	MinContains       *int                // minContains (default 1 if contains is present)
+	MaxContains       *int                // maxContains
 	UnevaluatedItems  *UnevaluatedItemsDef
 	ValidateAs        string // named underlying type whose Validate method should be delegated to
 	UnmarshalAs       string // named underlying type whose UnmarshalJSON behavior should be delegated to
@@ -578,6 +580,56 @@ func (d *AliasDef) HasTupleItems() bool {
 // HasUnevaluatedItems returns true if this alias has unevaluatedItems validation.
 func (d *AliasDef) HasUnevaluatedItems() bool {
 	return d.UnevaluatedItems != nil
+}
+
+// HasItemValidations returns true if this alias has per-element checks.
+func (d *AliasDef) HasItemValidations() bool {
+	return len(d.ItemValidations) > 0
+}
+
+// ItemValidationDef carries the constraints an `items` sub-schema places on the
+// elements of a slice. Dispatching to an element's own Validate only works when
+// the element Go type is named; a []string, a []any or a nested [][]int64
+// carries no such method, so without this the keywords under `items` are
+// enforced nowhere and the generated Validate accepts data the schema forbids.
+//
+// Levels holds one entry per array dimension — [][]string carries two — and
+// each level owns the checks for the value at that depth.
+type ItemValidationDef struct {
+	FieldName string // Go field name; empty when the slice is the receiver itself (an array alias)
+	JSONName  string // JSON property name for the error path; empty for an array alias
+	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
+	Levels    []ItemLevel
+}
+
+// ItemLevel is one array dimension of an ItemValidationDef.
+type ItemLevel struct {
+	IndexVar      string // loop index variable for this dimension
+	ElemVar       string // element variable for this dimension
+	ElemIsPointer bool   // the element is a pointer, so a JSON null left nil behind
+	ElemTypeName  string // the element's named Go type, when it has one
+	ElemType      GoType // the element's Go type
+	CallValidate  bool   // settled after generation: dispatch to the element's own Validate
+	Rules         []ValidationRule
+}
+
+// carries reports whether this level emits a check of its own.
+func (l ItemLevel) carries() bool { return l.CallValidate || len(l.Rules) > 0 }
+
+// pending reports whether this level may still acquire a check. A named element
+// type's Validate call is only settled once every type def exists, so before
+// then the name alone is reason enough to keep the level.
+func (l ItemLevel) pending() bool { return l.carries() || l.ElemTypeName != "" }
+
+// trim drops trailing levels that keep rejects, and returns whether any remain.
+// A level that emits nothing would leave its loop variables unused,
+// which Go rejects outright; a barren level *above* one that does carry a check
+// stays, because the inner loop and the error path still name its variables.
+func (d *ItemValidationDef) trim(keep func(ItemLevel) bool) bool {
+	for len(d.Levels) > 0 && !keep(d.Levels[len(d.Levels)-1]) {
+		d.Levels = d.Levels[:len(d.Levels)-1]
+	}
+	return len(d.Levels) > 0
 }
 
 // InferredAliasDef represents a type where the Go type was inferred from

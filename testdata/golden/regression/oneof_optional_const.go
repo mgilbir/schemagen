@@ -24,12 +24,12 @@ func (o OneOfOptionalConstPOption0Kind) Validate() error {
 }
 
 type OneOfOptionalConstPOption0 struct {
-	Kind                 OneOfOptionalConstPOption0Kind `json:"kind,omitempty"`
-	X                    string                         `json:"x"`
-	AdditionalProperties map[string]json.RawMessage     `json:"-"`
-	_nonObject           bool                           // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage                // raw bytes of non-object data for lossless roundtrip
-	_jsonKeys            map[string]bool                // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Kind                 *OneOfOptionalConstPOption0Kind `json:"kind,omitempty"`
+	X                    string                          `json:"x"`
+	AdditionalProperties map[string]json.RawMessage      `json:"-"`
+	_nonObject           bool                            // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage                 // raw bytes of non-object data for lossless roundtrip
+	_jsonKeys            map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
@@ -125,7 +125,7 @@ func (o OneOfOptionalConstPOption0) Validate() error {
 			}
 		}
 	}
-	if o.Kind != "" {
+	if o.Kind != nil {
 		if err := o.Kind.Validate(); err != nil {
 			return fmt.Errorf("kind.%w", err)
 		}
@@ -150,12 +150,12 @@ func (o OneOfOptionalConstPOption1Kind) Validate() error {
 }
 
 type OneOfOptionalConstPOption1 struct {
-	Kind                 OneOfOptionalConstPOption1Kind `json:"kind,omitempty"`
-	Y                    string                         `json:"y"`
-	AdditionalProperties map[string]json.RawMessage     `json:"-"`
-	_nonObject           bool                           // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage                // raw bytes of non-object data for lossless roundtrip
-	_jsonKeys            map[string]bool                // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Kind                 *OneOfOptionalConstPOption1Kind `json:"kind,omitempty"`
+	Y                    string                          `json:"y"`
+	AdditionalProperties map[string]json.RawMessage      `json:"-"`
+	_nonObject           bool                            // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage                 // raw bytes of non-object data for lossless roundtrip
+	_jsonKeys            map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
@@ -251,7 +251,7 @@ func (o OneOfOptionalConstPOption1) Validate() error {
 			}
 		}
 	}
-	if o.Kind != "" {
+	if o.Kind != nil {
 		if err := o.Kind.Validate(); err != nil {
 			return fmt.Errorf("kind.%w", err)
 		}

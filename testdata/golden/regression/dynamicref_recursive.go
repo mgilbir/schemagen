@@ -169,7 +169,7 @@ func (r RootFoo) Validate() error {
 
 type Root struct {
 	Bar                  *Bar                       `json:"bar,omitempty"`
-	Foo                  RootFoo                    `json:"foo,omitempty"`
+	Foo                  *RootFoo                   `json:"foo,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
@@ -238,7 +238,7 @@ func (r Root) Validate() error {
 			return fmt.Errorf("bar.%w", err)
 		}
 	}
-	if r.Foo != "" {
+	if r.Foo != nil {
 		if err := r.Foo.Validate(); err != nil {
 			return fmt.Errorf("foo.%w", err)
 		}

@@ -1039,7 +1039,7 @@ func TestAliasDelegatesValidationToNamedUnderlyingType(t *testing.T) {
 	}
 }
 
-func TestOptionalRefToPrimitiveAliasDoesNotBecomePointer(t *testing.T) {
+func TestOptionalRefToPrimitiveAliasUsesPointer(t *testing.T) {
 	input := `{
 		"type": "object",
 		"properties": {
@@ -1074,13 +1074,106 @@ func TestOptionalRefToPrimitiveAliasDoesNotBecomePointer(t *testing.T) {
 	}
 	for _, field := range root.Fields {
 		if field.JSONName == "nickname" {
-			if field.Type.GoTypeName() != "Name" {
-				t.Fatalf("nickname type = %q, want Name", field.Type.GoTypeName())
+			// Name is `type Name string`, so an empty nickname is the Go zero
+			// and omitempty would drop it. The name over the primitive changes
+			// nothing about that — see TestOptionalNamedPrimitiveKeepsZeroValue.
+			if field.Type.GoTypeName() != "*Name" {
+				t.Fatalf("nickname type = %q, want *Name", field.Type.GoTypeName())
 			}
 			return
 		}
 	}
 	t.Fatalf("expected nickname field")
+}
+
+// TestOptionalNamedPrimitiveKeepsZeroValue covers the three ways a property
+// ends up typed as a *named* primitive — a $ref to a primitive definition, an
+// inline enum, and a const promoted to a single-value enum. Each was emitted as
+// a value with omitempty, so a legitimate 0, "" or false both disappeared from
+// the marshalled output and skipped the named type's own Validate(), which the
+// owner guarded with a `!= <zero>` presence test.
+func TestOptionalNamedPrimitiveKeepsZeroValue(t *testing.T) {
+	input := `{
+		"type": "object",
+		"properties": {
+			"count":  {"$ref": "#/$defs/counter"},
+			"label":  {"$ref": "#/$defs/tag"},
+			"level":  {"enum": ["", "high"]},
+			"marker": {"const": ""},
+			"note":   {"type": "string"}
+		},
+		"$defs": {
+			"counter": {"type": "integer", "minimum": 0},
+			"tag": {"type": "string", "minLength": 0}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", Draft: schema.Draft202012, OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Root" {
+			root = d
+			break
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected Root StructDef")
+	}
+
+	fields := make(map[string]FieldDef, len(root.Fields))
+	for _, f := range root.Fields {
+		fields[f.JSONName] = f
+	}
+	want := map[string]string{
+		"count":  "*Counter",
+		"label":  "*Tag",
+		"level":  "*RootLevel",
+		"marker": "*RootMarker",
+		"note":   "*string", // the bare-primitive case, already correct
+	}
+	for jsonName, wantType := range want {
+		f, ok := fields[jsonName]
+		if !ok {
+			t.Fatalf("expected field %q", jsonName)
+		}
+		if got := f.Type.GoTypeName(); got != wantType {
+			t.Errorf("%q type = %q, want %q", jsonName, got, wantType)
+		}
+		if !f.OmitEmpty {
+			t.Errorf("%q: OmitEmpty = false, want true", jsonName)
+		}
+	}
+
+	// The presence guard the owner emits around the named type's Validate()
+	// must be a nil check, not a comparison against the zero value: the whole
+	// point of the pointer is that the zero value is a present value.
+	guards := make(map[string]ValidatableFieldDef, len(root.ValidatableFields))
+	for _, vf := range root.ValidatableFields {
+		guards[vf.JSONName] = vf
+	}
+	for _, jsonName := range []string{"count", "label", "level", "marker"} {
+		vf, ok := guards[jsonName]
+		if !ok {
+			t.Fatalf("expected %q among ValidatableFields", jsonName)
+		}
+		if !vf.IsPointer {
+			t.Errorf("%q: IsPointer = false, want true (guard would test the zero value)", jsonName)
+		}
+		if vf.ZeroLiteral != "nil" {
+			t.Errorf("%q: ZeroLiteral = %q, want %q", jsonName, vf.ZeroLiteral, "nil")
+		}
+	}
 }
 
 func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
@@ -1954,9 +2047,12 @@ func TestGenerate_InlineEnum(t *testing.T) {
 	if statusField.Type.GoTypeName() != "TaskStatus" {
 		t.Errorf("status field type = %q, want %q", statusField.Type.GoTypeName(), "TaskStatus")
 	}
+	// priority is optional, so it is pointer-wrapped: TaskPriority is a named
+	// string and omitempty would otherwise drop a member that is the empty
+	// string. status, being required, keeps the bare type.
 	priorityField := fieldMap["priority"]
-	if priorityField.Type.GoTypeName() != "TaskPriority" {
-		t.Errorf("priority field type = %q, want %q", priorityField.Type.GoTypeName(), "TaskPriority")
+	if priorityField.Type.GoTypeName() != "*TaskPriority" {
+		t.Errorf("priority field type = %q, want %q", priorityField.Type.GoTypeName(), "*TaskPriority")
 	}
 	// title should remain a plain string
 	titleField := fieldMap["title"]
@@ -2837,5 +2933,419 @@ func TestNullSubschemaMemoDoesNotWaveThroughSecondRef(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "allOf/0") {
 		t.Fatalf("error %q does not locate the null subschema", err.Error())
+	}
+}
+
+// TestNullTypedPropertyIsEnforced pins the representation of a {"type":"null"}
+// property. It was *any carrying no validation rule at all: the field accepted
+// every JSON value and Validate() had nothing to say about it, so a schema
+// stating "this must be null" accepted an integer. It now resolves to the same
+// raw-value wrapper a *named* null-only schema already got, whose Validate
+// admits nothing but null.
+func TestNullTypedPropertyIsEnforced(t *testing.T) {
+	input := `{
+		"title": "Tombstone",
+		"type": "object",
+		"properties": {"n": {"type":"null"}},
+		"required": ["n"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var tombstone *StructDef
+	var wrapper *TypeOnlySchemaDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Tombstone" {
+				tombstone = d
+			}
+		case *TypeOnlySchemaDef:
+			if d.Name == "TombstoneN" {
+				wrapper = d
+			}
+		}
+	}
+	if tombstone == nil {
+		t.Fatalf("expected Tombstone struct")
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a TombstoneN raw-value wrapper for the null-typed property")
+	}
+	if len(wrapper.AllowedTypes) != 1 || wrapper.AllowedTypes[0] != "null" {
+		t.Fatalf("wrapper allowed types = %#v, want [null]", wrapper.AllowedTypes)
+	}
+
+	n, ok := fieldByJSONName(tombstone, "n")
+	if !ok {
+		t.Fatalf("expected field for property n")
+	}
+	if got := n.Type.GoTypeName(); got != "TombstoneN" {
+		t.Fatalf("null-typed field type = %q, want TombstoneN", got)
+	}
+	// The wrapper only enforces anything if the parent's Validate() calls it.
+	if !hasValidatableField(tombstone.ValidatableFields, "n") {
+		t.Fatalf("null-typed field is not validated by Tombstone: %#v", tombstone.ValidatableFields)
+	}
+}
+
+// TestOptionalNullTypedPropertyIsOmittedWhenAbsent covers the other half of the
+// same representation. The field carried a plain `json:"n"` tag — omitempty was
+// suppressed for null-typed properties, because a nil *any could not say whether
+// the input held a null or nothing at all — so a property the input omitted came
+// back as an explicit null. The wrapper keeps the bytes it was handed, which
+// tells the two apart, and ",omitzero" drops exactly the absent one.
+func TestOptionalNullTypedPropertyIsOmittedWhenAbsent(t *testing.T) {
+	input := `{
+		"title": "Tombstone",
+		"type": "object",
+		"properties": {"n": {"type":"null"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var tombstone *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Tombstone" {
+			tombstone = d
+		}
+	}
+	if tombstone == nil {
+		t.Fatalf("expected Tombstone struct")
+	}
+	n, ok := fieldByJSONName(tombstone, "n")
+	if !ok {
+		t.Fatalf("expected field for property n")
+	}
+	if !n.OmitEmpty {
+		t.Fatalf("optional null-typed field is emitted even when the input omitted it")
+	}
+	// ",omitzero", not ",omitempty": the wrapper is a struct, which omitempty
+	// never considers empty, and its MarshalJSON writes null for an absent value.
+	if !n.OmitZero {
+		t.Fatalf("optional null-typed field uses ,omitempty, want ,omitzero")
+	}
+}
+
+// TestNullVariantOfAOneOfStaysAPointer guards the trade the fix must not make.
+// A oneOf (or a type list) naming null beside one other alternative is the
+// idiomatic spelling of "nullable", and it resolves to a pointer to that
+// alternative — not to the raw-value wrapper a bare {"type":"null"} now gets.
+// omitempty stays suppressed there, because nil is the only thing such a field
+// has to say both "absent" and "null" with.
+func TestNullVariantOfAOneOfStaysAPointer(t *testing.T) {
+	input := `{
+		"title": "Banner",
+		"type": "object",
+		"properties": {
+			"note": {"oneOf": [{"type":"string"}, {"type":"null"}]},
+			"tone": {"type": ["string", "null"]}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var banner *StructDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Banner" {
+				banner = d
+			}
+		case *TypeOnlySchemaDef:
+			t.Fatalf("nullable-via-oneOf generated a raw-value wrapper %q", d.Name)
+		}
+	}
+	if banner == nil {
+		t.Fatalf("expected Banner struct")
+	}
+	for _, name := range []string{"note", "tone"} {
+		f, ok := fieldByJSONName(banner, name)
+		if !ok {
+			t.Fatalf("expected field for property %q", name)
+		}
+		if got := f.Type.GoTypeName(); got != "*string" {
+			t.Fatalf("%s type = %q, want *string", name, got)
+		}
+		if f.OmitEmpty || f.OmitZero {
+			t.Fatalf("%s is dropped when nil, which loses a present null", name)
+		}
+	}
+}
+
+func hasValidatableField(fields []ValidatableFieldDef, jsonName string) bool {
+	for _, f := range fields {
+		if f.JSONName == jsonName {
+			return true
+		}
+	}
+	return false
+}
+
+// generateForItemTest is the shape the item-validation regressions below share:
+// unmarshal, normalize, generate, and hand back the IR.
+func generateForItemTest(t *testing.T, input string) *File {
+	t.Helper()
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return ir
+}
+
+func structNamed(t *testing.T, ir *File, name string) *StructDef {
+	t.Helper()
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("expected a %s struct; got %v", name, ir.TypeDefs)
+	return nil
+}
+
+func itemValidationFor(t *testing.T, sd *StructDef, jsonName string) *ItemValidationDef {
+	t.Helper()
+	for i := range sd.ItemValidations {
+		if sd.ItemValidations[i].JSONName == jsonName {
+			return &sd.ItemValidations[i]
+		}
+	}
+	t.Fatalf("expected per-element checks for %q on %s; got %+v", jsonName, sd.Name, sd.ItemValidations)
+	return nil
+}
+
+func itemRuleTypes(def *ItemValidationDef, level int) []string {
+	var out []string
+	for _, rule := range def.Levels[level].Rules {
+		out = append(out, rule.RuleType)
+	}
+	return out
+}
+
+// TestPrimitiveArrayItemConstraintsAreChecked pins the fix for element
+// constraints being dropped whenever the element's Go type is not a named type
+// carrying its own Validate. {"items":{"type":"string","minLength":2}} emits
+// []string, and before this the emitted Validate was `return nil` -- an
+// instance of {"a":["x"]} was accepted.
+func TestPrimitiveArrayItemConstraintsAreChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"type":"string", "minLength":2, "maxLength":4}},
+			"b": {"type":"array", "items":{"type":"integer", "minimum":3, "multipleOf":2}},
+			"c": {"type":"array", "items":{"type":"number", "exclusiveMinimum":1, "exclusiveMaximum":9}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, tc := range []struct {
+		jsonName string
+		want     []string
+	}{
+		{"a", []string{"minLength", "maxLength"}},
+		{"b", []string{"minimum", "multipleOf"}},
+		{"c", []string{"exclusiveMinimum", "exclusiveMaximum"}},
+	} {
+		def := itemValidationFor(t, doc, tc.jsonName)
+		if len(def.Levels) != 1 {
+			t.Fatalf("%q: %d levels, want 1", tc.jsonName, len(def.Levels))
+		}
+		got := itemRuleTypes(def, 0)
+		for _, want := range tc.want {
+			if !containsString(got, want) {
+				t.Fatalf("%q: element rules %v are missing %q", tc.jsonName, got, want)
+			}
+		}
+	}
+}
+
+// TestConstInItemPositionGetsANamedType pins the second half of the same
+// defect: a const in item position was dropped entirely, because the promotion
+// of a type-less const to a single-member enum only ran on the property path.
+// {"items":{"const":5}} emitted []any and a Validate of `return nil`, while the
+// identical {"items":{"enum":[5]}} emitted a named element type that worked.
+func TestConstInItemPositionGetsANamedType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"const":5}}
+		}
+	}`)
+
+	var elemEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && d.Name == "DocAItem" {
+			elemEnum = d
+		}
+	}
+	if elemEnum == nil {
+		t.Fatalf("expected a DocAItem enum for the const items; got %v", ir.TypeDefs)
+	}
+	if len(elemEnum.Values) != 1 {
+		t.Fatalf("DocAItem has %d values, want the single const", len(elemEnum.Values))
+	}
+
+	doc := structNamed(t, ir, "Doc")
+	var field *FieldDef
+	for i := range doc.Fields {
+		if doc.Fields[i].JSONName == "a" {
+			field = &doc.Fields[i]
+		}
+	}
+	if field == nil {
+		t.Fatalf("expected field a on Doc")
+	}
+	if got := field.Type.GoTypeName(); got != "[]DocAItem" {
+		t.Fatalf("a type = %q, want []DocAItem (not []any)", got)
+	}
+
+	// The named element type is dispatched to by ValidatableFields, so the
+	// per-element checks must stay out of it or every element validates twice.
+	var validatable *ValidatableFieldDef
+	for i := range doc.ValidatableFields {
+		if doc.ValidatableFields[i].JSONName == "a" {
+			validatable = &doc.ValidatableFields[i]
+		}
+	}
+	if validatable == nil || !validatable.IsSlice {
+		t.Fatalf("expected a to be a validatable slice field; got %+v", doc.ValidatableFields)
+	}
+	if len(doc.ItemValidations) != 0 {
+		t.Fatalf("named element type must not also carry per-element checks; got %+v", doc.ItemValidations)
+	}
+}
+
+// TestNamedElementTypeIsNotValidatedTwice guards the same no-double-dispatch
+// rule for the shapes that always worked, so a later change cannot start
+// stacking a second pass on top of the element type's own Validate.
+func TestNamedElementTypeIsNotValidatedTwice(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"enum":["red","green"]}},
+			"b": {"type":"array", "items":{"type":"object", "properties":{"x":{"type":"string","minLength":2}}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if len(doc.ItemValidations) != 0 {
+		t.Fatalf("elements with their own Validate must carry no per-element checks; got %+v", doc.ItemValidations)
+	}
+	if len(doc.ValidatableFields) != 2 {
+		t.Fatalf("expected both fields to dispatch through ValidatableFields; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestNestedArrayItemConstraintsDescend covers the dimension the flat case
+// cannot: [][]int64 has no named type at either depth, so the constraint on the
+// inner element is only reachable through a nested loop.
+func TestNestedArrayItemConstraintsDescend(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"type":"array", "maxItems":2, "items":{"type":"integer","minimum":3}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := itemValidationFor(t, doc, "a")
+	if len(def.Levels) != 2 {
+		t.Fatalf("%d levels, want 2 for a [][]int64 field: %+v", len(def.Levels), def.Levels)
+	}
+	if got := itemRuleTypes(def, 0); !containsString(got, "maxItems") {
+		t.Fatalf("outer element rules %v are missing maxItems", got)
+	}
+	if got := itemRuleTypes(def, 1); !containsString(got, "minimum") {
+		t.Fatalf("inner element rules %v are missing minimum", got)
+	}
+	if def.Levels[0].IndexVar == def.Levels[1].IndexVar || def.Levels[0].ElemVar == def.Levels[1].ElemVar {
+		t.Fatalf("nested loops share variable names: %+v", def.Levels)
+	}
+}
+
+// TestArrayAliasValidatesItsElements covers the same defect where the array is
+// a definition of its own: `type T []string` had a Validate that returned nil,
+// dropping both the element constraints and, for a named element type, the
+// element's own Validate. An alias has no struct field for ValidatableFields to
+// reach, so its outermost element is this pass's job.
+func TestArrayAliasValidatesItsElements(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"$defs": {
+			"Names": {"type":"array", "items":{"type":"string", "minLength":2}},
+			"Rows": {"type":"array", "items":{"type":"object", "properties":{"x":{"type":"string"}}}}
+		},
+		"type": "object",
+		"properties": {
+			"a": {"$ref": "#/$defs/Names"},
+			"b": {"$ref": "#/$defs/Rows"}
+		}
+	}`)
+
+	aliases := map[string]*AliasDef{}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok {
+			aliases[d.Name] = d
+		}
+	}
+
+	names := aliases["Names"]
+	if names == nil {
+		t.Fatalf("expected a Names alias; got %v", ir.TypeDefs)
+	}
+	if len(names.ItemValidations) != 1 || len(names.ItemValidations[0].Levels) != 1 {
+		t.Fatalf("Names carries no per-element checks: %+v", names.ItemValidations)
+	}
+	if got := itemRuleTypes(&names.ItemValidations[0], 0); !containsString(got, "minLength") {
+		t.Fatalf("Names element rules %v are missing minLength", got)
+	}
+	if names.ItemValidations[0].FieldName != "" {
+		t.Fatalf("an alias validates its receiver, not a field: %+v", names.ItemValidations[0])
+	}
+
+	rows := aliases["Rows"]
+	if rows == nil {
+		t.Fatalf("expected a Rows alias; got %v", ir.TypeDefs)
+	}
+	if len(rows.ItemValidations) != 1 || !rows.ItemValidations[0].Levels[0].CallValidate {
+		t.Fatalf("Rows does not dispatch to its element type's Validate: %+v", rows.ItemValidations)
 	}
 }

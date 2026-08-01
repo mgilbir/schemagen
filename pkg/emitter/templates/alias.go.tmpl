@@ -211,6 +211,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
+	{{- if .HasItemValidations}}
+	{{- template "item_validations" (mkItemCtx $recv .ItemValidations)}}
+	{{- end}}
 	{{- if .AnyOfVariants}}
 	// anyOf: at least one variant must be satisfied.
 	{
