@@ -1,0 +1,1 @@
+{"$schema":"http://json-schema.org/draft-03/schema#","definitions":{"C":{"type":[{"$ref":"#/definitions/C"}]}},"$ref":"#/definitions/C"}

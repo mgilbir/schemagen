@@ -1,0 +1,1 @@
+{"$defs":{"A":{"prefixItems":[{}],"unevaluatedItems":false,"allOf":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}

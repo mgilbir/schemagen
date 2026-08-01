@@ -1,0 +1,1 @@
+{"allOf":[{"type":"string"}],"properties":{"a":{"$ref":"#/allOf/9227000000000000000"}}}
