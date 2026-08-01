@@ -306,6 +306,14 @@ make golden
 # Download and run against the official JSON Schema Test Suite
 make test-external
 
+# Fuzz the parse -> generate -> emit pipeline for panics
+make fuzz FUZZTIME=5m
+
+# Co-generate schemas with conforming instances, compile the bindings, and
+# check that valid data round-trips and is accepted while single-keyword
+# violations are rejected
+make cogen COGEN_ITERS=400
+
 # Format and vet
 make lint
 ```

@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external fuzz validate-seeds
+.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external fuzz cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -134,6 +134,52 @@ FUZZTIME ?= 60s
 # weaker run from looking like the same run.
 fuzz: download-test-suite
 	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
+
+# Layer 2 of the fuzzing effort. FuzzGenerate only proves the pipeline does not
+# panic, which says nothing about whether the code it emits is correct. This
+# target builds a JSON Schema and a conforming instance *together*, compiles the
+# generated bindings, round-trips the instance through them, and then feeds in
+# mutants that each violate exactly one keyword and must be rejected.
+#
+# The negative half is the point. A generator that silently drops a constraint
+# check turns Validate into `return nil`, and every conforming instance still
+# passes -- so a corpus of valid documents cannot see the defect at all. Only a
+# document that is supposed to be rejected can, which is why the mutants are
+# co-generated rather than mutated at random: a random edit is quite likely to
+# still be valid, and then a validator that accepts it is right.
+#
+# Deliberately NOT part of `test`: each iteration compiles and runs a throwaway
+# Go module, so the default `go test ./...` would grow from seconds to minutes.
+# Same gating style as test-external, and the same reason.
+#
+# COGEN_SEED and COGEN_ITERS bound the search the way FUZZTIME bounds fuzzing,
+# except that this search is reproducible: every iteration derives its schema
+# from (seed, iteration index) and nothing else, so a failure prints the exact
+# command that replays that one case. Fixing the default seed rather than
+# taking the clock means a clean run is evidence about a specific 400 cases and
+# a later failure on the same seed is a real regression, not a different draw.
+#
+# Two optional switches, both off by default:
+#
+#   SCHEMAGEN_COGEN_BOWTIE=1              cross-check every (schema, instance)
+#                                         pair against independent JSON Schema
+#                                         implementations, as validate-seeds
+#                                         does. Needs docker and uv, and costs
+#                                         a container round-trip per iteration.
+#   SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1  re-admit the constructs the grammar
+#                                         avoids because schemagen is already
+#                                         known to get them wrong. Documented,
+#                                         with reproducers, at the top of
+#                                         tests/cogen_grammar_test.go; the
+#                                         switch is what keeps that list
+#                                         honest instead of a claim in a
+#                                         comment.
+COGEN_SEED ?= 1
+COGEN_ITERS ?= 400
+
+cogen:
+	SCHEMAGEN_RUN_COGEN=1 SCHEMAGEN_COGEN_SEED=$(COGEN_SEED) SCHEMAGEN_COGEN_ITERS=$(COGEN_ITERS) \
+		go test ./tests/... -run TestCoGenerated -v -count=1 -timeout 60m
 
 # Checks that every fuzz seed under testdata/schemas/adversarial is a legal
 # JSON Schema document, by validating it as an *instance* against the
