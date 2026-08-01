@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"sort"
 	"strings"
 )
@@ -56,20 +57,150 @@ const coMaxDepth = 3
 //	$defs + $ref    0..3 definitions; a definition body is an object, a
 //	                bounded string/integer/number, or an enum. Definition i
 //	                may $ref definitions < i, so the graph is acyclic.
+//	allOf           on an object node: its properties, and the `required`
+//	                entries that go with them, are partitioned across 1..2
+//	                allOf branches instead of being declared inline
+//	anyOf           two forms. On an object node, 2..3 branches each keyed by
+//	                a discriminator property that is `required` in that
+//	                branch and typed there. On a property, two typed scalar
+//	                alternatives ({"type":"string","minLength":n} and
+//	                {"type":"integer","minimum":m}).
+//	oneOf           two forms. On the *root* object, the same discriminator
+//	                branches as anyOf (only the root: see
+//	                coGapNestedOneOfDropsSiblings). As the whole document, two
+//	                overlapping integer windows, so that a value matching
+//	                *both* branches is reachable and can be made a mutant.
+//	if/then/else    as the whole document, over an integer pivot: `if`
+//	                {minimum: P}, `then` {maximum: P+K}, `else` {minimum:
+//	                P-K}. Both outcomes of `if` are generated.
+//	not             as the whole document, {"not":{"type":T}} over a value of
+//	                some other type.
+//
+// Where composition sits is not a matter of taste. schemagen enforces the same
+// keyword in some positions and not others (see coKnownGaps), and the grammar
+// is placed to land on the positions that are enforced: object-level allOf /
+// anyOf / oneOf get flattened into the struct and checked against the raw JSON
+// keys, an inline anyOf of typed scalars becomes an alternatives wrapper whose
+// Validate the parent calls, and a document *rooted* at oneOf / if / not
+// becomes the root type, whose Validate the harness calls directly.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
-// burn the whole budget in triage: allOf / anyOf / oneOf, if/then/else, not,
-// patternProperties, additionalProperties, propertyNames, minProperties /
-// maxProperties, dependentRequired / dependentSchemas, unevaluated*, contains,
-// prefixItems and tuple-form items, uniqueItems, format, multi-valued type,
-// boolean schemas, recursive or remote $refs, $id / $anchor.
+// burn the whole budget in triage: patternProperties, additionalProperties,
+// propertyNames, minProperties / maxProperties, dependentRequired /
+// dependentSchemas, unevaluated*, contains, prefixItems and tuple-form items,
+// uniqueItems, format, multi-valued type, boolean schemas, recursive or remote
+// $refs, $id / $anchor.
 //
-// There is no known-gap list any more. Every construct this grammar once
-// avoided because schemagen mishandled it -- constraints and const under
-// items, a null-typed property, an optional named primitive at its zero
-// value -- is now emitted by default, because the defects were fixed. The
-// list and its opt-in toggle are in the history if one is ever needed again.
+// Also not emitted, but for a different reason — see coKnownGaps below.
+
+// ---------------------------------------------------------------------------
+// Known gaps
+// ---------------------------------------------------------------------------
+//
+// coKnownGaps records constructs the grammar avoids because schemagen is
+// already known to handle them incorrectly. They are excluded so the harness
+// reports regressions rather than re-reporting the same defects on every
+// iteration, and each is reachable again by setting
+// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
+// instead of being claims in a comment. The minimal reproducer for each is in
+// the doc comment of its toggle.
+var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
+
+// coGapWrapperValidateNotCalled: a property whose type is one of the "raw JSON
+// wrapper" types -- the one generated for a `not` schema (NotSchemaDef) and the
+// one generated for a schema whose only keywords are oneOf / anyOf / if / then
+// / else (DynamicSchemaDef) -- never has its Validate() called by the enclosing
+// struct. Both types carry a correct Validate of their own;
+// populateValidatableFields simply does not count them as validatable, so
+// nothing invokes it and the constraint is dead at every position except the
+// document root.
+//
+//	schema   {"$defs":{"NotInt":{"not":{"type":"integer"}}},
+//	          "type":"object","properties":{"a":{"$ref":"#/$defs/NotInt"}},
+//	          "required":["a"]}
+//	instance {"a":7}                 accepted; NotInt.Validate() would reject it
+//
+// The same schema written with the `not` at the document root is rejected
+// correctly, which is why the grammar puts `not`, root-level oneOf and
+// if/then/else there. This toggle instead hangs them off a property through
+// $defs, which is where they die.
+func coGapWrapperValidateNotCalled() bool { return coIncludeKnownGaps }
+
+// coGapInlineConditionalDropped: `not` and `if`/`then`/`else` written inline as
+// a property's own schema are dropped before any type is chosen -- the property
+// becomes a bare `any` with no Validate at all. This is a different defect from
+// coGapWrapperValidateNotCalled: there a correct wrapper type exists and is
+// never consulted, here no wrapper is generated in the first place.
+//
+//	schema   {"type":"object","properties":{"a":{"not":{"type":"integer"}}},
+//	          "required":["a"]}
+//	instance {"a":7}                 accepted; the field is `any`
+//
+//	schema   {"type":"object",
+//	          "properties":{"a":{"if":{"minimum":10},"then":{"maximum":20}}},
+//	          "required":["a"]}
+//	instance {"a":99}                accepted; the field is `any`
+//
+// The object-level spelling is dropped too: an `if`/`then`/`else` beside an
+// object's `properties` produces no check anywhere in the generated Validate.
+//
+//	schema   {"type":"object","properties":{"kind":{"type":"string"},
+//	          "a":{"type":"string"}},"required":["kind","a"],
+//	          "if":{"properties":{"kind":{"const":"x"}},"required":["kind"]},
+//	          "then":{"properties":{"a":{"minLength":5}}}}
+//	instance {"kind":"x","a":"ab"}   accepted
+func coGapInlineConditionalDropped() bool { return coIncludeKnownGaps }
+
+// coGapScalarAllOfDropped: an allOf whose branches constrain a *scalar*
+// property is dropped entirely. The branch keywords never reach the field's
+// validation, so the property is emitted as a plain Go string/int64 with no
+// check. The object-level spelling -- branches that carry `properties` and
+// `required` -- is flattened correctly, which is the form the grammar emits.
+//
+//	schema   {"type":"object",
+//	          "properties":{"a":{"type":"string",
+//	                             "allOf":[{"minLength":3},{"maxLength":10}]}},
+//	          "required":["a"]}
+//	instance {"a":"z"}               accepted
+func coGapScalarAllOfDropped() bool { return coIncludeKnownGaps }
+
+// coGapOneOfVariantConstraints: an inline oneOf of typed scalars on a property
+// becomes a sealed-interface union whose variant selection happens in
+// UnmarshalJSON and considers only whether the raw JSON decodes into the
+// variant's Go type. A branch's own constraints are not consulted, so a value
+// that decodes into one variant but violates that variant's constraints matches
+// it anyway, and nothing downstream rechecks. The grammar reaches oneOf over
+// scalars through the document root instead, where the dynamic evaluator does
+// apply the branch constraints.
+//
+//	schema   {"type":"object",
+//	          "properties":{"a":{"oneOf":[{"type":"string","minLength":3},
+//	                                      {"type":"integer","minimum":5}]}},
+//	          "required":["a"]}
+//	instance {"a":"z"}               accepted
+func coGapOneOfVariantConstraints() bool { return coIncludeKnownGaps }
+
+// coGapNestedOneOfDropsSiblings: a *property* whose schema is an object with
+// both its own `properties`/`required` and a `oneOf` is generated as a sealed
+// interface over the oneOf branches alone. The object's own properties never
+// appear in any generated type, so every constraint they carried is gone --
+// including `required`. The same schema at the document root is flattened
+// correctly and keeps both, which is where the grammar puts it.
+//
+//	schema   {"type":"object","properties":{
+//	           "f":{"type":"object","properties":{"h":{"type":"boolean"}},
+//	                "required":["h"],
+//	                "oneOf":[{"properties":{"tagOne":{"type":"integer"}},
+//	                          "required":["tagOne"]},
+//	                         {"properties":{"tagTwo":{"type":"string"}},
+//	                          "required":["tagTwo"]}]}}}
+//	instance {"f":{"tagOne":41}}     accepted, though "h" is required
+//
+// The generated type for "f" is an interface over RootFOption0{TagOne} and
+// RootFOption1{TagTwo}; neither mentions "h". anyOf in the same position is
+// flattened correctly, so this is specific to oneOf.
+func coGapNestedOneOfDropsSiblings() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -88,6 +219,34 @@ const (
 	coEnum
 	coConst
 	coRef
+
+	// Composition leaves. Each is a whole schema whose only keywords are
+	// applicators, so each is a value the grammar picks first and a schema it
+	// derives from that value.
+	coAltAnyOf // anyOf (or, under a known-gap toggle, oneOf) over two typed scalars
+	coOneOfWin // oneOf over two overlapping integer windows
+	coIfElse   // if/then/else over an integer pivot
+	coNot      // not: {"type": T}
+)
+
+// coComp says which applicator, if any, an object node routes its own
+// properties through.
+type coComp int
+
+const (
+	coCompNone coComp = iota
+	// coCompAllOf partitions the object's properties across allOf branches.
+	// The instance does not change: a branch only ever carries constraints the
+	// value already satisfies, which is what makes "conforming by
+	// construction" survive the move.
+	coCompAllOf
+	// coCompAnyOf and coCompOneOf add discriminator branches beside the
+	// object's own properties. Each branch requires one property that no other
+	// branch mentions, so which branches match is decided by which
+	// discriminators are present -- and that is decidable by inspection rather
+	// than by evaluating the schema.
+	coCompAnyOf
+	coCompOneOf
 )
 
 // coBoundStyle says how a numeric bound is expressed, or that it is absent.
@@ -141,6 +300,61 @@ type coNode struct {
 
 	// ref
 	refName string
+
+	// object composition. comp says which applicator the object routes through.
+	// For coCompAllOf, groups is the number of allOf branches and each property
+	// carries the index of the branch it went to (0 meaning "stayed inline").
+	// For coCompAnyOf / coCompOneOf, branches are the discriminator branches and
+	// branchIx is the one the instance satisfies.
+	comp     coComp
+	groups   int
+	branches []*coDisc
+	branchIx int
+
+	// coAltAnyOf: two typed scalar alternatives, a string one carrying
+	// minLength and an integer one carrying minimum. altUseStr says which one
+	// the instance takes. altOneOf spells the applicator "oneOf" instead of
+	// "anyOf"; it is only reachable under coGapOneOfVariantConstraints.
+	altStrMin int
+	altIntMin int64
+	altUseStr bool
+	altOneOf  bool
+	altStr    string
+	altInt    int64
+
+	// coOneOfWin: two integer windows [winLo0,winHi0] and [winLo1,winHi1] with
+	// winLo0 < winLo1 <= winHi0 < winHi1, so each of "matches only the first",
+	// "matches only the second", "matches both" and "matches neither" is a
+	// non-empty set of integers.
+	winLo0, winHi0 int64
+	winLo1, winHi1 int64
+	winValue       int64
+
+	// coIfElse: if {minimum: pivot}, then {maximum: pivot+span},
+	// else {minimum: pivot-span}. iteIf records which side the instance is on.
+	pivot, span int64
+	iteIf       bool
+	iteValue    int64
+
+	// coNot: the forbidden JSON type, a value that is not of that type, and one
+	// that is.
+	notType string
+	notOK   any
+	notBad  any
+
+	// scalarAllOf moves a string node's length keywords into an allOf. Only
+	// reachable under coGapScalarAllOfDropped.
+	scalarAllOf bool
+}
+
+// coDisc is one discriminator branch of an object-level anyOf or oneOf: a
+// property that the branch declares, types, and lists in its own `required`.
+// No two branches of a node share a name, so a document that carries exactly
+// one of them matches exactly one branch.
+type coDisc struct {
+	name  string
+	jtype string // "string", "integer" or "boolean"
+	value any
 }
 
 type coProp struct {
@@ -148,6 +362,10 @@ type coProp struct {
 	required bool
 	present  bool
 	node     *coNode
+	// group is the allOf branch this property was routed into, or 0 when it
+	// stayed among the object's own `properties`. Only meaningful when the
+	// owning node has comp == coCompAllOf.
+	group int
 }
 
 // coDoc is a whole co-generated document: the $defs, in dependency order, and
@@ -172,6 +390,42 @@ func (d *coDoc) deref(n *coNode) *coNode {
 var coPropNames = []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"}
 
 var coDefNames = []string{"DefA", "DefB", "DefC"}
+
+// coDiscNames name the discriminator properties of an object-level anyOf or
+// oneOf. They are drawn from a vocabulary disjoint from coPropNames so a
+// discriminator can never collide with a property the object declares itself,
+// which would put two schemas on one name and break the "exactly one branch"
+// argument.
+var coDiscNames = []string{"tagOne", "tagTwo", "tagThree"}
+
+// coDiscTypes pairs the JSON type a discriminator branch declares with a value
+// of that type. The values are deliberately away from their Go zero: a
+// discriminator that marshalled away would silently unmatch its own branch.
+var coDiscTypes = []struct {
+	jtype string
+	value any
+}{
+	{"string", "marker"},
+	{"integer", int64(41)},
+	{"boolean", true},
+}
+
+// coNotCases pairs a JSON type to forbid with a value that is not of that type
+// and one that is. Both halves are written by hand for the same reason
+// coPatterns are: deriving "a value of some other type" from a type name is
+// inference, and inference is what this harness refuses to do.
+var coNotCases = []struct {
+	typeName string
+	ok       any
+	bad      any
+}{
+	{"integer", "abc", int64(7)},
+	{"string", int64(7), "abc"},
+	{"boolean", "abc", true},
+	{"object", int64(7), map[string]any{}},
+	{"array", "abc", []any{}},
+	{"null", int64(7), nil},
+}
 
 // coEnumWords includes the empty string for the same reason coEnumInts includes
 // zero: it is the Go zero of the named string type an enum or const generates,
@@ -231,6 +485,20 @@ func coBuild(seed uint64) *coDoc {
 		rng: rand.New(rand.NewPCG(seed, 0x5EEDC0DE)),
 		doc: &coDoc{defs: map[string]*coNode{}},
 	}
+	// One document in four is rooted at a composition leaf rather than at an
+	// object. That is the only position where schemagen enforces `not`,
+	// if/then/else and a oneOf over scalars at all (see
+	// coGapWrapperValidateNotCalled), so it is the only position from which a
+	// mutant of those keywords can be expected to be rejected.
+	//
+	// Such a document carries no $defs: the dynamic evaluator only takes over a
+	// schema whose keywords are entirely applicators, and it decides that from
+	// the marshalled document, so a "$defs" beside the "oneOf" would make the
+	// whole construct fall back to an unvalidated `any`.
+	if b.chance(4) {
+		b.doc.root = b.buildRootComposition()
+		return b.doc
+	}
 	for i := 0; i < b.rng.IntN(len(coDefNames)+1); i++ {
 		name := coDefNames[i]
 		b.doc.defOrder = append(b.doc.defOrder, name)
@@ -249,6 +517,11 @@ func (b *coBuilder) chance(n int) bool { return b.rng.IntN(n) == 0 }
 // value landing on the Go zero used to vanish from the output; nothing here
 // steers away from that value any more.
 func (b *coBuilder) buildDefBody(depth, visible int) *coNode {
+	// A composition wrapper reached through a $ref is a known gap: the wrapper
+	// type carries a correct Validate that nothing calls.
+	if coGapWrapperValidateNotCalled() && b.chance(3) {
+		return b.buildRootComposition()
+	}
 	switch b.rng.IntN(5) {
 	case 0, 1:
 		return b.buildObject(depth, visible)
@@ -275,23 +548,169 @@ func (b *coBuilder) buildObject(depth, visible int) *coNode {
 		p.present = p.required || !b.chance(4)
 		n.props = append(n.props, p)
 	}
+	b.applyComposition(n, depth)
+	return n
+}
+
+// applyComposition decides whether an object routes its properties through an
+// allOf, or grows a discriminated anyOf / oneOf beside them.
+//
+// The instance is not touched by the allOf case at all: moving a property's
+// declaration into a branch does not change which values satisfy the document,
+// because allOf is a conjunction and the partition is a partition. The anyOf
+// and oneOf cases add exactly one property to the instance -- the discriminator
+// of the branch the document is meant to match.
+func (b *coBuilder) applyComposition(n *coNode, depth int) {
+	// A discriminated oneOf only survives generation at the document root; see
+	// coGapNestedOneOfDropsSiblings.
+	rootObject := depth == 0
+	switch b.rng.IntN(6) {
+	case 0, 1:
+		// Partition the properties across 1..2 allOf branches. The first
+		// branches are seeded round-robin so none of them comes out empty: an
+		// empty branch is `{}`, which constrains nothing and would make the
+		// applicator invisible.
+		n.comp = coCompAllOf
+		n.groups = 1 + b.rng.IntN(2)
+		if n.groups > len(n.props) {
+			n.groups = len(n.props)
+		}
+		for i, p := range n.props {
+			if i < n.groups {
+				p.group = i + 1
+				continue
+			}
+			p.group = b.rng.IntN(n.groups + 1)
+		}
+	case 2:
+		n.comp = coCompAnyOf
+		b.addDiscriminators(n)
+	case 3:
+		if !rootObject && !coGapNestedOneOfDropsSiblings() {
+			n.comp = coCompAnyOf
+			b.addDiscriminators(n)
+			return
+		}
+		n.comp = coCompOneOf
+		b.addDiscriminators(n)
+	default:
+		n.comp = coCompNone
+	}
+}
+
+// addDiscriminators gives an object 2..3 branches, each keyed on a property
+// name no other branch mentions, and records which one the instance satisfies.
+func (b *coBuilder) addDiscriminators(n *coNode) {
+	count := 2 + b.rng.IntN(2)
+	types := append([]int(nil), []int{0, 1, 2}...)
+	b.rng.Shuffle(len(types), func(i, j int) { types[i], types[j] = types[j], types[i] })
+	for i := 0; i < count; i++ {
+		t := coDiscTypes[types[i]]
+		n.branches = append(n.branches, &coDisc{name: coDiscNames[i], jtype: t.jtype, value: t.value})
+	}
+	n.branchIx = b.rng.IntN(count)
+}
+
+// buildRootComposition builds a composition leaf: a schema whose only keywords
+// are applicators, and whose instance is a single scalar.
+func (b *coBuilder) buildRootComposition() *coNode {
+	switch b.rng.IntN(3) {
+	case 0:
+		return b.buildOneOfWin()
+	case 1:
+		return b.buildIfElse()
+	default:
+		return b.buildNot()
+	}
+}
+
+// buildOneOfWin lays two integer windows out so that they overlap without
+// either containing the other:
+//
+//	B0 = [lo0, hi0]   B1 = [lo1, hi1]   lo0 < lo1 <= hi0 < hi1
+//
+// [lo0, lo1-1] then matches B0 alone, [hi0+1, hi1] matches B1 alone, [lo1, hi0]
+// matches both -- which is what makes a "matched two variants" mutant reachable
+// at all -- and anything below lo0 matches neither.
+func (b *coBuilder) buildOneOfWin() *coNode {
+	n := &coNode{kind: coOneOfWin}
+	n.winLo0 = int64(b.rng.IntN(21) - 10)
+	only0 := int64(1 + b.rng.IntN(3)) // width of the "B0 alone" band
+	n.winLo1 = n.winLo0 + only0
+	n.winHi0 = n.winLo1 + int64(b.rng.IntN(3))
+	only1 := int64(1 + b.rng.IntN(3)) // width of the "B1 alone" band
+	n.winHi1 = n.winHi0 + only1
+	if b.chance(2) {
+		n.winValue = n.winLo0 + int64(b.rng.IntN(int(only0)))
+	} else {
+		n.winValue = n.winHi0 + 1 + int64(b.rng.IntN(int(only1)))
+	}
+	return n
+}
+
+// buildIfElse pins the whole construct to one integer pivot, so that which side
+// of `if` the instance falls on is a decision the builder makes rather than one
+// anything has to work out from the schema.
+func (b *coBuilder) buildIfElse() *coNode {
+	n := &coNode{kind: coIfElse}
+	n.pivot = int64(b.rng.IntN(21) - 10)
+	n.span = int64(1 + b.rng.IntN(4))
+	n.iteIf = b.chance(2)
+	if n.iteIf {
+		n.iteValue = n.pivot + int64(b.rng.IntN(int(n.span)+1))
+	} else {
+		n.iteValue = n.pivot - int64(1+b.rng.IntN(int(n.span)))
+	}
+	return n
+}
+
+func (b *coBuilder) buildNot() *coNode {
+	c := coNotCases[b.rng.IntN(len(coNotCases))]
+	return &coNode{kind: coNot, notType: c.typeName, notOK: c.ok, notBad: c.bad}
+}
+
+// buildAltAnyOf builds two typed scalar alternatives. minLength is at least 1
+// so that a string one rune shorter than the bound exists, which is the mutant
+// that violates the string branch by its constraint and the integer branch by
+// its type.
+func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
+	n := &coNode{kind: coAltAnyOf, altOneOf: oneOf}
+	n.altStrMin = 1 + b.rng.IntN(4)
+	n.altIntMin = int64(b.rng.IntN(21) - 10)
+	n.altUseStr = b.chance(2)
+	if n.altUseStr {
+		n.altStr = coFillString(n.altStrMin + b.rng.IntN(3))
+	} else {
+		n.altInt = n.altIntMin + int64(b.rng.IntN(5))
+	}
 	return n
 }
 
 // buildValue picks the schema for an object property.
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
-	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst}
+	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
 	if depth < coMaxDepth {
 		kinds = append(kinds, coObject, coArray)
 	}
 	if visible > 0 {
 		kinds = append(kinds, coRef)
 	}
+	// Composition leaves that only work at the document root, reachable here
+	// only to keep their exclusion executable.
+	if coGapInlineConditionalDropped() {
+		kinds = append(kinds, coIfElse, coNot)
+	}
 	switch kinds[b.rng.IntN(len(kinds))] {
 	case coObject:
 		return b.buildObject(depth, visible)
 	case coArray:
 		return b.buildArray(depth, visible)
+	case coAltAnyOf:
+		return b.buildAltAnyOf(coGapOneOfVariantConstraints() && b.chance(2))
+	case coIfElse:
+		return b.buildIfElse()
+	case coNot:
+		return b.buildNot()
 	case coString:
 		return b.buildString()
 	case coInteger:
@@ -378,6 +797,7 @@ func (b *coBuilder) buildString() *coNode {
 	if !n.emitMin && !n.emitMax {
 		n.emitMax = true
 	}
+	n.scalarAllOf = coGapScalarAllOfDropped() && b.chance(2)
 	n.strValue = coFillString(n.lenLo + b.rng.IntN(n.lenHi-n.lenLo+1))
 	return n
 }
@@ -500,18 +920,57 @@ func (n *coNode) fragment() map[string]any {
 	switch n.kind {
 	case coObject:
 		m["type"] = "object"
-		props := map[string]any{}
-		var req []string
+		// Properties routed into an allOf branch are declared there and only
+		// there, so the branch is the sole source of both the property's schema
+		// and its `required` entry. Anything else would leave the constraint
+		// enforceable without ever reading the branch, and the mutant would
+		// stop saying anything about allOf.
+		groups := make([][]*coProp, n.groups+1)
 		for _, p := range n.props {
-			props[p.name] = p.node.fragment()
-			if p.required {
-				req = append(req, p.name)
+			g := 0
+			if n.comp == coCompAllOf {
+				g = p.group
+			}
+			groups[g] = append(groups[g], p)
+		}
+		if props, req := coDeclare(groups[0]); len(props) > 0 {
+			m["properties"] = props
+			if len(req) > 0 {
+				m["required"] = req
 			}
 		}
-		m["properties"] = props
-		if len(req) > 0 {
-			sort.Strings(req)
-			m["required"] = req
+		var branches []any
+		for _, group := range groups[1:] {
+			// A branch the shrinker emptied by dropping its last property is
+			// left out rather than emitted as `{}`: an empty branch constrains
+			// nothing, so keeping it would put an applicator in the schema that
+			// no mutation can speak for.
+			if len(group) == 0 {
+				continue
+			}
+			props, req := coDeclare(group)
+			branch := map[string]any{"properties": props}
+			if len(req) > 0 {
+				branch["required"] = req
+			}
+			branches = append(branches, branch)
+		}
+		if len(branches) > 0 {
+			m["allOf"] = branches
+		}
+		if len(n.branches) > 0 {
+			var alts []any
+			for _, d := range n.branches {
+				alts = append(alts, map[string]any{
+					"properties": map[string]any{d.name: map[string]any{"type": d.jtype}},
+					"required":   []string{d.name},
+				})
+			}
+			if n.comp == coCompOneOf {
+				m["oneOf"] = alts
+			} else {
+				m["anyOf"] = alts
+			}
 		}
 	case coArray:
 		m["type"] = "array"
@@ -526,6 +985,17 @@ func (n *coNode) fragment() map[string]any {
 		m["type"] = "string"
 		if n.patIdx >= 0 {
 			m["pattern"] = coPatterns[n.patIdx].expr
+			break
+		}
+		if n.scalarAllOf {
+			var branches []any
+			if n.emitMin {
+				branches = append(branches, map[string]any{"minLength": n.lenLo})
+			}
+			if n.emitMax {
+				branches = append(branches, map[string]any{"maxLength": n.lenHi})
+			}
+			m["allOf"] = branches
 			break
 		}
 		if n.emitMin {
@@ -565,8 +1035,49 @@ func (n *coNode) fragment() map[string]any {
 		m["const"] = n.choices[0]
 	case coRef:
 		m["$ref"] = "#/$defs/" + n.refName
+
+	case coAltAnyOf:
+		alts := []any{
+			map[string]any{"type": "string", "minLength": n.altStrMin},
+			map[string]any{"type": "integer", "minimum": n.altIntMin},
+		}
+		if n.altOneOf {
+			m["oneOf"] = alts
+		} else {
+			m["anyOf"] = alts
+		}
+
+	case coOneOfWin:
+		m["oneOf"] = []any{
+			map[string]any{"type": "integer", "minimum": n.winLo0, "maximum": n.winHi0},
+			map[string]any{"type": "integer", "minimum": n.winLo1, "maximum": n.winHi1},
+		}
+
+	case coIfElse:
+		m["if"] = map[string]any{"type": "integer", "minimum": n.pivot}
+		m["then"] = map[string]any{"type": "integer", "maximum": n.pivot + n.span}
+		m["else"] = map[string]any{"type": "integer", "minimum": n.pivot - n.span}
+
+	case coNot:
+		m["not"] = map[string]any{"type": n.notType}
 	}
 	return m
+}
+
+// coDeclare renders one group of properties as the `properties` and `required`
+// of whichever schema object is declaring them -- the node itself, or one of
+// its allOf branches.
+func coDeclare(group []*coProp) (map[string]any, []string) {
+	props := map[string]any{}
+	var req []string
+	for _, p := range group {
+		props[p.name] = p.node.fragment()
+		if p.required {
+			req = append(req, p.name)
+		}
+	}
+	sort.Strings(req)
+	return props, req
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +1094,14 @@ func (d *coDoc) value(n *coNode) any {
 			if p.present {
 				m[p.name] = d.value(p.node)
 			}
+		}
+		// Exactly one discriminator goes in. The others stay out, which is what
+		// makes "branch i is not satisfied" true for every other i: a branch
+		// lists its own discriminator in `required`, and the document does not
+		// have it.
+		if len(n.branches) > 0 {
+			disc := n.branches[n.branchIx]
+			m[disc.name] = disc.value
 		}
 		return m
 	case coArray:
@@ -601,6 +1120,17 @@ func (d *coDoc) value(n *coNode) any {
 		return n.choices[n.choiceIx]
 	case coRef:
 		return d.value(d.defs[n.refName])
+	case coAltAnyOf:
+		if n.altUseStr {
+			return n.altStr
+		}
+		return n.altInt
+	case coOneOfWin:
+		return n.winValue
+	case coIfElse:
+		return n.iteValue
+	case coNot:
+		return n.notOK
 	}
 	return nil
 }
@@ -637,11 +1167,20 @@ type coMutation struct {
 	// json.Unmarshal rather than Validate: a value of the wrong JSON type
 	// usually cannot even be decoded into the generated Go field.
 	Loose bool
+	// Via names the applicator the violated keyword was reached through, when
+	// it was reached through one. It changes nothing about the mutation; it is
+	// there so a report says which of two identical-looking cases -- a
+	// minLength declared inline and the same minLength declared inside an allOf
+	// branch -- actually failed.
+	Via string
 }
 
 func (m coMutation) key() string {
 	var b strings.Builder
 	b.WriteString(m.Keyword)
+	if m.Via != "" {
+		fmt.Fprintf(&b, "[%s]", m.Via)
+	}
 	b.WriteByte('@')
 	for _, step := range m.Path {
 		fmt.Fprintf(&b, "/%v", step)
@@ -723,6 +1262,7 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 
 	case coObject:
 		for _, p := range n.props {
+			before := len(*out)
 			if p.required {
 				*out = append(*out, coMutation{
 					Keyword: "required",
@@ -735,7 +1275,16 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 			if p.present {
 				d.collect(p.node, coPath(path, p.name), p.name, out)
 			}
+			// Every constraint on a property the object pushed into an allOf
+			// branch is only reachable by reading that branch, so each of these
+			// mutants is also a test that the branch was read at all.
+			if n.comp == coCompAllOf && p.group > 0 {
+				for i := before; i < len(*out); i++ {
+					(*out)[i].Via = "allOf"
+				}
+			}
 		}
+		coCollectDiscriminators(n, path, prop, out)
 		if len(path) > 0 {
 			*out = append(*out, coMutation{
 				Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
@@ -857,7 +1406,113 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 			Keyword: "const", Path: path, Prop: prop, Value: n.offValue,
 			Want: []string{prop, "invalid "},
 		})
+
+	case coAltAnyOf:
+		// Both mutants are emitted whichever alternative the instance took,
+		// because a mutant only has to be invalid -- it does not have to be a
+		// near miss of the branch the instance happens to be on. Each violates
+		// one branch by its constraint and the other by its type, so no branch
+		// is satisfied and the document is invalid under anyOf and under oneOf
+		// alike.
+		//
+		// The rejection is reported as a type failure ("string is not
+		// allowed"), because the wrapper's last act, once no alternative has
+		// matched, is to name the JSON type it was handed. That is the message
+		// to assert on; asserting on the word "anyOf" would be asserting on a
+		// message the generator never emits here.
+		what := "anyOf"
+		if n.altOneOf {
+			what = "oneOf"
+		}
+		*out = append(*out, coMutation{
+			Keyword: what + "AllBranchesString", Path: path, Prop: prop,
+			Value: coFillString(n.altStrMin - 1),
+			Want:  []string{prop, "is not allowed"},
+		})
+		*out = append(*out, coMutation{
+			Keyword: what + "AllBranchesNumber", Path: path, Prop: prop,
+			Value: n.altIntMin - 1,
+			Want:  []string{prop, "is not allowed"},
+		})
+
+	case coOneOfWin:
+		// [winLo1, winHi0] is inside both windows, so this mutant satisfies two
+		// branches. It is the mutant that separates oneOf from anyOf: an
+		// implementation that stops counting at the first match accepts it.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfMatchesTwo", Path: path, Prop: prop, Value: n.winLo1,
+			Want: []string{prop, "oneOf"},
+		})
+		// Below the lower window, so it satisfies neither branch.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfMatchesNone", Path: path, Prop: prop, Value: n.winLo0 - 1,
+			Want: []string{prop, "oneOf"},
+		})
+
+	case coIfElse:
+		// Above the pivot, so `if` holds and `then` applies -- and above
+		// pivot+span, so `then` is violated.
+		*out = append(*out, coMutation{
+			Keyword: "then", Path: path, Prop: prop, Value: n.pivot + n.span + 1,
+			Want: []string{prop, "then"},
+		})
+		// Below the pivot, so `if` fails and `else` applies -- and below
+		// pivot-span, so `else` is violated.
+		*out = append(*out, coMutation{
+			Keyword: "else", Path: path, Prop: prop, Value: n.pivot - n.span - 1,
+			Want: []string{prop, "else"},
+		})
+
+	case coNot:
+		*out = append(*out, coMutation{
+			Keyword: "not", Path: path, Prop: prop, Value: n.notBad,
+			Want: []string{prop, "must not be " + n.notType},
+		})
 	}
+}
+
+// collectDiscriminators derives the mutations of an object-level anyOf or
+// oneOf. Both rest on the same fact: the instance carries exactly one
+// discriminator, so exactly one branch is satisfied, and each branch's identity
+// is decided by a property no other branch mentions.
+func coCollectDiscriminators(n *coNode, path []any, prop string, out *[]coMutation) {
+	if len(n.branches) == 0 {
+		return
+	}
+	here := n.branches[n.branchIx]
+
+	// Removing the only discriminator present leaves every branch short of its
+	// required property, so the count drops to zero. That is invalid under
+	// anyOf ("at least one") and under oneOf ("exactly one") alike.
+	*out = append(*out, coMutation{
+		Keyword: coCompName(n.comp) + "MatchesNone",
+		Path:    coPath(path, here.name),
+		Prop:    prop,
+		Delete:  true,
+		Want:    []string{prop, coCompName(n.comp)},
+	})
+
+	// Adding a second branch's discriminator, with a value that branch accepts,
+	// takes the count to two. Under oneOf that is a violation; under anyOf it
+	// is not, and no such mutation is emitted there -- which is the whole
+	// asymmetry between the two keywords.
+	if n.comp == coCompOneOf {
+		other := n.branches[(n.branchIx+1)%len(n.branches)]
+		*out = append(*out, coMutation{
+			Keyword: "oneOfMatchesTwo",
+			Path:    coPath(path, other.name),
+			Prop:    prop,
+			Value:   other.value,
+			Want:    []string{prop, "oneOf"},
+		})
+	}
+}
+
+func coCompName(c coComp) string {
+	if c == coCompOneOf {
+		return "oneOf"
+	}
+	return "anyOf"
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +1534,11 @@ func (n *coNode) clone() *coNode {
 	c.minItems = coCopyInt(n.minItems)
 	c.maxItems = coCopyInt(n.maxItems)
 	c.choices = append([]any(nil), n.choices...)
+	c.branches = nil
+	for _, b := range n.branches {
+		d := *b
+		c.branches = append(c.branches, &d)
+	}
 	return &c
 }
 
@@ -955,6 +1615,32 @@ func coReduce(d *coDoc) []*coDoc {
 	for i, n := range nodes {
 		switch n.kind {
 		case coObject:
+			// Drop the applicator and declare everything inline again. This is
+			// the reduction that tells the two apart: if the failure survives
+			// it, composition was not what broke.
+			if n.comp != coCompNone {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				t.comp = coCompNone
+				t.groups = 0
+				t.branches = nil
+				t.branchIx = 0
+				for _, p := range t.props {
+					p.group = 0
+				}
+				out = append(out, c)
+			}
+			// Narrow a discriminated anyOf/oneOf to two branches, keeping the
+			// one the instance matches.
+			if len(n.branches) > 2 {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				keep := t.branches[t.branchIx]
+				drop := t.branches[(t.branchIx+1)%len(t.branches)]
+				t.branches = []*coDisc{keep, drop}
+				t.branchIx = 0
+				out = append(out, c)
+			}
 			for j := range n.props {
 				if len(n.props) > 1 {
 					c := d.clone()
@@ -975,7 +1661,7 @@ func coReduce(d *coDoc) []*coDoc {
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {
-				case coObject, coArray, coRef:
+				case coObject, coArray, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot:
 					c := d.clone()
 					coNodesOf(c)[i].props[j].node = &coNode{kind: coBoolean}
 					out = append(out, c)
