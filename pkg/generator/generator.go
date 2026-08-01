@@ -1427,7 +1427,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// that validates the value's JSON type against the allowed types. This handles
 	// schemas like {"type": "null"}, {"type": ["integer","string"]}, etc. that
 	// don't map to a single Go type.
-	if toDef := extractTypeOnlySchemaDef(name, s); toDef != nil {
+	if toDef := g.extractTypeOnlySchemaDef(name, s); toDef != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, toDef)
 		return nil
@@ -1438,11 +1438,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// the same raw wrapper as multi-type schemas so both alternatives can validate.
 	if len(s.TypeSchemas) > 0 {
 		g.generated[name] = true
+		branches, allowed := g.typeUnionBranches(s, name)
 		g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 			Name:         name,
 			Description:  s.Description,
-			AllowedTypes: s.Type,
-			TypeBranches: extractTypeSchemaBranches(s.TypeSchemas),
+			AllowedTypes: allowed,
+			TypeBranches: branches,
 		})
 		return nil
 	}
@@ -1945,7 +1946,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// collection is non-nil and an absent one is nil, and omitzero omits only
 		// the nil (zero) value. omitempty would drop both, conflating absent with
 		// empty. (Slices stay []T — no pointer — so nil-safe access is preserved.)
-		omitZero := omitEmpty && g.isCollectionType(goType)
+		// A raw-value wrapper is a struct, so omitempty never drops it and its
+		// MarshalJSON writes "null" for an absent value. It carries IsZero, so
+		// omitzero omits exactly the absent case.
+		omitZero := omitEmpty && (g.isCollectionType(goType) || g.isRawValueWrapperType(goType))
 
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
@@ -2115,6 +2119,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			// but keep structural rules like "forbidden" that apply to all types.
 			if ft, ok := fieldTypes[rules[i].FieldName]; ok {
 				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" && rules[i].RuleType != "forbidden" {
+					continue
+				}
+				// A raw-value wrapper keeps the value as JSON and enforces the
+				// whole schema itself, through the branch types generated from
+				// it. A field-level rule here would be both redundant and
+				// uncompilable: the field is a struct, not the slice or string
+				// the rule assumes.
+				if g.isRawValueWrapperType(ft) && rules[i].RuleType != "forbidden" {
 					continue
 				}
 				// A const promoted to a single-value enum type is enforced by that
@@ -2451,7 +2463,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 					Name:         name,
 					Description:  s.Description,
 					AllowedTypes: merged.Type,
-					TypeBranches: extractTypeSchemaBranches(merged.TypeSchemas),
+					TypeBranches: g.extractTypeSchemaBranches(merged.TypeSchemas, name),
 				})
 				return nil
 			}
@@ -4024,6 +4036,31 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &NamedType{Name: goName}, nil
 	}
 
+	// Draft 3 allows a schema to sit inside the "type" array as an alternative.
+	// The alternatives rarely share a Go type -- the draft-3 meta-schema's
+	// "items" is a schema OR an array of schemas -- so materialize the
+	// raw-value wrapper that can hold either. Without this the property takes
+	// the type of whichever alternative the fallback below happens to pick, and
+	// unmarshalling any value matching one of the others fails outright.
+	//
+	// Not when the schema also states something that is not scoped to a type:
+	// that cannot be divided among the branches, so those keep the older
+	// behaviour rather than losing it.
+	if len(s.TypeSchemas) > 0 && !hasNonTypeScopedConstraints(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		return &NamedType{Name: nestedName}, nil
+	}
+
+	// A type union spanning several Go representations, carrying siblings that
+	// only one of them would keep. Checked before the nullable case, which only
+	// handles a single non-null type.
+	if goType, ok := g.multiTypeUnionType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
 	// Nullable type: ["string", "null"] → *string
 	if isNullable(s) {
 		inner := nonNullType(s)
@@ -4058,6 +4095,14 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if goType := formatGoType(*s.Format); goType != nil {
 			return goType, nil
 		}
+	}
+
+	// anyOf across unrelated Go representations -- a string enum or an array of
+	// them, say. No single Go type holds both, so keep the value raw and check
+	// the alternatives; the fallback below would otherwise type it `any` and
+	// validate nothing.
+	if goType, ok := g.anyOfUnionType(s, parentName+fieldName); ok {
+		return goType, nil
 	}
 
 	return g.resolveType(s, parentName+fieldName), nil
@@ -5088,6 +5133,25 @@ func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) b
 	return false
 }
 
+// isRawValueWrapperType reports whether t names a generated type that keeps the
+// value as raw JSON and validates it after the fact: the wrappers built for a
+// draft-3 schema-valued "type", a multi-type union, and an anyOf across
+// unrelated representations. Such a type is a struct with a custom MarshalJSON,
+// so it is never omitted by omitempty and needs omitzero instead.
+func (g *Generator) isRawValueWrapperType(t GoType) bool {
+	nt, ok := t.(*NamedType)
+	if !ok {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == nt.Name {
+			_, isWrapper := td.(*TypeOnlySchemaDef)
+			return isWrapper
+		}
+	}
+	return false
+}
+
 // ruleTakesStringValue reports whether a rule's emitted code hands the field
 // value to something declared to take a string (ecma262.MatchString,
 // utf8.RuneCountInString, url.Parse, time.Parse, ...). The ipv4/ipv6 formats
@@ -6003,7 +6067,7 @@ func enumValueSuffix(v any) string {
 // Validate() method.
 func localTypeIsValidatable(td TypeDef) bool {
 	switch d := td.(type) {
-	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef:
+	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef, *TypeOnlySchemaDef:
 		return true
 	case *AliasDef:
 		return d.CanHaveMethods()
@@ -6288,6 +6352,11 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 					return ""
 				case *BigIntAliasDef:
 					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
+					return ""
+				case *TypeOnlySchemaDef:
+					// A raw-value wrapper struct — no meaningful zero literal.
+					// Its Validate accepts the absent value, so the caller does
+					// not need a presence guard.
 					return ""
 				}
 			}
@@ -6758,7 +6827,7 @@ func isTypeOnlySchema(s *schema.Schema) bool {
 // explicit "type" constraint with types that don't map to a single Go type
 // (multi-type arrays or null-only) and no other structural constraints.
 // Returns nil for schemas that should be handled by other code paths.
-func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef {
+func (g *Generator) extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef {
 	if len(s.Type) == 0 && len(s.TypeSchemas) == 0 {
 		return nil
 	}
@@ -6771,8 +6840,34 @@ func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef 
 	// At this point: either multi-type (pt == "") or null-only (pt == "null").
 
 	// Only handle schemas where "type" is the sole constraint keyword.
-	if hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
-		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+	if s.Items != nil || hasConstraintsBesidesItems(s) {
+		return nil
+	}
+
+	branches, allowed := g.typeUnionBranches(s, name)
+	return &TypeOnlySchemaDef{
+		Name:         name,
+		Description:  s.Description,
+		AllowedTypes: allowed,
+		TypeBranches: branches,
+	}
+}
+
+// representableKeywords names the keywords a caller can carry itself, and so is
+// willing to see alongside the one it is handling.
+type representableKeywords struct {
+	items bool
+	anyOf bool
+}
+
+// hasUnrepresentedConstraints reports whether the schema states a structural or
+// validation keyword the caller has not said it can carry. The raw-value
+// wrappers built from "type" and "anyOf" express only their own alternatives,
+// so a schema carrying anything else must be handled by another path rather
+// than silently losing the constraint.
+func hasUnrepresentedConstraints(s *schema.Schema, allow representableKeywords) bool {
+	if hasProperties(s) || len(s.PrefixItems) > 0 ||
+		len(s.AllOf) > 0 || len(s.OneOf) > 0 ||
 		s.Not != nil || s.If != nil || s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
 		len(s.Required) > 0 || s.AdditionalProperties != nil ||
 		s.Minimum != nil || s.Maximum != nil || s.MinLength != nil || s.MaxLength != nil ||
@@ -6783,21 +6878,256 @@ func extractTypeOnlySchemaDef(name string, s *schema.Schema) *TypeOnlySchemaDef 
 		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 ||
 		s.MultipleOf != nil || s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
 		s.UniqueItems != nil {
-		return nil
+		return true
 	}
-
-	return &TypeOnlySchemaDef{
-		Name:         name,
-		Description:  s.Description,
-		AllowedTypes: s.Type,
-		TypeBranches: extractTypeSchemaBranches(s.TypeSchemas),
+	if !allow.items && s.Items != nil {
+		return true
 	}
+	if !allow.anyOf && len(s.AnyOf) > 0 {
+		return true
+	}
+	return false
 }
 
-func extractTypeSchemaBranches(typeSchemas []*schema.Schema) []TypeSchemaBranch {
+// hasConstraintsBesidesItems reports whether the schema carries any structural
+// or validation keyword other than "type" and "items".
+func hasConstraintsBesidesItems(s *schema.Schema) bool {
+	return hasUnrepresentedConstraints(s, representableKeywords{items: true})
+}
+
+// anyOfIsSoleConstraint reports whether "anyOf" is the only thing the schema
+// states, so a wrapper that checks its alternatives and nothing else says
+// everything the schema says.
+func anyOfIsSoleConstraint(s *schema.Schema) bool {
+	if len(s.AnyOf) < 2 {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 || len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
+		return false
+	}
+	return !hasUnrepresentedConstraints(s, representableKeywords{anyOf: true})
+}
+
+// delegatedBranchType materializes sub as a named generated type so a union
+// wrapper can delegate a branch to it. A $ref alternative usually resolves to
+// an existing named type; an inline one (a constrained array, say) resolves to
+// an unnamed Go type and has to be given a name of its own. Reports false when
+// neither produces a name, which is the signal to leave the schema to another
+// path rather than emit a branch that checks nothing.
+func (g *Generator) delegatedBranchType(sub *schema.Schema, contextName string) (string, bool) {
+	if sub == nil || sub.IsBooleanSchema() {
+		return "", false
+	}
+	if name := namedTypeName(g.resolveType(sub, contextName)); name != "" {
+		return name, true
+	}
+	name, _ := g.materializeNamed(sub, contextName)
+	if name == "" || !g.generated[name] {
+		return "", false
+	}
+	return name, true
+}
+
+// anyOfUnionType represents an anyOf whose alternatives share no Go type as a
+// raw-value wrapper: the value is kept verbatim and accepted when any one of
+// the generated alternative types accepts it. Without this the property falls
+// back to `any` and the alternatives constrain nothing at all.
+func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType, bool) {
+	if !g.validationKeywordsEnabled() || !anyOfIsSoleConstraint(s) {
+		return nil, false
+	}
+	// Alternatives carrying properties are merged into a struct by the paths
+	// below; taking them over here would throw those fields away.
+	if g.anyOfHasProperties(s) {
+		return nil, false
+	}
+	if g.generated[contextName] {
+		return &NamedType{Name: contextName}, true
+	}
+	branches := make([]TypeSchemaBranch, 0, len(s.AnyOf))
+	for i, variant := range s.AnyOf {
+		name, ok := g.delegatedBranchType(variant, fmt.Sprintf("%sAlternative%d", contextName, i))
+		if !ok {
+			return nil, false
+		}
+		branches = append(branches, TypeSchemaBranch{TypeName: name})
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+		Name:         contextName,
+		Description:  s.Description,
+		TypeBranches: branches,
+	})
+	return &NamedType{Name: contextName}, true
+}
+
+// multiTypeUnionType represents a "type" listing several JSON types that no
+// single Go type spans -- ["string","array"], say -- as a raw-value wrapper
+// with one delegated branch per type.
+//
+// The sibling keywords are what make this necessary. A bare multi-type schema
+// constrains nothing beyond the type, and the cheap AllowedTypes check already
+// covers it; but "items" or "uniqueItems" alongside the union apply to whichever
+// alternative they are meaningful for, and collapsing the property to the one
+// type those keywords hint at drops the other alternative entirely. Each branch
+// is generated from the schema with "type" narrowed to a single value, so the
+// siblings are carried by the normal machinery rather than re-implemented here.
+func (g *Generator) multiTypeUnionType(s *schema.Schema, contextName string) (GoType, bool) {
+	if !g.validationKeywordsEnabled() || len(s.TypeSchemas) > 0 {
+		return nil, false
+	}
+	nonNull := 0
+	for _, t := range s.Type {
+		if t != "null" {
+			nonNull++
+		}
+	}
+	if nonNull < 2 {
+		return nil, false
+	}
+	// An applicator or a value constraint is not scoped to a type, so it cannot
+	// be split across the branches -- leave those schemas to the paths that
+	// already handle them.
+	if hasNonTypeScopedConstraints(s) {
+		return nil, false
+	}
+	// Without type-scoped siblings the alternatives carry no constraint of
+	// their own, and the plain type check the wrapper already emits says
+	// everything there is to say. Leave those where they are.
+	if !hasTypeScopedConstraints(s) {
+		return nil, false
+	}
+	if g.generated[contextName] {
+		return &NamedType{Name: contextName}, true
+	}
+	branches, allowed := g.typeUnionBranches(s, contextName)
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+		Name:         contextName,
+		Description:  s.Description,
+		AllowedTypes: allowed,
+		TypeBranches: branches,
+	})
+	return &NamedType{Name: contextName}, true
+}
+
+// hasNonTypeScopedConstraints reports whether the schema states something that
+// applies whatever the value's type is. Those cannot be divided among per-type
+// branches: an applicator would have to be duplicated into every one, and an
+// enum or const already decides the type by itself.
+func hasNonTypeScopedConstraints(s *schema.Schema) bool {
+	return len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.Not != nil || s.If != nil ||
+		s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull
+}
+
+// hasTypeScopedConstraints reports whether the schema states a keyword that
+// constrains values of one particular type.
+func hasTypeScopedConstraints(s *schema.Schema) bool {
+	return hasProperties(s) || len(s.PatternProperties) > 0 || s.AdditionalProperties != nil ||
+		len(s.Required) > 0 || s.MinProperties != nil || s.MaxProperties != nil ||
+		s.PropertyNames != nil || s.UnevaluatedProperties != nil ||
+		len(s.DependentSchemas) > 0 || len(s.DependentRequired) > 0 || len(s.Dependencies) > 0 ||
+		s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+		s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil ||
+		s.Contains != nil || s.MinContains != nil || s.MaxContains != nil || s.UnevaluatedItems != nil ||
+		s.MinLength != nil || s.MaxLength != nil || s.Pattern != nil || s.Format != nil ||
+		s.Minimum != nil || s.Maximum != nil ||
+		s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
+		s.MultipleOf != nil || s.DivisibleBy != nil
+}
+
+// narrowedToType returns a copy of s whose "type" is the single named type,
+// with the keywords scoped to the other types removed.
+//
+// JSON Schema scopes its assertions by type: uniqueItems says nothing about a
+// string, minLength nothing about an array. A branch generated for one
+// alternative must therefore not inherit the others' constraints -- keeping
+// them makes the generator apply, say, a uniqueItems check to a Go string, so
+// that "integer" is rejected for using the letter e twice.
+func narrowedToType(s *schema.Schema, t string) *schema.Schema {
+	c := *s
+	c.Type = []string{t}
+	c.TypeSchemas = nil
+	if t != "object" {
+		c.Properties, c.PatternProperties, c.AdditionalProperties = nil, nil, nil
+		c.Required = nil
+		c.MinProperties, c.MaxProperties = nil, nil
+		c.PropertyNames, c.UnevaluatedProperties = nil, nil
+		c.DependentSchemas, c.DependentRequired, c.Dependencies = nil, nil, nil
+	}
+	if t != "array" {
+		c.Items, c.PrefixItems, c.AdditionalItems = nil, nil, nil
+		c.MinItems, c.MaxItems, c.UniqueItems = nil, nil, nil
+		c.Contains, c.MinContains, c.MaxContains = nil, nil, nil
+		c.UnevaluatedItems = nil
+	}
+	if t != "string" {
+		c.MinLength, c.MaxLength, c.Pattern, c.Format = nil, nil, nil, nil
+		c.ContentMediaType, c.ContentEncoding, c.ContentSchema = "", "", nil
+	}
+	if t != "number" && t != "integer" {
+		c.Minimum, c.Maximum = nil, nil
+		c.ExclusiveMinimum, c.ExclusiveMaximum = nil, nil
+		c.MultipleOf, c.DivisibleBy = nil, nil
+	}
+	return &c
+}
+
+// typeUnionBranches describes a schema whose "type" offers more than one
+// alternative: the branches that need a generated type of their own, and the
+// JSON types the wrapper can still check inline.
+//
+// Two kinds of alternative land here. A draft-3 entry is a whole schema sitting
+// inside the type array. A plain JSON type is an alternative too, and when the
+// schema carries keywords scoped to a particular type -- "items",
+// "uniqueItems", "minLength" -- that type's branch has to carry them: those
+// keywords are the reason the property cannot simply be typed as whichever
+// alternative they hint at, since doing so drops all the others.
+//
+// A type whose branch cannot be materialized falls back to the inline check, so
+// it is still accepted; only its siblings go unenforced, which is where it
+// stood before.
+func (g *Generator) typeUnionBranches(s *schema.Schema, name string) ([]TypeSchemaBranch, []string) {
+	branches := g.extractTypeSchemaBranches(s.TypeSchemas, name)
+	if hasNonTypeScopedConstraints(s) || !hasTypeScopedConstraints(s) {
+		return branches, s.Type
+	}
+	var allowed []string
+	for _, t := range s.Type {
+		if t == "null" {
+			allowed = append(allowed, t)
+			continue
+		}
+		branchName, ok := g.delegatedBranchType(narrowedToType(s, t), name+SchemaNameToGoName(t))
+		if !ok {
+			allowed = append(allowed, t)
+			continue
+		}
+		branches = append(branches, TypeSchemaBranch{TypeName: branchName})
+	}
+	return branches, allowed
+}
+
+func (g *Generator) extractTypeSchemaBranches(typeSchemas []*schema.Schema, contextName string) []TypeSchemaBranch {
 	var branches []TypeSchemaBranch
-	for _, typeSchema := range typeSchemas {
-		if typeSchema == nil || typeSchema.IsBooleanSchema() || (len(typeSchema.Type) == 0 && len(typeSchema.Properties) == 0) {
+	for i, typeSchema := range typeSchemas {
+		if typeSchema == nil || typeSchema.IsBooleanSchema() {
+			continue
+		}
+		// A reference names the whole constraint rather than spelling it out,
+		// so there is nothing here to translate into an inline check. Generate
+		// the referenced type and let the branch delegate to it; the shallow
+		// path below would otherwise drop the alternative entirely and the
+		// wrapper would reject every value the reference was meant to admit.
+		if typeSchema.EffectiveRef() != "" {
+			if name := namedTypeName(g.resolveType(typeSchema, fmt.Sprintf("%sTypeAlternative%d", contextName, i))); name != "" {
+				branches = append(branches, TypeSchemaBranch{TypeName: name})
+				continue
+			}
+		}
+		if len(typeSchema.Type) == 0 && len(typeSchema.Properties) == 0 {
 			continue
 		}
 		branch := TypeSchemaBranch{AllowedTypes: append([]string(nil), typeSchema.Type...)}

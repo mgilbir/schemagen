@@ -1150,6 +1150,74 @@ func TestDraft3TypeMultiBranch(t *testing.T) {
 	)
 }
 
+// TestDraft3TypeUnionProperty covers a property whose draft-3 "type" array
+// mixes a schema alternative with "array" — the shape the draft-3 meta-schema
+// gives "items". The property must accept both an object matching the
+// referenced schema and an array of them, and must enforce the referenced
+// schema in either position: a single Go type can express neither alternative
+// on its own, and picking one used to make the other fail at unmarshal.
+func TestDraft3TypeUnionProperty(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_type_union_property.json",
+		[]string{
+			`{}`,
+			`{"items":{"title":"x"}}`,
+			`{"items":[{"title":"x"},{"title":"y"}]}`,
+			`{"items":[]}`,
+		},
+		[]string{
+			`{"items":{"title":1}}`,
+			`{"items":[{"title":1}]}`,
+			`{"items":"nope"}`,
+			`{"items":5}`,
+		},
+	)
+}
+
+// TestAnyOfUnionAlternatives covers an anyOf whose alternatives share no Go
+// type — a string enum or an array of them. The property used to fall back to
+// `any`, which validated nothing at all; each alternative now has a generated
+// type of its own that the value is checked against.
+func TestAnyOfUnionAlternatives(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_union_alternatives.json",
+		[]string{
+			`{}`,
+			`{"type":"string"}`,
+			`{"type":["string","number"]}`,
+		},
+		[]string{
+			`{"type":1}`,
+			`{"type":"bogus"}`,
+			`{"type":[]}`,
+			`{"type":["string","string"]}`,
+		},
+	)
+}
+
+// TestMultiTypeWithSiblings covers a "type" union carrying siblings that apply
+// to one alternative each. Collapsing the property to the single type those
+// siblings hint at rejected every value of the other; and the branches must not
+// inherit each other's constraints — uniqueItems is meaningless for a string,
+// and applying it anyway rejects "integer" for using the letter e twice.
+func TestMultiTypeWithSiblings(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/multitype_with_siblings.json",
+		[]string{
+			`{}`,
+			`{"type":"integer"}`,
+			`{"type":["a","b"]}`,
+			`{"type":[]}`,
+		},
+		[]string{
+			`{"type":"ab"}`,
+			`{"type":["a","a"]}`,
+			`{"type":1}`,
+			`{"type":[1]}`,
+		},
+	)
+}
+
 // TestOneOfOptionalConstUnmarshal covers a oneOf whose variants share a const
 // property that is NOT required. The heuristic discriminator must not fire on
 // it (dispatching on a missing optional property would reject valid data);

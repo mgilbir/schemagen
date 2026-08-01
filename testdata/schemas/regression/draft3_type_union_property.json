@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "id": "http://ex.test/draft3-union-property",
+  "title": "Draft3UnionProperty",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": [{"$ref": "#"}, "array"],
+      "items": {"$ref": "#"}
+    },
+    "title": {"type": "string"}
+  }
+}

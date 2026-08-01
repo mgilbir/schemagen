@@ -870,12 +870,19 @@ type TypeOnlySchemaDef struct {
 	Name         string
 	Description  string
 	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
-	TypeBranches []TypeSchemaBranch // Draft 3 schema-valued alternatives in the type array
+	TypeBranches []TypeSchemaBranch // one per alternative: draft-3 schema-valued type entries, anyOf variants, or the types of a multi-type union
 }
 
 type TypeSchemaBranch struct {
 	AllowedTypes []string
 	Properties   []TypeSchemaProperty
+
+	// TypeName delegates the whole branch to a generated type: the raw value
+	// matches when it unmarshals into that type and the type's own Validate
+	// accepts it. A schema-valued alternative that is a $ref carries no inline
+	// type or properties to check, so without this the branch would enforce
+	// nothing.
+	TypeName string
 }
 
 type TypeSchemaProperty struct {
