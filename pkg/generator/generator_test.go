@@ -3100,6 +3100,225 @@ func TestNullVariantOfAOneOfStaysAPointer(t *testing.T) {
 	}
 }
 
+// TestNotWrapperPropertyIsValidatedByOwner covers the "not" half of a defect the
+// two raw-JSON wrappers shared with nothing else: NotSchemaDef and
+// DynamicSchemaDef each carry a correct Validate, but populateValidatableFields
+// did not count them as validatable, so no enclosing struct ever called it. The
+// constraint was live at the document root and dead everywhere else — {"a":7}
+// was accepted against a property whose type forbids integers.
+func TestNotWrapperPropertyIsValidatedByOwner(t *testing.T) {
+	input := `{
+		"title": "Gate",
+		"$defs": {"NotInt": {"not": {"type": "integer"}}},
+		"type": "object",
+		"properties": {"a": {"$ref": "#/$defs/NotInt"}},
+		"required": ["a"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var gate *StructDef
+	var wrapper *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Gate" {
+				gate = d
+			}
+		case *NotSchemaDef:
+			if d.Name == "NotInt" {
+				wrapper = d
+			}
+		}
+	}
+	if gate == nil {
+		t.Fatalf("expected Gate struct")
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a NotInt wrapper for the not-only definition")
+	}
+	if !hasValidatableField(gate.ValidatableFields, "a") {
+		t.Fatalf("the not wrapper is never validated by Gate: %#v", gate.ValidatableFields)
+	}
+}
+
+// TestDynamicWrapperPropertyIsValidatedByOwner is the same defect reached
+// through the other wrapper: a definition whose only keywords are applicators
+// becomes a DynamicSchemaDef, and a property referencing it has to call it.
+// Both the required and the optional spelling are checked — the optional one is
+// where a missing zero literal would have emitted a guard instead.
+func TestDynamicWrapperPropertyIsValidatedByOwner(t *testing.T) {
+	input := `{
+		"title": "Dial",
+		"$defs": {"Window": {"oneOf": [{"type":"integer","minimum":10}, {"type":"string"}]}},
+		"type": "object",
+		"properties": {
+			"a": {"$ref": "#/$defs/Window"},
+			"b": {"$ref": "#/$defs/Window"}
+		},
+		"required": ["a"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var dial *StructDef
+	var wrapper *DynamicSchemaDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *StructDef:
+			if d.Name == "Dial" {
+				dial = d
+			}
+		case *DynamicSchemaDef:
+			if d.Name == "Window" {
+				wrapper = d
+			}
+		}
+	}
+	if dial == nil {
+		t.Fatalf("expected Dial struct")
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a Window wrapper for the applicator-only definition")
+	}
+	for _, jsonName := range []string{"a", "b"} {
+		if !hasValidatableField(dial.ValidatableFields, jsonName) {
+			t.Fatalf("%q: the dynamic wrapper is never validated by Dial: %#v", jsonName, dial.ValidatableFields)
+		}
+	}
+}
+
+// TestOptionalWrapperPropertyOmitsZeroAndGuardsNothing pins the two things that
+// have to hold once the wrapper is validated at all, both of which are about the
+// absent value.
+//
+// The presence guard must be empty. A wrapper is a struct, so the `""` fallback
+// in zeroLiteralForType would have the owner emit `x.A != ""` around the call —
+// which does not compile. Nothing is lost by dropping the guard: the wrapper's
+// own Validate returns nil when it holds no bytes.
+//
+// The tag must be ",omitzero" rather than ",omitempty". omitempty never
+// considers a struct empty, and the wrapper's MarshalJSON writes null when it
+// holds no bytes, so an absent optional property came back as an explicit null.
+func TestOptionalWrapperPropertyOmitsZeroAndGuardsNothing(t *testing.T) {
+	input := `{
+		"title": "Latch",
+		"$defs": {
+			"NotInt": {"not": {"type": "integer"}},
+			"Window": {"oneOf": [{"type":"integer","minimum":10}, {"type":"string"}]}
+		},
+		"type": "object",
+		"properties": {
+			"a": {"$ref": "#/$defs/NotInt"},
+			"b": {"$ref": "#/$defs/Window"}
+		}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var latch *StructDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == "Latch" {
+			latch = d
+		}
+	}
+	if latch == nil {
+		t.Fatalf("expected Latch struct")
+	}
+
+	guards := make(map[string]ValidatableFieldDef, len(latch.ValidatableFields))
+	for _, vf := range latch.ValidatableFields {
+		guards[vf.JSONName] = vf
+	}
+	for _, jsonName := range []string{"a", "b"} {
+		f, ok := fieldByJSONName(latch, jsonName)
+		if !ok {
+			t.Fatalf("expected field for property %q", jsonName)
+		}
+		if !f.OmitZero {
+			t.Fatalf("%q: optional wrapper field uses ,omitempty, want ,omitzero (absent comes back as null)", jsonName)
+		}
+		vf, ok := guards[jsonName]
+		if !ok {
+			t.Fatalf("%q: expected among ValidatableFields", jsonName)
+		}
+		if vf.ZeroLiteral != "" {
+			t.Fatalf("%q: ZeroLiteral = %q, want \"\" (a struct has no zero literal to compare against)", jsonName, vf.ZeroLiteral)
+		}
+	}
+}
+
+// TestRefToDynamicWrapperGeneratesTheWrapperNotAnAlias covers the same dead
+// constraint one position over. A $ref whose target is a wrapper struct cannot
+// become `type Root Target`: a defined type over a struct inherits no methods,
+// so Root would carry neither the UnmarshalJSON that fills the raw value nor the
+// Validate that checks it, and emitted an empty Validate instead. The other
+// wrappers were already excluded from that path; DynamicSchemaDef was not.
+func TestRefToDynamicWrapperGeneratesTheWrapperNotAnAlias(t *testing.T) {
+	input := `{
+		"$defs": {"Window": {"oneOf": [{"type":"integer","minimum":10}, {"type":"string"}]}},
+		"$ref": "#/$defs/Window"
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *DynamicSchemaDef
+	for _, td := range ir.TypeDefs {
+		switch d := td.(type) {
+		case *AliasDef:
+			if d.Name == "Root" {
+				t.Fatalf("Root is an alias over the wrapper, so it inherits no Validate")
+			}
+		case *DynamicSchemaDef:
+			if d.Name == "Root" {
+				root = d
+			}
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected Root to be generated as a DynamicSchemaDef")
+	}
+	if len(root.OneOf) != 2 {
+		t.Fatalf("Root oneOf branches = %d, want 2", len(root.OneOf))
+	}
+}
+
 func hasValidatableField(fields []ValidatableFieldDef, jsonName string) bool {
 	for _, f := range fields {
 		if f.JSONName == jsonName {

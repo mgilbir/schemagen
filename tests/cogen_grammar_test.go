@@ -55,8 +55,9 @@ const coMaxDepth = 3
 //	enum            2..4 members, all strings or all integers
 //	const           one string, integer or boolean member
 //	$defs + $ref    0..3 definitions; a definition body is an object, a
-//	                bounded string/integer/number, or an enum. Definition i
-//	                may $ref definitions < i, so the graph is acyclic.
+//	                bounded string/integer/number, an enum, or a composition
+//	                leaf (oneOf / if/then/else / not). Definition i may $ref
+//	                definitions < i, so the graph is acyclic.
 //	allOf           on an object node: its properties, and the `required`
 //	                entries that go with them, are partitioned across 1..2
 //	                allOf branches instead of being declared inline
@@ -67,22 +68,27 @@ const coMaxDepth = 3
 //	                {"type":"integer","minimum":m}).
 //	oneOf           two forms. On the *root* object, the same discriminator
 //	                branches as anyOf (only the root: see
-//	                coGapNestedOneOfDropsSiblings). As the whole document, two
+//	                coGapNestedOneOfDropsSiblings). As a composition leaf, two
 //	                overlapping integer windows, so that a value matching
 //	                *both* branches is reachable and can be made a mutant.
-//	if/then/else    as the whole document, over an integer pivot: `if`
+//	if/then/else    as a composition leaf, over an integer pivot: `if`
 //	                {minimum: P}, `then` {maximum: P+K}, `else` {minimum:
 //	                P-K}. Both outcomes of `if` are generated.
-//	not             as the whole document, {"not":{"type":T}} over a value of
+//	not             as a composition leaf, {"not":{"type":T}} over a value of
 //	                some other type.
+//
+// A composition leaf sits either as the whole document -- becoming the root
+// type -- or as a $defs entry a property $refs, becoming a wrapper type the
+// enclosing struct's Validate calls. Both positions are generated.
 //
 // Where composition sits is not a matter of taste. schemagen enforces the same
 // keyword in some positions and not others (see coKnownGaps), and the grammar
 // is placed to land on the positions that are enforced: object-level allOf /
 // anyOf / oneOf get flattened into the struct and checked against the raw JSON
 // keys, an inline anyOf of typed scalars becomes an alternatives wrapper whose
-// Validate the parent calls, and a document *rooted* at oneOf / if / not
-// becomes the root type, whose Validate the harness calls directly.
+// Validate the parent calls, and oneOf / if / not become a wrapper type --
+// either the root type, whose Validate the harness calls directly, or a $defs
+// entry whose Validate the referencing struct calls.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
@@ -107,31 +113,12 @@ const coMaxDepth = 3
 // the doc comment of its toggle.
 var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
 
-// coGapWrapperValidateNotCalled: a property whose type is one of the "raw JSON
-// wrapper" types -- the one generated for a `not` schema (NotSchemaDef) and the
-// one generated for a schema whose only keywords are oneOf / anyOf / if / then
-// / else (DynamicSchemaDef) -- never has its Validate() called by the enclosing
-// struct. Both types carry a correct Validate of their own;
-// populateValidatableFields simply does not count them as validatable, so
-// nothing invokes it and the constraint is dead at every position except the
-// document root.
-//
-//	schema   {"$defs":{"NotInt":{"not":{"type":"integer"}}},
-//	          "type":"object","properties":{"a":{"$ref":"#/$defs/NotInt"}},
-//	          "required":["a"]}
-//	instance {"a":7}                 accepted; NotInt.Validate() would reject it
-//
-// The same schema written with the `not` at the document root is rejected
-// correctly, which is why the grammar puts `not`, root-level oneOf and
-// if/then/else there. This toggle instead hangs them off a property through
-// $defs, which is where they die.
-func coGapWrapperValidateNotCalled() bool { return coIncludeKnownGaps }
-
 // coGapInlineConditionalDropped: `not` and `if`/`then`/`else` written inline as
 // a property's own schema are dropped before any type is chosen -- the property
-// becomes a bare `any` with no Validate at all. This is a different defect from
-// coGapWrapperValidateNotCalled: there a correct wrapper type exists and is
-// never consulted, here no wrapper is generated in the first place.
+// becomes a bare `any` with no Validate at all. The same keywords written in a
+// $defs entry and reached through a $ref are enforced: there they become a
+// wrapper type whose Validate the enclosing struct calls. Here no wrapper is
+// generated in the first place.
 //
 //	schema   {"type":"object","properties":{"a":{"not":{"type":"integer"}}},
 //	          "required":["a"]}
@@ -486,10 +473,9 @@ func coBuild(seed uint64) *coDoc {
 		doc: &coDoc{defs: map[string]*coNode{}},
 	}
 	// One document in four is rooted at a composition leaf rather than at an
-	// object. That is the only position where schemagen enforces `not`,
-	// if/then/else and a oneOf over scalars at all (see
-	// coGapWrapperValidateNotCalled), so it is the only position from which a
-	// mutant of those keywords can be expected to be rejected.
+	// object, which exercises `not`, if/then/else and a oneOf over scalars as
+	// the root type itself. The other position those keywords reach is a $defs
+	// entry behind a property's $ref, which buildDefBody produces.
 	//
 	// Such a document carries no $defs: the dynamic evaluator only takes over a
 	// schema whose keywords are entirely applicators, and it decides that from
@@ -517,9 +503,10 @@ func (b *coBuilder) chance(n int) bool { return b.rng.IntN(n) == 0 }
 // value landing on the Go zero used to vanish from the output; nothing here
 // steers away from that value any more.
 func (b *coBuilder) buildDefBody(depth, visible int) *coNode {
-	// A composition wrapper reached through a $ref is a known gap: the wrapper
-	// type carries a correct Validate that nothing calls.
-	if coGapWrapperValidateNotCalled() && b.chance(3) {
+	// A composition leaf in a $defs entry becomes a wrapper type, and a property
+	// referencing it is where that wrapper's Validate has to be reached from --
+	// the position at which the constraint used to be dead.
+	if b.chance(3) {
 		return b.buildRootComposition()
 	}
 	switch b.rng.IntN(5) {

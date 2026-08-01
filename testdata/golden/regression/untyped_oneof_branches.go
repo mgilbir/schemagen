@@ -28,10 +28,20 @@ func (u UntypedOneOfBranches) MarshalJSON() ([]byte, error) {
 
 func (u UntypedOneOfBranches) Raw() json.RawMessage { return u._raw }
 
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (u UntypedOneOfBranches) IsZero() bool { return len(u._raw) == 0 }
+
 func (u UntypedOneOfBranches) String() string { return string(u._raw) }
 
 // Validate checks UntypedOneOfBranches against its JSON Schema constraints.
 func (u UntypedOneOfBranches) Validate() error {
+	// No value was present. A constraint applies to a value that is there; an
+	// absent optional property is the parent's business (required), not this
+	// type's.
+	if len(u._raw) == 0 {
+		return nil
+	}
 	var _v any
 	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)

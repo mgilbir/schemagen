@@ -1110,6 +1110,17 @@ func (g *Generator) isTypeOnlySchema(name string) bool {
 	return false
 }
 
+// isDynamicSchema returns true if a type name was generated as a DynamicSchemaDef.
+func (g *Generator) isDynamicSchema(name string) bool {
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*DynamicSchemaDef)
+			return ok
+		}
+	}
+	return false
+}
+
 // resolveAliasMethodability walks all AliasDefs and sets NoMethods=true
 // for any whose underlying type chain resolves to a pointer or interface.
 // This handles cases like `type Root Bool` where Bool is `type Bool any` —
@@ -1472,9 +1483,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				return err
 			}
 			// If the ref target was generated as a wrapper struct (InferredAliasDef,
-			// BigIntAliasDef, or NotSchemaDef), creating `type Root Target` would not
-			// inherit methods. Instead, generate Root directly from the resolved schema.
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
+			// BigIntAliasDef, NotSchemaDef, TypeOnlySchemaDef or DynamicSchemaDef),
+			// creating `type Root Target` would not inherit methods -- Root would
+			// carry neither the UnmarshalJSON that fills the raw value nor the
+			// Validate that checks it, so the constraint would be silently dropped.
+			// Instead, generate Root directly from the resolved schema.
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) || g.isDynamicSchema(refName) {
 				err := g.generateTypeDef(name, resolved)
 				if pushed {
 					g.popDynamicScope()
@@ -1511,7 +1525,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
 			}
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) {
+			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) || g.isDynamicSchema(refName) {
 				return g.generateTypeDef(name, resolved)
 			}
 			g.generated[name] = true
@@ -5477,9 +5491,10 @@ func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) b
 
 // isRawValueWrapperType reports whether t names a generated type that keeps the
 // value as raw JSON and validates it after the fact: the wrappers built for a
-// draft-3 schema-valued "type", a multi-type union, and an anyOf across
-// unrelated representations. Such a type is a struct with a custom MarshalJSON,
-// so it is never omitted by omitempty and needs omitzero instead.
+// draft-3 schema-valued "type", a multi-type union, an anyOf across unrelated
+// representations, a "not"-only schema, and a schema that constrains through
+// applicators alone. Such a type is a struct with a custom MarshalJSON, so it is
+// never omitted by omitempty and needs omitzero instead.
 func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	nt, ok := t.(*NamedType)
 	if !ok {
@@ -5487,8 +5502,11 @@ func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	}
 	for _, td := range g.output.TypeDefs {
 		if td.TypeName() == nt.Name {
-			_, isWrapper := td.(*TypeOnlySchemaDef)
-			return isWrapper
+			switch td.(type) {
+			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef:
+				return true
+			}
+			return false
 		}
 	}
 	return false
@@ -6572,7 +6590,8 @@ func enumValueSuffix(v any) string {
 // Validate() method.
 func localTypeIsValidatable(td TypeDef) bool {
 	switch d := td.(type) {
-	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef, *TypeOnlySchemaDef:
+	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef, *TypeOnlySchemaDef,
+		*NotSchemaDef, *DynamicSchemaDef:
 		return true
 	case *AliasDef:
 		return d.CanHaveMethods()
@@ -7153,10 +7172,12 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 				case *BigIntAliasDef:
 					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
 					return ""
-				case *TypeOnlySchemaDef:
+				case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef:
 					// A raw-value wrapper struct — no meaningful zero literal.
 					// Its Validate accepts the absent value, so the caller does
-					// not need a presence guard.
+					// not need a presence guard. Without a case here the `""`
+					// fallback below would emit `field != ""` against a struct,
+					// which does not compile.
 					return ""
 				}
 			}
