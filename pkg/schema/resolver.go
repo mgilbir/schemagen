@@ -493,6 +493,14 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 }
 
 // parseIndex parses a string as a non-negative integer index.
+//
+// A run of digits long enough to overflow an int is refused rather than allowed
+// to wrap. Every caller bounds the result with "idx >= len(...)", which a
+// wrapped-negative index passes; the subscript that follows then panics with
+// "index out of range [-9219744073709551616]". A ref of
+// "#/items/9227000000000000000" is enough to produce one, and no slice could
+// have that element in any case, so refusing it is the same answer the bound
+// check was going to give.
 func parseIndex(s string) (int, error) {
 	n := 0
 	if s == "" {
@@ -502,10 +510,17 @@ func parseIndex(s string) (int, error) {
 		if c < '0' || c > '9' {
 			return 0, fmt.Errorf("non-numeric index: %s", s)
 		}
-		n = n*10 + int(c-'0')
+		d := int(c - '0')
+		if n > (maxInt-d)/10 {
+			return 0, fmt.Errorf("index out of range: %s", s)
+		}
+		n = n*10 + d
 	}
 	return n, nil
 }
+
+// maxInt is the largest value an int can hold on this platform.
+const maxInt = int(^uint(0) >> 1)
 
 // unescapeJSONPointer decodes JSON Pointer escaping (RFC 6901):
 // ~1 → / and ~0 → ~

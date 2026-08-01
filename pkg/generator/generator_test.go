@@ -2580,6 +2580,64 @@ func TestRefCycleTerminates(t *testing.T) {
 		{"typeSchemaRefSelfDef", `{"type":"object","$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}}`},
 		{"typeSchemaRefSelfDefRoot", `{"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}},"$ref":"#/$defs/C"}`},
 		{"typeSchemaRefMutualDefs", `{"$defs":{"A":{"type":[{"$ref":"#/$defs/B"}]},"B":{"type":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
+		// A subschema whose own $id makes its $ref resolve straight back to
+		// itself, found by the fuzzer. Nesting "0" under a base of "a:/0"
+		// re-normalizes it to "a:///0", which is a URI the root does not answer
+		// to -- so isSelfRefInContext says no, the ref resolves to the node it
+		// started from, and the applicator ref-following loops spin at constant
+		// stack. The legacy draft-4 "id" spelling is how the fuzzer found it;
+		// "$id" reaches the same place.
+		{"legacyIDRefResolvesToSelf", `{"id":"A:/0","properties":{"":{"id":"0","$ref":"0"}},"$ref":"0"}`},
+		{"idRefResolvesToSelf", `{"$id":"a:/0","properties":{"a":{"$id":"0","$ref":"0"}},"$ref":"0"}`},
+		// The same self-resolving node reached as an applicator variant, where
+		// it spun the second of those loops instead.
+		{"variantIDRefResolvesToSelfOneOf", `{"$id":"a:/0","allOf":[{"oneOf":[{"$id":"0","$ref":"0"}]}]}`},
+		{"variantIDRefResolvesToSelfAnyOf", `{"$id":"a:/0","allOf":[{"anyOf":[{"$id":"0","$ref":"0"}]}]}`},
+		{"variantIDRefResolvesToSelfThen", `{"$id":"a:/0","allOf":[{"then":{"$id":"0","$ref":"0"}}]}`},
+		// Cluster of its own: an ordinary $defs cycle closed through an
+		// applicator rather than through a ref chain. The variant merge
+		// descends into the resolved node's own oneOf/anyOf/allOf/then, so a
+		// node naming itself there re-entered the merge forever -- a stack
+		// overflow, not a spin.
+		{"variantMergeOneOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"oneOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeAnyOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"anyOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeAllOfCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"variantMergeThenCycle", `{"allOf":[{"oneOf":[{"$ref":"#/$defs/A"}]}],"$defs":{"A":{"properties":{"x":{"type":"string"}},"then":{"$ref":"#/$defs/A"}}}}`},
+		// And the same cycle read by the branch collector that builds the
+		// runtime oneOf discriminator checks, which walks allOf on its own.
+		{"oneOfBranchAllOfCycle", `{"type":"object","oneOf":[{"$ref":"#/$defs/A"},{"required":["y"]}],"$defs":{"A":{"required":["x"],"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		{"oneOfBranchAllOfCycleUnderAllOf", `{"type":"object","allOf":[{"oneOf":[{"$ref":"#/$defs/A"},{"required":["y"]}]}],"$defs":{"A":{"required":["x"],"allOf":[{"$ref":"#/$defs/A"}]}}}`},
+		// Cluster of its own, found by the fuzzer: a $ref with an *array*
+		// structural sibling. The sibling routes the schema through the
+		// implicit-allOf arm, whose array branch asks whether the synthesized
+		// $ref branch is an array alias and generates it on demand to find out.
+		// That branch resolves back to the definition in flight, and the only
+		// guard on the on-demand generation was g.generated, which is not set
+		// until a definition completes.
+		{"refSiblingItemsAtRoot", `{"$ref":"#","items":{}}`},
+		{"refSiblingItemsTrueAtRoot", `{"$ref":"#","items":true}`},
+		{"refSiblingPrefixItemsAtRoot", `{"$ref":"#","prefixItems":[{}]}`},
+		{"refSiblingItemsArrayAtRoot", `{"$ref":"#","items":[{}]}`},
+		{"refSiblingUnevaluatedItemsAtRoot", `{"$ref":"#","unevaluatedItems":{}}`},
+		// The same shape one level down and across two definitions, so the
+		// cycle closes on a $defs node rather than on the document root.
+		{"refSiblingItemsSelfDef", `{"$ref":"#/$defs/A","$defs":{"A":{"$ref":"#/$defs/A","items":{}}}}`},
+		{"refSiblingItemsMutualDefs", `{"$defs":{"A":{"$ref":"#/$defs/B","items":{}},"B":{"$ref":"#/$defs/A","items":{}}},"$ref":"#/$defs/A"}`},
+		// Cluster of its own, found by the fuzzer: the unevaluatedItems and
+		// unevaluatedProperties analyses. Deciding what a value has already had
+		// evaluated means walking $ref and every in-place applicator, and none
+		// of those three walks -- the item counter, the evaluated-property
+		// collector, and the allOf property probe that routes the schema in the
+		// first place -- kept track of where it had been.
+		{"unevaluatedItemsSelfRef", `{"$ref":"#","unevaluatedItems":false}`},
+		{"unevaluatedItemsAllOfSelfRef", `{"type":"array","prefixItems":[{}],"unevaluatedItems":false,"allOf":[{"$ref":"#"}]}`},
+		{"unevaluatedItemsAllOfSelfDef", `{"$defs":{"A":{"prefixItems":[{}],"unevaluatedItems":false,"allOf":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
+		{"unevaluatedPropsAllOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"allOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsAnyOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"anyOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsOneOfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"oneOf":[{"$ref":"#"}]}`},
+		{"unevaluatedPropsIfSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"if":{"$ref":"#"}}`},
+		{"unevaluatedPropsDependentSchemasSelfRef", `{"type":"object","properties":{"a":{}},"unevaluatedProperties":false,"dependentSchemas":{"a":{"$ref":"#"}}}`},
+		{"unevaluatedPropsAllOfSelfDef", `{"$defs":{"A":{"properties":{"a":{}},"unevaluatedProperties":false,"allOf":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
 	}
 
 	for _, tc := range tests {
