@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external
+.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external fuzz
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -91,6 +91,36 @@ download-metaschemas:
 # a run killed at the deadline reports no failures and looks like a pass.
 test-external: download-test-suite download-metaschemas
 	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
+
+# Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
+# finds a crash or something kills it, so a run without -fuzztime never returns
+# and cannot sit in a script. FUZZTIME is that bound. The 60s default is sized
+# for someone who wants a quick sanity pass before pushing; override it for a
+# real hunt with `make fuzz FUZZTIME=10m`. Nightly CI passes a much larger
+# value, which is where the actual searching gets done.
+#
+# Budget accordingly: the seed corpus is large enough that go spends roughly
+# the first 25s of any run just gathering baseline coverage before it mutates
+# anything, and that time comes out of FUZZTIME. At the 60s default only about
+# half the run is actually fuzzing, so anything below ~30s is a smoke test that
+# the harness still builds, not a search.
+#
+# Deliberately NOT a dependency of `test`: fuzzing is a search, not an
+# assertion. It spends its whole budget every time, finds nothing on a tree
+# that is already clean, and would make `make test` cost a fixed FUZZTIME for
+# no added signal. The regression half is already covered -- every file under
+# tests/testdata/fuzz/FuzzGenerate/ (seeds, plus any crasher the fuzzer has
+# written there and we committed) replays as an ordinary test case under plain
+# `go test ./...`. So a bug found once stays caught without anyone re-running
+# the search.
+#
+# -run '^$$' skips the package's ordinary tests; the fuzzing phase is selected
+# by -fuzz alone and is unaffected. -fuzztime is also not clipped by -timeout:
+# the test binary stops its timeout alarm before entering the fuzzing loop.
+FUZZTIME ?= 60s
+
+fuzz:
+	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
 
 clean:
 	rm -rf bin/

@@ -1,0 +1,82 @@
+name: Fuzz
+
+# Nightly only, plus a manual button. Deliberately not wired to `push` or
+# `pull_request`: a fuzz run costs its whole -fuzztime budget every time and
+# almost always finds nothing, so on a PR it would add half an hour of latency
+# for no signal. Regressions are handled the other way round -- a crasher the
+# fuzzer writes into tests/testdata/fuzz/FuzzGenerate/ gets committed and from
+# then on replays as an ordinary test case in the CI workflow's `go test ./...`.
+# This job does the searching; CI does the remembering.
+on:
+  schedule:
+    # 03:17 UTC. Off the hour on purpose -- Actions defers cron jobs that pile
+    # up on popular round times.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: 'How long to fuzz for (go -fuzztime syntax, e.g. 10m, 2h)'
+        required: false
+        default: '30m'
+
+permissions:
+  contents: read
+
+# Unlike CI, do NOT cancel a run in progress. Cancelling here throws away the
+# accumulated corpus and search budget, and could kill the job in the middle of
+# minimizing a crasher it has already found -- exactly the run worth keeping.
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    # -fuzztime bounds the search itself, but crash minimization runs after the
+    # budget is spent and is not covered by it. Leave generous headroom over
+    # the longest fuzz_time anyone is likely to dispatch so the job is never
+    # killed mid-minimization; this is a backstop against a hang, not a budget.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The fuzz target is parse -> generate -> emit and never compiles the code
+      # it produces, so the ECMA-262 reason ci.yml gives for this step does not
+      # apply here. It is kept anyway for a different reason: it separates "the
+      # module cache could not be populated" from "the fuzzer failed". Without
+      # it a network blip surfaces as a red fuzz step with an empty artifact,
+      # which reads exactly like a finding that got lost.
+      - name: download dependencies
+        run: go mod download
+
+      # On a scheduled run `inputs.fuzz_time` is empty, so the 30m default here
+      # is what nightly actually uses; the workflow_dispatch default only
+      # applies to the manual form.
+      - name: fuzz
+        run: make fuzz FUZZTIME="${{ inputs.fuzz_time || '30m' }}"
+
+      # always(), not the implicit success-only default and not failure():
+      # a crash is precisely the case where the previous step is red, and
+      # without an `if:` this step would be skipped exactly then -- the runner
+      # is destroyed and the only copy of the reproducer goes with it.
+      # always() additionally covers cancellation and the timeout-minutes kill,
+      # where a crasher may already have been written to disk.
+      #
+      # go test writes failing inputs to tests/testdata/fuzz/<FuzzName>/ (the
+      # generated non-failing corpus lives in the build cache and is not worth
+      # keeping). On a clean run this directory holds only the committed seeds,
+      # so the upload is harmless noise; if-no-files-found: ignore keeps the
+      # job quiet when the fuzz target has no testdata directory at all.
+      - name: upload crashers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-corpus-${{ github.run_id }}
+          path: tests/testdata/fuzz/
+          if-no-files-found: ignore
+          retention-days: 90
