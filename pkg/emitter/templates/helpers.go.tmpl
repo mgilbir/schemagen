@@ -136,3 +136,15 @@ func _dynStrOK(v any, ok func(string) bool) bool {
 	return ok(s)
 }
 {{- end}}
+
+{{define "dyn_const_helper"}}
+// _dynConstOK reports whether a decoded JSON value equals a constant, which is
+// passed already encoded. Comparing encodings rather than Go values is what
+// makes this exact: both sides are produced by encoding/json, so number
+// formatting, string escaping and object key order are settled the same way for
+// each, and the comparison then differs only where the values do.
+func _dynConstOK(v any, want string) bool {
+	b, err := json.Marshal(v)
+	return err == nil && string(b) == want
+}
+{{- end}}

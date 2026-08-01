@@ -3884,3 +3884,357 @@ func TestArrayAliasValidatesItsElements(t *testing.T) {
 		t.Fatalf("Rows does not dispatch to its element type's Validate: %+v", rows.ItemValidations)
 	}
 }
+
+// fieldNamedJSON returns the struct field carrying a JSON property name.
+func fieldNamedJSON(t *testing.T, sd *StructDef, jsonName string) *FieldDef {
+	t.Helper()
+	for i := range sd.Fields {
+		if sd.Fields[i].JSONName == jsonName {
+			return &sd.Fields[i]
+		}
+	}
+	t.Fatalf("expected a field for %q on %s; got %+v", jsonName, sd.Name, sd.Fields)
+	return nil
+}
+
+// fieldRuleTypes lists the rule types a struct's Validate would check against
+// one property.
+func fieldRuleTypes(sd *StructDef, jsonName string) []string {
+	var out []string
+	for _, rule := range sd.Validations {
+		if rule.JSONName == jsonName {
+			out = append(out, rule.RuleType)
+		}
+	}
+	return out
+}
+
+// TestInlineNotPropertyGetsAWrapperType pins one half of the defect where a
+// property whose own schema is a bare `not` was dropped before any type was
+// chosen. resolveType has no arm for `not`, so the field came out `any`, every
+// rule extracted for it was filtered away as uncompilable against `any`, and
+// {"a":7} was accepted against {"properties":{"a":{"not":{"type":"integer"}}}}.
+//
+// The wrapper existing is what this test pins. Whether the enclosing struct
+// calls its Validate is decided by localTypeIsValidatable, which is a separate
+// defect with its own fix.
+func TestInlineNotPropertyGetsAWrapperType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"not": {"type": "integer"}}
+		},
+		"required": ["a"]
+	}`)
+
+	var wrapper *NotSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*NotSchemaDef); ok && d.Name == "DocA" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocA not-wrapper for the inline not; got %v", ir.TypeDefs)
+	}
+	if !containsString(wrapper.NotTypes, "integer") {
+		t.Fatalf("DocA forbids %v, want integer", wrapper.NotTypes)
+	}
+
+	doc := structNamed(t, ir, "Doc")
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA (not any)", got)
+	}
+}
+
+// TestInlineIfThenElsePropertyGetsAWrapperType is the same defect for the
+// conditional keywords: {"properties":{"a":{"if":...,"then":...}}} typed the
+// field `any` and accepted {"a":99} against an if/then that forbids it.
+func TestInlineIfThenElsePropertyGetsAWrapperType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"if": {"minimum": 10}, "then": {"maximum": 20}}
+		}
+	}`)
+
+	var wrapper *DynamicSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*DynamicSchemaDef); ok && d.Name == "DocA" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocA dynamic wrapper for the inline if/then; got %v", ir.TypeDefs)
+	}
+	if !wrapper.HasIfThenElse || !wrapper.HasThen {
+		t.Fatalf("DocA carries no if/then: %+v", wrapper)
+	}
+
+	doc := structNamed(t, ir, "Doc")
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA (not any)", got)
+	}
+	// A raw-JSON wrapper is a struct, so omitempty never drops it and its
+	// MarshalJSON writes null for an absent value. Only omitzero omits it, and
+	// without that an absent optional property stops round-tripping.
+	if !field.OmitZero {
+		t.Fatalf("a must be tagged omitzero; got %+v", field)
+	}
+}
+
+// TestInlineWrapperIsNotTakenForATypedProperty guards the narrowness of the
+// arm above. A `not` beside a declared type has a Go type of its own and a path
+// that produces it, and hijacking that would lose the type.
+func TestInlineWrapperIsNotTakenForATypedProperty(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "string", "not": {"const": "x"}}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "string" {
+		t.Fatalf("a type = %q, want string", got)
+	}
+}
+
+// TestScalarAllOfOnAPropertyReachesTheFieldRules pins the defect where an allOf
+// whose branches only bound a scalar was dropped. generateAllOfDef flattens
+// branches that carry object shape, but a branch that only tightens a string or
+// a number leaves the property a plain Go value and never reaches that path:
+// {"type":"string","allOf":[{"minLength":3},{"maxLength":10}]} emitted a bare
+// string field and accepted {"a":"z"}.
+func TestScalarAllOfOnAPropertyReachesTheFieldRules(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"string", "allOf":[{"minLength":3},{"maxLength":10}]},
+			"b": {"type":"integer", "allOf":[{"minimum":2},{"multipleOf":4}]}
+		},
+		"required": ["a", "b"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, tc := range []struct {
+		jsonName string
+		want     []string
+	}{
+		{"a", []string{"minLength", "maxLength"}},
+		{"b", []string{"minimum", "multipleOf"}},
+	} {
+		got := fieldRuleTypes(doc, tc.jsonName)
+		for _, want := range tc.want {
+			if !containsString(got, want) {
+				t.Fatalf("%q: field rules %v are missing %q", tc.jsonName, got, want)
+			}
+		}
+	}
+}
+
+// TestScalarAllOfKeepsTheTighterBound checks that two branches bounding the
+// same keyword are combined the way allOf means -- both must hold, so the
+// tighter one governs -- rather than emitted once per branch.
+func TestScalarAllOfKeepsTheTighterBound(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"string", "minLength":2, "allOf":[{"minLength":5},{"minLength":3}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	var bounds []any
+	for _, rule := range doc.Validations {
+		if rule.JSONName == "a" && rule.RuleType == "minLength" {
+			bounds = append(bounds, rule.Value)
+		}
+	}
+	if len(bounds) != 2 {
+		t.Fatalf("minLength rules for a = %v, want the property's own bound and the merged branch bound", bounds)
+	}
+	if bounds[0] != 2 || bounds[1] != 5 {
+		t.Fatalf("minLength bounds = %v, want [2 5] (own bound, then the tightest branch)", bounds)
+	}
+}
+
+// TestScalarAllOfDropsARuleThatWouldNotCompile guards the direction this fix
+// must not go. An allOf branch may bound a type the property does not have --
+// a contradiction no value satisfies -- and folding a numeric bound onto a
+// string field would emit `float64(r.A) < 5`, turning a schema that generates
+// today into one that does not.
+func TestScalarAllOfDropsARuleThatWouldNotCompile(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"string", "allOf":[{"type":"integer","minimum":5}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := fieldRuleTypes(doc, "a"); len(got) != 0 {
+		t.Fatalf("field rules for a = %v, want none: a numeric bound does not compile against a string field", got)
+	}
+}
+
+// TestScalarAllOfOnAnArrayElementReachesTheElementRules is the same defect in
+// item position, which the property path does not cover: an element schema
+// carrying its bounds in an allOf produced []string with no per-element check.
+func TestScalarAllOfOnAnArrayElementReachesTheElementRules(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"type":"string", "allOf":[{"minLength":2}]}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := itemValidationFor(t, doc, "a")
+	if got := itemRuleTypes(def, 0); !containsString(got, "minLength") {
+		t.Fatalf("element rules %v are missing minLength", got)
+	}
+}
+
+// TestObjectLevelIfThenElseIsChecked pins the third spelling of the dropped
+// conditional: an if/then/else beside an object's properties produced no check
+// anywhere in the generated Validate, so {"kind":"x","a":"ab"} was accepted
+// against a `then` demanding minLength 5.
+func TestObjectLevelIfThenElseIsChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"kind": {"type":"string"},
+			"a": {"type":"string"}
+		},
+		"required": ["kind", "a"],
+		"if": {"properties": {"kind": {"const":"x"}}, "required": ["kind"]},
+		"then": {"properties": {"a": {"minLength": 5}}},
+		"else": {"properties": {"a": {"maxLength": 2}}}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if len(doc.ObjectConditionals) != 1 {
+		t.Fatalf("expected one object-level conditional; got %+v", doc.ObjectConditionals)
+	}
+	cond := doc.ObjectConditionals[0]
+	if !containsString(cond.If.RequiredKeys, "kind") {
+		t.Fatalf("if branch requires %v, want kind", cond.If.RequiredKeys)
+	}
+	if len(cond.If.Properties) != 1 || cond.If.Properties[0].JSONName != "kind" {
+		t.Fatalf("if branch checks %+v, want a check on kind", cond.If.Properties)
+	}
+	if len(cond.If.Properties[0].Checks) != 1 || cond.If.Properties[0].Checks[0].Kind != "const" {
+		t.Fatalf("if branch check on kind = %+v, want a const check", cond.If.Properties[0].Checks)
+	}
+	if cond.Then == nil || len(cond.Then.Properties) != 1 ||
+		cond.Then.Properties[0].Checks[0].Kind != "minLength" {
+		t.Fatalf("then branch = %+v, want a minLength check on a", cond.Then)
+	}
+	if cond.Else == nil || len(cond.Else.Properties) != 1 ||
+		cond.Else.Properties[0].Checks[0].Kind != "maxLength" {
+		t.Fatalf("else branch = %+v, want a maxLength check on a", cond.Else)
+	}
+	// The check reads the object's raw JSON properties, which only the custom
+	// unmarshaler keeps.
+	if !doc.NeedsRawProps() || !doc.NeedsUnmarshal {
+		t.Fatalf("Doc must capture _jsonRawProps for the conditional; got %+v", doc)
+	}
+}
+
+// TestObjectLevelIfThenElseInsideAllOfIsChecked covers the shape the keyword is
+// usually written in: the conditional sits in an allOf branch that is flattened
+// into this same struct, so its group has to be collected from there too.
+func TestObjectLevelIfThenElseInsideAllOfIsChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"kind": {"type":"string"},
+			"a": {"type":"string"}
+		},
+		"allOf": [{
+			"if": {"properties": {"kind": {"const":"x"}}, "required": ["kind"]},
+			"then": {"required": ["a"]}
+		}]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if len(doc.ObjectConditionals) != 1 {
+		t.Fatalf("expected one object-level conditional from the allOf branch; got %+v", doc.ObjectConditionals)
+	}
+	if then := doc.ObjectConditionals[0].Then; then == nil || !containsString(then.RequiredKeys, "a") {
+		t.Fatalf("then branch = %+v, want a required on a", then)
+	}
+}
+
+// TestObjectLevelConditionalFailsClosed is the guard that matters most here.
+// The condition decides which branch binds, so a condition evaluated with one
+// of its keywords ignored applies the wrong branch and rejects a document the
+// schema allows. Anything outside what the checks model must drop the whole
+// group rather than approximate it.
+func TestObjectLevelConditionalFailsClosed(t *testing.T) {
+	for name, input := range map[string]string{
+		"if uses an unmodelled keyword": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}},
+			"if": {"properties": {"a": {"items": {"type":"string"}}}},
+			"then": {"required": ["a"]}
+		}`,
+		"if carries a keyword beyond object shape": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}},
+			"if": {"minProperties": 2},
+			"then": {"required": ["a"]}
+		}`,
+		// The dangerous shape: an `if` that is partly expressible. Keeping the
+		// part we model and ignoring the rest widens the condition, so `then`
+		// binds to objects the schema never pointed it at and valid documents
+		// are rejected.
+		"if is only partly expressible": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+			"if": {"required": ["kind"], "minProperties": 2},
+			"then": {"required": ["a"]}
+		}`,
+		"then is only partly expressible": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+			"if": {"required": ["kind"]},
+			"then": {"required": ["a"], "minProperties": 3}
+		}`,
+		"then uses an unmodelled keyword": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}},
+			"if": {"required": ["a"]},
+			"then": {"properties": {"a": {"enum": ["p","q"]}}}
+		}`,
+		"if constrains nothing": `{
+			"title": "Doc", "type": "object",
+			"properties": {"a": {"type":"string"}},
+			"if": {},
+			"then": {"required": ["a"]}
+		}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir := generateForItemTest(t, input)
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ObjectConditionals) != 0 {
+				t.Fatalf("expected no conditional group; got %+v", doc.ObjectConditionals)
+			}
+		})
+	}
+}

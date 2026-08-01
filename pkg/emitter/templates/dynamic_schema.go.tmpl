@@ -110,6 +110,7 @@ holds".
 {{- else if eq $c.Value "null"}}_v == nil
 {{- else}}true
 {{- end}}
+{{- else if eq $c.Kind "const"}}_dynConstOK(_v, {{printf "%q" $c.Value}})
 {{- else if eq $c.Kind "minimum"}}_dynNumOK(_v, func(f float64) bool { return f >= {{dynNum $c.Value}} })
 {{- else if eq $c.Kind "maximum"}}_dynNumOK(_v, func(f float64) bool { return f <= {{dynNum $c.Value}} })
 {{- else if eq $c.Kind "exclusiveMinimum"}}_dynNumOK(_v, func(f float64) bool { return f > {{dynNum $c.Value}} })

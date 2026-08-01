@@ -59,6 +59,7 @@ func FuncMap() template.FuncMap {
 		"validationNonNil":    validationNonNilFunc,
 		"validationStringSet": validationStringSetFunc,
 		"jsonErrorName":       jsonErrorNameFunc,
+		"mkCondCtx":           mkCondCtxFunc,
 		"mkItemCtx":           mkItemCtxFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"itemRange":           itemRangeFunc,
@@ -66,6 +67,20 @@ func FuncMap() template.FuncMap {
 		"itemPath":            itemPathFunc,
 		"itemArgs":            itemArgsFunc,
 	}
+}
+
+// ObjectCondContext is passed to the object_cond_branch template, which needs
+// the receiver name alongside the branch to address _jsonRawProps.
+type ObjectCondContext struct {
+	Recv   string
+	Branch generator.ObjectConditionalBranch
+}
+
+func mkCondCtxFunc(recv string, branch *generator.ObjectConditionalBranch) ObjectCondContext {
+	if branch == nil {
+		return ObjectCondContext{Recv: recv}
+	}
+	return ObjectCondContext{Recv: recv, Branch: *branch}
 }
 
 // ItemValidationContext is passed to the item_validations template, which needs

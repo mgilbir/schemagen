@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"sort"
 	"strings"
 )
@@ -72,11 +71,12 @@ const coMaxDepth = 3
 //	                leaf, two overlapping integer windows, so that a value
 //	                matching *both* branches is reachable and can be made a
 //	                mutant.
-//	if/then/else    as a composition leaf, over an integer pivot: `if`
-//	                {minimum: P}, `then` {maximum: P+K}, `else` {minimum:
-//	                P-K}. Both outcomes of `if` are generated.
-//	not             as a composition leaf, {"not":{"type":T}} over a value of
-//	                some other type.
+//	if/then/else    over an integer pivot: `if` {minimum: P}, `then` {maximum:
+//	                P+K}, `else` {minimum: P-K}. Both outcomes of `if` are
+//	                generated. Emitted as a composition leaf and inline as a
+//	                property's own schema.
+//	not             {"not":{"type":T}} over a value of some other type. Emitted
+//	                as a composition leaf and inline as a property's own schema.
 //
 // A composition leaf sits either as the whole document -- becoming the root
 // type -- or as a $defs entry a property $refs, becoming a wrapper type the
@@ -88,8 +88,9 @@ const coMaxDepth = 3
 // anyOf / oneOf get flattened into the struct and checked against the raw JSON
 // keys, an inline anyOf of typed scalars becomes an alternatives wrapper whose
 // Validate the parent calls, an inline oneOf of typed scalars becomes a
-// sealed-interface union whose selection applies the branch constraints, and
-// oneOf / if / not become a wrapper type -- either the root type, whose
+// sealed-interface union whose selection applies the branch constraints, an
+// inline if / not becomes a raw-JSON wrapper whose Validate the parent calls,
+// and oneOf / if / not become a wrapper type -- either the root type, whose
 // Validate the harness calls directly, or a $defs entry whose Validate the
 // referencing struct calls.
 //
@@ -107,53 +108,11 @@ const coMaxDepth = 3
 // Known gaps
 // ---------------------------------------------------------------------------
 //
-// coKnownGaps records constructs the grammar avoids because schemagen is
-// already known to handle them incorrectly. They are excluded so the harness
-// reports regressions rather than re-reporting the same defects on every
-// iteration, and each is reachable again by setting
-// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
-// instead of being claims in a comment. The minimal reproducer for each is in
-// the doc comment of its toggle.
-var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-
-// coGapInlineConditionalDropped: `not` and `if`/`then`/`else` written inline as
-// a property's own schema are dropped before any type is chosen -- the property
-// becomes a bare `any` with no Validate at all. The same keywords written in a
-// $defs entry and reached through a $ref are enforced: there they become a
-// wrapper type whose Validate the enclosing struct calls. Here no wrapper is
-// generated in the first place.
-//
-//	schema   {"type":"object","properties":{"a":{"not":{"type":"integer"}}},
-//	          "required":["a"]}
-//	instance {"a":7}                 accepted; the field is `any`
-//
-//	schema   {"type":"object",
-//	          "properties":{"a":{"if":{"minimum":10},"then":{"maximum":20}}},
-//	          "required":["a"]}
-//	instance {"a":99}                accepted; the field is `any`
-//
-// The object-level spelling is dropped too: an `if`/`then`/`else` beside an
-// object's `properties` produces no check anywhere in the generated Validate.
-//
-//	schema   {"type":"object","properties":{"kind":{"type":"string"},
-//	          "a":{"type":"string"}},"required":["kind","a"],
-//	          "if":{"properties":{"kind":{"const":"x"}},"required":["kind"]},
-//	          "then":{"properties":{"a":{"minLength":5}}}}
-//	instance {"kind":"x","a":"ab"}   accepted
-func coGapInlineConditionalDropped() bool { return coIncludeKnownGaps }
-
-// coGapScalarAllOfDropped: an allOf whose branches constrain a *scalar*
-// property is dropped entirely. The branch keywords never reach the field's
-// validation, so the property is emitted as a plain Go string/int64 with no
-// check. The object-level spelling -- branches that carry `properties` and
-// `required` -- is flattened correctly, which is the form the grammar emits.
-//
-//	schema   {"type":"object",
-//	          "properties":{"a":{"type":"string",
-//	                             "allOf":[{"minLength":3},{"maxLength":10}]}},
-//	          "required":["a"]}
-//	instance {"a":"z"}               accepted
-func coGapScalarAllOfDropped() bool { return coIncludeKnownGaps }
+// There are none. Every construct this grammar once avoided because schemagen
+// mishandled it is emitted by default, the defects having been fixed. The list
+// and its opt-in toggle are in the history if one is ever needed again -- it has
+// been removed and restored twice now, so the pattern is worth recovering rather
+// than reinventing.
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -297,8 +256,8 @@ type coNode struct {
 	notOK   any
 	notBad  any
 
-	// scalarAllOf moves a string node's length keywords into an allOf. Only
-	// reachable under coGapScalarAllOfDropped.
+	// scalarAllOf moves a string node's length keywords into an allOf, so the
+	// same bounds are reached through a branch rather than stated directly.
 	scalarAllOf bool
 }
 
@@ -642,11 +601,10 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	if visible > 0 {
 		kinds = append(kinds, coRef)
 	}
-	// Composition leaves that only work at the document root, reachable here
-	// only to keep their exclusion executable.
-	if coGapInlineConditionalDropped() {
-		kinds = append(kinds, coIfElse, coNot)
-	}
+	// Composition leaves. Written inline as a property's own schema these have
+	// no Go type of their own, so each becomes a raw-JSON wrapper whose Validate
+	// the enclosing struct calls.
+	kinds = append(kinds, coIfElse, coNot)
 	switch kinds[b.rng.IntN(len(kinds))] {
 	case coObject:
 		return b.buildObject(depth, visible)
@@ -744,7 +702,7 @@ func (b *coBuilder) buildString() *coNode {
 	if !n.emitMin && !n.emitMax {
 		n.emitMax = true
 	}
-	n.scalarAllOf = coGapScalarAllOfDropped() && b.chance(2)
+	n.scalarAllOf = b.chance(2)
 	n.strValue = coFillString(n.lenLo + b.rng.IntN(n.lenHi-n.lenLo+1))
 	return n
 }

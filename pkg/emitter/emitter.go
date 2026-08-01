@@ -63,7 +63,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 
 	// Imports are fixed by which helpers are included, not by the schemas.
 	var imports []generator.Import
-	if helpers.Dynamic || helpers.OneOf || helpers.OneOfDiscriminator {
+	if helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator {
 		imports = append(imports, generator.Import{Path: "encoding/json"})
 	}
 	if helpers.OneOfDiscriminator {

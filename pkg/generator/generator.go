@@ -521,6 +521,19 @@ func (g *Generator) addRequiredImports() {
 					needsBytes = true
 				}
 			}
+			if sd.HasObjectConditionals() {
+				needsJSON = true // the raw property value is decoded before it is checked
+				needsFmt = true  // Validate() errors
+				if sd.ConditionalNeedsMultipleOf() {
+					needsMath = true
+				}
+				if sd.ConditionalNeedsUTF8() {
+					needsUTF8 = true
+				}
+				if sd.ConditionalNeedsPattern() {
+					needsRegexp = true // pattern uses ecma262
+				}
+			}
 			if sd.NeedsUnmarshal {
 				needsJSON = true // UnmarshalJSON always uses json.Unmarshal
 			}
@@ -2288,6 +2301,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		var rules []ValidationRule
 		if g.validationKeywordsEnabled() {
 			rules = extractValidationRules(goFieldName, propName, propSchema)
+			// An allOf on the property itself tightens the same value. When the
+			// branches carry object shape it is generateAllOfDef that flattens
+			// them, but a branch that only bounds a scalar leaves the property a
+			// plain Go string or int64 and its keywords reach nothing.
+			rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
 			// Also apply constraints from patternProperties whose pattern matches this property name.
 			for pattern, patSchema := range s.PatternProperties {
 				if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
@@ -2485,6 +2503,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
+	// An if/then/else beside the object's properties applies to the object as a
+	// whole. Its branches are not folded into any one field's rules -- they only
+	// bind when the condition holds -- so they are checked here against the raw
+	// JSON the unmarshaler kept.
+	objectConditionals := g.extractObjectConditionalDefs(s)
+	if len(objectConditionals) > 0 {
+		needsUnmarshal = true
+	}
+
 	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
 	// unevaluatedProperties need separate validation scoped to their branch.
 	cousinChecks := g.collectCousinUnevalChecks(s)
@@ -2525,6 +2552,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		CousinUnevalChecks:    cousinChecks,
 		ObjectOneOfs:          objectOneOfs,
 		ObjectAnyOfs:          objectAnyOfs,
+		ObjectConditionals:    objectConditionals,
 		RequiredJSON:          requiredJSON,
 		NeedsMarshal:          needsMarshal,
 		NeedsUnmarshal:        needsUnmarshal,
@@ -2958,6 +2986,27 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema) []ObjectOneOfDef {
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
 		if def := g.objectOneOfDefFromVariants(resolved.OneOf); def != nil {
+			defs = append(defs, *def)
+		}
+	}
+	return defs
+}
+
+// extractObjectConditionalDefs collects the object-level if/then/else groups
+// that apply to a flattened object: the one written beside its properties, and
+// one from each allOf branch, since those branches are merged into this same
+// struct and their conditionals would otherwise land nowhere.
+func (g *Generator) extractObjectConditionalDefs(s *schema.Schema) []ObjectConditionalDef {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var defs []ObjectConditionalDef
+	if def := objectConditionalDef(s); def != nil {
+		defs = append(defs, *def)
+	}
+	for _, sub := range s.AllOf {
+		resolved := g.resolveSchemaForApplicator(sub)
+		if def := objectConditionalDef(resolved); def != nil {
 			defs = append(defs, *def)
 		}
 	}
@@ -4514,7 +4563,61 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return goType, nil
 	}
 
+	// A property whose schema constrains the value without naming a type -- a
+	// bare `not`, or a bare if/then/else -- has no arm in resolveType below,
+	// which answers `any`. `any` carries no Validate and no rule survives the
+	// `any` filter in generateStructDef, so the keyword is enforced nowhere.
+	// generateTypeDef already has a wrapper for each shape (NotSchemaDef for
+	// `not`, DynamicSchemaDef for if/then/else), both of them a struct over the
+	// raw JSON with a Validate of their own; name the property after one so the
+	// constraint has somewhere to live. This is the same shape the property
+	// would get from a $ref to a definition holding that schema.
+	if g.inlineConstraintWrapper(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		return &NamedType{Name: nestedName}, nil
+	}
+
 	return g.resolveType(s, parentName+fieldName), nil
+}
+
+// inlineConstraintWrapper reports whether a property's own schema is one that
+// generateTypeDef answers with a raw-JSON wrapper carrying a Validate, and that
+// resolveType would otherwise collapse to `any`.
+//
+// The predicate is deliberately narrow. Every keyword that would give the value
+// a Go type of its own -- a type, properties, a $ref, an enum, a const, a
+// composition -- disqualifies the schema here, because each of those already
+// has a path that produces that type, and taking the schema over would drop
+// what that path knows. What is left is a schema whose only content is the
+// negative or conditional keyword, which is exactly the case that has nowhere
+// else to go.
+//
+// Both arms then defer to the function that builds the wrapper, so a shape
+// neither of them can express (a `not` over something too complex to check
+// statically, an `if` using a keyword the dynamic evaluator does not model)
+// keeps today's `any` rather than gaining a wrapper whose Validate would be
+// silently incomplete.
+func (g *Generator) inlineConstraintWrapper(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 || hasProperties(s) ||
+		len(s.PatternProperties) > 0 || s.AdditionalProperties != nil ||
+		s.EffectiveRef() != "" || s.DynamicRef != "" ||
+		len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+		return false
+	}
+	if s.Not != nil {
+		return extractNotSchemaDef("", s) != nil
+	}
+	if s.If != nil && (s.Then != nil || s.Else != nil) {
+		return g.dynamicSchemaDef("", s) != nil
+	}
+	return false
 }
 
 // resolveType converts a schema to a GoType, creating nested types if needed.
@@ -5633,10 +5736,13 @@ func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) b
 
 // isRawValueWrapperType reports whether t names a generated type that keeps the
 // value as raw JSON and validates it after the fact: the wrappers built for a
-// draft-3 schema-valued "type", a multi-type union, an anyOf across unrelated
-// representations, a "not"-only schema, and a schema that constrains through
-// applicators alone. Such a type is a struct with a custom MarshalJSON, so it is
-// never omitted by omitempty and needs omitzero instead.
+// draft-3 schema-valued "type", a multi-type union, and an anyOf across
+// unrelated representations (TypeOnlySchemaDef), for a bare "not"
+// (NotSchemaDef), and for a schema constrained only by oneOf / anyOf /
+// if-then-else (DynamicSchemaDef). Such a type is a struct with a custom
+// MarshalJSON, so it is never omitted by omitempty and needs omitzero instead --
+// without which an absent optional property of that type marshals as null and
+// the document no longer round-trips.
 func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	nt, ok := t.(*NamedType)
 	if !ok {
@@ -6895,10 +7001,17 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 // keywords a number, the length keywords a slice. const goes through
 // json.Marshal, so it applies to any element the emitter can marshal back to
 // the form the const value was written in.
+//
+// An allOf on the element schema is folded in the same way it is for a
+// property: a branch that only bounds a scalar leaves the element a plain Go
+// value with nothing to dispatch to, so its keywords would otherwise reach
+// nothing. See allOfConstraintRules.
 func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 	kind := elementGoKind(elemType)
 	var out []ValidationRule
-	for _, rule := range extractValidationRules("", "", s) {
+	elemRules := extractValidationRules("", "", s)
+	elemRules = append(elemRules, allOfConstraintRules("", "", s, elemType)...)
+	for _, rule := range elemRules {
 		switch rule.RuleType {
 		case "minLength", "maxLength", "pattern":
 			if kind != "string" {
@@ -7607,6 +7720,101 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		}
 	}
 	return rules
+}
+
+// allOfConstraintRules returns the field rules an allOf on a property
+// contributes beyond the ones the property states directly.
+//
+// An allOf whose branches describe object shape is flattened by
+// generateAllOfDef, which gives the property a named struct built from the
+// merged branches. A branch that only bounds a scalar has no shape to flatten:
+// the property keeps its plain Go type, generateAllOfDef is never reached, and
+// {"type":"string","allOf":[{"minLength":3}]} emits a bare string with no
+// length check at all. Folding the branch bounds into the field's own rules
+// closes that without changing the field's type.
+//
+// mergeConstraints is what does the folding, and its keyword set is the reason
+// this is safe: it reads only the bounds keywords (the numeric window,
+// multipleOf, the length window, pattern, the item and property counts) and
+// keeps the tighter of the two, which is exactly what an allOf means. Nothing
+// structural is taken from a branch here, so a branch carrying properties,
+// required or a $ref contributes only whatever bounds it also states -- less
+// than the branch says, never more.
+//
+// fieldType is the Go type the property resolved to, and rules that would not
+// compile against it are dropped. A branch may bound a type the property does
+// not have -- allOf: [{"type":"integer","minimum":5}] beside "type":"string" is
+// a contradiction no value satisfies -- and emitting `float64(r.A) < 5` for a
+// string field would turn a schema that generates today into one that does not.
+func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldType GoType) []ValidationRule {
+	if s == nil || len(s.AllOf) == 0 {
+		return nil
+	}
+	// A value copy: mergeConstraints only reassigns the bound fields, and every
+	// tighter* helper returns one of its arguments rather than mutating it, so
+	// the property schema itself is left untouched.
+	merged := *s
+	folded := false
+	for _, branch := range s.AllOf {
+		if branch == nil || branch.IsBooleanSchema() {
+			continue
+		}
+		mergeConstraints(&merged, branch)
+		folded = true
+	}
+	if !folded {
+		return nil
+	}
+
+	// Only what the merge added or tightened: the property's own keywords have
+	// already produced their rules, and repeating them would emit the same check
+	// twice.
+	base := extractValidationRules(goFieldName, jsonName, s)
+	baseByType := make(map[string]any, len(base))
+	for _, r := range base {
+		baseByType[r.RuleType] = r.Value
+	}
+	var out []ValidationRule
+	for _, r := range extractValidationRules(goFieldName, jsonName, &merged) {
+		if had, ok := baseByType[r.RuleType]; ok && had == r.Value {
+			continue
+		}
+		if !ruleCompilesForType(fieldType, r.RuleType) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// ruleCompilesForType reports whether a field-level rule of this type is
+// expressed against a Go value the emitted check can accept: the length and
+// pattern checks need a string, the numeric window a number, the item checks a
+// slice.
+//
+// Unknown rule types answer false. This gate guards rules synthesized from a
+// branch rather than written on the property, so a keyword it has not been
+// taught about is better dropped -- under-enforcing a contradictory schema --
+// than emitted against a field it does not typecheck against.
+func ruleCompilesForType(t GoType, ruleType string) bool {
+	if t == nil {
+		return false
+	}
+	if pt, ok := t.(*PointerType); ok {
+		t = pt.Inner
+	}
+	switch ruleType {
+	case "minLength", "maxLength", "pattern":
+		prim, ok := t.(*PrimitiveType)
+		return ok && prim.Name == "string"
+	case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf":
+		prim, ok := t.(*PrimitiveType)
+		return ok && (prim.Name == "int64" || prim.Name == "float64")
+	case "minItems", "maxItems", "uniqueItems":
+		_, ok := t.(*ArrayType)
+		return ok
+	}
+	return false
 }
 
 // isAcceptAllSchema returns true if the schema matches all values (empty schema or boolean true).
