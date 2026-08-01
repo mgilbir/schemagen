@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ItemConstraints",
+  "type": "object",
+  "$defs": {
+    "Tags": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 2}
+    },
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"label": {"type": "string", "minLength": 1}},
+        "required": ["label"]
+      }
+    }
+  },
+  "properties": {
+    "names": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 2, "maxLength": 8}
+    },
+    "codes": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^x[0-9][0-9]$"}
+    },
+    "counts": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 3, "maximum": 99, "multipleOf": 3}
+    },
+    "ratios": {
+      "type": "array",
+      "items": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1}
+    },
+    "marks": {
+      "type": "array",
+      "items": {"const": 5}
+    },
+    "grid": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "maxItems": 3,
+        "items": {"type": "integer", "minimum": 1}
+      }
+    },
+    "nicknames": {
+      "type": "array",
+      "items": {"type": ["string", "null"], "minLength": 2}
+    },
+    "tags": {"$ref": "#/$defs/Tags"},
+    "rows": {"$ref": "#/$defs/Rows"}
+  },
+  "required": ["names"]
+}

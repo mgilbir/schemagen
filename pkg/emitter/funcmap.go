@@ -59,7 +59,83 @@ func FuncMap() template.FuncMap {
 		"validationNonNil":    validationNonNilFunc,
 		"validationStringSet": validationStringSetFunc,
 		"jsonErrorName":       jsonErrorNameFunc,
+		"mkItemCtx":           mkItemCtxFunc,
+		"mkItemLevelCtx":      mkItemLevelCtxFunc,
+		"itemRange":           itemRangeFunc,
+		"itemElem":            itemElemFunc,
+		"itemPath":            itemPathFunc,
+		"itemArgs":            itemArgsFunc,
 	}
+}
+
+// ItemValidationContext is passed to the item_validations template, which needs
+// the receiver name alongside the definitions to render the slice expressions.
+type ItemValidationContext struct {
+	Recv string
+	Defs []generator.ItemValidationDef
+}
+
+func mkItemCtxFunc(recv string, defs []generator.ItemValidationDef) ItemValidationContext {
+	return ItemValidationContext{Recv: recv, Defs: defs}
+}
+
+// ItemLevelContext addresses one dimension of an ItemValidationDef. The
+// item_level template recurses on it, so the level index has to travel with the
+// definition and the receiver name.
+type ItemLevelContext struct {
+	Recv  string
+	Def   generator.ItemValidationDef
+	Level int
+}
+
+func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int) ItemLevelContext {
+	return ItemLevelContext{Recv: recv, Def: def, Level: level}
+}
+
+// itemRangeFunc renders what a level's loop ranges over: the slice itself at
+// the outermost level, the enclosing level's element below that.
+func itemRangeFunc(recv string, def generator.ItemValidationDef, level int) string {
+	if level == 0 {
+		expr := recv
+		if def.FieldName != "" {
+			expr += "." + def.FieldName
+		}
+		if def.IsPointer {
+			return "*" + expr
+		}
+		return expr
+	}
+	return itemElemFunc(def, level-1)
+}
+
+// itemElemFunc renders a level's element, dereferenced when the element type is
+// a pointer. The loop has already passed over a nil at that point.
+func itemElemFunc(def generator.ItemValidationDef, level int) string {
+	lv := def.Levels[level]
+	if lv.ElemIsPointer {
+		return "*" + lv.ElemVar
+	}
+	return lv.ElemVar
+}
+
+// itemPathFunc renders the error path down to a level, as a format string with
+// one %d per dimension. An array alias has no property name to lead with, so it
+// reports the position under the keyword that constrains it.
+func itemPathFunc(def generator.ItemValidationDef, level int) string {
+	name := "items"
+	if def.JSONName != "" {
+		name = jsonErrorNameFunc(def.JSONName)
+	}
+	return name + strings.Repeat("[%d]", level+1)
+}
+
+// itemArgsFunc renders the loop indices that fill in itemPathFunc's verbs.
+func itemArgsFunc(def generator.ItemValidationDef, level int) string {
+	parts := make([]string, level+1)
+	for i := 0; i <= level; i++ {
+		parts[i] = def.Levels[i].IndexVar
+	}
+	return strings.Join(parts, ", ")
 }
 
 // commentFunc renders text as the tail of a Go line comment. Text spanning

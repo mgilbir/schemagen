@@ -159,21 +159,14 @@ fuzz: download-test-suite
 # taking the clock means a clean run is evidence about a specific 400 cases and
 # a later failure on the same seed is a real regression, not a different draw.
 #
-# Two optional switches, both off by default:
+# One optional switch, off by default:
 #
 #   SCHEMAGEN_COGEN_BOWTIE=1              cross-check every (schema, instance)
 #                                         pair against independent JSON Schema
 #                                         implementations, as validate-seeds
 #                                         does. Needs docker and uv, and costs
 #                                         a container round-trip per iteration.
-#   SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1  re-admit the constructs the grammar
-#                                         avoids because schemagen is already
-#                                         known to get them wrong. Documented,
-#                                         with reproducers, at the top of
-#                                         tests/cogen_grammar_test.go; the
-#                                         switch is what keeps that list
-#                                         honest instead of a claim in a
-#                                         comment.
+#
 COGEN_SEED ?= 1
 COGEN_ITERS ?= 400
 

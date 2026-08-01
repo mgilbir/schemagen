@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"sort"
 	"strings"
 )
@@ -66,36 +65,11 @@ const coMaxDepth = 3
 // prefixItems and tuple-form items, uniqueItems, format, multi-valued type,
 // boolean schemas, recursive or remote $refs, $id / $anchor.
 //
-// Also not emitted, but for a different reason — see coKnownGaps below.
-
-// coKnownGaps records constructs the grammar avoids because schemagen is
-// already known to handle them incorrectly. They are excluded so the harness
-// reports regressions rather than re-reporting the same defects on every
-// iteration, and each is reachable again by setting
-// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
-// instead of being claims in a comment. Every one of them was found by this
-// harness during development; the minimal reproducers are in the doc comment
-// of each toggle below.
-var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-
-// coGapItemConstraints: constraints on array items of *primitive* type are
-// dropped. {"type":"array","items":{"type":"string","minLength":2}} emits
-// []string, and nothing checks minLength — the generator only validates
-// elements whose Go type is a named type carrying a Validate method (objects,
-// enums, $ref-ed primitives). So array element nodes are restricted to kinds
-// that produce a named type, or to primitives with no constraints to lose.
-func coGapItemConstraints() bool { return coIncludeKnownGaps }
-
-// coGapConstItems: a const in item position is dropped entirely.
-// {"type":"array","items":{"const":5}} emits []any and a Validate that is
-// nothing but `return nil` — the same schema written as
-// {"type":"array","items":{"enum":[5]}} emits a named element type with a
-// working Validate, so this is specific to const, not to items. Array element
-// nodes therefore never use const.
-//
-//	schema   {"type":"object","properties":{"a":{"type":"array","items":{"const":5}}}}
-//	instance {"a":[9998]}   accepted
-func coGapConstItems() bool { return coIncludeKnownGaps }
+// There is no known-gap list any more. Every construct this grammar once
+// avoided because schemagen mishandled it -- constraints and const under
+// items, a null-typed property, an optional named primitive at its zero
+// value -- is now emitted by default, because the defects were fixed. The
+// list and its opt-in toggle are in the history if one is ever needed again.
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -337,15 +311,13 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	}
 }
 
-// buildElem picks the schema for an array element. Constrained primitives are
-// excluded: schemagen emits []string for them and validates nothing, so a
-// mutant that violates the element constraint would be accepted through no
-// fault of the harness. See coGapItemConstraints.
+// buildElem picks the schema for an array element. It draws from the same kinds
+// an object property does, minus null (whose gaps are recorded above, and which
+// has no property name of its own to report against here) and minus array,
+// since an array of arrays only re-tests the dimension buildArray already
+// covers at a multiple of the compile cost.
 func (b *coBuilder) buildElem(depth, visible int) *coNode {
-	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coEnum}
-	if coGapConstItems() {
-		kinds = append(kinds, coConst)
-	}
+	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coEnum, coConst}
 	if depth < coMaxDepth {
 		kinds = append(kinds, coObject)
 	}
@@ -361,27 +333,12 @@ func (b *coBuilder) buildElem(depth, visible int) *coNode {
 		return b.buildConst()
 	case coRef:
 		return &coNode{kind: coRef, refName: b.doc.defOrder[b.rng.IntN(visible)]}
-	case coInteger, coNumber, coString:
-		if coGapItemConstraints() {
-			switch {
-			case b.chance(3):
-				return b.buildString()
-			case b.chance(2):
-				return b.buildNumeric(coInteger)
-			default:
-				return b.buildNumeric(coNumber)
-			}
-		}
-		// An unconstrained primitive has nothing for the missing per-element
-		// validation to lose, so it stays in the grammar.
-		switch b.rng.IntN(3) {
-		case 0:
-			return &coNode{kind: coString, patIdx: -1, lenHi: 6, strValue: coFillString(4)}
-		case 1:
-			return &coNode{kind: coInteger, step: 1, lo: 1, hi: 9, numValue: 4}
-		default:
-			return &coNode{kind: coNumber, step: 1, lo: 1, hi: 9, numValue: 4}
-		}
+	case coString:
+		return b.buildString()
+	case coInteger:
+		return b.buildNumeric(coInteger)
+	case coNumber:
+		return b.buildNumeric(coNumber)
 	default:
 		return &coNode{kind: coBoolean, boolValue: b.chance(2)}
 	}

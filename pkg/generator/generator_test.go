@@ -3108,3 +3108,244 @@ func hasValidatableField(fields []ValidatableFieldDef, jsonName string) bool {
 	}
 	return false
 }
+
+// generateForItemTest is the shape the item-validation regressions below share:
+// unmarshal, normalize, generate, and hand back the IR.
+func generateForItemTest(t *testing.T, input string) *File {
+	t.Helper()
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return ir
+}
+
+func structNamed(t *testing.T, ir *File, name string) *StructDef {
+	t.Helper()
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*StructDef); ok && d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("expected a %s struct; got %v", name, ir.TypeDefs)
+	return nil
+}
+
+func itemValidationFor(t *testing.T, sd *StructDef, jsonName string) *ItemValidationDef {
+	t.Helper()
+	for i := range sd.ItemValidations {
+		if sd.ItemValidations[i].JSONName == jsonName {
+			return &sd.ItemValidations[i]
+		}
+	}
+	t.Fatalf("expected per-element checks for %q on %s; got %+v", jsonName, sd.Name, sd.ItemValidations)
+	return nil
+}
+
+func itemRuleTypes(def *ItemValidationDef, level int) []string {
+	var out []string
+	for _, rule := range def.Levels[level].Rules {
+		out = append(out, rule.RuleType)
+	}
+	return out
+}
+
+// TestPrimitiveArrayItemConstraintsAreChecked pins the fix for element
+// constraints being dropped whenever the element's Go type is not a named type
+// carrying its own Validate. {"items":{"type":"string","minLength":2}} emits
+// []string, and before this the emitted Validate was `return nil` -- an
+// instance of {"a":["x"]} was accepted.
+func TestPrimitiveArrayItemConstraintsAreChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"type":"string", "minLength":2, "maxLength":4}},
+			"b": {"type":"array", "items":{"type":"integer", "minimum":3, "multipleOf":2}},
+			"c": {"type":"array", "items":{"type":"number", "exclusiveMinimum":1, "exclusiveMaximum":9}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, tc := range []struct {
+		jsonName string
+		want     []string
+	}{
+		{"a", []string{"minLength", "maxLength"}},
+		{"b", []string{"minimum", "multipleOf"}},
+		{"c", []string{"exclusiveMinimum", "exclusiveMaximum"}},
+	} {
+		def := itemValidationFor(t, doc, tc.jsonName)
+		if len(def.Levels) != 1 {
+			t.Fatalf("%q: %d levels, want 1", tc.jsonName, len(def.Levels))
+		}
+		got := itemRuleTypes(def, 0)
+		for _, want := range tc.want {
+			if !containsString(got, want) {
+				t.Fatalf("%q: element rules %v are missing %q", tc.jsonName, got, want)
+			}
+		}
+	}
+}
+
+// TestConstInItemPositionGetsANamedType pins the second half of the same
+// defect: a const in item position was dropped entirely, because the promotion
+// of a type-less const to a single-member enum only ran on the property path.
+// {"items":{"const":5}} emitted []any and a Validate of `return nil`, while the
+// identical {"items":{"enum":[5]}} emitted a named element type that worked.
+func TestConstInItemPositionGetsANamedType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"const":5}}
+		}
+	}`)
+
+	var elemEnum *EnumDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && d.Name == "DocAItem" {
+			elemEnum = d
+		}
+	}
+	if elemEnum == nil {
+		t.Fatalf("expected a DocAItem enum for the const items; got %v", ir.TypeDefs)
+	}
+	if len(elemEnum.Values) != 1 {
+		t.Fatalf("DocAItem has %d values, want the single const", len(elemEnum.Values))
+	}
+
+	doc := structNamed(t, ir, "Doc")
+	var field *FieldDef
+	for i := range doc.Fields {
+		if doc.Fields[i].JSONName == "a" {
+			field = &doc.Fields[i]
+		}
+	}
+	if field == nil {
+		t.Fatalf("expected field a on Doc")
+	}
+	if got := field.Type.GoTypeName(); got != "[]DocAItem" {
+		t.Fatalf("a type = %q, want []DocAItem (not []any)", got)
+	}
+
+	// The named element type is dispatched to by ValidatableFields, so the
+	// per-element checks must stay out of it or every element validates twice.
+	var validatable *ValidatableFieldDef
+	for i := range doc.ValidatableFields {
+		if doc.ValidatableFields[i].JSONName == "a" {
+			validatable = &doc.ValidatableFields[i]
+		}
+	}
+	if validatable == nil || !validatable.IsSlice {
+		t.Fatalf("expected a to be a validatable slice field; got %+v", doc.ValidatableFields)
+	}
+	if len(doc.ItemValidations) != 0 {
+		t.Fatalf("named element type must not also carry per-element checks; got %+v", doc.ItemValidations)
+	}
+}
+
+// TestNamedElementTypeIsNotValidatedTwice guards the same no-double-dispatch
+// rule for the shapes that always worked, so a later change cannot start
+// stacking a second pass on top of the element type's own Validate.
+func TestNamedElementTypeIsNotValidatedTwice(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"enum":["red","green"]}},
+			"b": {"type":"array", "items":{"type":"object", "properties":{"x":{"type":"string","minLength":2}}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if len(doc.ItemValidations) != 0 {
+		t.Fatalf("elements with their own Validate must carry no per-element checks; got %+v", doc.ItemValidations)
+	}
+	if len(doc.ValidatableFields) != 2 {
+		t.Fatalf("expected both fields to dispatch through ValidatableFields; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestNestedArrayItemConstraintsDescend covers the dimension the flat case
+// cannot: [][]int64 has no named type at either depth, so the constraint on the
+// inner element is only reachable through a nested loop.
+func TestNestedArrayItemConstraintsDescend(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "items":{"type":"array", "maxItems":2, "items":{"type":"integer","minimum":3}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := itemValidationFor(t, doc, "a")
+	if len(def.Levels) != 2 {
+		t.Fatalf("%d levels, want 2 for a [][]int64 field: %+v", len(def.Levels), def.Levels)
+	}
+	if got := itemRuleTypes(def, 0); !containsString(got, "maxItems") {
+		t.Fatalf("outer element rules %v are missing maxItems", got)
+	}
+	if got := itemRuleTypes(def, 1); !containsString(got, "minimum") {
+		t.Fatalf("inner element rules %v are missing minimum", got)
+	}
+	if def.Levels[0].IndexVar == def.Levels[1].IndexVar || def.Levels[0].ElemVar == def.Levels[1].ElemVar {
+		t.Fatalf("nested loops share variable names: %+v", def.Levels)
+	}
+}
+
+// TestArrayAliasValidatesItsElements covers the same defect where the array is
+// a definition of its own: `type T []string` had a Validate that returned nil,
+// dropping both the element constraints and, for a named element type, the
+// element's own Validate. An alias has no struct field for ValidatableFields to
+// reach, so its outermost element is this pass's job.
+func TestArrayAliasValidatesItsElements(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"$defs": {
+			"Names": {"type":"array", "items":{"type":"string", "minLength":2}},
+			"Rows": {"type":"array", "items":{"type":"object", "properties":{"x":{"type":"string"}}}}
+		},
+		"type": "object",
+		"properties": {
+			"a": {"$ref": "#/$defs/Names"},
+			"b": {"$ref": "#/$defs/Rows"}
+		}
+	}`)
+
+	aliases := map[string]*AliasDef{}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok {
+			aliases[d.Name] = d
+		}
+	}
+
+	names := aliases["Names"]
+	if names == nil {
+		t.Fatalf("expected a Names alias; got %v", ir.TypeDefs)
+	}
+	if len(names.ItemValidations) != 1 || len(names.ItemValidations[0].Levels) != 1 {
+		t.Fatalf("Names carries no per-element checks: %+v", names.ItemValidations)
+	}
+	if got := itemRuleTypes(&names.ItemValidations[0], 0); !containsString(got, "minLength") {
+		t.Fatalf("Names element rules %v are missing minLength", got)
+	}
+	if names.ItemValidations[0].FieldName != "" {
+		t.Fatalf("an alias validates its receiver, not a field: %+v", names.ItemValidations[0])
+	}
+
+	rows := aliases["Rows"]
+	if rows == nil {
+		t.Fatalf("expected a Rows alias; got %v", ir.TypeDefs)
+	}
+	if len(rows.ItemValidations) != 1 || !rows.ItemValidations[0].Levels[0].CallValidate {
+		t.Fatalf("Rows does not dispatch to its element type's Validate: %+v", rows.ItemValidations)
+	}
+}

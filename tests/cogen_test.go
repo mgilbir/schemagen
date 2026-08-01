@@ -752,8 +752,8 @@ func TestCoGenerated(t *testing.T) {
 	impls := strings.Split(coEnvString("SCHEMAGEN_COGEN_BOWTIE_IMPLS", "python-jsonschema,js-ajv"), ",")
 	bowtieMax := coEnvInt("SCHEMAGEN_COGEN_BOWTIE_MAX", 20)
 
-	t.Logf("seed=%d iterations=%d (first=%d) parallelism=%d gaps-included=%v bowtie=%v",
-		seed, iters, iter0, par, coIncludeKnownGaps, bowtie)
+	t.Logf("seed=%d iterations=%d (first=%d) parallelism=%d bowtie=%v",
+		seed, iters, iter0, par, bowtie)
 
 	type failedIter struct {
 		iter     int
