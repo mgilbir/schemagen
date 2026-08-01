@@ -4000,30 +4000,19 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	}
 
 	// A property whose schema *is* the node being generated further up the stack
-	// closes a cycle. This was the one route into type generation still keyed on
-	// the name alone.
+	// closes a cycle, and several arms below would re-enter generateTypeDef for
+	// it under a name one segment longer than the last.
 	//
-	// Several arms below name a nested type after the position it was reached
-	// from -- parentName + fieldName -- and hand it to generateTypeDef, whose
-	// re-entrancy guard is g.generated[name]. A cycle that comes back to the
-	// same *node* under a longer name therefore goes unrecognised. A $ref
-	// carrying a structural sibling is the cheapest way to build one:
+	// A $ref carrying a structural sibling is the cheapest way to build one:
 	// {"properties":{"a":{"$ref":"#","items":{"type":"string"}}}} is disqualified
-	// from both ref-only arms of generateTypeDef by the sibling (see
-	// refCycleAliasDef, which guards those), so it is merged into an implicit
-	// allOf instead; the merge pulls the root's own properties back in, and "a"
-	// is re-entered here as RootA, RootAA, RootAAA ... until the stack is gone.
-	// "fatal error: stack overflow" takes the process down and no recover
-	// intercepts it -- from 57 bytes of schema.
-	//
-	// resolveType already ends this cycle through materializeNamed; this is the
-	// same rule on the property path, reading the same nodesInProgress mark that
-	// generateTypeDef sets on entry. The answer is the name the node is already
-	// being generated under, so the merged shape is kept rather than degraded to
-	// `any`, and it is a pointer because Go rejects a type that contains itself
-	// by value.
-	if canonical, ok := g.nodeTypeNames[s]; ok && g.nodesInProgress[s] {
-		return &PointerType{Inner: &NamedType{Name: canonical}}, nil
+	// from both ref-only arms of generateTypeDef by the sibling -- the arms
+	// refCycleAliasDef guards -- so it is merged into an implicit allOf instead;
+	// the merge pulls the root's own properties back in, and "a" is re-entered
+	// here as RootA, RootAA, RootAAA ... until the stack is gone. 57 bytes of
+	// schema took the process down. See cyclicNodeName; a field must be a
+	// pointer, since the type would otherwise contain itself by value.
+	if canonical, ok := g.cyclicNodeName(s); ok {
+		return namedOrPointer(canonical, true), nil
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
@@ -4256,7 +4245,20 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			// derive the Go name from that schema rather than the raw ref string.
 			// This handles $ref: "#" inside a sub-schema with its own $id.
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
-			_ = g.generateTypeDef(goName, refSchema)
+			// A ref leading back to a node whose type is still being generated
+			// must not be generated again: goName is then the name already in
+			// flight, g.generated is not set for it until that frame finishes,
+			// and the call re-enters the identical arm.
+			// {"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}} closes the loop in
+			// a single hop through the draft-3 type-alternatives path, which
+			// arrives here rather than through materializeNamed. Only the
+			// recursion is suppressed -- the reference keeps the name and the
+			// pointer rule it had, so a recursive []T does not become []*T.
+			if canonical, cyclic := g.cyclicNodeName(refSchema); cyclic {
+				goName = canonical
+			} else {
+				_ = g.generateTypeDef(goName, refSchema)
+			}
 			if pushed {
 				g.popDynamicScope()
 			}
@@ -4404,6 +4406,37 @@ func (g *Generator) materializeNamed(s *schema.Schema, contextName string) (stri
 	}
 	_ = g.generateTypeDef(contextName, s)
 	return contextName, false
+}
+
+// cyclicNodeName reports the name s is already being generated under, when s's
+// own generation is still in flight further up the stack.
+//
+// This is the read side of the mark generateTypeDef sets on entry. Every route
+// into generateTypeDef names its target after the position it was reached from
+// -- parentName+fieldName, a contextName, a name derived from the $ref string
+// -- and re-entrancy there is guarded by g.generated[name], which is only set
+// when a definition *completes*. A cycle that arrives back at the same schema
+// *node* is therefore not recognised, whether it arrives under a name one
+// segment longer each time (RootA, RootAA, RootAAA ...) or under the identical
+// name already in flight. Either way the arm re-enters itself and the run ends
+// in "fatal error: stack overflow", which no recover intercepts and which took
+// the process down for 57 bytes of schema. materializeNamed already applies
+// this rule on the object path of resolveType; the callers below apply it to
+// the two routes materializeNamed does not cover.
+//
+// Answering with the name, rather than with a type, is deliberate: what the
+// caller must do with it differs by position. A struct *field* has to be a
+// pointer, since a cycle otherwise makes the type contain itself by value and
+// Go rejects that outright; a slice element or a delegated branch already has
+// the indirection and must stay by value, or every recursive []T in the corpus
+// silently becomes []*T. Neither caller degrades the reference: the node is
+// being generated, so the name will exist and naming it is exact.
+func (g *Generator) cyclicNodeName(s *schema.Schema) (string, bool) {
+	if s == nil || !g.nodesInProgress[s] {
+		return "", false
+	}
+	canonical, ok := g.nodeTypeNames[s]
+	return canonical, ok
 }
 
 // namedOrPointer builds a reference to name, pointer-wrapped when it closes a

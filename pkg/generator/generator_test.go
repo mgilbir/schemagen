@@ -2572,6 +2572,14 @@ func TestRefCycleTerminates(t *testing.T) {
 		// The same shape one level down, so the cycle closes on a $defs node
 		// rather than on the document root.
 		{"refSiblingItemsViaDefs", `{"$ref":"#/$defs/n","$defs":{"n":{"type":"object","properties":{"a":{"$ref":"#/$defs/n","items":{"type":"string"}}}}}}`},
+		// Draft-3 type alternatives, found by the fuzzer. A $ref inside the
+		// "type" array is materialized through resolveType, which is the one
+		// route into type generation that materializeNamed does not cover; the
+		// name derived from the ref string is the one already in flight, so the
+		// arm re-entered itself in a single hop.
+		{"typeSchemaRefSelfDef", `{"type":"object","$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}}`},
+		{"typeSchemaRefSelfDefRoot", `{"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}},"$ref":"#/$defs/C"}`},
+		{"typeSchemaRefMutualDefs", `{"$defs":{"A":{"type":[{"$ref":"#/$defs/B"}]},"B":{"type":[{"$ref":"#/$defs/A"}]}},"$ref":"#/$defs/A"}`},
 	}
 
 	for _, tc := range tests {
