@@ -125,7 +125,14 @@ test-external: download-test-suite download-metaschemas
 # the test binary stops its timeout alarm before entering the fuzzing loop.
 FUZZTIME ?= 60s
 
-fuzz:
+# Depends on the suite for its seeds. FuzzGenerate takes the schema of every
+# JSON Schema Test Suite group as a seed when the suite is present, and simply
+# does without when it is not -- so a run in a bare checkout silently searches a
+# fifth of the corpus. That is exactly what the first nightly did: 410 unique
+# schemas against 1956 locally, missing all 2241 suite schemas, which are the
+# most realistic shapes available. Making the dependency explicit stops the
+# weaker run from looking like the same run.
+fuzz: download-test-suite
 	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
 
 # Checks that every fuzz seed under testdata/schemas/adversarial is a legal
