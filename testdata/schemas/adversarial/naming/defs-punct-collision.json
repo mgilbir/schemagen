@@ -1,0 +1,1 @@
+{"$defs":{"!!!":{"type":"object","properties":{"a":{"type":"string"}}},"???":{"type":"object","properties":{"b":{"type":"integer"}}}},"type":"object","properties":{"x":{"$ref":"#/$defs/!!!"},"y":{"$ref":"#/$defs/???"}}}

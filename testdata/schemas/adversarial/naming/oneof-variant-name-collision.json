@@ -1,0 +1,1 @@
+{"oneOf":[{"title":"A","type":"object","properties":{"x":{"type":"string"}}},{"title":"A","type":"object","properties":{"y":{"type":"integer"}}}]}

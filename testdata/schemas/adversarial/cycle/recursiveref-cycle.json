@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2019-09/schema","$id":"https://x/b","$recursiveAnchor":true,"type":"object","properties":{"c":{"$recursiveRef":"#"}}}

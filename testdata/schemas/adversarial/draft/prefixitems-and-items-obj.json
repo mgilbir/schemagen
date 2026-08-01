@@ -1,0 +1,1 @@
+{"type":"array","prefixItems":[{"type":"string"}],"items":{"type":"integer"},"additionalItems":{"type":"boolean"}}

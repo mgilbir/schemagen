@@ -1,0 +1,1 @@
+{"$defs":{"a":{"oneOf":[{"$ref":"#/$defs/a"},{"type":"string"}]}},"$ref":"#/$defs/a"}

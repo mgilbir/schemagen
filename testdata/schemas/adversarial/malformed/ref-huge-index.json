@@ -1,0 +1,1 @@
+{"type":"array","items":[{"type":"string"}],"properties":{"a":{"$ref":"#/items/99999999999999999999"}}}

@@ -1,0 +1,1 @@
+{"examples":[{"type":"string"}],"type":"object","properties":{"a":{"$ref":"#/examples/99"}}}

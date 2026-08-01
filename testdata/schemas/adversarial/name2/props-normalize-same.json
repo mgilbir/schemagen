@@ -1,0 +1,1 @@
+{"type":"object","properties":{"a b":{"type":"string"},"a-b":{"type":"integer"},"a_b":{"type":"boolean"},"a.b":{"type":"number"},"a/b":{"type":"string"}}}

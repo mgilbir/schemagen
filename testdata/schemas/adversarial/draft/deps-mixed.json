@@ -1,0 +1,1 @@
+{"type":"object","dependencies":{"a":["b","c"],"b":{"type":"object","properties":{"z":{"type":"string"}}},"c":"junk","d":[]},"properties":{"a":{"type":"string"},"b":{"type":"string"}}}

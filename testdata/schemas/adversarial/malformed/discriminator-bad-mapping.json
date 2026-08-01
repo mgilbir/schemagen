@@ -1,0 +1,1 @@
+{"discriminator":{"propertyName":"k","mapping":{"a":"#/$defs/nope"}},"oneOf":[{"type":"object","properties":{"k":{"const":"a"}}}]}

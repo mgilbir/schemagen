@@ -1,0 +1,1 @@
+{"type":["string","number","integer","boolean","object","array","null"],"properties":{"a":{"type":"string"}},"items":{"type":"integer"}}

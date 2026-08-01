@@ -1,0 +1,1 @@
+{"allOf":[{"$ref":"#/$defs/a"}],"$defs":{"a":{"$ref":"#/$defs/a"}}}

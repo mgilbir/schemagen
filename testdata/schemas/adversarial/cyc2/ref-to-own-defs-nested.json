@@ -1,0 +1,1 @@
+{"$defs":{"a":{"properties":{"b":{"$ref":"#/$defs/a/properties/b"}}}},"$ref":"#/$defs/a"}

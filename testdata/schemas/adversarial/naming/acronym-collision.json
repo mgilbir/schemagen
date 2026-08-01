@@ -1,0 +1,1 @@
+{"type":"object","properties":{"id":{"type":"string"},"ID":{"type":"integer"},"Id":{"type":"boolean"},"iD":{"type":"number"}}}

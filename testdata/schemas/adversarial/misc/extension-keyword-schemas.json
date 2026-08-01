@@ -1,0 +1,1 @@
+{"x-custom":{"type":"object","properties":{"a":{"type":"string"}}},"type":"object","properties":{"x":{"$ref":"#/x-custom"}}}

@@ -1,0 +1,1 @@
+{"$defs":{"a":{"$ref":"#/$defs/b","title":"A"},"b":{"$ref":"#/$defs/a","title":"B"}},"$ref":"#/$defs/a"}

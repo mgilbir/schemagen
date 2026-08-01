@@ -1,0 +1,1 @@
+{"type":"object","properties":{"a":{"patternProperties":{"^x":null}}}}

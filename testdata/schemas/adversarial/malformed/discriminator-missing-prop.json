@@ -1,0 +1,1 @@
+{"discriminator":{"propertyName":"nope"},"oneOf":[{"type":"object","properties":{"k":{"const":"a"}}},{"type":"object","properties":{"k":{"const":"b"}}}]}

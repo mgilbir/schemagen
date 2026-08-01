@@ -1,0 +1,1 @@
+{"type":"object","properties":{"a":{"type":"string","default":123},"b":{"type":"integer","default":"x"},"c":{"type":"boolean","default":[]}}}

@@ -1,0 +1,1 @@
+{"type":"array","items":[{"type":"string"}],"$defs":{"x":{"$ref":"#/items/-1"}},"properties":{"a":{"$ref":"#/items/-1"}}}
