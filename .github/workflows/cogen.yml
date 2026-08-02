@@ -1,0 +1,108 @@
+name: Cogen
+
+# The co-generation harness generates a schema and a conforming instance
+# together, compiles the generated package and puts data through it. It is the
+# half of the testing that catches a generator emitting code that compiles,
+# round-trips and is *wrong* -- a Validate() that accepts what the schema
+# forbids. The fuzz target cannot see any of that: it never compiles what it
+# generates.
+#
+# That is why this job exists separately. Of the eighteen defects found while
+# building both layers, ten came from this harness and were invisible to
+# fuzzing.
+#
+# Nightly and manual only, never on push or pull_request: each iteration
+# compiles a Go package, so a meaningful run costs minutes, and `go test ./...`
+# already replays nothing from here -- the harness is a search, not a fixture.
+# A defect it finds is turned into a regression test or an adversarial seed by
+# hand, which is what CI then remembers.
+on:
+  schedule:
+    # 04:41 UTC, well clear of the fuzz job at 03:17 so the two never contend
+    # for a runner or confuse a failure between them. Off the hour on purpose --
+    # Actions defers cron jobs piled up on popular round times.
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Iterations per seed'
+        required: false
+        default: '4000'
+      seeds:
+        description: 'Space-separated RNG seeds; each is an independent sweep'
+        required: false
+        default: '1 2 3'
+      bowtie:
+        description: 'Cross-check instances against reference implementations (needs docker)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+# Do not cancel a run in progress. Unlike CI there is nothing to supersede: a
+# half-finished sweep tells you less than a finished one, and the next nightly
+# is a day away.
+concurrency:
+  group: cogen-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cogen:
+    runs-on: ubuntu-latest
+    # Generous backstop against a hang, not a budget: the work is bounded by
+    # iterations, not by time, and a runner is slower than a workstation.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Generated code imports the ECMA-262 regexp package, which is reachable
+      # only from generated code -- `go build ./...` never fetches it, so the
+      # first compiled iteration would do the download itself. Pull it up front
+      # so a network problem fails here, plainly, instead of inside the harness
+      # and looking like a generator fault.
+      - name: download dependencies
+        run: go mod download
+
+      # Each seed is an independent sweep. Running several decorrelates the
+      # schema shapes far better than one long sequence from a single seed, and
+      # a failure in one does not cost the others -- the loop keeps going and
+      # reports at the end, so one bad seed does not mask what the rest found.
+      - name: co-generation sweep
+        env:
+          ITERS: ${{ inputs.iterations || '4000' }}
+          SEEDS: ${{ inputs.seeds || '1 2 3' }}
+        run: |
+          rc=0
+          for s in $SEEDS; do
+            echo "::group::seed $s"
+            make cogen COGEN_SEED="$s" COGEN_ITERS="$ITERS" || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc
+
+      # Bowtie runs independent JSON Schema implementations in containers and
+      # compares their verdict on each (schema, instance) pair against the
+      # generated Validate(). It is the only check that can tell a schemagen bug
+      # from a bug in the harness's own instance generation -- the assumption
+      # everything else here rests on. Kept to a small sample because it costs a
+      # container round-trip per pair.
+      #
+      # if: always() so a failing sweep above still gets this evidence attached;
+      # a disagreement here would say the failure is the harness's fault, which
+      # is exactly what you want to know when something has just gone red.
+      - name: bowtie cross-check
+        if: ${{ always() && (inputs.bowtie != 'false') }}
+        env:
+          SCHEMAGEN_RUN_COGEN: '1'
+          SCHEMAGEN_COGEN_SEED: '999'
+          SCHEMAGEN_COGEN_ITERS: '200'
+          SCHEMAGEN_COGEN_BOWTIE: '1'
+          SCHEMAGEN_COGEN_BOWTIE_MAX: '150'
+        run: go test ./tests/... -run TestCoGenerated -v -count=1 -timeout 60m
