@@ -96,6 +96,7 @@ type StructDef struct {
 	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
 	ObjectOneOfs          []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs          []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
+	ObjectConditionals    []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
 	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NeedsMarshal          bool
 	NeedsUnmarshal        bool
@@ -235,7 +236,7 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
 // conditional evaluation that involves const checks (if/then/else, anyOf, oneOf).
 func (d *StructDef) NeedsRawProps() bool {
-	if len(d.ObjectOneOfs) > 0 || len(d.ObjectAnyOfs) > 0 {
+	if len(d.ObjectOneOfs) > 0 || len(d.ObjectAnyOfs) > 0 || len(d.ObjectConditionals) > 0 {
 		return true
 	}
 	if d.UnevaluatedProperties == nil {
@@ -328,6 +329,96 @@ type ObjectAnyOfDef struct {
 type ObjectOneOfBranch struct {
 	RequiredKeys []string
 	Checks       []ObjectPropertyCheck
+}
+
+// ObjectConditionalDef describes an object-level if/then/else sitting beside an
+// object's properties: the condition, and the branch that applies once the
+// condition has been decided.
+//
+// The whole group is checked against the object's raw JSON properties rather
+// than against its Go fields. A conditional branch constrains properties
+// selectively -- only when the condition holds -- so its constraints cannot be
+// folded into the field's own rules, and it may well name a property the struct
+// does not declare at all.
+//
+// A group is only built when every part of it is expressible exactly (see
+// objectConditionalDef). An `if` that were evaluated approximately would decide
+// the wrong branch, and applying an `else` to a value the `if` actually matched
+// rejects a document the schema allows -- worse than the missing check this
+// replaces.
+type ObjectConditionalDef struct {
+	If   ObjectConditionalBranch
+	Then *ObjectConditionalBranch
+	Else *ObjectConditionalBranch
+}
+
+// ObjectConditionalBranch is one side of an object-level conditional: the
+// property names it requires present, and the constraints it puts on individual
+// properties.
+type ObjectConditionalBranch struct {
+	Keyword      string // "then" or "else" — names the branch in an error message
+	RequiredKeys []string
+	Properties   []ObjectPropertyConstraint
+}
+
+// Empty reports whether the branch constrains nothing, in which case it is
+// satisfied by every object and needs no generated check.
+func (b *ObjectConditionalBranch) Empty() bool {
+	return b == nil || (len(b.RequiredKeys) == 0 && len(b.Properties) == 0)
+}
+
+// ObjectPropertyConstraint constrains one JSON property of an object. The checks
+// run against the property's decoded JSON value, which is what makes them
+// independent of the Go type the property was given -- or of whether it was
+// declared as a field at all.
+type ObjectPropertyConstraint struct {
+	JSONName string
+	Checks   []DynamicCheck
+}
+
+// HasObjectConditionals reports whether the struct carries any object-level
+// if/then/else group.
+func (d *StructDef) HasObjectConditionals() bool { return len(d.ObjectConditionals) > 0 }
+
+// anyConditionalCheck reports whether any check in any conditional group
+// satisfies pred. It drives the import decisions for the emitted checks.
+func (d *StructDef) anyConditionalCheck(pred func(DynamicCheck) bool) bool {
+	for i := range d.ObjectConditionals {
+		cond := &d.ObjectConditionals[i]
+		for _, branch := range []*ObjectConditionalBranch{&cond.If, cond.Then, cond.Else} {
+			if branch == nil {
+				continue
+			}
+			for _, prop := range branch.Properties {
+				for _, c := range prop.Checks {
+					if pred(c) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ConditionalNeedsPattern reports whether an object-level conditional check uses
+// "pattern", which requires the ECMA-262 regexp import.
+func (d *StructDef) ConditionalNeedsPattern() bool {
+	return d.anyConditionalCheck(func(c DynamicCheck) bool { return c.Kind == "pattern" })
+}
+
+// ConditionalNeedsMultipleOf reports whether an object-level conditional check
+// needs math.Mod.
+func (d *StructDef) ConditionalNeedsMultipleOf() bool {
+	return d.anyConditionalCheck(func(c DynamicCheck) bool { return c.Kind == "multipleOf" })
+}
+
+// ConditionalNeedsUTF8 reports whether an object-level conditional check
+// measures string length.
+func (d *StructDef) ConditionalNeedsUTF8() bool {
+	return d.anyConditionalCheck(func(c DynamicCheck) bool {
+		return c.Kind == "minLength" || c.Kind == "maxLength"
+	})
 }
 
 // ObjectPropertyCheck describes a JSON property constraint used to match an
@@ -480,6 +571,18 @@ func (d *OneOfDef) HasDiscriminator() bool {
 	return d.DiscriminatorField != ""
 }
 
+// HasVariantChecks reports whether any variant carries branch constraints that
+// selection has to test. Templates use it to emit the extra bookkeeping only
+// where it is needed, leaving a union without such constraints unchanged.
+func (d *OneOfDef) HasVariantChecks() bool {
+	for _, v := range d.Variants {
+		if len(v.Checks) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
 	WrapperName        string   // TypeName_VariantName
@@ -492,6 +595,10 @@ type OneOfVariant struct {
 	// values (the union of its sub-variants' values), and a variant may
 	// constrain the discriminator with a multi-value enum.
 	DiscriminatorValues []string
+	// Checks are the branch's own constraints, expressed over the decoded
+	// candidate, that variant selection must satisfy before this variant counts
+	// as matched. See oneOfVariantChecks.
+	Checks []ValidationRule
 }
 
 // EnumDef represents an enum type.
@@ -841,11 +948,17 @@ type NotPropertyBranch struct {
 // Go type is not known statically. Kind names the JSON Schema keyword; Value is
 // its argument.
 //
-// Evaluation follows JSON Schema semantics: every keyword except "type" is
-// vacuously satisfied by a value of an inapplicable type, so {"minimum":2} is
-// satisfied by "abc".
+// Evaluation follows JSON Schema semantics: every keyword except "type" and
+// "const" is vacuously satisfied by a value of an inapplicable type, so
+// {"minimum":2} is satisfied by "abc".
+//
+// The "const" kind carries the constant already marshaled to JSON, and is
+// checked by marshaling the decoded value and comparing the two encodings.
+// Round-tripping both sides through encoding/json is what makes that exact
+// rather than a comparison of source bytes: it settles number formatting,
+// string escaping and object key order identically on both sides.
 type DynamicCheck struct {
-	Kind  string // "type", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
+	Kind  string // "type", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
 	Value any
 }
 

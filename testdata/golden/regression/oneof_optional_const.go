@@ -260,7 +260,8 @@ func (o OneOfOptionalConstPOption1) Validate() error {
 }
 
 type OneOfOptionalConst struct {
-	P isOneOfOptionalConst_P `json:"-"`
+	P                    isOneOfOptionalConst_P     `json:"-"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 // isOneOfOptionalConst_P is a sealed interface for the P field of OneOfOptionalConst.
@@ -306,6 +307,7 @@ func (o *OneOfOptionalConst) GetOneOfOptionalConstPOption1() *OneOfOptionalConst
 }
 
 func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
 	o.P = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type OneOfOptionalConst")
@@ -362,6 +364,24 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		knownFields := map[string]bool{
+			"p": true,
+		}
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
+				continue
+			}
+			if o.AdditionalProperties == nil {
+				o.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			o.AdditionalProperties[rawKey] = rawVal
+		}
+	}
 
 	return nil
 }
@@ -390,7 +410,18 @@ func (o OneOfOptionalConst) MarshalJSON() ([]byte, error) {
 			aux.P = raw
 		}
 	}
-	return json.Marshal(aux)
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range o.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
 }
 
 // Validate checks OneOfOptionalConst against its JSON Schema constraints.

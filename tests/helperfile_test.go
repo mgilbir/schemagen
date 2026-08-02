@@ -12,7 +12,19 @@ import (
 )
 
 // sharedHelpersFor derives which shared helpers a generated file references.
-// Deriving it from the source keeps every call site free of extra plumbing.
+// Deriving it from the source keeps every call site free of extra plumbing --
+// and several call sites have only the text, having read a golden file rather
+// than generated it, so there is no IR to ask.
+//
+// The _dyn* family is matched by its prefix and pulled in whole. It used to be
+// a list of individual helper names, which had to be kept in step with the
+// templates by hand and silently was not: when _dynConstOK joined the family
+// and the list did not learn about it, every generated file that called it
+// failed to compile here -- 121 subtests of the external suite, reported as a
+// generator defect rather than as the harness gap it was. The asymmetry is the
+// whole argument. Over-including leaves an unused function in a throwaway file
+// that is compiled once and deleted; under-including breaks the build, and
+// does it in the one place set up to look like the code generator is at fault.
 func sharedHelpersFor(content string) generator.HelperSet {
 	var set generator.HelperSet
 	if strings.Contains(content, "oneofHasRequiredFields(") {
@@ -21,11 +33,9 @@ func sharedHelpersFor(content string) generator.HelperSet {
 	if strings.Contains(content, "oneofDiscriminatorValue(") {
 		set.OneOfDiscriminator = true
 	}
-	for _, ref := range []string{"_dynNumber(", "_dynIs", "_dynNumOK(", "_dynStrOK("} {
-		if strings.Contains(content, ref) {
-			set.Dynamic = true
-			break
-		}
+	if strings.Contains(content, "_dyn") {
+		set.Dynamic = true
+		set.DynamicConst = true
 	}
 	// The annotation evaluator calls the _dyn* predicates, so it pulls both in.
 	if strings.Contains(content, "_schemaNode") || strings.Contains(content, "_evalNode(") {
