@@ -159,7 +159,33 @@ fuzz: download-test-suite
 # taking the clock means a clean run is evidence about a specific 400 cases and
 # a later failure on the same seed is a real regression, not a different draw.
 #
-# One optional switch, off by default:
+# The generator configuration is part of that draw. The CLI can emit rather
+# more than one shape of code -- big-integer wrappers, strict property
+# checking, value fields instead of pointers, the hybrid and runtime validation
+# modes -- and each iteration runs one of them, dealt so that every consecutive
+# block of len(coConfigs) iterations covers every configuration exactly once.
+# The run prints how many iterations each got, and how many of those emitted
+# source that actually differed from the baseline configuration's, which is how
+# to tell a configuration that is exercising something from one that is not.
+#
+# Optional switches, all off by default:
+#
+#   SCHEMAGEN_COGEN_CONFIG=<name>         pin every iteration to one generator
+#                                         configuration instead of dealing
+#                                         them. One of: static, hybrid,
+#                                         runtime, bigint, strict, noomit,
+#                                         lenientrefs, all. This is what a
+#                                         failure report names, and what to
+#                                         reach for when a defect has been
+#                                         narrowed to a flag and the question
+#                                         is how far it spreads.
+#
+#   SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1  re-admit the constructs the harness
+#                                         steps around because schemagen is
+#                                         already known to mishandle them.
+#                                         Expected to fail: it is what keeps
+#                                         each exclusion honest rather than a
+#                                         claim in a comment.
 #
 #   SCHEMAGEN_COGEN_BOWTIE=1              cross-check every (schema, instance)
 #                                         pair against independent JSON Schema

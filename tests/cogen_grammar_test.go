@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"sort"
 	"strings"
 )
@@ -42,7 +43,8 @@ const coMaxDepth = 3
 //
 // Emitted:
 //
-//	root            always {"type":"object"} with 1..4 properties
+//	root            {"type":"object"} with 1..4 properties, or a composition
+//	                leaf as the whole document (see below)
 //	object          type, properties (1..4), required (any subset)
 //	array           type, items (a single schema), minItems, maxItems
 //	string          type, and either {minLength, maxLength} or pattern
@@ -78,6 +80,62 @@ const coMaxDepth = 3
 //	not             {"not":{"type":T}} over a value of some other type. Emitted
 //	                as a composition leaf and inline as a property's own schema.
 //
+// Object keywords that speak about keys rather than about one named property.
+// All of them are decided by the builder and never inferred, which for the
+// evaluation-sensitive ones means the builder tracks evaluation itself:
+//
+//	patternProperties   one regexp, ^p_[a-z]+$, with 1..2 keys matching it in
+//	                    the instance. The value schema is a bounded string or
+//	                    integer, so the mutant violates the branch the key was
+//	                    matched into rather than the property's own schema.
+//	additionalProperties: false
+//	                    only where the object declares every key it carries
+//	                    inline: no allOf partition, no discriminator branches
+//	                    and no if/then, because a key a *sibling* applicator
+//	                    declares is still "additional" to this schema object
+//	                    and the conforming instance would be rejected.
+//	unevaluatedProperties
+//	                    both spellings. false forbids any key no applicator
+//	                    evaluated; a schema value constrains those keys, and
+//	                    the instance then carries one deliberately unevaluated
+//	                    key for the mutation to work on. Unlike
+//	                    additionalProperties this composes with everything the
+//	                    grammar emits, because a sibling applicator that
+//	                    *succeeds* does evaluate what it declares -- so the
+//	                    grammar puts it beside allOf partitions, discriminator
+//	                    branches, patternProperties and if/then at once.
+//	if/then             object-level, over a dedicated `condKey` property whose
+//	                    const decides whether `then` applies, and a `thenKey`
+//	                    property `then` declares and requires. The builder
+//	                    picks which side of `if` the instance is on, so which
+//	                    keys are evaluated is a decision rather than a
+//	                    deduction. This is the evaluation source that makes
+//	                    unevaluatedProperties interesting: flipping condKey
+//	                    unevaluates thenKey without touching anything else.
+//	dependentRequired   one trigger property, present, and 1..2 dependents that
+//	dependentSchemas    are present and *not* `required`, so removing one
+//	                    violates the dependency and nothing else.
+//	                    dependentSchemas carries a `required`-only branch,
+//	                    because a branch keyword other than `required` is
+//	                    dropped (see "Not emitted at all").
+//	minProperties       emitted only where no other mutation of the same node
+//	maxProperties       deletes or adds a key, so each count mutant is
+//	                    unambiguous. The bound is the instance's own key count,
+//	                    computed from the same decisions that build it.
+//	propertyNames       {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, which every
+//	                    name the grammar emits satisfies; the mutant adds one
+//	                    that does not.
+//
+// Array keywords:
+//
+//	uniqueItems         on an array whose elements are a plain integer and
+//	                    whose i-th element is i, so the array is unique by
+//	                    construction at every length the length mutants need.
+//	prefixItems +       tuple form: 1..3 prefix entries typed string / integer
+//	unevaluatedItems    / boolean and an instance of exactly that length. The
+//	                    mutant appends one element, which no prefix entry
+//	                    evaluates.
+//
 // A composition leaf sits either as the whole document -- becoming the root
 // type -- or as a $defs entry a property $refs, becoming a wrapper type the
 // enclosing struct's Validate calls. Both positions are generated.
@@ -96,11 +154,9 @@ const coMaxDepth = 3
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
-// burn the whole budget in triage: patternProperties, additionalProperties,
-// propertyNames, minProperties / maxProperties, dependentRequired /
-// dependentSchemas, unevaluated*, contains, prefixItems and tuple-form items,
-// uniqueItems, format, multi-valued type, boolean schemas, recursive or remote
-// $refs, $id / $anchor.
+// burn the whole budget in triage: format, multi-valued type, boolean schemas,
+// recursive or remote $refs, $id / $anchor, and `items` as a tuple (the
+// pre-2020-12 spelling of prefixItems).
 //
 // Also not emitted, but for a different reason — see coKnownGaps below.
 
@@ -108,11 +164,148 @@ const coMaxDepth = 3
 // Known gaps
 // ---------------------------------------------------------------------------
 //
-// There are none. Every construct this grammar once avoided because schemagen
-// mishandled it is emitted by default, the defects having been fixed. The list
-// and its opt-in toggle are in the history if one is ever needed again -- it has
-// been removed and restored twice now, so the pattern is worth recovering rather
-// than reinventing.
+// coKnownGaps records constructs the grammar avoids because schemagen is
+// already known to handle them incorrectly. They are excluded so the harness
+// reports regressions rather than re-reporting the same defects on every
+// iteration, and each is reachable again by setting
+// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
+// instead of being claims in a comment. The minimal reproducer for each is in
+// the doc comment of its toggle.
+//
+// A toggle is a gate the grammar consults, not a label. Where a defect could
+// only be reached by a shape the grammar does not build at all, it is written
+// down under "Not emitted at all" below rather than given a toggle that would
+// promise more than it delivers.
+var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
+
+// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties types
+// the overflow map, so a value of the wrong JSON type dies in the decoder, but
+// the subschema's own constraints are never checked. The grammar therefore only
+// emits additionalProperties: false, whose whole content is a rejection and so
+// cannot be half-enforced.
+//
+//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
+//	          "additionalProperties":{"type":"integer","minimum":5}}
+//	instance {"alpha":"aa","zzExtra":1}   accepted; 1 < 5
+//
+// patternProperties in the same position *is* enforced, constraints and all,
+// which is the form the grammar emits.
+func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
+
+// ---------------------------------------------------------------------------
+// Not emitted at all
+// ---------------------------------------------------------------------------
+//
+// Reaching the four defects below would need a shape the grammar does not
+// build, so none of them carries a coGap toggle: a predicate nothing consults
+// would promise a reachability it does not have. They are recorded here because
+// a defect nobody wrote down is a defect that gets rediscovered. Each
+// reproducer was run against the pipeline by hand, and the verdict beside it is
+// what the generated program printed.
+//
+// The grammar's own choices are what dodge them: a `required`-only
+// dependentSchemas branch, prefixItems entries carrying a type and nothing
+// else, unevaluatedItems only ever a direct sibling of prefixItems, and no
+// `contains` anywhere.
+//
+// dependentSchemas branch keywords other than `required`. A branch is reduced
+// to its `required` list, so the dependency fires on presence and never on
+// shape.
+//
+//	schema   {"type":"object","properties":{"alpha":{"type":"string"},
+//	                                        "bravo":{"type":"integer"}},
+//	          "dependentSchemas":{"alpha":{"properties":{"bravo":{"minimum":5}},
+//	                                       "required":["bravo"]}}}
+//	instance {"alpha":"aa","bravo":1}     accepted; 1 < 5
+//
+// prefixItems positional subschemas. A prefixItems entry contributes nothing
+// but a length: the per-position subschema is dropped, so a tuple slot holds
+// any JSON value at all. When a sibling `items` names a different type, the
+// generated Go element type is that sibling's, and the tuple prefix cannot even
+// decode into it.
+//
+//	schema   {"type":"object","properties":{"arr":{"type":"array",
+//	          "prefixItems":[{"type":"string","minLength":2},
+//	                         {"type":"integer","minimum":5}]}},"required":["arr"]}
+//	instance {"arr":["a",1]}              accepted; both positions violated
+//
+//	schema   {"type":"object","properties":{"arr":{"type":"array",
+//	          "prefixItems":[{"type":"string"},{"type":"integer"}],
+//	          "items":{"type":"boolean"}}},"required":["arr"]}
+//	instance {"arr":["aa",7,true]}        cannot unmarshal: the field is []bool
+//
+// unevaluatedItems reached through an applicator, or schema-valued.
+// unevaluatedItems only sees a prefixItems written as its own sibling; an items
+// keyword behind an allOf marks nothing evaluated, and a schema-valued
+// unevaluatedItems is dropped rather than applied.
+//
+//	schema   {"type":"object","properties":{"arr":{"type":"array",
+//	          "allOf":[{"prefixItems":[{"type":"string"}]}],
+//	          "unevaluatedItems":false}},"required":["arr"]}
+//	instance {"arr":["a","b"]}            accepted; index 1 is unevaluated
+//
+//	schema   {"type":"object","properties":{"arr":{"type":"array",
+//	          "prefixItems":[{"type":"string"}],
+//	          "unevaluatedItems":{"type":"integer"}}},"required":["arr"]}
+//	instance {"arr":["a","b"]}            accepted; index 1 is not an integer
+//
+// contains, minContains and maxContains produce no check at all.
+//
+//	schema   {"type":"object","properties":{"arr":{"type":"array",
+//	          "items":{"type":"integer"},"contains":{"type":"integer","minimum":10},
+//	          "minContains":2,"maxContains":3}},"required":["arr"]}
+//	instance {"arr":[1,2]}                accepted; nothing matches `contains`
+//	instance {"arr":[1,2,3]}              accepted; 0 matches, minContains is 2
+//	instance {"arr":[11,12,13,14]}        accepted; 4 matches, maxContains is 3
+
+// ---------------------------------------------------------------------------
+// Gated known gaps
+// ---------------------------------------------------------------------------
+
+// coGapAllOfDropsKeyKeywords: an `allOf` beside an object's own keywords takes
+// propertyNames, minProperties, maxProperties and dependentRequired down with
+// it. All four are enforced on the same object without the allOf, and all four
+// survive an `anyOf`, a `oneOf` or an `if`/`then` in the same position -- it is
+// the allOf specifically, and it does not matter whether the object also
+// declares properties of its own.
+//
+//	schema   {"type":"object","allOf":[{"properties":{"bravo":{"type":"string"}}}],
+//	          "propertyNames":{"pattern":"^[A-Za-z_][A-Za-z0-9_]*$"}}
+//	instance {"9-bad":1}                  accepted
+//
+//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
+//	          "allOf":[{"properties":{"bravo":{"type":"string"}}}],
+//	          "minProperties":2,"maxProperties":2}
+//	instance {"alpha":"a"}                accepted; 1 property, minimum 2
+//	instance {"alpha":"a","bravo":"x","zzExtra":1}
+//	                                      accepted; 3 properties, maximum 2
+//
+//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
+//	          "allOf":[{"properties":{"bravo":{"type":"integer"}}}],
+//	          "dependentRequired":{"alpha":["bravo"]}}
+//	instance {"alpha":"a"}                accepted; "bravo" is required
+//
+// The same object with the dependency written as dependentSchemas -- the
+// `required`-only branch {"alpha":{"required":["bravo"]}} -- rejects it, and so
+// do patternProperties, if/then and unevaluatedProperties beside the same
+// allOf. So the gap is not "keywords beside an allOf are lost" in general; it
+// is these four.
+func coGapAllOfDropsKeyKeywords() bool { return coIncludeKnownGaps }
+
+// coGapRootArrayApplicator: an array at the *document root* carrying contains
+// or prefixItems + unevaluatedItems emits code that does not compile -- the
+// generated file calls into math without importing it. Both shapes compile and
+// run when the same array sits behind a property, which is where the grammar
+// puts them.
+//
+//	schema   {"type":"array","items":{"type":"integer"},
+//	          "contains":{"type":"integer","minimum":10}}
+//	          => ./types.go:37:55: undefined: math
+//
+//	schema   {"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],
+//	          "unevaluatedItems":false}
+//	          => ./types.go:35:24: undefined: math
+func coGapRootArrayApplicator() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -131,6 +324,9 @@ const (
 	coEnum
 	coConst
 	coRef
+	// coTuple is an array in tuple form: prefixItems types the positions it
+	// has, and unevaluatedItems: false forbids the ones it does not.
+	coTuple
 
 	// Composition leaves. Each is a whole schema whose only keywords are
 	// applicators, so each is a value the grammar picks first and a schema it
@@ -161,6 +357,64 @@ const (
 	coCompOneOf
 )
 
+// coExtra is the object keyword that governs the keys the object does not
+// declare by name. At most one is chosen per node, because every one of them is
+// violated by the same edit -- putting a key in the document that the schema
+// did not account for -- so two of them at one node would make each other's
+// mutant ambiguous.
+type coExtra int
+
+const (
+	coExtraNone coExtra = iota
+	// coExtraAddlFalse is additionalProperties: false. It is only ever chosen
+	// for an object that declares every key it carries in its own
+	// `properties`: `additionalProperties` reads the `properties` and
+	// `patternProperties` of the schema object it sits in and nothing else, so
+	// a key declared by an allOf branch, by a discriminator branch or by
+	// `then` is additional to *this* object and the conforming instance would
+	// be rejected.
+	coExtraAddlFalse
+	// coExtraAddlSchema is additionalProperties: {integer with a minimum}. Only
+	// coGapAdditionalPropertiesSchema reaches it: the subschema's constraints
+	// are not enforced, so its mutant is always accepted.
+	coExtraAddlSchema
+	// coExtraUnevalFalse is unevaluatedProperties: false. Unlike
+	// additionalProperties it does see what sibling applicators evaluated, so
+	// it composes with every other object shape the grammar emits.
+	coExtraUnevalFalse
+	// coExtraUnevalSchema is unevaluatedProperties: {integer with a minimum}.
+	// The instance then carries coUnevalKey, a key no applicator evaluates, so
+	// there is something for the subschema to be violated on.
+	coExtraUnevalSchema
+	coExtraMaxProps
+	coExtraPropNames
+)
+
+// coDepKind says which spelling of "this key requires those keys" the object
+// uses, or that it uses neither.
+type coDepKind int
+
+const (
+	coDepNone coDepKind = iota
+	coDepRequired
+	coDepSchemas
+)
+
+// coCond is an object-level if/then over a dedicated property. `if` matches
+// when condKey holds coCondYes; `then` declares thenKey and requires it.
+//
+// It is written this way so the builder decides evaluation rather than deducing
+// it: yes says which side of `if` the instance is on, and thenKey is in the
+// instance exactly when it is on the `then` side. That makes the pair of facts
+// unevaluatedProperties needs -- "thenKey is present" and "thenKey was
+// evaluated" -- two records of one decision instead of a judgement about the
+// schema.
+type coCond struct {
+	yes bool  // the instance sets condKey to coCondYes, so `then` applies
+	min int64 // then's thenKey minimum
+	val int64 // the thenKey value, >= min, present only when yes
+}
+
 // coBoundStyle says how a numeric bound is expressed, or that it is absent.
 type coBoundStyle int
 
@@ -179,11 +433,34 @@ type coNode struct {
 	// object
 	props []*coProp
 
+	// object keywords about keys rather than about a named property. Each is
+	// governed by an "active" predicate rather than by the field alone, so a
+	// shrink step that removes what a keyword depended on removes the keyword
+	// from the schema and its mutation from the catalogue together.
+	extra     coExtra
+	unevalMin int64 // coExtraUnevalSchema: the minimum the subschema carries
+	patKeys   []string
+	patStr    bool // the patternProperties value schema is a string, not an integer
+	patBound  int  // its minLength, or its minimum
+	dep       coDepKind
+	depTrig   string   // the property whose presence triggers the dependency
+	depOn     []string // the properties it then requires
+	minProps  bool     // emit minProperties at the instance's own key count
+	cond      *coCond
+
 	// array
 	elem     *coNode
 	numItems int
 	minItems *int
 	maxItems *int
+	// unique makes the array's elements a plain integer whose i-th value is i.
+	// uniqueItems needs distinct elements at every length the length mutants
+	// reach, and identical elements are what the array shape otherwise relies
+	// on, so the two cannot share an element schema.
+	unique bool
+
+	// coTuple: one JSON type name per prefixItems position.
+	tupleTypes []string
 
 	// string. lenLo/lenHi always hold the effective window even when the
 	// corresponding keyword is not emitted, so value generation has a range to
@@ -312,6 +589,59 @@ var coDefNames = []string{"DefA", "DefB", "DefC"}
 // argument.
 var coDiscNames = []string{"tagOne", "tagTwo", "tagThree"}
 
+// The key vocabularies below are pairwise disjoint, and disjoint from
+// coPropNames and coDiscNames. That is what lets every argument about them be
+// made by name: a key matching coPatternExpr is one patternProperties covers
+// and nothing else covers, coUnevalKey is a key no applicator evaluates,
+// coExtraKey is a key nothing in the schema mentions at all. Reusing a name
+// across two roles would put two schemas on it and every such argument would
+// have to be re-made.
+const (
+	// coPatternExpr matches coPatternKeys and nothing else the grammar emits:
+	// no coPropName, coDiscName or synthetic key starts with "p_".
+	coPatternExpr = "^p_[a-z]+$"
+
+	// coCondKey drives an object-level if/then, and coThenKey is what `then`
+	// declares. coCondKey is declared in the object's own `properties` as well,
+	// so that it is evaluated whichever side of `if` the instance is on --
+	// otherwise an instance on the `else` side would leave coCondKey
+	// unevaluated and fail its own unevaluatedProperties.
+	coCondKey = "condKey"
+	coThenKey = "thenKey"
+	coCondYes = "yes"
+	coCondNo  = "no"
+
+	// coUnevalKey is the key a schema-valued unevaluatedProperties is violated
+	// on. It is in the instance and nothing evaluates it, which is the point.
+	coUnevalKey = "xtraKey"
+
+	// coExtraKey is the key an "extra key" mutant adds. It matches
+	// coPropNamePattern, so it violates whichever of additionalProperties,
+	// unevaluatedProperties and maxProperties the node carries and never
+	// propertyNames.
+	coExtraKey = "zzExtra"
+
+	// coPropNamePattern accepts every key the grammar emits; coBadPropName is
+	// the one propertyNames has to reject, and it is rejected on its first
+	// character so no prefix of it could pass.
+	coPropNamePattern = "^[A-Za-z_][A-Za-z0-9_]*$"
+	coBadPropName     = "9-bad"
+)
+
+var coPatternKeys = []string{"p_one", "p_two", "p_three"}
+
+// coTupleTypes pairs a JSON type name with a value of that type, for the
+// prefixItems positions of a tuple. As with coNotCases, both halves are written
+// down rather than derived.
+var coTupleTypes = []struct {
+	name  string
+	value any
+}{
+	{"string", "tup"},
+	{"integer", int64(6)},
+	{"boolean", true},
+}
+
 // coDiscTypes pairs the JSON type a discriminator branch declares with a value
 // of that type. The values are deliberately away from their Go zero: a
 // discriminator that marshalled away would silently unmatch its own branch.
@@ -408,6 +738,12 @@ func coBuild(seed uint64) *coDoc {
 	// schema whose keywords are entirely applicators, and it decides that from
 	// the marshalled document, so a "$defs" beside the "oneOf" would make the
 	// whole construct fall back to an unvalidated `any`.
+	if coGapRootArrayApplicator() && b.chance(4) {
+		// A tuple at the document root: the emitted file references math
+		// without importing it, so the case fails to compile.
+		b.doc.root = b.buildTuple()
+		return b.doc
+	}
 	if b.chance(4) {
 		b.doc.root = b.buildRootComposition()
 		return b.doc
@@ -463,8 +799,286 @@ func (b *coBuilder) buildObject(depth, visible int) *coNode {
 		n.props = append(n.props, p)
 	}
 	b.applyComposition(n, depth)
+	b.applyObjectExtras(n)
 	return n
 }
+
+// applyObjectExtras adds the object keywords that speak about keys rather than
+// about one named property. It runs after applyComposition because several of
+// them are only sound in the absence of a sibling applicator, and that is a
+// decision applyComposition has just made.
+func (b *coBuilder) applyObjectExtras(n *coNode) {
+	// An object-level if/then. The keys it adds are its own, so it composes
+	// with everything except additionalProperties -- which does not look inside
+	// `then` and would call what `then` declares an additional property.
+	if b.chance(4) {
+		c := &coCond{yes: b.chance(2), min: int64(b.rng.IntN(21) - 10)}
+		c.val = c.min + int64(b.rng.IntN(5))
+		n.cond = c
+	}
+
+	// patternProperties. Its keys are matched by the pattern and by nothing
+	// else, so they are evaluated for unevaluatedProperties, permitted by
+	// additionalProperties, and counted by min/maxProperties like any other
+	// key. That makes it the one member of this group that composes freely.
+	if b.chance(3) {
+		keys := append([]string(nil), coPatternKeys...)
+		b.rng.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
+		n.patKeys = append(n.patKeys, keys[:1+b.rng.IntN(2)]...)
+		n.patStr = b.chance(2)
+		if n.patStr {
+			// At least 1, so a string one rune shorter exists to be the mutant.
+			n.patBound = 1 + b.rng.IntN(4)
+		} else {
+			n.patBound = b.rng.IntN(16) - 5
+		}
+	}
+
+	// At most one keyword about keys the object does not name: each is violated
+	// by the same edit, so two at one node would make each other's mutant
+	// ambiguous.
+	switch b.rng.IntN(8) {
+	case 0:
+		// Only where every key the instance carries is declared by this schema
+		// object itself -- see coExtraAddlFalse.
+		if n.comp == coCompNone && n.cond == nil {
+			n.extra = coExtraAddlFalse
+			if coGapAdditionalPropertiesSchema() && b.chance(2) {
+				n.extra = coExtraAddlSchema
+				n.unevalMin = int64(b.rng.IntN(21) - 10)
+			}
+		}
+	case 1, 2:
+		n.extra = coExtraUnevalFalse
+	case 3:
+		n.extra = coExtraUnevalSchema
+		n.unevalMin = int64(b.rng.IntN(21) - 10)
+	case 4:
+		// A oneOf node's "matched two variants" mutant adds a second
+		// discriminator, which would push the key count past the bound too.
+		if n.comp != coCompOneOf {
+			n.extra = coExtraMaxProps
+		}
+	case 5:
+		n.extra = coExtraPropNames
+	}
+
+	if b.chance(3) {
+		b.addDependency(n)
+	}
+	n.minProps = b.chance(4)
+}
+
+// addDependency picks a trigger property and the properties its presence
+// requires. The dependents are drawn only from properties that are present and
+// *not* `required`: a required dependent would make the mutation that removes
+// it a `required` violation as well, and the mutant would stop saying anything
+// about the dependency.
+func (b *coBuilder) addDependency(n *coNode) {
+	var trig string
+	var deps []string
+	for _, p := range n.props {
+		if !p.present {
+			continue
+		}
+		if trig == "" {
+			trig = p.name
+			continue
+		}
+		if !p.required && len(deps) < 2 {
+			deps = append(deps, p.name)
+		}
+	}
+	if trig == "" || len(deps) == 0 {
+		return
+	}
+	n.depTrig, n.depOn = trig, deps
+	if b.chance(2) {
+		n.dep = coDepRequired
+	} else {
+		n.dep = coDepSchemas
+	}
+}
+
+// buildTuple builds an array in tuple form. The prefix entries carry a type and
+// nothing else, because a prefixItems entry's other keywords are dropped (see
+// coGapPrefixItemsPositional); the length it implies is what unevaluatedItems
+// turns into a rejection, and that is what these nodes test.
+func (b *coBuilder) buildTuple() *coNode {
+	n := &coNode{kind: coTuple}
+	types := []int{0, 1, 2}
+	b.rng.Shuffle(len(types), func(i, j int) { types[i], types[j] = types[j], types[i] })
+	for _, ix := range types[:1+b.rng.IntN(3)] {
+		n.tupleTypes = append(n.tupleTypes, coTupleTypes[ix].name)
+	}
+	return n
+}
+
+func coTupleValue(name string) any {
+	for _, t := range coTupleTypes {
+		if t.name == name {
+			return t.value
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Which object keywords are live
+// ---------------------------------------------------------------------------
+//
+// Each keyword below is emitted only while the thing it was built against is
+// still there. The predicate is consulted by fragment() and by collect() alike,
+// so a shrink step that drops the property a dependency named, or the branch a
+// count was reckoned against, removes the keyword from the schema and its
+// mutation from the catalogue in one move -- rather than leaving a schema the
+// instance no longer satisfies.
+
+func (n *coNode) presentProp(name string) *coProp {
+	for _, p := range n.props {
+		if p.name == name && p.present {
+			return p
+		}
+	}
+	return nil
+}
+
+// depActive reports whether the dependency still names present, optional
+// properties. A dependent that has become required, or absent, would make the
+// mutation that removes it mean something else.
+func (n *coNode) depActive() bool {
+	if n.dep == coDepNone || len(n.depOn) == 0 || n.presentProp(n.depTrig) == nil {
+		return false
+	}
+	// dependentRequired does not survive an allOf on the same object, though
+	// dependentSchemas does (coGapAllOfDropsKeyKeywords).
+	if n.dep == coDepRequired && n.emitsAllOf() {
+		return false
+	}
+	for _, name := range n.depOn {
+		p := n.presentProp(name)
+		if p == nil || p.required {
+			return false
+		}
+	}
+	return true
+}
+
+// addlFalseActive holds only while every key the instance carries is declared
+// by this schema object: additionalProperties does not read allOf branches,
+// discriminator branches or `then`.
+func (n *coNode) addlFalseActive() bool {
+	return n.extra == coExtraAddlFalse && n.declaresEveryKey()
+}
+
+// addlSchemaActive is the same test for the gap-only schema-valued spelling.
+func (n *coNode) addlSchemaActive() bool {
+	return n.extra == coExtraAddlSchema && n.declaresEveryKey()
+}
+
+func (n *coNode) declaresEveryKey() bool {
+	return n.comp == coCompNone && len(n.branches) == 0 && n.cond == nil
+}
+
+// emitsAllOf reports whether this object will carry an `allOf` -- which it does
+// only while some property is still routed into a branch, since a branch the
+// shrinker emptied is left out.
+func (n *coNode) emitsAllOf() bool {
+	if n.comp != coCompAllOf || coGapAllOfDropsKeyKeywords() {
+		return false
+	}
+	for _, p := range n.props {
+		if p.group > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// maxPropsActive drops the bound where the node also carries a mutation that
+// adds a key for a different reason, and where an allOf would swallow the
+// keyword whole (coGapAllOfDropsKeyKeywords).
+func (n *coNode) maxPropsActive() bool {
+	return n.extra == coExtraMaxProps && !n.emitsAllOf() &&
+		!(n.comp == coCompOneOf && len(n.branches) > 0)
+}
+
+// propNamesActive drops propertyNames beside an allOf, for the same reason.
+func (n *coNode) propNamesActive() bool {
+	return n.extra == coExtraPropNames && !n.emitsAllOf()
+}
+
+// minPropsActive holds only where nothing else at this node removes a key.
+// Every other delete mutation here -- a required property, a discriminator, the
+// property a dependency requires -- would drop the count below the bound as
+// well, and the mutant would be rejected for the wrong keyword.
+func (n *coNode) minPropsActive() bool {
+	if !n.minProps || len(n.branches) > 0 || n.cond != nil || n.depActive() || n.emitsAllOf() {
+		return false
+	}
+	droppable := false
+	for _, p := range n.props {
+		if !p.present {
+			continue
+		}
+		if p.required {
+			return false
+		}
+		droppable = true
+	}
+	return droppable
+}
+
+// instanceKeyCount is the number of keys value() will put in this object. It is
+// the same walk value() makes, which is what lets minProperties and
+// maxProperties be stated as the instance's own count rather than as a number
+// that has to be kept in step with it by hand.
+func (n *coNode) instanceKeyCount() int {
+	count := 0
+	for _, p := range n.props {
+		if p.present {
+			count++
+		}
+	}
+	if len(n.branches) > 0 {
+		count++
+	}
+	count += len(n.patKeys)
+	if n.cond != nil {
+		count++ // condKey
+		if n.cond.yes {
+			count++ // thenKey
+		}
+	}
+	if n.extra == coExtraUnevalSchema {
+		count++ // coUnevalKey
+	}
+	if n.addlSchemaActive() {
+		count++ // coExtraKey
+	}
+	return count
+}
+
+// patValue is a value the patternProperties subschema accepts, patBadValue one
+// it rejects, and they differ in the one keyword that subschema carries.
+func (n *coNode) patValue() any {
+	if n.patStr {
+		return coFillString(n.patBound + 1)
+	}
+	return int64(n.patBound + 2)
+}
+
+func (n *coNode) patBadValue() any {
+	if n.patStr {
+		return coFillString(n.patBound - 1)
+	}
+	return int64(n.patBound - 1)
+}
+
+// unevalValue and unevalBadValue straddle the minimum a schema-valued
+// unevaluatedProperties carries.
+func (n *coNode) unevalValue() int64    { return n.unevalMin + 3 }
+func (n *coNode) unevalBadValue() int64 { return n.unevalMin - 1 }
 
 // applyComposition decides whether an object routes its properties through an
 // allOf, or grows a discriminated anyOf / oneOf beside them.
@@ -596,7 +1210,10 @@ func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
 	if depth < coMaxDepth {
-		kinds = append(kinds, coObject, coArray)
+		// coTuple is a property's schema and never the document root: a root
+		// array carrying prefixItems + unevaluatedItems does not compile (see
+		// coGapRootArrayApplicator).
+		kinds = append(kinds, coObject, coArray, coTuple)
 	}
 	if visible > 0 {
 		kinds = append(kinds, coRef)
@@ -610,6 +1227,8 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 		return b.buildObject(depth, visible)
 	case coArray:
 		return b.buildArray(depth, visible)
+	case coTuple:
+		return b.buildTuple()
 	case coAltAnyOf:
 		return b.buildAltAnyOf(b.chance(2))
 	case coIfElse:
@@ -680,6 +1299,16 @@ func (b *coBuilder) buildArray(depth, visible int) *coNode {
 	if b.chance(2) {
 		v := hi
 		n.maxItems = &v
+	}
+	// uniqueItems needs elements that differ at every length the length mutants
+	// reach, and the shared element shape the rest of the array machinery rests
+	// on produces identical ones. So a unique array takes an unconstrained
+	// integer element instead, and arrayValue numbers the positions: the
+	// minItems and maxItems mutants stay unique, and the only way to make a
+	// duplicate is the mutation that means to.
+	if b.chance(3) {
+		n.unique = true
+		n.elem = &coNode{kind: coInteger}
 	}
 	return n
 }
@@ -838,7 +1467,16 @@ func (n *coNode) fragment() map[string]any {
 			}
 			groups[g] = append(groups[g], p)
 		}
-		if props, req := coDeclare(groups[0]); len(props) > 0 {
+		props, req := coDeclare(groups[0])
+		if n.cond != nil {
+			// condKey is declared here as well as inside `if`, so that it is
+			// evaluated whichever side of `if` the instance took. Left to `if`
+			// alone it would be evaluated only when `if` succeeded, and an
+			// instance on the other side would fail its own
+			// unevaluatedProperties on the very key that put it there.
+			props[coCondKey] = map[string]any{"type": "string"}
+		}
+		if len(props) > 0 {
 			m["properties"] = props
 			if len(req) > 0 {
 				m["required"] = req
@@ -877,6 +1515,17 @@ func (n *coNode) fragment() map[string]any {
 				m["anyOf"] = alts
 			}
 		}
+		n.emitKeyKeywords(m)
+
+	case coTuple:
+		m["type"] = "array"
+		prefix := make([]any, 0, len(n.tupleTypes))
+		for _, t := range n.tupleTypes {
+			prefix = append(prefix, map[string]any{"type": t})
+		}
+		m["prefixItems"] = prefix
+		m["unevaluatedItems"] = false
+
 	case coArray:
 		m["type"] = "array"
 		m["items"] = n.elem.fragment()
@@ -885,6 +1534,9 @@ func (n *coNode) fragment() map[string]any {
 		}
 		if n.maxItems != nil {
 			m["maxItems"] = *n.maxItems
+		}
+		if n.unique {
+			m["uniqueItems"] = true
 		}
 	case coString:
 		m["type"] = "string"
@@ -969,6 +1621,70 @@ func (n *coNode) fragment() map[string]any {
 	return m
 }
 
+// emitKeyKeywords writes the object keywords that speak about keys rather than
+// about one named property. Every one of them is guarded by the predicate that
+// decides whether its mutation is still unambiguous, so the schema and the
+// mutation catalogue can never disagree about which of them are live.
+func (n *coNode) emitKeyKeywords(m map[string]any) {
+	if len(n.patKeys) > 0 {
+		value := map[string]any{}
+		if n.patStr {
+			value["type"] = "string"
+			value["minLength"] = n.patBound
+		} else {
+			value["type"] = "integer"
+			value["minimum"] = n.patBound
+		}
+		m["patternProperties"] = map[string]any{coPatternExpr: value}
+	}
+
+	if n.cond != nil {
+		m["if"] = map[string]any{
+			"properties": map[string]any{coCondKey: map[string]any{"const": coCondYes}},
+			"required":   []string{coCondKey},
+		}
+		// `then` requires what it declares, so both sides of `if` have a mutant:
+		// on the `then` side, removing thenKey; on the other, turning condKey
+		// into the const so that `then` starts applying to a document that does
+		// not carry it.
+		m["then"] = map[string]any{
+			"properties": map[string]any{coThenKey: map[string]any{"type": "integer", "minimum": n.cond.min}},
+			"required":   []string{coThenKey},
+		}
+	}
+
+	switch {
+	case n.addlFalseActive():
+		m["additionalProperties"] = false
+	case n.addlSchemaActive():
+		m["additionalProperties"] = map[string]any{"type": "integer", "minimum": n.unevalMin}
+	case n.extra == coExtraUnevalFalse:
+		m["unevaluatedProperties"] = false
+	case n.extra == coExtraUnevalSchema:
+		m["unevaluatedProperties"] = map[string]any{"type": "integer", "minimum": n.unevalMin}
+	case n.maxPropsActive():
+		m["maxProperties"] = n.instanceKeyCount()
+	case n.propNamesActive():
+		m["propertyNames"] = map[string]any{"pattern": coPropNamePattern}
+	}
+
+	if n.minPropsActive() {
+		m["minProperties"] = n.instanceKeyCount()
+	}
+
+	if n.depActive() {
+		deps := append([]string(nil), n.depOn...)
+		sort.Strings(deps)
+		if n.dep == coDepRequired {
+			m["dependentRequired"] = map[string]any{n.depTrig: deps}
+		} else {
+			// A `required`-only branch: anything else in it would be dropped
+			// (see coGapDependentSchemaProperties).
+			m["dependentSchemas"] = map[string]any{n.depTrig: map[string]any{"required": deps}}
+		}
+	}
+}
+
 // coDeclare renders one group of properties as the `properties` and `required`
 // of whichever schema object is declaring them -- the node itself, or one of
 // its allOf branches.
@@ -1008,7 +1724,28 @@ func (d *coDoc) value(n *coNode) any {
 			disc := n.branches[n.branchIx]
 			m[disc.name] = disc.value
 		}
+		for _, k := range n.patKeys {
+			m[k] = n.patValue()
+		}
+		if n.cond != nil {
+			// thenKey goes in exactly when `if` matches, which is what makes
+			// "present" and "evaluated" the same decision rather than two.
+			if n.cond.yes {
+				m[coCondKey] = coCondYes
+				m[coThenKey] = n.cond.val
+			} else {
+				m[coCondKey] = coCondNo
+			}
+		}
+		if n.extra == coExtraUnevalSchema {
+			m[coUnevalKey] = n.unevalValue()
+		}
+		if n.addlSchemaActive() {
+			m[coExtraKey] = n.unevalValue()
+		}
 		return m
+	case coTuple:
+		return d.tupleValue(n, len(n.tupleTypes))
 	case coArray:
 		return d.arrayValue(n, n.numItems)
 	case coString:
@@ -1048,7 +1785,31 @@ func (d *coDoc) value(n *coNode) any {
 func (d *coDoc) arrayValue(n *coNode, count int) []any {
 	out := make([]any, 0, count)
 	for i := 0; i < count; i++ {
+		if n.unique {
+			// Numbering the positions makes the array unique at every length,
+			// so the length mutants stay violations of exactly minItems or
+			// maxItems and the only duplicate is the one uniqueItems' own
+			// mutant plants.
+			out = append(out, int64(i))
+			continue
+		}
 		out = append(out, d.value(n.elem))
+	}
+	return out
+}
+
+// tupleValue builds count positions of a tuple, taking the type of position i
+// from prefixItems when there is one. count beyond the prefix is how the
+// unevaluatedItems mutant is built: that position is one no prefix entry
+// evaluates.
+func (d *coDoc) tupleValue(n *coNode, count int) []any {
+	out := make([]any, 0, count)
+	for i := 0; i < count; i++ {
+		if i < len(n.tupleTypes) {
+			out = append(out, coTupleValue(n.tupleTypes[i]))
+			continue
+		}
+		out = append(out, coTupleValue(coTupleTypes[i%len(coTupleTypes)].name))
 	}
 	return out
 }
@@ -1190,6 +1951,7 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 			}
 		}
 		coCollectDiscriminators(n, path, prop, out)
+		d.collectKeyKeywords(n, path, prop, out)
 		if len(path) > 0 {
 			*out = append(*out, coMutation{
 				Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
@@ -1211,6 +1973,15 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 				Want:  []string{prop, "maximum is"},
 			})
 		}
+		if n.unique && n.numItems > 1 {
+			// Element 0 is 0 and element 1 is 1, so writing 0 over element 1
+			// makes the one duplicate the array did not have. The length is
+			// untouched, so minItems and maxItems still hold.
+			*out = append(*out, coMutation{
+				Keyword: "uniqueItems", Path: coPath(path, 1), Prop: prop,
+				Value: int64(0), Want: []string{prop, "not unique"},
+			})
+		}
 		if n.numItems > 0 {
 			d.collect(n.elem, coPath(path, 0), prop, out)
 		}
@@ -1219,6 +1990,20 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 				Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
 			})
 		}
+
+	case coTuple:
+		// One element past the prefix. prefixItems evaluates positions 0..k-1
+		// and nothing evaluates position k, so unevaluatedItems: false forbids
+		// it -- and it forbids it whatever the value is, so the element the
+		// mutant appends needs no thought beyond being valid JSON.
+		*out = append(*out, coMutation{
+			Keyword: "unevaluatedItems", Path: path, Prop: prop,
+			Value: d.tupleValue(n, len(n.tupleTypes)+1),
+			Want:  []string{prop, "maximum is"},
+		})
+		*out = append(*out, coMutation{
+			Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
+		})
 
 	case coString:
 		if n.patIdx >= 0 {
@@ -1432,6 +2217,139 @@ func coCollectDiscriminators(n *coNode, path []any, prop string, out *[]coMutati
 	}
 }
 
+// collectKeyKeywords derives the mutations of the object keywords that speak
+// about keys. Each rests on the builder having decided which keys the instance
+// carries and which applicator accounts for each of them, so "this edit
+// violates exactly this keyword" is an argument about a decision rather than
+// about the schema.
+//
+// The guards here are the same predicates the schema emission consults, so a
+// keyword that is not in the schema contributes no mutation and a keyword that
+// is contributes exactly one.
+func (d *coDoc) collectKeyKeywords(n *coNode, path []any, prop string, out *[]coMutation) {
+	// patternProperties. The key stays and only its value changes, so which
+	// keys exist is untouched and nothing but the pattern's own subschema can
+	// be the reason for the rejection.
+	if len(n.patKeys) > 0 {
+		key := n.patKeys[0]
+		want := []string{"patternProperties", key, "is less than minimum"}
+		if n.patStr {
+			want = []string{"patternProperties", key, "minLength"}
+		}
+		*out = append(*out, coMutation{
+			Keyword: "patternProperties", Path: coPath(path, key), Prop: prop,
+			Value: n.patBadValue(), Want: want,
+		})
+	}
+
+	if n.cond != nil {
+		if n.cond.yes {
+			// `if` matches, so `then` applies and requires thenKey.
+			*out = append(*out, coMutation{
+				Keyword: "thenRequired", Path: coPath(path, coThenKey), Prop: prop,
+				Delete: true, Want: []string{"then", coThenKey},
+			})
+			*out = append(*out, coMutation{
+				Keyword: "thenSchema", Path: coPath(path, coThenKey), Prop: prop,
+				Value: n.cond.min - 1, Want: []string{"then", coThenKey},
+			})
+			if n.extra == coExtraUnevalFalse {
+				// This is the mutant unevaluatedProperties exists for. Moving
+				// condKey off the const makes `if` fail, so `then` no longer
+				// applies and no longer evaluates thenKey. There is no `else`,
+				// and condKey is typed by the object's own `properties`, so
+				// nothing else about the document changes: its single fault is
+				// a key that no applicator accounted for.
+				*out = append(*out, coMutation{
+					Keyword: "unevaluatedPropertiesConditional", Path: coPath(path, coCondKey), Prop: prop,
+					Value: coCondNo, Want: []string{"unevaluated property", coThenKey},
+				})
+			}
+		} else {
+			// `if` fails, so thenKey is legitimately absent. Moving condKey
+			// onto the const makes `then` start applying to a document that
+			// does not carry what `then` requires.
+			*out = append(*out, coMutation{
+				Keyword: "thenTriggered", Path: coPath(path, coCondKey), Prop: prop,
+				Value: coCondYes, Want: []string{"then", coThenKey},
+			})
+		}
+	}
+
+	// The keyword about keys the object does not name. At most one is live, so
+	// the added key has exactly one thing to violate.
+	switch {
+	case n.addlFalseActive():
+		*out = append(*out, coMutation{
+			Keyword: "additionalProperties", Path: coPath(path, coExtraKey), Prop: prop,
+			Value: int64(1), Want: []string{"additional property", coExtraKey},
+		})
+	case n.addlSchemaActive():
+		// coExtraKey is already in the instance and already covered by
+		// additionalProperties; the mutation only moves its value off the
+		// subschema's minimum.
+		*out = append(*out, coMutation{
+			Keyword: "additionalPropertiesSchema", Path: coPath(path, coExtraKey), Prop: prop,
+			Value: n.unevalBadValue(),
+			Want:  []string{"additionalProperties", coExtraKey, "is less than minimum"},
+		})
+	case n.extra == coExtraUnevalFalse:
+		*out = append(*out, coMutation{
+			Keyword: "unevaluatedProperties", Path: coPath(path, coExtraKey), Prop: prop,
+			Value: int64(1), Want: []string{"unevaluated property", coExtraKey},
+		})
+	case n.extra == coExtraUnevalSchema:
+		// coUnevalKey is already in the instance and already unevaluated; the
+		// mutation only moves its value off the subschema's minimum.
+		*out = append(*out, coMutation{
+			Keyword: "unevaluatedPropertiesSchema", Path: coPath(path, coUnevalKey), Prop: prop,
+			Value: n.unevalBadValue(),
+			Want:  []string{"unevaluated property", coUnevalKey, "is less than minimum"},
+		})
+	case n.maxPropsActive():
+		*out = append(*out, coMutation{
+			Keyword: "maxProperties", Path: coPath(path, coExtraKey), Prop: prop,
+			Value: int64(1), Want: []string{"too many properties", "exceeds maximum"},
+		})
+	case n.propNamesActive():
+		*out = append(*out, coMutation{
+			Keyword: "propertyNames", Path: coPath(path, coBadPropName), Prop: prop,
+			Value: int64(1), Want: []string{"propertyNames", coBadPropName},
+		})
+	}
+
+	// minProperties. minPropsActive has already established that the node has
+	// a present property, that none of its present properties are required,
+	// and that nothing else here removes a key -- so dropping the first present
+	// property takes the count below the bound and does nothing else.
+	if n.minPropsActive() {
+		for _, p := range n.props {
+			if !p.present {
+				continue
+			}
+			*out = append(*out, coMutation{
+				Keyword: "minProperties", Path: coPath(path, p.name), Prop: prop,
+				Delete: true, Want: []string{"too few properties", "is less than minimum"},
+			})
+			break
+		}
+	}
+
+	// The dependency. Its dependents are present and optional, so removing one
+	// leaves `required` satisfied and the trigger in place: the only thing the
+	// document now fails is the dependency itself.
+	if n.depActive() {
+		keyword, reported := "dependentRequired", "dependentRequired"
+		if n.dep == coDepSchemas {
+			keyword, reported = "dependentSchemas", "dependentSchema"
+		}
+		*out = append(*out, coMutation{
+			Keyword: keyword, Path: coPath(path, n.depOn[0]), Prop: prop,
+			Delete: true, Want: []string{reported, n.depOn[0]},
+		})
+	}
+}
+
 func coCompName(c coComp) string {
 	if c == coCompOneOf {
 		return "oneOf"
@@ -1462,6 +2380,13 @@ func (n *coNode) clone() *coNode {
 	for _, b := range n.branches {
 		d := *b
 		c.branches = append(c.branches, &d)
+	}
+	c.patKeys = append([]string(nil), n.patKeys...)
+	c.depOn = append([]string(nil), n.depOn...)
+	c.tupleTypes = append([]string(nil), n.tupleTypes...)
+	if n.cond != nil {
+		cond := *n.cond
+		c.cond = &cond
 	}
 	return &c
 }
@@ -1539,6 +2464,35 @@ func coReduce(d *coDoc) []*coDoc {
 	for i, n := range nodes {
 		switch n.kind {
 		case coObject:
+			// Drop each keyword about keys on its own. These are the reductions
+			// that tell a failure in one of them apart from a failure in the
+			// object it was attached to.
+			if n.extra != coExtraNone {
+				c := d.clone()
+				coNodesOf(c)[i].extra = coExtraNone
+				out = append(out, c)
+			}
+			if len(n.patKeys) > 0 {
+				c := d.clone()
+				coNodesOf(c)[i].patKeys = nil
+				out = append(out, c)
+			}
+			if n.cond != nil {
+				c := d.clone()
+				coNodesOf(c)[i].cond = nil
+				out = append(out, c)
+			}
+			if n.dep != coDepNone {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				t.dep, t.depTrig, t.depOn = coDepNone, "", nil
+				out = append(out, c)
+			}
+			if n.minProps {
+				c := d.clone()
+				coNodesOf(c)[i].minProps = false
+				out = append(out, c)
+			}
 			// Drop the applicator and declare everything inline again. This is
 			// the reduction that tells the two apart: if the failure survives
 			// it, composition was not what broke.
@@ -1585,7 +2539,7 @@ func coReduce(d *coDoc) []*coDoc {
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {
-				case coObject, coArray, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot:
+				case coObject, coArray, coTuple, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot:
 					c := d.clone()
 					coNodesOf(c)[i].props[j].node = &coNode{kind: coBoolean}
 					out = append(out, c)
@@ -1593,6 +2547,11 @@ func coReduce(d *coDoc) []*coDoc {
 			}
 
 		case coArray:
+			if n.unique {
+				c := d.clone()
+				coNodesOf(c)[i].unique = false
+				out = append(out, c)
+			}
 			if n.minItems != nil {
 				c := d.clone()
 				coNodesOf(c)[i].minItems = nil
@@ -1606,6 +2565,17 @@ func coReduce(d *coDoc) []*coDoc {
 			if n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems) {
 				c := d.clone()
 				coNodesOf(c)[i].numItems--
+				out = append(out, c)
+			}
+
+		case coTuple:
+			// A shorter prefix is a smaller tuple with the same argument
+			// behind it, so the reported case names as few positions as the
+			// failure needs.
+			if len(n.tupleTypes) > 1 {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				t.tupleTypes = t.tupleTypes[:len(t.tupleTypes)-1]
 				out = append(out, c)
 			}
 
