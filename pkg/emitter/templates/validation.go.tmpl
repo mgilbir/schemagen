@@ -1161,41 +1161,60 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
-	{{- if $struct.HasCousinUnevalChecks}}
-	// Cousin isolation: allOf/anyOf sub-schemas with their own unevaluatedProperties
-	// can only see properties evaluated in their own branch scope.
-	{{- range $ci, $cousin := $struct.CousinUnevalChecks}}
-	{{- if not $cousin.AllEvaluated}}
+	{{- if $struct.HasBranchOverflowChecks}}
+	{{- /* An allOf/anyOf branch's own additionalProperties or
+	       unevaluatedProperties. Both are scoped to the schema object stating
+	       them, so each carries the set of keys it accounts for and is run over
+	       the raw JSON -- every key of the instance, including the ones this
+	       struct declares fields for, which no overflow map ever held. */}}
+	// Per-branch overflow: an allOf/anyOf branch's own additionalProperties or
+	// unevaluatedProperties sees every key of the instance except the ones that
+	// branch itself accounts for.
+	{{- range $ci, $branch := $struct.BranchOverflowChecks}}
+	{{- if not $branch.AllAccounted}}
 	{
-		{{- if gt (len $cousin.EvaluatedNames) 0}}
-		_cousinEval{{$ci}} := map[string]bool{
-			{{- range $cousin.EvaluatedNames}}
+		{{- if gt (len $branch.AccountedNames) 0}}
+		_branchAcct{{$ci}} := map[string]bool{
+			{{- range $branch.AccountedNames}}
 			{{printf "%q" .}}: true,
 			{{- end}}
 		}
 		{{- end}}
-		{{- if gt (len $cousin.EvalPatterns) 0}}
-		_cousinPat{{$ci}} := []*ecma262.Regexp{
-			{{- range $cousin.EvalPatterns}}
+		{{- if gt (len $branch.AccountedPatterns) 0}}
+		_branchPat{{$ci}} := []*ecma262.Regexp{
+			{{- range $branch.AccountedPatterns}}
 			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		{{- end}}
-		for k := range {{$recv}}._jsonKeys {
-			_cEval := false
-			{{- if gt (len $cousin.EvaluatedNames) 0}}
-			if _cousinEval{{$ci}}[k] { _cEval = true }
+		for k, _bv := range {{$recv}}._jsonRawProps {
+			_ = _bv
+			_bAcct := false
+			{{- if gt (len $branch.AccountedNames) 0}}
+			if _branchAcct{{$ci}}[k] { _bAcct = true }
 			{{- end}}
-			{{- if gt (len $cousin.EvalPatterns) 0}}
-			if !_cEval {
-				for _, _re := range _cousinPat{{$ci}} {
-					if _re.MatchString(k) { _cEval = true; break }
+			{{- if gt (len $branch.AccountedPatterns) 0}}
+			if !_bAcct {
+				for _, _re := range _branchPat{{$ci}} {
+					if _re.MatchString(k) { _bAcct = true; break }
 				}
 			}
 			{{- end}}
-			if !_cEval {
-				{{- if $cousin.IsForbidden}}
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+			if !_bAcct {
+				{{- if $branch.IsForbidden}}
+				return fmt.Errorf("{{$branch.Keyword}}: property %q is not allowed", k)
+				{{- else if $branch.TypeName}}
+				{
+					// The sub-schema's own type answers for the value: the decode
+					// enforces its shape and the Validate enforces the rest.
+					var _bVal {{$branch.TypeName}}
+					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+					}
+					if _bErr := _bVal.Validate(); _bErr != nil {
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+					}
+				}
 				{{- end}}
 			}
 		}

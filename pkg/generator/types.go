@@ -101,7 +101,7 @@ type StructDef struct {
 	RequiredJSON           []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
-	CousinUnevalChecks     []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
+	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf/anyOf sub-schemas
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
@@ -357,9 +357,10 @@ func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
 }
 
-// HasCousinUnevalChecks returns true if the struct has cousin isolation checks.
-func (d *StructDef) HasCousinUnevalChecks() bool {
-	return len(d.CousinUnevalChecks) > 0
+// HasBranchOverflowChecks returns true if the struct carries per-branch
+// additionalProperties/unevaluatedProperties checks.
+func (d *StructDef) HasBranchOverflowChecks() bool {
+	return len(d.BranchOverflowChecks) > 0
 }
 
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
@@ -380,6 +381,13 @@ func (d *StructDef) NeedsRawProps() bool {
 		if ds.Branch != nil {
 			return true
 		}
+	}
+	// A per-branch overflow check reads every key of the instance, including the
+	// ones the struct declares fields for, and a schema-valued one reads their
+	// values too. Only the raw map has both; the declared fields have been
+	// decoded into Go types by then and the overflow map never held them.
+	if len(d.BranchOverflowChecks) > 0 {
+		return true
 	}
 	if d.UnevaluatedProperties == nil {
 		return false
@@ -403,7 +411,8 @@ func (d *StructDef) NeedsRawProps() bool {
 
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
 // validation, dependent schema/required validation, propertyNames validation,
-// or unevaluatedProperties with conditional evaluation or cousin isolation.
+// or unevaluatedProperties with conditional evaluation or a per-branch overflow
+// check.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if d.HasRequiredFields() {
 		// Required-property presence is checked in Validate() via _jsonKeys so the
@@ -423,7 +432,7 @@ func (d *StructDef) NeedsJSONKeys() bool {
 	if d.PropertyNames != nil {
 		return true
 	}
-	if len(d.CousinUnevalChecks) > 0 {
+	if len(d.BranchOverflowChecks) > 0 {
 		return true
 	}
 	if d.UnevaluatedProperties != nil && d.UnevaluatedProperties.HasConditionalEvals() {
@@ -725,14 +734,44 @@ type ConstCheck struct {
 	JSONValue    string // expected JSON-encoded value (e.g., `"bar"`, `42`)
 }
 
-// CousinUnevalCheck describes an unevaluatedProperties check from an allOf/anyOf
-// sub-schema ("cousin"). Per JSON Schema spec, unevaluatedProperties inside an
-// applicator branch can only see annotations from its own branch, not siblings.
-type CousinUnevalCheck struct {
-	IsForbidden    bool     // true when the cousin's unevaluatedProperties: false
-	EvaluatedNames []string // property names evaluated in the cousin's own scope
-	EvalPatterns   []string // regex patterns evaluated in the cousin's own scope
-	AllEvaluated   bool     // true when the cousin's branch has additionalProperties
+// BranchOverflowCheck is one applicator branch's own view of which instance keys
+// it leaves unaccounted for, and what its overflow keyword demands of them.
+//
+// `additionalProperties` and `unevaluatedProperties` are both scoped to the
+// schema object stating them, not to the merged key set an allOf flattens into a
+// struct. A branch that declares no property of its own therefore speaks about
+// *every* key of the instance, including the ones the parent declares -- which
+// is why neither keyword can be folded into the parent's overflow map, whose
+// whole content is the keys the parent does not declare. Each check carries its
+// own accounted set instead and is run over the raw JSON the unmarshaler kept.
+//
+// The two keywords differ only in how that set is computed, and AccountedNames /
+// AccountedPatterns are filled accordingly: `additionalProperties` sees the
+// `properties` and `patternProperties` adjacent to it in the same schema object
+// and nothing else, while `unevaluatedProperties` also sees what the branch's own
+// $ref and nested allOf evaluated.
+type BranchOverflowCheck struct {
+	// Keyword names the failure in the error message: "additionalProperties" or
+	// "unevaluatedProperties".
+	Keyword string
+	// AccountedNames are the property names the branch accounts for in its own
+	// scope; a key outside this set (and the patterns below) is what the keyword
+	// speaks about.
+	AccountedNames []string
+	// AccountedPatterns are the regexes the branch accounts for in its own scope.
+	AccountedPatterns []string
+	// AllAccounted is set when the branch accounts for every key it could see, so
+	// the keyword can never fire and the check is dropped.
+	AllAccounted bool
+	// IsForbidden is set when the keyword's value is the boolean false: no
+	// unaccounted key is permitted at all.
+	IsForbidden bool
+	// TypeName is the generated type an unaccounted value is decoded into and
+	// validated through, for a schema-valued keyword. It is the same route a
+	// patternProperties bucket takes, and settled by the same later pass
+	// (resolvePatternPropertyTypes): a sub-schema whose type turns out not to
+	// carry a Validate leaves this empty and the value goes unchecked.
+	TypeName string
 }
 
 // ValidationRule describes a validation constraint on a struct field.

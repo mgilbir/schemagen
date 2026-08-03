@@ -763,11 +763,14 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
-			if len(sd.CousinUnevalChecks) > 0 {
-				needsFmt = true // Validate() uses fmt.Errorf for cousin isolation errors
-				for _, c := range sd.CousinUnevalChecks {
-					if len(c.EvalPatterns) > 0 {
+			if len(sd.BranchOverflowChecks) > 0 {
+				needsFmt = true // Validate() uses fmt.Errorf for per-branch overflow errors
+				for _, c := range sd.BranchOverflowChecks {
+					if len(c.AccountedPatterns) > 0 {
 						needsRegexp = true
+					}
+					if c.TypeName != "" {
+						needsJSON = true // the unaccounted value is decoded into the branch's type
 					}
 				}
 			}
@@ -2073,6 +2076,13 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 			needsUnmarshal = true
 		}
 	}
+	// A branch's own additionalProperties/unevaluatedProperties binds here too.
+	// The one the merge adopted is skipped by pointer identity, so the overflow
+	// map above and a check here never both answer for the same keyword.
+	branchChecks := g.collectBranchOverflowChecks(s, name)
+	if len(branchChecks) > 0 {
+		needsUnmarshal = true
+	}
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -2082,6 +2092,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 		PropertyNames:        propNames,
 		Validations:          validations,
 		ItemValidations:      itemValidations,
+		BranchOverflowChecks: branchChecks,
 		RequiredJSON:         requiredJSON,
 		OverflowNullCheck:    overflowNullCheck,
 		NeedsMarshal:         needsMarshal,
@@ -2912,17 +2923,21 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
-	// Detect cousin isolation: allOf/anyOf sub-schemas with their own
-	// unevaluatedProperties need separate validation scoped to their branch.
-	cousinChecks := g.collectCousinUnevalChecks(s)
-	if len(cousinChecks) > 0 {
-		// Cousin checks need an overflow map and _jsonKeys.
+	// An allOf/anyOf branch stating additionalProperties or unevaluatedProperties
+	// keeps its own view of which keys it leaves unaccounted for; neither keyword
+	// can be folded into this struct's overflow map. See
+	// collectBranchOverflowChecks.
+	branchChecks := g.collectBranchOverflowChecks(s, name)
+	if len(branchChecks) > 0 {
+		// The checks read the raw JSON, which only the custom unmarshaler keeps,
+		// and every key that is not a declared field must survive the round trip
+		// for the marshaler to put it back.
+		needsUnmarshal = true
 		if additionalProps == nil {
 			additionalProps = &AdditionalPropertiesDef{
 				ValueType: &PrimitiveType{Name: "json.RawMessage"},
 			}
 			needsMarshal = true
-			needsUnmarshal = true
 		}
 	}
 
@@ -2952,7 +2967,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		UnevalItemsValidations: unevalItemsValidations,
 		NonObjectValidations:   nonObjRules,
 		UnevaluatedProperties:  unevalProps,
-		CousinUnevalChecks:     cousinChecks,
+		BranchOverflowChecks:   branchChecks,
 		ObjectOneOfs:           objectOneOfs,
 		ObjectAnyOfs:           objectAnyOfs,
 		ObjectConditionals:     objectConditionals,
@@ -11190,10 +11205,31 @@ func patternRulesCoverSchema(s *schema.Schema) bool {
 // materialize actually carries a Validate is settled later, by
 // resolvePatternPropertyTypes, which is the only point at which that is known.
 func (g *Generator) patternValueTypeName(sub *schema.Schema, posName string) string {
-	if sub == nil || sub.IsBooleanSchema() || !g.validationKeywordsEnabled() {
+	if patternRulesCoverSchema(sub) {
 		return ""
 	}
-	if patternRulesCoverSchema(sub) {
+	return g.rawValueTypeName(sub, posName)
+}
+
+// branchOverflowValueTypeName materializes the type an unaccounted value is
+// checked through for a schema-valued additionalProperties or
+// unevaluatedProperties read off an applicator branch.
+//
+// Unlike a patternProperties bucket there is no in-place scalar fallback to fall
+// back to here, so the scalar short-circuit patternValueTypeName takes is not
+// taken: a sub-schema whose whole content is {"type":"integer","minimum":5} --
+// the shape issue #101 reproduces with -- still gets a type, because dropping it
+// would leave the keyword enforcing nothing at all. The type is an alias with
+// the bound on its Validate, and decoding into it is what asserts the type.
+func (g *Generator) branchOverflowValueTypeName(sub *schema.Schema, posName string) string {
+	return g.rawValueTypeName(sub, posName)
+}
+
+// rawValueTypeName materializes the type a raw JSON value is decoded into and
+// validated through, and returns its name, or "" when the sub-schema states
+// nothing a type could carry.
+func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string {
+	if sub == nil || sub.IsBooleanSchema() || !g.validationKeywordsEnabled() {
 		return ""
 	}
 	if (sub.EffectiveRef() != "" || sub.DynamicRef != "") &&
@@ -11222,7 +11258,8 @@ func (g *Generator) patternValueTypeName(sub *schema.Schema, posName string) str
 	return ""
 }
 
-// resolvePatternPropertyTypes settles, for each patternProperties bucket,
+// resolvePatternPropertyTypes settles, for each patternProperties bucket and
+// each per-branch overflow check,
 // whether the type materialized for its sub-schema is dispatched to or the
 // scalar rules are used instead. Both were prepared during generation because
 // the answer depends on every type def existing: an alias whose underlying chain
@@ -11244,6 +11281,11 @@ func (g *Generator) patternValueTypeName(sub *schema.Schema, posName string) str
 // sub-schema is a $ref uses the target's own type, which exists for reasons of
 // its own. Nothing materializes after this pass runs, so no later lookup can
 // find the withdrawn name.
+//
+// A per-branch overflow check has no scalar fallback, so a declined type leaves
+// it with nothing to say about the value. It keeps a `false` keyword's rejection
+// and drops the value check, which under-enforces rather than rejecting a
+// document the schema admits.
 func (g *Generator) resolvePatternPropertyTypes() {
 	validatable := make(map[string]bool)
 	for _, td := range g.output.TypeDefs {
@@ -11269,6 +11311,20 @@ func (g *Generator) resolvePatternPropertyTypes() {
 			}
 			pp.Validations = nil
 		}
+		kept := sd.BranchOverflowChecks[:0]
+		for i := range sd.BranchOverflowChecks {
+			bc := &sd.BranchOverflowChecks[i]
+			if bc.TypeName != "" && !validatable[bc.TypeName] {
+				declined[bc.TypeName] = true
+				bc.TypeName = ""
+			}
+			// A check with neither a rejection nor a type left says nothing.
+			if !bc.IsForbidden && bc.TypeName == "" {
+				continue
+			}
+			kept = append(kept, *bc)
+		}
+		sd.BranchOverflowChecks = kept
 	}
 	if len(declined) == 0 {
 		return
@@ -12145,13 +12201,27 @@ func mergeEvalBranches(a, b *EvalBranchDef) *EvalBranchDef {
 	}
 }
 
-// collectCousinUnevalChecks detects allOf/anyOf sub-schemas that have their own
-// unevaluatedProperties constraint (cousin isolation). For each such sub-schema,
-// it computes the evaluated set scoped to that branch only.
-func (g *Generator) collectCousinUnevalChecks(s *schema.Schema) []CousinUnevalCheck {
-	var checks []CousinUnevalCheck
+// collectBranchOverflowChecks builds the per-branch view of the two keywords an
+// allOf merge cannot express by folding them into the parent: a branch's
+// `additionalProperties` and a branch's `unevaluatedProperties`.
+//
+// Both are scoped to the schema object that states them. The parent's overflow
+// map is not that scope -- it holds the keys the *parent* does not declare -- so
+// hanging either keyword off it checks a different set of keys from the one the
+// schema names. A branch that declares nothing of its own speaks about every key
+// of the instance, including the ones the parent declares and gives fields to,
+// and no field-shaped or overflow-shaped check can reach those. Each branch gets
+// its own accounted set here instead, and the emitted loop runs over the raw
+// JSON, which is the only place every key of the instance still exists together.
+//
+// ownerName names the types minted for a schema-valued keyword.
+func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName string) []BranchOverflowCheck {
+	var checks []BranchOverflowCheck
 
-	// Check allOf sub-schemas.
+	// unevaluatedProperties, from a direct allOf or anyOf branch. This is the
+	// long-standing "cousin isolation" case: an unevaluatedProperties inside an
+	// applicator branch sees the annotations of its own branch and not a
+	// sibling's.
 	for _, sub := range s.AllOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
@@ -12162,13 +12232,10 @@ func (g *Generator) collectCousinUnevalChecks(s *schema.Schema) []CousinUnevalCh
 		if resolved.UnevaluatedProperties == nil {
 			continue
 		}
-		check := g.buildCousinCheck(resolved)
-		if check != nil {
+		if check := g.buildBranchUnevalCheck(resolved, ownerName, len(checks)); check != nil {
 			checks = append(checks, *check)
 		}
 	}
-
-	// Check anyOf sub-schemas.
 	for _, sub := range s.AnyOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
@@ -12179,17 +12246,101 @@ func (g *Generator) collectCousinUnevalChecks(s *schema.Schema) []CousinUnevalCh
 		if resolved.UnevaluatedProperties == nil {
 			continue
 		}
-		check := g.buildCousinCheck(resolved)
-		if check != nil {
+		if check := g.buildBranchUnevalCheck(resolved, ownerName, len(checks)); check != nil {
 			checks = append(checks, *check)
 		}
 	}
 
+	// additionalProperties, from an allOf branch only. Every allOf branch binds,
+	// so a keyword read off one can be enforced unconditionally; an anyOf branch
+	// need not be the one the instance satisfies, and enforcing its keyword
+	// anyway would reject documents the schema admits.
+	checks = append(checks, g.collectBranchAdditionalChecks(s.AllOf, s.AdditionalProperties, ownerName, len(checks), make(map[*schema.Schema]bool))...)
+
 	return checks
 }
 
-// buildCousinCheck builds a CousinUnevalCheck for a sub-schema with unevaluatedProperties.
-func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
+// collectBranchAdditionalChecks walks the allOf branches for schema objects that
+// state `additionalProperties`, following the same routes into a branch that the
+// merge itself follows: a $ref chain and a nested allOf.
+//
+// The accounted set is the `properties` and `patternProperties` written *in the
+// same schema object* as the keyword, and nothing else. That adjacency is what
+// additionalProperties means: it does not see through a $ref, and it does not
+// see a sibling branch's or the parent's declarations. It is the one way this
+// differs from unevaluatedProperties, which does collect what its own $ref and
+// nested allOf evaluated.
+//
+// merged is the additionalProperties the surrounding merge already adopted, if
+// any. Where a branch's keyword is that very node, generateAllOfDef proved the
+// parent's overflow map holds exactly the keys the branch governs and the
+// keyword is already enforced through it; a second check here would only report
+// the same violation twice.
+func (g *Generator) collectBranchAdditionalChecks(allOf []*schema.Schema, merged *schema.SchemaOrBool, ownerName string, firstIndex int, onPath map[*schema.Schema]bool) []BranchOverflowCheck {
+	var checks []BranchOverflowCheck
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		resolved := sub
+		for {
+			if ap := resolved.AdditionalProperties; ap != nil && ap != merged {
+				if check := g.buildBranchAdditionalCheck(resolved, ownerName, firstIndex+len(checks)); check != nil {
+					checks = append(checks, *check)
+				}
+			}
+			checks = append(checks, g.collectBranchAdditionalChecks(resolved.AllOf, merged, ownerName, firstIndex+len(checks), onPath)...)
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
+			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil || onPath[r] {
+				break
+			}
+			onPath[r] = true
+			resolved = r
+		}
+	}
+	return checks
+}
+
+// buildBranchAdditionalCheck builds the check for the `additionalProperties`
+// stated on one schema object. Returns nil when the keyword permits everything.
+func (g *Generator) buildBranchAdditionalCheck(s *schema.Schema, ownerName string, index int) *BranchOverflowCheck {
+	ap := s.AdditionalProperties
+	if ap == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	if ap.Bool != nil && *ap.Bool {
+		// additionalProperties: true — every value is permitted.
+		return nil
+	}
+	check := &BranchOverflowCheck{
+		Keyword:           "additionalProperties",
+		AccountedNames:    sortedKeys(s.Properties),
+		AccountedPatterns: sortedKeys(s.PatternProperties),
+	}
+	if ap.Bool != nil && !*ap.Bool {
+		check.IsForbidden = true
+		return check
+	}
+	if ap.Schema == nil {
+		return nil
+	}
+	check.TypeName = g.branchOverflowValueTypeName(ap.Schema, fmt.Sprintf("%sBranch%dValue", ownerName, index))
+	if check.TypeName == "" {
+		// Nothing left to check: the sub-schema materialized no type that could
+		// carry a Validate, and there is no key to reject either.
+		return nil
+	}
+	return check
+}
+
+// buildBranchUnevalCheck builds the check for the `unevaluatedProperties` stated
+// on one applicator branch. Returns nil when the keyword permits everything.
+func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, index int) *BranchOverflowCheck {
 	uneval := s.UnevaluatedProperties
 	if uneval == nil {
 		return nil
@@ -12243,14 +12394,28 @@ func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
 		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
 
-	isForbidden := uneval.IsBooleanSchema() && (uneval.BooleanSchema == nil || !*uneval.BooleanSchema)
-
-	return &CousinUnevalCheck{
-		IsForbidden:    isForbidden,
-		EvaluatedNames: sortedKeys(names),
-		EvalPatterns:   sortedKeys(patterns),
-		AllEvaluated:   allEvaluated,
+	check := &BranchOverflowCheck{
+		Keyword:           "unevaluatedProperties",
+		AccountedNames:    sortedKeys(names),
+		AccountedPatterns: sortedKeys(patterns),
+		AllAccounted:      allEvaluated,
 	}
+	if uneval.IsBooleanSchema() {
+		check.IsForbidden = uneval.BooleanSchema == nil || !*uneval.BooleanSchema
+		return check
+	}
+	// A schema-valued unevaluatedProperties in a branch says what an unevaluated
+	// value must be, and until the per-branch notion could carry a type there was
+	// nowhere to put that: the check was built, emitted as an empty loop body and
+	// enforced nothing.
+	if !g.validationKeywordsEnabled() {
+		return nil
+	}
+	check.TypeName = g.branchOverflowValueTypeName(uneval, fmt.Sprintf("%sBranch%dValue", ownerName, index))
+	if check.TypeName == "" {
+		return nil
+	}
+	return check
 }
 
 // tuplePositionSchemas returns the sub-schemas a tuple array states for its

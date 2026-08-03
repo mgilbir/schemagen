@@ -2923,3 +2923,88 @@ func TestExplicitNullIsRefusedWhereTheSchemaGivesAType(t *testing.T) {
 		},
 	)
 }
+
+// TestAllOfBranchOverflowIsEnforced covers the keyword an allOf merge cannot
+// express by folding it into the parent: a branch's own additionalProperties.
+//
+// The keyword is scoped to the schema object stating it, so a branch declaring
+// no property speaks about *every* key of the instance -- including the ones the
+// parent declares and gives fields to. Folding it into the parent's overflow
+// map, which holds only the keys the parent does not declare, would check it on
+// a smaller set than the schema names; that is why it was dropped instead, and
+// every unaccounted value went unchecked.
+//
+// Each verdict below was cross-checked against python-jsonschema and js-ajv
+// through Bowtie; the two agree with each other on all of them.
+//
+// The last three positions are the controls, and they are what makes "nothing
+// else moved" evidence rather than an absence of testing:
+//
+//   - ownAdditional states additionalProperties on the *parent*, where the
+//     overflow map is the right scope and always was. A per-branch check that
+//     claimed it too would report one violation twice, or check `a` -- which the
+//     parent declares and its own additionalProperties therefore does not see.
+//   - soleBranch is the narrow case the merge already handles exactly: nothing
+//     anywhere names a property, so the branch's key set and the parent's
+//     overflow map are provably the same set and the keyword is folded in. The
+//     per-branch notion must subsume that arm, not duplicate it.
+//   - plain has an allOf branch with no overflow keyword at all, so `z` is
+//     unconstrained. A change that gave every branch a check would refuse it.
+func TestAllOfBranchOverflowIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_branch_overflow.json",
+		[]string{
+			`{}`,
+			// The branch declares nothing, so its additionalProperties governs
+			// every key -- the parent's `a` as much as an undeclared `b`.
+			`{"bare":{}}`,
+			`{"bare":{"a":7}}`,
+			`{"bare":{"b":7}}`,
+			`{"forbid":{}}`,
+			// The branch's own properties and patterns are what it accounts for.
+			`{"adjacent":{"b":1,"xy":2}}`,
+			`{"adjacent":{}}`,
+			// Through a $ref: the accounted set is the target's own properties.
+			`{"viaRef":{"base":1}}`,
+			`{"viaRef":{}}`,
+			// Two branches each stating the keyword; both bind at once, which one
+			// overflow map could never say.
+			`{"twoBranches":{"a":7}}`,
+			`{"nestedAllOf":{"a":7}}`,
+			// A sub-schema past what an in-place scalar rule can express.
+			`{"objectValue":{"a":{"n":7}}}`,
+			// A schema-valued unevaluatedProperties in a branch: `b` is the only
+			// key that branch evaluates, so nothing else is unevaluated here.
+			// (Cousin isolation -- the branch cannot see the parent's `a`.)
+			`{"branchUnevaluated":{"b":1}}`,
+			`{"branchUnevaluatedFalse":{"b":1}}`,
+			`{"branchUnevaluatedFalse":{}}`,
+			// Controls: the parent's own keyword, the narrow merge, and a branch
+			// with no overflow keyword at all.
+			`{"ownAdditional":{"a":1,"z":7}}`,
+			`{"soleBranch":{"k":"ab"}}`,
+			`{"plain":{"a":1}}`,
+			`{"plain":{"a":1,"z":"anything"}}`,
+		},
+		[]string{
+			`{"bare":{"a":1}}`, // the parent's own property, judged by the branch
+			`{"bare":{"b":1}}`,
+			`{"forbid":{"a":1}}`, // additionalProperties: false forbids even `a`
+			`{"forbid":{"z":1}}`,
+			`{"adjacent":{"a":1}}`, // the branch does not declare `a`
+			`{"adjacent":{"z":1}}`,
+			`{"viaRef":{"other":1}}`,   // the $ref target does not declare it
+			`{"twoBranches":{"a":1}}`,  // below the first branch's minimum
+			`{"twoBranches":{"a":11}}`, // above the second branch's maximum
+			`{"nestedAllOf":{"a":1}}`,  // through the nested allOf
+			`{"objectValue":{"a":{}}}`, // the value sub-schema's `required`
+			`{"objectValue":{"a":{"n":1}}}`,
+			`{"branchUnevaluated":{"a":1}}`,      // unevaluated in the branch's scope
+			`{"branchUnevaluatedFalse":{"a":1}}`, // the parent's own property
+			`{"branchUnevaluatedFalse":{"c":1}}`,
+			`{"ownAdditional":{"a":1,"z":1}}`,
+			`{"soleBranch":{"k":"a"}}`,
+			`{"plain":{}}`,
+		},
+	)
+}

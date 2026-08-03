@@ -97,6 +97,11 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_inline_positions", "testdata/schemas/regression/allof_inline_positions.json", "testdata/golden/regression/allof_inline_positions.go"},
 		{"regression/allof_bound_only", "testdata/schemas/regression/allof_bound_only.json", "testdata/golden/regression/allof_bound_only.go"},
 		{"regression/explicit_null_positions", "testdata/schemas/regression/explicit_null_positions.json", "testdata/golden/regression/explicit_null_positions.go"},
+		// Pins which allOf branches get a per-branch overflow check and which do
+		// not: the parent's own additionalProperties and the narrow merge keep
+		// the overflow map they always had, and a branch stating no overflow
+		// keyword gains nothing.
+		{"regression/allof_branch_overflow", "testdata/schemas/regression/allof_branch_overflow.json", "testdata/golden/regression/allof_branch_overflow.go"},
 	}
 }
 
