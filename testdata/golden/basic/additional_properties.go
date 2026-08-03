@@ -34,6 +34,19 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"version",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
 		m._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
 			m._jsonKeys[_k] = true
@@ -44,6 +57,9 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		for rawKey, rawVal := range raw {
 			if knownFields[rawKey] {
 				continue
+			}
+			if string(rawVal) == "null" {
+				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]string)

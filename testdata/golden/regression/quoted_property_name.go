@@ -84,6 +84,30 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"foo\"bar",
+			"pct%d",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["arr\"key"]; ok {
+			if err := checkJSONNulls(_v, "arr\"key", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["map\"key"]; ok {
+			if err := checkJSONNulls(_v, "map\"key", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
 		q._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
 			q._jsonKeys[_k] = true

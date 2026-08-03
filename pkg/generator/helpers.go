@@ -13,11 +13,12 @@ type HelperSet struct {
 	DynamicConst       bool // _dynConstOK, only reached by object-level conditionals
 	Annotations        bool // _schemaNode and the runtime annotation evaluator
 	Integer            bool // jsonInteger and the shape-preserving converters
+	NullCheck          bool // jsonNullRule and the recursive walker that applies one
 }
 
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
-	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer
+	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer && !h.NullCheck
 }
 
 // Merge folds another set into this one.
@@ -28,6 +29,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.DynamicConst = h.DynamicConst || other.DynamicConst
 	h.Annotations = h.Annotations || other.Annotations
 	h.Integer = h.Integer || other.Integer
+	h.NullCheck = h.NullCheck || other.NullCheck
 }
 
 // Helpers reports which shared helpers this file's generated code calls.
@@ -45,6 +47,12 @@ func (f *File) Helpers() HelperSet {
 			if d.IntegerDecode != nil {
 				set.Integer = true
 			}
+			// Only the nested form calls the walker; a flat rule is a string
+			// comparison written inline, and an alias's own value is refused by
+			// its NeedsNullCheck arm rather than by a rule at all.
+			if d.NullCheck != nil && d.CanHaveMethods() {
+				set.NullCheck = true
+			}
 		case *EnumDef:
 			if d.IntegerToken {
 				set.Integer = true
@@ -54,6 +62,9 @@ func (f *File) Helpers() HelperSet {
 				if d.Fields[i].IntegerDecode != nil {
 					set.Integer = true
 				}
+			}
+			if d.NeedsNullCheckHelper() {
+				set.NullCheck = true
 			}
 			if d.AdditionalProperties != nil && d.AdditionalProperties.IntegerDecode != nil {
 				set.Integer = true

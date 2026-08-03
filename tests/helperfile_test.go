@@ -49,6 +49,12 @@ func sharedHelpersFor(content string) generator.HelperSet {
 	if strings.Contains(content, "jsonInteger") {
 		set.Integer = true
 	}
+	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
+	// appears at every call site, so one substring pulls both in. The rule type
+	// alone never appears without a call: it exists only as that call's argument.
+	if strings.Contains(content, "checkJSONNulls(") {
+		set.NullCheck = true
+	}
 	return set
 }
 

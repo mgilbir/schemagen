@@ -27,3 +27,6 @@ import (
 {{- if .Helpers.Integer}}
 {{template "integer_helpers"}}
 {{- end}}
+{{- if .Helpers.NullCheck}}
+{{template "nullcheck_helpers"}}
+{{- end}}

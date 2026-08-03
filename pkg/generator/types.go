@@ -106,10 +106,82 @@ type StructDef struct {
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
 	OwnPropertyNames       []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
+	NullChecks             []NullCheckDef            // per-property positions where an explicit JSON null is a type error
+	OverflowNullCheck      *NullCheckDef             // the same, for the values a schema-valued additionalProperties governs
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
 	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonObject        bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+}
+
+// NullCheckDef says where a JSON null is forbidden beneath one value, so that
+// the generated UnmarshalJSON can refuse it while it still has the document's
+// bytes in hand.
+//
+// It has to be decided from the raw JSON because the decoded Go value cannot
+// answer the question. encoding/json turns an explicit null into the same state
+// an absent property leaves -- a nil pointer, a nil slice, or, for a scalar
+// field, the value untouched at its zero -- so by the time Validate runs
+// "present and null" and "absent" are one state, and the optional-field guard
+// passes over both. That is issue #103: {"s":null} against
+// {"properties":{"s":{"type":"string"}}} was accepted and re-marshalled as {}.
+//
+// The descent below the outermost level exists for the positions no generated
+// type answers for. A named type refuses a null of its own accord (see the
+// NeedsNullCheck arms of the alias and struct templates), so a property typed as
+// one needs nothing here in principle -- but a *pointer* to one does, because
+// encoding/json never consults an Unmarshaler when it is filling a settable
+// pointer with null. Rather than track which of the two a position is, every
+// position the schema forbids null at is listed; where the type would also have
+// caught it, the type's own error is the one reported, since the decode into the
+// aux struct runs first.
+//
+// Elem is the anonymous nesting a Go type spells out but no generated name
+// covers: []string, map[string]string, [][]string and their mixtures. A level
+// whose Elem is nil ends the walk.
+type NullCheckDef struct {
+	// JSONName is the property this rule judges. Empty for a level below the
+	// first, and for a rule that judges a value rather than a named property
+	// (an alias's own value, or an entry in the overflow map).
+	JSONName string
+	// Reject is set when the schema at this level positively excludes null.
+	// A level that only carries a nested Elem has it clear -- {"type":
+	// ["array","null"],"items":{"type":"string"}} admits a null array and
+	// forbids a null element.
+	Reject bool
+	// IsMap says how to descend into this level: by key rather than by index.
+	IsMap bool
+	// Elem describes what this level holds. Nil ends the walk.
+	Elem *NullCheckDef
+}
+
+// Nested reports whether this rule has to walk into the value, rather than
+// merely test whether the value itself is null. The flat case is much the more
+// common one and is emitted as a name in a shared list; only this one needs the
+// recursive helper.
+func (d *NullCheckDef) Nested() bool { return d != nil && d.Elem != nil }
+
+// carries reports whether anything below and including this level forbids a
+// null. A rule that carries nothing is dropped: emitting it would walk the
+// document to reach no verdict.
+func (d *NullCheckDef) carries() bool {
+	for l := d; l != nil; l = l.Elem {
+		if l.Reject {
+			return true
+		}
+	}
+	return false
+}
+
+// prune drops the trailing levels that forbid nothing, so a rule's Elem chain
+// ends at the deepest level that has something to say. Returns nil when the
+// whole rule is vacuous.
+func (d *NullCheckDef) prune() *NullCheckDef {
+	if d == nil || !d.carries() {
+		return nil
+	}
+	d.Elem = d.Elem.prune()
+	return d
 }
 
 // DependentRequiredDef describes a dependentRequired constraint: when the
@@ -190,6 +262,45 @@ type ValidatableFieldDef struct {
 // HasRequiredFields returns true if the struct has required field validation.
 func (d *StructDef) HasRequiredFields() bool {
 	return len(d.RequiredJSON) > 0
+}
+
+// HasNullChecks reports whether UnmarshalJSON has to refuse an explicit null
+// anywhere -- in a declared property, or in the overflow map's values.
+func (d *StructDef) HasNullChecks() bool {
+	return len(d.NullChecks) > 0 || d.OverflowNullCheck != nil
+}
+
+// FlatNullNames lists the properties whose whole rule is "this may not be
+// null", which is the overwhelmingly common shape. They are emitted as one
+// slice literal walked by a single loop rather than as a test each, so a struct
+// with fifty properties costs five lines instead of a hundred and fifty.
+func (d *StructDef) FlatNullNames() []string {
+	var names []string
+	for i := range d.NullChecks {
+		if !d.NullChecks[i].Nested() {
+			names = append(names, d.NullChecks[i].JSONName)
+		}
+	}
+	return names
+}
+
+// NestedNullChecks lists the properties whose rule reaches below the property
+// itself -- an array, a map, or a nest of them, whose elements the schema
+// forbids a null at. Each is walked by the shared helper.
+func (d *StructDef) NestedNullChecks() []NullCheckDef {
+	var nested []NullCheckDef
+	for i := range d.NullChecks {
+		if d.NullChecks[i].Nested() {
+			nested = append(nested, d.NullChecks[i])
+		}
+	}
+	return nested
+}
+
+// NeedsNullCheckHelper reports whether this struct calls the recursive walker,
+// as opposed to only testing values for being null outright.
+func (d *StructDef) NeedsNullCheckHelper() bool {
+	return len(d.NestedNullChecks()) > 0 || d.OverflowNullCheck.Nested()
 }
 
 // HasDefaults returns true if any field has a default value.
@@ -797,12 +908,18 @@ type AliasDef struct {
 	// IntegerDecode is set when the underlying is a container holding int64
 	// that the draft lets be written in float notation. A bare int64 underlying
 	// is not here: it takes the IsIntegerType arm, which already does this.
-	IntegerDecode     *IntegerDecodeDef
-	MarshalAs         string // named underlying type whose MarshalJSON behavior should be delegated to
-	StrictInteger     bool   // true when integer JSON must use an integer token, not 1.0/1e0
-	NoMethods         bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
-	NeedsNullCheck    bool   // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonMatching bool   // true when schema has no explicit type — silently accept non-matching JSON data
+	IntegerDecode  *IntegerDecodeDef
+	MarshalAs      string // named underlying type whose MarshalJSON behavior should be delegated to
+	StrictInteger  bool   // true when integer JSON must use an integer token, not 1.0/1e0
+	NoMethods      bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
+	NeedsNullCheck bool   // true when the schema's type does not include "null" — reject null JSON data
+	// NullCheck covers the positions *inside* an alias over a container that
+	// NeedsNullCheck cannot reach: `type SArr []string` refuses a null of its
+	// own, and until this existed accepted ["a",null] and erased the null to "".
+	// Its outermost level never rejects — NeedsNullCheck already answers for the
+	// value itself — so it is only ever set for a container.
+	NullCheck         *NullCheckDef
+	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }

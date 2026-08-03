@@ -33,6 +33,16 @@ func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		if _v, ok := raw["labels"]; ok {
+			if err := checkJSONNulls(_v, "labels", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["tags"]; ok {
+			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
 		knownFields := map[string]bool{
 			"labels": true,
 			"tags":   true,

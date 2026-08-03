@@ -3,7 +3,7 @@
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
@@ -21,6 +21,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
+	}
+	{{- end}}
+	{{- with .NullCheck}}
+	{{- /* The elements this container holds. The check above answers for the
+	       container itself; a null *inside* one is erased by the decode below --
+	       []string turns [null] into [""] and reports nothing. */}}
+	if _err := checkJSONNulls(data, "value", {{template "nullrule" .}}); _err != nil {
+		return _err
 	}
 	{{- end}}
 	{{- if .UnmarshalAs}}

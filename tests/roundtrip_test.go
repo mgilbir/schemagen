@@ -2602,17 +2602,24 @@ func TestFormatAliasAssertsItsFormat(t *testing.T) {
 // `{"name":"x","primary_ip":"1.2.3.4"}` is here as the control: without the
 // required property present, Validate returns before it ever reaches the
 // address arm, and the panic hides.
+//
+// The null document moved to the invalid half with issue #103. `gateway_ip` is
+// {"type":"string","format":"ipv6"} and admits no null, so accepting one was
+// itself the defect -- the case was written when an explicit null was silently
+// erased everywhere, and it recorded that as the expected behaviour. What it
+// guards is unchanged either way: a panic is not a rejection, and the harness
+// reports one as a failure whichever list the document sits in.
 func TestNullIPAddressDoesNotPanic(t *testing.T) {
 	runValidationCases(t,
 		"testdata/schemas/formats/all_formats.json",
 		[]string{
 			`{"name":"x","primary_ip":"1.2.3.4"}`,
-			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
 			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"2001:db8::1"}`,
 		},
 		[]string{
 			`{"name":"x","primary_ip":"2001:db8::1"}`,
 			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"1.2.3.4"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
 		},
 	)
 }
@@ -2816,5 +2823,103 @@ func main() {
 		"allof_bigint_test",
 		mainGo,
 		generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
+	)
+}
+
+// TestExplicitNullIsRefusedWhereTheSchemaGivesAType is issue #103.
+//
+// An explicit null was accepted at every position whose schema states a type
+// that does not include "null", and it was not merely unchecked but erased:
+// {"s":null} against {"properties":{"s":{"type":"string"}}} came back {}.
+// python-jsonschema and js-ajv both call that document invalid.
+//
+// The cause is that nothing downstream can see the null. encoding/json decodes
+// one into a nil pointer, a nil slice or map, or a scalar left untouched at its
+// zero -- all of them exactly the state an *absent* property leaves -- so by the
+// time Validate runs "present and null" and "absent" are one state and the
+// optional-field guard passes over both. The verdict is taken from the raw
+// document instead, in UnmarshalJSON, which is why the invalid half here is
+// refused at decode time rather than by Validate.
+//
+// The invalid half enumerates the positions, because the recurring failure in
+// this generator is a fix that lands in one position and not its sibling: an
+// inline scalar, a $ref to an alias and to a struct, an array element, both
+// levels of a nested array, a map value, a map of arrays, an array of maps, a
+// tuple slot, a oneOf branch, an allOf, an element of a named array alias, and
+// an overflow value governed by a schema-valued additionalProperties -- each in
+// its optional spelling and, where the shape allows, its required one.
+//
+// The valid half is the more important of the two. Refusing a null the schema
+// *does* admit is a false rejection, worse than the acceptance it replaces, so
+// every spelling of "may be null" is here: the type list on a property, on a
+// definition behind a $ref, on an array's items and on a map's values, and the
+// array that admits a null of its own while its elements do not. So is a
+// property with no type at all and one carrying only a bound, where JSON Schema
+// says nothing about null and this check must therefore say nothing either. The
+// first entry is the control for the whole thing: an absent optional property is
+// not a present null, and must stay accepted.
+func TestExplicitNullIsRefusedWhereTheSchemaGivesAType(t *testing.T) {
+	const required = `"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":[]`
+	with := func(extra string) string {
+		if extra == "" {
+			return "{" + required + "}"
+		}
+		return "{" + required + "," + extra + "}"
+	}
+	runValidationCases(t,
+		"testdata/schemas/regression/explicit_null_positions.json",
+		[]string{
+			with(""),                                  // every optional property absent
+			with(`"scalar":"x","count":1`),            // present and well typed
+			with(`"alias":"ab","struct":{"k":"v"}`),   //
+			with(`"array":["a"],"nested":[["a"]]`),    //
+			with(`"mapOfString":{"a":"b"}`),           //
+			with(`"tuple":["a",1]`),                   //
+			with(`"union":{"tag":"t"}`),               //
+			with(`"bounded":"ab","namedArray":["a"]`), //
+			with(`"overflow":{"a":"b","zz":"c"}`),     //
+			with(`"nullableScalar":null`),             // the type list admits null
+			with(`"nullableAlias":null`),              // behind a $ref
+			with(`"nullableItems":["a",null]`),        // in an array's items
+			with(`"nullableValues":{"a":null}`),       // in a map's values
+			with(`"nullableOuter":null`),              // the array itself may be null
+			with(`"nullableOuter":["a"]`),             // and still holds strings
+			with(`"untyped":null`),                    // no type keyword: null is a value like any other
+			with(`"boundOnly":null`),                  // a bound alone says nothing about null
+		},
+		[]string{
+			with(`"scalar":null`),            // inline scalar
+			with(`"count":null`),             // inline integer
+			with(`"alias":null`),             // $ref to a named alias
+			with(`"struct":null`),            // $ref to a named struct
+			with(`"inline":null`),            // inline object
+			with(`"array":null`),             // the array itself
+			with(`"array":["a",null]`),       // an array element
+			with(`"nested":[["a"],null]`),    // a nested array's outer element
+			with(`"nested":[["a",null]]`),    // and its inner one
+			with(`"mapOfString":null`),       // the map itself
+			with(`"mapOfString":{"a":null}`), // a map value
+			with(`"mapOfArray":{"a":null}`),  // a map of arrays
+			with(`"mapOfArray":{"a":["x",null]}`),
+			with(`"arrayOfMap":[null]`), // an array of maps
+			with(`"arrayOfMap":[{"a":null}]`),
+			with(`"tuple":null`),               // the tuple itself
+			with(`"tuple":[null,1]`),           // a tuple slot
+			with(`"union":null`),               // a oneOf branch
+			with(`"bounded":null`),             // inside an allOf
+			with(`"namedArray":null`),          // a named array alias
+			with(`"namedArray":["a",null]`),    // and its elements
+			with(`"overflow":null`),            // a struct with an overflow map
+			with(`"overflow":{"zz":null}`),     // and one of its overflow values
+			with(`"inline":{"x":null}`),        // a property of an inline object
+			with(`"struct":{"k":null}`),        // a property of a definition
+			with(`"nullableOuter":["a",null]`), // the array admits null; its elements do not
+			`{"reqScalar":null,"reqAlias":"ab","reqStruct":{},"reqArray":[]}`, // required scalar
+			`{"reqScalar":"x","reqAlias":null,"reqStruct":{},"reqArray":[]}`,  // required alias
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":null,"reqArray":[]}`,
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":null}`,
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":["a",null]}`,
+			`null`, // the root object itself
+		},
 	)
 }

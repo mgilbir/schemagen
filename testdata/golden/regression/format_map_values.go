@@ -38,6 +38,9 @@ func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 			if knownFields[rawKey] {
 				continue
 			}
+			if string(rawVal) == "null" {
+				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+			}
 			if f.AdditionalProperties == nil {
 				f.AdditionalProperties = make(map[string]time.Time)
 			}

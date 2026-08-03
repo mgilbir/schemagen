@@ -96,6 +96,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_single_branch_type", "testdata/schemas/regression/allof_single_branch_type.json", "testdata/golden/regression/allof_single_branch_type.go"},
 		{"regression/allof_inline_positions", "testdata/schemas/regression/allof_inline_positions.json", "testdata/golden/regression/allof_inline_positions.go"},
 		{"regression/allof_bound_only", "testdata/schemas/regression/allof_bound_only.json", "testdata/golden/regression/allof_bound_only.go"},
+		{"regression/explicit_null_positions", "testdata/schemas/regression/explicit_null_positions.json", "testdata/golden/regression/explicit_null_positions.go"},
 	}
 }
 

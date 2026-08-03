@@ -76,10 +76,13 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		}
 		imports = append(imports, generator.Import{Path: path})
 	}
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer, "fmt")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "fmt")
 	add(helpers.Dynamic || helpers.Integer, "math")
 	add(helpers.Annotations, "reflect")
+	// The walker reports the first offending key in name order, so that a
+	// document with several of them fails the same way every time.
+	add(helpers.NullCheck, "sort")
 
 	data := helperFileData{
 		PackageName: packageName,

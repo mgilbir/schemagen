@@ -192,6 +192,19 @@ func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"x",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
 		p._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
 			p._jsonKeys[_k] = true
@@ -248,6 +261,9 @@ type PatternValueSubschemasPattern5 []string
 func (p *PatternValueSubschemasPattern5) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern5")
+	}
+	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+		return _err
 	}
 	type Alias PatternValueSubschemasPattern5
 	return json.Unmarshal(data, (*Alias)(p))
@@ -603,6 +619,9 @@ func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
 		for rawKey, rawVal := range raw {
 			if knownFields[rawKey] {
 				continue
+			}
+			if string(rawVal) == "null" {
+				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
 			}
 			if p.AdditionalProperties == nil {
 				p.AdditionalProperties = make(map[string]string)

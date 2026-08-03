@@ -574,6 +574,10 @@ func (g *Generator) addRequiredImports() {
 			if sd.NeedsNullCheck {
 				needsFmt = true // UnmarshalJSON uses fmt.Errorf for null rejection
 			}
+			if sd.HasNullChecks() {
+				needsJSON = true // the raw properties are decoded before they are judged
+				needsFmt = true  // UnmarshalJSON uses fmt.Errorf to name the position
+			}
 			if len(sd.OneOfs) > 0 {
 				needsJSON = true
 				needsFmt = true
@@ -844,6 +848,10 @@ func (g *Generator) addRequiredImports() {
 			if ad.NeedsNullCheck && ad.CanHaveMethods() {
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal
 				needsFmt = true  // UnmarshalJSON uses fmt.Errorf
+			}
+			if ad.NullCheck != nil && ad.CanHaveMethods() {
+				needsJSON = true // the walker reads the raw elements
+				needsFmt = true  // and names the position it refuses
 			}
 			if ad.IsIntegerType() && ad.CanHaveMethods() {
 				needsJSON = true // UnmarshalJSON uses json.Number
@@ -1918,6 +1926,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				UnevaluatedItems: unevalItems,
 				StrictInteger:    primaryType == "integer" && g.requiresStrictIntegerToken(s),
 				NeedsNullCheck:   !schemaAllowsNull(s),
+				NullCheck:        g.aliasNullCheck(goType, s),
 			})
 		}
 		return nil
@@ -2054,6 +2063,16 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 			needsUnmarshal = true // need _jsonKeys for validation
 		}
 	}
+	// Every key of an object with no declared properties lands in the overflow
+	// map, decoded by hand, where json.Unmarshal of `null` into a string leaves
+	// "" and reports nothing.
+	var overflowNullCheck *NullCheckDef
+	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil && additionalProps != nil {
+		overflowNullCheck = g.buildNullCheck("", additionalProps.ValueType, s.AdditionalProperties.Schema)
+		if overflowNullCheck != nil {
+			needsUnmarshal = true
+		}
+	}
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 		Name:                 name,
 		Description:          s.Description,
@@ -2064,6 +2083,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 		Validations:          validations,
 		ItemValidations:      itemValidations,
 		RequiredJSON:         requiredJSON,
+		OverflowNullCheck:    overflowNullCheck,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
 		NeedsNullCheck:       needsNullCheck,
@@ -2525,6 +2545,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var containsValidations []FieldContainsDef
 	var tupleValidations []FieldTupleDef
 	var unevalItemsValidations []FieldUnevalItemsDef
+	var nullChecks []NullCheckDef
 
 	// Collect required JSON property names for presence-based validation.
 	// These are checked via the raw JSON keys during UnmarshalJSON.
@@ -2689,6 +2710,48 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				unevalItemsValidations = append(unevalItemsValidations, *fu)
 			}
 		}
+	}
+
+	// An explicit null is a type error wherever the schema does not admit one,
+	// and by the time any of the checks above run it is no longer there to see:
+	// encoding/json leaves a nil pointer, a nil collection, or a scalar
+	// untouched at its zero, all of which are what an *absent* property leaves
+	// too. The verdict has to be taken from the document's own bytes, so it is
+	// collected here and emitted into UnmarshalJSON. See NullCheckDef.
+	//
+	// Not gated on validationKeywordsEnabled, on the precedent of the struct's
+	// own NeedsNullCheck a few lines below: refusing a null where the schema
+	// states a type is a decoding question, and every validation mode has to
+	// answer it the same way.
+	for _, propName := range propNames {
+		propSchema := s.Properties[propName]
+		if propSchema == nil {
+			continue
+		}
+		if ft, ok := fieldTypes[goFieldNames[propName]]; ok {
+			if nc := g.buildNullCheck(propName, ft, propSchema); nc != nil {
+				nullChecks = append(nullChecks, *nc)
+			}
+			continue
+		}
+		// A oneOf property is held by a sealed interface rather than by a
+		// field, so there is no Go type to walk -- and there is nothing
+		// anonymous below the union to walk into, since every branch is its own
+		// named type. Only the property itself is judged.
+		if g.schemaForbidsNull(propSchema) {
+			nullChecks = append(nullChecks, NullCheckDef{JSONName: propName, Reject: true})
+		}
+	}
+	// The overflow map's values are governed by a schema-valued
+	// additionalProperties, and they are decoded by hand in the routing loop --
+	// json.Unmarshal of `null` into a string leaves "" and reports no error, so
+	// this is the same erasure one level out.
+	var overflowNullCheck *NullCheckDef
+	if additionalProps != nil && s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		overflowNullCheck = g.buildNullCheck("", additionalProps.ValueType, s.AdditionalProperties.Schema)
+	}
+	if len(nullChecks) > 0 || overflowNullCheck != nil {
+		needsUnmarshal = true
 	}
 
 	// So do the constraints a schema-valued additionalProperties puts on the
@@ -2894,6 +2957,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		ObjectAnyOfs:           objectAnyOfs,
 		ObjectConditionals:     objectConditionals,
 		RequiredJSON:           requiredJSON,
+		NullChecks:             nullChecks,
+		OverflowNullCheck:      overflowNullCheck,
 		NeedsMarshal:           needsMarshal,
 		NeedsUnmarshal:         needsUnmarshal,
 		NeedsNullCheck:         needsNullCheck,
@@ -7318,6 +7383,100 @@ func schemaAllowsNull(s *schema.Schema) bool {
 	return false
 }
 
+// maxNullRefDepth bounds how far schemaForbidsNull follows $refs and
+// composition. A recursive definition would otherwise walk itself forever;
+// nothing legitimate needs anywhere near this many hops, and stopping early only
+// ever loses a rejection.
+const maxNullRefDepth = 12
+
+// schemaForbidsNull reports whether a schema positively excludes a JSON null at
+// its own position.
+//
+// It is deliberately not the negation of schemaAllowsNull, which answers from
+// the type list alone and so says "allowed" for every schema that states no
+// "type" -- including a bare {"$ref": ...}, which is how a property behind a
+// definition escaped the check entirely. The question here is the one the
+// generated decoder has to answer, so it follows the keywords that can settle
+// it and gives up on the ones that cannot:
+//
+//   - "type" that lists something and not "null" settles it outright.
+//   - $ref is conjunctive with its siblings from 2019-09 on, and *is* the whole
+//     schema before that, so either way the target's answer counts.
+//   - allOf is a conjunction: one branch that excludes null excludes it.
+//   - anyOf and oneOf are disjunctions: null survives if any branch admits it,
+//     so they exclude it only when every branch does.
+//   - enum and const enumerate the permitted values, and null is excluded when
+//     it is not among them.
+//
+// if/then/else and not are left alone. A `then` binds only when the condition
+// held, and reading it as a conjunction would refuse documents the schema
+// allows -- a false rejection, which is worse than the missed one it replaces.
+// Everything this cannot decide answers false, so the check only ever narrows
+// to what the schema demonstrably forbids.
+func (g *Generator) schemaForbidsNull(s *schema.Schema) bool {
+	return g.schemaForbidsNullAt(s, 0)
+}
+
+func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
+	if s == nil || depth >= maxNullRefDepth || s.IsBooleanSchema() {
+		return false
+	}
+	ref := s.EffectiveRef()
+	if ref != "" && g.refOverridesSiblings() {
+		// Before 2019-09 a $ref replaces everything beside it, so the siblings
+		// have no say at all. Reading them anyway would refuse a null the
+		// target admits.
+		target := g.resolveRefInContext(ref, s)
+		return target != nil && g.schemaForbidsNullAt(target, depth+1)
+	}
+	if len(s.Type) > 0 && !schemaAllowsNull(s) {
+		return true
+	}
+	if ref != "" {
+		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsNullAt(target, depth+1) {
+			return true
+		}
+	}
+	for _, branch := range s.AllOf {
+		if g.schemaForbidsNullAt(branch, depth+1) {
+			return true
+		}
+	}
+	for _, group := range [][]*schema.Schema{s.AnyOf, s.OneOf} {
+		if len(group) == 0 {
+			continue
+		}
+		everyBranch := true
+		for _, branch := range group {
+			if !g.schemaForbidsNullAt(branch, depth+1) {
+				everyBranch = false
+				break
+			}
+		}
+		if everyBranch {
+			return true
+		}
+	}
+	// {"const": null} is spelled with ConstIsNull because Go's decoder leaves
+	// *any nil for a JSON null, so a null const and an absent one are the same
+	// pointer. Asking the flag keeps the two apart.
+	if s.ConstIsNull {
+		return false
+	}
+	if s.Const != nil {
+		return *s.Const != nil
+	}
+	if len(s.Enum) > 0 {
+		for _, v := range s.Enum {
+			if v == nil {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 func primarySchemaType(s *schema.Schema) string {
 	// Count distinct non-null types. If there are multiple incompatible types
 	// (e.g., ["array", "object"] or ["integer", "string"]), return "" so that
@@ -8295,6 +8454,65 @@ func (g *Generator) buildItemValidation(parentName, fieldName, jsonName string, 
 		return nil
 	}
 	return def
+}
+
+// buildNullCheck describes where a JSON null is forbidden beneath one value:
+// at the value itself, and at each level of anonymous array or map nesting
+// below it that the schema speaks about. Returns nil when nothing at any level
+// forbids one.
+//
+// The walk mirrors descendItemLevels -- Go type and sub-schema chain in step,
+// bounded by the same maxItemLevels -- because it has to describe exactly the
+// nesting the Go type spells out. It stops at a named element type, whose own
+// generated code answers for everything beneath it.
+//
+// jsonName labels the outermost level; a value that is not a named property
+// (an alias's own value, an overflow entry) passes "".
+func (g *Generator) buildNullCheck(jsonName string, t GoType, s *schema.Schema) *NullCheckDef {
+	return g.nullCheckLevel(jsonName, t, s, 0).prune()
+}
+
+func (g *Generator) nullCheckLevel(jsonName string, t GoType, s *schema.Schema, depth int) *NullCheckDef {
+	if t == nil || s == nil || depth >= maxItemLevels {
+		return nil
+	}
+	def := &NullCheckDef{JSONName: jsonName, Reject: g.schemaForbidsNull(s)}
+	// A named type is where the walk ends: it was generated from this very
+	// sub-schema and carries its own rules. Only the level itself is judged
+	// here, because a pointer to it never reaches its UnmarshalJSON on a null.
+	if namedTypeName(t) != "" {
+		return def
+	}
+	base := t
+	if pt, ok := base.(*PointerType); ok {
+		base = pt.Inner
+	}
+	elemType, isMap := containerElem(base)
+	if elemType == nil {
+		return def
+	}
+	elemSchema := g.containerElemSchema(s, isMap)
+	if elemSchema == nil {
+		return def
+	}
+	def.IsMap = isMap
+	def.Elem = g.nullCheckLevel("", elemType, elemSchema, depth+1)
+	return def
+}
+
+// aliasNullCheck is buildNullCheck for a named container -- `type SArr
+// []string`, `type M map[string]string` -- whose own value is already answered
+// for by the NeedsNullCheck arm of its UnmarshalJSON. Only what it holds is left
+// to judge, so the outermost level is cleared before the rule is pruned: without
+// that, every such alias would carry a rule that merely restates the check
+// sitting three lines above it.
+func (g *Generator) aliasNullCheck(t GoType, s *schema.Schema) *NullCheckDef {
+	def := g.nullCheckLevel("", t, s, 0)
+	if def == nil {
+		return nil
+	}
+	def.Reject = false
+	return def.prune()
 }
 
 // buildOverflowValidation collects what a schema-valued `additionalProperties`
