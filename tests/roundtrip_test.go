@@ -946,6 +946,16 @@ func TestAllOfTightestConstraints(t *testing.T) {
 			`7`,  // below the tighter minimum (10)
 			`8`,  // >= 10 but only a multiple of 2, not lcm(2,3)=6
 			`10`, // >= 10 but not a multiple of 6
+			// The schema declares "type":"integer" beside its allOf, and the
+			// merge only ever takes a type off a *branch* -- so the declared one
+			// has to be read from the parent or it is lost. Lost, the type is
+			// inferred from the bounds instead, which makes it a guess rather
+			// than an assertion and hands the schema the wrapper that accepts
+			// every instance type. All three of these were then accepted by a
+			// schema that says "integer".
+			`"abc"`,
+			`[1,2]`,
+			`true`,
 		},
 	)
 }
@@ -2687,6 +2697,66 @@ func TestAllOfInlinePositionsKeepBranchType(t *testing.T) {
 			`{"map":{"k":"blue"}}`, // through a map value
 			`{"tuple":["nope"]}`,   // through the tuple slot
 			`{"union":"blue"}`,     // matches neither oneOf branch
+		},
+	)
+}
+
+// TestAllOfBoundOnlyBranchIsEnforced is the last position of the allOf family:
+// a branch stating only a bound. Nothing in it names a type outright, so the
+// predicate that decides whether an inline allOf needs a name declined it and
+// the value resolved to `any` -- with the bound enforced nowhere.
+//
+// The type comes from inferTypeFromConstraints, the same mapping the no-allOf
+// path has always used: minLength/maxLength/pattern say "string", the numeric
+// bounds say "number", minItems/maxItems say "array". An inferred type is a
+// guess about what the schema is *about*, not an assertion that the instance
+// must be one, so each of these is the InferredAliasDef wrapper: the bound binds
+// a matching value and every other instance type passes untouched.
+//
+// That last part is why the accept list carries a number, an array, a boolean
+// and a null for a minLength position. Under JSON Schema a keyword about strings
+// is satisfied vacuously by everything that is not a string, and a fix that
+// reached for a bare `type X string` instead would reject all four -- trading
+// under-enforcement for a false rejection, which is the worse direction.
+func TestAllOfBoundOnlyBranchIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_bound_only.json",
+		[]string{
+			`{}`,
+			`{"prop":"abc"}`,      // property, string long enough
+			`{"prop":5}`,          // vacuous: minLength says nothing about a number
+			`{"prop":[1,2]}`,      //
+			`{"prop":true}`,       //
+			`{"prop":null}`,       //
+			`{"viaRef":"abc"}`,    // the branch is a $ref to a definition
+			`{"viaRef":5}`,        //
+			`{"num":7}`,           // numeric bound
+			`{"num":"ab"}`,        // vacuous: minimum says nothing about a string
+			`{"nested":"abc"}`,    // allOf inside an allOf
+			`{"arr":[1,2]}`,       // minItems
+			`{"arr":"ab"}`,        // vacuous for a string
+			`{"list":["abc"]}`,    // array element
+			`{"map":{"k":"abc"}}`, // map value
+			`{"tuple":["abc"]}`,   // tuple slot
+			`{"union":"abc"}`,     // oneOf branch: the bound branch alone matches
+		},
+		[]string{
+			`{"prop":"xy"}`,      // too short
+			`{"viaRef":"xy"}`,    // through the $ref
+			`{"num":4}`,          // below the minimum
+			`{"nested":"xy"}`,    // through the nested allOf
+			`{"arr":[1]}`,        // too few items
+			`{"list":["xy"]}`,    // through an array element
+			`{"map":{"k":"xy"}}`, // through a map value
+			`{"tuple":["xy"]}`,   // through the tuple slot
+			`{"union":"xy"}`,     // matches neither branch
+			// A boolean matches *both* branches: {"type":"boolean"} by name, and
+			// the bound branch vacuously, since minLength says nothing about a
+			// boolean. oneOf wants exactly one, so this is invalid -- and it is
+			// only invalid if the bound branch really is vacuous for non-strings.
+			// A fix that typed the branch `string` would have this match one
+			// branch and pass.
+			`{"union":true}`,
 		},
 	)
 }

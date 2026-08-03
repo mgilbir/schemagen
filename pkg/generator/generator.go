@@ -2907,6 +2907,29 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 // When no sub-schema contributes properties, it generates an alias type
 // instead of an empty struct, using the inferred type from constraints.
 func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
+	// This function resolves its own merged schema (resolveType(merged, name)),
+	// and the merge keeps the allOf on it so collectEvaluatedProperties can walk
+	// the branches later. So the schema handed back to resolveType still looks
+	// like an allOf that needs a name -- this one -- and resolveType's
+	// delegation arm would re-enter here for it. Both frames then reach an emit
+	// and the type is declared twice, which does not compile.
+	//
+	// The arm already has the mark for exactly this ("guard against infinite
+	// recursion"); it was only ever set by resolveType itself, which is why the
+	// hazard stayed latent while the arm claimed object-shaped allOfs alone --
+	// those re-entered generateStructDef, which has a guard of its own. Setting
+	// it here covers the scalar shapes too. Saved and restored rather than
+	// deleted: a caller further up may hold the same mark.
+	wasGenerating := g.generating[name]
+	g.generating[name] = true
+	defer func() {
+		if wasGenerating {
+			g.generating[name] = true
+		} else {
+			delete(g.generating, name)
+		}
+	}()
+
 	// If any allOf sub-schema is boolean false, nothing can satisfy all constraints.
 	// Generate a forbidden type (NotSchemaDef).
 	if allOfContainsFalseSchema(s.AllOf) {
@@ -3110,8 +3133,29 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		}
 
 		primaryType := primarySchemaType(merged)
+		// The merge only ever takes a type off a branch, so a type the *parent*
+		// declared beside its allOf has not reached `merged`. It is still a
+		// declared type and still binds -- the propertyless-object arm below
+		// already restores it for the same reason -- and reading it here is what
+		// keeps the distinction that follows honest.
+		if primaryType == "" && len(s.Type) > 0 {
+			primaryType = primarySchemaType(s)
+		}
+		// Whether the type was *declared* or *inferred from a bound* decides the
+		// shape, exactly as it does in generateTypeDef: a declared type may be
+		// enforced by the Go type itself, an inferred one may not. A keyword
+		// about strings is satisfied vacuously by every instance that is not a
+		// string, so {"allOf":[{"minLength":3}]} accepts 5, [1,2] and true --
+		// and this arm, which recorded only the answer and not where it came
+		// from, made every one of them `type X string` and refused all three.
+		// The array arm below has always used the wrapper; the scalar arm did
+		// not, so the two disagreed about the same question.
+		inferredFromConstraints := false
 		if primaryType == "" {
 			primaryType = g.inferTypeFromConstraints(merged)
+			if primaryType != "" {
+				inferredFromConstraints = true
+			}
 		}
 		if primaryType == "array" {
 			// Array type — extract item-level constraints and generate InferredAliasDef
@@ -3189,6 +3233,24 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
 			g.generated[name] = true
+			if inferredFromConstraints {
+				// A bound is all the merge had to go on, so the type is a guess
+				// about what the schema is *about*, not a statement that the
+				// instance must be one. The wrapper keeps the guess -- the
+				// constraint is checked when the value does turn out to be a
+				// string -- without making the Go type refuse everything else.
+				g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+					Name:             name,
+					Description:      s.Description,
+					InferredGoType:   goType,
+					InferredJSONType: primaryType,
+					Validations:      rules,
+					AnyOfVariants:    anyOfVariants,
+					OneOfVariants:    oneOfVariants,
+					NeedsNullCheck:   !schemaAllowsNull(merged),
+				})
+				return nil
+			}
 			if g.config.BigIntSupport && primaryType == "integer" {
 				// The same wrapper an integer without an allOf gets. Without this
 				// arm, --big-int silently stopped applying the moment a
@@ -6951,12 +7013,18 @@ func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
 // set for the same reason: {"allOf":[{"$ref":"#"}]} would otherwise re-enter
 // forever.
 //
-// Only "type", "enum" and "const" are asked about. Those are what the merge
-// reads to decide a Go type, and they are what generateAllOfDef can answer with
-// something better than `any`. A branch stating only a bound -- {"minLength":3}
-// -- is deliberately not here: the merge would infer a type from it and produce
-// a wrapper, which is a wider change of shape than this defect calls for, and
-// the constraint is still dropped in that case. Reported, not smuggled in.
+// "type", "enum" and "const" state a type outright. A bound counts too, through
+// the same inferTypeFromConstraints the no-allOf path has always used --
+// minLength/maxLength/pattern say the schema is about a string, the numeric
+// bounds that it is about a number -- and the merge answers such a branch with
+// the InferredAliasDef wrapper, which applies the bound to a matching value and
+// accepts every other instance type unchanged. Without a bound here,
+// {"allOf":[{"minLength":3}]} written inline resolved to `any` and the bound was
+// enforced nowhere.
+//
+// Asking inferTypeFromConstraints rather than listing keywords is what keeps
+// this from drifting: it is the same function the merge will run on the merged
+// schema, so a branch this answers yes for is one generateAllOfDef can type.
 func (g *Generator) allOfNamesATypeOnPath(s *schema.Schema, onPath map[*schema.Schema]bool) bool {
 	if s == nil || len(s.AllOf) == 0 || onPath[s] {
 		return false
@@ -6970,12 +7038,12 @@ func (g *Generator) allOfNamesATypeOnPath(s *schema.Schema, onPath map[*schema.S
 		if sub == nil {
 			continue
 		}
-		if branchNamesAType(sub) {
+		if g.branchNamesAType(sub) {
 			return true
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if branchNamesAType(r) {
+				if g.branchNamesAType(r) {
 					return true
 				}
 				if g.allOfNamesATypeOnPath(r, onPath) {
@@ -6990,8 +7058,14 @@ func (g *Generator) allOfNamesATypeOnPath(s *schema.Schema, onPath map[*schema.S
 	return false
 }
 
-func branchNamesAType(s *schema.Schema) bool {
-	return len(s.Type) > 0 || len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull
+func (g *Generator) branchNamesAType(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
+		return true
+	}
+	return g.inferTypeFromConstraints(s) != ""
 }
 
 // allOfNamesObjectKeysOnPath is allOfNamesObjectKeys carrying the set of schemas

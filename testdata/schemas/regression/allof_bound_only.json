@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfBoundOnly",
+  "description": "An allOf branch stating only a bound, in every position: the type is inferred from the keyword, so the value must still accept every other instance type",
+  "type": "object",
+  "properties": {
+    "prop": { "allOf": [{ "minLength": 3 }] },
+    "viaRef": { "allOf": [{ "$ref": "#/$defs/Bound" }] },
+    "num": { "allOf": [{ "minimum": 5 }] },
+    "nested": { "allOf": [{ "allOf": [{ "minLength": 3 }] }] },
+    "arr": { "allOf": [{ "minItems": 2 }] },
+    "list": { "type": "array", "items": { "allOf": [{ "minLength": 3 }] } },
+    "map": { "type": "object", "additionalProperties": { "allOf": [{ "minLength": 3 }] } },
+    "tuple": { "type": "array", "prefixItems": [{ "allOf": [{ "minLength": 3 }] }] },
+    "union": { "oneOf": [{ "allOf": [{ "minLength": 3 }] }, { "type": "boolean" }] }
+  },
+  "$defs": {
+    "Bound": { "minLength": 3 }
+  }
+}
