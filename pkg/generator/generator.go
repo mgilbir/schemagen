@@ -1458,11 +1458,37 @@ func noteFormatImports(r ValidationRule, needsFmt, needsNetIP *bool) {
 // and the test that walks the two together.
 func FormatCheckableOnString(format string) bool {
 	switch format {
-	case "ipv4", "ipv6", "date-time":
+	case "ipv4", "ipv6", "date-time", Draft3TimeFormat:
 		return true
 	default:
 		return formatNeedsValidation(format)
 	}
+}
+
+// Draft3TimeFormat is the internal name for draft 3's "time", which is a
+// different format under the same keyword: HH:MM:SS, with no offset. Every later
+// draft means RFC 3339's full-time, whose offset is mandatory, so a single check
+// cannot serve both without accepting a bare local time on the drafts that
+// forbid one.
+//
+// The rewrite happens where the draft is known -- see formatRulesForDialect --
+// and the name is deliberately not a legal format keyword, so a schema cannot
+// ask for it and nothing downstream can confuse it for one.
+const Draft3TimeFormat = "time (draft 3)"
+
+// formatRulesForDialect rewrites a rule set's format keywords to the spelling
+// the schema's own draft gives them. Only "time" differs; everything else means
+// the same thing in every draft this generator reads.
+func (g *Generator) formatRulesForDialect(s *schema.Schema, rules []ValidationRule) []ValidationRule {
+	if g.draftForSchema(s) != schema.Draft03 {
+		return rules
+	}
+	for i := range rules {
+		if rules[i].RuleType == "format" && rules[i].Value == "time" {
+			rules[i].Value = Draft3TimeFormat
+		}
+	}
+	return rules
 }
 
 // formatGoTypeForSchema returns the Go type the schema's "format" maps to, or
@@ -1546,10 +1572,10 @@ func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
 // arm for it -- so gating those two gates the keyword.
 func (g *Generator) aliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
 	rules := extractAliasValidationRules(s, goType)
-	if g.formatAssertsFor(s) {
-		return rules
+	if !g.formatAssertsFor(s) {
+		return withoutFormatRules(rules)
 	}
-	return withoutFormatRules(rules)
+	return g.formatRulesForDialect(s, rules)
 }
 
 // withoutFormatRules returns rules with every "format" entry removed, or the
@@ -2968,6 +2994,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 					if !g.formatAssertsFor(propSchema) {
 						continue
 					}
+					g.formatRulesForDialect(propSchema, rules[i:i+1])
 					stringBacked, ok := formatRuleShape(ft, rules[i], rules[i].StringConvert)
 					if !ok {
 						continue

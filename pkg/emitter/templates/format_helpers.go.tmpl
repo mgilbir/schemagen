@@ -78,6 +78,28 @@ func schemagenFormatTime(v string) error {
 	return nil
 }
 
+// schemagenFormatDraft3Time checks draft 3's "time", which is a different
+// format under the same name: HH:MM:SS, with no offset and no fraction.
+//
+// RFC 3339's full-time -- the one every later draft means -- requires an
+// offset, so a check written for that refuses 08:30:06, which draft 3 marks
+// valid. The two are kept apart rather than unified into something loose enough
+// for both, because the loose version would accept a bare local time on the
+// drafts that forbid it.
+func schemagenFormatDraft3Time(v string) error {
+	bad := fmt.Errorf("%q is not a valid time (HH:MM:SS)", v)
+	if len(v) != 8 || v[2] != ':' || v[5] != ':' {
+		return bad
+	}
+	if !schemagenASCIIDigits(v[0:2], 2) || !schemagenASCIIDigits(v[3:5], 2) || !schemagenASCIIDigits(v[6:8], 2) {
+		return bad
+	}
+	if schemagenAtoi(v[0:2]) > 23 || schemagenAtoi(v[3:5]) > 59 || schemagenAtoi(v[6:8]) > 60 {
+		return bad
+	}
+	return nil
+}
+
 func schemagenCheckFullTime(v string) error {
 	if len(v) < 9 || v[2] != ':' || v[5] != ':' {
 		return fmt.Errorf("expected HH:MM:SS with a time offset")

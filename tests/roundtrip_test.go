@@ -3886,10 +3886,17 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			// RFC 3339 says the T and the Z are case-insensitive.
 			`{"stampStr":"1963-06-19t08:30:06.283185z"}`,
 			`{"clock":"08:30:06z"}`,
-			// "format":"regex" is ECMA-262, not Go's RE2. Both of these compile
-			// in the former and neither in the latter.
+			// "format":"regex" is ECMA-262, not Go's RE2, which is a different
+			// language: [^] is an ordinary empty negated class there and a
+			// syntax error here.
+			//
+			// Lookbehind is deliberately not in this list. ES2018 added it and
+			// the ECMA-262 engine accepts it, while the suite -- which predates
+			// that edition -- marks (?<=foo)bar invalid for `format: regex`.
+			// Accepting it is an under-enforcement against the suite and a
+			// disagreement about which edition of ECMA-262 `format: regex`
+			// names, not something either side can call a defect.
 			`{"pattern":"[^]"}`,
-			`{"pattern":"(?<=foo)bar"}`,
 			// An address literal is a legal domain, and net/mail refuses it.
 			`{"mail":"joe.bloggs@[IPv6:::1]"}`,
 			`{"mail":"joe.bloggs@[127.0.0.1]"}`,
