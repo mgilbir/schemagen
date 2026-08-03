@@ -2081,10 +2081,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 
 		// Check if this property uses oneOf. Only when the union would carry the
-		// whole property schema: otherwise the siblings it declares — its own
-		// properties and required, most damagingly — never reach any generated
-		// type. See oneOfUnionKeepsWholeSchema.
-		if propSchema != nil && len(propSchema.OneOf) > 0 && oneOfUnionKeepsWholeSchema(propSchema) {
+		// whole property schema — otherwise the siblings it declares, its own
+		// properties and required most damagingly, never reach any generated
+		// type — and only when the branches give it something to select on.
+		// See oneOfUnionKeepsWholeSchema and oneOfIsUnselectableUnion.
+		if propSchema != nil && len(propSchema.OneOf) > 0 && g.oneOfRendersAsUnion(propSchema) {
 			oneOfDef, err := g.generateOneOfForProperty(name, propName, goFieldName, propSchema)
 			if err != nil {
 				return fmt.Errorf("property %s (oneOf): %w", propName, err)
@@ -4522,6 +4523,20 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// hasProperties is excluded because resolveType already materializes a
 		// named struct for it; a $ref is excluded so the ref arms keep it.
 		if !oneOfUnionKeepsWholeSchema(s) && s.EffectiveRef() == "" && !hasProperties(s) && g.oneOfDescribesObject(s) {
+			nestedName := parentName + fieldName
+			if err := g.generateTypeDef(nestedName, s); err != nil {
+				return nil, err
+			}
+			return &NamedType{Name: nestedName}, nil
+		}
+		// A oneOf whose branches are all constraint-only reaches here for the
+		// other reason the caller declines the union: there is nothing to select
+		// on (see oneOfIsUnselectableUnion). Materialize the named type so
+		// generateTypeDef evaluates the branches against the value — as an alias
+		// carrying OneOfVariants when a type is declared or inferred, and as the
+		// dynamic wrapper when it is not. Without this the arms below would take
+		// the declared type and drop the oneOf entirely.
+		if oneOfUnionKeepsWholeSchema(s) && g.oneOfIsUnselectableUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
 			nestedName := parentName + fieldName
 			if err := g.generateTypeDef(nestedName, s); err != nil {
 				return nil, err
@@ -9807,6 +9822,69 @@ func oneOfUnionKeepsWholeSchema(s *schema.Schema) bool {
 		s.Not == nil && s.If == nil && s.Then == nil && s.Else == nil &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
 		len(s.Enum) == 0 && s.Const == nil && !s.ConstIsNull
+}
+
+// oneOfBranchIsUnselectable reports whether a oneOf branch gives the
+// sealed-interface union nothing to select on.
+//
+// A union decides which branch a value belongs to by trying to decode it into
+// each variant's Go type, then applying whatever that variant carries:
+// resolveOneOfVariant picks the type, oneOfVariantChecks picks the scalar
+// bounds, and the union's required-key test picks the object shapes. A branch
+// with no type, no $ref, no properties and no required reaches none of those —
+// resolveOneOfVariant gives it `any`, oneOfVariantChecks returns nil for `any`,
+// and there are no required keys — so the branch matches every value that is
+// JSON at all.
+func oneOfBranchIsUnselectable(v *schema.Schema) bool {
+	if v == nil || v.IsBooleanSchema() {
+		return false
+	}
+	return v.EffectiveRef() == "" && !hasProperties(v) &&
+		primarySchemaType(v) == "" && len(v.Required) == 0
+}
+
+// oneOfIsUnselectableUnion reports whether every non-null branch of s's oneOf is
+// unselectable, which makes the sealed-interface union not merely lossy but
+// wrong: every branch matches every value, so the union reports "multiple oneOf
+// variants matched" for each of them — for the values that satisfy exactly one
+// branch as much as for the values that satisfy none. No document is accepted
+// and the rejections name the wrong reason.
+//
+// {"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]} is the shape: 20,
+// 12 and 3 each match exactly one branch and are valid, 7 matches none, and the
+// union rejects all four as "matched 2". The caller must take the ordinary type
+// path instead, where extractOneOfVariantRules (for a declared or inferred
+// type) or dynamicSchemaDef (for neither) evaluates the branches against the
+// value rather than trying to pick one to decode into. That is what the
+// document root already does with the identical schema.
+//
+// One branch short of all is deliberately left alone: a union with a typed
+// branch beside an unselectable one still selects on the typed branch, and
+// changing that shape would reach far past the construct this repairs.
+func (g *Generator) oneOfIsUnselectableUnion(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	nonNull, _ := g.separateNullFromOneOf(s.OneOf)
+	// Fewer than two branches never reaches the union: one non-null branch
+	// beside a null one is the nullable-pointer shape, and zero is not a union
+	// at all.
+	if len(nonNull) < 2 {
+		return false
+	}
+	for _, v := range nonNull {
+		if !oneOfBranchIsUnselectable(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// oneOfRendersAsUnion reports whether a oneOf in a property (or property-like)
+// position should be rendered as a sealed-interface union: the union must carry
+// everything the schema asserts, and it must have something to select on.
+func (g *Generator) oneOfRendersAsUnion(s *schema.Schema) bool {
+	return oneOfUnionKeepsWholeSchema(s) && !g.oneOfIsUnselectableUnion(s)
 }
 
 // isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct

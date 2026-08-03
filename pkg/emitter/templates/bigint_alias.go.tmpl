@@ -165,6 +165,94 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- if .AnyOfVariants}}
+	// anyOf: at least one variant must be satisfied.
+	{
+		anyOfValid := false
+		{{- range $vi, $variant := .AnyOfVariants}}
+		if !anyOfValid {
+			variantValid := true
+			{{- template "bigint_alias_variant_checks" (mkBigIntVariantCtx $recv $variant)}}
+			if variantValid { anyOfValid = true }
+		}
+		{{- end}}
+		if !anyOfValid {
+			return fmt.Errorf("value does not match any anyOf variant")
+		}
+	}
+	{{- end}}
+	{{- if .OneOfVariants}}
+	// oneOf: exactly one variant must be satisfied.
+	{
+		oneOfCount := 0
+		{{- range $vi, $variant := .OneOfVariants}}
+		{
+			variantValid := true
+			{{- template "bigint_alias_variant_checks" (mkBigIntVariantCtx $recv $variant)}}
+			if variantValid { oneOfCount++ }
+		}
+		{{- end}}
+		if oneOfCount != 1 {
+			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+		}
+	}
+	{{- end}}
 	return nil
 }
+{{- end}}
+
+{{/*
+bigint_alias_variant_checks emits one anyOf / oneOf branch's constraints against
+the arbitrary-precision value.
+
+Only the numeric keywords are emitted. A branch keyword that speaks about
+strings or arrays does not constrain an integer at all -- under JSON Schema it
+is satisfied vacuously -- so leaving variantValid alone is what the branch
+actually asserts, not a check being dropped.
+*/}}
+{{define "bigint_alias_variant_checks"}}
+{{- $recv := .Recv -}}
+{{- range .Rules}}
+{{- if eq .RuleType "minimum"}}
+{
+	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+	_limit := new(big.Float).SetPrec(256)
+	_limit.SetString("{{.Value}}")
+	if _val.Cmp(_limit) < 0 { variantValid = false }
+}
+{{- end}}
+{{- if eq .RuleType "maximum"}}
+{
+	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+	_limit := new(big.Float).SetPrec(256)
+	_limit.SetString("{{.Value}}")
+	if _val.Cmp(_limit) > 0 { variantValid = false }
+}
+{{- end}}
+{{- if eq .RuleType "exclusiveMinimum"}}
+{
+	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+	_limit := new(big.Float).SetPrec(256)
+	_limit.SetString("{{.Value}}")
+	if _val.Cmp(_limit) <= 0 { variantValid = false }
+}
+{{- end}}
+{{- if eq .RuleType "exclusiveMaximum"}}
+{
+	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+	_limit := new(big.Float).SetPrec(256)
+	_limit.SetString("{{.Value}}")
+	if _val.Cmp(_limit) >= 0 { variantValid = false }
+}
+{{- end}}
+{{- if eq .RuleType "multipleOf"}}
+{
+	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
+	_divisor := new(big.Float).SetPrec(256)
+	_divisor.SetString("{{.Value}}")
+	_quotient := new(big.Float).SetPrec(256).Quo(_val, _divisor)
+	if !_quotient.IsInt() { variantValid = false }
+}
+{{- end}}
+{{- end}}
 {{- end}}

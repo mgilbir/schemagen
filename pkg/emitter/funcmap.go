@@ -62,6 +62,7 @@ func FuncMap() template.FuncMap {
 		"mkCondCtx":           mkCondCtxFunc,
 		"mkItemCtx":           mkItemCtxFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
+		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
 		"itemRange":           itemRangeFunc,
 		"itemElem":            itemElemFunc,
 		"itemPath":            itemPathFunc,
@@ -105,6 +106,18 @@ type ItemLevelContext struct {
 
 func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int) ItemLevelContext {
 	return ItemLevelContext{Recv: recv, Def: def, Level: level}
+}
+
+// BigIntVariantContext is passed to the bigint_alias_variant_checks template,
+// which needs the receiver name alongside one anyOf / oneOf branch's rules to
+// render the big.Float comparisons.
+type BigIntVariantContext struct {
+	Recv  string
+	Rules []generator.ValidationRule
+}
+
+func mkBigIntVariantCtxFunc(recv string, rules []generator.ValidationRule) BigIntVariantContext {
+	return BigIntVariantContext{Recv: recv, Rules: rules}
 }
 
 // itemRangeFunc renders what a level's loop ranges over: the slice itself at

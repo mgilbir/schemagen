@@ -5100,3 +5100,227 @@ func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) 
 		}
 	})
 }
+
+// oneOfDefFor returns the sealed-interface union group a struct carries for a
+// property, or nil when the property is not rendered as a union.
+func oneOfDefFor(sd *StructDef, jsonName string) *OneOfDef {
+	for i := range sd.OneOfs {
+		if sd.OneOfs[i].JSONName == jsonName {
+			return &sd.OneOfs[i]
+		}
+	}
+	return nil
+}
+
+// aliasNamed returns the AliasDef with the given name, or nil.
+func aliasNamed(ir *File, name string) *AliasDef {
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == name {
+			return d
+		}
+	}
+	return nil
+}
+
+// validatableFieldFor returns the entry that makes the owner's Validate call the
+// field's own Validate, or nil when it carries none.
+func validatableFieldFor(sd *StructDef, jsonName string) *ValidatableFieldDef {
+	for i := range sd.ValidatableFields {
+		if sd.ValidatableFields[i].JSONName == jsonName {
+			return &sd.ValidatableFields[i]
+		}
+	}
+	return nil
+}
+
+// TestConstraintOnlyOneOfPropertyLeavesTheUnionPath pins the defect where a
+// oneOf whose branches state bounds and no type made a property unusable.
+//
+//	{"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]}
+//
+// Neither branch says what the value is, so resolveOneOfVariant gave each one
+// `any` and oneOfVariantChecks gave each one no checks. The union then held two
+// variants that both matched every JSON value: 20, 12 and 3 each satisfy
+// exactly one branch and are valid, 7 satisfies none, and all four were
+// rejected as "multiple oneOf variants matched (2)". No value was accepted, and
+// the one correct rejection named the wrong reason. The sibling "type", the
+// only keyword in the schema that says what the value is, went with it.
+//
+// The repair is to leave the union path -- there is nothing to select on -- and
+// materialize the property's own type, where the declared "integer" becomes the
+// Go type and the branches become the oneOf rules its Validate counts. That is
+// what the identical schema at the document root has always done.
+func TestConstraintOnlyOneOfPropertyLeavesTheUnionPath(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := oneOfDefFor(doc, "a"); got != nil {
+		t.Fatalf("a became a sealed-interface union with variants %+v; branches carrying no type give it nothing to select on", got.Variants)
+	}
+
+	alias := aliasNamed(ir, "DocA")
+	if alias == nil {
+		t.Fatalf("expected a DocA alias carrying the branches; got %v", ir.TypeDefs)
+	}
+	if got := alias.Underlying.GoTypeName(); got != "int64" {
+		t.Fatalf("DocA underlying = %q, want int64 (the sibling type the union dropped)", got)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+	var ruleTypes []string
+	for _, variant := range alias.OneOfVariants {
+		for _, rule := range variant {
+			ruleTypes = append(ruleTypes, rule.RuleType)
+		}
+	}
+	if !containsString(ruleTypes, "minimum") || !containsString(ruleTypes, "maximum") {
+		t.Fatalf("DocA oneOf variant rules = %v, want the branch bounds", ruleTypes)
+	}
+
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA", got)
+	}
+	// The branches only enforce anything if the owner calls the field's Validate.
+	if validatableFieldFor(doc, "a") == nil {
+		t.Fatalf("expected Doc.Validate to call a.Validate; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestConstraintOnlyOneOfPropertyWithNoTypeReachesTheDynamicEvaluator is the
+// same defect where the schema does not even name a type:
+//
+//	{"oneOf":[{"minimum":10},{"maximum":5}]}
+//
+// There is no declared type for the branches to attach to, so the property has
+// to become the raw-JSON wrapper whose Validate evaluates them against the
+// decoded value -- again what the document root already does. Leaving the union
+// path without materializing that wrapper would take the property to a bare
+// `any` field and drop the oneOf outright, which is a quieter spelling of the
+// same bug.
+func TestConstraintOnlyOneOfPropertyWithNoTypeReachesTheDynamicEvaluator(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := oneOfDefFor(doc, "a"); got != nil {
+		t.Fatalf("a became a sealed-interface union with variants %+v", got.Variants)
+	}
+
+	var wrapper *DynamicSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*DynamicSchemaDef); ok && d.Name == "DocA" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocA dynamic wrapper carrying the branches; got %v", ir.TypeDefs)
+	}
+
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA", got)
+	}
+	if validatableFieldFor(doc, "a") == nil {
+		t.Fatalf("expected Doc.Validate to call a.Validate; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestSelectableOneOfPropertiesStayUnions is the other side of that repair.
+// Leaving the union path is only right where the branches give it nothing to
+// select on; a branch that names a type, declares properties or lists required
+// keys does, and the union is how those are generated. Discriminated unions are
+// what the tool emits for the shapes users actually write, so an over-broad
+// reading of "constraint-only" would take every one of them off the union path
+// at once.
+//
+// Each case is a branch shape that must keep its union: a typed scalar pair, a
+// required-key pair (`any` variants that still discriminate, on the required
+// keys rather than on the type), an inline object pair, and a same-typed pair
+// separated only by their bounds.
+func TestSelectableOneOfPropertiesStayUnions(t *testing.T) {
+	cases := []struct {
+		name     string
+		branches string
+	}{
+		{"typed scalars", `[{"type":"string"},{"type":"integer"}]`},
+		{"required keys only", `[{"required":["x"]},{"required":["y"]}]`},
+		{"inline objects", `[{"properties":{"x":{"type":"string"}},"required":["x"]},{"properties":{"y":{"type":"integer"}},"required":["y"]}]`},
+		{"same type, different bounds", `[{"type":"integer","maximum":5},{"type":"integer","minimum":10}]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"oneOf": `+tc.branches+`}},
+				"required": ["a"]
+			}`)
+
+			doc := structNamed(t, ir, "Doc")
+			group := oneOfDefFor(doc, "a")
+			if group == nil {
+				t.Fatalf("a lost its sealed-interface union; struct oneOfs = %+v, typedefs = %v", doc.OneOfs, ir.TypeDefs)
+			}
+			if len(group.Variants) != 2 {
+				t.Fatalf("a union variants = %+v, want two", group.Variants)
+			}
+		})
+	}
+}
+
+// TestBigIntAliasCarriesItsOneOfVariants pins the generator half of the defect
+// the co-generation harness found once a constraint-only oneOf could reach a
+// property: under BigIntSupport an integer becomes a BigIntAliasDef, and the
+// branches have to travel with it. The emitter half -- the Validate template
+// that rendered Validations and dropped these -- is pinned in
+// pkg/emitter/emitter_test.go, since a template test from here would close an
+// import cycle.
+func TestBigIntAliasCarriesItsOneOfVariants(t *testing.T) {
+	input := `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *BigIntAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*BigIntAliasDef); ok && d.Name == "DocA" {
+			alias = d
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected a DocA big-int alias; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+}

@@ -150,7 +150,11 @@ const coMaxDepth = 3
 // inline if / not becomes a raw-JSON wrapper whose Validate the parent calls,
 // and oneOf / if / not become a wrapper type -- either the root type, whose
 // Validate the harness calls directly, or a $defs entry whose Validate the
-// referencing struct calls.
+// referencing struct calls. An inline oneOf whose branches state bounds and no
+// type is the one shape the union cannot select on, so it leaves the union path
+// and becomes a property type carrying the branches as constraints; that is the
+// hoisted spelling of coOneOfWin, and it is emitted inline for exactly that
+// reason.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
@@ -283,7 +287,7 @@ const (
 	// applicators, so each is a value the grammar picks first and a schema it
 	// derives from that value.
 	coAltAnyOf // anyOf (or, under a known-gap toggle, oneOf) over two typed scalars
-	coOneOfWin // oneOf over two overlapping integer windows
+	coOneOfWin // oneOf over two overlapping integer windows, typed per branch or once above them
 	coIfElse   // if/then/else over an integer pivot
 	coNot      // not: {"type": T}
 )
@@ -468,9 +472,16 @@ type coNode struct {
 	// winLo0 < winLo1 <= winHi0 < winHi1, so each of "matches only the first",
 	// "matches only the second", "matches both" and "matches neither" is a
 	// non-empty set of integers.
+	//
+	// winHoist writes the same construct with the type stated once beside the
+	// oneOf and each branch reduced to its bounds -- {"type":"integer",
+	// "oneOf":[{"minimum":..,"maximum":..},{..}]} rather than repeating
+	// "type":"integer" inside both branches. The two spellings accept exactly
+	// the same integers, so one instance conforms under either.
 	winLo0, winHi0 int64
 	winLo1, winHi1 int64
 	winValue       int64
+	winHoist       bool
 
 	// coIfElse: if {minimum: pivot}, then {maximum: pivot+span},
 	// else {minimum: pivot-span}. iteIf records which side the instance is on.
@@ -1072,7 +1083,7 @@ func (b *coBuilder) addDiscriminators(n *coNode) {
 func (b *coBuilder) buildRootComposition() *coNode {
 	switch b.rng.IntN(3) {
 	case 0:
-		return b.buildOneOfWin()
+		return b.buildOneOfWin(b.chance(2))
 	case 1:
 		return b.buildIfElse()
 	default:
@@ -1088,8 +1099,11 @@ func (b *coBuilder) buildRootComposition() *coNode {
 // [lo0, lo1-1] then matches B0 alone, [hi0+1, hi1] matches B1 alone, [lo1, hi0]
 // matches both -- which is what makes a "matched two variants" mutant reachable
 // at all -- and anything below lo0 matches neither.
-func (b *coBuilder) buildOneOfWin() *coNode {
-	n := &coNode{kind: coOneOfWin}
+//
+// hoist picks the spelling: see winHoist. Both windows describe integers either
+// way, so the instance and every mutant are the same numbers under both.
+func (b *coBuilder) buildOneOfWin(hoist bool) *coNode {
+	n := &coNode{kind: coOneOfWin, winHoist: hoist}
 	n.winLo0 = int64(b.rng.IntN(21) - 10)
 	only0 := int64(1 + b.rng.IntN(3)) // width of the "B0 alone" band
 	n.winLo1 = n.winLo0 + only0
@@ -1154,7 +1168,16 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	// Composition leaves. Written inline as a property's own schema these have
 	// no Go type of their own, so each becomes a raw-JSON wrapper whose Validate
 	// the enclosing struct calls.
-	kinds = append(kinds, coIfElse, coNot)
+	//
+	// coOneOfWin is admitted here only in its hoisted spelling (see winHoist).
+	// That is the one branch shape a sealed-interface union cannot select on --
+	// a branch stating bounds and no type resolves to `any`, and an `any`
+	// variant carries no checks -- so it is the position where the property has
+	// to leave the union path and pick up the branches as constraints on the
+	// declared type. The unhoisted spelling inline is a union of two same-typed
+	// variants, a different construct that coAltAnyOf's oneOf form already
+	// covers at this position.
+	kinds = append(kinds, coIfElse, coNot, coOneOfWin)
 	switch kinds[b.rng.IntN(len(kinds))] {
 	case coObject:
 		return b.buildObject(depth, visible)
@@ -1164,6 +1187,8 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 		return b.buildTuple()
 	case coAltAnyOf:
 		return b.buildAltAnyOf(b.chance(2))
+	case coOneOfWin:
+		return b.buildOneOfWin(true)
 	case coIfElse:
 		return b.buildIfElse()
 	case coNot:
@@ -1538,6 +1563,14 @@ func (n *coNode) fragment() map[string]any {
 		}
 
 	case coOneOfWin:
+		if n.winHoist {
+			m["type"] = "integer"
+			m["oneOf"] = []any{
+				map[string]any{"minimum": n.winLo0, "maximum": n.winHi0},
+				map[string]any{"minimum": n.winLo1, "maximum": n.winHi1},
+			}
+			break
+		}
 		m["oneOf"] = []any{
 			map[string]any{"type": "integer", "minimum": n.winLo0, "maximum": n.winHi0},
 			map[string]any{"type": "integer", "minimum": n.winLo1, "maximum": n.winHi1},
