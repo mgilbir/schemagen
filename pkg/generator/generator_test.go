@@ -4228,8 +4228,14 @@ func TestObjectLevelIfThenElseInsideAllOfIsChecked(t *testing.T) {
 // TestObjectLevelConditionalFailsClosed is the guard that matters most here.
 // The condition decides which branch binds, so a condition evaluated with one
 // of its keywords ignored applies the wrong branch and rejects a document the
-// schema allows. Anything outside what the checks model must drop the whole
+// schema allows. An `if` outside what the checks model must drop the whole
 // group rather than approximate it.
+//
+// This is the half that stayed exact when issue #64 relaxed `then` and `else`
+// (see TestObjectLevelConditionalThenKeepsItsExpressiblePart). Relaxing the
+// condition the same way is what would turn under-enforcement into false
+// rejection, so every case below is an `if`, or a `then` that leaves nothing at
+// all behind.
 func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 	for name, input := range map[string]string{
 		"if uses an unmodelled keyword": `{
@@ -4254,17 +4260,24 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 			"if": {"required": ["kind"], "minProperties": 2},
 			"then": {"required": ["a"]}
 		}`,
-		"then is only partly expressible": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
-			"if": {"required": ["kind"]},
-			"then": {"required": ["a"], "minProperties": 3}
-		}`,
-		"then uses an unmodelled keyword": `{
+		// `then` is lenient now, but leniency leaves nothing here: `enum` is the
+		// property's only keyword, so the property carries no check, the branch
+		// carries no property, and a group with neither branch is no group.
+		"then is left with nothing to check": `{
 			"title": "Doc", "type": "object",
 			"properties": {"a": {"type":"string"}},
 			"if": {"required": ["a"]},
 			"then": {"properties": {"a": {"enum": ["p","q"]}}}
+		}`,
+		// The one keyword leniency must not read past. Before draft 2019-09 a
+		// `$ref` replaces the schema object it sits in, so this `required` does
+		// not apply and enforcing it would reject a document the schema allows.
+		"then carries a ref beside its constraints": `{
+			"title": "Doc", "type": "object",
+			"$defs": {"other": {"type": "object"}},
+			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+			"if": {"required": ["kind"]},
+			"then": {"$ref": "#/$defs/other", "required": ["a"]}
 		}`,
 		"if constrains nothing": `{
 			"title": "Doc", "type": "object",
@@ -4281,6 +4294,126 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestObjectLevelConditionalThenKeepsItsExpressiblePart pins issue #64. A
+// `then` or `else` used to be held to the `if`'s exact-or-nothing bar, so one
+// keyword the checks do not model -- an `items` inside a property, say -- cost
+// the whole group its check, the condition included. That is more conservative
+// than the reasoning requires: a schema object's keywords are conjunctive, so
+// enforcing part of a consequence accepts a superset of what the whole one
+// accepts and can only ever under-enforce. Only the condition, which selects
+// between the branches, has to be exact.
+func TestObjectLevelConditionalThenKeepsItsExpressiblePart(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input        string
+		wantRequired []string
+		wantChecks   map[string][]string // JSON property name -> check kinds, in order
+	}{
+		// The reproducer from the issue, reduced: the `then` types a property
+		// with `items`, which the checks cannot express. The `type` beside it
+		// can be, and dropping only `items` leaves a demand the schema makes.
+		"property typed with items keeps its type": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"properties": {"kind": {"const":"tool"}}, "required": ["kind"]},
+				"then": {
+					"properties": {"tool": {"type":"array","items":{"type":"object"}}},
+					"required": ["tool"]
+				}
+			}`,
+			wantRequired: []string{"tool"},
+			wantChecks:   map[string][]string{"tool": {"type"}},
+		},
+		// A branch-level keyword outside object shape. minProperties is a
+		// conjunct of the `then`, so ignoring it keeps the `required` honest.
+		"branch keyword outside object shape is ignored": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"required": ["a"], "minProperties": 3}
+			}`,
+			wantRequired: []string{"a"},
+			wantChecks:   map[string][]string{},
+		},
+		// Per-property mixing: one property is expressible, one is not, and the
+		// expressible one survives on its own.
+		"an inexpressible property does not take the others with it": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"then": {"properties": {
+					"a": {"type":"string","minLength":2},
+					"b": {"enum": ["p","q"]}
+				}},
+				"if": {"required": ["kind"]}
+			}`,
+			wantRequired: nil,
+			wantChecks:   map[string][]string{"a": {"type", "minLength"}},
+		},
+		// `else` is the same rule, and the branch it is paired with being
+		// unusable does not stop it.
+		"else keeps its part when then has none": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"properties": {"a": {"enum": ["p","q"]}}},
+				"else": {"required": ["b"], "not": {"required": ["c"]}}
+			}`,
+			wantRequired: []string{"b"},
+			wantChecks:   map[string][]string{},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir := generateForItemTest(t, tc.input)
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ObjectConditionals) != 1 {
+				t.Fatalf("expected one conditional group; got %+v", doc.ObjectConditionals)
+			}
+			group := doc.ObjectConditionals[0]
+			branch := group.Then
+			if branch == nil {
+				branch = group.Else
+			}
+			if branch == nil {
+				t.Fatalf("group carries neither then nor else: %+v", group)
+			}
+			if !slicesEqualString(branch.RequiredKeys, tc.wantRequired) {
+				t.Fatalf("%s.RequiredKeys = %v, want %v", branch.Keyword, branch.RequiredKeys, tc.wantRequired)
+			}
+			got := map[string][]string{}
+			for _, prop := range branch.Properties {
+				var kinds []string
+				for _, c := range prop.Checks {
+					kinds = append(kinds, c.Kind)
+				}
+				got[prop.JSONName] = kinds
+			}
+			if len(got) != len(tc.wantChecks) {
+				t.Fatalf("%s constrains %v, want %v", branch.Keyword, got, tc.wantChecks)
+			}
+			for name, want := range tc.wantChecks {
+				if !slicesEqualString(got[name], want) {
+					t.Fatalf("%s property %q checks = %v, want %v", branch.Keyword, name, got[name], want)
+				}
+			}
+		})
+	}
+}
+
+func slicesEqualString(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestOptionalRefToWrapperTypeIsAPointer covers the third instance of one
@@ -4707,5 +4840,78 @@ func TestTupleAliasIntegerPositionImportsMath(t *testing.T) {
 	}
 	if !containsString(paths, "math") {
 		t.Fatalf("imports = %v, want math (the tuple integer position calls math.Trunc)", paths)
+	}
+}
+
+// TestUntaggableOptionalFieldsSkipTheirAbsentValue pins issue #63. A property
+// whose JSON name cannot go in a struct tag gets `json:"-"` and is written by
+// hand in MarshalJSON, so neither omitempty nor omitzero ever reaches it. PR
+// #53 taught the hand-written arm to skip an absent *pointer*; the slice, map
+// and interface arms still wrote unconditionally, so `{}` came back as
+// `{"a\"b":null}` -- an absent optional property invented as an explicit null,
+// and a document that no longer round-trips.
+//
+// The omission follows omitzero's rule, not omitempty's: skip only the value
+// unmarshal leaves for an absent property, never one the document carried.
+// Unmarshal assigns only when the key is present, so a present [] or {} is
+// non-nil and survives; omitempty would erase it.
+func TestUntaggableOptionalFieldsSkipTheirAbsentValue(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"s\"l": {"type": "array", "items": {"type": "string"}},
+			"m\"p": {"type": "object", "additionalProperties": {"type": "string"}},
+			"a\"n": {"type": ["string", "number"]},
+			"p\"t": {"type": "string"},
+			"w\"r": {"if": {"type": "string"}, "then": {"minLength": 2}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, tc := range []struct {
+		jsonName string
+		goType   string
+		want     string
+	}{
+		{"s\"l", "[]string", "nil"},
+		{"m\"p", "map[string]any", "nil"},
+		{"a\"n", "any", "nil"},
+		{"p\"t", "*string", "nil"},
+		{"w\"r", "DocWR", "iszero"},
+	} {
+		field := fieldNamedJSON(t, doc, tc.jsonName)
+		if !field.ManualJSON {
+			t.Fatalf("%q: ManualJSON = false, want true (the name cannot go in a struct tag)", tc.jsonName)
+		}
+		if got := field.Type.GoTypeName(); got != tc.goType {
+			t.Fatalf("%q: type = %q, want %q -- the arm under test moved", tc.jsonName, got, tc.goType)
+		}
+		if field.ManualOmit != tc.want {
+			t.Fatalf("%q (%s): ManualOmit = %q, want %q -- an absent optional value would be written as null", tc.jsonName, tc.goType, field.ManualOmit, tc.want)
+		}
+	}
+}
+
+// TestUntaggableRequiredFieldIsWrittenUnconditionally guards the narrowness of
+// the arm above. A required property has to appear in the output whatever its
+// Go value is, so it must keep writing unconditionally: extending the skip to
+// it would drop a required key and produce a document its own schema rejects.
+func TestUntaggableRequiredFieldIsWrittenUnconditionally(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"r\"q": {"type": "array", "items": {"type": "string"}}
+		},
+		"required": ["r\"q"]
+	}`)
+
+	field := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "r\"q")
+	if !field.ManualJSON {
+		t.Fatalf("r\"q: ManualJSON = false, want true")
+	}
+	if field.ManualOmit != "" {
+		t.Fatalf("r\"q: ManualOmit = %q, want \"\" -- a required property must be written even when its Go value is nil", field.ManualOmit)
 	}
 }

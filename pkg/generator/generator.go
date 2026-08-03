@@ -2153,6 +2153,39 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// omitzero omits exactly the absent case.
 		omitZero := omitEmpty && (g.isCollectionType(goType) || g.isRawValueWrapperType(goType))
 
+		// A property name that cannot go in a struct tag gets `json:"-"` and is
+		// written by hand in MarshalJSON, so neither omitempty nor omitzero ever
+		// reaches it -- the omission has to be spelled out. The rule is
+		// omitzero's, not omitempty's: skip only the value that unmarshal leaves
+		// when the property was absent, never a value the document actually
+		// carried. A pointer, a collection and an interface are nil exactly in
+		// that case -- unmarshal assigns only when the key is present, so a
+		// present [] or {} comes back non-nil -- and a raw-value wrapper reports
+		// it through IsZero. omitempty would additionally drop a
+		// present-but-empty collection, inventing an absence the document did
+		// not have: the same class of round-trip break as the invented null this
+		// replaces, in the other direction.
+		//
+		// An interface is also nil for an explicit null, which the nil arm would
+		// drop. That case does not arise: a schema admitting null has had
+		// omitEmpty cleared above, so this arm is only reached where null is not
+		// a legal value.
+		//
+		// A scalar is left unconditional. Its zero is indistinguishable from
+		// absence without presence tracking, and writing it can only ever add a
+		// property, while omitting it would erase an explicit "", 0 or false --
+		// though in practice an optional scalar has been pointer-wrapped by now
+		// and takes the nil arm.
+		manualOmit := ""
+		if manualJSON && omitEmpty {
+			switch {
+			case goType.IsPointer() || g.isCollectionType(goType) || g.isInterfaceType(goType):
+				manualOmit = "nil"
+			case g.isRawValueWrapperType(goType):
+				manualOmit = "iszero"
+			}
+		}
+
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
 		if propSchema.Default != nil {
@@ -2172,6 +2205,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			Required:       required,
 			Description:    propSchema.Description,
 			ManualJSON:     manualJSON,
+			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
 		})
 	}
@@ -2226,8 +2260,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	} else if s.UnevaluatedProperties != nil {
 		// unevaluatedProperties without explicit additionalProperties:
 		// need an overflow map to capture unknown keys for unevaluated checking.
+		//
+		// additionalProperties is still absent here, so StrictProperties applies
+		// exactly as it does in the arm below: the flag is documented as "treat
+		// absent additionalProperties as false", and an unrelated keyword being
+		// present is no reason for it to stop meaning that. The two bans are not
+		// the same rule -- unevaluatedProperties also counts keys evaluated by
+		// $ref/allOf/if-then subschemas, which additionalProperties:false does
+		// not -- so leaving this one out let a key through on exactly the objects
+		// where they differ.
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			Forbidden: g.config.StrictProperties,
 		}
 		needsMarshal = true
 		needsUnmarshal = true
@@ -7337,6 +7381,24 @@ func (g *Generator) isCollectionType(t GoType) bool {
 		return true
 	case *NamedType:
 		return g.isArrayAlias(v.Name) || g.isMapAlias(v.Name)
+	}
+	return false
+}
+
+// isInterfaceType reports whether a Go type is the empty interface (directly or
+// via a named alias). Like a pointer or a collection, its nil is what unmarshal
+// leaves when the property was absent, and it marshals to null.
+func (g *Generator) isInterfaceType(t GoType) bool {
+	switch v := t.(type) {
+	case *PrimitiveType:
+		return v.Name == "any"
+	case *NamedType:
+		for _, td := range g.output.TypeDefs {
+			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
+				pt, isPrim := d.Underlying.(*PrimitiveType)
+				return isPrim && pt.Name == "any"
+			}
+		}
 	}
 	return false
 }

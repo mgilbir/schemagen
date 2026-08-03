@@ -70,12 +70,24 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- range $struct.Fields}}
 	{{- if .ManualJSON}}
-	{{- if and .OmitEmpty .Type.IsPointer}}
+	{{- if eq .ManualOmit "nil"}}
 	// The property name cannot go in a struct tag, so omitempty never reaches
 	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer marshals to would be written as if the property were
-	// present with a null value.
+	// null a nil pointer/slice/map marshals to would be written as if the
+	// property were present with a null value. A present-but-empty collection
+	// is non-nil and still written.
 	if {{$recv}}.{{.Name}} != nil {
+		raw, err := json.Marshal({{$recv}}.{{.Name}})
+		if err != nil {
+			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
+		}
+		obj[{{printf "%q" .JSONName}}] = raw
+	}
+	{{- else if eq .ManualOmit "iszero"}}
+	// The property name cannot go in a struct tag, so omitzero never reaches
+	// this field: the wrapper's MarshalJSON writes null when no value was
+	// present, so an absent optional value has to be skipped by hand.
+	if !{{$recv}}.{{.Name}}.IsZero() {
 		raw, err := json.Marshal({{$recv}}.{{.Name}})
 		if err != nil {
 			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)

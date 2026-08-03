@@ -359,11 +359,18 @@ type ObjectOneOfBranch struct {
 // folded into the field's own rules, and it may well name a property the struct
 // does not declare at all.
 //
-// A group is only built when every part of it is expressible exactly (see
+// A group is only built when the *condition* is expressible exactly (see
 // objectConditionalDef). An `if` that were evaluated approximately would decide
 // the wrong branch, and applying an `else` to a value the `if` actually matched
 // rejects a document the schema allows -- worse than the missing check this
 // replaces.
+//
+// `then` and `else` are held to a weaker bar, because they can be: they add
+// demands to a branch the condition has already selected, and a schema object's
+// keywords are conjunctive, so whatever part of one is expressible enforces a
+// subset of what it says and refuses only documents the schema refuses too.
+// Each carries the part of itself that survived, and a branch left with nothing
+// is absent rather than fatal to the group.
 type ObjectConditionalDef struct {
 	If   ObjectConditionalBranch
 	Then *ObjectConditionalBranch
@@ -570,6 +577,7 @@ type FieldDef struct {
 	Required       bool
 	Description    string
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
+	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
 }
 

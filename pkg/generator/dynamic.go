@@ -57,13 +57,38 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 		return nil, false
 	}
 
+	checks, whole := modelledChecks(s)
+	if !whole {
+		return nil, false
+	}
+	// A branch with no checks matches everything; that is meaningful for oneOf
+	// counting, so an empty slice is a valid result.
+	return checks, true
+}
+
+// modelledChecks converts the keywords the evaluator models into checks and
+// says, through its second return value, whether those checks are the whole of
+// what the keywords it looked at demand.
+//
+// It is the emission half of dynamicBranchChecks, split out so that a caller
+// which may safely under-enforce can take the checks without the gate. It does
+// not judge the keywords it does not model -- dynamicBranchChecks' own gate
+// does that, from the re-marshaled key set, and stays the only place that
+// decides representability.
+//
+// whole is false where a keyword it models is written in a form the checks
+// cannot carry: a type union needs alternation the evaluator does not express,
+// and draft-4's boolean exclusiveMinimum/exclusiveMaximum modify their sibling
+// `minimum`/`maximum` rather than standing on their own, so the check emitted
+// for that sibling is weaker than the schema. Both are safe to keep only where
+// weaker is acceptable.
+func modelledChecks(s *schema.Schema) ([]DynamicCheck, bool) {
+	whole := true
 	var checks []DynamicCheck
 	if len(s.Type) == 1 {
 		checks = append(checks, DynamicCheck{Kind: "type", Value: s.Type[0]})
 	} else if len(s.Type) > 1 {
-		// A type union in a branch would need alternation the evaluator does
-		// not express yet.
-		return nil, false
+		whole = false
 	}
 	if s.Minimum != nil {
 		checks = append(checks, DynamicCheck{Kind: "minimum", Value: *s.Minimum})
@@ -73,15 +98,17 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	}
 	if s.ExclusiveMinimum != nil {
 		if s.ExclusiveMinimum.Number == nil {
-			return nil, false // draft-4 boolean form modifies minimum; not expressed here
+			whole = false
+		} else {
+			checks = append(checks, DynamicCheck{Kind: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
 		}
-		checks = append(checks, DynamicCheck{Kind: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
 	}
 	if s.ExclusiveMaximum != nil {
 		if s.ExclusiveMaximum.Number == nil {
-			return nil, false
+			whole = false
+		} else {
+			checks = append(checks, DynamicCheck{Kind: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
 		}
-		checks = append(checks, DynamicCheck{Kind: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
 	}
 	if s.MultipleOf != nil {
 		checks = append(checks, DynamicCheck{Kind: "multipleOf", Value: *s.MultipleOf})
@@ -95,9 +122,7 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if s.Pattern != nil {
 		checks = append(checks, DynamicCheck{Kind: "pattern", Value: *s.Pattern})
 	}
-	// A branch with no checks matches everything; that is meaningful for oneOf
-	// counting, so an empty slice is a valid result.
-	return checks, true
+	return checks, whole
 }
 
 // dynamicBranches converts a list of sub-schemas, failing closed if any one of
@@ -182,11 +207,14 @@ func (g *Generator) dynamicSchemaDef(name string, s *schema.Schema) *DynamicSche
 	return def
 }
 
-// objectConditionalKeywords lists the keywords a branch of an object-level
-// if/then/else may carry. Only object shape is modelled here: which properties
-// must be present, and what each named property must look like. A branch that
-// says anything else is not expressible, and the whole group is dropped rather
-// than checked with a keyword ignored.
+// objectConditionalKeywords lists the keywords the *condition* of an
+// object-level if/then/else may carry. Only object shape is modelled here:
+// which properties must be present, and what each named property must look
+// like. An `if` that says anything else is not expressible, and the whole group
+// is dropped rather than the condition decided with a keyword ignored.
+//
+// `then` and `else` are not held to this list; see
+// objectConditionalBranchLenient for why they need not be.
 var objectConditionalKeywords = map[string]bool{
 	"properties": true, "required": true,
 
@@ -236,11 +264,10 @@ func objectPropertyChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 // objectConditionalBranch converts one side of an object-level if/then/else.
 //
 // Everything about the branch has to be expressible for it to be used at all.
-// The `if` decides which of `then` and `else` applies, so a condition evaluated
-// with one of its keywords ignored picks the wrong branch and turns a document
-// the schema allows into a rejection. `then` and `else` are held to the same
-// bar for a simpler reason: a branch checked in part is a check whose meaning
-// nobody can state.
+// This is the rule for the `if`, which decides which of `then` and `else`
+// applies: a condition evaluated with one of its keywords ignored picks the
+// wrong branch and turns a document the schema allows into a rejection.
+// `then` and `else` go through objectConditionalBranchLenient instead.
 func objectConditionalBranch(keyword string, s *schema.Schema) (*ObjectConditionalBranch, bool) {
 	if s == nil || s.IsBooleanSchema() || len(s.Extensions) > 0 {
 		return nil, false
@@ -280,8 +307,102 @@ func objectConditionalBranch(keyword string, s *schema.Schema) (*ObjectCondition
 	return branch, true
 }
 
+// schemaCarriesRef reports whether s references another schema.
+//
+// A reference is the one keyword whose presence can make its siblings mean
+// something other than what they say: before draft 2019-09 a `$ref` replaces
+// the schema object it sits in, so a sibling `properties` beside one does not
+// apply at all. Enforcing it anyway would reject documents the schema allows,
+// which is precisely what the partial enforcement below must never do -- so a
+// branch or property carrying a reference is left alone entirely rather than
+// read in part.
+func schemaCarriesRef(s *schema.Schema) bool {
+	return s.EffectiveRef() != "" || s.DynamicRef != ""
+}
+
+// objectPropertyChecksLenient converts a property sub-schema of a `then` or
+// `else` branch into the checks it can express, ignoring the keywords it
+// cannot rather than refusing the property.
+//
+// It is objectPropertyChecks with the gate removed, and it is sound only in
+// that position. A schema object's keywords are conjunctive, so a subset of
+// them accepts a superset of the values: a property judged by part of its
+// sub-schema can only let a wrong value through, never refuse a right one.
+// The exceptions are handled rather than assumed -- a reference (see
+// schemaCarriesRef), and draft 3's schema-valued `type` entries, which turn
+// `type` into an alternation the surviving check would read as a demand.
+//
+// A sub-schema whose keywords are all unmodelled yields no checks and the
+// caller drops the property, which is the same under-enforcement one step up.
+func objectPropertyChecksLenient(s *schema.Schema) []DynamicCheck {
+	if s == nil || s.IsBooleanSchema() || len(s.Extensions) > 0 || schemaCarriesRef(s) {
+		return nil
+	}
+	checks, _ := modelledChecks(s)
+	if len(s.TypeSchemas) > 0 {
+		kept := checks[:0]
+		for _, c := range checks {
+			if c.Kind != "type" {
+				kept = append(kept, c)
+			}
+		}
+		checks = kept
+	}
+	if s.Const != nil || s.ConstIsNull {
+		var value any
+		if s.Const != nil {
+			value = *s.Const
+		}
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return nil
+		}
+		checks = append(checks, DynamicCheck{Kind: "const", Value: string(encoded)})
+	}
+	return checks
+}
+
+// objectConditionalBranchLenient converts `then` or `else` into the part of
+// itself the generated check can carry, dropping what it cannot express
+// instead of dropping the group.
+//
+// This is the asymmetry between the condition and the consequence. `if` decides
+// which of the two branches applies, so reading it with a keyword ignored picks
+// the wrong branch and turns a document the schema allows into a rejection --
+// it stays on objectConditionalBranch's exact-or-nothing rule. `then` and
+// `else` only ever add demands to a branch already selected, and their keywords
+// are conjunctive, so enforcing a subset of them can under-enforce and nothing
+// worse. Held to the same bar as `if`, a single `items` inside a `then` cost
+// the whole group its check, condition included.
+//
+// A branch carrying a reference is still refused whole (see schemaCarriesRef),
+// and so is one carrying a keyword the parser did not recognize: an unmodelled
+// standard keyword is known to be a conjunct that can be dropped, whereas
+// nothing is known about a keyword schemagen has never seen. Both refusals cost
+// only this branch; the other side and the condition survive.
+func objectConditionalBranchLenient(keyword string, s *schema.Schema) *ObjectConditionalBranch {
+	if s == nil || s.IsBooleanSchema() || len(s.Extensions) > 0 || schemaCarriesRef(s) {
+		return nil
+	}
+	branch := &ObjectConditionalBranch{Keyword: keyword}
+	branch.RequiredKeys = append(branch.RequiredKeys, s.Required...)
+	sort.Strings(branch.RequiredKeys)
+	for _, name := range sortedKeys(s.Properties) {
+		checks := objectPropertyChecksLenient(s.Properties[name])
+		if len(checks) == 0 {
+			continue
+		}
+		branch.Properties = append(branch.Properties, ObjectPropertyConstraint{
+			JSONName: name,
+			Checks:   checks,
+		})
+	}
+	return branch
+}
+
 // objectConditionalDef builds the check for an object-level if/then/else, or
-// returns nil when any part of it is outside what the branches above express.
+// returns nil when the condition is outside what objectConditionalBranch
+// expresses or neither consequence leaves anything to check.
 func objectConditionalDef(s *schema.Schema) *ObjectConditionalDef {
 	if s == nil || s.If == nil || (s.Then == nil && s.Else == nil) {
 		return nil
@@ -296,20 +417,12 @@ func objectConditionalDef(s *schema.Schema) *ObjectConditionalDef {
 	}
 	def := &ObjectConditionalDef{If: *ifBranch}
 	if s.Then != nil {
-		then, ok := objectConditionalBranch("then", s.Then)
-		if !ok {
-			return nil
-		}
-		if !then.Empty() {
+		if then := objectConditionalBranchLenient("then", s.Then); !then.Empty() {
 			def.Then = then
 		}
 	}
 	if s.Else != nil {
-		elseBranch, ok := objectConditionalBranch("else", s.Else)
-		if !ok {
-			return nil
-		}
-		if !elseBranch.Empty() {
+		if elseBranch := objectConditionalBranchLenient("else", s.Else); !elseBranch.Empty() {
 			def.Else = elseBranch
 		}
 	}

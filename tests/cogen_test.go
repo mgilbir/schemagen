@@ -430,20 +430,17 @@ func coStripDiscriminators(d *coDoc) {
 // unevaluatedProperties mutant -- are all statements about `then`. They keep
 // running under the six configurations that do not set StrictProperties.
 //
-// One narrower exclusion was considered and rejected. schemagen does not in
-// fact synthesise the ban on an object that carries unevaluatedProperties --
-// generator.go takes an earlier branch for that case and leaves Forbidden
-// false, so
-//
-//	config   generator.Config{StrictProperties: true}
-//	schema   the object above with "unevaluatedProperties":false added
-//	         emits `unevaluated property %q is not allowed` and no
-//	         `additional property %q is not allowed` at all
-//
-// and a conditional on such an object survives StrictProperties today. Keeping
-// those would have the harness assert that a document the flag's own documented
-// meaning -- "absent additionalProperties is treated as false" -- rejects is
-// accepted, which is blessing that inconsistency rather than reporting it.
+// One narrower exclusion was considered and rejected: keeping the conditional
+// alive on objects that also carry unevaluatedProperties, which schemagen used
+// to leave outside the ban altogether -- generator.go took an earlier branch
+// for that case and left Forbidden false, so such an object emitted
+// `unevaluated property %q is not allowed` and no `additional property %q is
+// not allowed` at all. That would have had the harness assert that a document
+// the flag's own documented meaning -- "absent additionalProperties is treated
+// as false" -- rejects is accepted, blessing the inconsistency rather than
+// reporting it. It was reported instead, as issue #71, and fixed: the ban is
+// now synthesised on that object too, so the exclusion no longer exists to be
+// taken. coStripUnevaluatedProperties below is the consequence.
 func coStripConditionals(d *coDoc) {
 	for _, n := range coNodesOf(d) {
 		n.cond = nil
@@ -485,13 +482,63 @@ func coStripPropertyNames(d *coDoc) {
 	}
 }
 
+// coStripUnevaluatedProperties removes the unevaluatedProperties constraint.
+//
+// It is both of the arguments above at once, which is why it needs neither a
+// new one nor an exception.
+//
+// The instance first. A schema-valued unevaluatedProperties is only worth
+// writing if something is left for it to judge, so the grammar puts coUnevalKey
+// in the instance -- a key no applicator evaluates, which is the point of it.
+// That key is not among the object's own `properties` either, so under
+// StrictProperties it is additional and the conforming instance is refused:
+//
+//	config   generator.Config{StrictProperties: true}
+//	schema   {"type":"object","properties":{"bravo":{"type":"boolean"}},
+//	          "unevaluatedProperties":{"type":"integer","minimum":-3}}
+//	instance {"bravo":true,"xtraKey":-3}
+//	         Validate reports `additional property "xtraKey" is not allowed`
+//
+// No document satisfies both, so as with the conditional this is a fact about
+// the schema under the flag, not a defect in the code generated for it.
+//
+// Then the mutant, for unevaluatedProperties: false, whose instance does
+// conform. It is violated by adding a key nothing evaluates, and every such key
+// is one the object's `properties` does not declare -- so under StrictProperties
+// it is additional too, and the ban reports first:
+//
+//	config   generator.Config{StrictProperties: true}
+//	schema   {"type":"object","properties":{"bravo":{"type":"boolean"}},
+//	          "unevaluatedProperties":false}
+//	instance {}
+//	mutant   {"zzExtra":1}
+//	         Validate reports `additional property "zzExtra" is not allowed`
+//
+// Both refusals are correct and the verdict is the same either way, but taking
+// whichever answers would stop the mutant proving unevaluatedProperties is
+// enforced at all. The keyword comes out under this configuration and keeps
+// proving it under the other six.
+//
+// This is new with the fix for issue #71 and is its cost, honestly stated: the
+// ban used not to be synthesised at all on an object carrying
+// unevaluatedProperties, so both documents above were accepted and the harness
+// was passing on that inconsistency rather than on the flag's meaning.
+func coStripUnevaluatedProperties(d *coDoc) {
+	for _, n := range coNodesOf(d) {
+		if n.extra == coExtraUnevalFalse || n.extra == coExtraUnevalSchema {
+			n.extra = coExtraNone
+		}
+	}
+}
+
 // coStrictNarrow is every adjustment StrictProperties needs: the constructs
 // whose keys live inside an applicator additionalProperties cannot see, and the
-// one keyword whose mutant the ban pre-empts.
+// two keywords whose mutants the ban pre-empts.
 func coStrictNarrow(d *coDoc) {
 	coStripDiscriminators(d)
 	coStripConditionals(d)
 	coStripPropertyNames(d)
+	coStripUnevaluatedProperties(d)
 }
 
 // ---------------------------------------------------------------------------
