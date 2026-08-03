@@ -90,6 +90,7 @@ type StructDef struct {
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
 	ItemValidations       []ItemValidationDef       // per-element checks for slice and map fields whose element type has no Validate()
+	ContainsValidations   []FieldContainsDef        // contains/minContains/maxContains for slice fields that never became a named type
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
@@ -313,6 +314,13 @@ func (d *StructDef) NeedsJSONKeys() bool {
 	// not something the document said.
 	for _, vf := range d.ValidatableFields {
 		if vf.PresenceGuard {
+			return true
+		}
+	}
+	// So is an optional array property's contains check: a nil slice would look
+	// like an empty array, which contains rejects.
+	for _, fc := range d.ContainsValidations {
+		if fc.Optional {
 			return true
 		}
 	}
@@ -714,7 +722,36 @@ func (d *AliasDef) typeDef()         {}
 
 // HasContainsValidation returns true if the AliasDef has contains validation.
 func (d *AliasDef) HasContainsValidation() bool {
-	return d.Contains != nil
+	return containsCanReject(d.Contains, d.MinContains, d.MaxContains)
+}
+
+// containsCanReject reports whether a contains constraint can reject anything.
+// It cannot when minContains is 0 and there is no maxContains: every array then
+// satisfies it, whatever the sub-schema says.
+//
+// The Contains field itself is left alone even so, because unevaluatedItems
+// reads it to decide which items an adjacent contains marks as evaluated -- a
+// vacuous contains still evaluates the items it matches. Only the emitted
+// cardinality check is suppressed.
+//
+// Without this the emitted code does not compile: the count is declared, the
+// matching loop assigns to it, and with no bound left to test nothing ever
+// reads it, which Go rejects outright as "declared and not used".
+// {"type":"array","contains":true,"minContains":0} was enough to produce it.
+func containsCanReject(def *ContainsDef, minContains, maxContains *int) bool {
+	if def == nil {
+		return false
+	}
+	min := 1
+	if minContains != nil {
+		min = *minContains
+	}
+	if def.IsFalse {
+		// No element ever matches, so the count is fixed at 0. Only the lower
+		// bound can fail, and only when it asks for a match at all.
+		return min > 0
+	}
+	return min > 0 || maxContains != nil
 }
 
 // CanHaveMethods returns true if this defined type can have methods attached.
@@ -763,6 +800,34 @@ type ItemValidationDef struct {
 	JSONName  string // JSON property name for the error path; empty for a container alias
 	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
 	Levels    []ItemLevel
+}
+
+// FieldContainsDef carries the `contains` constraint an array *property* states.
+//
+// An inline array property never becomes a named type, so there is no Validate
+// of its own for the alias form of the check to hang off, and until this existed
+// the keyword was enforced nowhere at all: {"a":{"type":"array","contains":
+// {"minimum":10}}} accepted [1,2]. The same constraint on a root array or a
+// $ref'd array definition has always worked, because both are named types.
+//
+// Only a field whose Go type is a plain slice gets one. A property that *did*
+// become a named type is answered by that type's own Validate, which
+// ValidatableFields already dispatches to; a second check here would count the
+// same elements twice.
+type FieldContainsDef struct {
+	FieldName string // Go field name
+	JSONName  string // JSON property name, for the error path
+	IsPointer bool   // the field is *[]T, so the check needs a nil guard
+
+	// Optional gates the check on the property having actually been present in
+	// the source JSON. A nil slice is indistinguishable from an empty one in Go,
+	// and `contains` rejects the empty array, so without this an object that
+	// simply omitted an optional array property would be rejected.
+	Optional bool
+
+	Contains    *ContainsDef
+	MinContains *int // nil means the default of 1
+	MaxContains *int // nil means no upper bound
 }
 
 // ItemLevel is one container level of an ItemValidationDef.
@@ -923,7 +988,7 @@ func (d *InferredAliasDef) HasItemValidation() bool {
 
 // HasContainsValidation returns true if the InferredAliasDef has contains validation.
 func (d *InferredAliasDef) HasContainsValidation() bool {
-	return d.Contains != nil
+	return containsCanReject(d.Contains, d.MinContains, d.MaxContains)
 }
 
 func (d *InferredAliasDef) TypeName() string { return d.Name }

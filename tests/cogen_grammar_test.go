@@ -52,7 +52,8 @@ const coMaxDepth = 3
 //	                and 1..3 keys in the instance. This is the shape schemagen
 //	                types as a Go map; the mutation violates the value schema
 //	                under the last key.
-//	array           type, items (a single schema), minItems, maxItems
+//	array           type, items (a single schema), minItems, maxItems, or
+//	                contains (see "Array keywords" below)
 //	string          type, and either {minLength, maxLength} or pattern
 //	integer         type, minimum | exclusiveMinimum, maximum |
 //	                exclusiveMaximum, multipleOf
@@ -135,13 +136,30 @@ const coMaxDepth = 3
 //	                    computed from the same decisions that build it.
 //	propertyNames       {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, which every
 //	                    name the grammar emits satisfies; the mutant adds one
-//	                    that does not.
+//	                    that does not. Declared beside the node's allOf or
+//	                    inside one of its branches, half each: only the second
+//	                    position asks whether a *branch's* propertyNames is read
+//	                    at all, since one stated beside the allOf would be
+//	                    enforced either way.
 //
 // Array keywords:
 //
 //	uniqueItems         on an array whose elements are a plain integer and
 //	                    whose i-th element is i, so the array is unique by
 //	                    construction at every length the length mutants need.
+//	contains +          on the same numbered-integer array, with the sub-schema
+//	minContains +       {"type":"integer","minimum":k}: element i matches iff
+//	maxContains         i >= k, so the number of matching elements is decided
+//	                    rather than read back. minContains and maxContains are
+//	                    pinned to that number, which is what makes "one element
+//	                    stops matching" and "one more element matches" each a
+//	                    violation of exactly one bound. minContains is always
+//	                    stated when more than one element matches: under the
+//	                    default of 1, dropping one match would leave a
+//	                    conforming document and there would be no mutant.
+//	                    Exclusive with uniqueItems, minItems and maxItems --
+//	                    every one of their mutants would move the match count
+//	                    too.
 //	prefixItems +       tuple form: 1..3 prefix entries typed string / integer
 //	unevaluatedItems    / boolean and an instance of exactly that length. The
 //	                    mutant appends one element, which no prefix entry
@@ -225,7 +243,7 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 // Not emitted at all
 // ---------------------------------------------------------------------------
 //
-// Reaching the four defects below would need a shape the grammar does not
+// Reaching the three defects below would need a shape the grammar does not
 // build, so none of them carries a coGap toggle: a predicate nothing consults
 // would promise a reachability it does not have. They are recorded here because
 // a defect nobody wrote down is a defect that gets rediscovered. Each
@@ -234,8 +252,7 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 //
 // The grammar's own choices are what dodge them: a `required`-only
 // dependentSchemas branch, prefixItems entries carrying a type and nothing
-// else, unevaluatedItems only ever a direct sibling of prefixItems, and no
-// `contains` anywhere.
+// else, and unevaluatedItems only ever a direct sibling of prefixItems.
 //
 // dependentSchemas branch keywords other than `required`. A branch is reduced
 // to its `required` list, so the dependency fires on presence and never on
@@ -277,15 +294,6 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 //	          "prefixItems":[{"type":"string"}],
 //	          "unevaluatedItems":{"type":"integer"}}},"required":["arr"]}
 //	instance {"arr":["a","b"]}            accepted; index 1 is not an integer
-//
-// contains, minContains and maxContains produce no check at all.
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "items":{"type":"integer"},"contains":{"type":"integer","minimum":10},
-//	          "minContains":2,"maxContains":3}},"required":["arr"]}
-//	instance {"arr":[1,2]}                accepted; nothing matches `contains`
-//	instance {"arr":[1,2,3]}              accepted; 0 matches, minContains is 2
-//	instance {"arr":[11,12,13,14]}        accepted; 4 matches, maxContains is 3
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -437,14 +445,17 @@ type coNode struct {
 	// from the schema and its mutation from the catalogue together.
 	extra     coExtra
 	unevalMin int64 // coExtraUnevalSchema: the minimum the subschema carries
-	patKeys   []string
-	patStr    bool // the patternProperties value schema is a string, not an integer
-	patBound  int  // its minLength, or its minimum
-	dep       coDepKind
-	depTrig   string   // the property whose presence triggers the dependency
-	depOn     []string // the properties it then requires
-	minProps  bool     // emit minProperties at the instance's own key count
-	cond      *coCond
+	// propNamesBranch declares coExtraPropNames inside an allOf branch rather
+	// than beside it. See propNamesInBranch.
+	propNamesBranch bool
+	patKeys         []string
+	patStr          bool // the patternProperties value schema is a string, not an integer
+	patBound        int  // its minLength, or its minimum
+	dep             coDepKind
+	depTrig         string   // the property whose presence triggers the dependency
+	depOn           []string // the properties it then requires
+	minProps        bool     // emit minProperties at the instance's own key count
+	cond            *coCond
 
 	// array
 	elem     *coNode
@@ -456,6 +467,17 @@ type coNode struct {
 	// reach, and identical elements are what the array shape otherwise relies
 	// on, so the two cannot share an element schema.
 	unique bool
+
+	// contains takes the same numbered-integer element shape as unique, and
+	// states {"type":"integer","minimum":containsMin}: element i matches exactly
+	// when i >= containsMin, so numItems-containsMin elements match and the
+	// count is a decision rather than something read back off the instance.
+	// minContains and maxContains, when emitted, are pinned to that count --
+	// which is what makes changing one element a violation of exactly one bound.
+	contains        bool
+	containsMin     int
+	emitMinContains bool
+	emitMaxContains bool
 
 	// coTuple: one JSON type name per prefixItems position.
 	tupleTypes []string
@@ -916,6 +938,12 @@ func (b *coBuilder) applyObjectExtras(n *coNode) {
 		}
 	case 5:
 		n.extra = coExtraPropNames
+		// Half of them declare the keyword inside an allOf branch instead of
+		// beside it. Only that position can tell whether a branch's
+		// propertyNames is read at all -- the parent's has been carried through
+		// an allOf since #68, and a keyword the parent also states would be
+		// enforced whether or not the branch was ever looked at.
+		n.propNamesBranch = b.chance(2)
 	}
 
 	if b.chance(3) {
@@ -1042,6 +1070,27 @@ func (n *coNode) maxPropsActive() bool {
 // declared.
 func (n *coNode) propNamesActive() bool {
 	return n.extra == coExtraPropNames
+}
+
+// propNamesInBranch reports whether the node's propertyNames is declared inside
+// one of its allOf branches rather than beside them. Both positions bind the
+// same object -- allOf branches all apply to the instance the parent describes
+// -- so the instance and the mutant are unchanged by the move; what changes is
+// that the constraint is now only reachable by reading the branch.
+//
+// It needs a branch to sit in, and the shrinker can empty the last one by
+// dropping its properties, so this is a predicate over the props rather than a
+// flag on its own.
+func (n *coNode) propNamesInBranch() bool {
+	if !n.propNamesBranch || n.comp != coCompAllOf || !n.propNamesActive() {
+		return false
+	}
+	for _, p := range n.props {
+		if p.group > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // minPropsActive holds only where nothing else at this node removes a key.
@@ -1400,12 +1449,44 @@ func (b *coBuilder) buildArray(depth, visible int) *coNode {
 	// integer element instead, and arrayValue numbers the positions: the
 	// minItems and maxItems mutants stay unique, and the only way to make a
 	// duplicate is the mutation that means to.
-	if b.chance(3) {
+	//
+	// contains needs the same numbered shape, for a different reason -- it
+	// counts, so its elements have to be tellable apart. The two are
+	// alternatives rather than options that compose: every contains mutant
+	// writes a value the array already holds, which uniqueItems would reject
+	// for a second reason and so leave the contains bound unproven.
+	switch b.rng.IntN(3) {
+	case 0:
 		n.unique = true
 		n.elem = &coNode{kind: coInteger}
+	case 1:
+		// minItems and maxItems come off for the same reason uniqueItems is
+		// excluded: their mutants change the array's length, and with numbered
+		// elements a shorter array holds fewer matches and a longer one more,
+		// so each would violate a contains bound as well as its own.
+		n.contains = true
+		n.elem = &coNode{kind: coInteger}
+		n.minItems, n.maxItems = nil, nil
+		n.numItems = 2 + b.rng.IntN(3)
+		// At least one match, and at least one element below the threshold for
+		// the maxContains mutant to raise.
+		matches := 1 + b.rng.IntN(n.numItems-1)
+		n.containsMin = n.numItems - matches
+		// minContains has to be stated whenever more than one element matches:
+		// under the default of 1, dropping a single match still leaves one, and
+		// the mutant would be a conforming document. Where exactly one matches
+		// the default says the same thing, so both spellings are generated.
+		n.emitMinContains = matches > 1 || b.chance(2)
+		n.emitMaxContains = b.chance(2)
 	}
 	return n
 }
+
+// containsMatches is how many elements satisfy the contains sub-schema: the
+// positions numbered at or above its minimum. It is derived from numItems
+// rather than stored, so a shrink step that shortens the array moves the
+// emitted minContains and maxContains with it.
+func (n *coNode) containsMatches() int { return n.numItems - n.containsMin }
 
 // buildMap builds an object whose whole shape is additionalProperties: no
 // declared property names, no patternProperties, one sub-schema for every value.
@@ -1615,6 +1696,13 @@ func (n *coNode) fragment() map[string]any {
 			branches = append(branches, branch)
 		}
 		if len(branches) > 0 {
+			// A branch's propertyNames binds the same object the parent's does,
+			// and putting it here is the only way to ask whether the branch was
+			// read for it: stated beside the allOf it would be enforced either
+			// way. See propNamesInBranch.
+			if n.propNamesInBranch() {
+				branches[0].(map[string]any)["propertyNames"] = map[string]any{"pattern": coPropNamePattern}
+			}
 			m["allOf"] = branches
 		}
 		if len(n.branches) > 0 {
@@ -1660,6 +1748,15 @@ func (n *coNode) fragment() map[string]any {
 		}
 		if n.unique {
 			m["uniqueItems"] = true
+		}
+		if n.contains {
+			m["contains"] = map[string]any{"type": "integer", "minimum": n.containsMin}
+			if n.emitMinContains {
+				m["minContains"] = n.containsMatches()
+			}
+			if n.emitMaxContains {
+				m["maxContains"] = n.containsMatches()
+			}
 		}
 	case coString:
 		m["type"] = "string"
@@ -1813,7 +1910,7 @@ func (n *coNode) emitKeyKeywords(m map[string]any) {
 		m["unevaluatedProperties"] = map[string]any{"type": "integer", "minimum": n.unevalMin}
 	case n.maxPropsActive():
 		m["maxProperties"] = n.instanceKeyCount()
-	case n.propNamesActive():
+	case n.propNamesActive() && !n.propNamesInBranch():
 		m["propertyNames"] = map[string]any{"pattern": coPropNamePattern}
 	}
 
@@ -1954,11 +2051,12 @@ func (d *coDoc) value(n *coNode) any {
 func (d *coDoc) arrayValue(n *coNode, count int) []any {
 	out := make([]any, 0, count)
 	for i := 0; i < count; i++ {
-		if n.unique {
+		if n.unique || n.contains {
 			// Numbering the positions makes the array unique at every length,
 			// so the length mutants stay violations of exactly minItems or
 			// maxItems and the only duplicate is the one uniqueItems' own
-			// mutant plants.
+			// mutant plants. It is also what gives `contains` a decided number
+			// of matching elements: position i matches iff i >= containsMin.
 			out = append(out, int64(i))
 			continue
 		}
@@ -2150,6 +2248,30 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 				Keyword: "uniqueItems", Path: coPath(path, 1), Prop: prop,
 				Value: int64(0), Want: []string{prop, "not unique"},
 			})
+		}
+		if n.contains {
+			// The lowest matching element is at index containsMin and holds
+			// that same value. Writing 0 over it makes it stop matching and
+			// changes nothing else: the length is untouched, it is still an
+			// integer, and uniqueItems is not on a contains array -- so the
+			// count is one short of the bound and nothing else is violated.
+			want := []string{prop, "no element matches"}
+			if n.emitMinContains {
+				want = []string{prop, "minimum is"}
+			}
+			*out = append(*out, coMutation{
+				Keyword: "contains", Path: coPath(path, n.containsMin), Prop: prop,
+				Value: int64(0), Want: want,
+			})
+			if n.emitMaxContains {
+				// The mirror image: the highest element below the threshold is
+				// at index containsMin-1, and raising it to the threshold adds
+				// a match the upper bound does not allow.
+				*out = append(*out, coMutation{
+					Keyword: "maxContains", Path: coPath(path, n.containsMin-1), Prop: prop,
+					Value: int64(n.containsMin), Want: []string{prop, "maximum is"},
+				})
+			}
 		}
 		if n.numItems > 0 {
 			d.collect(n.elem, coPath(path, 0), prop, out)
@@ -2569,9 +2691,13 @@ func (d *coDoc) collectKeyKeywords(n *coNode, path []any, prop string, out *[]co
 			Value: int64(1), Want: []string{"too many properties", "exceeds maximum"},
 		})
 	case n.propNamesActive():
+		via := ""
+		if n.propNamesInBranch() {
+			via = "allOf"
+		}
 		*out = append(*out, coMutation{
 			Keyword: "propertyNames", Path: coPath(path, coBadPropName), Prop: prop,
-			Value: int64(1), Want: []string{"propertyNames", coBadPropName},
+			Value: int64(1), Want: []string{"propertyNames", coBadPropName}, Via: via,
 		})
 	}
 
@@ -2810,6 +2936,11 @@ func coReduce(d *coDoc) []*coDoc {
 				coNodesOf(c)[i].unique = false
 				out = append(out, c)
 			}
+			if n.contains {
+				c := d.clone()
+				coNodesOf(c)[i].contains = false
+				out = append(out, c)
+			}
 			if n.minItems != nil {
 				c := d.clone()
 				coNodesOf(c)[i].minItems = nil
@@ -2820,7 +2951,15 @@ func coReduce(d *coDoc) []*coDoc {
 				coNodesOf(c)[i].maxItems = nil
 				out = append(out, c)
 			}
-			if n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems) {
+			// A contains array stops conforming once fewer elements are
+			// numbered at or above the threshold than its own minContains, and
+			// its mutants address indices either side of that threshold, so it
+			// shrinks no further than one matching element.
+			shorter := n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems)
+			if n.contains && n.numItems <= n.containsMin+1 {
+				shorter = false
+			}
+			if shorter {
 				c := d.clone()
 				coNodesOf(c)[i].numItems--
 				out = append(out, c)

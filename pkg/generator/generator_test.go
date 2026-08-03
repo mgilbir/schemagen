@@ -5964,3 +5964,276 @@ func TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked(t *testing.T
 			union.Variants[1].Type.GoTypeName())
 	}
 }
+
+// fieldContainsFor is the contains counterpart of itemValidationFor.
+func fieldContainsFor(t *testing.T, sd *StructDef, jsonName string) *FieldContainsDef {
+	t.Helper()
+	for i := range sd.ContainsValidations {
+		if sd.ContainsValidations[i].JSONName == jsonName {
+			return &sd.ContainsValidations[i]
+		}
+	}
+	t.Fatalf("expected a contains check for %q on %s; got %+v", jsonName, sd.Name, sd.ContainsValidations)
+	return nil
+}
+
+func containsCheckTypes(def *FieldContainsDef) []string {
+	var out []string
+	for _, chk := range def.Contains.Checks {
+		out = append(out, chk.CheckType)
+	}
+	return out
+}
+
+// TestArrayPropertyContainsIsChecked pins issue #82. The contains machinery was
+// complete -- a root array and a $ref'd array definition both enforced
+// contains, minContains and maxContains -- but an inline array *property* never
+// becomes a named type, so there was no Validate for the check to hang off and
+// {"a":[1,2]} was accepted against a contains of {"minimum":10}.
+func TestArrayPropertyContainsIsChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "contains":{"type":"integer","minimum":10}},
+			"b": {"type":"array", "items":{"type":"integer"},
+			      "contains":{"type":"integer","minimum":10},
+			      "minContains":2, "maxContains":3}
+		},
+		"required": ["a", "b"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+
+	a := fieldContainsFor(t, doc, "a")
+	if got := containsCheckTypes(a); !containsString(got, "minimum") || !containsString(got, "type") {
+		t.Fatalf("a: contains checks = %v, want minimum and type", got)
+	}
+	if a.MinContains != nil || a.MaxContains != nil {
+		t.Fatalf("a: bounds = %v/%v, want both unset so the default of 1 applies", a.MinContains, a.MaxContains)
+	}
+	if a.Optional {
+		t.Fatalf("a is required; gating its check on key presence would skip it for hand-built values")
+	}
+
+	b := fieldContainsFor(t, doc, "b")
+	if b.MinContains == nil || *b.MinContains != 2 {
+		t.Fatalf("b: minContains = %v, want 2", b.MinContains)
+	}
+	if b.MaxContains == nil || *b.MaxContains != 3 {
+		t.Fatalf("b: maxContains = %v, want 3", b.MaxContains)
+	}
+}
+
+// TestOptionalArrayPropertyContainsIsGatedOnPresence guards the direction the
+// fix could over-reach in. A nil slice is indistinguishable from an empty one
+// in Go, and contains rejects the empty array, so an unguarded check would
+// reject a document that simply omitted an optional property -- a conforming
+// document turned into a failure.
+func TestOptionalArrayPropertyContainsIsGatedOnPresence(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type":"array", "contains":{"type":"integer","minimum":10}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if def := fieldContainsFor(t, doc, "a"); !def.Optional {
+		t.Fatalf("a is not required; its contains check must be gated on the key being present")
+	}
+	if !doc.NeedsJSONKeys() {
+		t.Fatalf("the presence gate reads _jsonKeys, which NeedsJSONKeys has to ask for")
+	}
+}
+
+// TestNamedArrayPropertyCarriesNoFieldContains is the over-reach guard for the
+// fix above. A property that *did* become a named type answers for contains
+// through its own Validate, which the struct already dispatches to; a second
+// check on the field would count the same elements twice and report the same
+// failure twice over -- and would not even compile, since the field is that
+// named type rather than the slice the emitted loop ranges over.
+//
+// Two shapes reach it. A $ref keeps the keyword on the definition, so the
+// property schema has no `contains` of its own to read; a multi-valued type
+// keeps it inline but gives the property a named wrapper, which is the case the
+// Go-type guard in buildFieldContains is there for.
+func TestNamedArrayPropertyCarriesNoFieldContains(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"ref", `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {"a": {"$ref": "#/$defs/Bag"}},
+			"required": ["a"],
+			"$defs": {
+				"Bag": {"type":"array", "contains":{"type":"integer","minimum":10}}
+			}
+		}`},
+		{"multi-type", `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {"a": {"type":["array","string"], "contains":{"type":"integer","minimum":10}}},
+			"required": ["a"]
+		}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, tc.input)
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ContainsValidations) != 0 {
+				t.Fatalf("a named type validates itself; got a field-level contains too: %+v", doc.ContainsValidations)
+			}
+			if !hasValidatableField(doc.ValidatableFields, "a") {
+				t.Fatalf("a must dispatch to its own type's Validate; otherwise contains is enforced nowhere")
+			}
+		})
+	}
+}
+
+// TestVacuousContainsEmitsNoCheck pins two defects the shared contains emitter
+// carried. minContains: 0 with no maxContains is satisfied by every array
+// whatever the sub-schema says, and emitting for it was wrong twice over:
+// {"contains":true,"minContains":0} counted matches into a variable nothing
+// read, which Go rejects as "declared and not used" -- generated source that
+// does not compile -- and {"contains":false,"minContains":0} returned an error
+// unconditionally, rejecting every array against a schema that accepts them all.
+func TestVacuousContainsEmitsNoCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"true-min-zero", `"contains":true,"minContains":0`, false},
+		{"false-min-zero", `"contains":false,"minContains":0`, false},
+		{"checks-min-zero", `"contains":{"type":"integer","minimum":10},"minContains":0`, false},
+		{"min-zero-with-max", `"contains":{"type":"integer","minimum":10},"minContains":0,"maxContains":2`, true},
+		{"false-default-min", `"contains":false`, true},
+		{"checks-default-min", `"contains":{"type":"integer","minimum":10}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"type":"array", `+tc.body+`}},
+				"required": ["a"]
+			}`)
+			doc := structNamed(t, ir, "Doc")
+			got := len(doc.ContainsValidations) > 0
+			if got != tc.want {
+				t.Fatalf("emitted a contains check = %v, want %v (%s)", got, tc.want, tc.body)
+			}
+		})
+	}
+}
+
+// TestAllOfBranchPropertyNamesIsMerged pins issue #83. #68 made a *parent's*
+// propertyNames survive an allOf; a branch's was never read at all, and the
+// root type came out as `type Doc any` -- no Validate method, so {"BAD":1}
+// could not be rejected.
+func TestAllOfBranchPropertyNamesIsMerged(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"allOf": [{"propertyNames": {"pattern": "^[a-z]+$"}}]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if doc.PropertyNames == nil {
+		t.Fatalf("Doc carries no propertyNames; the branch's was dropped")
+	}
+	if doc.PropertyNames.Pattern != "^[a-z]+$" {
+		t.Fatalf("propertyNames pattern = %q, want %q", doc.PropertyNames.Pattern, "^[a-z]+$")
+	}
+}
+
+// TestAllOfPropertyNamesMergesBothSides covers the case the issue records as a
+// related limitation: parent and branch each state a propertyNames. The length
+// bounds keep the tighter of the two; `pattern` cannot be intersected, since
+// one regex cannot in general express "matches both" and the emitted check has
+// a single slot, so the parent's is kept -- the same single-pattern limitation
+// mergeConstraints documents.
+func TestAllOfPropertyNamesMergesBothSides(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"propertyNames": {"pattern": "^[a-z]+$", "minLength": 2, "maxLength": 8},
+		"allOf": [{"propertyNames": {"pattern": "^x", "minLength": 4, "maxLength": 6}}]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if doc.PropertyNames == nil {
+		t.Fatalf("Doc carries no propertyNames")
+	}
+	if doc.PropertyNames.Pattern != "^[a-z]+$" {
+		t.Fatalf("pattern = %q, want the parent's %q kept", doc.PropertyNames.Pattern, "^[a-z]+$")
+	}
+	if doc.PropertyNames.MinLength == nil || *doc.PropertyNames.MinLength != 4 {
+		t.Fatalf("minLength = %v, want the tighter bound 4", doc.PropertyNames.MinLength)
+	}
+	if doc.PropertyNames.MaxLength == nil || *doc.PropertyNames.MaxLength != 6 {
+		t.Fatalf("maxLength = %v, want the tighter bound 6", doc.PropertyNames.MaxLength)
+	}
+}
+
+// TestAllOfBranchObjectKeywordsSurviveWithoutProperties covers the second half
+// of #83. Reading propertyNames off a branch is not enough on its own: an allOf
+// that contributes no properties used to fall through to `type X any`, which
+// carries no Validate, so min/maxProperties, required, dependentRequired and
+// dependentSchemas were all dropped there too.
+func TestAllOfBranchObjectKeywordsSurviveWithoutProperties(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"allOf": [{"minProperties": 1, "required": ["a"]}]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if !containsString(doc.RequiredJSON, "a") {
+		t.Fatalf("RequiredJSON = %v, want the branch's required entry", doc.RequiredJSON)
+	}
+	found := false
+	for _, v := range doc.Validations {
+		if v.RuleType == "minProperties" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Validations = %+v, want a minProperties rule", doc.Validations)
+	}
+	// The parent declared "object", so a non-object instance is invalid and the
+	// struct must not wave it through.
+	if doc.AcceptNonObject {
+		t.Fatalf(`AcceptNonObject = true although the schema says "type":"object"`)
+	}
+}
+
+// TestAllOfWithoutObjectChecksStaysAny is the over-reach guard for the arm
+// above. An allOf that merges to an object with nothing to enforce keeps the
+// permissive alias: materialising an empty struct for every property-less allOf
+// would change the generated API of schemas that gained no check from it.
+//
+// The type keyword alone is deliberately not enough. A struct built here would
+// start rejecting non-object instances of a schema that today accepts them --
+// correct per the spec, but a far wider change than the merge gap this arm
+// exists to close, and one no part of #83 asks for.
+func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"allOf": [{"type": "object"}]
+	}`)
+
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Doc" {
+			t.Fatalf("Doc became a struct with nothing to validate: %+v", sd)
+		}
+	}
+	for _, td := range ir.TypeDefs {
+		if ad, ok := td.(*AliasDef); ok && ad.Name == "Doc" {
+			if ad.Underlying.GoTypeName() != "any" {
+				t.Fatalf("Doc underlying = %s, want any", ad.Underlying.GoTypeName())
+			}
+			return
+		}
+	}
+	t.Fatalf("expected Doc to stay an alias to any; got %v", ir.TypeDefs)
+}

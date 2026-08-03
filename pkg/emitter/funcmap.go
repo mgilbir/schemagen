@@ -61,6 +61,7 @@ func FuncMap() template.FuncMap {
 		"jsonErrorName":       jsonErrorNameFunc,
 		"mkCondCtx":           mkCondCtxFunc,
 		"mkItemCtx":           mkItemCtxFunc,
+		"mkContainsCtx":       mkContainsCtxFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
 		"itemRange":           itemRangeFunc,
@@ -106,6 +107,26 @@ type ItemLevelContext struct {
 
 func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int) ItemLevelContext {
 	return ItemLevelContext{Recv: recv, Def: def, Level: level}
+}
+
+// ContainsContext is passed to the contains_check template. Expr is the Go
+// expression naming the slice the count runs over and Path the prefix its
+// errors are reported under, which is all that separates an array alias's
+// contains check from an array property's.
+type ContainsContext struct {
+	Expr        string
+	Path        string
+	Def         generator.ContainsDef
+	MinContains *int
+	MaxContains *int
+}
+
+func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+	ctx := ContainsContext{Expr: expr, Path: path, MinContains: minContains, MaxContains: maxContains}
+	if def != nil {
+		ctx.Def = *def
+	}
+	return ctx
 }
 
 // BigIntVariantContext is passed to the bigint_alias_variant_checks template,

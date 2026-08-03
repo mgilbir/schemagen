@@ -972,6 +972,26 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if $struct.ItemValidations}}
 	{{- template "item_validations" (mkItemCtx $recv $struct.ItemValidations)}}
 	{{- end}}
+	{{- range $fc := $struct.ContainsValidations}}
+	{{- /* An optional property is gated on having been present in the source
+	       JSON: a nil slice is indistinguishable from an empty one in Go, and
+	       contains rejects the empty array, so an object that simply omitted the
+	       property would otherwise be rejected. A *[]T needs a nil guard as well
+	       -- ranging over a dereferenced nil pointer panics. */}}
+	{{- if $fc.Optional}}
+	if {{$recv}}._jsonKeys[{{printf "%q" $fc.JSONName}}] {
+	{{- end}}
+	{{- if $fc.IsPointer}}
+	if {{$recv}}.{{$fc.FieldName}} != nil {
+	{{- template "contains_check" (mkContainsCtx (printf "*%s.%s" $recv $fc.FieldName) (printf "%s: contains" (jsonErrorName $fc.JSONName)) $fc.Contains $fc.MinContains $fc.MaxContains)}}
+	}
+	{{- else}}
+	{{- template "contains_check" (mkContainsCtx (printf "%s.%s" $recv $fc.FieldName) (printf "%s: contains" (jsonErrorName $fc.JSONName)) $fc.Contains $fc.MinContains $fc.MaxContains)}}
+	{{- end}}
+	{{- if $fc.Optional}}
+	}
+	{{- end}}
+	{{- end}}
 	{{- if $struct.HasDependentSchemas}}
 	// dependentSchemas: when a trigger key is present, validate against the dependent sub-schema.
 	{{- range $dep := $struct.DependentSchemas}}
@@ -1555,4 +1575,213 @@ declares a field for it at all.
 				}
 			}
 {{- end}}
+{{- end}}
+
+{{- /* contains_check emits the `contains` cardinality check for one array: it
+       counts the elements matching the contains sub-schema and holds that count
+       against minContains and maxContains.
+
+       The context is {Expr, Path, Def, MinContains, MaxContains}. Expr is the Go
+       expression naming the slice -- a receiver for an array alias, a field for
+       an array property -- and Path is the prefix its errors are reported under.
+       Sharing one definition is what lets an inline array *property* be checked
+       at all: the property is never materialized as a named type, so it has no
+       Validate of its own for the alias form of this check to hang off.
+
+       Every test goes through json.Marshal rather than a type assertion, so the
+       elements may be of any Go type the emitter produced -- []any, []int64,
+       []string or a named element type alike. */}}
+{{define "contains_check"}}
+{{- $expr := .Expr}}
+{{- $path := .Path}}
+	// contains validation: count elements matching the contains sub-schema.
+	{
+		{{- /* contains: false is not a special case but the degenerate one: no
+		       element ever matches, so the count stays at zero and the bounds
+		       decide, exactly as they do for any other sub-schema. Returning
+		       unconditionally instead would be wrong for a minContains of 0
+		       beside a maxContains -- every array satisfies that -- and it
+		       leaves the rest of Validate as unreachable code, which `go vet`
+		       rejects in the generated file. */}}
+		_containsCount := 0
+		{{- if .Def.IsFalse}}
+		// contains: false — no element can ever match, so the count stays at 0.
+		{{- else if .Def.IsTrue}}
+		_containsCount = len({{$expr}})
+		{{- else if .Def.ConstJSON}}
+		for _, _cElem := range {{$expr}} {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil && string(_cBytes) == {{printf "%q" .Def.ConstJSON}} {
+				_containsCount++
+			}
+		}
+		{{- else if .Def.EnumJSON}}
+		for _, _cElem := range {{$expr}} {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr == nil {
+				_cStr := string(_cBytes)
+				{{- range .Def.EnumJSON}}
+				if _cStr == {{printf "%q" .}} {
+					_containsCount++
+					continue
+				}
+				{{- end}}
+			}
+		}
+		{{- else if .Def.Checks}}
+		for _, _cElem := range {{$expr}} {
+			_cMatch := true
+			{{- range .Def.Checks}}
+			{{- if eq .CheckType "type"}}
+			{{- if eq .Value "integer"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "number"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "string"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) < 2 || _cBytes[0] != '"' {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "boolean"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				_cs := string(_cBytes)
+				if _cs != "true" && _cs != "false" {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "null"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if string(_cBytes) != "null" {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "array"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) == 0 || _cBytes[0] != '[' {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .Value "object"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				if len(_cBytes) == 0 || _cBytes[0] != '{' {
+					_cMatch = false
+				}
+			}
+			{{- end}}
+			{{- else if eq .CheckType "minimum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maximum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMinimum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "exclusiveMaximum"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "multipleOf"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cf float64
+				if json.Unmarshal(_cBytes, &_cf) != nil {
+					_cMatch = false
+				} else {
+					_cq := _cf / {{.Value}}
+					if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+						_cMatch = false
+					}
+				}
+			}
+			{{- else if eq .CheckType "minLength"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "maxLength"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{.Value}} {
+					_cMatch = false
+				}
+			}
+			{{- else if eq .CheckType "pattern"}}
+			if _cMatch {
+				_cBytes, _ := json.Marshal(_cElem)
+				var _cs string
+				if json.Unmarshal(_cBytes, &_cs) != nil {
+					_cMatch = false
+				} else {
+					_cRe := regexp.MustCompile({{printf "%q" .Value}})
+					if !_cRe.MatchString(_cs) {
+						_cMatch = false
+					}
+				}
+			}
+			{{- end}}
+			{{- end}}
+			if _cMatch {
+				_containsCount++
+			}
+		}
+		{{- end}}
+		{{- if and .MinContains (eq (deref .MinContains) 0)}}
+		{{- /* minContains=0 means contains always passes for minContains check */}}
+		{{- else if .MinContains}}
+		if _containsCount < {{deref .MinContains}} {
+			return fmt.Errorf("{{$path}}: %d matching elements, minimum is {{deref .MinContains}}", _containsCount)
+		}
+		{{- else}}
+		if _containsCount < 1 {
+			return fmt.Errorf("{{$path}}: no element matches the contains schema")
+		}
+		{{- end}}
+		{{- if .MaxContains}}
+		if _containsCount > {{deref .MaxContains}} {
+			return fmt.Errorf("{{$path}}: %d matching elements, maximum is {{deref .MaxContains}}", _containsCount)
+		}
+		{{- end}}
+	}
 {{- end}}

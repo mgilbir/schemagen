@@ -990,3 +990,124 @@ func TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch(t *testing.T) {
 		t.Fatalf("the narrowing is not gated on every matched branch being judged:\n%s", src)
 	}
 }
+
+// TestEmitFieldContainsPointerSlice renders the one arm of the contains check
+// the generator cannot currently reach: a field typed *[]T. Ranging over a
+// dereferenced nil pointer panics, so the arm wraps the count in a nil guard,
+// and nothing else in the suite would notice if that wrapper stopped being
+// valid Go -- Emit runs the result through format.Source, so a broken arm is a
+// failure here and silence everywhere else.
+func TestEmitFieldContainsPointerSlice(t *testing.T) {
+	e := mustNew(t)
+
+	minContains, maxContains := 2, 3
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"}, {Path: "fmt"}, {Path: "math"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Doc",
+				Fields: []generator.FieldDef{
+					{
+						Name:     "Nums",
+						JSONName: "nums",
+						Type: &generator.PointerType{
+							Inner: &generator.ArrayType{ItemType: &generator.PrimitiveType{Name: "int64"}},
+						},
+						Required: true,
+					},
+				},
+				ContainsValidations: []generator.FieldContainsDef{
+					{
+						FieldName: "Nums",
+						JSONName:  "nums",
+						IsPointer: true,
+						Contains: &generator.ContainsDef{
+							Checks: []generator.ContainsCheck{
+								{CheckType: "type", Value: "integer"},
+								{CheckType: "minimum", Value: 10.0},
+							},
+						},
+						MinContains: &minContains,
+						MaxContains: &maxContains,
+					},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !containsNormalized(src, "if d.Nums != nil {") {
+		t.Fatalf("expected a nil guard around the pointer slice's contains check:\n%s", src)
+	}
+	if !containsNormalized(src, "for _, _cElem := range *d.Nums {") {
+		t.Fatalf("expected the count to range over the dereferenced slice:\n%s", src)
+	}
+	if !containsNormalized(src, `"nums: contains: %d matching elements, minimum is 2"`) {
+		t.Fatalf("expected the error to be reported under the property name:\n%s", src)
+	}
+	if !containsNormalized(src, `"nums: contains: %d matching elements, maximum is 3"`) {
+		t.Fatalf("expected the maxContains error:\n%s", src)
+	}
+}
+
+// TestEmitFieldContainsFalseIsVetClean pins the shape `contains: false` is
+// emitted in. No element can ever match, so the count stays at zero and the
+// bounds decide -- the same code every other sub-schema gets. Returning
+// unconditionally instead, which is what this emitted before the check moved
+// onto struct fields, leaves everything after it in Validate unreachable, and
+// `go vet` fails a generated file for that. Nothing else in the suite would
+// see it: unreachable code compiles.
+func TestEmitFieldContainsFalseIsVetClean(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports:     []generator.Import{{Path: "fmt"}},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Doc",
+				Fields: []generator.FieldDef{
+					{
+						Name:     "Nums",
+						JSONName: "nums",
+						Type:     &generator.ArrayType{ItemType: &generator.PrimitiveType{Name: "int64"}},
+						Required: true,
+					},
+				},
+				ContainsValidations: []generator.FieldContainsDef{
+					{
+						FieldName: "Nums",
+						JSONName:  "nums",
+						Contains:  &generator.ContainsDef{IsFalse: true},
+					},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !containsNormalized(src, "if _containsCount < 1 {") {
+		t.Fatalf("contains: false must go through the count, not an unconditional return:\n%s", src)
+	}
+	// The literal the unconditional-return form reported through, and the only
+	// place it was ever written. Matching on the block shape instead does not
+	// work: containsNormalized collapses runs of spaces but keeps newlines, and
+	// the emitted `{` and `return` are on separate lines, so such a pattern
+	// would never match whatever the template did.
+	if strings.Contains(src, "no element matches (schema is false)") {
+		t.Fatalf("contains: false emitted an unconditional return; the rest of Validate is unreachable:\n%s", src)
+	}
+}
