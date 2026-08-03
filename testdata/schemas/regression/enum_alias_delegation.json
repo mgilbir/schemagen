@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnumAliasDelegation",
+  "description": "Aliases over enums that carry JSON methods of their own: a heterogeneous enum keeps raw bytes, an integer enum reads a number the way its draft does",
+  "type": "object",
+  "properties": {
+    "raw": { "$ref": "#/$defs/RawAlias" },
+    "raw_list": { "type": "array", "items": { "$ref": "#/$defs/RawAlias" } },
+    "num": { "$ref": "#/$defs/IntAlias" }
+  },
+  "required": ["raw", "num"],
+  "$defs": {
+    "RawEnum": { "enum": ["a", 1, null] },
+    "RawAlias": { "$ref": "#/$defs/RawEnum" },
+    "IntEnum": { "type": "integer", "enum": [1, 2, 3] },
+    "IntAlias": { "$ref": "#/$defs/IntEnum" }
+  }
+}

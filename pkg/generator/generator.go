@@ -335,9 +335,14 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.populateValidatableFields()
 	g.resolveItemValidations()
 	g.resolvePatternPropertyTypes()
+	// Must run before populateAliasDelegates, which has to know whether an enum
+	// carries an UnmarshalJSON before it can decide that an alias over that enum
+	// must borrow it.
+	g.resolveEnumIntegerTokens()
 	g.populateAliasDelegates()
 	// Must run after resolveAliasMethodability: an alias that cannot carry
-	// methods has nowhere to put a tolerant decode.
+	// methods has nowhere to put a tolerant decode. And after
+	// populateAliasDelegates, whose UnmarshalAs it reads.
 	g.resolveIntegerDecodes()
 
 	// Publish validation info about this call's types so packages generated
@@ -780,6 +785,23 @@ func (g *Generator) addRequiredImports() {
 					needsJSON = true
 				}
 				if usesNetIPType(f.Type) {
+					needsNetIP = true
+				}
+			}
+			// The overflow map's value type is written out three times -- the
+			// field, the make() in UnmarshalJSON and the per-key decode -- but
+			// it is not a FieldDef, so the loop above never saw it. A schema
+			// whose only typed value is its additionalProperties (an object
+			// with no declared properties whose values are `format: date-time`)
+			// therefore named time.Time in a file that did not import time.
+			if sd.AdditionalProperties != nil {
+				if usesTimeType(sd.AdditionalProperties.ValueType) {
+					needsTime = true
+				}
+				if usesJSONType(sd.AdditionalProperties.ValueType) {
+					needsJSON = true
+				}
+				if usesNetIPType(sd.AdditionalProperties.ValueType) {
 					needsNetIP = true
 				}
 			}
@@ -1346,6 +1368,39 @@ func formatNeedsValidation(format string) bool {
 	default:
 		return false
 	}
+}
+
+// selfMarshallingTypeName names the type t is, when that type carries its own
+// JSON representation -- a representation a defined type over it does not
+// inherit. It answers "" for everything else, including a container of such a
+// type: only the outermost type of an alias is at risk, since encoding/json
+// still reaches an element's or a field's own methods.
+//
+// `type Timestamp time.Time` is the case that matters. Timestamp has none of
+// time.Time's methods, so encoding/json falls through to the *underlying
+// representation* -- time.Time's unexported wall/ext/loc fields -- and an
+// ordinary RFC 3339 string fails to decode into it, while a value marshals back
+// out as `{}`. The `type Alias Timestamp` shadow the recursion-breaking idiom
+// declares is not what loses the methods; they were never there. But the shadow
+// is also what hides the problem, because it makes the emitted code look like
+// every other alias's.
+//
+// netip.Addr is the same story through encoding.TextUnmarshaler, which
+// encoding/json consults for a JSON string, and json.RawMessage through
+// json.Unmarshaler -- an alias over it would base64 a []byte instead of keeping
+// the bytes. The cure in all three cases is to decode into the named type and
+// convert, which is exactly what UnmarshalAs and MarshalAs already emit for an
+// alias over a *generated* type whose methods it has to borrow.
+func selfMarshallingTypeName(t GoType) string {
+	pt, ok := t.(*PrimitiveType)
+	if !ok {
+		return ""
+	}
+	switch pt.Name {
+	case "time.Time", "netip.Addr", "json.RawMessage":
+		return pt.Name
+	}
+	return ""
 }
 
 // usesNetIPType returns true if the GoType references netip.Addr.
@@ -8407,6 +8462,29 @@ func (g *Generator) resolveItemValidations() {
 }
 
 func (g *Generator) populateAliasDelegates() {
+	// An alias over a type that carries its own JSON representation borrows
+	// none of it (selfMarshallingTypeName says which types those are), so it
+	// has to route both directions through that type explicitly. This runs
+	// before the tables below are built so that an alias *of* such an alias is
+	// seen to have marshalling of its own and delegates in turn -- the chain
+	// `type B A; type A time.Time` is one $ref away in any schema.
+	for _, td := range g.output.TypeDefs {
+		ad, ok := td.(*AliasDef)
+		if !ok || !ad.CanHaveMethods() {
+			continue
+		}
+		name := selfMarshallingTypeName(ad.Underlying)
+		if name == "" {
+			continue
+		}
+		if ad.UnmarshalAs == "" {
+			ad.UnmarshalAs = name
+		}
+		if ad.MarshalAs == "" {
+			ad.MarshalAs = name
+		}
+	}
+
 	validatableTypes := make(map[string]bool)
 	unmarshalTypes := make(map[string]bool)
 	marshalTypes := make(map[string]bool)
@@ -8422,6 +8500,19 @@ func (g *Generator) populateAliasDelegates() {
 			}
 		case *EnumDef:
 			validatableTypes[d.Name] = true
+			// An enum is not always just its base type to encoding/json. A
+			// heterogeneous one is a json.RawMessage that keeps the bytes it
+			// was handed, and an int64 one whose draft admits 1.0 reads the
+			// number through jsonInteger; both say so in methods of their own,
+			// which an alias over the enum does not inherit. Left out of these
+			// tables, `type Root RawEnum` decoded its own "a" as base64 and
+			// `type Root IntEnum` refused the 1.0 the enum exists to accept.
+			if d.IsRaw || d.IntegerToken {
+				unmarshalTypes[d.Name] = true
+			}
+			if d.IsRaw {
+				marshalTypes[d.Name] = true
+			}
 		case *InferredAliasDef:
 			validatableTypes[d.Name] = true
 		case *BigIntAliasDef:
@@ -8759,6 +8850,14 @@ func zeroForPrimitive(name string) string {
 		// A byte slice: its zero value is nil, not "". Raw (heterogeneous)
 		// enums and multi-type wrappers are backed by json.RawMessage.
 		return "nil"
+	case "time.Time", "netip.Addr":
+		// Structs, and not comparable to any literal. `format: date-time` and
+		// `format: ipv4` behind a $ref become aliases over these, and the ""
+		// fallback below then emitted `field != ""` against one -- generated
+		// source that does not compile at all. Answering "no literal" sends the
+		// caller to the _jsonKeys presence guard, which is what an optional
+		// property of any other struct-shaped type already uses.
+		return ""
 	default:
 		return `""`
 	}

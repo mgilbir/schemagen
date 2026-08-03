@@ -2180,3 +2180,323 @@ func TestNullableTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
 		},
 	)
 }
+
+// TestFormatAliasDecodesItsOwnValue is issue #99. `format: date-time` behind a
+// $ref becomes `type Stamp time.Time`, and a defined type inherits none of the
+// methods of the type it is defined over: encoding/json fell through to
+// time.Time's unexported fields, so an ordinary RFC 3339 string would not decode
+// into Stamp at all, and a Stamp marshalled back out as `{}`. `format: ipv4`
+// has the same shape over netip.Addr, whose representation is reached through
+// encoding.TextUnmarshaler rather than json.Unmarshaler.
+//
+// This is deliberately not left to the golden file. The defect was pinned by
+// one for as long as it existed: the golden records what the generator emits,
+// agreed with the broken emission, and nothing anywhere compiled that alias and
+// handed it a date. Only running the code can tell the two apart, so the
+// program below decodes a real document through every position a named format
+// alias reaches, checks the instants that came out rather than merely that
+// something did, writes it back and compares byte for byte.
+//
+// The rejections at the end are the other half. A fix that made Stamp accept
+// anything -- decoding through a string, say -- would pass every assertion
+// above while accepting "not-a-timestamp" as a date-time.
+func TestFormatAliasDecodesItsOwnValue(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/netip"
+	"os"
+	"time"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+// Every property is present, so the round trip is exact rather than
+// approximate: an absent optional would be re-emitted as its Go zero, which is
+// a separate defect and not the one under test here.
+const doc = ` + "`" + `{"addr":"192.0.2.7","addr_list":["192.0.2.8"],"chained_stamp":"2020-01-02T03:04:05Z","optional_stamp":"2020-01-02T03:04:05Z","required_stamp":"2020-01-02T03:04:05Z","stamp_grid":[["2020-01-02T03:04:05Z"]],"stamp_list":["2020-01-02T03:04:05Z"],"stamp_map":{"k":"2020-01-02T03:04:05Z"},"tuple":["2020-01-02T03:04:05Z","192.0.2.9"]}` + "`" + `
+
+func main() {
+	want := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	var v FormatAliasPositions
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("decoding a plain RFC 3339 document: %v", err)
+	}
+	if err := v.Validate(); err != nil {
+		fail("validating a plain RFC 3339 document: %v", err)
+	}
+
+	// The instant itself, position by position. A Stamp that decoded into
+	// time.Time's zero would satisfy "no error" and nothing else.
+	for _, c := range []struct {
+		where string
+		got   time.Time
+	}{
+		{"required_stamp", time.Time(v.RequiredStamp)},
+		{"optional_stamp", time.Time(v.OptionalStamp)},
+		{"chained_stamp", time.Time(v.ChainedStamp)},
+		{"stamp_list[0]", time.Time(v.StampList[0])},
+		{"stamp_map[k]", time.Time(v.StampMap["k"])},
+		{"stamp_grid[0][0]", time.Time(v.StampGrid[0][0])},
+	} {
+		if !c.got.Equal(want) {
+			fail("%s decoded to %v, want %v", c.where, c.got, want)
+		}
+	}
+	if got := netip.Addr(v.Addr).String(); got != "192.0.2.7" {
+		fail("addr decoded to %q, want 192.0.2.7", got)
+	}
+	if got := netip.Addr(v.AddrList[0]).String(); got != "192.0.2.8" {
+		fail("addr_list[0] decoded to %q, want 192.0.2.8", got)
+	}
+
+	// And back out again. Without a MarshalJSON of its own a Stamp writes
+	// time.Time's unexported fields, which come out as {}.
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshalling: %v", err)
+	}
+	if string(out) != doc {
+		fail("round trip changed the document\n  in:  %s\n  out: %s", doc, string(out))
+	}
+
+	// A malformed value must still be refused. The whole point is that the
+	// alias carries the format's own decoder, not that it accepts more.
+	for _, bad := range []string{
+		` + "`" + `{"required_stamp":"not-a-timestamp"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-13-45T99:99:99Z"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","chained_stamp":"nope"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_list":["nope"]}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_map":{"k":"nope"}}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_grid":[["nope"]]}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","addr":"999.999.999.999"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","addr_list":["not-an-address"]}` + "`" + `,
+	} {
+		var bv FormatAliasPositions
+		if err := json.Unmarshal([]byte(bad), &bv); err == nil {
+			fail("accepted a malformed value: %s", bad)
+		}
+	}
+
+	// A tuple position is checked by re-decoding the element through the
+	// position's type, so the same defect reached it from Validate.
+	var tv FormatAliasPositions
+	badTuple := ` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","tuple":["nope","192.0.2.9"]}` + "`" + `
+	if err := json.Unmarshal([]byte(badTuple), &tv); err != nil {
+		fail("decoding %s: %v", badTuple, err)
+	}
+	if err := tv.Validate(); err == nil {
+		fail("tuple position 0 accepted %q as a date-time", "nope")
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_alias_positions.json",
+		"format_alias_positions_test",
+		mainGo,
+	)
+}
+
+// TestFormatAliasRootDecodesItsOwnValue is the root position of the same
+// defect: a whole document that is a date-time makes the alias over time.Time
+// the root type, where there is no enclosing struct whose decoder could have
+// covered for it.
+func TestFormatAliasRootDecodesItsOwnValue(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func main() {
+	const doc = ` + "`" + `"2020-01-02T03:04:05Z"` + "`" + `
+	var v FormatAliasRoot
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if got, want := time.Time(v), time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC); !got.Equal(want) {
+		fmt.Fprintf(os.Stderr, "decoded to %v, want %v\n", got, want)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	var bad FormatAliasRoot
+	if err := json.Unmarshal([]byte(` + "`" + `"not-a-timestamp"` + "`" + `), &bad); err == nil {
+		fmt.Fprintln(os.Stderr, "accepted a malformed date-time")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_alias_root.json",
+		"format_alias_root_test",
+		mainGo,
+	)
+}
+
+// TestFormatMapValuesDecode covers the one position where a format that maps to
+// a distinct Go type is named nowhere but the overflow map. The import scan
+// walked the declared fields only, so the file named time.Time without
+// importing time and did not compile at all -- which running it is what catches,
+// since a golden records source and never builds it.
+func TestFormatMapValuesDecode(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func main() {
+	const doc = ` + "`" + `{"a":"2020-01-02T03:04:05Z","b":"2021-06-07T08:09:10Z"}` + "`" + `
+	var v FormatMapValues
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if got, want := v.AdditionalProperties["a"], time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC); !got.Equal(want) {
+		fmt.Fprintf(os.Stderr, "a decoded to %v, want %v\n", got, want)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	var bad FormatMapValues
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":"not-a-timestamp"}` + "`" + `), &bad); err == nil {
+		fmt.Fprintln(os.Stderr, "accepted a malformed date-time as a map value")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_map_values.json",
+		"format_map_values_test",
+		mainGo,
+	)
+}
+
+// TestEnumAliasBorrowsEnumMethods is the same defect as #99 reached through a
+// generated type rather than a stdlib one. Two enum shapes carry JSON methods
+// of their own -- a heterogeneous enum is a json.RawMessage that keeps the bytes
+// it was handed, and an int64 enum whose draft admits 1.0 reads the number
+// through jsonInteger -- and `{"$ref": "#/$defs/TheEnum"}` makes an alias over
+// the enum, which inherits neither.
+//
+// So `type RawAlias RawEnum` was a []byte to encoding/json: the member "a"
+// arrived as base64 and was refused, and a value that did decode came back out
+// base64-encoded. `type IntAlias IntEnum` refused the 1.0 spelling that the
+// enum's own UnmarshalJSON exists to accept -- issue #90's defect, reappearing
+// one $ref further along.
+func TestEnumAliasBorrowsEnumMethods(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// Every member of the heterogeneous enum, in the alias position and as an
+	// element of a slice of it. A string member is what shows the base64
+	// decode; a number and a null are what show it is the bytes being kept and
+	// not a string type standing in for them.
+	//
+	// The properties are written in key order because the overflow-map marshal
+	// path re-serializes through a map, which sorts them.
+	for _, doc := range []string{
+		` + "`" + `{"num":1,"raw":"a","raw_list":["a",1,null]}` + "`" + `,
+		` + "`" + `{"num":2,"raw":1,"raw_list":[]}` + "`" + `,
+		` + "`" + `{"num":3,"raw":null}` + "`" + `,
+	} {
+		var v EnumAliasDelegation
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := v.Validate(); err != nil {
+			fail("validating %s: %v", doc, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			fail("marshalling %s: %v", doc, err)
+		}
+		if string(out) != doc {
+			fail("round trip changed the document\n  in:  %s\n  out: %s", doc, string(out))
+		}
+	}
+
+	// 1.0 is the integer 1 from draft 6 on, so it names the same member. The
+	// enum's own decoder accepts it; the alias has to reach that decoder.
+	oneFloat := ` + "`" + `{"raw":"a","num":1.0}` + "`" + `
+	var fv EnumAliasDelegation
+	if err := json.Unmarshal([]byte(oneFloat), &fv); err != nil {
+		fail("decoding %s: %v", oneFloat, err)
+	}
+	if err := fv.Validate(); err != nil {
+		fail("validating %s: %v", oneFloat, err)
+	}
+	if fv.Num != 1 {
+		fail("%s decoded num to %v, want 1", oneFloat, fv.Num)
+	}
+
+	// Borrowing the decoder must not cost the enum check. A value outside the
+	// enum decodes -- both forms accept any JSON of the right shape -- and is
+	// refused by Validate.
+	for _, bad := range []string{
+		` + "`" + `{"raw":"zzz","num":1}` + "`" + `,
+		` + "`" + `{"raw":"a","num":9}` + "`" + `,
+		` + "`" + `{"raw":"a","num":1,"raw_list":["zzz"]}` + "`" + `,
+	} {
+		var bv EnumAliasDelegation
+		if err := json.Unmarshal([]byte(bad), &bv); err != nil {
+			continue // an unmarshal-time rejection is an acceptable failure mode
+		}
+		if err := bv.Validate(); err == nil {
+			fail("accepted a value outside the enum: %s", bad)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/enum_alias_delegation.json",
+		"enum_alias_delegation_test",
+		mainGo,
+	)
+}

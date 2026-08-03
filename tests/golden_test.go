@@ -88,6 +88,10 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/unevaluated_items_anyof", "testdata/schemas/regression/unevaluated_items_anyof.json", "testdata/golden/regression/unevaluated_items_anyof.go"},
 		{"regression/unevaluated_items_cousins", "testdata/schemas/regression/unevaluated_items_cousins.json", "testdata/golden/regression/unevaluated_items_cousins.go"},
 		{"regression/array_item_constraints", "testdata/schemas/regression/array_item_constraints.json", "testdata/golden/regression/array_item_constraints.go"},
+		{"regression/format_alias_positions", "testdata/schemas/regression/format_alias_positions.json", "testdata/golden/regression/format_alias_positions.go"},
+		{"regression/format_alias_root", "testdata/schemas/regression/format_alias_root.json", "testdata/golden/regression/format_alias_root.go"},
+		{"regression/format_map_values", "testdata/schemas/regression/format_map_values.json", "testdata/golden/regression/format_map_values.go"},
+		{"regression/enum_alias_delegation", "testdata/schemas/regression/enum_alias_delegation.json", "testdata/golden/regression/enum_alias_delegation.go"},
 	}
 }
 

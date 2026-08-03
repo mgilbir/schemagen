@@ -140,10 +140,42 @@ func needsUnmarshalForIntegers(f FieldDef) bool {
 	return f.IntegerDecode != nil
 }
 
+// resolveEnumIntegerTokens decides, for each const-form enum over int64, whether
+// its draft admits a number written 1.0 for the member spelled 1 -- in which
+// case the enum needs an UnmarshalJSON of its own, because a named type is just
+// an int64 to encoding/json and an int64 refuses that spelling.
+//
+// It is the same question resolveIntegerDecodes answers for the other type
+// definitions, and asked from the same place (g.typeSchemas, which is what names
+// a type's draft). It runs as a pass of its own only because the answer is a
+// fact *about the enum's methods*, which populateAliasDelegates has to have
+// before it can decide whether an alias over that enum must borrow them --
+// and populateAliasDelegates in turn has to run before resolveIntegerDecodes,
+// which reads the UnmarshalAs it sets.
+func (g *Generator) resolveEnumIntegerTokens() {
+	for _, td := range g.output.TypeDefs {
+		d, ok := td.(*EnumDef)
+		if !ok {
+			continue
+		}
+		// A const-form enum is a named type over its base type and carries no
+		// UnmarshalJSON, so `type E int64` refuses 1.0 exactly as a bare
+		// int64 field did. The raw form keeps the bytes and needs nothing.
+		if d.IsRaw {
+			continue
+		}
+		if pt, ok := d.BaseType.(*PrimitiveType); !ok || pt.Name != "int64" {
+			continue
+		}
+		d.IntegerToken = !g.requiresStrictIntegerToken(g.typeSchemas[d.Name])
+	}
+}
+
 // resolveIntegerDecodes settles the positions that are decided from a whole type
 // definition rather than from one property: a named type whose underlying is a
-// container of integers, an integer enum, and the overflow map of an object
-// whose values one sub-schema types.
+// container of integers, and the overflow map of an object whose values one
+// sub-schema types. The integer enum is settled by resolveEnumIntegerTokens,
+// which has to run earlier; see its comment.
 //
 // Both are the same defect as a struct field's -- a schema integer reached by a
 // decode that answers from the Go type -- and both are held here rather than at
@@ -162,17 +194,6 @@ func (g *Generator) resolveIntegerDecodes() {
 				continue
 			}
 			d.IntegerDecode = g.integerDecodeFor(d.Underlying, g.typeSchemas[d.Name])
-		case *EnumDef:
-			// A const-form enum is a named type over its base type and carries no
-			// UnmarshalJSON, so `type E int64` refuses 1.0 exactly as a bare
-			// int64 field did. The raw form keeps the bytes and needs nothing.
-			if d.IsRaw {
-				continue
-			}
-			if pt, ok := d.BaseType.(*PrimitiveType); !ok || pt.Name != "int64" {
-				continue
-			}
-			d.IntegerToken = !g.requiresStrictIntegerToken(g.typeSchemas[d.Name])
 		case *StructDef:
 			// The overflow map of an object whose values one sub-schema types.
 			// Settled here rather than beside each of the several places that
