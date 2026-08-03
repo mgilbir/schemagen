@@ -946,6 +946,16 @@ func TestAllOfTightestConstraints(t *testing.T) {
 			`7`,  // below the tighter minimum (10)
 			`8`,  // >= 10 but only a multiple of 2, not lcm(2,3)=6
 			`10`, // >= 10 but not a multiple of 6
+			// The schema declares "type":"integer" beside its allOf, and the
+			// merge only ever takes a type off a *branch* -- so the declared one
+			// has to be read from the parent or it is lost. Lost, the type is
+			// inferred from the bounds instead, which makes it a guess rather
+			// than an assertion and hands the schema the wrapper that accepts
+			// every instance type. All three of these were then accepted by a
+			// schema that says "integer".
+			`"abc"`,
+			`[1,2]`,
+			`true`,
 		},
 	)
 }
@@ -1522,6 +1532,265 @@ func TestTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
 	)
 }
 
+// TestPatternPropertiesObjectValidatesInEveryPosition is the behavioural half of
+// issue #96, and of the pattern half of #98. An object whose entire shape is
+// `patternProperties` declares no property names, so resolveType's object arm --
+// which asked hasProperties -- did not take it and the fallback answered
+// map[string]any. The pattern was never matched, the value sub-schema was never
+// checked and a sibling `additionalProperties` was dropped with the struct: the
+// generated Validate returned nil for every document in `invalid` below.
+//
+// The schema states one shape and puts it in each position the generator reaches
+// an object schema through, because this defect's family is "fixed in one arm,
+// not its twin" -- #84, #91, #92 and #97 were four spellings of one keyword's
+// gap. The root and $ref positions already worked; they are here so that a
+// change which fixes an inline property by breaking them is not mistaken for a
+// pass. Each invalid document isolates a single position, so a position that
+// regresses names itself.
+//
+// The valid list carries the controls that matter more than the rejections: a
+// key the pattern does not match is unconstrained, an absent property is not a
+// violation, an explicit null satisfies ["object","null"], and the integer
+// branch of the oneOf is still selectable. A fix that started rejecting these
+// would be worse than the bug.
+func TestPatternPropertiesObjectValidatesInEveryPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_properties_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{"aa":"abc"},"ref":{"aa":"abc"},"inItems":[{"aa":"abc"}],` +
+				`"mapValue":{"k":{"aa":"abc"}},"nullable":{"aa":"abc"},"noType":{"aa":"abc"},` +
+				`"inAllOf":{"aa":"abc"},"inTuple":[{"aa":"abc"}],"nested":{"inner":{"aa":"abc"}},` +
+				`"inOneOf":{"aa":"abc"},"spare":{"aa":"abc"}}`,
+			`{"nullable":null}`, // ["object","null"] still admits the null
+			`{"inOneOf":5}`,     // the integer branch is still selectable
+			`{"prop":{"zz":1}}`, // no pattern matches, so no sub-schema applies
+			`{"prop":{}}`,       // an empty object matches nothing and violates nothing
+			`{"inItems":[]}`,    // no element, no check
+			`{"inTuple":[]}`,    // the tuple position is absent, not empty
+		},
+		[]string{
+			`{"prop":{"aa":"ab"}}`,             // inline property
+			`{"ref":{"aa":"ab"}}`,              // behind a $ref to a named definition
+			`{"inItems":[{"aa":"ab"}]}`,        // array element
+			`{"mapValue":{"k":{"aa":"ab"}}}`,   // map value
+			`{"nullable":{"aa":"ab"}}`,         // the nullable spelling
+			`{"noType":{"aa":"ab"}}`,           // patternProperties with no declared "type"
+			`{"inAllOf":{"aa":"ab"}}`,          // inside an allOf branch
+			`{"inTuple":[{"aa":"ab"}]}`,        // a prefixItems position
+			`{"nested":{"inner":{"aa":"ab"}}}`, // a property of a nested object
+			`{"inOneOf":{"aa":"ab"}}`,          // the object branch of a oneOf union
+			`{"spare":{"aa":"ab"}}`,            // the parent's own overflow map
+			`{"prop":{"aa":5}}`,                // matching key, wrong JSON type
+		},
+	)
+}
+
+// TestWholeObjectMapValidatesInEveryPosition is the behavioural half of issue
+// #97 -- a named definition whose whole shape is `additionalProperties`, whose
+// value type survived so a wrong JSON type died in the decoder while `minLength`
+// was enforced nowhere -- carried across the same positions as the pattern shape
+// above, since the two defects meet in the arms that decide whether an object
+// gets a type of its own.
+//
+// The reproducer #97 states (the named-definition position) already passes on
+// the branch this lands on, fixed by the overflow-value descent that went with
+// #92. Positions it did not reach are the substance here: a lone allOf branch, a
+// tuple slot, a oneOf branch, and an object that states no "type" at all -- that
+// last one typed map[string]string correctly and then never checked it, because
+// the value schema was looked up with the declared type rather than the inferred
+// one the Go type had been chosen by.
+func TestWholeObjectMapValidatesInEveryPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/whole_object_map_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{"k":"ab"},"ref":{"k":"ab"},"inItems":[{"k":"ab"}],` +
+				`"mapValue":{"k":{"j":"ab"}},"nullable":{"k":"ab"},"noType":{"k":"ab"},` +
+				`"inAllOf":{"k":"ab"},"inTuple":[{"k":"ab"}],"nested":{"inner":{"k":"ab"}},` +
+				`"inOneOf":{"k":"ab"},"spare":{"k":"ab"}}`,
+			`{"nullable":null}`,
+			`{"inOneOf":5}`,
+			`{"prop":{}}`,
+			`{"inItems":[]}`,
+			`{"inTuple":[]}`,
+		},
+		[]string{
+			`{"prop":{"k":"a"}}`,
+			`{"ref":{"k":"a"}}`,
+			`{"inItems":[{"k":"a"}]}`,
+			`{"mapValue":{"k":{"j":"a"}}}`,
+			`{"nullable":{"k":"a"}}`,
+			`{"noType":{"k":"a"}}`,
+			`{"inAllOf":{"k":"a"}}`,
+			`{"inTuple":[{"k":"a"}]}`,
+			`{"nested":{"inner":{"k":"a"}}}`,
+			`{"inOneOf":{"k":"a"}}`,
+			`{"spare":{"k":"a"}}`,
+		},
+	)
+}
+
+// TestPatternValueSubschemaIsChecked covers a patternProperties sub-schema that
+// says more than a scalar keyword.
+//
+// A pattern's keys are not known until a document arrives, so the values sit in
+// a raw-JSON bucket with no field for the usual Validate dispatch to reach. The
+// only thing that checked them was a hand-listed set of in-place rules -- type,
+// the numeric bounds, multipleOf, the length bounds, pattern and the item-count
+// bounds -- so every other keyword under a pattern was enforced nowhere. Each
+// letter below is one of them, and each was accepted before the sub-schema was
+// given a type of its own: {"^e":{"$ref":"#/$defs/D"}} generated D with a
+// correct Validate and never called it.
+//
+// The valid list is the larger half on purpose. A key that matches no pattern is
+// unconstrained, an empty object satisfies a sub-schema that only forbids
+// things, and both branches of the oneOf and of the if/then are still
+// selectable. Turning under-enforcement into over-enforcement would be the worse
+// trade, so every bucket has an accepted document beside its rejected one.
+//
+// The last two letters are the scalar keywords the in-place rules still handle,
+// pinned here so a change that routes everything through a materialized type is
+// seen to leave them working rather than silently rewriting them.
+func TestPatternValueSubschemaIsChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_subschemas.json",
+		[]string{
+			`{}`,
+			`{"zz":"anything","zq":{"whatever":true}}`, // no pattern matches
+			`{"aa":"aaa"}`, `{"bb":"aaa"}`,
+			`{"cc":{"x":1}}`, `{"cc":{"x":1,"y":2}}`,
+			`{"dd":{"x":"abcde"}}`, `{"dd":{}}`, `{"dd":{"y":1}}`,
+			`{"ee":7}`,
+			`{"ff":["abcde"]}`, `{"ff":[]}`,
+			`{"gg":[1,2]}`, `{"gg":[]}`,
+			`{"hh":5}`, `{"hh":true}`,
+			`{"ii":"abcde"}`,
+			`{"jj":{"x":1}}`, `{"jj":{}}`,
+			`{"kk":{"zz":"abcde"}}`, `{"kk":{"qq":1}}`,
+			`{"ll":{"k":"abcde"}}`, `{"ll":{}}`,
+			`{"mm":"x"}`, `{"mm":5}`,
+			`{"nn":"abcde"}`, `{"nn":1}`,
+			`{"oo":{"zx":1}}`, `{"oo":{}}`,
+			`{"pp":{"x":1,"y":2}}`, `{"pp":{"y":2}}`, `{"pp":{}}`,
+			`{"qq":{}}`,
+			`{"rr":1}`, `{"rr":1.0}`, // draft 2020-12: a zero fractional part is an integer
+			`{"ss":"abcde"}`,
+			// The two sub-schemas whose materialized type Go forbids methods on:
+			// a $ref to an empty schema, and a bare `format` with no type. Both
+			// assert nothing, so both must accept anything -- and both are here
+			// because the emitted dispatch would not compile if the pass that
+			// notices a type carries no Validate stopped noticing.
+			`{"tt":{"anything":1}}`, `{"tt":null}`,
+			`{"uu":"not-an-ip"}`, `{"uu":5}`,
+		},
+		[]string{
+			`{"aa":"ccc"}`,         // enum
+			`{"bb":"bbb"}`,         // const
+			`{"cc":{}}`,            // required
+			`{"dd":{"x":"abc"}}`,   // a nested property's own constraint
+			`{"ee":1}`,             // a $ref target's constraint
+			`{"ff":["abc"]}`,       // an items sub-schema's constraint
+			`{"gg":[1,1]}`,         // uniqueItems
+			`{"hh":"x"}`,           // not
+			`{"ii":"abc"}`,         // an allOf branch's constraint
+			`{"jj":{"x":1,"y":2}}`, // maxProperties
+			`{"kk":{"zz":"abc"}}`,  // a patternProperties nested under a pattern
+			`{"ll":{"k":"abc"}}`,   // an additionalProperties nested under a pattern
+			`{"mm":true}`,          // oneOf: no branch matches
+			`{"nn":"abc"}`,         // if/then
+			`{"oo":{"qq":1}}`,      // propertyNames
+			`{"pp":{"x":1}}`,       // dependentRequired
+			`{"qq":{"x":1}}`,       // additionalProperties:false under a pattern
+			`{"rr":1.5}`,           // still not an integer in any draft
+			`{"ss":"abc"}`,         // minLength, still on the in-place path
+		},
+	)
+}
+
+// TestPatternValueIntegerDraft4ReadsTheToken is the other half of the integer
+// case above. Draft 4 decides `integer` on the token, so 1.0 is a number and not
+// an integer; from draft 6 the value decides and 1.0 is one. The in-place check
+// scanned the raw bytes for a '.' in every draft, which is right for 4 and wrong
+// for the rest -- {"rr":1.0} was rejected under 2020-12 against a schema that
+// permits it, a false rejection. Fixing that must not turn draft 4 lenient,
+// which is what this pins.
+func TestPatternValueIntegerDraft4ReadsTheToken(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_integer_draft4.json",
+		[]string{`{"rr":1}`, `{"zz":1.0}`, `{}`},
+		[]string{`{"rr":1.0}`, `{"rr":1.5}`, `{"rr":"x"}`},
+	)
+}
+
+// TestPatternValueDescentComposes checks that the descent nests rather than
+// working one level down. Each property puts a pattern bucket behind a different
+// container -- an array element, a map value, a tuple slot, and a pattern whose
+// value is an array of objects carrying a pattern of their own -- and the
+// innermost constraint is a $ref or a required property, neither of which the
+// in-place rules can express at any depth.
+func TestPatternValueDescentComposes(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_nesting.json",
+		[]string{
+			`{}`,
+			`{"rows":[{"bb":7}]}`, `{"rows":[]}`, `{"rows":[{"zz":1}]}`,
+			`{"byKey":{"k":{"bb":{"x":"abcde"}}}}`, `{"byKey":{}}`, `{"byKey":{"k":{}}}`,
+			`{"tuple":[{"bb":7}]}`, `{"tuple":[]}`,
+			`{"deep":{"bb":[{"cc":7}]}}`, `{"deep":{"bb":[]}}`, `{"deep":{}}`,
+		},
+		[]string{
+			`{"rows":[{"bb":1}]}`,
+			`{"rows":[{"bb":7},{"bb":2}]}`, // the second element is the one that violates
+			`{"byKey":{"k":{"bb":{"x":"abc"}}}}`,
+			`{"byKey":{"k":{"bb":{}}}}`,
+			`{"tuple":[{"bb":1}]}`,
+			`{"deep":{"bb":[{"cc":1}]}}`,
+		},
+	)
+}
+
+// TestEmptyObjectForbidsEveryKey covers {"type":"object","additionalProperties":
+// false} with no properties declared. It permits no key at all, so only {}
+// satisfies it -- and a $defs entry of that shape has always rejected {"x":1}
+// through the Forbidden overflow map, while every position that went through
+// resolveType collapsed to map[string]any and accepted it. The answer depended
+// on where the schema was written, which is the defect this pins closed in each
+// position the object can occupy.
+//
+// `permissive` is the control the fix must not touch: `additionalProperties:
+// true` permits every key and constrains none, so it stays a bare map and
+// accepts what it always did.
+func TestEmptyObjectForbidsEveryKey(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/empty_object_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{},"ref":{},"inItems":[{}],"mapValue":{"k":{}},"nullable":{},` +
+				`"noType":{},"inAllOf":{},"inTuple":[{}],"nested":{"inner":{}},` +
+				`"inOneOf":{},"inPattern":{"bb":{}}}`,
+			`{"nullable":null}`,
+			`{"inOneOf":5}`,
+			`{"inItems":[]}`, `{"inTuple":[]}`, `{"mapValue":{}}`,
+			`{"inPattern":{"zz":{"anything":1}}}`, // no pattern matches, nothing applies
+			`{"permissive":{"x":1,"y":2}}`,        // additionalProperties:true is untouched
+		},
+		[]string{
+			`{"prop":{"x":1}}`,
+			`{"ref":{"x":1}}`,
+			`{"inItems":[{"x":1}]}`,
+			`{"mapValue":{"k":{"x":1}}}`,
+			`{"nullable":{"x":1}}`,
+			`{"noType":{"x":1}}`,
+			`{"inAllOf":{"x":1}}`,
+			`{"inTuple":[{"x":1}]}`,
+			`{"nested":{"inner":{"x":1}}}`,
+			`{"inOneOf":{"x":1}}`,
+			`{"inPattern":{"bb":{"x":1}}}`,
+		},
+	)
+}
+
 // TestBigIntNullableDefinitionAcceptsNull is the behavioural half of issue #85.
 // A named ["integer","null"] reaches the big-integer wrapper, which held an
 // int64 and a *big.Int and had no state for null: `{"n":null}` was rejected as
@@ -1799,5 +2068,753 @@ func TestUnevaluatedItemsCousins(t *testing.T) {
 		"testdata/schemas/regression/unevaluated_items_cousins.json",
 		[]string{`[]`},
 		[]string{`[1]`, `["anything"]`},
+	)
+}
+
+// TestIntegerFloatNotationAcceptedEverywhere is the behavioural half of issue
+// #90. From draft 6 on, a number with a zero fractional part is an integer, so
+// every document in the valid list is one the schema admits and one that
+// python-jsonschema and js-ajv both accept.
+//
+// The list is a position sweep on purpose. A root alias already accepted 1.0
+// while a struct field refused it, and the defect is that disagreement rather
+// than any one position, so every place an integer can sit has to answer the
+// same way: a required field, an optional one, a slice element at two depths, a
+// map value, a nullable, the three named shapes, an enum member, a oneOf branch,
+// a nested struct and a field carrying multipleOf.
+//
+// runValidationCases treats an unmarshal failure on a valid document as a
+// failure of the test, which is exactly the defect's signature -- the document
+// was refused before any constraint was consulted.
+func TestIntegerFloatNotationAcceptedEverywhere(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_float_notation.json",
+		[]string{
+			`{"req":1.0}`,
+			`{"req":1e2}`,
+			`{"req":-0.0}`,
+			`{"req":1,"opt":2.0}`,
+			`{"req":1,"arr":[1.0,2,3.0]}`,
+			`{"req":1,"grid":[[1.0],[2.0,3]]}`,
+			`{"req":1,"mp":{"k":1.0,"j":2}}`,
+			`{"req":1,"nullint":4.0}`,
+			`{"req":1,"nullint":null}`,
+			`{"req":1,"named":5.0}`,
+			`{"req":1,"namedarr":[6.0]}`,
+			`{"req":1,"namedmap":{"k":7.0}}`,
+			`{"req":1,"enm":2.0}`,
+			`{"req":1,"un":12.0}`,
+			`{"req":1,"nest":{"deep":8.0}}`,
+			`{"req":1,"mult":4.0}`,
+			// The plain spelling keeps working at each of them.
+			`{"req":1,"arr":[1],"mp":{"k":2},"enm":3,"un":11,"nest":{"deep":4},"mult":6}`,
+		},
+		[]string{
+			// A fraction that is not zero is not an integer in any draft.
+			`{"req":1.5}`,
+			`{"req":1,"arr":[1.5]}`,
+			`{"req":1,"mp":{"k":2.5}}`,
+			`{"req":1,"named":3.5}`,
+			`{"req":1,"namedarr":[4.5]}`,
+			`{"req":1,"namedmap":{"k":5.5}}`,
+			`{"req":1,"nest":{"deep":6.5}}`,
+			// A JSON string is not an integer however it reads.
+			`{"req":"1"}`,
+			`{"req":1,"arr":["2"]}`,
+			// The constraints still apply to a value written in float notation.
+			`{"req":1,"mult":3.0}`,
+			`{"req":1,"enm":4.0}`,
+			`{"req":1,"un":9.0}`,
+		},
+	)
+}
+
+// TestIntegerStrictTokenUnderDraft4 is the same sweep in the draft that reads
+// "integer" the other way.
+//
+// Draft 4 defines an integer as a number with no fraction and no exponent, so
+// 1.0 is not one -- the suite says so in draft4/optional/zeroTerminatedFloats.
+// Everything in the invalid list must therefore stay refused, and this test is
+// what stops the draft-6 repair from being applied where it is wrong. The valid
+// list is the same documents written the one way draft 4 admits.
+func TestIntegerStrictTokenUnderDraft4(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_strict_token_draft4.json",
+		[]string{
+			`{"req":1}`,
+			`{"req":1,"arr":[1,2]}`,
+			`{"req":1,"mp":{"k":3}}`,
+			`{"req":1,"named":4}`,
+			`{"req":1,"enm":2}`,
+		},
+		[]string{
+			`{"req":1.0}`,
+			`{"req":1,"arr":[1.0]}`,
+			`{"req":1,"mp":{"k":1.0}}`,
+			`{"req":1,"named":1.0}`,
+			`{"req":1,"enm":1.0}`,
+			`{"req":1e2}`,
+		},
+	)
+}
+
+// TestNullableTypedAdditionalPropertiesValidatesItsValues is the behavioural
+// half of issue #91: a ["object","null"] whose whole shape is
+// additionalProperties came out *map[string]any, so neither the value type nor
+// its keywords survived and every document in the invalid list was accepted.
+//
+// The nulls are here as well as the violations. The fix drops the pointer the
+// property used to carry, on the precedent of the nullable array beside it, and
+// a nil map has to keep meaning "null" in both directions for that to be sound.
+func TestNullableTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_typed_additional_properties.json",
+		[]string{
+			`{}`,
+			`{"labels":null}`,
+			`{"labels":{}}`,
+			`{"labels":{"a":"abc"}}`,
+			`{"labels":{"a":"abc","b":"defg"},"counts":{"x":5,"y":99}}`,
+			`{"counts":null,"groups":null,"nested":null}`,
+			`{"groups":{"g":["ab","cd"]}}`,
+			`{"nested":{"outer":{"inner":9}}}`,
+			`{"nested":{"outer":null}}`,
+		},
+		[]string{
+			`{"labels":{"a":"ab"}}`,
+			`{"labels":{"a":"abc","b":"x"}}`,
+			`{"counts":{"x":4}}`,
+			`{"groups":{"g":["abcde"]}}`,
+			`{"nested":{"outer":{"inner":10}}}`,
+			`{"labels":{"a":1}}`,
+		},
+	)
+}
+
+// TestFormatAliasDecodesItsOwnValue is issue #99. `format: date-time` behind a
+// $ref becomes `type Stamp time.Time`, and a defined type inherits none of the
+// methods of the type it is defined over: encoding/json fell through to
+// time.Time's unexported fields, so an ordinary RFC 3339 string would not decode
+// into Stamp at all, and a Stamp marshalled back out as `{}`. `format: ipv4`
+// has the same shape over netip.Addr, whose representation is reached through
+// encoding.TextUnmarshaler rather than json.Unmarshaler.
+//
+// This is deliberately not left to the golden file. The defect was pinned by
+// one for as long as it existed: the golden records what the generator emits,
+// agreed with the broken emission, and nothing anywhere compiled that alias and
+// handed it a date. Only running the code can tell the two apart, so the
+// program below decodes a real document through every position a named format
+// alias reaches, checks the instants that came out rather than merely that
+// something did, writes it back and compares byte for byte.
+//
+// The rejections at the end are the other half. A fix that made Stamp accept
+// anything -- decoding through a string, say -- would pass every assertion
+// above while accepting "not-a-timestamp" as a date-time.
+func TestFormatAliasDecodesItsOwnValue(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/netip"
+	"os"
+	"time"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+// Every property is present, so the round trip is exact.
+const doc = ` + "`" + `{"addr":"192.0.2.7","addr_list":["192.0.2.8"],"chained_stamp":"2020-01-02T03:04:05Z","optional_stamp":"2020-01-02T03:04:05Z","required_stamp":"2020-01-02T03:04:05Z","stamp_grid":[["2020-01-02T03:04:05Z"]],"stamp_list":["2020-01-02T03:04:05Z"],"stamp_map":{"k":"2020-01-02T03:04:05Z"},"tuple":["2020-01-02T03:04:05Z","192.0.2.9"]}` + "`" + `
+
+func main() {
+	want := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	var v FormatAliasPositions
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("decoding a plain RFC 3339 document: %v", err)
+	}
+	if err := v.Validate(); err != nil {
+		fail("validating a plain RFC 3339 document: %v", err)
+	}
+
+	// The instant itself, position by position. A Stamp that decoded into
+	// time.Time's zero would satisfy "no error" and nothing else.
+	for _, c := range []struct {
+		where string
+		got   time.Time
+	}{
+		{"required_stamp", time.Time(v.RequiredStamp)},
+		{"optional_stamp", time.Time(*v.OptionalStamp)},
+		{"chained_stamp", time.Time(*v.ChainedStamp)},
+		{"stamp_list[0]", time.Time(v.StampList[0])},
+		{"stamp_map[k]", time.Time(v.StampMap["k"])},
+		{"stamp_grid[0][0]", time.Time(v.StampGrid[0][0])},
+	} {
+		if !c.got.Equal(want) {
+			fail("%s decoded to %v, want %v", c.where, c.got, want)
+		}
+	}
+	if got := netip.Addr(*v.Addr).String(); got != "192.0.2.7" {
+		fail("addr decoded to %q, want 192.0.2.7", got)
+	}
+	if got := netip.Addr(v.AddrList[0]).String(); got != "192.0.2.8" {
+		fail("addr_list[0] decoded to %q, want 192.0.2.8", got)
+	}
+
+	// And back out again. Without a MarshalJSON of its own a Stamp writes
+	// time.Time's unexported fields, which come out as {}.
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshalling: %v", err)
+	}
+	if string(out) != doc {
+		fail("round trip changed the document\n  in:  %s\n  out: %s", doc, string(out))
+	}
+
+	// A document carrying only what it must. Every optional property is absent,
+	// and none of them may appear in the output: omitempty never omits a struct,
+	// so before the pointer these came back as "0001-01-01T00:00:00Z" and "" --
+	// values the document never held. The pointer is also what keeps the other
+	// direction honest, which the zero-instant case below measures.
+	minimal := ` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z"}` + "`" + `
+	var mv FormatAliasPositions
+	if err := json.Unmarshal([]byte(minimal), &mv); err != nil {
+		fail("decoding %s: %v", minimal, err)
+	}
+	if err := mv.Validate(); err != nil {
+		fail("validating %s: %v", minimal, err)
+	}
+	mOut, err := json.Marshal(mv)
+	if err != nil {
+		fail("marshalling the minimal document: %v", err)
+	}
+	if string(mOut) != minimal {
+		fail("an absent optional property was invented into the output\n  in:  %s\n  out: %s", minimal, string(mOut))
+	}
+
+	// The zero instant is a legitimate value, not an absence. ",omitzero" would
+	// have omitted it -- that is the reason the pointer was chosen over it --
+	// so a document that carries it must get it back.
+	zeroInstant := ` + "`" + `{"optional_stamp":"0001-01-01T00:00:00Z","required_stamp":"2020-01-02T03:04:05Z"}` + "`" + `
+	var zv FormatAliasPositions
+	if err := json.Unmarshal([]byte(zeroInstant), &zv); err != nil {
+		fail("decoding %s: %v", zeroInstant, err)
+	}
+	if zv.OptionalStamp == nil {
+		fail("%s: optional_stamp is nil; a present zero instant is not an absence", zeroInstant)
+	}
+	zOut, err := json.Marshal(zv)
+	if err != nil {
+		fail("marshalling the zero-instant document: %v", err)
+	}
+	if string(zOut) != zeroInstant {
+		fail("a present zero instant was dropped from the output\n  in:  %s\n  out: %s", zeroInstant, string(zOut))
+	}
+
+	// A malformed value must still be refused. The whole point is that the
+	// alias carries the format's own decoder, not that it accepts more.
+	for _, bad := range []string{
+		` + "`" + `{"required_stamp":"not-a-timestamp"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-13-45T99:99:99Z"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","chained_stamp":"nope"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_list":["nope"]}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_map":{"k":"nope"}}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","stamp_grid":[["nope"]]}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","addr":"999.999.999.999"}` + "`" + `,
+		` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","addr_list":["not-an-address"]}` + "`" + `,
+	} {
+		var bv FormatAliasPositions
+		if err := json.Unmarshal([]byte(bad), &bv); err == nil {
+			fail("accepted a malformed value: %s", bad)
+		}
+	}
+
+	// A tuple position is checked by re-decoding the element through the
+	// position's type, so the same defect reached it from Validate.
+	var tv FormatAliasPositions
+	badTuple := ` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z","tuple":["nope","192.0.2.9"]}` + "`" + `
+	if err := json.Unmarshal([]byte(badTuple), &tv); err != nil {
+		fail("decoding %s: %v", badTuple, err)
+	}
+	if err := tv.Validate(); err == nil {
+		fail("tuple position 0 accepted %q as a date-time", "nope")
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_alias_positions.json",
+		"format_alias_positions_test",
+		mainGo,
+	)
+}
+
+// TestFormatAliasRootDecodesItsOwnValue is the root position of the same
+// defect: a whole document that is a date-time makes the alias over time.Time
+// the root type, where there is no enclosing struct whose decoder could have
+// covered for it.
+func TestFormatAliasRootDecodesItsOwnValue(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func main() {
+	const doc = ` + "`" + `"2020-01-02T03:04:05Z"` + "`" + `
+	var v FormatAliasRoot
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if got, want := time.Time(v), time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC); !got.Equal(want) {
+		fmt.Fprintf(os.Stderr, "decoded to %v, want %v\n", got, want)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	var bad FormatAliasRoot
+	if err := json.Unmarshal([]byte(` + "`" + `"not-a-timestamp"` + "`" + `), &bad); err == nil {
+		fmt.Fprintln(os.Stderr, "accepted a malformed date-time")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_alias_root.json",
+		"format_alias_root_test",
+		mainGo,
+	)
+}
+
+// TestFormatMapValuesDecode covers the one position where a format that maps to
+// a distinct Go type is named nowhere but the overflow map. The import scan
+// walked the declared fields only, so the file named time.Time without
+// importing time and did not compile at all -- which running it is what catches,
+// since a golden records source and never builds it.
+func TestFormatMapValuesDecode(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func main() {
+	const doc = ` + "`" + `{"a":"2020-01-02T03:04:05Z","b":"2021-06-07T08:09:10Z"}` + "`" + `
+	var v FormatMapValues
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if got, want := v.AdditionalProperties["a"], time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC); !got.Equal(want) {
+		fmt.Fprintf(os.Stderr, "a decoded to %v, want %v\n", got, want)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	var bad FormatMapValues
+	if err := json.Unmarshal([]byte(` + "`" + `{"a":"not-a-timestamp"}` + "`" + `), &bad); err == nil {
+		fmt.Fprintln(os.Stderr, "accepted a malformed date-time as a map value")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/format_map_values.json",
+		"format_map_values_test",
+		mainGo,
+	)
+}
+
+// TestEnumAliasBorrowsEnumMethods is the same defect as #99 reached through a
+// generated type rather than a stdlib one. Two enum shapes carry JSON methods
+// of their own -- a heterogeneous enum is a json.RawMessage that keeps the bytes
+// it was handed, and an int64 enum whose draft admits 1.0 reads the number
+// through jsonInteger -- and `{"$ref": "#/$defs/TheEnum"}` makes an alias over
+// the enum, which inherits neither.
+//
+// So `type RawAlias RawEnum` was a []byte to encoding/json: the member "a"
+// arrived as base64 and was refused, and a value that did decode came back out
+// base64-encoded. `type IntAlias IntEnum` refused the 1.0 spelling that the
+// enum's own UnmarshalJSON exists to accept -- issue #90's defect, reappearing
+// one $ref further along.
+func TestEnumAliasBorrowsEnumMethods(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// Every member of the heterogeneous enum, in the alias position and as an
+	// element of a slice of it. A string member is what shows the base64
+	// decode; a number and a null are what show it is the bytes being kept and
+	// not a string type standing in for them.
+	//
+	// The properties are written in key order because the overflow-map marshal
+	// path re-serializes through a map, which sorts them.
+	for _, doc := range []string{
+		` + "`" + `{"num":1,"raw":"a","raw_list":["a",1,null]}` + "`" + `,
+		` + "`" + `{"num":2,"raw":1,"raw_list":[]}` + "`" + `,
+		` + "`" + `{"num":3,"raw":null}` + "`" + `,
+	} {
+		var v EnumAliasDelegation
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := v.Validate(); err != nil {
+			fail("validating %s: %v", doc, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			fail("marshalling %s: %v", doc, err)
+		}
+		if string(out) != doc {
+			fail("round trip changed the document\n  in:  %s\n  out: %s", doc, string(out))
+		}
+	}
+
+	// 1.0 is the integer 1 from draft 6 on, so it names the same member. The
+	// enum's own decoder accepts it; the alias has to reach that decoder.
+	oneFloat := ` + "`" + `{"raw":"a","num":1.0}` + "`" + `
+	var fv EnumAliasDelegation
+	if err := json.Unmarshal([]byte(oneFloat), &fv); err != nil {
+		fail("decoding %s: %v", oneFloat, err)
+	}
+	if err := fv.Validate(); err != nil {
+		fail("validating %s: %v", oneFloat, err)
+	}
+	if fv.Num != 1 {
+		fail("%s decoded num to %v, want 1", oneFloat, fv.Num)
+	}
+
+	// Borrowing the decoder must not cost the enum check. A value outside the
+	// enum decodes -- both forms accept any JSON of the right shape -- and is
+	// refused by Validate.
+	for _, bad := range []string{
+		` + "`" + `{"raw":"zzz","num":1}` + "`" + `,
+		` + "`" + `{"raw":"a","num":9}` + "`" + `,
+		` + "`" + `{"raw":"a","num":1,"raw_list":["zzz"]}` + "`" + `,
+	} {
+		var bv EnumAliasDelegation
+		if err := json.Unmarshal([]byte(bad), &bv); err != nil {
+			continue // an unmarshal-time rejection is an acceptable failure mode
+		}
+		if err := bv.Validate(); err == nil {
+			fail("accepted a value outside the enum: %s", bad)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/enum_alias_delegation.json",
+		"enum_alias_delegation_test",
+		mainGo,
+	)
+}
+
+// TestFormatAliasAssertsItsFormat covers a `format` that reached a named type.
+// The rule was collected onto the alias and the alias template had no arm to
+// emit it, so every format assertion behind a $ref was enforced nowhere: `type
+// V4 netip.Addr` and `type Email string` both validated to `return nil` while
+// the identical subschema written inline as a property was checked. An IPv6
+// address satisfied an ipv4 definition, and "not-an-email" satisfied an email
+// one.
+//
+// runValidationCases is the right harness here: the valid half must still pass
+// (the risk in adding an assertion is rejecting what the schema allows) and the
+// invalid half is what the missing check let through. The list covers the alias
+// itself, an element of a slice of it and a value of a map of it, since the
+// element positions reach the same Validate by a different route.
+func TestFormatAliasAssertsItsFormat(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_alias_assertions.json",
+		[]string{
+			`{}`,
+			`{"v4":"192.0.2.7"}`,
+			`{"v6":"2001:db8::1"}`,
+			`{"email":"a@b.test"}`,
+			`{"uuid":"123e4567-e89b-12d3-a456-426614174000"}`,
+			`{"day":"2020-01-02"}`,
+			`{"site":"https://example.test/x"}`,
+			`{"v4_list":["192.0.2.7","192.0.2.8"]}`,
+			`{"email_map":{"k":"a@b.test"}}`,
+		},
+		[]string{
+			`{"v4":"2001:db8::1"}`,              // an IPv6 address against an ipv4 definition
+			`{"v6":"192.0.2.7"}`,                // and the reverse
+			`{"email":"not-an-email"}`,          //
+			`{"uuid":"123e4567-e89b-12d3"}`,     // too short to be a UUID
+			`{"day":"2020-13-45"}`,              // not a date
+			`{"day":"2020-01-02T03:04:05Z"}`,    // a date-time is not a date
+			`{"site":"not a uri"}`,              // no scheme
+			`{"v4_list":["2001:db8::1"]}`,       // through a slice element
+			`{"email_map":{"k":"not-email"}}`,   // through a map value
+			`{"v4":"192.0.2.7","v6":"1.2.3.4"}`, // the second property is the one that fails
+		},
+	)
+}
+
+// TestNullIPAddressDoesNotPanic guards the interaction between the two changes
+// above. An optional ipv4/ipv6 property became a *netip.Addr so an absent one
+// is nil rather than the zero Addr, which netip.Addr's MarshalText writes back
+// out as "". The family assertion was written against a value and read
+// `n.Field.IsValid()`; a JSON null leaves the pointer nil while _jsonKeys still
+// records the key as present, so that line panicked on a document the schema
+// permits nothing about.
+//
+// `{"name":"x","primary_ip":"1.2.3.4"}` is here as the control: without the
+// required property present, Validate returns before it ever reaches the
+// address arm, and the panic hides.
+func TestNullIPAddressDoesNotPanic(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/formats/all_formats.json",
+		[]string{
+			`{"name":"x","primary_ip":"1.2.3.4"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"2001:db8::1"}`,
+		},
+		[]string{
+			`{"name":"x","primary_ip":"2001:db8::1"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"1.2.3.4"}`,
+		},
+	)
+}
+
+// TestAllOfKeepsBranchType is the third of the family: an allOf branch's
+// contribution to the *type* was dropped where its contribution to the bounds
+// was kept.
+//
+// `format` was not merged, so {"allOf":[{"$ref":"#/$defs/Stamp"}]} produced
+// `type WrappedStamp string` while Stamp itself was time.Time -- two Go types
+// for one schema, and the format assertion on one of them only. `enum` was not
+// merged either, and it is the sharp case: nothing downstream can infer a type
+// from an enum, so the merged schema fell through to `type X any`, which cannot
+// carry a Validate at all. Every value outside the enum was accepted. `const`
+// takes the same route through promoteConstToEnum, and under --big-int the
+// integer arm lost the arbitrary-precision wrapper the flag exists to provide.
+//
+// The valid half matters as much as the invalid: a fix that merged the enum but
+// got the type wrong would reject the members themselves.
+func TestAllOfKeepsBranchType(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_single_branch_type.json",
+		[]string{
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a"}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"green","raw":1}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":null}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","addr":"192.0.2.7","level":"high"}`,
+		},
+		[]string{
+			`{"stamp":"not-a-timestamp","choice":"red","raw":"a"}`,                           // the format the branch carried
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"blue","raw":"a"}`,                     // outside the branch's enum
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"zzz"}`,                    // outside the heterogeneous enum
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":2}`,                        // a number outside it
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","addr":"2001:db8::1"}`, // ipv4 branch, v6 value
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","level":"low"}`,        // outside the branch's const
+		},
+	)
+}
+
+// TestAllOfInlinePositionsKeepBranchType is the sibling half of
+// TestAllOfKeepsBranchType. That one reaches the allOf through a $ref, so the
+// merge runs under generateTypeDef and lands on a named type. Written inline,
+// the same subschema is resolved rather than named, and resolveType has no arm
+// that reads an allOf: it fell past every arm to `any`, which carries no
+// Validate and is filtered out of the field's own rules. So both the Go type and
+// every constraint the branch states were gone -- while the branch's own
+// definition sat correctly generated in the same file.
+//
+// Six positions resolve rather than name, and each is listed below with a
+// document that must be accepted beside one that must be refused. The tuple slot
+// is here as the control: prefixItems materializes its positions through
+// generateTypeDef, so it was already right, and a change that fixed the others
+// by breaking the shared path would show up here.
+func TestAllOfInlinePositionsKeepBranchType(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_inline_positions.json",
+		[]string{
+			`{}`,
+			`{"chain":"2020-01-02T03:04:05Z"}`,   // property
+			`{"nested":"2020-01-02T03:04:05Z"}`,  // allOf inside an allOf
+			`{"pick":"red"}`,                     // property, enum branch
+			`{"lvl":"high"}`,                     // property, const branch
+			`{"ip":"192.0.2.7"}`,                 // property, ipv4 branch
+			`{"raw":"a"}`,                        // property, heterogeneous enum
+			`{"raw":1}`,                          //
+			`{"raw":null}`,                       //
+			`{"list":["2020-01-02T03:04:05Z"]}`,  // array element
+			`{"map":{"k":"green"}}`,              // map value
+			`{"tuple":["2020-01-02T03:04:05Z"]}`, // tuple slot (control)
+			`{"union":"red"}`,                    // oneOf branch
+			`{"union":7}`,                        // its sibling branch
+		},
+		[]string{
+			`{"chain":"nope"}`,     // not a date-time
+			`{"nested":"nope"}`,    //
+			`{"pick":"blue"}`,      // outside the enum
+			`{"lvl":"low"}`,        // outside the const
+			`{"ip":"2001:db8::1"}`, // an IPv6 address against an ipv4 branch
+			`{"raw":"zzz"}`,        // outside the heterogeneous enum
+			`{"raw":2}`,            //
+			`{"list":["nope"]}`,    // through an array element
+			`{"map":{"k":"blue"}}`, // through a map value
+			`{"tuple":["nope"]}`,   // through the tuple slot
+			`{"union":"blue"}`,     // matches neither oneOf branch
+		},
+	)
+}
+
+// TestAllOfBoundOnlyBranchIsEnforced is the last position of the allOf family:
+// a branch stating only a bound. Nothing in it names a type outright, so the
+// predicate that decides whether an inline allOf needs a name declined it and
+// the value resolved to `any` -- with the bound enforced nowhere.
+//
+// The type comes from inferTypeFromConstraints, the same mapping the no-allOf
+// path has always used: minLength/maxLength/pattern say "string", the numeric
+// bounds say "number", minItems/maxItems say "array". An inferred type is a
+// guess about what the schema is *about*, not an assertion that the instance
+// must be one, so each of these is the InferredAliasDef wrapper: the bound binds
+// a matching value and every other instance type passes untouched.
+//
+// That last part is why the accept list carries a number, an array, a boolean
+// and a null for a minLength position. Under JSON Schema a keyword about strings
+// is satisfied vacuously by everything that is not a string, and a fix that
+// reached for a bare `type X string` instead would reject all four -- trading
+// under-enforcement for a false rejection, which is the worse direction.
+func TestAllOfBoundOnlyBranchIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_bound_only.json",
+		[]string{
+			`{}`,
+			`{"prop":"abc"}`,      // property, string long enough
+			`{"prop":5}`,          // vacuous: minLength says nothing about a number
+			`{"prop":[1,2]}`,      //
+			`{"prop":true}`,       //
+			`{"prop":null}`,       //
+			`{"viaRef":"abc"}`,    // the branch is a $ref to a definition
+			`{"viaRef":5}`,        //
+			`{"num":7}`,           // numeric bound
+			`{"num":"ab"}`,        // vacuous: minimum says nothing about a string
+			`{"nested":"abc"}`,    // allOf inside an allOf
+			`{"arr":[1,2]}`,       // minItems
+			`{"arr":"ab"}`,        // vacuous for a string
+			`{"list":["abc"]}`,    // array element
+			`{"map":{"k":"abc"}}`, // map value
+			`{"tuple":["abc"]}`,   // tuple slot
+			`{"union":"abc"}`,     // oneOf branch: the bound branch alone matches
+		},
+		[]string{
+			`{"prop":"xy"}`,      // too short
+			`{"viaRef":"xy"}`,    // through the $ref
+			`{"num":4}`,          // below the minimum
+			`{"nested":"xy"}`,    // through the nested allOf
+			`{"arr":[1]}`,        // too few items
+			`{"list":["xy"]}`,    // through an array element
+			`{"map":{"k":"xy"}}`, // through a map value
+			`{"tuple":["xy"]}`,   // through the tuple slot
+			`{"union":"xy"}`,     // matches neither branch
+			// A boolean matches *both* branches: {"type":"boolean"} by name, and
+			// the bound branch vacuously, since minLength says nothing about a
+			// boolean. oneOf wants exactly one, so this is invalid -- and it is
+			// only invalid if the bound branch really is vacuous for non-strings.
+			// A fix that typed the branch `string` would have this match one
+			// branch and pass.
+			`{"union":true}`,
+		},
+	)
+}
+
+// TestAllOfKeepsBigIntWrapper is the --big-int half of the same defect: the
+// allOf arm built a plain int64 alias where the no-allOf arm builds the
+// arbitrary-precision wrapper, so a value too large for an int64 was silently
+// truncated -- or refused -- under the flag whose whole purpose is to carry it.
+func TestAllOfKeepsBigIntWrapper(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	const doc = ` + "`" + `{"n":123456789012345678901234567890}` + "`" + `
+	var v AllOfBigInt
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if err := v.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "validating %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if !v.N.IsBigInt() {
+		fmt.Fprintf(os.Stderr, "%s: N.IsBigInt() = false; the value does not fit an int64\n", doc)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	// The branch's own bound still binds.
+	var under AllOfBigInt
+	if err := json.Unmarshal([]byte(` + "`" + `{"n":3}` + "`" + `), &under); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding a small n: %v\n", err)
+		os.Exit(1)
+	}
+	if err := under.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "n=3 passed a minimum of 5 carried by the allOf branch")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/allof_bigint.json",
+		"allof_bigint_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
 	)
 }

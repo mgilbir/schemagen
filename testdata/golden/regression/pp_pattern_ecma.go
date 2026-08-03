@@ -8,6 +8,7 @@ import (
 	"fmt"
 	ecma262 "github.com/mgilbir/goecma262"
 	ecmaflags "github.com/mgilbir/goecma262/flags"
+	"math"
 )
 
 type Root struct {
@@ -120,15 +121,13 @@ func (r Root) Validate() error {
 							jt = "null"
 						default:
 							jt = "number"
-							// Check if it's an integer (no '.' or 'e'/'E')
-							isInt := true
-							for _, c := range b {
-								if c == '.' || c == 'e' || c == 'E' {
-									isInt = false
-									break
-								}
-							}
-							if isInt {
+							// Draft 6 onward reads the value: 1.0 is an integer, so
+							// the number is parsed rather than scanned. Every arm
+							// below that accepts "number" also accepts "integer", so
+							// widening this classification narrows nothing.
+							var _ppNum float64
+							if json.Unmarshal(b, &_ppNum) == nil &&
+								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 								jt = "integer"
 							}
 						}

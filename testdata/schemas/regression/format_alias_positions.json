@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatAliasPositions",
+  "description": "Every position a format that maps to a self-marshalling Go type can reach through a named definition",
+  "type": "object",
+  "properties": {
+    "required_stamp": { "$ref": "#/$defs/Stamp" },
+    "optional_stamp": { "$ref": "#/$defs/Stamp" },
+    "stamp_list": { "type": "array", "items": { "$ref": "#/$defs/Stamp" } },
+    "stamp_map": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Stamp" } },
+    "stamp_grid": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/Stamp" } } },
+    "chained_stamp": { "$ref": "#/$defs/StampAlias" },
+    "addr": { "$ref": "#/$defs/Addr" },
+    "addr_list": { "type": "array", "items": { "$ref": "#/$defs/Addr" } },
+    "tuple": {
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/Stamp" }, { "$ref": "#/$defs/Addr" }]
+    }
+  },
+  "required": ["required_stamp"],
+  "$defs": {
+    "Stamp": { "type": "string", "format": "date-time" },
+    "StampAlias": { "$ref": "#/$defs/Stamp" },
+    "Addr": { "type": "string", "format": "ipv4" }
+  }
+}

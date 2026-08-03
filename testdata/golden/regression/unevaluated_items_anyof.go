@@ -28,6 +28,10 @@ func (u UnevaluatedItemsAnyOf) MarshalJSON() ([]byte, error) {
 
 func (u UnevaluatedItemsAnyOf) Raw() json.RawMessage { return u._raw }
 
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (u UnevaluatedItemsAnyOf) IsZero() bool { return len(u._raw) == 0 }
+
 func (u UnevaluatedItemsAnyOf) String() string { return string(u._raw) }
 
 // UnevaluatedItemsAnyOfSchema is the schema UnevaluatedItemsAnyOf validates against.

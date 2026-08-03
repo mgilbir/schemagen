@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatMapValues",
+  "description": "An object whose entire shape is additionalProperties of a format that maps to a distinct Go type, so the overflow map is the file's only mention of it",
+  "type": "object",
+  "additionalProperties": { "type": "string", "format": "date-time" }
+}

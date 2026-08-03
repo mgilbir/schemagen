@@ -24,12 +24,21 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 	type Alias PrimitiveTypes
 	aux := &struct {
 		*Alias
+		IntField **jsonInteger `json:"int_field"`
 	}{
 		Alias: (*Alias)(p),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.IntField != nil {
+		_iv := *aux.IntField
+		p.IntField = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
 		var raw map[string]json.RawMessage

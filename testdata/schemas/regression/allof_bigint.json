@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfBigInt",
+  "description": "An integer definition reached through an allOf, which under --big-int must still be the arbitrary-precision wrapper",
+  "type": "object",
+  "properties": {
+    "n": { "$ref": "#/$defs/WrappedCount" }
+  },
+  "required": ["n"],
+  "$defs": {
+    "Count": { "type": "integer", "minimum": 5 },
+    "WrappedCount": { "allOf": [{ "$ref": "#/$defs/Count" }] }
+  }
+}

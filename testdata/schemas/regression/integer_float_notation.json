@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IntegerFloatNotation",
+  "type": "object",
+  "properties": {
+    "req": {"type": "integer"},
+    "opt": {"type": "integer"},
+    "arr": {"type": "array", "items": {"type": "integer"}},
+    "grid": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+    "mp": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "nullint": {"type": ["integer", "null"]},
+    "named": {"$ref": "#/$defs/Count"},
+    "namedarr": {"$ref": "#/$defs/Counts"},
+    "namedmap": {"$ref": "#/$defs/CountMap"},
+    "enm": {"type": "integer", "enum": [1, 2, 3]},
+    "un": {"oneOf": [{"type": "integer", "minimum": 10}, {"type": "string"}]},
+    "nest": {"type": "object", "properties": {"deep": {"type": "integer"}}},
+    "mult": {"type": "integer", "multipleOf": 2}
+  },
+  "required": ["req"],
+  "$defs": {
+    "Count": {"type": "integer"},
+    "Counts": {"type": "array", "items": {"type": "integer"}},
+    "CountMap": {"type": "object", "additionalProperties": {"type": "integer"}}
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatAliasRoot",
+  "description": "A date-time whole document, so the alias over time.Time is the root type itself",
+  "type": "string",
+  "format": "date-time"
+}

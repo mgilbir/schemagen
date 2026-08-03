@@ -24,6 +24,10 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }
 
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func ({{$recv}} {{.Name}}) IsZero() bool { return len({{$recv}}._raw) == 0 }
+
 func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
 
 // {{.Name}}Schema is the schema {{.Name}} validates against.

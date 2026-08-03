@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"sort"
 	"strings"
 )
@@ -127,9 +126,13 @@ const coMaxDepth = 3
 //	dependentRequired   one trigger property, present, and 1..2 dependents that
 //	dependentSchemas    are present and *not* `required`, so removing one
 //	                    violates the dependency and nothing else.
-//	                    dependentSchemas carries a `required`-only branch,
-//	                    because a branch keyword other than `required` is
-//	                    dropped (see "Not emitted at all").
+//	                    A dependentSchemas branch also states a `minimum` on
+//	                    depShapeKey, a dedicated integer property the node
+//	                    declares inline with no bound of its own. That is the
+//	                    branch's shape half, and its mutant -- the value moved
+//	                    one below the minimum -- is refused by nothing else in
+//	                    the document, so it fails on a dependency that fires on
+//	                    presence and never on shape.
 //	minProperties       emitted only where no other mutation of the same node
 //	maxProperties       deletes or adds a key, so each count mutant is
 //	                    unambiguous. The bound is the instance's own key count,
@@ -161,9 +164,27 @@ const coMaxDepth = 3
 //	                    every one of their mutants would move the match count
 //	                    too.
 //	prefixItems +       tuple form: 1..3 prefix entries typed string / integer
-//	unevaluatedItems    / boolean and an instance of exactly that length. The
-//	                    mutant appends one element, which no prefix entry
-//	                    evaluates.
+//	unevaluatedItems    / boolean, in one of three arrangements drawn per node
+//	                    (see coTupleMode). Each entry also states a bound its
+//	                    conforming value sits exactly on -- minLength 3 under
+//	                    "tup", minimum 6 under 6 -- so a position can be
+//	                    violated without moving its type, which is what asks
+//	                    whether the positional sub-schema is read rather than
+//	                    only the length the prefix implies. A boolean position
+//	                    states no bound: no keyword narrows a boolean without
+//	                    pinning it, so that position is asked about by the
+//	                    wrong-type mutant alone.
+//
+//	                    Where unevaluatedItems is false the mutant appends one
+//	                    element, which no prefix entry evaluates. Where the
+//	                    prefix sits behind an allOf the same mutant asks whether
+//	                    evaluation was seen through the applicator -- the branch
+//	                    must match, so what it evaluates is decided and not a
+//	                    runtime choice. Where unevaluatedItems is a sub-schema
+//	                    the instance already carries one position past the
+//	                    prefix, and the mutant rewrites it to a value of a type
+//	                    that sub-schema excludes; the length does not move, so
+//	                    no length bound can be what rejects it.
 //
 // A composition leaf sits either as the whole document -- becoming the root
 // type -- or as a $defs entry a property $refs, becoming a wrapper type the
@@ -199,101 +220,54 @@ const coMaxDepth = 3
 // recursive or remote $refs, $id / $anchor, and `items` as a tuple (the
 // pre-2020-12 spelling of prefixItems).
 //
-// Also not emitted, but for a different reason — see coKnownGaps below.
+// Also not emitted, but for a different reason — see "Not emitted at all"
+// below.
 
 // ---------------------------------------------------------------------------
 // Known gaps
 // ---------------------------------------------------------------------------
 //
-// coKnownGaps records constructs the grammar avoids because schemagen is
-// already known to handle them incorrectly. They are excluded so the harness
-// reports regressions rather than re-reporting the same defects on every
-// iteration, and each is reachable again by setting
-// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusions stay verifiable
-// instead of being claims in a comment. The minimal reproducer for each is in
-// the doc comment of its toggle.
+// This section records constructs the grammar avoids because schemagen is
+// already known to handle them incorrectly, so the harness reports regressions
+// rather than re-reporting the same defects on every iteration. Each is gated
+// by a coGap predicate the grammar consults, reachable again by setting
+// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1, so the exclusion stays verifiable
+// instead of being a claim in a comment. The minimal reproducer for each goes
+// in the doc comment of its toggle.
 //
 // A toggle is a gate the grammar consults, not a label. Where a defect could
 // only be reached by a shape the grammar does not build at all, it is written
 // down under "Not emitted at all" below rather than given a toggle that would
 // promise more than it delivers.
-var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-
-// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties *beside
-// declared properties* types the overflow map, so a value of the wrong JSON type
-// dies in the decoder, but the subschema's own constraints are never checked.
-// The grammar therefore only emits additionalProperties: false in that position,
-// whose whole content is a rejection and so cannot be half-enforced.
 //
-//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
-//	          "additionalProperties":{"type":"integer","minimum":5}}
-//	instance {"alpha":"aa","zzExtra":1}   accepted; 1 < 5
-//
-// patternProperties in the same position *is* enforced, constraints and all,
-// which is the form the grammar emits.
-//
-// This gap is about the *overflow* position only. A schema-valued
-// additionalProperties governing the whole object -- no `properties`, no
-// `patternProperties` -- is a different construct: it becomes a Go map and its
-// value constraints are enforced, since issue #84. That form is coMap, and it is
-// emitted unconditionally.
-func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
+// There are none at present. The last of them was
+// coGapAdditionalPropertiesSchema -- a schema-valued additionalProperties
+// beside declared properties, whose subschema constraints went unchecked --
+// and it is gone with the fix for issue #92: coExtraAddlSchema is now emitted
+// unconditionally and mutated like any other keyword.
 
 // ---------------------------------------------------------------------------
 // Not emitted at all
 // ---------------------------------------------------------------------------
 //
-// Reaching the three defects below would need a shape the grammar does not
-// build, so none of them carries a coGap toggle: a predicate nothing consults
-// would promise a reachability it does not have. They are recorded here because
-// a defect nobody wrote down is a defect that gets rediscovered. Each
-// reproducer was run against the pipeline by hand, and the verdict beside it is
-// what the generated program printed.
+// This section records defects that no shape the grammar builds could reach,
+// which is why none of them carries a coGap toggle: a predicate nothing
+// consults would promise a reachability it does not have. They are written down
+// because a defect nobody wrote down is a defect that gets rediscovered.
 //
-// The grammar's own choices are what dodge them: a `required`-only
-// dependentSchemas branch, prefixItems entries carrying a type and nothing
-// else, and unevaluatedItems only ever a direct sibling of prefixItems.
+// There are none at present. All three that stood here are fixed, and the
+// grammar now draws and mutates the shapes that reach them:
 //
-// dependentSchemas branch keywords other than `required`. A branch is reduced
-// to its `required` list, so the dependency fires on presence and never on
-// shape.
-//
-//	schema   {"type":"object","properties":{"alpha":{"type":"string"},
-//	                                        "bravo":{"type":"integer"}},
-//	          "dependentSchemas":{"alpha":{"properties":{"bravo":{"minimum":5}},
-//	                                       "required":["bravo"]}}}
-//	instance {"alpha":"aa","bravo":1}     accepted; 1 < 5
-//
-// prefixItems positional subschemas. A prefixItems entry contributes nothing
-// but a length: the per-position subschema is dropped, so a tuple slot holds
-// any JSON value at all. When a sibling `items` names a different type, the
-// generated Go element type is that sibling's, and the tuple prefix cannot even
-// decode into it.
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "prefixItems":[{"type":"string","minLength":2},
-//	                         {"type":"integer","minimum":5}]}},"required":["arr"]}
-//	instance {"arr":["a",1]}              accepted; both positions violated
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "prefixItems":[{"type":"string"},{"type":"integer"}],
-//	          "items":{"type":"boolean"}}},"required":["arr"]}
-//	instance {"arr":["aa",7,true]}        cannot unmarshal: the field is []bool
-//
-// unevaluatedItems reached through an applicator, or schema-valued.
-// unevaluatedItems only sees a prefixItems written as its own sibling; an items
-// keyword behind an allOf marks nothing evaluated, and a schema-valued
-// unevaluatedItems is dropped rather than applied.
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "allOf":[{"prefixItems":[{"type":"string"}]}],
-//	          "unevaluatedItems":false}},"required":["arr"]}
-//	instance {"arr":["a","b"]}            accepted; index 1 is unevaluated
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "prefixItems":[{"type":"string"}],
-//	          "unevaluatedItems":{"type":"integer"}}},"required":["arr"]}
-//	instance {"arr":["a","b"]}            accepted; index 1 is not an integer
+//   - dependentSchemas branch keywords other than `required`. A branch was
+//     reduced to its `required` list, so the dependency fired on presence and
+//     never on shape. Gone with issue #93; a branch now carries keywords beside
+//     `required`, drawn as coDepShapeKey and mutated like any other.
+//   - prefixItems positional subschemas, and unevaluatedItems reached through an
+//     applicator or written as a sub-schema. Gone with issues #94 and #95; see
+//     coTupleMode and the prefixItemsBound / prefixItemsType /
+//     unevaluatedItemsSchema mutants. A tuple written as an array's element or a
+//     map's value went with them: it is drawn by buildElem, so the same mutants
+//     land there too.
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -380,9 +354,15 @@ const (
 	// `then` is additional to *this* object and the conforming instance would
 	// be rejected.
 	coExtraAddlFalse
-	// coExtraAddlSchema is additionalProperties: {integer with a minimum}. Only
-	// coGapAdditionalPropertiesSchema reaches it: the subschema's constraints
-	// are not enforced, so its mutant is always accepted.
+	// coExtraAddlSchema is additionalProperties: {integer with a minimum}. The
+	// instance then carries coExtraKey, which no `properties` or
+	// `patternProperties` claims, so the subschema governs it and there is
+	// something for it to be violated on. It shares coExtraAddlFalse's
+	// restriction to an object that declares every key it carries, for the same
+	// reason: additionalProperties reads this schema object's `properties` and
+	// `patternProperties` and nothing else, so a key an allOf branch, a
+	// discriminator branch or `then` declares would be judged by the subschema
+	// too and the conforming instance would be rejected.
 	coExtraAddlSchema
 	// coExtraUnevalFalse is unevaluatedProperties: false. Unlike
 	// additionalProperties it does see what sibling applicators evaluated, so
@@ -454,8 +434,12 @@ type coNode struct {
 	dep             coDepKind
 	depTrig         string   // the property whose presence triggers the dependency
 	depOn           []string // the properties it then requires
-	minProps        bool     // emit minProperties at the instance's own key count
-	cond            *coCond
+	// depShapeMin is the minimum a coDepSchemas branch states on coDepShapeKey.
+	// It is the branch's shape half, and a dependency that fires on presence
+	// alone never reads it -- which is what the mutant derived from it says.
+	depShapeMin int64
+	minProps    bool // emit minProperties at the instance's own key count
+	cond        *coCond
 
 	// array
 	elem     *coNode
@@ -479,8 +463,14 @@ type coNode struct {
 	emitMinContains bool
 	emitMaxContains bool
 
-	// coTuple: one JSON type name per prefixItems position.
+	// coTuple: one JSON type name per prefixItems position, and which of the
+	// three arrangements of prefixItems and unevaluatedItems this node is.
 	tupleTypes []string
+	tupleMode  coTupleMode
+	// coTupleUnevalSchema: the JSON type the schema-valued unevaluatedItems
+	// states. Positions past the prefix hold a value of that type; the mutant
+	// appends one of coTupleUnevalOther, which is of a type it can never be.
+	unevalItemType string
 
 	// coMap: the keys the instance carries. The value schema is `elem`, shared
 	// with coArray, so the node walk and the clone reach it without a second
@@ -488,6 +478,19 @@ type coNode struct {
 	// sub-schema, so a mutation under one key violates it there and nowhere
 	// else.
 	mapKeys []string
+	// mapNullable spells the map's type as ["object","null"] rather than
+	// "object". That is the nullable form of the same node (issue #91), and it
+	// used to take a different route through the generator: no map branch in the
+	// nullable arm, so the property came out *map[string]any with the value
+	// schema and its keywords dropped. The instance stays a populated object --
+	// a null one has no value for the mutation to violate -- so what the
+	// nullable spelling adds here is the schema, not a second instance shape.
+	mapNullable bool
+
+	// coInteger: write the instance value in float notation ("1.0" rather than
+	// "1"). Draft 6 onwards calls that the same integer; the generated code did
+	// not, at every position but a document root. See buildValue.
+	intFloatToken bool
 
 	// string. lenLo/lenHi always hold the effective window even when the
 	// corresponding keyword is not emitted, so value generation has a range to
@@ -694,6 +697,15 @@ const (
 	// propertyNames.
 	coExtraKey = "zzExtra"
 
+	// coDepShapeKey is the key a dependentSchemas branch constrains by *shape*
+	// rather than by presence. The node declares it in its own `properties` as a
+	// bare integer -- so it is evaluated, permitted and counted like any other
+	// declared key -- and the branch states a `minimum` on it. The instance
+	// carries a value above that minimum, and the mutant one below it, so the
+	// only thing in the document that can refuse the mutant is the branch
+	// keyword the dependency fires.
+	coDepShapeKey = "depShapeKey"
+
 	// coPropNamePattern accepts every key the grammar emits; coBadPropName is
 	// the one propertyNames has to reject, and it is rejected on its first
 	// character so no prefix of it could pass.
@@ -703,16 +715,84 @@ const (
 
 var coPatternKeys = []string{"p_one", "p_two", "p_three"}
 
+// coTupleMode is which arrangement of prefixItems and unevaluatedItems a tuple
+// node carries. All three state the same positions; they differ in where the
+// prefix is written and in what the positions past it must satisfy, which is
+// what makes each one a different question to ask of the generated code.
+type coTupleMode int
+
+const (
+	// coTupleUnevalFalse writes prefixItems and unevaluatedItems: false as
+	// siblings. This is the arrangement the grammar has always emitted, and the
+	// only one whose positions carry a bound beside their type: it is the one
+	// the static path handles end to end, so a position's whole sub-schema is
+	// reachable there.
+	coTupleUnevalFalse coTupleMode = iota
+	// coTupleUnevalAllOf puts prefixItems inside an allOf branch, leaving
+	// unevaluatedItems: false beside the allOf rather than beside the prefix.
+	// The positions it evaluates are the same ones -- an allOf branch must
+	// match, so what it evaluates is evaluated, and no runtime choice enters --
+	// which is what lets the builder state the evaluated count outright rather
+	// than infer it from the instance.
+	coTupleUnevalAllOf
+	// coTupleUnevalSchema states unevaluatedItems as a sub-schema rather than
+	// false, so the positions past the prefix are typed rather than forbidden.
+	coTupleUnevalSchema
+)
+
 // coTupleTypes pairs a JSON type name with a value of that type, for the
-// prefixItems positions of a tuple. As with coNotCases, both halves are written
+// prefixItems positions of a tuple. As with coNotCases, every half is written
 // down rather than derived.
+//
+// bound is the keyword the position states beside its type, and under a value
+// of the position's own JSON type that violates it -- which is what makes the
+// positional mutant a violation of the sub-schema rather than of the type. A
+// boolean position has no bound: JSON Schema has no keyword that narrows a
+// boolean without pinning it to one of its two values, so that position is
+// asked about by the wrong-type mutant alone.
+//
+// other is a value whose JSON type the position can never accept, for the
+// mutant that asks whether the position's `type` is read at all.
 var coTupleTypes = []struct {
 	name  string
 	value any
+	bound map[string]any
+	under any
+	other any
 }{
-	{"string", "tup"},
-	{"integer", int64(6)},
-	{"boolean", true},
+	{"string", "tup", map[string]any{"minLength": 3}, "", int64(7)},
+	{"integer", int64(6), map[string]any{"minimum": int64(6)}, int64(5), "notAnInt"},
+	{"boolean", true, nil, nil, "notABool"},
+}
+
+func coTupleEntry(name string) (value, under, other any, bound map[string]any) {
+	for _, t := range coTupleTypes {
+		if t.name == name {
+			return t.value, t.under, t.other, t.bound
+		}
+	}
+	return nil, nil, nil, nil
+}
+
+// coTupleUnevalOther is the value a schema-valued unevaluatedItems mutant
+// appends: whichever of these the sub-schema's own type is not. Both are drawn
+// from types the grammar already emits, so the value is one the pipeline is
+// known to be able to carry.
+func coTupleUnevalOther(unevalType string) any {
+	if unevalType == "string" {
+		return int64(7)
+	}
+	return "notTheType"
+}
+
+// coTupleUnevalConforming is a value of the type a schema-valued
+// unevaluatedItems states, for the positions past the prefix that the
+// conforming instance carries.
+func coTupleUnevalConforming(unevalType string) any {
+	if unevalType == "string" {
+		return "uneval"
+	}
+	return int64(11)
 }
 
 // coDiscTypes pairs the JSON type a discriminator branch declares with a value
@@ -872,6 +952,20 @@ func (b *coBuilder) buildObject(depth, visible int) *coNode {
 	for i := 0; i < count; i++ {
 		child := b.buildValue(depth+1, visible)
 		p := &coProp{name: names[i], node: child, required: b.chance(2)}
+		// A nullable property is always required here, and that is a statement
+		// about the harness rather than about the schema. Every property whose
+		// type admits null has its omitempty suppressed -- dropping a nil would
+		// erase an explicit null -- so an *absent* one marshals back as
+		// "prop":null, and the round-trip is compared byte for byte. That is a
+		// deliberate, pre-existing property of every nullable field in the
+		// generator and has nothing to do with the value typing this node is
+		// here to exercise, so the grammar keeps the key present rather than
+		// reporting it. `required` rather than `present` because the shrinker
+		// may clear `present` on an optional property but never on a required
+		// one.
+		if child.kind == coMap && child.mapNullable {
+			p.required = true
+		}
 		p.present = p.required || !b.chance(4)
 		n.props = append(n.props, p)
 	}
@@ -920,7 +1014,7 @@ func (b *coBuilder) applyObjectExtras(n *coNode) {
 		// object itself -- see coExtraAddlFalse.
 		if n.comp == coCompNone && n.cond == nil {
 			n.extra = coExtraAddlFalse
-			if coGapAdditionalPropertiesSchema() && b.chance(2) {
+			if b.chance(2) {
 				n.extra = coExtraAddlSchema
 				n.unevalMin = int64(b.rng.IntN(21) - 10)
 			}
@@ -980,13 +1074,23 @@ func (b *coBuilder) addDependency(n *coNode) {
 		n.dep = coDepRequired
 	} else {
 		n.dep = coDepSchemas
+		// The branch's shape half. dependentRequired has no place to put one:
+		// it is a list of names and nothing else, which is exactly what
+		// distinguishes the two spellings.
+		n.depShapeMin = int64(b.rng.IntN(21) - 10)
 	}
 }
 
-// buildTuple builds an array in tuple form. The prefix entries carry a type and
-// nothing else, because a prefixItems entry's other keywords are dropped (see
-// coGapPrefixItemsPositional); the length it implies is what unevaluatedItems
-// turns into a rejection, and that is what these nodes test.
+// buildTuple builds an array in tuple form: prefixItems types the positions it
+// has, and unevaluatedItems says what the positions it does not have may be.
+//
+// One of the three modes is drawn each time, so all three are emitted by
+// default. In coTupleUnevalFalse the prefix entries also carry a bound beside
+// their type, which is what makes a positional sub-schema -- rather than only
+// the length the prefix implies -- something the mutants ask about. The other
+// two modes keep their entries type-only: their subject is which positions
+// count as evaluated, and a keyword the runtime annotation evaluator does not
+// model would take the schema off that path and change what is being tested.
 func (b *coBuilder) buildTuple() *coNode {
 	n := &coNode{kind: coTuple}
 	types := []int{0, 1, 2}
@@ -994,16 +1098,35 @@ func (b *coBuilder) buildTuple() *coNode {
 	for _, ix := range types[:1+b.rng.IntN(3)] {
 		n.tupleTypes = append(n.tupleTypes, coTupleTypes[ix].name)
 	}
+	switch b.rng.IntN(3) {
+	case 1:
+		n.tupleMode = coTupleUnevalAllOf
+	case 2:
+		n.tupleMode = coTupleUnevalSchema
+		if b.chance(2) {
+			n.unevalItemType = "string"
+		} else {
+			n.unevalItemType = "integer"
+		}
+	default:
+		n.tupleMode = coTupleUnevalFalse
+	}
 	return n
 }
 
 func coTupleValue(name string) any {
-	for _, t := range coTupleTypes {
-		if t.name == name {
-			return t.value
-		}
+	v, _, _, _ := coTupleEntry(name)
+	return v
+}
+
+// tupleTailCount is how many positions past the prefix the conforming instance
+// carries. Only a schema-valued unevaluatedItems permits any: the other two
+// modes forbid every position the prefix does not name.
+func (n *coNode) tupleTailCount() int {
+	if n.tupleMode == coTupleUnevalSchema {
+		return 1
 	}
-	return nil
+	return 0
 }
 
 // ---------------------------------------------------------------------------
@@ -1042,6 +1165,14 @@ func (n *coNode) depActive() bool {
 	return true
 }
 
+// depShapeActive reports whether the dependency is the dependentSchemas
+// spelling and still fires, which is what puts coDepShapeKey in the instance
+// and the branch's `minimum` in the schema. dependentRequired has no branch to
+// carry a shape constraint in.
+func (n *coNode) depShapeActive() bool {
+	return n.dep == coDepSchemas && n.depActive()
+}
+
 // addlFalseActive holds only while every key the instance carries is declared
 // by this schema object: additionalProperties does not read allOf branches,
 // discriminator branches or `then`.
@@ -1049,7 +1180,10 @@ func (n *coNode) addlFalseActive() bool {
 	return n.extra == coExtraAddlFalse && n.declaresEveryKey()
 }
 
-// addlSchemaActive is the same test for the gap-only schema-valued spelling.
+// addlSchemaActive is the same test for the schema-valued spelling, which needs
+// it for the same reason: a key this schema object does not declare is governed
+// by the subschema, and one an allOf or discriminator branch declares would be
+// judged by it too.
 func (n *coNode) addlSchemaActive() bool {
 	return n.extra == coExtraAddlSchema && n.declaresEveryKey()
 }
@@ -1141,6 +1275,9 @@ func (n *coNode) instanceKeyCount() int {
 	if n.addlSchemaActive() {
 		count++ // coExtraKey
 	}
+	if n.depShapeActive() {
+		count++ // coDepShapeKey
+	}
 	return count
 }
 
@@ -1164,6 +1301,12 @@ func (n *coNode) patBadValue() any {
 // unevaluatedProperties carries.
 func (n *coNode) unevalValue() int64    { return n.unevalMin + 3 }
 func (n *coNode) unevalBadValue() int64 { return n.unevalMin - 1 }
+
+// depShapeValue and depShapeBadValue straddle the minimum a dependentSchemas
+// branch puts on coDepShapeKey. The key's own declaration is a bare integer, so
+// both are values it accepts and only the branch separates them.
+func (n *coNode) depShapeValue() int64    { return n.depShapeMin + 3 }
+func (n *coNode) depShapeBadValue() int64 { return n.depShapeMin - 1 }
 
 // applyComposition decides whether an object routes its properties through an
 // allOf, or grows a discriminated anyOf / oneOf beside them.
@@ -1381,7 +1524,23 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	case coString:
 		return b.buildString()
 	case coInteger:
-		return b.buildNumeric(coInteger)
+		n := b.buildNumeric(coInteger)
+		// Half the integer properties write their value in float notation. From
+		// draft 6 on -- and coDialect is 2020-12 -- a number with a zero
+		// fractional part is an integer, so {"n":1.0} conforms to
+		// {"type":"integer"} and both reference implementations say so. It did
+		// not conform to the *generated* code: a struct field was an int64
+		// handed to encoding/json, which refuses the notation, while a document
+		// root typed integer accepted it (issue #90).
+		//
+		// Confined to a property. An array element or a map value would put two
+		// spellings of one number in a single container, and uniqueItems
+		// compares elements after decoding, so a pair JSON Schema calls equal
+		// could be read as distinct -- a soundness question about the harness
+		// rather than about the position, and one the behavioural regressions
+		// cover instead.
+		n.intFloatToken = b.chance(2)
+		return n
 	case coNumber:
 		return b.buildNumeric(coNumber)
 	case coBoolean:
@@ -1405,12 +1564,21 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 func (b *coBuilder) buildElem(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coEnum, coConst}
 	if depth < coMaxDepth {
-		kinds = append(kinds, coObject)
+		// A tuple written as an array's element, or a map's value, is a
+		// position of its own: the Go type there is a []any inside a [][]any or
+		// a map[string][]any, so it is neither a field the struct-level checks
+		// can name nor a type with a Validate to dispatch to. Its positions were
+		// checked nowhere until issue #94 was fixed, and only the length its
+		// prefix implies was, so the shape is emitted here rather than left to
+		// the property position alone.
+		kinds = append(kinds, coObject, coTuple)
 	}
 	if visible > 0 {
 		kinds = append(kinds, coRef)
 	}
 	switch kinds[b.rng.IntN(len(kinds))] {
+	case coTuple:
+		return b.buildTuple()
 	case coObject:
 		return b.buildObject(depth, visible)
 	case coEnum:
@@ -1507,6 +1675,7 @@ func (b *coBuilder) buildMap(depth, visible int) *coNode {
 	for i := 0; i < 1+b.rng.IntN(3); i++ {
 		n.mapKeys = append(n.mapKeys, fmt.Sprintf("k%d", i))
 	}
+	n.mapNullable = b.chance(2)
 	return n
 }
 
@@ -1673,6 +1842,13 @@ func (n *coNode) fragment() map[string]any {
 			// unevaluatedProperties on the very key that put it there.
 			props[coCondKey] = map[string]any{"type": "string"}
 		}
+		if n.depShapeActive() {
+			// Declared inline, and with no bound of its own: the branch's
+			// `minimum` is then the only thing in the document that can refuse
+			// the key, and declaring it here keeps it evaluated, permitted by
+			// additionalProperties: false, and accepted by propertyNames.
+			props[coDepShapeKey] = map[string]any{"type": "integer"}
+		}
 		if len(props) > 0 {
 			m["properties"] = props
 			if len(req) > 0 {
@@ -1725,16 +1901,41 @@ func (n *coNode) fragment() map[string]any {
 		m["type"] = "array"
 		prefix := make([]any, 0, len(n.tupleTypes))
 		for _, t := range n.tupleTypes {
-			prefix = append(prefix, map[string]any{"type": t})
+			entry := map[string]any{"type": t}
+			// Only the static arrangement states a bound beside the type; see
+			// buildTuple.
+			if n.tupleMode == coTupleUnevalFalse {
+				_, _, _, bound := coTupleEntry(t)
+				for k, v := range bound {
+					entry[k] = v
+				}
+			}
+			prefix = append(prefix, entry)
 		}
-		m["prefixItems"] = prefix
-		m["unevaluatedItems"] = false
+		switch n.tupleMode {
+		case coTupleUnevalAllOf:
+			// The prefix sits behind an applicator, so nothing beside
+			// unevaluatedItems names a position. What the branch evaluates is
+			// still exactly the prefix, since an allOf branch has to match.
+			m["allOf"] = []any{map[string]any{"prefixItems": prefix}}
+			m["unevaluatedItems"] = false
+		case coTupleUnevalSchema:
+			m["prefixItems"] = prefix
+			m["unevaluatedItems"] = map[string]any{"type": n.unevalItemType}
+		default:
+			m["prefixItems"] = prefix
+			m["unevaluatedItems"] = false
+		}
 
 	case coMap:
 		// No `properties` and no `patternProperties`: additionalProperties
 		// governs the whole object, which is what makes it a map rather than a
 		// struct with an overflow.
-		m["type"] = "object"
+		if n.mapNullable {
+			m["type"] = []any{"object", "null"}
+		} else {
+			m["type"] = "object"
+		}
 		m["additionalProperties"] = n.elem.fragment()
 
 	case coArray:
@@ -1924,9 +2125,18 @@ func (n *coNode) emitKeyKeywords(m map[string]any) {
 		if n.dep == coDepRequired {
 			m["dependentRequired"] = map[string]any{n.depTrig: deps}
 		} else {
-			// A `required`-only branch: anything else in it would be dropped
-			// (see coGapDependentSchemaProperties).
-			m["dependentSchemas"] = map[string]any{n.depTrig: map[string]any{"required": deps}}
+			// The branch states both halves of what a subschema can say: which
+			// keys must be there, and what one of them has to look like. The
+			// two are mutated separately -- removing a dependent, and moving
+			// coDepShapeKey off the branch's minimum -- so a dependency that
+			// fired on presence and never on shape would be caught by the
+			// second even while the first passed.
+			m["dependentSchemas"] = map[string]any{n.depTrig: map[string]any{
+				"required": deps,
+				"properties": map[string]any{
+					coDepShapeKey: map[string]any{"minimum": n.depShapeMin},
+				},
+			}}
 		}
 	}
 }
@@ -1989,9 +2199,12 @@ func (d *coDoc) value(n *coNode) any {
 		if n.addlSchemaActive() {
 			m[coExtraKey] = n.unevalValue()
 		}
+		if n.depShapeActive() {
+			m[coDepShapeKey] = n.depShapeValue()
+		}
 		return m
 	case coTuple:
-		return d.tupleValue(n, len(n.tupleTypes))
+		return d.tupleValue(n, len(n.tupleTypes)+n.tupleTailCount())
 	case coArray:
 		return d.arrayValue(n, n.numItems)
 	case coMap:
@@ -2003,6 +2216,14 @@ func (d *coDoc) value(n *coNode) any {
 	case coString:
 		return n.strValue
 	case coInteger:
+		if n.intFloatToken {
+			// json.RawMessage is emitted verbatim by json.Marshal, which is the
+			// only way to keep the "1.0" spelling: an int64 or a float64 both
+			// marshal as "1". The round-trip comparison reparses both sides
+			// into `any`, where 1.0 and 1 are the same float64, so a value the
+			// generated code reads back in the short spelling still matches.
+			return json.RawMessage(fmt.Sprintf("%d.0", int64(n.numValue)))
+		}
 		return int64(n.numValue)
 	case coNumber:
 		return n.numValue
@@ -2069,11 +2290,23 @@ func (d *coDoc) arrayValue(n *coNode, count int) []any {
 // from prefixItems when there is one. count beyond the prefix is how the
 // unevaluatedItems mutant is built: that position is one no prefix entry
 // evaluates.
+//
+// What a position past the prefix holds is decided by the mode. Where
+// unevaluatedItems is a sub-schema the position must satisfy it, so it holds a
+// value of that type and the array stays conforming however many of them there
+// are; the mutant is a value of a type the sub-schema excludes, not an extra
+// element. Where unevaluatedItems is false no such position may exist at all,
+// so the value written there is immaterial and the extra element is itself the
+// violation.
 func (d *coDoc) tupleValue(n *coNode, count int) []any {
 	out := make([]any, 0, count)
 	for i := 0; i < count; i++ {
 		if i < len(n.tupleTypes) {
 			out = append(out, coTupleValue(n.tupleTypes[i]))
+			continue
+		}
+		if n.tupleMode == coTupleUnevalSchema {
+			out = append(out, coTupleUnevalConforming(n.unevalItemType))
 			continue
 		}
 		out = append(out, coTupleValue(coTupleTypes[i%len(coTupleTypes)].name))
@@ -2299,15 +2532,62 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		}
 
 	case coTuple:
-		// One element past the prefix. prefixItems evaluates positions 0..k-1
-		// and nothing evaluates position k, so unevaluatedItems: false forbids
-		// it -- and it forbids it whatever the value is, so the element the
-		// mutant appends needs no thought beyond being valid JSON.
-		*out = append(*out, coMutation{
-			Keyword: "unevaluatedItems", Path: path, Prop: prop,
-			Value: d.tupleValue(n, len(n.tupleTypes)+1),
-			Want:  []string{prop, "maximum is"},
-		})
+		// What unevaluatedItems forbids, and how the violation is built, is
+		// decided by which arrangement the node carries -- not read back off the
+		// instance. In every mode the prefix evaluates positions 0..k-1 and
+		// nothing else evaluates anything: coTupleUnevalFalse states the prefix
+		// as a sibling, coTupleUnevalAllOf behind an allOf branch that must
+		// match, and neither introduces a runtime choice about which positions
+		// were reached.
+		switch n.tupleMode {
+		case coTupleUnevalSchema:
+			// The positions past the prefix are typed rather than forbidden, so
+			// the violation is a value of a type the sub-schema excludes, at the
+			// one such position the conforming instance already carries. The
+			// length does not move, so no length bound can be what rejects it.
+			*out = append(*out, coMutation{
+				Keyword: "unevaluatedItemsSchema", Path: coPath(path, len(n.tupleTypes)), Prop: prop,
+				Value: coTupleUnevalOther(n.unevalItemType),
+				Want:  []string{prop, "unevaluatedItems"},
+			})
+		case coTupleUnevalAllOf:
+			// One element past the prefix, which no branch evaluates. The prefix
+			// is behind an applicator, so the length it implies is not a bound
+			// the generated code may state: the rejection has to come from
+			// unevaluatedItems having seen through the allOf.
+			*out = append(*out, coMutation{
+				Keyword: "unevaluatedItems", Path: path, Prop: prop,
+				Via:   "allOf",
+				Value: d.tupleValue(n, len(n.tupleTypes)+1),
+				Want:  []string{prop},
+			})
+		default:
+			// One element past the prefix. unevaluatedItems: false forbids it
+			// whatever the value is, so the element the mutant appends needs no
+			// thought beyond being valid JSON.
+			*out = append(*out, coMutation{
+				Keyword: "unevaluatedItems", Path: path, Prop: prop,
+				Value: d.tupleValue(n, len(n.tupleTypes)+1),
+				Want:  []string{prop, "maximum is"},
+			})
+		}
+		// The positional sub-schemas. Only the static arrangement states a bound
+		// beside a position's type (see buildTuple), so only there is there a
+		// sub-schema to violate without also changing the type; every mode can
+		// be asked whether the type itself is read.
+		for i, t := range n.tupleTypes {
+			_, under, other, bound := coTupleEntry(t)
+			if n.tupleMode == coTupleUnevalFalse && len(bound) > 0 {
+				*out = append(*out, coMutation{
+					Keyword: "prefixItemsBound", Path: coPath(path, i), Prop: prop,
+					Value: under, Want: []string{prop},
+				})
+			}
+			*out = append(*out, coMutation{
+				Keyword: "prefixItemsType", Path: coPath(path, i), Prop: prop,
+				Value: other, Want: []string{prop},
+			})
+		}
 		*out = append(*out, coMutation{
 			Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
 		})
@@ -2731,6 +3011,18 @@ func (d *coDoc) collectKeyKeywords(n *coNode, path []any, prop string, out *[]co
 			Delete: true, Want: []string{reported, n.depOn[0]},
 		})
 	}
+
+	// The other half of a dependentSchemas branch: what it demands of a key's
+	// *value*. coDepShapeKey is already in the instance and already declared, so
+	// the mutation only moves its value off the branch's minimum -- which the
+	// branch is the only part of the document to state.
+	if n.depShapeActive() {
+		*out = append(*out, coMutation{
+			Keyword: "dependentSchemasShape", Path: coPath(path, coDepShapeKey), Prop: prop,
+			Value: n.depShapeBadValue(),
+			Want:  []string{"dependentSchema", coDepShapeKey},
+		})
+	}
 }
 
 func coCompName(c coComp) string {
@@ -2975,6 +3267,14 @@ func coReduce(d *coDoc) []*coDoc {
 				t.mapKeys = t.mapKeys[1:]
 				out = append(out, c)
 			}
+			// The non-nullable spelling is the simpler of the two and the one
+			// whose typing was already fixed, so a failure that survives here is
+			// a failure of the map itself rather than of the null beside it.
+			if n.mapNullable {
+				c := d.clone()
+				coNodesOf(c)[i].mapNullable = false
+				out = append(out, c)
+			}
 
 		case coTuple:
 			// A shorter prefix is a smaller tuple with the same argument
@@ -3007,6 +3307,14 @@ func coReduce(d *coDoc) []*coDoc {
 			}
 
 		case coInteger, coNumber:
+			// The short spelling is the one every draft admits, so a failure
+			// that survives dropping the float notation is about the keyword
+			// rather than about how the number was written.
+			if n.intFloatToken {
+				c := d.clone()
+				coNodesOf(c)[i].intFloatToken = false
+				out = append(out, c)
+			}
 			if n.minStyle != coBoundNone {
 				c := d.clone()
 				coNodesOf(c)[i].minStyle = coBoundNone

@@ -24,12 +24,26 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 	type Alias ClickEvent
 	aux := &struct {
 		*Alias
+		X *jsonInteger `json:"x"`
+		Y *jsonInteger `json:"y"`
 	}{
 		Alias: (*Alias)(c),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.X != nil {
+		_iv := *aux.X
+		c.X = int64(_iv)
+	}
+	if aux.Y != nil {
+		_iv := *aux.Y
+		c.Y = int64(_iv)
 	}
 	{
 		var raw map[string]json.RawMessage

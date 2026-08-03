@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatternPropertiesPositions",
+  "$defs": {
+    "Patt": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}
+  },
+  "type": "object",
+  "properties": {
+    "prop": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}},
+    "ref": {"$ref": "#/$defs/Patt"},
+    "inItems": {"type": "array", "items": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}},
+    "mapValue": {"type": "object", "additionalProperties": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}},
+    "nullable": {"type": ["object", "null"], "patternProperties": {"^a": {"type": "string", "minLength": 3}}},
+    "noType": {"patternProperties": {"^a": {"type": "string", "minLength": 3}}},
+    "inAllOf": {"allOf": [{"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}]},
+    "inTuple": {"type": "array", "prefixItems": [{"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}]},
+    "nested": {"type": "object", "properties": {"inner": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}}},
+    "inOneOf": {"oneOf": [{"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}, {"type": "integer"}]}
+  },
+  "additionalProperties": {"type": "object", "patternProperties": {"^a": {"type": "string", "minLength": 3}}}
+}

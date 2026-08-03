@@ -704,6 +704,18 @@ func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T
 	if base.UnevaluatedItems.EvaluatedCount != 2 {
 		t.Fatalf("evaluated count = %d, want 2", base.UnevaluatedItems.EvaluatedCount)
 	}
+	// The evaluated count above stays right even when the schema is *also*
+	// given a length bound, so asserting it alone let a real over-enforcement
+	// through: unevaluatedItems:false beside a one-entry prefixItems reads as a
+	// fixed tuple, and folding that into maxItems:1 rejects ["foo","bar"] --
+	// valid, because the $dynamicRef contributes the second position. What the
+	// dynamic reference resolves to is not knowable here, so no bound may be
+	// derived from the tuple length at all.
+	for _, v := range base.Validations {
+		if v.RuleType == "maxItems" || v.RuleType == "minItems" {
+			t.Fatalf("BaseSchema got a %s=%v rule; a $dynamicRef can add evaluated positions, so the prefixItems length is not a bound", v.RuleType, v.Value)
+		}
+	}
 }
 
 func TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount(t *testing.T) {
@@ -2658,7 +2670,10 @@ func TestPropertyNameCollidesWithGeneratedMember(t *testing.T) {
 		t.Fatalf("Generate() returned an error for colliding property names: %v", err)
 	}
 
-	sd := file.TypeDefs[0].(*StructDef)
+	// Found by name rather than by position: the schema's patternProperties
+	// sub-schema is materialized into a type of its own, and a nested type is
+	// emitted before the struct that refers to it, so index 0 is not the root.
+	sd := structNamed(t, file, "Root")
 
 	// JSON tags (JSONName) must be preserved verbatim for every property.
 	for _, jsonName := range []string{"validate", "additionalProperties", "pattern_properties"} {
@@ -4020,10 +4035,32 @@ func TestNamedAdditionalPropertiesValueStillDispatches(t *testing.T) {
 // case is held by the arm ahead of this one, which materializes an object with
 // declared properties into a struct before the map arm is ever reached -- pinned
 // here because moving the map arm ahead of it would now silently retype every
-// such property, which it could not before. The boolean and bare-object cases
-// come out map[string]any either way; they are pinned because that is the
-// documented answer for a keyword that names no value type, not because a
-// widened predicate would visibly change them today.
+// such property, which it could not before. The `additionalProperties: true`
+// and bare-object cases come out map[string]any either way; they are pinned
+// because that is the documented answer for a keyword that names no value type,
+// not because a widened predicate would visibly change them today.
+//
+// `withPatt` used to be pinned at map[string]any, and that pin was wrong. It
+// asked mapValueSchema the right question -- this is not a Go map -- and then
+// answered the wrong one: what such a property *is* instead. Being no map does
+// not make it `any`; it makes it the struct generateTypeDef has always built for
+// an object that names its keys, with the pattern bucket and its sub-schema
+// checks on it. The old pin recorded resolveType materializing a struct only for
+// hasProperties, so the property came out map[string]any, the pattern was never
+// matched, its value constraints were never checked and the sibling
+// additionalProperties was dropped as well -- issue #96, with the same schema
+// enforced correctly at a document root and behind a $ref. It now names the
+// struct, which is the API change #96 records; the map-arm blast radius this
+// test exists to guard is unchanged, and the two cases below still say so.
+//
+// `boolFalse` moved for a related reason of its own. With no properties
+// declared, `additionalProperties: false` permits no key at all, so only {}
+// satisfies it -- and the same schema in a $defs entry has always rejected
+// {"x":1}, through the Forbidden overflow map generatePropertylessObjectDef
+// emits. Pinning map[string]any here recorded the inline position failing to
+// reach that struct, which made the answer depend on where the schema was
+// written. It is a struct now in both. `boolTrue` is untouched: it permits every
+// key and constrains none, so there is nothing for a type to carry.
 func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
@@ -4040,9 +4077,9 @@ func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	doc := structNamed(t, ir, "Doc")
 	for jsonName, want := range map[string]string{
 		"withProps": "*DocWithProps",
-		"withPatt":  "map[string]any",
+		"withPatt":  "*DocWithPatt",
 		"boolTrue":  "map[string]any",
-		"boolFalse": "map[string]any",
+		"boolFalse": "*DocBoolFalse",
 		"plainObj":  "map[string]any",
 	} {
 		field := fieldNamedJSON(t, doc, jsonName)
@@ -4056,6 +4093,243 @@ func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 			t.Fatalf("%s carries per-value checks: %+v -- no single schema governs its values", doc.ItemValidations[i].JSONName, doc.ItemValidations[i])
 		}
 	}
+	// The struct is only worth naming if Doc actually calls into it, and only
+	// worth building if it carries what the bare map dropped: the pattern, the
+	// string type its values must have, and the sibling overflow map typed by
+	// additionalProperties.
+	if !hasValidatableField(doc.ValidatableFields, "withPatt") {
+		t.Fatalf("withPatt is never validated by Doc: %+v -- naming the struct achieves nothing if Validate does not descend into it", doc.ValidatableFields)
+	}
+	withPatt := structNamed(t, ir, "DocWithPatt")
+	if len(withPatt.PatternProperties) != 1 || withPatt.PatternProperties[0].Pattern != "^a" {
+		t.Fatalf("DocWithPatt patternProperties = %+v, want the single ^a bucket", withPatt.PatternProperties)
+	}
+	// `{"type":"string"}` is a sub-schema the in-place scalar rules say
+	// everything about, so it keeps them and mints no type: patternRulesCoverSchema
+	// is what holds the blast radius of the materialization down to the buckets
+	// that need it.
+	if pp := withPatt.PatternProperties[0]; pp.TypeName != "" || !containsString(ruleTypesOf(pp.Validations), "ppType") {
+		t.Fatalf("DocWithPatt ^a bucket = %+v, want the in-place ppType rule and no minted type", pp)
+	}
+	if withPatt.AdditionalProperties == nil || withPatt.AdditionalProperties.ValueType.GoTypeName() != "int64" {
+		t.Fatalf("DocWithPatt additionalProperties = %+v, want an int64-valued overflow map -- the sibling keyword was dropped with the struct", withPatt.AdditionalProperties)
+	}
+	// The same two questions for the key-forbidding struct: Doc has to descend
+	// into it, and it has to carry the rejection that makes it worth having.
+	if !hasValidatableField(doc.ValidatableFields, "boolFalse") {
+		t.Fatalf("boolFalse is never validated by Doc: %+v", doc.ValidatableFields)
+	}
+	boolFalse := structNamed(t, ir, "DocBoolFalse")
+	if boolFalse.AdditionalProperties == nil || !boolFalse.AdditionalProperties.Forbidden {
+		t.Fatalf("DocBoolFalse additionalProperties = %+v, want a Forbidden overflow map -- nothing else rejects a key the schema permits none of", boolFalse.AdditionalProperties)
+	}
+}
+
+// TestNullableTypedAdditionalPropertiesKeepsItsValueType pins issue #91, the
+// nullable spelling of #84. resolveType's nullable arm had a branch for an
+// array and none for a map, so a ["object","null"] whose whole shape is
+// `additionalProperties` never reached the typed-map path at all: it fell
+// through to PrimitiveTypeFromSchema("object") and came out *map[string]any,
+// with the value schema -- and every keyword under it -- discarded on the way.
+//
+// The assertions are the same two #84 makes, because the defect is the same
+// defect: the Go type the value schema names, and the per-value checks that
+// enforce it. Nesting is included because the descent reaches the inner level
+// through containerElemSchema, which recomputes the primary type from the
+// sub-schema rather than inheriting the outer one.
+func TestNullableTypedAdditionalPropertiesKeepsItsValueType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"strs":   {"type":["object","null"], "additionalProperties":{"type":"string", "minLength":3}},
+			"ints":   {"type":["object","null"], "additionalProperties":{"type":"integer", "minimum":5}},
+			"lists":  {"type":["object","null"], "additionalProperties":{"type":"array", "maxItems":2, "items":{"type":"string", "maxLength":4}}},
+			"nested": {"type":["object","null"], "additionalProperties":{"type":["object","null"], "additionalProperties":{"type":"integer", "maximum":9}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for jsonName, want := range map[string]string{
+		"strs":   "map[string]string",
+		"ints":   "map[string]int64",
+		"lists":  "map[string][]string",
+		"nested": "map[string]map[string]int64",
+	} {
+		field := fieldNamedJSON(t, doc, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q -- a null alongside the object does not stop the value schema naming the type", jsonName, got, want)
+		}
+	}
+
+	for jsonName, wantRule := range map[string]string{"strs": "minLength", "ints": "minimum"} {
+		def := itemValidationFor(t, doc, jsonName)
+		if len(def.Levels) != 1 {
+			t.Fatalf("%s: %d levels, want 1: %+v", jsonName, len(def.Levels), def.Levels)
+		}
+		if !def.Levels[0].IsMap {
+			t.Fatalf("%s: level 0 is not marked as a map; its error path would index a string key with %%d", jsonName)
+		}
+		if got := itemRuleTypes(def, 0); !containsString(got, wantRule) {
+			t.Fatalf("%s value rules %v are missing %s -- nothing enforces it on the map's values", jsonName, got, wantRule)
+		}
+	}
+
+	lists := itemValidationFor(t, doc, "lists")
+	if len(lists.Levels) != 2 {
+		t.Fatalf("lists: %d levels, want 2 for map[string][]string: %+v", len(lists.Levels), lists.Levels)
+	}
+	if !lists.Levels[0].IsMap || lists.Levels[1].IsMap {
+		t.Fatalf("lists: level kinds = map:%v map:%v, want map then slice", lists.Levels[0].IsMap, lists.Levels[1].IsMap)
+	}
+	if got := itemRuleTypes(lists, 1); !containsString(got, "maxLength") {
+		t.Fatalf("lists element rules %v are missing maxLength", got)
+	}
+
+	// A nullable map of nullable maps: both levels have to be recognised, which
+	// only happens if the predicate the descent consults reads the sub-schema's
+	// own type list rather than the outer object's.
+	nested := itemValidationFor(t, doc, "nested")
+	if len(nested.Levels) != 2 {
+		t.Fatalf("nested: %d levels, want 2: %+v", len(nested.Levels), nested.Levels)
+	}
+	if !nested.Levels[0].IsMap || !nested.Levels[1].IsMap {
+		t.Fatalf("nested: level kinds = map:%v map:%v, want two maps", nested.Levels[0].IsMap, nested.Levels[1].IsMap)
+	}
+	if got := itemRuleTypes(nested, 1); !containsString(got, "maximum") {
+		t.Fatalf("nested inner value rules %v are missing maximum", got)
+	}
+}
+
+// TestNullableTypedMapKeepsTheNullContract pins the round-trip decision the fix
+// had to make, which is why #84 stopped short of the nullable case.
+//
+// The map is bare -- no outer pointer -- on the precedent the nullable *array*
+// branch beside it already set. That is not a loss of state: a nil pointer to a
+// map and a pointer to a nil map both marshal to `null`, so *map[string]T never
+// distinguished a null from an absent property either. What decides whether
+// `null` survives is the tag, and the tag is chosen from the schema (omitempty
+// is suppressed for any property whose type list admits null), not from the Go
+// type -- so it must stay suppressed now that the type is a map, which is
+// exactly what omitzero would undo by dropping a nil map on the way out.
+//
+// So the contract is: a nil map is a JSON null and is written back as one; a
+// present {} decodes to a non-nil empty map and is written back as {}; and an
+// absent property is written back as null, which is what the property did
+// before this change and what every other nullable property does.
+func TestNullableTypedMapKeepsTheNullContract(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"m": {"type":["object","null"], "additionalProperties":{"type":"string", "minLength":3}}
+		}
+	}`)
+
+	field := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "m")
+	if field.Type.IsPointer() {
+		t.Fatalf("m type = %q, want an unwrapped map -- a pointer to a map carries no state a nil map does not", field.Type.GoTypeName())
+	}
+	if field.OmitEmpty || field.OmitZero {
+		t.Fatalf("m has omitempty=%v omitzero=%v; either one drops a nil map, turning an explicit null into an absent property", field.OmitEmpty, field.OmitZero)
+	}
+}
+
+// TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap guards the blast
+// radius of the arm above, on the same terms as its non-nullable twin: the map
+// branch sits ahead of the fallback in the *nullable* arm, so widening it would
+// retype every ["object","null"] property in the corpus.
+//
+// A nullable object with declared properties is held by the branch before it
+// and stays a pointer to a named struct; `additionalProperties: true` and the
+// bare object name no value type and constrain nothing, so each keeps the
+// *map[string]any the fallback answers. The named-value case is the other half:
+// a value schema that materializes into a type of its own keeps that type and is
+// reached through ValidatableFields, not through per-value rules, so its values
+// are not checked twice.
+//
+// `withPatt` and `inItems` were pinned at *map[string]any and []*map[string]any,
+// and both pins were wrong for the reason the non-nullable twin gives: an object
+// that is not a Go map is not therefore `any`, it is the struct that names its
+// keys. The nullable arm decided this with hasProperties, so a ["object","null"]
+// whose shape is patternProperties fell past it to the fallback and validated
+// nothing -- issue #96 in its nullable spelling, and in the array-element
+// position that reaches the arm through resolveType alone. Both now name the
+// struct, behind the pointer the nullable arm has always used for one.
+//
+// `boolFalse` moved with them, and for the reason the non-nullable twin records:
+// with no key named, `additionalProperties: false` permits none, so only {} (or
+// a null) satisfies it -- which the same schema behind a $ref has always
+// enforced and which the inline position dropped.
+func TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"withProps": {"type":["object","null"], "properties":{"x":{"type":"string"}}, "additionalProperties":{"type":"integer"}},
+			"withPatt":  {"type":["object","null"], "patternProperties":{"^a":{"type":"string"}}, "additionalProperties":{"type":"integer"}},
+			"boolTrue":  {"type":["object","null"], "additionalProperties":true},
+			"boolFalse": {"type":["object","null"], "additionalProperties":false},
+			"plainObj":  {"type":["object","null"]},
+			"namedVal":  {"type":["object","null"], "additionalProperties":{"type":"object", "properties":{"x":{"type":"string","minLength":2}}}},
+			"inItems":   {"type":"array", "items":{"type":["object","null"], "patternProperties":{"^a":{"type":"string"}}, "additionalProperties":{"type":"integer"}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for jsonName, want := range map[string]string{
+		"withProps": "*DocWithProps",
+		"withPatt":  "*DocWithPatt",
+		"boolTrue":  "*map[string]any",
+		"boolFalse": "*DocBoolFalse",
+		"plainObj":  "*map[string]any",
+		"namedVal":  "map[string]DocNamedValValue",
+		// An array element reaches the nullable arm through resolveType alone,
+		// without passing resolvePropertyType's copy of the same decision. Both
+		// consult the one predicate, and this is the position that says so.
+		"inItems": "[]*DocInItemsItem",
+	} {
+		field := fieldNamedJSON(t, doc, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q -- additionalProperties only types the whole object where it governs the whole object", jsonName, got, want)
+		}
+	}
+	for i := range doc.ItemValidations {
+		switch doc.ItemValidations[i].JSONName {
+		case "withProps", "withPatt", "boolTrue", "boolFalse", "plainObj", "namedVal":
+			t.Fatalf("%s carries per-value checks: %+v -- no bare value schema governs its values", doc.ItemValidations[i].JSONName, doc.ItemValidations[i])
+		}
+	}
+	if !hasValidatableField(doc.ValidatableFields, "namedVal") {
+		t.Fatalf("namedVal is never validated by Doc: %+v -- a named value type answers for its own schema", doc.ValidatableFields)
+	}
+	for _, jsonName := range []string{"withPatt", "inItems", "boolFalse"} {
+		if !hasValidatableField(doc.ValidatableFields, jsonName) {
+			t.Fatalf("%s is never validated by Doc: %+v -- naming the struct achieves nothing if Validate does not descend into it", jsonName, doc.ValidatableFields)
+		}
+	}
+	if bf := structNamed(t, ir, "DocBoolFalse"); bf.AdditionalProperties == nil || !bf.AdditionalProperties.Forbidden {
+		t.Fatalf("DocBoolFalse additionalProperties = %+v, want a Forbidden overflow map -- nothing else rejects a key the schema permits none of", bf.AdditionalProperties)
+	}
+	for _, name := range []string{"DocWithPatt", "DocInItemsItem"} {
+		sd := structNamed(t, ir, name)
+		if len(sd.PatternProperties) != 1 || sd.PatternProperties[0].Pattern != "^a" {
+			t.Fatalf("%s patternProperties = %+v, want the single ^a bucket", name, sd.PatternProperties)
+		}
+		if sd.AdditionalProperties == nil || sd.AdditionalProperties.ValueType.GoTypeName() != "int64" {
+			t.Fatalf("%s additionalProperties = %+v, want an int64-valued overflow map -- the sibling keyword was dropped with the struct", name, sd.AdditionalProperties)
+		}
+	}
+}
+
+// ruleTypesOf lists the RuleType of each rule, for asserting on a bucket of
+// checks without pinning the values beside them.
+func ruleTypesOf(rules []ValidationRule) []string {
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, r.RuleType)
+	}
+	return out
 }
 
 // fieldNamedJSON returns the struct field carrying a JSON property name.
@@ -5371,6 +5645,44 @@ func oneOfDefFor(sd *StructDef, jsonName string) *OneOfDef {
 	return nil
 }
 
+// TestBigIntWrapperIsDraftAwareAboutFloatNotation covers the same keyword under
+// --big-int, in the direction that over-accepts rather than the one that
+// over-rejects.
+//
+// The wrapper decodes through json.Number and takes a float-notation number
+// with a zero fractional part, which is right from draft 6 on and wrong before
+// it: draft 3 and draft 4 define an integer as a number written with no
+// fraction and no exponent. The plain integer alias beside it has answered that
+// question through StrictInteger since draft-aware tokens were added; the
+// wrapper did not, so `--big-int` on a draft-4 document accepted 1.0 for an
+// integer the draft says it is not.
+func TestBigIntWrapperIsDraftAwareAboutFloatNotation(t *testing.T) {
+	for draft, want := range map[schema.Draft]bool{
+		schema.Draft03:     true,
+		schema.Draft04:     true,
+		schema.Draft06:     false,
+		schema.Draft07:     false,
+		schema.Draft202012: false,
+	} {
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(`{"type":"integer","minimum":0}`), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+		ir, err := New(Config{PackageName: "testpkg", Draft: draft, BigIntSupport: true}).Generate(&s)
+		if err != nil {
+			t.Fatalf("draft %v: generate: %v", draft, err)
+		}
+		def, ok := ir.TypeDefs[0].(*BigIntAliasDef)
+		if !ok {
+			t.Fatalf("draft %v: root type = %T, want BigIntAliasDef", draft, ir.TypeDefs[0])
+		}
+		if def.StrictInteger != want {
+			t.Fatalf("draft %v: StrictInteger = %v, want %v -- the wrapper reads 1.0 the way the draft does or it does not", draft, def.StrictInteger, want)
+		}
+	}
+}
+
 // aliasNamed returns the AliasDef with the given name, or nil.
 func aliasNamed(ir *File, name string) *AliasDef {
 	for _, td := range ir.TypeDefs {
@@ -6236,4 +6548,1182 @@ func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected Doc to stay an alias to any; got %v", ir.TypeDefs)
+}
+
+// generateForDraft is generateForItemTest with a draft the caller states, so a
+// pair of tests can put one schema through both readings of "integer".
+func generateForDraft(t *testing.T, input string, draft schema.Draft) *File {
+	t.Helper()
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	cfg := Config{PackageName: "testpkg", OmitEmpty: true}
+	if draft != schema.DraftUnknown {
+		cfg.Draft = draft
+	}
+	ir, err := New(cfg).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return ir
+}
+
+// integerPositionsSchema is the document both integer-decode tests read. Every
+// property is a position a schema integer can occupy and reach encoding/json
+// through a Go type rather than through a method of its own.
+const integerPositionsSchema = `{
+	"title": "Doc",
+	"type": "object",
+	"properties": {
+		"req":      {"type":"integer"},
+		"opt":      {"type":"integer"},
+		"arr":      {"type":"array", "items":{"type":"integer"}},
+		"grid":     {"type":"array", "items":{"type":"array", "items":{"type":"integer"}}},
+		"mp":       {"type":"object", "additionalProperties":{"type":"integer"}},
+		"nullint":  {"type":["integer","null"]},
+		"un":       {"oneOf":[{"type":"integer","minimum":10},{"type":"string"}]},
+		"namedarr": {"$ref":"#/$defs/Counts"},
+		"enm":      {"type":"integer", "enum":[1,2,3]},
+		"str":      {"type":"string"},
+		"num":      {"type":"number"},
+		"free":     {}
+	},
+	"required": ["req"],
+	"$defs": {"Counts": {"type":"array", "items":{"type":"integer"}}}
+}`
+
+// TestIntegerPositionsDecodeFloatNotation pins issue #90.
+//
+// From draft 6 on, a number with a zero fractional part is an integer:
+// python-jsonschema and js-ajv both call {"n":1.0} valid against
+// {"type":"integer"}, and the official suite's draft6 type.json says the same.
+// A document *root* typed integer already agreed -- the alias template decodes
+// it through json.Number -- but a struct field was a bare int64 handed to
+// encoding/json, which refuses 1.0 outright. So one schema accepted or rejected
+// one document depending on where in it the integer sat.
+//
+// Every position below reaches its int64 through a Go type rather than through
+// a method, which is exactly the set that has to move together: fixing the
+// scalar field alone would leave the array element rejecting what the field
+// accepts, which is the same defect one level down. The three non-integer
+// properties are here to say the shadow does not follow anything else.
+func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
+	ir := generateForDraft(t, integerPositionsSchema, schema.DraftUnknown)
+	doc := structNamed(t, ir, "Doc")
+
+	// The declared field types are untouched: this is a change to how the bytes
+	// are read, not to the API of the generated struct.
+	for jsonName, wantType := range map[string]string{
+		"req":     "int64",
+		"opt":     "*int64",
+		"arr":     "[]int64",
+		"grid":    "[][]int64",
+		"mp":      "map[string]int64",
+		"nullint": "*int64",
+	} {
+		field := fieldNamedJSON(t, doc, jsonName)
+		if got := field.Type.GoTypeName(); got != wantType {
+			t.Fatalf("%s type = %q, want %q -- the decode changes, the type does not", jsonName, got, wantType)
+		}
+		if field.IntegerDecode == nil {
+			t.Fatalf("%s has no integer decode: encoding/json would see the int64 itself and refuse 1.0", jsonName)
+		}
+	}
+
+	// The shadow has the field's shape with jsonInteger at every leaf, which is
+	// what leaves nesting, nils and nulls to encoding/json.
+	for jsonName, wantShadow := range map[string]string{
+		"req":     "jsonInteger",
+		"opt":     "*jsonInteger",
+		"arr":     "[]jsonInteger",
+		"grid":    "[][]jsonInteger",
+		"mp":      "map[string]jsonInteger",
+		"nullint": "*jsonInteger",
+	} {
+		def := fieldNamedJSON(t, doc, jsonName).IntegerDecode
+		if got := def.ShadowType.GoTypeName(); got != wantShadow {
+			t.Fatalf("%s shadow = %q, want %q -- a shadow of another shape decodes a different document", jsonName, got, wantShadow)
+		}
+		if !strings.Contains(def.Convert, "_iv") {
+			t.Fatalf("%s conversion %q does not read the decoded shadow", jsonName, def.Convert)
+		}
+	}
+
+	// A oneOf branch is selected by whether the candidate decodes, so an
+	// integer branch that read numbers differently from the rest of the file
+	// reported "no matching oneOf variant" for a document it accepts.
+	var intVariant *OneOfVariant
+	for i := range doc.OneOfs {
+		for j := range doc.OneOfs[i].Variants {
+			if doc.OneOfs[i].Variants[j].Type.GoTypeName() == "int64" {
+				intVariant = &doc.OneOfs[i].Variants[j]
+			}
+		}
+	}
+	if intVariant == nil {
+		t.Fatalf("no int64 oneOf variant on Doc: %+v", doc.OneOfs)
+	}
+	if intVariant.IntegerDecode == nil {
+		t.Fatalf("the integer oneOf branch decodes without the shadow, so selection gates on a different reading of the number than the rest of the file")
+	}
+
+	// A named container of integers has its own UnmarshalJSON, and that is where
+	// its leaves are reached.
+	counts := aliasNamed(ir, "Counts")
+	if counts == nil {
+		t.Fatalf("expected an alias Counts; got %v", ir.TypeDefs)
+	}
+	if counts.IntegerDecode == nil {
+		t.Fatalf("Counts (%s) decodes its elements as bare int64", counts.Underlying.GoTypeName())
+	}
+
+	// An integer enum is a named int64 with no UnmarshalJSON at all, so it
+	// refused the notation exactly as a bare field did.
+	enm := enumNamed(t, ir, "DocEnm")
+	if !enm.IntegerToken {
+		t.Fatalf("DocEnm carries no integer decode, so 1.0 never reaches its members")
+	}
+
+	// Nothing else acquires one. A string, a float and an untyped value hold no
+	// int64, and attaching the shadow to them would either not compile or would
+	// change how a number that is *not* an integer is read.
+	for _, jsonName := range []string{"str", "num", "free"} {
+		if def := fieldNamedJSON(t, doc, jsonName).IntegerDecode; def != nil {
+			t.Fatalf("%s has an integer decode (%s) -- it holds no int64", jsonName, def.ShadowType.GoTypeName())
+		}
+	}
+}
+
+// TestDraft4IntegerPositionsKeepTheStrictToken is the other direction, and it
+// is the half that a fix aimed only at draft 6 would get wrong.
+//
+// Draft 4 defines an integer as a number written without a fraction or an
+// exponent, so 1.0 is *not* an integer there; the suite carries it as
+// draft4/optional/zeroTerminatedFloats.json, expecting invalid. (Bowtie is not
+// the authority here: python-jsonschema agrees with the suite and js-ajv does
+// not, so the two disagree and the suite decides.) A plain int64 handed to
+// encoding/json already refuses the notation, which is the right answer, so
+// every position must be left exactly as it was -- accepting 1.0 under draft 4
+// would be a new defect, not a fix.
+func TestDraft4IntegerPositionsKeepTheStrictToken(t *testing.T) {
+	for _, draft := range []schema.Draft{schema.Draft03, schema.Draft04} {
+		ir := generateForDraft(t, integerPositionsSchema, draft)
+		doc := structNamed(t, ir, "Doc")
+		for i := range doc.Fields {
+			if doc.Fields[i].IntegerDecode != nil {
+				t.Fatalf("draft %v: %s decodes 1.0 as an integer, which this draft says it is not", draft, doc.Fields[i].JSONName)
+			}
+		}
+		if doc.AdditionalProperties != nil && doc.AdditionalProperties.IntegerDecode != nil {
+			t.Fatalf("draft %v: the overflow map decodes 1.0 as an integer", draft)
+		}
+		for i := range doc.OneOfs {
+			for j := range doc.OneOfs[i].Variants {
+				if doc.OneOfs[i].Variants[j].IntegerDecode != nil {
+					t.Fatalf("draft %v: a oneOf branch decodes 1.0 as an integer", draft)
+				}
+			}
+		}
+		if counts := aliasNamed(ir, "Counts"); counts == nil || counts.IntegerDecode != nil {
+			t.Fatalf("draft %v: Counts was not generated, or decodes 1.0 as an integer", draft)
+		}
+		if enm := enumNamed(t, ir, "DocEnm"); enm.IntegerToken {
+			t.Fatalf("draft %v: DocEnm decodes 1.0 as one of its members", draft)
+		}
+	}
+}
+
+// TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation covers the one
+// integer position that is not a struct field, a container under one, or a
+// named type: the overflow map of an object whose values are all typed by
+// additionalProperties. It is reached by a hand-written per-key decode rather
+// than by the aux, so it needs its own arm and its own guard.
+func TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"additionalProperties": {"type":"integer"}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if doc.AdditionalProperties == nil {
+		t.Fatalf("Doc has no overflow map: %+v", doc)
+	}
+	if got := doc.AdditionalProperties.ValueType.GoTypeName(); got != "int64" {
+		t.Fatalf("overflow value type = %q, want int64", got)
+	}
+	if doc.AdditionalProperties.IntegerDecode == nil {
+		t.Fatalf("the overflow map decodes its values as bare int64, so 1.0 is refused for a key the schema types integer")
+	}
+	if got := doc.AdditionalProperties.IntegerDecode.ShadowType.GoTypeName(); got != "jsonInteger" {
+		t.Fatalf("overflow shadow = %q, want jsonInteger", got)
+	}
+}
+
+// TestIntegerDecodeNeedsTheSharedHelpers pins the dependency the emitted code
+// has on the helper file. jsonInteger and its rebuilders are package-level, so
+// a file that names them without the package declaring them does not compile --
+// and the helper file is written only for the set a File reports.
+func TestIntegerDecodeNeedsTheSharedHelpers(t *testing.T) {
+	ir := generateForDraft(t, integerPositionsSchema, schema.DraftUnknown)
+	if !ir.Helpers().Integer {
+		t.Fatalf("the file decodes integers through jsonInteger but does not ask for it: %+v", ir.Helpers())
+	}
+	plain := generateForItemTest(t, `{"title":"Doc","type":"object","properties":{"s":{"type":"string"}}}`)
+	if plain.Helpers().Integer {
+		t.Fatalf("a file with no integer in it asks for the integer helpers")
+	}
+}
+
+// enumNamed returns the EnumDef with the given name.
+func enumNamed(t *testing.T, ir *File, name string) *EnumDef {
+	t.Helper()
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*EnumDef); ok && d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("expected an enum %s; got %v", name, ir.TypeDefs)
+	return nil
+}
+
+// overflowValidationFor returns the per-value checks a struct carries for its
+// additionalProperties overflow map, or fails. The overflow map is not a
+// declared property, so it is found by the Go field it lands in rather than by
+// a JSON name.
+func overflowValidationFor(t *testing.T, sd *StructDef) *ItemValidationDef {
+	t.Helper()
+	for i := range sd.ItemValidations {
+		if sd.ItemValidations[i].FieldName == "AdditionalProperties" {
+			return &sd.ItemValidations[i]
+		}
+	}
+	t.Fatalf("expected per-value checks for the overflow map on %s; got %+v", sd.Name, sd.ItemValidations)
+	return nil
+}
+
+// TestOverflowAdditionalPropertiesValuesAreChecked pins the fix for #92. A
+// schema-valued `additionalProperties` sitting *beside* declared properties
+// governs the keys those do not claim, and those land in the overflow map. The
+// map is typed, so a value of the wrong JSON type dies in the decoder, but
+// nothing checked the subschema's own keywords:
+//
+//	{"properties":{"alpha":{"type":"string"}},
+//	 "additionalProperties":{"type":"integer","minimum":5}}
+//
+// accepted {"alpha":"aa","zzExtra":1}. patternProperties in the same position
+// was enforced, constraints and all, so the position was the gap rather than
+// the keyword.
+//
+// The whole-object form -- no `properties`, no `patternProperties` -- is a
+// different construct that becomes a Go map, and its values have been checked
+// since #84.
+func TestOverflowAdditionalPropertiesValuesAreChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}},
+		"additionalProperties": {"type": "integer", "minimum": 5}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := overflowValidationFor(t, doc)
+	if len(def.Levels) != 1 || !def.Levels[0].IsMap {
+		t.Fatalf("overflow checks = %+v, want a single map level", def.Levels)
+	}
+	if got := itemRuleTypes(def, 0); !containsString(got, "minimum") {
+		t.Fatalf("overflow rules = %v, want the subschema's minimum", got)
+	}
+	// The error path names the keyword that constrains the value, since the
+	// overflow map has no JSON property name of its own to report under.
+	if def.PathName != "additionalProperties" {
+		t.Fatalf("PathName = %q, want %q", def.PathName, "additionalProperties")
+	}
+}
+
+// TestOverflowAdditionalPropertiesBesidePatternPropertiesIsChecked covers the
+// sibling position of the arm above. `patternProperties` claims the keys its
+// regexes match and `additionalProperties` claims the rest, so the two occupy
+// one struct and the overflow map holds exactly what the second one governs.
+// The keyword reaching one position and not the other is the shape the fix has
+// to avoid, not a place to stop.
+func TestOverflowAdditionalPropertiesBesidePatternPropertiesIsChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"patternProperties": {"^a": {"type": "string", "minLength": 3}},
+		"additionalProperties": {"type": "integer", "minimum": 5}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := overflowValidationFor(t, doc)
+	if got := itemRuleTypes(def, 0); !containsString(got, "minimum") {
+		t.Fatalf("overflow rules = %v, want the subschema's minimum", got)
+	}
+	// The patternProperties half must survive the addition: the two keywords
+	// speak about disjoint key sets and neither answers for the other.
+	if !doc.HasPatternPropertyValidation() {
+		t.Fatalf("patternProperties lost their checks: %+v", doc.PatternProperties)
+	}
+}
+
+// TestOverflowAdditionalPropertiesNamedValueTypeIsValidated covers the second
+// half of #92. When the value subschema describes an object it is materialized
+// as a named type carrying its own Validate, and that call is the whole of what
+// enforces the subschema. Nothing dispatched to it: ValidatableFields only
+// reaches *declared* properties, and the overflow map is not one, so
+// {"additionalProperties":{"type":"object","required":["x"]}} beside a declared
+// property accepted an overflow value of {}.
+func TestOverflowAdditionalPropertiesNamedValueTypeIsValidated(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}},
+		"additionalProperties": {
+			"type": "object",
+			"properties": {"x": {"type": "integer", "minimum": 5}},
+			"required": ["x"]
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	def := overflowValidationFor(t, doc)
+	if len(def.Levels) != 1 {
+		t.Fatalf("overflow checks = %+v, want a single map level", def.Levels)
+	}
+	if !def.Levels[0].CallValidate {
+		t.Fatalf("overflow value %q carries no Validate dispatch: %+v -- its subschema is enforced nowhere else",
+			def.Levels[0].ElemTypeName, def.Levels[0])
+	}
+}
+
+// TestDeclaredPropertyElementIsNotValidatedTwice is the over-reach guard for
+// the arm above, which reaches a named overflow value's Validate by saying the
+// definition owns its outermost element. That permission has to stay on the
+// overflow map. A *declared* property's outermost element is already dispatched
+// to by ValidatableFields, so granting it here as well would call the element
+// type's Validate twice for every element and report the same failure twice
+// over.
+func TestDeclaredPropertyElementIsNotValidatedTwice(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"$defs": {"Item": {"type": "object", "properties": {"x": {"type": "integer", "minimum": 5}}, "required": ["x"]}},
+		"properties": {
+			"arr": {"type": "array", "items": {"$ref": "#/$defs/Item"}},
+			"alpha": {"type": "string"}
+		},
+		"additionalProperties": {
+			"type": "object",
+			"properties": {"y": {"type": "integer", "minimum": 5}},
+			"required": ["y"]
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if !hasValidatableField(doc.ValidatableFields, "arr") {
+		t.Fatalf("arr is never validated by Doc: %+v", doc.ValidatableFields)
+	}
+	for i := range doc.ItemValidations {
+		def := &doc.ItemValidations[i]
+		if def.FieldName == "AdditionalProperties" {
+			continue
+		}
+		if def.OwnsOutermost {
+			t.Fatalf("%q claims its outermost element although ValidatableFields dispatches for it: %+v",
+				def.FieldName, def)
+		}
+		if len(def.Levels) > 0 && def.Levels[0].CallValidate {
+			t.Fatalf("%q dispatches to its element's Validate at level 0 as well as through ValidatableFields: %+v -- every element would be checked twice",
+				def.FieldName, def.Levels[0])
+		}
+	}
+	// And the overflow map, which nothing else reaches, keeps its own call.
+	overflow := overflowValidationFor(t, doc)
+	if !overflow.OwnsOutermost || !overflow.Levels[0].CallValidate {
+		t.Fatalf("overflow values lost their Validate dispatch: %+v", overflow)
+	}
+}
+
+// TestDeclaredPropertyKeepsItsOwnChecksBesideOverflowChecks is the other
+// over-reach guard. `additionalProperties` speaks only about the keys
+// `properties` and `patternProperties` do not claim, so a declared property
+// must keep being judged by its own subschema and must not acquire the overflow
+// subschema's rules. A definition that ranged the whole object rather than the
+// overflow map would reject {"alpha":"aa"} against a schema that allows it.
+func TestDeclaredPropertyKeepsItsOwnChecksBesideOverflowChecks(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string", "minLength": 2}},
+		"additionalProperties": {"type": "integer", "minimum": 5}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := fieldRuleTypes(doc, "alpha"); !containsString(got, "minLength") {
+		t.Fatalf("alpha rules = %v, want its own minLength", got)
+	}
+	if got := fieldRuleTypes(doc, "alpha"); containsString(got, "minimum") {
+		t.Fatalf("alpha acquired the additionalProperties minimum: %v", got)
+	}
+	def := overflowValidationFor(t, doc)
+	if def.FieldName != "AdditionalProperties" {
+		t.Fatalf("overflow checks range %q, want the overflow map", def.FieldName)
+	}
+}
+
+// dependentSchemaFor returns a struct's dependentSchemas entry for one trigger.
+func dependentSchemaFor(t *testing.T, sd *StructDef, trigger string) *DependentSchemaConstraint {
+	t.Helper()
+	for i := range sd.DependentSchemas {
+		if sd.DependentSchemas[i].TriggerKey == trigger {
+			return &sd.DependentSchemas[i]
+		}
+	}
+	t.Fatalf("expected a dependentSchemas entry for %q on %s; got %+v", trigger, sd.Name, sd.DependentSchemas)
+	return nil
+}
+
+// TestDependentSchemaBranchConstrainsShapeNotOnlyPresence pins the fix for #93.
+// A dependentSchemas branch is an ordinary subschema and may carry any keyword,
+// but everything in one except `required` was dropped, so the dependency fired
+// on presence and never on shape:
+//
+//	{"properties":{"alpha":{"type":"string"},"bravo":{"type":"integer"}},
+//	 "dependentSchemas":{"alpha":{"properties":{"bravo":{"minimum":5}},
+//	                              "required":["bravo"]}}}
+//
+// accepted {"alpha":"aa","bravo":1}. The branch is the same definition an
+// object-level `then` carries, since it is the same thing gated on a key's
+// presence rather than on an `if`.
+func TestDependentSchemaBranchConstrainsShapeNotOnlyPresence(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}, "bravo": {"type": "integer"}},
+		"dependentSchemas": {
+			"alpha": {"properties": {"bravo": {"minimum": 5}}, "required": ["bravo"]}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	dep := dependentSchemaFor(t, doc, "alpha")
+	if !containsString(dep.RequiredProps, "bravo") {
+		t.Fatalf("RequiredProps = %v, want the branch's required entry", dep.RequiredProps)
+	}
+	if dep.Branch == nil {
+		t.Fatalf("branch carries no shape constraint: %+v -- its minimum is enforced nowhere", dep)
+	}
+	if len(dep.Branch.Properties) != 1 || dep.Branch.Properties[0].JSONName != "bravo" {
+		t.Fatalf("branch properties = %+v, want one entry for bravo", dep.Branch.Properties)
+	}
+	var kinds []string
+	for _, c := range dep.Branch.Properties[0].Checks {
+		kinds = append(kinds, c.Kind)
+	}
+	if !containsString(kinds, "minimum") {
+		t.Fatalf("bravo checks = %v, want the branch's minimum", kinds)
+	}
+	// `required` is answered by RequiredProps; carrying it on the branch as
+	// well would emit the same presence test twice.
+	if len(dep.Branch.RequiredKeys) != 0 {
+		t.Fatalf("branch RequiredKeys = %v, want them left to RequiredProps", dep.Branch.RequiredKeys)
+	}
+	// The struct needs the raw JSON to judge the branch against: the checks run
+	// on the decoded property value, not on the Go field.
+	if !doc.NeedsRawProps() {
+		t.Fatalf("Doc does not keep _jsonRawProps, so the branch has nothing to read")
+	}
+}
+
+// TestDependentSchemaBranchReachesAnUndeclaredProperty covers the half of #93
+// the check it replaces could never have reached. That check read the overflow
+// map, which holds only the keys the struct does not declare, so a branch
+// constraining a *declared* property was tested against a map that could not
+// hold it. Reading the raw JSON instead makes the two cases one, and this pins
+// the undeclared side so the move does not trade one for the other.
+func TestDependentSchemaBranchReachesAnUndeclaredProperty(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}},
+		"dependentSchemas": {
+			"alpha": {"properties": {"zzExtra": {"type": "integer", "minimum": 5}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	dep := dependentSchemaFor(t, doc, "alpha")
+	if dep.Branch == nil || len(dep.Branch.Properties) != 1 {
+		t.Fatalf("branch = %+v, want one property constraint for zzExtra", dep.Branch)
+	}
+	if dep.Branch.Properties[0].JSONName != "zzExtra" {
+		t.Fatalf("branch property = %q, want zzExtra", dep.Branch.Properties[0].JSONName)
+	}
+}
+
+// TestDependentSchemaBranchStaysUnderItsTrigger is the over-reach guard for the
+// two arms above. A dependentSchemas branch binds only while its trigger key is
+// present, so its constraints must stay on the entry that names the trigger.
+// Folded into the struct's own rules -- or into an ObjectConditional, which
+// binds as soon as its condition holds -- they would reject {"bravo":1}, a
+// document the schema allows because `alpha` is absent.
+func TestDependentSchemaBranchStaysUnderItsTrigger(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}, "bravo": {"type": "integer"}},
+		"dependentSchemas": {"alpha": {"properties": {"bravo": {"minimum": 5}}}}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := fieldRuleTypes(doc, "bravo"); containsString(got, "minimum") {
+		t.Fatalf("bravo rules = %v -- the branch's minimum became unconditional", got)
+	}
+	if len(doc.ObjectConditionals) != 0 {
+		t.Fatalf("ObjectConditionals = %+v -- the branch escaped its trigger", doc.ObjectConditionals)
+	}
+	dep := dependentSchemaFor(t, doc, "alpha")
+	if dep.Branch == nil {
+		t.Fatalf("branch carries no shape constraint: %+v", dep)
+	}
+}
+
+// TestDependentSchemaBranchKeywordItCannotExpressIsDropped is the second
+// over-reach guard. The branch is held to the same bar an object-level `then`
+// is: a keyword the evaluator cannot express is dropped, so the emitted check
+// demands a subset of what the branch says and refuses only documents the
+// schema refuses too. Guessing at one instead would reject conforming data,
+// which is worse than the missing check.
+//
+// `items` under a branch property is such a keyword, and a $ref on the branch
+// itself is the stronger case: before draft 2019-09 a $ref replaces the schema
+// object it sits in, so reading its siblings at all would enforce something the
+// schema never said.
+func TestDependentSchemaBranchKeywordItCannotExpressIsDropped(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}},
+		"dependentSchemas": {
+			"alpha": {"properties": {
+				"arr": {"items": {"type": "integer"}},
+				"bravo": {"minimum": 5}
+			}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	dep := dependentSchemaFor(t, doc, "alpha")
+	if dep.Branch == nil {
+		t.Fatalf("the whole branch was dropped over one unexpressible property: %+v", dep)
+	}
+	for _, p := range dep.Branch.Properties {
+		if p.JSONName == "arr" {
+			t.Fatalf("arr acquired checks from an unexpressible subschema: %+v", p.Checks)
+		}
+	}
+	if len(dep.Branch.Properties) != 1 || dep.Branch.Properties[0].JSONName != "bravo" {
+		t.Fatalf("branch properties = %+v, want only bravo", dep.Branch.Properties)
+	}
+
+	refIR := generateForItemTest(t, `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Doc",
+		"type": "object",
+		"definitions": {"Other": {"type": "object"}},
+		"properties": {"alpha": {"type": "string"}},
+		"dependentSchemas": {"alpha": {
+			"$ref": "#/definitions/Other",
+			"properties": {"bravo": {"minimum": 5}},
+			"required": ["bravo"]
+		}}
+	}`)
+	refDoc := structNamed(t, refIR, "Doc")
+	refDep := dependentSchemaFor(t, refDoc, "alpha")
+	if refDep.Branch != nil {
+		t.Fatalf("a branch carrying $ref was read in part: %+v", refDep.Branch)
+	}
+	if !containsString(refDep.RequiredProps, "bravo") {
+		t.Fatalf("RequiredProps = %v, want the branch's own required entry kept", refDep.RequiredProps)
+	}
+}
+
+// fieldTupleFor is the prefixItems counterpart of fieldContainsFor.
+func fieldTupleFor(t *testing.T, sd *StructDef, jsonName string) *FieldTupleDef {
+	t.Helper()
+	for i := range sd.TupleValidations {
+		if sd.TupleValidations[i].JSONName == jsonName {
+			return &sd.TupleValidations[i]
+		}
+	}
+	t.Fatalf("expected per-position checks for %q on %s; got %+v", jsonName, sd.Name, sd.TupleValidations)
+	return nil
+}
+
+// fieldUnevalItemsFor is the unevaluatedItems counterpart of fieldContainsFor.
+func fieldUnevalItemsFor(t *testing.T, sd *StructDef, jsonName string) *FieldUnevalItemsDef {
+	t.Helper()
+	for i := range sd.UnevalItemsValidations {
+		if sd.UnevalItemsValidations[i].JSONName == jsonName {
+			return &sd.UnevalItemsValidations[i]
+		}
+	}
+	t.Fatalf("expected an unevaluatedItems check for %q on %s; got %+v",
+		jsonName, sd.Name, sd.UnevalItemsValidations)
+	return nil
+}
+
+// TestArrayPropertyPrefixItemsPositionsAreChecked pins the first half of issue
+// #94. The per-position machinery was complete for a named array type -- the
+// complex_tuple golden checks three positions -- but an inline array *property*
+// never becomes one, so a prefixItems entry contributed nothing but a length
+// and {"arr":["a",1]} was accepted with both positions violated.
+//
+// Each position is asked about twice over, because a position carries two
+// separable things: the type it names, and whatever else its sub-schema says.
+// A check that read only the type would leave minLength and minimum enforced
+// nowhere, which is the shape the issue's own reproducer takes.
+func TestArrayPropertyPrefixItemsPositionsAreChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array", "prefixItems":[
+				{"type":"string","minLength":2},
+				{"type":"integer","minimum":5}
+			]}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+
+	// A tuple has no homogeneous Go element type, so the field stays []any and
+	// the positions are judged in Validate rather than by the decoder.
+	if got := fieldNamedJSON(t, doc, "arr").Type.GoTypeName(); got != "[]any" {
+		t.Fatalf("arr type = %s, want []any", got)
+	}
+
+	def := fieldTupleFor(t, doc, "arr")
+	if len(def.Items) != 2 {
+		t.Fatalf("arr: %d positions, want 2: %+v", len(def.Items), def.Items)
+	}
+	// Both positions carry a bound beside their type, so each has to become a
+	// named type of its own -- a bare JSONType would check the type and drop
+	// minLength and minimum.
+	for i, want := range []string{"DocArrItem0", "DocArrItem1"} {
+		if def.Items[i].TypeName != want {
+			t.Fatalf("position %d: TypeName = %q (JSONType %q), want %q -- a type-only check drops the position's bound",
+				i, def.Items[i].TypeName, def.Items[i].JSONType, want)
+		}
+	}
+	// And those types must actually carry the bounds.
+	item0 := aliasNamed(ir, "DocArrItem0")
+	if item0 == nil {
+		t.Fatalf("expected a DocArrItem0 alias; got %v", ir.TypeDefs)
+	}
+	if got := aliasRuleTypes(item0); !containsString(got, "minLength") {
+		t.Fatalf("DocArrItem0 rules = %v, want minLength", got)
+	}
+	item1 := aliasNamed(ir, "DocArrItem1")
+	if item1 == nil {
+		t.Fatalf("expected a DocArrItem1 alias; got %v", ir.TypeDefs)
+	}
+	if got := aliasRuleTypes(item1); !containsString(got, "minimum") {
+		t.Fatalf("DocArrItem1 rules = %v, want minimum", got)
+	}
+}
+
+func aliasRuleTypes(ad *AliasDef) []string {
+	var out []string
+	for _, r := range ad.Validations {
+		out = append(out, r.RuleType)
+	}
+	return out
+}
+
+// TestTupleWithSiblingItemsKeepsAnyElements pins the second half of issue #94,
+// which is the worse half: a *valid* document could not be decoded at all.
+//
+// In 2020-12 a schema-valued `items` beside prefixItems governs only the
+// positions past the prefix. Reading it as the element schema typed the field
+// []bool, so {"arr":["aa",7,true]} -- which the schema accepts -- died in
+// encoding/json before any check ran.
+//
+// The tail is still a constraint, so it is checked at the index it starts from
+// rather than dropped along with the element type. Retyping the field is a
+// change to the API of the generated code, and it is the change correctness
+// requires: no homogeneous Go slice can hold a heterogeneous tuple.
+func TestTupleWithSiblingItemsKeepsAnyElements(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"},{"type":"integer"}],
+			        "items":{"type":"boolean"}}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := fieldNamedJSON(t, doc, "arr").Type.GoTypeName(); got != "[]any" {
+		t.Fatalf("arr type = %s, want []any -- the sibling items describes the tail, not the elements, and %s cannot decode the prefix",
+			got, got)
+	}
+
+	def := fieldTupleFor(t, doc, "arr")
+	if len(def.Items) != 2 {
+		t.Fatalf("arr: %d positions, want 2", len(def.Items))
+	}
+	if def.Items[0].JSONType != "string" || def.Items[1].JSONType != "integer" {
+		t.Fatalf("positions = %+v, want string then integer", def.Items)
+	}
+	if def.Tail == nil {
+		t.Fatalf("arr: no tail check; items past the prefix must still be booleans")
+	}
+	if def.Tail.JSONType != "boolean" {
+		t.Fatalf("arr tail = %+v, want a boolean check", def.Tail)
+	}
+	if def.TupleTailStart() != 2 {
+		t.Fatalf("arr tail starts at %d, want 2", def.TupleTailStart())
+	}
+}
+
+// TestTupleItemsFalseBeyondStatedMaxItems covers the one arrangement where the
+// length bound cannot stand in for a false tail. "items": false beside a tuple
+// normally becomes an implicit maxItems of the prefix length, but that
+// inference only fires when the schema states no maxItems of its own -- so a
+// stated bound wider than the prefix disabled the keyword outright, and
+// {"prefixItems":[a,b],"items":false,"maxItems":5} accepted a third element.
+func TestTupleItemsFalseBeyondStatedMaxItems(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"},{"type":"integer"}],
+			        "items": false, "maxItems": 5}
+		},
+		"required": ["arr"]
+	}`)
+
+	def := fieldTupleFor(t, structNamed(t, ir, "Doc"), "arr")
+	if def.Tail == nil || !def.Tail.IsFalse {
+		t.Fatalf("arr tail = %+v, want a false tail: maxItems 5 leaves positions 2..4 that items:false forbids", def.Tail)
+	}
+}
+
+// TestTupleItemsFalseWithinLengthBoundEmitsNoTail is the over-reach guard for
+// the test above. Where the implicit maxItems does fire -- or where the stated
+// one is already no wider than the prefix -- a false tail would report the same
+// rejection a second time, under a worse message.
+func TestTupleItemsFalseWithinLengthBoundEmitsNoTail(t *testing.T) {
+	for _, tc := range []struct{ name, arr string }{
+		{"implicit", `{"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],"items":false}`},
+		{"stated-equal", `{"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],"items":false,"maxItems":2}`},
+		{"stated-narrower", `{"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],"items":false,"maxItems":1}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"arr": `+tc.arr+`},
+				"required": ["arr"]
+			}`)
+			def := fieldTupleFor(t, structNamed(t, ir, "Doc"), "arr")
+			if def.Tail != nil {
+				t.Fatalf("arr carries a false tail as well as a length bound: %+v", def.Tail)
+			}
+		})
+	}
+}
+
+// TestNamedTuplePropertyCarriesNoFieldTuple is the over-reach guard for the
+// per-position field checks. A property that became a named type answers for
+// its positions through that type's own Validate, which the struct already
+// dispatches to; a second set of checks on the field would report every failure
+// twice, and would not compile besides -- the field is that named type, not the
+// []any the emitted loop ranges over.
+//
+// Two shapes reach it, and only the second tests the guard. A $ref keeps
+// prefixItems on the definition, so the property schema has no positions of its
+// own to read and nothing would be emitted whatever the guard said. A
+// multi-valued type keeps them inline and still gives the property a named
+// wrapper: there the schema says "emit" and only the Go type says "do not",
+// which is the case buildFieldTuple's guard exists for.
+func TestNamedTuplePropertyCarriesNoFieldTuple(t *testing.T) {
+	t.Run("ref", func(t *testing.T) {
+		ir := generateForItemTest(t, `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {"arr": {"$ref": "#/$defs/Pair"}},
+			"required": ["arr"],
+			"$defs": {
+				"Pair": {"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}]}
+			}
+		}`)
+
+		doc := structNamed(t, ir, "Doc")
+		if len(doc.TupleValidations) != 0 {
+			t.Fatalf("a named type validates its own positions; got field-level ones too: %+v", doc.TupleValidations)
+		}
+		if !hasValidatableField(doc.ValidatableFields, "arr") {
+			t.Fatalf("arr must dispatch to Pair.Validate; otherwise its positions are checked nowhere")
+		}
+		pair := aliasNamed(ir, "Pair")
+		if pair == nil || len(pair.TupleItems) != 2 {
+			t.Fatalf("Pair must carry the two positions itself; got %+v", pair)
+		}
+	})
+
+	t.Run("multi-type", func(t *testing.T) {
+		ir := generateForItemTest(t, `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {
+				"arr": {"type":["array","string"],
+				        "prefixItems":[{"type":"string"},{"type":"integer"}]}
+			},
+			"required": ["arr"]
+		}`)
+
+		doc := structNamed(t, ir, "Doc")
+		if got := fieldNamedJSON(t, doc, "arr").Type.GoTypeName(); got == "[]any" {
+			t.Fatalf("arr stayed []any; this case only tests the guard while the property is a named wrapper")
+		}
+		if len(doc.TupleValidations) != 0 {
+			t.Fatalf("arr is a named wrapper, not a slice: a field-level position loop would range over %s and not compile: %+v",
+				fieldNamedJSON(t, doc, "arr").Type.GoTypeName(), doc.TupleValidations)
+		}
+		if !hasValidatableField(doc.ValidatableFields, "arr") {
+			t.Fatalf("arr must dispatch to its wrapper's Validate; otherwise its positions are checked nowhere")
+		}
+	})
+}
+
+// TestPreTwentyTwentyDraftStillIgnoresPrefixItems is the over-reach guard for
+// reading prefixItems under a document that states no dialect. Treating an
+// unstated dialect as a modern one is what makes the issue's own reproducers
+// work, but a document that *does* declare draft-07 has no prefixItems keyword
+// and must keep ignoring it -- the field stays typed from `items`, and no
+// position is checked.
+func TestPreTwentyTwentyDraftStillIgnoresPrefixItems(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"},{"type":"integer"}],
+			        "items":{"type":"boolean"}}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if len(doc.TupleValidations) != 0 {
+		t.Fatalf("draft-07 has no prefixItems; got per-position checks: %+v", doc.TupleValidations)
+	}
+	if got := fieldNamedJSON(t, doc, "arr").Type.GoTypeName(); got != "[]bool" {
+		t.Fatalf("arr type = %s, want []bool -- under draft-07 `items` governs every element", got)
+	}
+}
+
+// TestArrayPropertyUnevaluatedItemsSchemaIsChecked pins the second half of
+// issue #95. Only unevaluatedItems: false was honoured on a property; a
+// sub-schema was dropped entirely, so {"arr":["a","b"]} was accepted where
+// index 1 had to be an integer.
+func TestArrayPropertyUnevaluatedItemsSchemaIsChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"}],
+			        "unevaluatedItems":{"type":"integer"}}
+		},
+		"required": ["arr"]
+	}`)
+
+	def := fieldUnevalItemsFor(t, structNamed(t, ir, "Doc"), "arr")
+	if def.Def.IsForbidden {
+		t.Fatalf("arr: the sub-schema form was read as a rejection: %+v", def.Def)
+	}
+	if def.Def.ValueType != "integer" {
+		t.Fatalf("arr: unevaluatedItems value type = %q, want integer", def.Def.ValueType)
+	}
+	if def.Def.EvaluatedCount != 1 {
+		t.Fatalf("arr: evaluated count = %d, want 1 (the one prefixItems position)", def.Def.EvaluatedCount)
+	}
+}
+
+// TestArrayPropertyUnevaluatedItemsSeesThroughAllOf pins the first half of
+// issue #95. An allOf branch's prefixItems marked nothing evaluated on a
+// property, so unevaluatedItems saw an empty evaluation set and
+// {"arr":["a","b"]} was accepted with index 1 unevaluated and forbidden.
+//
+// Two routes answer it, and which one a schema takes turns on whether the
+// runtime annotation evaluator can model the subtree.
+//
+// The evaluator is preferred where it applies, since it interprets the schema
+// rather than counting it. Where a branch states a keyword outside the
+// evaluator's set the schema falls to the static count instead, which is exact
+// for an allOf for a reason worth stating: an allOf branch has to match, so
+// what it evaluates is evaluated for every value and no runtime choice enters.
+// Both routes must reject; neither may leave the property unchecked.
+func TestArrayPropertyUnevaluatedItemsSeesThroughAllOf(t *testing.T) {
+	t.Run("modelled-by-the-evaluator", func(t *testing.T) {
+		ir := generateForItemTest(t, `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {
+				"arr": {"type":"array",
+				        "allOf":[{"prefixItems":[{"type":"string"}]}],
+				        "unevaluatedItems": false}
+			},
+			"required": ["arr"]
+		}`)
+
+		doc := structNamed(t, ir, "Doc")
+		var wrapper *AnnotationSchemaDef
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "DocArr" {
+				wrapper = d
+			}
+		}
+		if wrapper == nil {
+			t.Fatalf("expected a DocArr annotation wrapper; got %v", ir.TypeDefs)
+		}
+		// The branch's prefixItems has to reach the node literal, or the
+		// evaluator marks nothing evaluated and the check is vacuous.
+		if !strings.Contains(wrapper.NodeLiteral, "PrefixItems") ||
+			!strings.Contains(wrapper.NodeLiteral, "AllOf") {
+			t.Fatalf("DocArr node literal lost the allOf's prefixItems:\n%s", wrapper.NodeLiteral)
+		}
+		if !hasValidatableField(doc.ValidatableFields, "arr") {
+			t.Fatalf("Doc.Validate does not call arr.Validate; the wrapper's schema is interpreted for no one")
+		}
+	})
+
+	t.Run("static-count", func(t *testing.T) {
+		// minLength is outside the evaluator's keyword set, so this subtree
+		// cannot be modelled and the static count is what has to be right.
+		ir := generateForItemTest(t, `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {
+				"arr": {"type":"array",
+				        "allOf":[{"prefixItems":[{"type":"string","minLength":2}]}],
+				        "unevaluatedItems": false}
+			},
+			"required": ["arr"]
+		}`)
+
+		def := fieldUnevalItemsFor(t, structNamed(t, ir, "Doc"), "arr")
+		if !def.Def.IsForbidden {
+			t.Fatalf("arr: unevaluatedItems false was not read as a rejection: %+v", def.Def)
+		}
+		if def.Def.EvaluatedCount != 1 {
+			t.Fatalf("arr: evaluated count = %d, want 1 -- the allOf branch's prefixItems evaluates position 0",
+				def.Def.EvaluatedCount)
+		}
+		if def.Def.AllEvaluated {
+			t.Fatalf("arr: AllEvaluated is set, so nothing past the prefix would ever be checked: %+v", def.Def)
+		}
+	})
+}
+
+// TestRuntimeUnevaluatedItemsPropertyBecomesAnnotationWrapper covers the
+// arrangement no static count can answer: with an anyOf beside
+// unevaluatedItems, which items were evaluated depends on which branch matched
+// the value in hand. A named type of that shape has been routed to the runtime
+// annotation evaluator since the evaluator existed, but the wrapper is only
+// built for a schema being given a name, and an array written inline as a
+// property never had one -- so the same schema enforced nothing there.
+//
+// Naming the property does change the field's Go type, which is the trade a
+// bare `not` or a bare if/then/else property already makes.
+func TestRuntimeUnevaluatedItemsPropertyBecomesAnnotationWrapper(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"}],
+			        "anyOf":[{"prefixItems":[true,{"type":"integer"}]}, true],
+			        "unevaluatedItems": false}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	var wrapper *AnnotationSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "DocArr" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocArr annotation wrapper; got %v", ir.TypeDefs)
+	}
+	if got := fieldNamedJSON(t, doc, "arr").Type.GoTypeName(); got != "DocArr" {
+		t.Fatalf("arr type = %s, want DocArr", got)
+	}
+	// A wrapper the owner never calls enforces nothing, which is how this
+	// stayed broken after the wrapper itself was reachable.
+	if !hasValidatableField(doc.ValidatableFields, "arr") {
+		t.Fatalf("Doc.Validate does not call arr.Validate; the wrapper's schema is then interpreted for no one")
+	}
+	// And no static field check beside it: the two would disagree, and the
+	// static one is the one that would be wrong.
+	if len(doc.UnevalItemsValidations) != 0 {
+		t.Fatalf("a wrapped property carries a static unevaluatedItems check too: %+v", doc.UnevalItemsValidations)
+	}
+}
+
+// TestConditionalUnevaluatedItemsEmitsNoStaticCheck is the over-reach guard for
+// the field-level unevaluatedItems check, and it guards the direction that
+// matters most: a false rejection of a conforming document.
+//
+// EvaluatedCount counts only what the schema's own keywords evaluate; a branch
+// that evaluated more contributes a ConditionalEval instead and leaves the
+// count alone. Emitting the static check anyway would forbid items a matching
+// branch had in fact evaluated. Where the annotation evaluator cannot model the
+// subtree either -- minLength is outside its keyword set -- the answer is to
+// emit nothing rather than to emit something wrong.
+func TestConditionalUnevaluatedItemsEmitsNoStaticCheck(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array",
+			        "prefixItems":[{"type":"string"}],
+			        "anyOf":[{"prefixItems":[true,{"type":"string","minLength":2}]}, true],
+			        "unevaluatedItems": false}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, fu := range doc.UnevalItemsValidations {
+		if fu.JSONName != "arr" {
+			continue
+		}
+		t.Fatalf("arr carries a static unevaluatedItems check with evaluated count %d, "+
+			"but the anyOf branch evaluates position 1 when it matches: [\"a\",\"bb\"] would be rejected though it conforms",
+			fu.Def.EvaluatedCount)
+	}
+}
+
+// TestNestedTuplePositionsAreChecked covers the tuple written as an array's
+// element rather than as a property. The Go type there is a []any inside a
+// [][]any, so it is neither a field the struct-level checks can name nor a type
+// with a Validate to dispatch to, and its positions were checked nowhere:
+// {"arr":[[7]]} was accepted where position 0 has to be a string.
+func TestNestedTuplePositionsAreChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"arr": {"type":"array", "items":{
+				"type":"array",
+				"prefixItems":[{"type":"string"}],
+				"unevaluatedItems":{"type":"integer"}
+			}}
+		},
+		"required": ["arr"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	iv := itemValidationFor(t, doc, "arr")
+	if len(iv.Levels) != 1 {
+		t.Fatalf("arr: %d levels, want 1 -- the descent stops at the tuple, since `items` there governs only its tail", len(iv.Levels))
+	}
+	level := iv.Levels[0]
+	if !level.HasTupleItems() {
+		t.Fatalf("arr elements are tuples, but the level carries no positions: %+v", level)
+	}
+	if len(level.TupleItems) != 1 || level.TupleItems[0].JSONType != "string" {
+		t.Fatalf("arr element positions = %+v, want one string position", level.TupleItems)
+	}
+	if level.UnevalItems == nil || level.UnevalItems.ValueType != "integer" {
+		t.Fatalf("arr element unevaluatedItems = %+v, want an integer check", level.UnevalItems)
+	}
+	if level.UnevalItems.EvaluatedCount != 1 {
+		t.Fatalf("arr element evaluated count = %d, want 1", level.UnevalItems.EvaluatedCount)
+	}
+}
+
+// TestOverflowMapOfTuplesChecksItsPositions covers the position where the fix
+// for #92 and the fix for #94 meet: a schema-valued `additionalProperties`
+// sitting beside declared properties, whose values are themselves tuples.
+//
+// Neither fix reaches it alone. #92 gave the overflow map a per-value descent;
+// #94 taught that descent to check a tuple element's positions. But #94 named
+// the types those positions materialize into from the *field* the container
+// came from, and the overflow map is not a field -- it is reached only through
+// the keyword. So the two had to agree on where the name comes from, and the
+// descent takes it as a prefix each caller supplies: the overflow map passes
+// the one its value type was already resolved under, name+"Value".
+//
+// Without that agreement the positions are either unchecked or minted under a
+// name that collides with another container's. This pins both halves: that the
+// positions are checked at all, and that they are named under the owning
+// struct.
+func TestOverflowMapOfTuplesChecksItsPositions(t *testing.T) {
+	// Position 0 states a type and nothing else, so it is checked inline by
+	// JSONType; position 1 carries a keyword and so has to materialize a type of
+	// its own. Both routes run through the prefix, so both are asserted.
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type":"string"}},
+		"additionalProperties": {
+			"type": "array",
+			"prefixItems": [{"type":"string"},{"type":"integer","minimum":5}]
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	iv := overflowValidationFor(t, doc)
+	if iv.PathName != "additionalProperties" {
+		t.Fatalf("overflow PathName = %q, want %q -- the map is no declared property and must report under its keyword", iv.PathName, "additionalProperties")
+	}
+	if !iv.OwnsOutermost {
+		t.Fatalf("overflow definition does not own its outermost element; nothing else dispatches to it, so its values would go unchecked")
+	}
+	if len(iv.Levels) != 1 {
+		t.Fatalf("overflow: %d levels, want 1 -- the descent stops at the tuple: %+v", len(iv.Levels), iv.Levels)
+	}
+
+	level := iv.Levels[0]
+	if !level.IsMap {
+		t.Fatalf("overflow level 0 is not a map; its error path would index a string key with %%d")
+	}
+	if !level.HasTupleItems() {
+		t.Fatalf("the overflow map's values are tuples, but the level carries no positions: %+v -- {\"zz\":[\"a\",1]} would be accepted with both positions violated", level)
+	}
+	if len(level.TupleItems) != 2 {
+		t.Fatalf("overflow value positions = %+v, want 2", level.TupleItems)
+	}
+	// Position 0: checked inline, so the type constraint has to be stated here.
+	if got := level.TupleItems[0].JSONType; got != "string" {
+		t.Fatalf("overflow position 0 JSONType = %q, want %q -- nothing else says the position must be a string", got, "string")
+	}
+
+	// Position 1: its `minimum` can only be enforced by a type of its own, and
+	// that type's name is what the prefix decides. Naming it outside the owning
+	// struct is how two containers come to mint the same name.
+	pos1 := level.TupleItems[1]
+	if pos1.TypeName == "" {
+		t.Fatalf("overflow position 1 materialized no type, so its minimum is enforced nowhere: %+v", pos1)
+	}
+	if !strings.HasPrefix(pos1.TypeName, "Doc") {
+		t.Fatalf("overflow position 1 type %q is not named under the owning struct; a name minted outside it can collide with another container's", pos1.TypeName)
+	}
 }

@@ -185,7 +185,10 @@ fuzz: download-test-suite
 #                                         already known to mishandle them.
 #                                         Expected to fail: it is what keeps
 #                                         each exclusion honest rather than a
-#                                         claim in a comment.
+#                                         claim in a comment. There are no such
+#                                         exclusions at present -- the last of
+#                                         them went with issue #92 -- so the
+#                                         variable currently changes nothing.
 #
 #   SCHEMAGEN_COGEN_BOWTIE=1              cross-check every (schema, instance)
 #                                         pair against independent JSON Schema

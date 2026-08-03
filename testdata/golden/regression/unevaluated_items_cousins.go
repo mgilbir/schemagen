@@ -28,6 +28,10 @@ func (u UnevaluatedItemsCousins) MarshalJSON() ([]byte, error) {
 
 func (u UnevaluatedItemsCousins) Raw() json.RawMessage { return u._raw }
 
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (u UnevaluatedItemsCousins) IsZero() bool { return len(u._raw) == 0 }
+
 func (u UnevaluatedItemsCousins) String() string { return string(u._raw) }
 
 // UnevaluatedItemsCousinsSchema is the schema UnevaluatedItemsCousins validates against.

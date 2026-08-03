@@ -16,6 +16,21 @@ const (
 {{- end}}
 )
 {{- $recv := receiverName .Name}}
+{{- if .IntegerToken}}
+
+// UnmarshalJSON decodes an integer written any way its draft allows -- 1, 1.0
+// or 1e0 all name the same member from draft 6 on. Without it the bare named
+// type is an int64 to encoding/json, which takes only the first spelling, and
+// the enum would reject a document its own schema admits.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	var _iv jsonInteger
+	if _err := _iv.UnmarshalJSON(data); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.Name}}(_iv)
+	return nil
+}
+{{- end}}
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {

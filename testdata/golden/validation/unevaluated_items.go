@@ -5,14 +5,80 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 )
 
+// UnevaluatedItemsTestAllofExtendedTuple accepts any JSON value. Its unevaluatedItems constraint depends on
+// which items the schema's applicators evaluate for the value being validated,
+// so the schema is held as data and interpreted at validation time.
+type UnevaluatedItemsTestAllofExtendedTuple struct {
+	_raw json.RawMessage
+}
+
+func (u *UnevaluatedItemsTestAllofExtendedTuple) UnmarshalJSON(data []byte) error {
+	u._raw = append(u._raw[:0], data...)
+	return nil
+}
+
+func (u UnevaluatedItemsTestAllofExtendedTuple) MarshalJSON() ([]byte, error) {
+	if len(u._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return u._raw, nil
+}
+
+func (u UnevaluatedItemsTestAllofExtendedTuple) Raw() json.RawMessage { return u._raw }
+
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (u UnevaluatedItemsTestAllofExtendedTuple) IsZero() bool { return len(u._raw) == 0 }
+
+func (u UnevaluatedItemsTestAllofExtendedTuple) String() string { return string(u._raw) }
+
+// UnevaluatedItemsTestAllofExtendedTupleSchema is the schema UnevaluatedItemsTestAllofExtendedTuple validates against.
+var UnevaluatedItemsTestAllofExtendedTupleSchema = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			PrefixItems: []_schemaNode{
+				_schemaNode{
+					Type: "string",
+				},
+			},
+			Type: "array",
+		},
+		_schemaNode{
+			PrefixItems: []_schemaNode{
+				_schemaNode{
+					Type: "string",
+				},
+				_schemaNode{
+					Type: "integer",
+				},
+			},
+			Type: "array",
+		},
+	},
+	UnevaluatedItems: _node(_schemaNode{Boolean: _boolPtr(false)}),
+}
+
+// Validate checks UnevaluatedItemsTestAllofExtendedTuple against its JSON Schema constraints.
+func (u UnevaluatedItemsTestAllofExtendedTuple) Validate() error {
+	var _v any
+	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+		return fmt.Errorf("cannot decode value: %w", _err)
+	}
+	if !_evalNode(&UnevaluatedItemsTestAllofExtendedTupleSchema, _v).ok {
+		return fmt.Errorf("value does not satisfy the schema")
+	}
+	return nil
+}
+
 type UnevaluatedItemsTest struct {
-	AllofExtendedTuple   []any                      `json:"allof_extended_tuple,omitzero"`
-	StrictTuple          []any                      `json:"strict_tuple,omitzero"`
-	TypedOverflow        []any                      `json:"typed_overflow,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	AllofExtendedTuple   UnevaluatedItemsTestAllofExtendedTuple `json:"allof_extended_tuple,omitzero"`
+	StrictTuple          []any                                  `json:"strict_tuple,omitzero"`
+	TypedOverflow        []any                                  `json:"typed_overflow,omitzero"`
+	AdditionalProperties map[string]json.RawMessage             `json:"-"`
+	_jsonKeys            map[string]bool                        // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
@@ -84,6 +150,70 @@ func (u UnevaluatedItemsTest) Validate() error {
 	if u._jsonKeys["strict_tuple"] {
 		if len(u.StrictTuple) > 2 {
 			return fmt.Errorf("strict_tuple: has %d items, maximum is 2", len(u.StrictTuple))
+		}
+	}
+	// An optional property the source JSON did not carry left its Go zero
+	// behind, which is not a value the schema ever saw. _jsonKeys records the
+	// keys the JSON had; when nil the value was not built from JSON and
+	// presence is unknowable, so the check still runs.
+	if u._jsonKeys == nil || u._jsonKeys["allof_extended_tuple"] {
+		if err := u.AllofExtendedTuple.Validate(); err != nil {
+			return fmt.Errorf("allof_extended_tuple.%w", err)
+		}
+	}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range u.StrictTuple {
+		_ = _elem
+		if _idx == 0 {
+			if _, _cvOk := _elem.(string); !_cvOk {
+				return fmt.Errorf("strict_tuple: items[%d]: expected string, got %T", _idx, _elem)
+			}
+		}
+		if _idx == 1 {
+			_cv, _cvOk := _elem.(float64)
+			if !_cvOk || _cv != math.Trunc(_cv) {
+				return fmt.Errorf("strict_tuple: items[%d]: expected integer, got %T", _idx, _elem)
+			}
+		}
+	}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range u.TypedOverflow {
+		_ = _elem
+		if _idx == 0 {
+			if _, _cvOk := _elem.(string); !_cvOk {
+				return fmt.Errorf("typed_overflow: items[%d]: expected string, got %T", _idx, _elem)
+			}
+		}
+		if _idx == 1 {
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("typed_overflow: items[%d]: expected number, got %T", _idx, _elem)
+			}
+		}
+	}
+	// unevaluatedItems validation
+	{
+		evaluatedCount := 2
+		allEvaluated := false
+		if !allEvaluated && len(u.StrictTuple) > evaluatedCount {
+			return fmt.Errorf("strict_tuple: unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len(u.StrictTuple)-evaluatedCount, evaluatedCount)
+		}
+	}
+	// unevaluatedItems validation
+	{
+		evaluatedCount := 2
+		allEvaluated := false
+		if !allEvaluated && len(u.TypedOverflow) > evaluatedCount {
+			for _ui := evaluatedCount; _ui < len(u.TypedOverflow); _ui++ {
+				_uiElem := any(u.TypedOverflow[_ui])
+				_ = _uiElem
+				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
+				if _uiMarshalErr != nil {
+					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
+				}
+				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: must be a string", _ui)
+				}
+			}
 		}
 	}
 	return nil

@@ -625,10 +625,20 @@ const coStrictExtraName = "zzUndeclared"
 // was added to say. Dropping it here is narrower than dropping maxProperties
 // from the configuration: the bound keeps its own mutant, and the ban keeps
 // being exercised at every other object in the same document.
+//
+// An object carrying a schema-valued additionalProperties is skipped for a
+// different reason again: StrictProperties adds no rule there at all. The flag
+// reads "treat *absent* additionalProperties as false", and this object states
+// one, so the added key is not banned but governed -- by a subschema that types
+// the overflow map, into which the mutant's string value cannot decode. The
+// verdict is UNMARSHAL, correctly and by construction, and nothing about the
+// configuration under test is being asked. The subschema keeps its own mutant
+// (coExtraAddlSchema's), which moves a value rather than its type and so lands
+// in Validate where it belongs.
 func coExtraPropertyMutations(d *coDoc) []coMutation {
 	var out []coMutation
 	for _, o := range coObjectPaths(d) {
-		if o.node.maxPropsActive() {
+		if o.node.maxPropsActive() || o.node.addlSchemaActive() {
 			continue
 		}
 		out = append(out, coMutation{

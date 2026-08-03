@@ -110,12 +110,21 @@ func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error
 	type Alias OneOfObjectVariantConstraintsAOption1
 	aux := &struct {
 		*Alias
+		Y *jsonInteger `json:"y"`
 	}{
 		Alias: (*Alias)(o),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Y != nil {
+		_iv := *aux.Y
+		o.Y = int64(_iv)
 	}
 	{
 		var raw map[string]json.RawMessage

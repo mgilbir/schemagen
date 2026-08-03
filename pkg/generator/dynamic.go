@@ -2,6 +2,7 @@ package generator
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -398,6 +399,15 @@ func objectConditionalBranchLenient(keyword string, s *schema.Schema) *ObjectCon
 		})
 	}
 	return branch
+}
+
+// dependentSchemaKeyword names a dependentSchemas branch in an error message,
+// the way "then" and "else" name the two sides of an object-level conditional.
+// The trigger is quoted the way the other dependentSchema messages quote it;
+// the emitter escapes the whole string before it reaches a format literal, so a
+// trigger carrying a quote or a percent sign cannot break the generated source.
+func dependentSchemaKeyword(trigger string) string {
+	return fmt.Sprintf("dependentSchema %q", trigger)
 }
 
 // objectConditionalDef builds the check for an object-level if/then/else, or

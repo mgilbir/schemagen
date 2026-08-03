@@ -612,3 +612,68 @@ func TestNamedStringPropertyWithStringConstraintsCompiles(t *testing.T) {
 		t.Errorf("generated output does not compile: %v\n%s", err, buildOut)
 	}
 }
+
+// A cross-package $ref to a type whose zero has no representation -- an alias
+// over time.Time -- must still get the pointer that tells absent from present.
+//
+// The referencing package cannot look inside the owning package's type, so it
+// reads what the owner published. That answer used to be *derived* in the
+// consumer from the published zero *literal*: a literal of `""`, "0" or "false"
+// meant zero-lossy, anything else meant not. An alias over time.Time is a
+// struct and has no literal at all, so it read as "not" and the field came out
+// a value -- which omitempty never omits, so an absent optional date-time would
+// be invented into the output as "0001-01-01T00:00:00Z".
+//
+// This compiles either way, which is why the assertion is on the field's
+// declared type rather than on the build succeeding.
+func TestMultiPackageForeignZeroLossyTypeIsPointerWrapped(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/a.json",
+		"title": "ADoc",
+		"type": "object",
+		"definitions": {
+			"stamp": {"type": "string", "format": "date-time"},
+			"addr": {"type": "string", "format": "ipv4"},
+			"label": {"type": "string"}
+		}
+	}`)
+	writeFile(t, filepath.Join(src, "b.json"), `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://ex.test/b.json",
+		"title": "BDoc",
+		"type": "object",
+		"properties": {
+			"s": {"$ref": "https://ex.test/a.json#/definitions/stamp"},
+			"a": {"$ref": "https://ex.test/a.json#/definitions/addr"},
+			"l": {"$ref": "https://ex.test/a.json#/definitions/label"}
+		}
+	}`)
+
+	out := t.TempDir()
+	if err := runGenerateArgs(t, filepath.Join(src, "a.json"), filepath.Join(src, "b.json"),
+		"-o", out,
+		"--schema-package", "https://ex.test/a.json=example.com/m/apkg",
+		"--schema-package", "https://ex.test/b.json=example.com/m/bpkg",
+		"--root-name", "a.json=ADoc", "--root-name", "b.json=BDoc",
+	); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	bOut, err := os.ReadFile(filepath.Join(out, "bpkg", "b.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The string alias is the control: it has always been pointer-wrapped, by
+	// the literal route, so a change that lost the pointer for everything would
+	// not look like this defect.
+	for _, want := range []string{"*apkg.Stamp", "*apkg.Addr", "*apkg.Label"} {
+		if !strings.Contains(string(bOut), want) {
+			t.Errorf("optional foreign field should be declared %s:\n%s", want, bOut)
+		}
+	}
+	if buildOut, err := buildGenerated(t, out, "example.com/m"); err != nil {
+		t.Errorf("generated multi-package output does not compile: %v\n%s", err, buildOut)
+	}
+}

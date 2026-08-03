@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WholeObjectMapPositions",
+  "$defs": {
+    "PlainMap": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}
+  },
+  "type": "object",
+  "properties": {
+    "prop": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}},
+    "ref": {"$ref": "#/$defs/PlainMap"},
+    "inItems": {"type": "array", "items": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}},
+    "mapValue": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}},
+    "nullable": {"type": ["object", "null"], "additionalProperties": {"type": "string", "minLength": 2}},
+    "noType": {"additionalProperties": {"type": "string", "minLength": 2}},
+    "inAllOf": {"allOf": [{"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}]},
+    "inTuple": {"type": "array", "prefixItems": [{"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}]},
+    "nested": {"type": "object", "properties": {"inner": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}}},
+    "inOneOf": {"oneOf": [{"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}, {"type": "integer"}]}
+  },
+  "additionalProperties": {"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}
+}

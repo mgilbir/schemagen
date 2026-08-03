@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfInlinePositions",
+  "description": "A single-branch allOf written inline, in every position that resolves a type rather than naming one",
+  "type": "object",
+  "properties": {
+    "chain": { "allOf": [{ "$ref": "#/$defs/Stamp" }] },
+    "pick": { "allOf": [{ "$ref": "#/$defs/Colour" }] },
+    "ip": { "allOf": [{ "$ref": "#/$defs/Addr" }] },
+    "raw": { "allOf": [{ "$ref": "#/$defs/RawEnum" }] },
+    "lvl": { "allOf": [{ "const": "high" }] },
+    "nested": { "allOf": [{ "allOf": [{ "$ref": "#/$defs/Stamp" }] }] },
+    "list": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/Stamp" }] } },
+    "map": { "type": "object", "additionalProperties": { "allOf": [{ "$ref": "#/$defs/Colour" }] } },
+    "tuple": { "type": "array", "prefixItems": [{ "allOf": [{ "$ref": "#/$defs/Stamp" }] }] },
+    "union": { "oneOf": [{ "allOf": [{ "$ref": "#/$defs/Colour" }] }, { "type": "integer" }] }
+  },
+  "$defs": {
+    "Stamp": { "type": "string", "format": "date-time" },
+    "Colour": { "type": "string", "enum": ["red", "green"] },
+    "Addr": { "type": "string", "format": "ipv4" },
+    "RawEnum": { "enum": ["a", 1, null] }
+  }
+}

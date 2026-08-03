@@ -12,11 +12,12 @@ type HelperSet struct {
 	Dynamic            bool // _dyn* value predicates
 	DynamicConst       bool // _dynConstOK, only reached by object-level conditionals
 	Annotations        bool // _schemaNode and the runtime annotation evaluator
+	Integer            bool // jsonInteger and the shape-preserving converters
 }
 
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
-	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations
+	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer
 }
 
 // Merge folds another set into this one.
@@ -26,6 +27,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Dynamic = h.Dynamic || other.Dynamic
 	h.DynamicConst = h.DynamicConst || other.DynamicConst
 	h.Annotations = h.Annotations || other.Annotations
+	h.Integer = h.Integer || other.Integer
 }
 
 // Helpers reports which shared helpers this file's generated code calls.
@@ -39,10 +41,35 @@ func (f *File) Helpers() HelperSet {
 			// The evaluator calls the _dyn* predicates.
 			set.Annotations = true
 			set.Dynamic = true
+		case *AliasDef:
+			if d.IntegerDecode != nil {
+				set.Integer = true
+			}
+		case *EnumDef:
+			if d.IntegerToken {
+				set.Integer = true
+			}
 		case *StructDef:
+			for i := range d.Fields {
+				if d.Fields[i].IntegerDecode != nil {
+					set.Integer = true
+				}
+			}
+			if d.AdditionalProperties != nil && d.AdditionalProperties.IntegerDecode != nil {
+				set.Integer = true
+			}
+			for _, o := range d.OneOfs {
+				for _, v := range o.Variants {
+					if v.IntegerDecode != nil {
+						set.Integer = true
+					}
+				}
+			}
 			// Object-level if/then/else checks call the _dyn* predicates against
-			// each property's decoded value.
-			if d.HasObjectConditionals() {
+			// each property's decoded value, and so does a dependentSchemas
+			// branch: it is the same branch definition, gated on a key's
+			// presence rather than on an `if`.
+			if d.HasObjectConditionals() || d.HasDependentSchemaBranches() {
 				set.Dynamic = true
 				if d.anyConditionalCheck(func(c DynamicCheck) bool { return c.Kind == "const" }) {
 					set.DynamicConst = true

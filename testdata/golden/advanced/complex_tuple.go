@@ -16,8 +16,15 @@ func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Timestamp")
 	}
-	type Alias Timestamp
-	return json.Unmarshal(data, (*Alias)(t))
+	var _target time.Time
+	if _err := json.Unmarshal(data, &_target); _err != nil {
+		return _err
+	}
+	*t = Timestamp(_target)
+	return nil
+}
+func (t Timestamp) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Time(t))
 }
 
 // Validate checks Timestamp against its JSON Schema constraints.
@@ -81,12 +88,21 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 	type Alias EventRecordItem2
 	aux := &struct {
 		*Alias
+		Code **jsonInteger `json:"code"`
 	}{
 		Alias: (*Alias)(e),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Code != nil {
+		_iv := *aux.Code
+		e.Code = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
 		var raw map[string]json.RawMessage

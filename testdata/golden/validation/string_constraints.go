@@ -26,12 +26,21 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 	type Alias UserProfile
 	aux := &struct {
 		*Alias
+		Age **jsonInteger `json:"age"`
 	}{
 		Alias: (*Alias)(u),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Age != nil {
+		_iv := *aux.Age
+		u.Age = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
 		var raw map[string]json.RawMessage

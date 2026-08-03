@@ -3,7 +3,7 @@
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
@@ -29,6 +29,16 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		return _err
 	}
 	*{{$recv}} = {{.Name}}(_target)
+	return nil
+	{{- else if .IntegerDecode}}
+	// A named container of integers. Decoding through the shadow is what lets a
+	// number written 1.0 reach the int64 the schema asked for -- encoding/json
+	// decides from the destination type, and []int64 refuses it outright.
+	var _iv {{goType .IntegerDecode.ShadowType}}
+	if _err := json.Unmarshal(data, &_iv); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.IntegerDecode.Convert}}
 	return nil
 	{{- else if .IsIntegerType}}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
@@ -68,6 +78,125 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	return json.Marshal({{.MarshalAs}}({{$recv}}))
 }
+{{- end}}
+
+{{/*
+alias_format_check emits a "format" assertion against the alias's own value.
+
+It is the same set of checks the struct-field arm of the validation template
+applies, written over the receiver instead of over a field, and it exists because
+a format behind a $ref used to be enforced nowhere: the rule reached the alias's
+Validations and the template had no arm to emit it, so `type V4 netip.Addr` and
+`type Email string` both validated to `return nil` while the identical schema
+inlined as a property was checked.
+
+The string arms keep the field arm's `!= ""` guard deliberately. It is a
+looseness -- "" is not a valid email -- but it is the same looseness the sibling
+position has, and the two must agree: an alias that rejected "" where an inline
+property accepted it would be a false rejection reachable by moving a subschema
+behind a $ref. Changing the convention is a decision for both arms at once.
+
+Which conversion is legal here is settled before emission by
+aliasFormatCheckable, which keeps a format rule only when the alias's underlying
+type is the one the check reads.
+*/}}
+{{define "alias_format_check"}}
+{{- $recv := .Recv}}
+{{- $v := printf "string(%s)" $recv}}
+{{- if eq .Value "date"}}
+if {{$v}} != "" {
+	if _, _err := time.Parse("2006-01-02", {{$v}}); _err != nil {
+		return fmt.Errorf("value: %q is not a valid date (YYYY-MM-DD): %w", {{$v}}, _err)
+	}
+}
+{{- end}}
+{{- if eq .Value "time"}}
+if {{$v}} != "" {
+	_valid := false
+	for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
+		if _, _err := time.Parse(_layout, {{$v}}); _err == nil {
+			_valid = true
+			break
+		}
+	}
+	if !_valid {
+		return fmt.Errorf("value: %q is not a valid time (HH:MM:SS or with offset)", {{$v}})
+	}
+}
+{{- end}}
+{{- if or (eq .Value "email") (eq .Value "idn-email")}}
+if {{$v}} != "" {
+	if _, _err := mail.ParseAddress({{$v}}); _err != nil {
+		return fmt.Errorf("value: %q is not a valid email address: %w", {{$v}}, _err)
+	}
+}
+{{- end}}
+{{- if or (eq .Value "uri") (eq .Value "iri")}}
+if {{$v}} != "" {
+	if _u, _err := url.Parse({{$v}}); _err != nil || _u.Scheme == "" {
+		return fmt.Errorf("value: %q is not a valid URI", {{$v}})
+	}
+}
+{{- end}}
+{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
+if {{$v}} != "" {
+	if _, _err := url.Parse({{$v}}); _err != nil {
+		return fmt.Errorf("value: %q is not a valid URI reference", {{$v}})
+	}
+}
+{{- end}}
+{{- if eq .Value "uuid"}}
+if {{$v}} != "" {
+	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$v}}) {
+		return fmt.Errorf("value: %q is not a valid UUID", {{$v}})
+	}
+}
+{{- end}}
+{{- if or (eq .Value "hostname") (eq .Value "idn-hostname")}}
+if {{$v}} != "" {
+	if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$v}}) {
+		return fmt.Errorf("value: %q is not a valid hostname", {{$v}})
+	}
+}
+{{- end}}
+{{- if eq .Value "json-pointer"}}
+if {{$v}} != "" {
+	if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$v}}) {
+		return fmt.Errorf("value: %q is not a valid JSON Pointer", {{$v}})
+	}
+}
+{{- end}}
+{{- if eq .Value "relative-json-pointer"}}
+if {{$v}} != "" {
+	if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$v}}) {
+		return fmt.Errorf("value: %q is not a valid relative JSON Pointer", {{$v}})
+	}
+}
+{{- end}}
+{{- if eq .Value "regex"}}
+if {{$v}} != "" {
+	if _, _err := regexp.Compile({{$v}}); _err != nil {
+		return fmt.Errorf("value: %q is not a valid regex: %w", {{$v}}, _err)
+	}
+}
+{{- end}}
+{{- if eq .Value "duration"}}
+if {{$v}} != "" {
+	if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$v}}) {
+		return fmt.Errorf("value: %q is not a valid ISO 8601 duration", {{$v}})
+	}
+}
+{{- end}}
+{{- if eq .Value "ipv4"}}
+if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is4() {
+	return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
+}
+{{- end}}
+{{- if eq .Value "ipv6"}}
+if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is6() {
+	return fmt.Errorf("value: %q is not a valid IPv6 address", _a)
+}
+{{- end}}
 {{- end}}
 
 {{define "alias_validate"}}
@@ -124,6 +253,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("value: %q does not match pattern %s", {{$recv}}, {{printf "%q" .Value}})
 	}
 	{{- end}}
+	{{- if eq .RuleType "format"}}
+	{{- template "alias_format_check" (mkAliasFormatCtx $recv .)}}
+	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$recv}}) < {{.Value}} {
 		return fmt.Errorf("value: has %d items, minimum is {{.Value}}", len({{$recv}}))
@@ -152,64 +284,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if .HasTupleItems}}
-	// Tuple items: validate each position against its schema type.
-	for _idx, _elem := range {{$recv}} {
-		_ = _elem
-		{{- range $i, $ti := .TupleItems}}
-		{{- if $ti.IsFalse}}
-		if _idx == {{$i}} {
-			return fmt.Errorf("items[%d]: value is not allowed (schema is false)", _idx)
-		}
-		{{- else if $ti.TypeName}}
-		if _idx == {{$i}} {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
-			}
-			var _typed {{$ti.TypeName}}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
-			}
-		}
-		{{- else if $ti.JSONType}}
-		if _idx == {{$i}} {
-			{{- if eq $ti.JSONType "integer"}}
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
-				return fmt.Errorf("items[%d]: expected integer, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "number"}}
-			if _, _cvOk := _elem.(float64); !_cvOk {
-				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "string"}}
-			if _, _cvOk := _elem.(string); !_cvOk {
-				return fmt.Errorf("items[%d]: expected string, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "boolean"}}
-			if _, _cvOk := _elem.(bool); !_cvOk {
-				return fmt.Errorf("items[%d]: expected boolean, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "null"}}
-			if _elem != nil {
-				return fmt.Errorf("items[%d]: expected null, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "array"}}
-			if _, _cvOk := _elem.([]any); !_cvOk {
-				return fmt.Errorf("items[%d]: expected array, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "object"}}
-			if _, _cvOk := _elem.(map[string]any); !_cvOk {
-				return fmt.Errorf("items[%d]: expected object, got %T", _idx, _elem)
-			}
-			{{- end}}
-		}
-		{{- end}}
-		{{- end}}
-	}
+	{{- template "tuple_items_check" (mkTupleCtx $recv "items" .TupleItems .TupleTail)}}
 	{{- end}}
 	{{- if .HasItemValidations}}
 	{{- template "item_validations" (mkItemCtx $recv .ItemValidations)}}
@@ -328,59 +403,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- template "contains_check" (mkContainsCtx $recv "contains" .Contains .MinContains .MaxContains)}}
 	{{- end}}
 	{{- if .HasUnevaluatedItems}}
-	// unevaluatedItems validation
-	{
-		evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
-		allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
-		if !allEvaluated && len({{$recv}}) > evaluatedCount {
-			{{- if .UnevaluatedItems.IsForbidden}}
-			return fmt.Errorf("unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len({{$recv}})-evaluatedCount, evaluatedCount)
-			{{- else}}
-			for _ui := evaluatedCount; _ui < len({{$recv}}); _ui++ {
-				_uiElem := any({{$recv}}[_ui])
-				_ = _uiElem
-				{{- if .UnevaluatedItems.ValueType}}
-				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
-				if _uiMarshalErr != nil {
-					return fmt.Errorf("unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
-				}
-				{{- if eq .UnevaluatedItems.ValueType "string"}}
-				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "integer"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "number"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
-				_uiString := string(_uiBytes)
-				if _uiString != "true" && _uiString != "false" {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "object"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an object", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "array"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an array", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "null"}}
-				if string(_uiBytes) != "null" {
-					return fmt.Errorf("unevaluatedItems[%d]: must be null", _ui)
-				}
-				{{- end}}
-				{{- end}}
-			}
-			{{- end}}
-		}
-	}
+	{{- template "uneval_items_check" (mkUnevalItemsCtx $recv "unevaluatedItems" .UnevaluatedItems)}}
 	{{- end}}
 	return nil
 }

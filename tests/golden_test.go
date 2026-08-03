@@ -77,6 +77,10 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/pp_pattern_ecma", "testdata/schemas/regression/pp_pattern_ecma.json", "testdata/golden/regression/pp_pattern_ecma.go"},
 		{"regression/unevaluated_properties_pattern", "testdata/schemas/regression/unevaluated_properties_pattern.json", "testdata/golden/regression/unevaluated_properties_pattern.go"},
 		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
+		// Pins which patternProperties buckets get a type of their own and which
+		// keep the in-place scalar rules, and that a type minted for a bucket that
+		// cannot carry a Validate is not left declared in the file.
+		{"regression/pattern_value_subschemas", "testdata/schemas/regression/pattern_value_subschemas.json", "testdata/golden/regression/pattern_value_subschemas.go"},
 		{"regression/field_name_collisions", "testdata/schemas/regression/field_name_collisions.json", "testdata/golden/regression/field_name_collisions.go"},
 		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
 		{"regression/untyped_oneof_branches", "testdata/schemas/regression/untyped_oneof_branches.json", "testdata/golden/regression/untyped_oneof_branches.go"},
@@ -84,6 +88,14 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/unevaluated_items_anyof", "testdata/schemas/regression/unevaluated_items_anyof.json", "testdata/golden/regression/unevaluated_items_anyof.go"},
 		{"regression/unevaluated_items_cousins", "testdata/schemas/regression/unevaluated_items_cousins.json", "testdata/golden/regression/unevaluated_items_cousins.go"},
 		{"regression/array_item_constraints", "testdata/schemas/regression/array_item_constraints.json", "testdata/golden/regression/array_item_constraints.go"},
+		{"regression/format_alias_positions", "testdata/schemas/regression/format_alias_positions.json", "testdata/golden/regression/format_alias_positions.go"},
+		{"regression/format_alias_root", "testdata/schemas/regression/format_alias_root.json", "testdata/golden/regression/format_alias_root.go"},
+		{"regression/format_map_values", "testdata/schemas/regression/format_map_values.json", "testdata/golden/regression/format_map_values.go"},
+		{"regression/enum_alias_delegation", "testdata/schemas/regression/enum_alias_delegation.json", "testdata/golden/regression/enum_alias_delegation.go"},
+		{"regression/format_alias_assertions", "testdata/schemas/regression/format_alias_assertions.json", "testdata/golden/regression/format_alias_assertions.go"},
+		{"regression/allof_single_branch_type", "testdata/schemas/regression/allof_single_branch_type.json", "testdata/golden/regression/allof_single_branch_type.go"},
+		{"regression/allof_inline_positions", "testdata/schemas/regression/allof_inline_positions.json", "testdata/golden/regression/allof_inline_positions.go"},
+		{"regression/allof_bound_only", "testdata/schemas/regression/allof_bound_only.json", "testdata/golden/regression/allof_bound_only.go"},
 	}
 }
 

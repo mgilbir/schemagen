@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmptyObjectPositions",
+  "$defs": {
+    "E": {"type": "object", "additionalProperties": false}
+  },
+  "type": "object",
+  "properties": {
+    "prop": {"type": "object", "additionalProperties": false},
+    "ref": {"$ref": "#/$defs/E"},
+    "inItems": {"type": "array", "items": {"type": "object", "additionalProperties": false}},
+    "mapValue": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false}},
+    "nullable": {"type": ["object", "null"], "additionalProperties": false},
+    "noType": {"additionalProperties": false},
+    "inAllOf": {"allOf": [{"type": "object", "additionalProperties": false}]},
+    "inTuple": {"type": "array", "prefixItems": [{"type": "object", "additionalProperties": false}]},
+    "nested": {"type": "object", "properties": {"inner": {"type": "object", "additionalProperties": false}}},
+    "inOneOf": {"oneOf": [{"type": "object", "additionalProperties": false}, {"type": "integer"}]},
+    "inPattern": {"type": "object", "patternProperties": {"^b": {"type": "object", "additionalProperties": false}}},
+    "permissive": {"type": "object", "additionalProperties": true}
+  }
+}
