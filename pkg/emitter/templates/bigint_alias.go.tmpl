@@ -252,11 +252,23 @@ the arbitrary-precision value.
 Only the numeric keywords are emitted. A branch keyword that speaks about
 strings or arrays does not constrain an integer at all -- under JSON Schema it
 is satisfied vacuously -- so leaving variantValid alone is what the branch
-actually asserts, not a check being dropped.
+actually asserts, not a check being dropped. The generator drops those keywords
+before they reach here (ruleVacuousForType); the emission side stays selective
+so a rule arriving from elsewhere cannot be read as a numeric bound.
+
+"never" is the one branch that asserts nothing and matches nothing: its own
+"type" excludes every integer, so it is counted as unmatched rather than
+dropped, because a oneOf whose branches are all impossible is satisfied by no
+value at all.
 */}}
 {{define "bigint_alias_variant_checks"}}
 {{- $recv := .Recv -}}
 {{- range .Rules}}
+{{- if eq .RuleType "never"}}
+// The branch's own "type" excludes every value this type can hold, so the
+// branch matches nothing.
+variantValid = false
+{{- end}}
 {{- if eq .RuleType "minimum"}}
 {
 	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())

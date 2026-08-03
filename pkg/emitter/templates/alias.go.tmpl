@@ -222,6 +222,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if !anyOfValid {
 			variantValid := true
 			{{- range $variant}}
+			{{- if eq .RuleType "never"}}
+			// The branch's own "type" excludes every value this type can hold,
+			// so the branch matches nothing.
+			variantValid = false
+			{{- end}}
 			{{- if eq .RuleType "minLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
 			{{- end}}
@@ -272,6 +277,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{
 			variantValid := true
 			{{- range $variant}}
+			{{- if eq .RuleType "never"}}
+			// The branch's own "type" excludes every value this type can hold,
+			// so the branch matches nothing.
+			variantValid = false
+			{{- end}}
 			{{- if eq .RuleType "minLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
 			{{- end}}

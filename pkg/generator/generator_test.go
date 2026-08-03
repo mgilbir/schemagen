@@ -5690,3 +5690,277 @@ func TestOneOfScalarVariantsAreNotMarkedValidatable(t *testing.T) {
 		t.Fatalf("found %d oneOf groups, want 2 (the scalar union and the required-only union)", groups)
 	}
 }
+
+// variantRuleTypes lists the rule types of one rule set, in order.
+func variantRuleTypes(rules []ValidationRule) []string {
+	out := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, rule.RuleType)
+	}
+	return out
+}
+
+// TestOneOfBranchVacuousForTheInstanceTypeIsSatisfied pins issue #80. The
+// evaluator tested every branch against the value instead of first asking
+// whether the branch's keywords say anything about a value of that type:
+//
+//	{"type":"integer","oneOf":[{"minimum":10},{"minLength":3}]}
+//
+// minLength speaks about strings, so for an integer it is satisfied vacuously
+// and the second branch matches every integer. 20 therefore matches both
+// branches and is invalid; 5 matches only the second and is valid. Both
+// verdicts came out inverted, because the emitted check was
+// utf8.RuneCountInString(string(r)) -- which converts the number to the single
+// rune with that code point and measures that, so it failed for every integer.
+// python-jsonschema and js-ajv agree on 20=invalid, 5=valid.
+//
+// The repair is the general rule, not a special case for minLength: a branch
+// keyword outside the instance type's domain contributes no check at all, which
+// leaves the branch matching everything -- which is what it does.
+func TestOneOfBranchVacuousForTheInstanceTypeIsSatisfied(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "oneOf": [{"minimum": 10}, {"minLength": 3}]}
+		},
+		"required": ["a"]
+	}`)
+
+	alias := aliasNamed(ir, "DocA")
+	if alias == nil {
+		t.Fatalf("expected a DocA alias carrying the branches; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+	if got := variantRuleTypes(alias.OneOfVariants[0]); !containsString(got, "minimum") {
+		t.Fatalf("branch 0 rules = %v, want the minimum bound it states", got)
+	}
+	if got := variantRuleTypes(alias.OneOfVariants[1]); len(got) != 0 {
+		t.Fatalf("branch 1 rules = %v, want none: minLength says nothing about an integer, so the branch is satisfied", got)
+	}
+}
+
+// TestOneOfBranchKeywordInTheInstanceTypeIsKept is the over-reach guard for the
+// arm above. A branch keyword that *does* speak about the instance's type is
+// the whole of what the branch asserts, and dropping it would make the branch
+// match every value -- turning oneOf's count into the branch count and, for a
+// two-branch union, rejecting everything.
+func TestOneOfBranchKeywordInTheInstanceTypeIsKept(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "string", "oneOf": [{"minLength": 3}, {"maxLength": 1}]}
+		},
+		"required": ["a"]
+	}`)
+
+	alias := aliasNamed(ir, "DocA")
+	if alias == nil {
+		t.Fatalf("expected a DocA alias carrying the branches; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+	if got := variantRuleTypes(alias.OneOfVariants[0]); !containsString(got, "minLength") {
+		t.Fatalf("branch 0 rules = %v, want minLength: the value is a string, so the keyword applies", got)
+	}
+	if got := variantRuleTypes(alias.OneOfVariants[1]); !containsString(got, "maxLength") {
+		t.Fatalf("branch 1 rules = %v, want maxLength: the value is a string, so the keyword applies", got)
+	}
+}
+
+// TestOneOfBranchTypedForAnotherInstanceTypeMatchesNothing is the other half of
+// issue #80's general rule. A branch that names a type the value cannot have is
+// not vacuously satisfied -- it is unsatisfiable:
+//
+//	{"type":"integer","oneOf":[{"minimum":10},{"type":"string","minLength":3}]}
+//
+// The second branch matches no integer at all, so 20 matches exactly one branch
+// and is valid while 5 matches none and is invalid, which both reference
+// implementations confirm. Dropping the branch's minLength as vacuous without
+// also reading its "type" would leave a branch with no checks -- one that
+// matches everything -- and invert the answer a second time.
+//
+// Written at the document root because a branch that names a type is one the
+// union path can select on, so in a property position the schema becomes a
+// sealed-interface union instead of an alias carrying branch rules.
+func TestOneOfBranchTypedForAnotherInstanceTypeMatchesNothing(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "integer",
+		"oneOf": [{"minimum": 10}, {"type": "string", "minLength": 3}]
+	}`)
+
+	alias := aliasNamed(ir, "Doc")
+	if alias == nil {
+		t.Fatalf("expected a Doc alias carrying the branches; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("Doc oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+	if got := variantRuleTypes(alias.OneOfVariants[1]); !containsString(got, "never") {
+		t.Fatalf("branch 1 rules = %v, want a \"never\" rule: no integer is a string, so the branch matches nothing", got)
+	}
+}
+
+// TestOneOfBranchTheAliasCannotJudgeDropsTheWholeGroup pins the fail-closed
+// half. An enum in a branch has no expression against the alias's single value,
+// and a branch judged with one of its keywords ignored is judged as matching
+// more values than it does. Under oneOf that inflates the count, and an
+// inflated count rejects documents the schema allows: before this,
+// {"type":"string","oneOf":[{"minLength":3},{"enum":["a"]}]} rejected "abcd",
+// which both reference implementations accept.
+//
+// Emitting nothing under-enforces, which is the safe direction; emitting a
+// count built from a branch nobody read is not.
+func TestOneOfBranchTheAliasCannotJudgeDropsTheWholeGroup(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "string", "oneOf": [{"minLength": 3}, {"enum": ["a"]}]}
+		},
+		"required": ["a"]
+	}`)
+
+	alias := aliasNamed(ir, "DocA")
+	if alias == nil {
+		t.Fatalf("expected a DocA alias; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 0 {
+		t.Fatalf("DocA oneOf variants = %+v, want none: the enum branch is not expressible here and a partial count is worse than no count", alias.OneOfVariants)
+	}
+}
+
+// TestFieldKeywordVacuousForItsGoTypeIsDropped is issue #80's general rule in
+// the ordinary property position. {"type":"integer","minLength":3} says nothing
+// about the integer it types, so there is nothing to check -- and the check
+// that was emitted did not even compile, handing an int64 field to
+// utf8.RuneCountInString.
+func TestFieldKeywordVacuousForItsGoTypeIsDropped(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "minLength": 3},
+			"b": {"type": "string", "minLength": 3}
+		},
+		"required": ["a", "b"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, rule := range doc.Validations {
+		if rule.JSONName == "a" {
+			t.Fatalf("Doc.a kept a %q rule; minLength says nothing about an integer, and the emitted check does not compile", rule.RuleType)
+		}
+	}
+	// The over-reach guard: the same keyword on a string field is the whole of
+	// what that property asserts and must survive.
+	kept := false
+	for _, rule := range doc.Validations {
+		if rule.JSONName == "b" && rule.RuleType == "minLength" {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatalf("Doc.b lost its minLength rule; got %+v", doc.Validations)
+	}
+}
+
+// TestAliasKeywordVacuousForItsGoTypeIsDropped is the same rule at the document
+// root. {"type":"integer","minLength":3} generated `type Root int64` whose
+// Validate measured utf8.RuneCountInString(string(r)) -- one rune for any
+// integer -- and so rejected every value the schema accepts.
+func TestAliasKeywordVacuousForItsGoTypeIsDropped(t *testing.T) {
+	ir := generateForItemTest(t, `{"title":"Doc","type":"integer","minLength":3,"minimum":2}`)
+
+	alias := aliasNamed(ir, "Doc")
+	if alias == nil {
+		t.Fatalf("expected a Doc alias; got %v", ir.TypeDefs)
+	}
+	got := variantRuleTypes(alias.Validations)
+	if containsString(got, "minLength") {
+		t.Fatalf("Doc validations = %v, want no minLength: it says nothing about an integer", got)
+	}
+	if !containsString(got, "minimum") {
+		t.Fatalf("Doc validations = %v, want the minimum bound it states", got)
+	}
+}
+
+// TestOneOfRequiredOnlyVariantIsFullyChecked pins the generator half of issue
+// #81. Selection gated an object branch on the presence of its required keys
+// and never consulted anything else the branch says, so
+//
+//	{"oneOf":[{"required":["x"],"properties":{"x":{"type":"integer","minimum":10}}},
+//	          {"required":["x","y"]}]}
+//
+// counted two matches for {"x":1,"y":2} -- both branches' required keys are
+// there -- and rejected a document both reference implementations accept, since
+// x=1 violates the first branch's minimum.
+//
+// The repair narrows an already-ambiguous selection using what each branch
+// actually asserts, which is only sound when every branch in play can be
+// judged. FullyChecked is that judgement for a branch with no Validate of its
+// own: a required-only branch states nothing selection does not already test.
+func TestOneOfRequiredOnlyVariantIsFullyChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"oneOf": [
+				{"required": ["x"], "properties": {"x": {"type": "integer", "minimum": 10}}},
+				{"required": ["x", "y"]}
+			]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	union := oneOfDefFor(doc, "a")
+	if union == nil || len(union.Variants) != 2 {
+		t.Fatalf("expected a two-variant union on a; got %+v", doc.OneOfs)
+	}
+	if !union.Variants[0].Validatable {
+		t.Fatalf("variant 0 (type %s) Validatable = false; its own type is what carries the branch's minimum", union.Variants[0].Type.GoTypeName())
+	}
+	if !union.Variants[1].FullyChecked {
+		t.Fatalf("variant 1 (type %s) FullyChecked = false; the branch states only `required`, which the presence gate already tests, so selection cannot narrow and the valid document stays rejected",
+			union.Variants[1].Type.GoTypeName())
+	}
+}
+
+// TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked is the
+// over-reach guard for the arm above. Narrowing an ambiguous selection is only
+// sound while every branch that matched can be judged; a branch whose type is
+// `any` and which says something the presence gate does not test -- here an
+// enum -- is not judged by anything, and claiming it was would let the
+// narrowing pick a branch while a sibling it never read also matched.
+func TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"oneOf": [
+				{"required": ["x"], "properties": {"x": {"type": "integer", "minimum": 10}}},
+				{"required": ["y"], "enum": [1, 2]}
+			]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	union := oneOfDefFor(doc, "a")
+	if union == nil || len(union.Variants) != 2 {
+		t.Fatalf("expected a two-variant union on a; got %+v", doc.OneOfs)
+	}
+	if union.Variants[1].Validatable {
+		t.Fatalf("variant 1 (type %s) Validatable = true; the guard below assumes it has no Validate", union.Variants[1].Type.GoTypeName())
+	}
+	if union.Variants[1].FullyChecked {
+		t.Fatalf("variant 1 (type %s) FullyChecked = true; its enum is tested nowhere, so selection cannot claim to have judged the branch",
+			union.Variants[1].Type.GoTypeName())
+	}
+}

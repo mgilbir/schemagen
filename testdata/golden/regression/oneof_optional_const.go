@@ -329,6 +329,15 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isOneOfOptionalConst_P
+			var oneofStrictErr error
 
 			// Try variant: OneOfOptionalConstPOption0
 			{
@@ -337,6 +346,16 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						o.P = &OneOfOptionalConst_OneOfOptionalConstPOption0{OneOfOptionalConstPOption0: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfOptionalConst_OneOfOptionalConstPOption0{OneOfOptionalConstPOption0: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfOptionalConstPOption0: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -350,6 +369,16 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						o.P = &OneOfOptionalConst_OneOfOptionalConstPOption1{OneOfOptionalConstPOption1: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfOptionalConst_OneOfOptionalConstPOption1{OneOfOptionalConstPOption1: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfOptionalConstPOption1: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -358,6 +387,23 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("OneOfOptionalConst.P: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					o.P = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("OneOfOptionalConst.P: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("OneOfOptionalConst.P: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)

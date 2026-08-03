@@ -2397,6 +2397,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				if pt, isPrim := ft.(*PrimitiveType); isPrim && pt.Name == "any" && rules[i].RuleType != "forbidden" {
 					continue
 				}
+				// A keyword about a JSON type this field cannot hold is
+				// satisfied by every value it can, so there is nothing to
+				// check. Emitting it anyway does not even typecheck:
+				// {"type":"integer","minLength":3} hands an int64 to
+				// utf8.RuneCountInString. See ruleVacuousForType.
+				if ruleVacuousForType(ft, rules[i].RuleType) {
+					continue
+				}
 				// A raw-value wrapper keeps the value as JSON and enforces the
 				// whole schema itself, through the branch types generated from
 				// it. A field-level rule here would be both redundant and
@@ -3923,12 +3931,14 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 
 		wrapperName := ToOneOfWrapperName(parentName, name)
 
+		checks := oneOfVariantChecks(variant, result.Type)
 		variants = append(variants, OneOfVariant{
 			WrapperName:    wrapperName,
 			FieldName:      name,
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
-			Checks:         oneOfVariantChecks(variant, result.Type),
+			Checks:         checks,
+			FullyChecked:   oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
 		})
 	}
 
@@ -4241,6 +4251,118 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 		}
 	}
 	return checks
+}
+
+// oneOfSelectableKeywords are the keywords a oneOf branch may carry for
+// selection alone to decide whether the branch is satisfied.
+//
+// `required` is here because selection tests it directly, through the presence
+// gate built from the branch's required list. `type` is here because the Go type
+// the candidate decodes into can settle it. The bounds keywords are here because
+// Checks tests them against that candidate. Everything else -- properties,
+// $ref, enum, const, format, allOf, not -- is either enforced by the variant
+// type's own Validate or not enforced at all, and neither is something selection
+// can claim to have decided.
+var oneOfSelectableKeywords = map[string]bool{
+	"type": true, "required": true,
+	"minimum": true, "maximum": true,
+	"exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+	"minLength": true, "maxLength": true, "pattern": true,
+	"minItems": true, "maxItems": true,
+
+	"$schema": true, "$id": true, "title": true, "description": true,
+	"$comment": true, "default": true, "examples": true,
+	"deprecated": true, "readOnly": true, "writeOnly": true,
+}
+
+// oneOfVariantFullyChecked reports whether selection decides this branch on its
+// own, so that a candidate which matched has satisfied the branch rather than
+// merely decoded as it.
+//
+// The answer is yes only when every keyword the branch states is answered by
+// something selection actually emits: the presence gate over requiredFields, the
+// Go type the candidate decodes into, or one of checks. A keyword that is
+// vacuous for that Go type is answered too -- it is satisfied by every value the
+// candidate can hold.
+//
+// It fails closed. A branch whose type resolved to `any` while stating anything
+// beyond `required` is not decided, and neither is one carrying a keyword this
+// function has not been taught about: the marshaled key set is what is
+// consulted, so a keyword the parser learns later arrives here as unknown rather
+// than as absent.
+func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFields []string, checks []ValidationRule) bool {
+	if variant == nil {
+		return false
+	}
+	if variant.IsTrueSchema() {
+		return true
+	}
+	if variant.IsBooleanSchema() {
+		// `false` matches nothing, yet selection decodes it into `any` and
+		// counts it as matched. That is a defect of its own; it is not one this
+		// function may paper over by claiming the branch was decided.
+		return false
+	}
+	if len(variant.Extensions) > 0 || len(variant.TypeSchemas) > 0 {
+		return false
+	}
+	raw, err := json.Marshal(variant)
+	if err != nil {
+		return false
+	}
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &present); err != nil {
+		return false
+	}
+	for key := range present {
+		if !oneOfSelectableKeywords[key] {
+			return false
+		}
+	}
+	if !sameStringSet(variant.Required, requiredFields) {
+		return false
+	}
+	if len(variant.Type) > 0 {
+		kind := jsonKindForGoType(goType)
+		if kind == "" || branchTypeVerdict(variant.Type, kind) != typeVerdictAlways {
+			return false
+		}
+	}
+	checked := make(map[string]bool, len(checks))
+	for _, c := range checks {
+		checked[c.RuleType] = true
+	}
+	for _, r := range extractValidationRules("", "", variant) {
+		if ruleVacuousForType(goType, r.RuleType) {
+			continue
+		}
+		if !checked[r.RuleType] {
+			return false
+		}
+	}
+	return true
+}
+
+// sameStringSet reports whether two lists name the same set of strings,
+// ignoring order and repetition.
+func sameStringSet(a, b []string) bool {
+	left := make(map[string]struct{}, len(a))
+	for _, v := range a {
+		left[v] = struct{}{}
+	}
+	right := make(map[string]struct{}, len(b))
+	for _, v := range b {
+		right[v] = struct{}{}
+	}
+	if len(left) != len(right) {
+		return false
+	}
+	for v := range left {
+		if _, ok := right[v]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // oneOfVariantResult holds the result of resolving a oneOf variant.
@@ -8145,6 +8267,93 @@ func ruleCompilesForType(t GoType, ruleType string) bool {
 	return false
 }
 
+// jsonKindForGoType names the JSON type every value of this Go type carries, or
+// "" when the type admits more than one and nothing here can tell them apart.
+//
+// It is the bridge between a Go type and the JSON Schema rule that "a keyword
+// applies to instances of one type and says nothing about the rest". A field
+// typed int64 only ever holds a JSON integer, so a keyword about strings has
+// nothing to say about it. `any`, json.RawMessage and every named type answer
+// "" -- they can hold anything, or their contents are the business of their own
+// Validate -- and a "" answer makes every judgement below fall back to leaving
+// the rule alone.
+func jsonKindForGoType(t GoType) string {
+	for {
+		pt, ok := t.(*PointerType)
+		if !ok {
+			break
+		}
+		t = pt.Inner
+	}
+	switch v := t.(type) {
+	case *PrimitiveType:
+		switch v.Name {
+		case "string":
+			return "string"
+		case "int64":
+			return "integer"
+		case "float64":
+			return "number"
+		case "bool":
+			return "boolean"
+		}
+	case *ArrayType:
+		return "array"
+	case *MapType:
+		return "object"
+	}
+	return ""
+}
+
+// ruleKeywordJSONKinds records the JSON types each validation keyword speaks
+// about. A keyword is *vacuously satisfied* by an instance of any other type --
+// {"minLength":3} accepts 20, and {"minimum":10} accepts "ab" -- which is a
+// general rule of JSON Schema and not a property of any one keyword.
+//
+// Only the keywords whose rule types can be emitted as a value check are listed.
+// A rule absent from the map is one that either applies to every type (const,
+// enum, forbidden) or is already gated on the instance type where it is built
+// (format is only produced for a string-typed schema), and is left alone.
+var ruleKeywordJSONKinds = map[string]map[string]bool{
+	"minLength": {"string": true},
+	"maxLength": {"string": true},
+	"pattern":   {"string": true},
+
+	"minimum":          {"integer": true, "number": true},
+	"maximum":          {"integer": true, "number": true},
+	"exclusiveMinimum": {"integer": true, "number": true},
+	"exclusiveMaximum": {"integer": true, "number": true},
+	"multipleOf":       {"integer": true, "number": true},
+
+	"minItems":    {"array": true},
+	"maxItems":    {"array": true},
+	"uniqueItems": {"array": true},
+}
+
+// ruleVacuousForType reports whether a rule of this type is satisfied by every
+// value the Go type can hold, because the keyword speaks about some other JSON
+// type entirely.
+//
+// Emitting such a rule is never merely redundant. `utf8.RuneCountInString` over
+// an int64 converts the number to the single rune with that code point and
+// measures that, so {"type":"integer","minLength":3} rejects every integer --
+// and inside a oneOf the same reading flips the branch count, turning an invalid
+// document into an accepted one and a valid one into a rejection.
+//
+// The answer is false wherever the Go type does not pin down a single JSON type,
+// so a value that could still be of the keyword's own type keeps its check.
+func ruleVacuousForType(t GoType, ruleType string) bool {
+	kinds, judged := ruleKeywordJSONKinds[ruleType]
+	if !judged {
+		return false
+	}
+	kind := jsonKindForGoType(t)
+	if kind == "" {
+		return false
+	}
+	return !kinds[kind]
+}
+
 // isAcceptAllSchema returns true if the schema matches all values (empty schema or boolean true).
 func isAcceptAllSchema(s *schema.Schema) bool {
 	if s == nil {
@@ -9164,60 +9373,214 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
 		return nil
 	}
-	rules := extractValidationRules("", "", s)
+	var rules []ValidationRule
+	for _, r := range extractValidationRules("", "", s) {
+		// A keyword about some other JSON type is satisfied by every value this
+		// alias can hold, so the check would be enforcing nothing the schema
+		// says. See ruleVacuousForType.
+		if ruleVacuousForType(goType, r.RuleType) {
+			continue
+		}
+		rules = append(rules, r)
+	}
 	if len(rules) == 0 {
 		return nil
 	}
 	return rules
 }
 
-// extractAnyOfVariantRules extracts validation rules from each anyOf sub-schema.
-// Each inner slice represents one variant's constraint set.
-// Returns nil when the schema has no anyOf or when all variants yield empty rules.
+// aliasVariantKeywords are the keywords an anyOf/oneOf branch of a scalar or
+// array alias may carry for the branch to be judged at all.
+//
+// "type" is here because the branch's own type is what decides, statically,
+// whether the branch can match this alias. The bounds keywords are here because
+// the alias templates emit a check for each. Everything else -- $ref, enum,
+// properties, allOf, not, format, contains -- has no expression against the
+// alias's single value, and a branch carrying one is not judged: see
+// aliasVariantRules.
+var aliasVariantKeywords = map[string]bool{
+	"type": true, "minimum": true, "maximum": true,
+	"exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+	"minLength": true, "maxLength": true, "pattern": true,
+	"minItems": true, "maxItems": true,
+
+	"$schema": true, "$id": true, "title": true, "description": true,
+	"$comment": true, "default": true, "examples": true,
+	"deprecated": true, "readOnly": true, "writeOnly": true,
+}
+
+// aliasVariantRules converts one anyOf/oneOf branch of a schema that resolved to
+// a single Go type into the checks the alias's Validate must apply to decide
+// whether that branch matched.
+//
+// Three answers are possible and they are not interchangeable:
+//
+//   - ok == false: the branch says something this position cannot express. The
+//     caller must then drop the whole group, because a branch judged with one of
+//     its keywords ignored is judged as matching more values than it does, and
+//     under oneOf an inflated match count rejects documents the schema allows.
+//   - a single "never" rule: the branch's `type` excludes every value this alias
+//     can hold, so the branch matches nothing. It still has to be counted -- as
+//     zero -- which is why it is kept rather than dropped: a oneOf all of whose
+//     branches are impossible is satisfied by nothing at all.
+//   - any other rule list, possibly empty: the checks that decide the branch. An
+//     empty list is a branch every value of this type satisfies, which is what a
+//     branch made only of keywords about other types means.
+func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule, bool) {
+	if variant == nil {
+		return nil, false
+	}
+	if variant.IsTrueSchema() {
+		return nil, true
+	}
+	if variant.IsFalseSchema() {
+		return []ValidationRule{{RuleType: "never"}}, true
+	}
+	if len(variant.Extensions) > 0 || len(variant.TypeSchemas) > 0 {
+		return nil, false
+	}
+	// Decided from the re-marshaled key set rather than a list of struct fields,
+	// so a keyword the parser learns later fails closed here instead of being
+	// silently ignored. Same rule, and same reason, as dynamicBranchChecks.
+	raw, err := json.Marshal(variant)
+	if err != nil {
+		return nil, false
+	}
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &present); err != nil {
+		return nil, false
+	}
+	for key := range present {
+		if !aliasVariantKeywords[key] {
+			return nil, false
+		}
+	}
+
+	kind := jsonKindForGoType(goType)
+	if kind == "" {
+		return nil, false
+	}
+	if len(variant.Type) > 0 {
+		switch branchTypeVerdict(variant.Type, kind) {
+		case typeVerdictNever:
+			return []ValidationRule{{RuleType: "never"}}, true
+		case typeVerdictUnknown:
+			return nil, false
+		}
+		// typeVerdictAlways: every value of this Go type has one of the branch's
+		// types, so the keyword is satisfied and needs no emitted check.
+	}
+
+	var rules []ValidationRule
+	for _, r := range extractValidationRules("", "", variant) {
+		if ruleVacuousForType(goType, r.RuleType) {
+			continue
+		}
+		if !aliasVariantKeywords[r.RuleType] {
+			// A keyword the branch is allowed to carry but this position cannot
+			// check (uniqueItems, const). Judging the branch without it would
+			// count it as matching values it rejects.
+			return nil, false
+		}
+		rules = append(rules, r)
+	}
+	return rules, true
+}
+
+type typeVerdict int
+
+const (
+	// typeVerdictAlways: every value of the Go type satisfies the branch's type.
+	typeVerdictAlways typeVerdict = iota
+	// typeVerdictNever: no value of the Go type does.
+	typeVerdictNever
+	// typeVerdictUnknown: some do and some do not, so nothing static decides it.
+	typeVerdictUnknown
+)
+
+// branchTypeVerdict decides a branch's `type` against the single JSON type the
+// alias's Go type carries.
+//
+// The one undecidable pairing is `type: integer` against a float64: JSON Schema
+// counts 1.0 as an integer, so whether the branch holds depends on the value.
+// It is reported as unknown rather than guessed either way.
+func branchTypeVerdict(types []string, kind string) typeVerdict {
+	unknown := false
+	for _, t := range types {
+		switch {
+		case t == kind:
+			return typeVerdictAlways
+		case t == "number" && kind == "integer":
+			return typeVerdictAlways
+		case t == "integer" && kind == "number":
+			unknown = true
+		}
+	}
+	if unknown {
+		return typeVerdictUnknown
+	}
+	return typeVerdictNever
+}
+
+// aliasBranchVariants converts a list of anyOf/oneOf branches of a scalar or
+// array alias, failing closed if any one of them cannot be judged.
+func aliasBranchVariants(subs []*schema.Schema, goType GoType) ([][]ValidationRule, bool) {
+	// Skip for untyped "any" — nothing about the value's type is known, so no
+	// branch can be judged against it.
+	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+		return nil, false
+	}
+	variants := make([][]ValidationRule, 0, len(subs))
+	for _, sub := range subs {
+		rules, ok := aliasVariantRules(sub, goType)
+		if !ok {
+			return nil, false
+		}
+		variants = append(variants, rules)
+	}
+	return variants, true
+}
+
+// extractAnyOfVariantRules extracts the per-branch checks of an anyOf on a
+// schema that resolved to a single Go type.
+//
+// Returns nil when the schema has no anyOf, when a branch cannot be judged (see
+// aliasVariantRules), or when every branch is satisfied by every value -- an
+// anyOf that nothing can fail needs no check emitted for it.
 func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
 	if len(s.AnyOf) == 0 {
 		return nil
 	}
-	// Skip for untyped "any" — can't compile checks.
-	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+	variants, ok := aliasBranchVariants(s.AnyOf, goType)
+	if !ok {
 		return nil
 	}
-	var variants [][]ValidationRule
-	hasRules := false
-	for _, variant := range s.AnyOf {
-		rules := extractValidationRules("", "", variant)
-		variants = append(variants, rules)
+	for _, rules := range variants {
 		if len(rules) > 0 {
-			hasRules = true
+			return variants
 		}
 	}
-	if !hasRules {
-		return nil
-	}
-	return variants
+	return nil
 }
 
-// extractOneOfVariantRules extracts validation rules from each oneOf sub-schema.
-// Each inner slice represents one variant's constraint set.
-// Returns nil when the schema has no oneOf or when all variants yield empty rules.
+// extractOneOfVariantRules extracts the per-branch checks of a oneOf on a schema
+// that resolved to a single Go type.
+//
+// Returns nil when the schema has no oneOf or when a branch cannot be judged
+// (see aliasVariantRules). Unlike anyOf, a group whose branches carry no checks
+// is still emitted when there is more than one of them: every branch then
+// matches every value, so the count is the branch count and "exactly one" fails
+// for all of them. A lone check-free branch matches everything exactly once and
+// needs nothing emitted.
 func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
 	if len(s.OneOf) == 0 {
 		return nil
 	}
-	// Skip for untyped "any" — can't compile checks.
-	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
+	variants, ok := aliasBranchVariants(s.OneOf, goType)
+	if !ok {
 		return nil
 	}
-	var variants [][]ValidationRule
-	hasRules := false
-	for _, variant := range s.OneOf {
-		rules := extractValidationRules("", "", variant)
-		variants = append(variants, rules)
-		if len(rules) > 0 {
-			hasRules = true
-		}
-	}
-	if !hasRules {
+	if len(variants) == 1 && len(variants[0]) == 0 {
 		return nil
 	}
 	return variants

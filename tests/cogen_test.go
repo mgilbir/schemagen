@@ -531,6 +531,40 @@ func coStripUnevaluatedProperties(d *coDoc) {
 	}
 }
 
+// coStripOneOfObjBoth returns a coOneOfObj union to the arrangement where the
+// instance carries only the taken branch's required key.
+//
+// It is coStripConditionals' argument one level down. Under objBoth the union's
+// value carries both branches' required keys, and each branch declares only its
+// own -- so whichever branch is selected, the other's key is additional to the
+// variant type built from that branch. StrictProperties is the ban on exactly
+// that:
+//
+//	config   generator.Config{StrictProperties: true}
+//	schema   {"oneOf":[{"type":"object","properties":{"varStr":{"type":"string","minLength":3}},
+//	                    "required":["varStr"]},
+//	                   {"type":"object","properties":{"varInt":{"type":"integer","minimum":5}},
+//	                    "required":["varInt"]}]}
+//	instance {"varStr":"ab","varInt":7}
+//	         no matching oneOf variant: variant Option1: additional property "varStr" is not allowed
+//
+// No document carrying both keys satisfies the flag's reading of either branch,
+// so this is a fact about the schema under the flag rather than a defect in the
+// code generated for it. Widening a branch with additionalProperties:true would
+// dodge the ban, but it would also change what the branch means and cost the
+// arrangement its point -- the branches must be silent about each other's keys
+// for "exactly one branch" to rest on the nested constraints.
+//
+// The single-key arrangement keeps running here, and the both-keys one keeps
+// running under the six configurations that do not set StrictProperties.
+func coStripOneOfObjBoth(d *coDoc) {
+	for _, n := range coNodesOf(d) {
+		if n.kind == coOneOfObj {
+			n.objBoth = false
+		}
+	}
+}
+
 // coStrictNarrow is every adjustment StrictProperties needs: the constructs
 // whose keys live inside an applicator additionalProperties cannot see, and the
 // two keywords whose mutants the ban pre-empts.
@@ -539,6 +573,7 @@ func coStrictNarrow(d *coDoc) {
 	coStripConditionals(d)
 	coStripPropertyNames(d)
 	coStripUnevaluatedProperties(d)
+	coStripOneOfObjBoth(d)
 }
 
 // ---------------------------------------------------------------------------

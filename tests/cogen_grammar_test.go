@@ -326,6 +326,12 @@ const (
 	// only shape in the grammar whose branch constraints live one level below
 	// the branch itself, which is what makes it the shape that tests whether
 	// the union's owner descends into the variant it selected.
+	//
+	// Half its instances carry both branches' required keys (objBoth), with the
+	// branch that is not taken failing on its nested constraint rather than on
+	// its `required`. That is the arrangement in which "exactly one branch"
+	// cannot be read off the key set, so it is the one that tests whether
+	// selection consults the branch at all rather than only its required keys.
 	coOneOfObj
 )
 
@@ -537,9 +543,19 @@ type coNode struct {
 	//
 	// objUseStr says which branch the instance takes; objStr and objInt are the
 	// conforming values, chosen at or above their bound.
+	//
+	// objBoth widens that: the instance carries *both* branches' required keys,
+	// the taken branch's key at a conforming value and the other branch's key at
+	// a value that branch forbids. "Exactly one branch" is then a fact about the
+	// branches' nested constraints rather than about which key is present, which
+	// is the only shape that can tell a selection reading the whole branch from
+	// one gating on required-key presence alone (issue #81). Both reference
+	// implementations were asked: with varStr below its minLength and varInt at
+	// or above its minimum, {"varStr":..,"varInt":..} is valid.
 	objStrMin int
 	objIntMin int64
 	objUseStr bool
+	objBoth   bool
 	objStr    string
 	objInt    int64
 
@@ -1237,15 +1253,29 @@ func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
 // branch's `required` and violates its nested constraint -- the mutant no
 // scalar-branch shape in this grammar can express, because a scalar branch has
 // no interior to violate.
+//
+// That same string is what objBoth puts beside a conforming varInt, and the
+// integer one below objIntMin is what it puts beside a conforming varStr: a
+// document carrying both required keys where only one branch is satisfied. Both
+// are conforming instances, and the mutants below turn each into an invalid one
+// by moving the violating key to a value its branch accepts (two branches
+// matched) or the conforming key to one its branch rejects (none matched).
 func (b *coBuilder) buildOneOfObj() *coNode {
 	n := &coNode{kind: coOneOfObj}
 	n.objStrMin = 1 + b.rng.IntN(4)
 	n.objIntMin = int64(b.rng.IntN(21) - 10)
 	n.objUseStr = b.chance(2)
+	n.objBoth = b.chance(2)
 	if n.objUseStr {
 		n.objStr = coFillString(n.objStrMin + b.rng.IntN(3))
+		if n.objBoth {
+			n.objInt = n.objIntMin - 1
+		}
 	} else {
 		n.objInt = n.objIntMin + int64(b.rng.IntN(5))
+		if n.objBoth {
+			n.objStr = coFillString(n.objStrMin - 1)
+		}
 	}
 	return n
 }
@@ -1895,9 +1925,15 @@ func (d *coDoc) value(n *coNode) any {
 	case coOneOfWin:
 		return n.winValue
 	case coOneOfObj:
-		// Exactly one branch's required key goes in, so the other branch is
-		// unsatisfied by construction and "exactly one" holds without anything
-		// having to evaluate the branches.
+		// Under objBoth both required keys go in and the branch that is not
+		// taken is unsatisfied by its own nested constraint instead -- the one
+		// arrangement where "exactly one branch" cannot be read off the key set.
+		if n.objBoth {
+			return map[string]any{coOneOfObjKeys[0]: n.objStr, coOneOfObjKeys[1]: n.objInt}
+		}
+		// Otherwise exactly one branch's required key goes in, so the other
+		// branch is unsatisfied by construction and "exactly one" holds without
+		// anything having to evaluate the branches.
 		if n.objUseStr {
 			return map[string]any{coOneOfObjKeys[0]: n.objStr}
 		}
@@ -2341,6 +2377,43 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 			Keyword: "oneOfObjMatchesNone", Path: path, Prop: prop,
 			Value: map[string]any{}, Want: []string{"oneOf"}, Loose: true,
 		})
+
+		if !n.objBoth {
+			break
+		}
+		// Both required keys are present, so neither of the two mutants below
+		// changes which branches selection *considers* -- only whether each one
+		// is satisfied. They are the pair that separates a selection reading the
+		// whole branch from one that stops at the required keys: under the
+		// latter every one of these documents, and the conforming instance they
+		// are derived from, counts two matches and is rejected alike.
+		//
+		// Both are Loose. Once the branches are read, a value satisfying two of
+		// them and a value satisfying none both leave the union with no single
+		// variant to store the value as, which is the decoder's to say.
+		if n.objUseStr {
+			// varInt sits one below its minimum, so branch 1 is unsatisfied.
+			// Raise it to the bound and both branches hold.
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesTwo", Path: coPath(path, coOneOfObjKeys[1]), Prop: prop,
+				Value: n.objIntMin, Want: []string{"oneOf"}, Loose: true,
+			})
+			// Shorten varStr below its minLength and branch 0 stops holding
+			// too, leaving no branch satisfied.
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesNone", Path: coPath(path, coOneOfObjKeys[0]), Prop: prop,
+				Value: coFillString(n.objStrMin - 1), Want: []string{"oneOf"}, Loose: true,
+			})
+		} else {
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesTwo", Path: coPath(path, coOneOfObjKeys[0]), Prop: prop,
+				Value: coFillString(n.objStrMin), Want: []string{"oneOf"}, Loose: true,
+			})
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesNone", Path: coPath(path, coOneOfObjKeys[1]), Prop: prop,
+				Value: n.objIntMin - 1, Want: []string{"oneOf"}, Loose: true,
+			})
+		}
 
 	case coIfElse:
 		// Above the pivot, so `if` holds and `then` applies -- and above

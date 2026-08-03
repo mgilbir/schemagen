@@ -256,6 +256,15 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isOneOfObjectVariantConstraints_A
+			var oneofStrictErr error
 
 			// Try variant: OneOfObjectVariantConstraintsAOption0
 			{
@@ -264,6 +273,16 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						o.A = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{OneOfObjectVariantConstraintsAOption0: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{OneOfObjectVariantConstraintsAOption0: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfObjectVariantConstraintsAOption0: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -277,6 +296,16 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						o.A = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1{OneOfObjectVariantConstraintsAOption1: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1{OneOfObjectVariantConstraintsAOption1: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfObjectVariantConstraintsAOption1: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -285,6 +314,23 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("OneOfObjectVariantConstraints.A: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					o.A = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("OneOfObjectVariantConstraints.A: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("OneOfObjectVariantConstraints.A: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)

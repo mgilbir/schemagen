@@ -1349,19 +1349,29 @@ func TestOneOfRequiredOnlyObject(t *testing.T) {
 // The two invalid documents that carry a branch's required key are the ones
 // that matter, and neither can be caught anywhere but Validate: both decode,
 // because the value is of the right JSON type for the field it lands in.
+//
+// The documents carrying *both* required keys are issue #81. Selection gated a
+// branch on the presence of its required keys and consulted nothing else, so
+// all three counted two matches and were rejected -- including the two the
+// schema allows, where the other branch's own constraint fails. Both reference
+// implementations were asked: {"x":"z","y":10} and {"x":"zzz","y":9} are valid,
+// {"x":"z","y":9} and {"x":"zzz","y":10} are not.
 func TestOneOfObjectVariantConstraints(t *testing.T) {
 	runValidationCases(t,
 		"testdata/schemas/regression/oneof_object_variant_constraints.json",
 		[]string{
-			`{"a":{"x":"zzz"}}`, // first branch, at its minLength
-			`{"a":{"y":10}}`,    // second branch, at its minimum
-			`{"a":{"y":42}}`,    // second branch, above it
+			`{"a":{"x":"zzz"}}`,       // first branch, at its minLength
+			`{"a":{"y":10}}`,          // second branch, at its minimum
+			`{"a":{"y":42}}`,          // second branch, above it
+			`{"a":{"x":"z","y":10}}`,  // both required keys, only the second branch satisfied
+			`{"a":{"x":"zzz","y":9}}`, // both required keys, only the first branch satisfied
 		},
 		[]string{
 			`{"a":{"x":"z"}}`,          // first branch selected, minLength 3 violated
 			`{"a":{"y":9}}`,            // second branch selected, minimum 10 violated
 			`{"a":{}}`,                 // neither branch's required key
 			`{"a":{"x":"zzz","y":10}}`, // both branches → 2 matches
+			`{"a":{"x":"z","y":9}}`,    // both required keys, neither branch satisfied
 		},
 	)
 }

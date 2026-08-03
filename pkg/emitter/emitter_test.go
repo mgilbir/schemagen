@@ -883,3 +883,110 @@ func TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch(t *testing.T) {
 		t.Fatalf("a union with no validatable variant still emitted a dispatch:\n%s", out)
 	}
 }
+
+// oneOfNarrowingFile builds a two-variant union whose selection is decided by
+// required-key presence, which is the shape issue #81 is about. The second
+// variant's judgement is the parameter: FullyChecked when everything it says is
+// already tested by selection, and neither that nor Validatable when it is not.
+func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
+	return &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name:           "Envelope",
+				NeedsUnmarshal: true,
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{
+							WrapperName:    "Envelope_Payload",
+							FieldName:      "Payload",
+							Type:           &generator.NamedType{Name: "Payload", Pointer: true},
+							RequiredFields: []string{"x"},
+							Validatable:    true,
+						},
+						{
+							WrapperName:    "Envelope_Any",
+							FieldName:      "Any",
+							Type:           &generator.PrimitiveType{Name: "any"},
+							RequiredFields: []string{"x", "y"},
+							FullyChecked:   secondFullyChecked,
+						},
+					},
+				}},
+			},
+			&generator.StructDef{Name: "Payload"},
+		},
+	}
+}
+
+// TestEmitOneOfSelectionNarrowsOnBranchConstraints is the emitter half of issue
+// #81. Selection counted a branch as matched once its required keys were
+// present, so a document carrying both branches' required keys was rejected as
+// "multiple oneOf variants matched" even when only one branch was satisfied.
+//
+// The repair reads the branches' own constraints -- an object branch keeps them
+// inside its variant type, reachable only through that type's Validate -- and
+// uses them to narrow a selection the decoder was about to reject anyway. The
+// generator half, which decides whether a branch can be judged at all, is
+// pinned in pkg/generator/generator_test.go.
+func TestEmitOneOfSelectionNarrowsOnBranchConstraints(t *testing.T) {
+	e := mustNew(t)
+
+	out, err := e.Emit(oneOfNarrowingFile(true))
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	for _, want := range []string{
+		// The stricter tally, and the branch constraint that feeds it.
+		"if _vErr := candidate.Validate(); _vErr == nil {",
+		"oneofStrict++",
+		// Only consulted where selection was already going to reject.
+		"if oneofMatched > 1 && oneofOpaque == 0 {",
+		"case oneofStrict == 1:",
+		"e.Body = oneofStrictSel",
+		// A value no branch accepts is not ambiguity, and is not reported as a
+		// count.
+		`return fmt.Errorf("Envelope.Body: no matching oneOf variant: %w", oneofStrictErr)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("Envelope.UnmarshalJSON is missing %q:\n%s", want, src)
+		}
+	}
+	// The narrowing must not displace the ambiguity rejection: two branches that
+	// are both satisfied are still two matches.
+	if !strings.Contains(src, `multiple oneOf variants matched (%d), expected exactly 1`) {
+		t.Fatalf("Envelope.UnmarshalJSON stopped rejecting a genuinely ambiguous value:\n%s", src)
+	}
+}
+
+// TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch is the over-reach
+// guard for the arm above. Narrowing is sound only while every branch that
+// matched can be judged; a branch that is neither Validatable nor FullyChecked
+// is one nothing read, and counting it out would select a variant while a
+// sibling that also matched went unexamined -- accepting a document that
+// matches two branches.
+func TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch(t *testing.T) {
+	e := mustNew(t)
+
+	out, err := e.Emit(oneOfNarrowingFile(false))
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !strings.Contains(src, "oneofOpaque++") {
+		t.Fatalf("the unjudgeable branch does not mark itself opaque, so the narrowing runs without having read it:\n%s", src)
+	}
+	if !strings.Contains(src, "if oneofMatched > 1 && oneofOpaque == 0 {") {
+		t.Fatalf("the narrowing is not gated on every matched branch being judged:\n%s", src)
+	}
+}

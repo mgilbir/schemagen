@@ -116,6 +116,17 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			// outranks a decode failure from a branch of some other type.
 			var oneofCheckErr error
 			{{- end}}
+			{{- if $oof.HasValidatableVariants}}
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel {{$oof.InterfaceName}}
+			var oneofStrictErr error
+			{{- end}}
 			{{- range $i, $v := $oof.Variants}}
 
 			// Try variant: {{$v.FieldName}}
@@ -167,12 +178,53 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if oneofOK {
 							{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
 							oneofMatched++
+							{{- if $oof.HasValidatableVariants}}
+							{{- if $v.FullyChecked}}
+							oneofStrict++
+							oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+							{{- else}}
+							oneofOpaque++
+							{{- end}}
+							{{- end}}
 						} else {
 							oneofCheckErr = fmt.Errorf("variant {{$v.FieldName}}: value does not satisfy the variant's constraints")
 						}
 						{{- else}}
 						{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
 						oneofMatched++
+						{{- if $oof.HasValidatableVariants}}
+						{{- if $v.Validatable}}
+						{{- if $v.Type.IsPointer}}
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
+						{{- else}}
+						if _vErr := candidate.Validate(); _vErr == nil {
+							oneofStrict++
+							oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+						} else {
+							oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
+						}
+						{{- end}}
+						{{- else if $v.FullyChecked}}
+						// Nothing this branch says is left for a Validate to
+						// carry, so matching it is satisfying it.
+						oneofStrict++
+						oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+						{{- else}}
+						// This variant's type has no Validate and the branch
+						// says more than selection tests, so the stricter tally
+						// cannot speak for it.
+						oneofOpaque++
+						{{- end}}
+						{{- end}}
 						{{- end}}
 					} else {
 						oneofLastErr = err
@@ -191,6 +243,25 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{- end}}
 				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
 			}
+			{{- if $oof.HasValidatableVariants}}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					{{$recv}}.{{$oof.FieldName}} = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofStrictErr)
+				}
+			}
+			{{- end}}
 			if oneofMatched > 1 {
 				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}

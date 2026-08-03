@@ -643,6 +643,16 @@ type OneOfVariant struct {
 	// which types ended up with methods. A scalar or `any` variant is false:
 	// its constraints ride on Checks instead, applied during selection.
 	Validatable bool
+	// FullyChecked is true when everything the branch asserts is already
+	// decided by selection itself -- the presence gate over RequiredFields, the
+	// Go type the candidate decodes into, and Checks -- so a candidate that
+	// matched has satisfied the branch and not merely decoded as it.
+	//
+	// It is what lets an ambiguous selection be narrowed. A branch that is
+	// neither Validatable nor FullyChecked is one selection cannot speak for,
+	// and while such a branch is in play the narrowing does not run. See
+	// oneOfVariantFullyChecked.
+	FullyChecked bool
 }
 
 // EnumDef represents an enum type.
