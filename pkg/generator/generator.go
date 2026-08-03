@@ -805,6 +805,13 @@ func (g *Generator) addRequiredImports() {
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
+				for _, ti := range ad.TupleItems {
+					// The per-position "integer" test is math.Trunc, as it is
+					// for an InferredAliasDef's tuple positions.
+					if ti.JSONType == "integer" {
+						needsMath = true
+					}
+				}
 			}
 			noteItemValidationImports(ad.ItemValidations,
 				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
@@ -887,6 +894,11 @@ func (g *Generator) addRequiredImports() {
 				}
 				for _, chk := range ad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+					// The per-element "integer" test is math.Trunc, exactly as
+					// it is for an items check.
+					if chk.CheckType == "type" && chk.Value == "integer" {
 						needsMath = true
 					}
 					if chk.CheckType == "pattern" {
@@ -1050,6 +1062,11 @@ func (g *Generator) addRequiredImports() {
 				}
 				for _, chk := range iad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+					// The per-element "integer" test is math.Trunc, exactly as
+					// it is for an items check.
+					if chk.CheckType == "type" && chk.Value == "integer" {
 						needsMath = true
 					}
 					if chk.CheckType == "pattern" {
@@ -2601,6 +2618,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
+		// The parent's own property-count bounds bind the same object the allOf
+		// branches do. Seeding them before the merge lets mergeConstraints keep
+		// whichever bound is tighter; propagating them afterwards would instead
+		// let a branch's bound win by having got there first.
+		merged.MinProperties = s.MinProperties
+		merged.MaxProperties = s.MaxProperties
 	}
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
@@ -2657,6 +2680,27 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	if g.validationKeywordsEnabled() && len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
 		merged.DependentSchemas = s.DependentSchemas
+	}
+	// propertyNames and dependentRequired constrain the object the parent
+	// declares, and an allOf beside them says nothing about either. Neither is
+	// read off the branches by mergeAllOfBranches -- propertyNames not at all,
+	// dependentRequired only when the target has none -- so without these the
+	// keywords vanish for no reason other than the allOf being there.
+	if g.validationKeywordsEnabled() && s.PropertyNames != nil && merged.PropertyNames == nil {
+		merged.PropertyNames = s.PropertyNames
+	}
+	if g.validationKeywordsEnabled() && len(s.DependentRequired) > 0 {
+		// A branch may already have contributed a map of its own. Both bind, so
+		// the two are unioned into a fresh map -- mutating merged's would write
+		// through to the sub-schema mergeAllOfBranches took it from.
+		combined := make(map[string][]string, len(merged.DependentRequired)+len(s.DependentRequired))
+		for trigger, deps := range merged.DependentRequired {
+			combined[trigger] = deps
+		}
+		for trigger, deps := range s.DependentRequired {
+			combined[trigger] = mergeStringSets(combined[trigger], deps)
+		}
+		merged.DependentRequired = combined
 	}
 	// Propagate array-structural keywords from parent schema.
 	// Per JSON Schema spec, items/additionalItems scoping is per-schema (they don't

@@ -259,55 +259,6 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 //	instance {"arr":[11,12,13,14]}        accepted; 4 matches, maxContains is 3
 
 // ---------------------------------------------------------------------------
-// Gated known gaps
-// ---------------------------------------------------------------------------
-
-// coGapAllOfDropsKeyKeywords: an `allOf` beside an object's own keywords takes
-// propertyNames, minProperties, maxProperties and dependentRequired down with
-// it. All four are enforced on the same object without the allOf, and all four
-// survive an `anyOf`, a `oneOf` or an `if`/`then` in the same position -- it is
-// the allOf specifically, and it does not matter whether the object also
-// declares properties of its own.
-//
-//	schema   {"type":"object","allOf":[{"properties":{"bravo":{"type":"string"}}}],
-//	          "propertyNames":{"pattern":"^[A-Za-z_][A-Za-z0-9_]*$"}}
-//	instance {"9-bad":1}                  accepted
-//
-//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
-//	          "allOf":[{"properties":{"bravo":{"type":"string"}}}],
-//	          "minProperties":2,"maxProperties":2}
-//	instance {"alpha":"a"}                accepted; 1 property, minimum 2
-//	instance {"alpha":"a","bravo":"x","zzExtra":1}
-//	                                      accepted; 3 properties, maximum 2
-//
-//	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
-//	          "allOf":[{"properties":{"bravo":{"type":"integer"}}}],
-//	          "dependentRequired":{"alpha":["bravo"]}}
-//	instance {"alpha":"a"}                accepted; "bravo" is required
-//
-// The same object with the dependency written as dependentSchemas -- the
-// `required`-only branch {"alpha":{"required":["bravo"]}} -- rejects it, and so
-// do patternProperties, if/then and unevaluatedProperties beside the same
-// allOf. So the gap is not "keywords beside an allOf are lost" in general; it
-// is these four.
-func coGapAllOfDropsKeyKeywords() bool { return coIncludeKnownGaps }
-
-// coGapRootArrayApplicator: an array at the *document root* carrying contains
-// or prefixItems + unevaluatedItems emits code that does not compile -- the
-// generated file calls into math without importing it. Both shapes compile and
-// run when the same array sits behind a property, which is where the grammar
-// puts them.
-//
-//	schema   {"type":"array","items":{"type":"integer"},
-//	          "contains":{"type":"integer","minimum":10}}
-//	          => ./types.go:37:55: undefined: math
-//
-//	schema   {"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],
-//	          "unevaluatedItems":false}
-//	          => ./types.go:35:24: undefined: math
-func coGapRootArrayApplicator() bool { return coIncludeKnownGaps }
-
-// ---------------------------------------------------------------------------
 // Node model
 // ---------------------------------------------------------------------------
 
@@ -729,21 +680,25 @@ func coBuild(seed uint64) *coDoc {
 		rng: rand.New(rand.NewPCG(seed, 0x5EEDC0DE)),
 		doc: &coDoc{defs: map[string]*coNode{}},
 	}
-	// One document in four is rooted at a composition leaf rather than at an
-	// object, which exercises `not`, if/then/else and a oneOf over scalars as
-	// the root type itself. The other position those keywords reach is a $defs
-	// entry behind a property's $ref, which buildDefBody produces.
+	// One document in four is a tuple at the document root. An array root
+	// reaches a different emitter path from the same array behind a property --
+	// that is where a missing math import for a prefixItems position typed
+	// "integer" went unnoticed -- so the root position is worth generating in
+	// its own right.
+	if b.chance(4) {
+		b.doc.root = b.buildTuple()
+		return b.doc
+	}
+	// One document in four of what remains is rooted at a composition leaf
+	// rather than at an object, which exercises `not`, if/then/else and a oneOf
+	// over scalars as the root type itself. The other position those keywords
+	// reach is a $defs entry behind a property's $ref, which buildDefBody
+	// produces.
 	//
 	// Such a document carries no $defs: the dynamic evaluator only takes over a
 	// schema whose keywords are entirely applicators, and it decides that from
 	// the marshalled document, so a "$defs" beside the "oneOf" would make the
 	// whole construct fall back to an unvalidated `any`.
-	if coGapRootArrayApplicator() && b.chance(4) {
-		// A tuple at the document root: the emitted file references math
-		// without importing it, so the case fails to compile.
-		b.doc.root = b.buildTuple()
-		return b.doc
-	}
 	if b.chance(4) {
 		b.doc.root = b.buildRootComposition()
 		return b.doc
@@ -950,11 +905,6 @@ func (n *coNode) depActive() bool {
 	if n.dep == coDepNone || len(n.depOn) == 0 || n.presentProp(n.depTrig) == nil {
 		return false
 	}
-	// dependentRequired does not survive an allOf on the same object, though
-	// dependentSchemas does (coGapAllOfDropsKeyKeywords).
-	if n.dep == coDepRequired && n.emitsAllOf() {
-		return false
-	}
 	for _, name := range n.depOn {
 		p := n.presentProp(name)
 		if p == nil || p.required {
@@ -980,32 +930,18 @@ func (n *coNode) declaresEveryKey() bool {
 	return n.comp == coCompNone && len(n.branches) == 0 && n.cond == nil
 }
 
-// emitsAllOf reports whether this object will carry an `allOf` -- which it does
-// only while some property is still routed into a branch, since a branch the
-// shrinker emptied is left out.
-func (n *coNode) emitsAllOf() bool {
-	if n.comp != coCompAllOf || coGapAllOfDropsKeyKeywords() {
-		return false
-	}
-	for _, p := range n.props {
-		if p.group > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // maxPropsActive drops the bound where the node also carries a mutation that
-// adds a key for a different reason, and where an allOf would swallow the
-// keyword whole (coGapAllOfDropsKeyKeywords).
+// adds a key for a different reason.
 func (n *coNode) maxPropsActive() bool {
-	return n.extra == coExtraMaxProps && !n.emitsAllOf() &&
+	return n.extra == coExtraMaxProps &&
 		!(n.comp == coCompOneOf && len(n.branches) > 0)
 }
 
-// propNamesActive drops propertyNames beside an allOf, for the same reason.
+// propNamesActive holds whenever the node chose the keyword: propertyNames
+// constrains every key the instance carries, wherever the property was
+// declared.
 func (n *coNode) propNamesActive() bool {
-	return n.extra == coExtraPropNames && !n.emitsAllOf()
+	return n.extra == coExtraPropNames
 }
 
 // minPropsActive holds only where nothing else at this node removes a key.
@@ -1013,7 +949,7 @@ func (n *coNode) propNamesActive() bool {
 // property a dependency requires -- would drop the count below the bound as
 // well, and the mutant would be rejected for the wrong keyword.
 func (n *coNode) minPropsActive() bool {
-	if !n.minProps || len(n.branches) > 0 || n.cond != nil || n.depActive() || n.emitsAllOf() {
+	if !n.minProps || len(n.branches) > 0 || n.cond != nil || n.depActive() {
 		return false
 	}
 	droppable := false
@@ -1210,9 +1146,6 @@ func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
 	if depth < coMaxDepth {
-		// coTuple is a property's schema and never the document root: a root
-		// array carrying prefixItems + unevaluatedItems does not compile (see
-		// coGapRootArrayApplicator).
 		kinds = append(kinds, coObject, coArray, coTuple)
 	}
 	if visible > 0 {

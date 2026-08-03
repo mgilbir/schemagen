@@ -4518,3 +4518,194 @@ func TestOptionalNamedPointerFieldNeedsNoPresenceGuard(t *testing.T) {
 	}
 	t.Fatalf("delta is never validated by Root: %#v", root.ValidatableFields)
 }
+
+// TestAllOfKeepsParentObjectKeywords is a regression for the allOf flattening
+// path rebuilding the schema object from scratch: generateAllOfDef starts from a
+// fresh schema.Schema and copies the parent's keywords across one at a time, and
+// propertyNames, minProperties, maxProperties and dependentRequired were not on
+// that list. Each is enforced on the same object without the allOf, and each
+// survives an anyOf, a oneOf or an if/then in the same position -- the allOf
+// alone dropped them, so an object that said "no key may start with a digit"
+// silently accepted {"9-bad":1}.
+func TestAllOfKeepsParentObjectKeywords(t *testing.T) {
+	input := `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type":"string"}},
+		"allOf": [{"properties": {"bravo": {"type":"string"}}}],
+		"propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+		"minProperties": 1,
+		"maxProperties": 2,
+		"dependentRequired": {"alpha": ["bravo"]}
+	}`
+
+	doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+	if doc.PropertyNames == nil {
+		t.Fatalf("propertyNames dropped beside allOf; StructDef.PropertyNames is nil")
+	}
+	if doc.PropertyNames.Pattern != "^[A-Za-z_][A-Za-z0-9_]*$" {
+		t.Fatalf("PropertyNames.Pattern = %q, want the parent's pattern", doc.PropertyNames.Pattern)
+	}
+
+	var minProps, maxProps bool
+	for _, v := range doc.Validations {
+		switch v.RuleType {
+		case "minProperties":
+			minProps = true
+			if v.Value != 1 {
+				t.Fatalf("minProperties value = %v, want 1", v.Value)
+			}
+		case "maxProperties":
+			maxProps = true
+			if v.Value != 2 {
+				t.Fatalf("maxProperties value = %v, want 2", v.Value)
+			}
+		}
+	}
+	if !minProps || !maxProps {
+		t.Fatalf("min/maxProperties dropped beside allOf; rules = %+v", doc.Validations)
+	}
+
+	if len(doc.DependentRequired) != 1 ||
+		doc.DependentRequired[0].TriggerKey != "alpha" ||
+		len(doc.DependentRequired[0].Required) != 1 ||
+		doc.DependentRequired[0].Required[0] != "bravo" {
+		t.Fatalf("dependentRequired dropped or mangled beside allOf: %+v", doc.DependentRequired)
+	}
+}
+
+// TestAllOfCombinesPropertyBoundsWithBranches checks the direction the parent's
+// bounds are folded in. allOf means every branch binds at once, so the tighter
+// of the parent's bound and a branch's is the one that holds, whichever side it
+// came from. Propagating the parent's after the merge -- the shape every other
+// keyword in generateAllOfDef uses -- would instead let the branch's win by
+// having got there first, which is the "parent tighter" row below.
+func TestAllOfCombinesPropertyBoundsWithBranches(t *testing.T) {
+	for name, bounds := range map[string]struct{ parent, branch string }{
+		"parent tighter": {`"minProperties":3,"maxProperties":3`, `"minProperties":1,"maxProperties":5`},
+		"branch tighter": {`"minProperties":1,"maxProperties":5`, `"minProperties":3,"maxProperties":3`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"alpha": {"type":"string"}},
+				` + bounds.parent + `,
+				"allOf": [{"properties": {"bravo": {"type":"string"}}, ` + bounds.branch + `}]
+			}`
+
+			doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+			got := map[string]any{}
+			for _, v := range doc.Validations {
+				if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+					got[v.RuleType] = v.Value
+				}
+			}
+			if got["minProperties"] != 3 {
+				t.Fatalf("minProperties = %v, want 3 (the tighter lower bound of the two)", got["minProperties"])
+			}
+			if got["maxProperties"] != 3 {
+				t.Fatalf("maxProperties = %v, want 3 (the tighter upper bound of the two)", got["maxProperties"])
+			}
+		})
+	}
+}
+
+// TestAllOfUnionsDependentRequired covers the one keyword of the four that a
+// branch can also carry. mergeAllOfBranches takes a branch's dependentRequired
+// only when the target has none, so seeding the parent's before the merge would
+// have silently discarded the branch's. Both bind, so both must survive -- and
+// the union must not be written back into the branch's own map.
+//
+// $schema is stated because mergeAllOfBranches reads a branch's
+// dependentRequired only for a 2019-09 or later dialect.
+func TestAllOfUnionsDependentRequired(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type":"string"}, "bravo": {"type":"string"}, "charlie": {"type":"string"}},
+		"dependentRequired": {"alpha": ["bravo"]},
+		"allOf": [{"dependentRequired": {"alpha": ["charlie"], "bravo": ["charlie"]}}]
+	}`
+
+	doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+	got := map[string][]string{}
+	for _, dr := range doc.DependentRequired {
+		got[dr.TriggerKey] = dr.Required
+	}
+	if len(got) != 2 {
+		t.Fatalf("dependentRequired triggers = %+v, want alpha and bravo", doc.DependentRequired)
+	}
+	if !containsString(got["alpha"], "bravo") || !containsString(got["alpha"], "charlie") {
+		t.Fatalf(`dependentRequired["alpha"] = %v, want both "bravo" (parent) and "charlie" (branch)`, got["alpha"])
+	}
+	if !containsString(got["bravo"], "charlie") {
+		t.Fatalf(`dependentRequired["bravo"] = %v, want "charlie" from the branch`, got["bravo"])
+	}
+}
+
+// TestContainsIntegerTypeImportsMath guards the import side of the per-element
+// contains check. A contains sub-schema whose type is "integer" emits
+// math.Trunc for every element, exactly as an items check does, but the import
+// scan for a ContainsDef looked only for multipleOf and pattern. The generated
+// file called math without importing it and did not compile.
+func TestContainsIntegerTypeImportsMath(t *testing.T) {
+	input := `{"type":"array","items":{"type":"integer"},"contains":{"type":"integer","minimum":10}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "math") {
+		t.Fatalf("imports = %v, want math (the contains integer check calls math.Trunc)", paths)
+	}
+}
+
+// TestTupleAliasIntegerPositionImportsMath is the same import gap one type
+// definition over. An AliasDef's tuple positions test an "integer" with
+// math.Trunc exactly as an InferredAliasDef's do, but only the inferred side's
+// TupleItems were scanned for it. A one-position prefixItems typed "integer"
+// beside unevaluatedItems:false takes the alias path and emitted a file calling
+// math without importing it.
+func TestTupleAliasIntegerPositionImportsMath(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"integer"}],
+		"unevaluatedItems": false
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "math") {
+		t.Fatalf("imports = %v, want math (the tuple integer position calls math.Trunc)", paths)
+	}
+}
