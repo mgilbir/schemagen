@@ -28,12 +28,26 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 	type Alias ServerConfig
 	aux := &struct {
 		*Alias
+		MaxRetries **jsonInteger `json:"max_retries"`
+		Port       **jsonInteger `json:"port"`
 	}{
 		Alias: (*Alias)(s),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.MaxRetries != nil {
+		_iv := *aux.MaxRetries
+		s.MaxRetries = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	}
+	if aux.Port != nil {
+		_iv := *aux.Port
+		s.Port = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
 		var raw map[string]json.RawMessage

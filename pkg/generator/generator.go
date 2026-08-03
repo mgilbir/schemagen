@@ -326,6 +326,9 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.populateValidatableFields()
 	g.resolveItemValidations()
 	g.populateAliasDelegates()
+	// Must run after resolveAliasMethodability: an alias that cannot carry
+	// methods has nowhere to put a tolerant decode.
+	g.resolveIntegerDecodes()
 
 	// Publish validation info about this call's types so packages generated
 	// later in a cross-package run can emit correct guards for them.
@@ -484,6 +487,16 @@ func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, ne
 					*needsJSON = true
 				}
 			}
+			// A level whose element is a tuple emits the same arms an array
+			// property's positions do, so it reaches for the same imports.
+			if len(level.TupleItems) > 0 {
+				noteFieldTupleImports([]FieldTupleDef{{Items: level.TupleItems, Tail: level.TupleTail}},
+					needsFmt, needsJSON, needsMath)
+			}
+			if level.UnevalItems != nil {
+				noteFieldUnevalItemsImports([]FieldUnevalItemsDef{{Def: level.UnevalItems}},
+					needsFmt, needsJSON, needsMath)
+			}
 		}
 	}
 }
@@ -521,7 +534,9 @@ func (g *Generator) addRequiredImports() {
 					needsBytes = true
 				}
 			}
-			if sd.HasObjectConditionals() {
+			// A dependentSchemas branch is judged by the same evaluator as an
+			// object-level conditional, so it needs the same imports.
+			if sd.HasObjectConditionals() || sd.HasDependentSchemaBranches() {
 				needsJSON = true // the raw property value is decoded before it is checked
 				needsFmt = true  // Validate() errors
 				if sd.ConditionalNeedsMultipleOf() {
@@ -658,13 +673,6 @@ func (g *Generator) addRequiredImports() {
 			if len(sd.DependentSchemas) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependent schema errors
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal for _jsonKeys
-				for _, ds := range sd.DependentSchemas {
-					for _, pt := range ds.PropertyTypes {
-						if pt.JSONType == "integer" {
-							needsMath = true // math.Trunc for integer type check
-						}
-					}
-				}
 			}
 			if len(sd.DependentRequired) > 0 {
 				needsFmt = true  // Validate() uses fmt.Errorf for dependentRequired errors
@@ -740,6 +748,8 @@ func (g *Generator) addRequiredImports() {
 				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
 			noteFieldContainsImports(sd.ContainsValidations,
 				&needsFmt, &needsJSON, &needsMath, &needsStdRegexp)
+			noteFieldTupleImports(sd.TupleValidations, &needsFmt, &needsJSON, &needsMath)
+			noteFieldUnevalItemsImports(sd.UnevalItemsValidations, &needsFmt, &needsJSON, &needsMath)
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -807,7 +817,13 @@ func (g *Generator) addRequiredImports() {
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
-				for _, ti := range ad.TupleItems {
+				positions := ad.TupleItems
+				if ad.TupleTail != nil {
+					// The tail is checked by the same arms as a position, so it
+					// reaches for the same imports.
+					positions = append(append([]TupleItemDef{}, positions...), *ad.TupleTail)
+				}
+				for _, ti := range positions {
 					// The per-position "integer" test is math.Trunc, as it is
 					// for an InferredAliasDef's tuple positions.
 					if ti.JSONType == "integer" {
@@ -1682,6 +1698,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				OneOfVariants:  oneOfVariants,
 				NeedsNullCheck: !schemaAllowsNull(s),
 				AllowsNull:     schemaAllowsNull(s),
+				StrictInteger:  g.requiresStrictIntegerToken(s),
 			})
 		} else {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -1773,17 +1790,19 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			})
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
+			tupleTail := g.buildTupleTailDef(s, name)
 			containsDef, minContains, maxContains := extractContainsDef(s)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
 				// The alias *is* the slice, so the checks hang off the
 				// receiver rather than off a field.
-				if iv := g.buildItemValidation("", "", goType, s); iv != nil {
+				if iv := g.buildItemValidation(name, "", "", goType, s); iv != nil {
 					itemValidations = append(itemValidations, *iv)
 				}
 			} else {
 				tupleItems = nil
+				tupleTail = nil
 				containsDef = nil
 				minContains = nil
 				maxContains = nil
@@ -1797,6 +1816,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
 				TupleItems:       tupleItems,
+				TupleTail:        tupleTail,
 				ItemValidations:  itemValidations,
 				Contains:         containsDef,
 				MinContains:      minContains,
@@ -1856,6 +1876,11 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema) {
 	g.generated[name] = true
 	var additionalProps *AdditionalPropertiesDef
+	// The keys of an object with no declared properties are all "additional",
+	// so a schema-valued additionalProperties governs every value the overflow
+	// map holds. Nothing else checks them: the map's Go value type stops a
+	// wrong JSON type in the decoder and says nothing about any other keyword.
+	var overflowValidation *ItemValidationDef
 	if s.AdditionalProperties != nil && s.AdditionalProperties.Bool != nil && !*s.AdditionalProperties.Bool {
 		// additionalProperties: false → overflow map with Forbidden flag for validation
 		additionalProps = &AdditionalPropertiesDef{
@@ -1865,6 +1890,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
 		valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 		additionalProps = &AdditionalPropertiesDef{ValueType: valueType}
+		overflowValidation = g.buildOverflowValidation(name, valueType, s.AdditionalProperties.Schema)
 	} else {
 		// Default or additionalProperties: true → json.RawMessage overflow map
 		additionalProps = &AdditionalPropertiesDef{
@@ -1875,6 +1901,10 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	acceptNonObject := !schemaHasExplicitType(s, "object")
 	needsMarshal := additionalProps != nil || acceptNonObject
 	needsUnmarshal := additionalProps != nil || needsNullCheck || acceptNonObject
+	var itemValidations []ItemValidationDef
+	if g.validationKeywordsEnabled() && overflowValidation != nil {
+		itemValidations = append(itemValidations, *overflowValidation)
+	}
 	var validations []ValidationRule
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
@@ -1938,6 +1968,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 		DependentRequired:    depRequired,
 		PropertyNames:        propNames,
 		Validations:          validations,
+		ItemValidations:      itemValidations,
 		RequiredJSON:         requiredJSON,
 		NeedsMarshal:         needsMarshal,
 		NeedsUnmarshal:       needsUnmarshal,
@@ -2272,7 +2303,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			ManualJSON:     manualJSON,
 			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
+			IntegerDecode:  g.integerDecodeFor(goType, propSchema),
 		})
+		if needsUnmarshalForIntegers(fields[len(fields)-1]) {
+			needsUnmarshal = true
+		}
 	}
 
 	// Handle top-level oneOf (not on a property but on the type itself). Same
@@ -2377,6 +2412,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var validations []ValidationRule
 	var itemValidations []ItemValidationDef
 	var containsValidations []FieldContainsDef
+	var tupleValidations []FieldTupleDef
+	var unevalItemsValidations []FieldUnevalItemsDef
 
 	// Collect required JSON property names for presence-based validation.
 	// These are checked via the raw JSON keys during UnmarshalJSON.
@@ -2522,7 +2559,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Constraints under `items` land on no field of their own, so they are
 		// collected separately and checked element by element.
 		if g.validationKeywordsEnabled() {
-			if iv := g.buildItemValidation(goFieldName, propName, fieldTypes[goFieldName], propSchema); iv != nil {
+			if iv := g.buildItemValidation(name, goFieldName, propName, fieldTypes[goFieldName], propSchema); iv != nil {
 				itemValidations = append(itemValidations, *iv)
 			}
 			// `contains` counts across the whole array rather than judging each
@@ -2530,6 +2567,26 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			if fc := g.buildFieldContains(goFieldName, propName, fieldTypes[goFieldName], propSchema, !requiredSet[propName]); fc != nil {
 				containsValidations = append(containsValidations, *fc)
 			}
+			// prefixItems names each position separately, so it is neither a
+			// per-element check nor a count across the array.
+			if ft := g.buildFieldTuple(goFieldName, propName, name, fieldTypes[goFieldName], propSchema); ft != nil {
+				tupleValidations = append(tupleValidations, *ft)
+			}
+			// unevaluatedItems judges the positions the other keywords left over,
+			// so it is decided from the whole array schema rather than per element.
+			if fu := g.buildFieldUnevalItems(goFieldName, propName, fieldTypes[goFieldName], propSchema); fu != nil {
+				unevalItemsValidations = append(unevalItemsValidations, *fu)
+			}
+		}
+	}
+
+	// So do the constraints a schema-valued additionalProperties puts on the
+	// keys this object does not declare: they land in the overflow map, which
+	// no field rule reaches.
+	if g.validationKeywordsEnabled() && additionalProps != nil &&
+		s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+		if iv := g.buildOverflowValidation(name, additionalProps.ValueType, s.AdditionalProperties.Schema); iv != nil {
+			itemValidations = append(itemValidations, *iv)
 		}
 	}
 
@@ -2696,29 +2753,31 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	}
 
 	structDef := &StructDef{
-		Name:                  name,
-		Description:           s.Description,
-		Fields:                fields,
-		OneOfs:                oneOfs,
-		AdditionalProperties:  additionalProps,
-		PatternProperties:     patternProps,
-		DependentSchemas:      depSchemas,
-		DependentRequired:     depRequired,
-		PropertyNames:         propertyNamesDef,
-		Validations:           validations,
-		ItemValidations:       itemValidations,
-		ContainsValidations:   containsValidations,
-		NonObjectValidations:  nonObjRules,
-		UnevaluatedProperties: unevalProps,
-		CousinUnevalChecks:    cousinChecks,
-		ObjectOneOfs:          objectOneOfs,
-		ObjectAnyOfs:          objectAnyOfs,
-		ObjectConditionals:    objectConditionals,
-		RequiredJSON:          requiredJSON,
-		NeedsMarshal:          needsMarshal,
-		NeedsUnmarshal:        needsUnmarshal,
-		NeedsNullCheck:        needsNullCheck,
-		AcceptNonObject:       acceptNonObj,
+		Name:                   name,
+		Description:            s.Description,
+		Fields:                 fields,
+		OneOfs:                 oneOfs,
+		AdditionalProperties:   additionalProps,
+		PatternProperties:      patternProps,
+		DependentSchemas:       depSchemas,
+		DependentRequired:      depRequired,
+		PropertyNames:          propertyNamesDef,
+		Validations:            validations,
+		ItemValidations:        itemValidations,
+		ContainsValidations:    containsValidations,
+		TupleValidations:       tupleValidations,
+		UnevalItemsValidations: unevalItemsValidations,
+		NonObjectValidations:   nonObjRules,
+		UnevaluatedProperties:  unevalProps,
+		CousinUnevalChecks:     cousinChecks,
+		ObjectOneOfs:           objectOneOfs,
+		ObjectAnyOfs:           objectAnyOfs,
+		ObjectConditionals:     objectConditionals,
+		RequiredJSON:           requiredJSON,
+		NeedsMarshal:           needsMarshal,
+		NeedsUnmarshal:         needsUnmarshal,
+		NeedsNullCheck:         needsNullCheck,
+		AcceptNonObject:        acceptNonObj,
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, structDef)
 	return nil
@@ -4068,6 +4127,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			RequiredFields: result.RequiredFields,
 			Checks:         checks,
 			FullyChecked:   oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
+			IntegerDecode:  g.integerDecodeFor(result.Type, variant),
 		})
 	}
 
@@ -4735,6 +4795,21 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &NamedType{Name: enumName}, nil
 	}
 
+	// A property whose unevaluatedItems can only be settled by running the
+	// schema. Claimed before every arm below, because each of them would type
+	// the value and leave the keyword behind -- and unlike the static shapes
+	// there is no field-level check to fall back on, since which items count as
+	// evaluated depends on which branches matched the value in hand.
+	if g.inlineAnnotationWrapper(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		if g.generated[nestedName] {
+			return &NamedType{Name: nestedName}, nil
+		}
+	}
+
 	// oneOf with null + single variant → pointer to the variant type
 	if len(s.OneOf) > 0 {
 		nonNull, hasNull := g.separateNullFromOneOf(s.OneOf)
@@ -4924,6 +4999,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if inner == "array" {
 			return g.resolveType(s, parentName+fieldName), nil
 		}
+		// Nullable map → delegate for the same reason, to the map arm this time.
+		// A ["object","null"] whose whole shape is additionalProperties has no
+		// declared property names, so the arm above does not take it and the
+		// fallback below answers *map[string]any -- dropping the value type and
+		// every keyword under it, which is defect #84 in its nullable spelling.
+		// mapValueSchema is the predicate resolveType's own map arm consults, so
+		// the two agree on exactly which nodes are maps.
+		if mapValueSchema(s, inner) != nil {
+			return g.resolveType(s, parentName+fieldName), nil
+		}
 		baseType := PrimitiveTypeFromSchema(inner)
 		if baseType == nil {
 			baseType = &PrimitiveType{Name: "any"}
@@ -5033,6 +5118,36 @@ func (g *Generator) bigIntInlineWrapper(s *schema.Schema) bool {
 		return false
 	}
 	return g.annotationSchemaDef("", s) == nil
+}
+
+// inlineAnnotationWrapper reports whether a property's schema is one that
+// generateTypeDef answers with the runtime annotation evaluator: an
+// unevaluatedItems whose evaluated set depends on which of its sibling
+// applicators matched the value, or an applicator branch carrying an
+// unevaluatedItems of its own.
+//
+// This is the array counterpart of inlineConstraintWrapper, and it exists for
+// the same reason: the wrapper is only ever built for a schema being given a
+// name, and an array written inline as a property never had one. The keyword
+// was enforced at the root of a document and in a $defs entry, and nowhere
+// else -- {"arr":{"type":"array","prefixItems":[{"type":"string"}],
+// "anyOf":[{"prefixItems":[true,{"type":"integer"}]},true],
+// "unevaluatedItems":false}} accepted ["a","b"], which the same schema written
+// as the whole document has always rejected.
+//
+// It defers to the function that builds the wrapper, so a subtree the evaluator
+// cannot model keeps the type it would otherwise have had rather than gaining a
+// Validate that silently checks less than the schema says.
+//
+// Naming the property does change the field's Go type, from the []any the array
+// would otherwise be to the wrapper's name. That is the same trade a bare `not`
+// or a bare if/then/else property already makes, and the alternative is a field
+// whose schema is enforced nowhere.
+func (g *Generator) inlineAnnotationWrapper(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	return g.annotationSchemaDef("", s) != nil
 }
 
 // inlineConstraintWrapper reports whether a property's own schema is one that
@@ -5179,9 +5294,24 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		// slice's nil value already represents JSON null, so []T round-trips
 		// null/empty/populated faithfully (unlike nullable scalars/objects,
 		// whose zero values are indistinguishable from null).
-		if inner == "array" && s.Items != nil && s.Items.Schema != nil {
+		if inner == "array" && s.Items != nil && s.Items.Schema != nil && !g.isTupleArray(s) {
 			itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 			return &ArrayType{ItemType: itemType}
+		}
+		// Nullable map: an object whose whole shape is additionalProperties, on
+		// the same terms as the non-nullable map arm below -- one predicate
+		// decides both, so a node cannot be typed a map here and read as
+		// something else when its value keywords are collected.
+		//
+		// No outer pointer, for the reason the slice above gives: a nil map is
+		// what encoding/json leaves for a JSON null and what it marshals back as
+		// null, while a present {} decodes to a non-nil empty map. So null,
+		// absent and empty stay as distinguishable as the *map[string]any this
+		// replaces made them -- a pointer to a map adds no state, since a nil
+		// pointer and a pointer to a nil map both marshal to null.
+		if mapVals := mapValueSchema(s, inner); mapVals != nil {
+			valueType := g.resolveArrayItemType(mapVals, contextName+"Value")
+			return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
 		}
 		baseType := PrimitiveTypeFromSchema(inner)
 		if baseType == nil {
@@ -5218,8 +5348,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 	}
 
-	// Array with items
-	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil {
+	// Array with items. A tuple is excluded: `items` there governs only what
+	// follows the prefix, so it does not describe the array's elements and
+	// typing the slice from it cannot decode the prefix. See isTupleArray.
+	if primaryType == "array" && s.Items != nil && s.Items.Schema != nil && !g.isTupleArray(s) {
 		itemType := g.resolveArrayItemType(s.Items.Schema, contextName+"Item")
 		return &ArrayType{ItemType: itemType}
 	}
@@ -6202,7 +6334,7 @@ func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	for _, td := range g.output.TypeDefs {
 		if td.TypeName() == nt.Name {
 			switch td.(type) {
-			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef:
+			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
 				return true
 			}
 			return false
@@ -6547,6 +6679,18 @@ func hasProperties(s *schema.Schema) bool {
 // and falls through to the alias paths, where its branches attach to the
 // declared or inferred type.
 func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
+	// An element (or map value) whose unevaluatedItems only the runtime
+	// annotation evaluator can settle. Same reasoning as the property arm in
+	// resolvePropertyType: nothing below names the position, so the keyword
+	// would be enforced nowhere. It matters here in particular because the
+	// per-element checks cannot stand in -- they read the element schema's own
+	// prefixItems, and a prefix behind an allOf is not that.
+	if g.inlineAnnotationWrapper(items) {
+		_ = g.generateTypeDef(itemContext, items)
+		if g.generated[itemContext] {
+			return &NamedType{Name: itemContext}
+		}
+	}
 	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
@@ -6694,6 +6838,18 @@ func (g *Generator) unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
 		return false
 	}
 	if s.If != nil || s.Ref != "" || s.Contains != nil {
+		return false
+	}
+	// A dynamic reference is the one applicator whose target is not known until
+	// the instance is validated, so what it contributes to the evaluated set
+	// cannot be read off the document at all. The suite's "unevaluatedItems with
+	// $dynamicRef" case is exactly this: a base carrying prefixItems of length 1
+	// and unevaluatedItems:false, whose $dynamicRef resolves in the deriving
+	// document to a second prefixItems entry. Folding the tuple length into a
+	// maxItems there rejects ["foo","bar"], which is valid. Under-enforcing is
+	// the safe direction, so bail and leave the pair to the evaluator that can
+	// see the resolution.
+	if s.DynamicRef != "" || s.RecursiveRef != "" {
 		return false
 	}
 	// items as a schema (not tuple form) evaluates all remaining items — no unevaluated ones.
@@ -7313,7 +7469,12 @@ func enumValueSuffix(v any) string {
 func localTypeIsValidatable(td TypeDef) bool {
 	switch d := td.(type) {
 	case *EnumDef, *StructDef, *InferredAliasDef, *BigIntAliasDef, *TypeOnlySchemaDef,
-		*NotSchemaDef, *DynamicSchemaDef:
+		*NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
+		// An AnnotationSchemaDef carries a Validate like the rest, and it has to
+		// be named here for a *property* of that shape to be checked at all: the
+		// struct only dispatches to a field type it believes validatable, so
+		// leaving it out gave a field whose whole content was an
+		// unevaluatedItems the parent then never asked about.
 		return true
 	case *AliasDef:
 		return d.CanHaveMethods()
@@ -7498,7 +7659,7 @@ func (g *Generator) containerElemSchema(s *schema.Schema, isMap bool) *schema.Sc
 // very sub-schema and answers for it through its own Validate. Whether such a
 // call is actually emitted is settled later, by resolveItemValidations, since
 // which types carry methods is only known once every type def exists.
-func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType GoType, s *schema.Schema) *ItemValidationDef {
+func (g *Generator) buildItemValidation(parentName, fieldName, jsonName string, fieldType GoType, s *schema.Schema) *ItemValidationDef {
 	if fieldType == nil {
 		return nil
 	}
@@ -7514,7 +7675,69 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 	}
 
 	def := &ItemValidationDef{FieldName: fieldName, JSONName: jsonName, IsPointer: isPointer}
-	elemSchema := g.containerElemSchema(s, isMap)
+	g.descendItemLevels(def, elemType, g.containerElemSchema(s, isMap), isMap, parentName+fieldName)
+	if !def.trim(ItemLevel.pending) {
+		return nil
+	}
+	return def
+}
+
+// buildOverflowValidation collects what a schema-valued `additionalProperties`
+// demands of the values it governs, in the position where the keyword sits
+// beside `properties` or `patternProperties` and so speaks only about the keys
+// those do not claim.
+//
+// That position is the one buildItemValidation cannot reach. It derives the
+// value schema through mapValueSchema, which answers nil the moment a sibling
+// `properties` or `patternProperties` exists -- correctly, since the object is
+// then a struct with an overflow map rather than a Go map. The overflow map is
+// typed, so a value of the wrong JSON type dies in the decoder, but until this
+// existed nothing checked a `minimum` on one and
+// {"properties":{"alpha":{"type":"string"}},
+//
+//	"additionalProperties":{"type":"integer","minimum":5}}
+//
+// accepted {"alpha":"aa","zzExtra":1}.
+//
+// The value schema is applied to exactly the keys the overflow map holds, which
+// is exactly the set `additionalProperties` governs: a key `properties` or
+// `patternProperties` claims never lands there, and a key one of the schema's
+// *sibling* applicators declares does, which is what the spec asks for.
+// parentName is the owning struct's name. It prefixes any type the descent has
+// to materialize below the value -- a tuple position, say -- and is the same
+// prefix the value type itself was resolved under (name+"Value"), so a nested
+// name cannot collide with one minted anywhere else for this struct.
+func (g *Generator) buildOverflowValidation(parentName string, valueType GoType, valueSchema *schema.Schema) *ItemValidationDef {
+	if valueType == nil || valueSchema == nil || valueSchema.IsBooleanSchema() {
+		return nil
+	}
+	def := &ItemValidationDef{
+		FieldName:     overflowFieldName,
+		PathName:      "additionalProperties",
+		OwnsOutermost: true,
+	}
+	g.descendItemLevels(def, valueType, valueSchema, true, parentName+"Value")
+	if !def.trim(ItemLevel.pending) {
+		return nil
+	}
+	return def
+}
+
+// overflowFieldName is the Go field the generated struct keeps unknown keys in.
+// fieldmap.go reserves the name, so no declared property can take it.
+const overflowFieldName = "AdditionalProperties"
+
+// descendItemLevels walks a container's Go type and its sub-schema chain in
+// step, appending one level per container depth. The caller supplies the
+// outermost element and the schema that governs it, which is what lets the
+// overflow map -- whose value schema is not reachable from its container's --
+// share the descent.
+//
+// namePrefix names any type a level has to materialize -- the positions of an
+// element that is itself a tuple. Each caller passes the prefix its own value
+// type was resolved under, so a name minted here agrees with the one the type
+// carries and cannot collide with another container's.
+func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, elemSchema *schema.Schema, isMap bool, namePrefix string) {
 	for elemSchema != nil && len(def.Levels) < maxItemLevels {
 		level := ItemLevel{
 			IndexVar:      itemLevelVar(isMap, len(def.Levels)),
@@ -7526,6 +7749,16 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 		}
 		if level.ElemTypeName == "" {
 			level.Rules = elementRules(elemType, elemSchema)
+			// An element that is a tuple in its own right. The descent stops
+			// here either way -- singleItemsSchema answers nil for a tuple,
+			// since `items` there governs only the tail -- so without this the
+			// positions would be reached by nothing at all.
+			if _, isAnySlice := anyElementSliceField(elemType); isAnySlice {
+				tupleName := fmt.Sprintf("%sItems%d", namePrefix, len(def.Levels))
+				level.TupleItems = g.buildTupleItemDefs(elemSchema, tupleName)
+				level.TupleTail = g.buildTupleTailDef(elemSchema, tupleName)
+				level.UnevalItems = g.elemUnevalItemsDef(elemSchema)
+			}
 		}
 		def.Levels = append(def.Levels, level)
 		if level.ElemTypeName != "" {
@@ -7542,10 +7775,6 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 		elemSchema = g.containerElemSchema(elemSchema, nestedIsMap)
 		elemType, isMap = nested, nestedIsMap
 	}
-	if !def.trim(ItemLevel.pending) {
-		return nil
-	}
-	return def
 }
 
 // itemLevelVar names a level's loop variable, so that generated source reads as
@@ -7615,6 +7844,152 @@ func noteFieldContainsImports(defs []FieldContainsDef, needsFmt, needsJSON, need
 				*needsMath = true
 			case chk.CheckType == "pattern":
 				*needsStdRegexp = true
+			}
+		}
+	}
+}
+
+// anyElementSliceField reports whether a property's Go type is a slice of
+// `any`, and whether it arrived behind a pointer.
+//
+// That is the shape both new field checks below need, and it is not an
+// arbitrary restriction. The per-position tuple arms and the unevaluatedItems
+// arms read each element as an `any` -- a type assertion for the cheap tests, a
+// json.Marshal for the rest -- and []any is what resolveType answers for any
+// array these keywords apply to: a tuple has no homogeneous element type (see
+// isTupleArray), and an array carrying unevaluatedItems is one whose tail the
+// generator declines to type. A field of any other slice type did not come from
+// such a schema.
+func anyElementSliceField(fieldType GoType) (isPointer, ok bool) {
+	base := fieldType
+	if pt, isPtr := base.(*PointerType); isPtr {
+		base = pt.Inner
+		isPointer = true
+	}
+	at, isArray := base.(*ArrayType)
+	if !isArray {
+		return isPointer, false
+	}
+	prim, isPrim := at.ItemType.(*PrimitiveType)
+	return isPointer, isPrim && prim.Name == "any"
+}
+
+// buildFieldTuple collects the positional checks an array property states
+// through prefixItems (2020-12) or items-as-array (draft 4-7), for the case
+// where the property stayed a plain Go slice. Returns nil when there is nothing
+// to check.
+//
+// The guard is the Go type, exactly as buildFieldContains's is: a property that
+// was materialized as a named type carries the same positions in its own
+// Validate, which the struct dispatches to through ValidatableFields, so
+// emitting here as well would report every failure twice.
+func (g *Generator) buildFieldTuple(fieldName, jsonName, parentName string, fieldType GoType, s *schema.Schema) *FieldTupleDef {
+	if s == nil {
+		return nil
+	}
+	isPointer, ok := anyElementSliceField(fieldType)
+	if !ok {
+		return nil
+	}
+	posName := parentName + fieldName
+	items := g.buildTupleItemDefs(s, posName)
+	if len(items) == 0 {
+		return nil
+	}
+	return &FieldTupleDef{
+		FieldName: fieldName,
+		JSONName:  jsonName,
+		IsPointer: isPointer,
+		Items:     items,
+		Tail:      g.buildTupleTailDef(s, posName),
+	}
+}
+
+// elemUnevalItemsDef builds the unevaluatedItems constraint of an array that is
+// not a named type of its own -- a property's slice, or a slice nested inside
+// one -- keeping only the shapes the static check can decide. See
+// buildFieldUnevalItems for why the rest are refused rather than approximated.
+func (g *Generator) elemUnevalItemsDef(s *schema.Schema) *UnevaluatedItemsDef {
+	if s == nil || s.UnevaluatedItems == nil {
+		return nil
+	}
+	def := g.buildUnevaluatedItemsDef(s)
+	if def == nil || len(def.ConditionalEvals) > 0 || def.ContainsEvaluates {
+		return nil
+	}
+	return def
+}
+
+// buildFieldUnevalItems collects the `unevaluatedItems` constraint an array
+// property states, for the case where the property stayed a plain Go slice and
+// the constraint can be decided without running the schema.
+//
+// A def carrying ConditionalEvals or ContainsEvaluates is refused rather than
+// emitted. Both say the evaluated set depends on the value in hand -- which
+// anyOf branch matched, which elements `contains` matched -- and neither is
+// reflected in EvaluatedCount, so emitting the static check would forbid items
+// that a matching branch had in fact evaluated. That is a false rejection of a
+// conforming document, which is worse than the missing check: those shapes
+// belong to the runtime annotation evaluator, which the property reaches by
+// being materialized into a named type (see inlineAnnotationWrapper), and where
+// the evaluator cannot model the subtree either, nothing is emitted at all.
+func (g *Generator) buildFieldUnevalItems(fieldName, jsonName string, fieldType GoType, s *schema.Schema) *FieldUnevalItemsDef {
+	isPointer, ok := anyElementSliceField(fieldType)
+	if !ok {
+		return nil
+	}
+	def := g.elemUnevalItemsDef(s)
+	if def == nil {
+		return nil
+	}
+	return &FieldUnevalItemsDef{
+		FieldName: fieldName,
+		JSONName:  jsonName,
+		IsPointer: isPointer,
+		Def:       def,
+	}
+}
+
+// noteFieldTupleImports records what the emitted per-position checks need. The
+// named-type arm marshals the element and calls the position type's Validate,
+// so it needs json; the "integer" test is math.Trunc; every arm reports through
+// fmt.
+func noteFieldTupleImports(defs []FieldTupleDef, needsFmt, needsJSON, needsMath *bool) {
+	for _, ft := range defs {
+		*needsFmt = true
+		items := ft.Items
+		if ft.Tail != nil {
+			items = append(append([]TupleItemDef{}, items...), *ft.Tail)
+		}
+		for _, ti := range items {
+			if ti.TypeName != "" {
+				*needsJSON = true
+			}
+			if ti.JSONType == "integer" {
+				*needsMath = true
+			}
+		}
+	}
+}
+
+// noteFieldUnevalItemsImports records what the emitted unevaluatedItems checks
+// need. Anything past the forbidden form marshals each unevaluated element, and
+// the integer and multipleOf tests reach for math.
+func noteFieldUnevalItemsImports(defs []FieldUnevalItemsDef, needsFmt, needsJSON, needsMath *bool) {
+	for _, fu := range defs {
+		*needsFmt = true
+		if fu.Def == nil {
+			continue
+		}
+		if fu.Def.ValueType != "" || len(fu.Def.Checks) > 0 {
+			*needsJSON = true
+		}
+		if fu.Def.ValueType == "integer" {
+			*needsMath = true
+		}
+		for _, chk := range fu.Def.Checks {
+			if chk.CheckType == "multipleOf" {
+				*needsMath = true
 			}
 		}
 	}
@@ -7691,7 +8066,9 @@ func elementGoKind(t GoType) string {
 // only be decided once every type def existed: whether a named element type
 // carries a Validate to dispatch to. A struct field's outermost element is left
 // alone, since ValidatableFields already dispatches for it and a second call
-// would validate every element twice.
+// would validate every element twice -- unless the definition says otherwise
+// through OwnsOutermost, which the overflow map does: no field dispatch reaches
+// it, so its own definition has to make the call.
 func (g *Generator) resolveItemValidations() {
 	validatableTypes := make(map[string]bool)
 	for _, td := range g.output.TypeDefs {
@@ -7723,7 +8100,7 @@ func (g *Generator) resolveItemValidations() {
 			def := &(*defs)[i]
 			for li := range def.Levels {
 				level := &def.Levels[li]
-				if level.ElemTypeName == "" || (li == 0 && !ownsOutermost) {
+				if level.ElemTypeName == "" || (li == 0 && !ownsOutermost && !def.OwnsOutermost) {
 					continue
 				}
 				// A name from another package is only answered by that
@@ -8069,7 +8446,7 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 				case *BigIntAliasDef:
 					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
 					return ""
-				case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef:
+				case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
 					// A raw-value wrapper struct — no meaningful zero literal.
 					// Its Validate accepts the absent value, so the caller does
 					// not need a presence guard. Without a case here the `""`
@@ -8195,8 +8572,44 @@ func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 	return g.draft
 }
 
+// supportsPrefixItems reports whether prefixItems is a keyword of the dialect
+// the schema is read under.
+//
+// A document that states no dialect is read as a modern one, the same rule
+// refOverridesSiblingsForDraft already applies, and the same one every
+// reference implementation applies -- python-jsonschema and ajv both fall back
+// to the newest draft they know. Treating DraftUnknown as pre-2020 instead left
+// the keyword half-read: extractValidationRules and collectEvaluatedItems take
+// the *length* of prefixItems with no draft gate at all, so an undialected
+// document already got a maxItems out of it while every positional subschema
+// was dropped. That is what made {"prefixItems":[{"type":"string"}]} accept an
+// integer at position 0 and still cap the array's length.
+//
+// A document that *does* declare a pre-2020 dialect is unaffected: draft-07 has
+// no prefixItems and still ignores it, which TestExplicitDraftOverridesDocumentSchemaKeyword
+// pins.
 func (g *Generator) supportsPrefixItems(s *schema.Schema) bool {
-	return g.draftForSchema(s) == schema.Draft202012
+	switch g.draftForSchema(s) {
+	case schema.Draft202012, schema.DraftUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// isTupleArray reports whether prefixItems positions the array's elements, so
+// the elements are heterogeneous by construction and no single Go element type
+// can hold them.
+//
+// The sibling `items` is what makes this a decision rather than an observation.
+// In 2020-12 it governs only the positions *past* the tuple, so
+// {"prefixItems":[{"type":"string"},{"type":"integer"}],"items":{"type":"boolean"}}
+// is a string, then an integer, then booleans. Reading `items` as the element
+// schema typed the field []bool, and the tuple prefix could not decode into it
+// at all -- a valid document rejected in the decoder, before any check ran.
+// A tuple's Go type is []any, and its positions are checked in Validate.
+func (g *Generator) isTupleArray(s *schema.Schema) bool {
+	return s != nil && len(s.PrefixItems) > 0 && g.supportsPrefixItems(s)
 }
 
 func supportsDependentRequired(draft schema.Draft) bool {
@@ -9380,7 +9793,22 @@ func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
 
 // extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.
 // It handles boolean false schemas, additionalProperties:false (allowed-keys check),
-// properties with type constraints, required properties, and minProperties/maxProperties.
+// required properties, minProperties/maxProperties, and the rest of what the
+// branch demands of the object's shape.
+//
+// The shape half is an ObjectConditionalBranch, the same definition an
+// object-level `then` carries. A dependentSchemas branch is an ordinary
+// subschema gated on a key's presence rather than on an `if`, so it is held to
+// the same bar `then` is: what the branch states and the evaluator can express
+// is enforced, and what it cannot is dropped rather than costing the branch its
+// other conjuncts. A schema object's keywords are conjunctive, so enforcing a
+// subset of them can only let a wrong document through -- never refuse a right
+// one. What survives is `required`, `additionalProperties: false`,
+// minProperties/maxProperties, and per-property type, const, numeric bounds,
+// multipleOf, string length and pattern. What does not: a branch carrying a
+// $ref or an unrecognized keyword (refused whole, see objectConditionalBranchLenient),
+// and per-property keywords the dynamic evaluator does not model -- enum,
+// nested properties/items, and the applicators.
 func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
 	if len(s.DependentSchemas) == 0 {
 		return nil
@@ -9410,17 +9838,19 @@ func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstr
 			hasConstraint = true
 		}
 
-		// Properties with type constraints.
-		if len(depSchema.Properties) > 0 {
-			for _, propName := range sortedKeys(depSchema.Properties) {
-				propSchema := depSchema.Properties[propName]
-				if len(propSchema.Type) == 1 {
-					constraint.PropertyTypes = append(constraint.PropertyTypes, DependentPropertyType{
-						PropName: propName,
-						JSONType: propSchema.Type[0],
-					})
-					hasConstraint = true
-				}
+		// What the branch demands of the properties it names. `required` is
+		// answered by RequiredProps below, so the branch keeps only the shape
+		// half and the two do not check the same thing twice.
+		//
+		// This reads _jsonRawProps, which holds every key the document carried.
+		// The per-property type check it replaces read the *overflow* map, so it
+		// saw only keys the struct did not declare -- a branch constraining a
+		// declared property was checked against a map that could never hold it.
+		if branch := objectConditionalBranchLenient(dependentSchemaKeyword(trigger), depSchema); branch != nil {
+			branch.RequiredKeys = nil
+			if !branch.Empty() {
+				constraint.Branch = branch
+				hasConstraint = true
 			}
 		}
 
@@ -10739,107 +11169,169 @@ func (g *Generator) buildCousinCheck(s *schema.Schema) *CousinUnevalCheck {
 	}
 }
 
+// tuplePositionSchemas returns the sub-schemas a tuple array states for its
+// positions: prefixItems in draft 2020-12, items-as-array in draft 4-7.
+func (g *Generator) tuplePositionSchemas(s *schema.Schema) []*schema.Schema {
+	if s == nil {
+		return nil
+	}
+	if g.isTupleArray(s) {
+		return s.PrefixItems
+	}
+	if s.Items != nil && len(s.Items.Schemas) > 0 {
+		return s.Items.Schemas
+	}
+	return nil
+}
+
+// tupleTailSchema returns the sub-schema governing every position past a
+// tuple's prefix, or nil when nothing does.
+//
+// The keyword differs by draft and the two spellings must not be mixed up. In
+// 2020-12 a schema-valued `items` beside prefixItems governs only the tail --
+// it is the successor of additionalItems, not of the uniform items. Before
+// 2020-12 the tuple is `items` as an array and the tail is additionalItems.
+// Either way the tail is meaningless without a prefix to follow, so a caller
+// that found no positions gets nil.
+func (g *Generator) tupleTailSchema(s *schema.Schema) *schema.Schema {
+	if s == nil {
+		return nil
+	}
+	if g.isTupleArray(s) {
+		if s.Items == nil {
+			return nil
+		}
+		return s.Items.Schema
+	}
+	if s.Items != nil && len(s.Items.Schemas) > 0 && s.AdditionalItems != nil {
+		return s.AdditionalItems.AsSchema()
+	}
+	return nil
+}
+
+// tupleItemDefFor resolves one tuple position's sub-schema into the check that
+// position carries. posName is the type name to materialize under when the
+// sub-schema needs one. Returns the zero def when the position constrains
+// nothing, and reports whether anything is left to check.
+func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (TupleItemDef, bool) {
+	if posSch == nil {
+		return TupleItemDef{}, false
+	}
+
+	// Boolean false schema — reject any value at this position.
+	if posSch.IsFalseSchema() {
+		return TupleItemDef{IsFalse: true}, true
+	}
+
+	// Boolean true schema — no constraint.
+	if posSch.IsTrueSchema() {
+		return TupleItemDef{}, false
+	}
+
+	// Resolve $ref chain to find the target schema and its generated type name.
+	resolved := posSch
+	refName := ""
+	if !g.refOverridesSiblingsForSchema(posSch) && hasRefStructuralSiblings(posSch) && (posSch.EffectiveRef() != "" || posSch.DynamicRef != "") {
+		_ = g.generateTypeDef(posName, posSch)
+		if g.generated[posName] {
+			return TupleItemDef{TypeName: posName}, true
+		}
+	}
+	if ref := posSch.EffectiveRef(); ref != "" {
+		if r := g.resolveRefInContext(ref, posSch); r != nil {
+			resolved = r
+			refName = g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
+		}
+	}
+
+	// Ensure the ref target type is generated. This is safe from infinite
+	// recursion because the caller (generateTypeDef for an array) marks the
+	// parent type as generated BEFORE calling buildTupleItemDefs.
+	if refName != "" {
+		_ = g.generateTypeDef(refName, resolved)
+		if g.generated[refName] {
+			return TupleItemDef{TypeName: refName}, true
+		}
+	}
+
+	// Non-ref position schema: for schemas with structural keywords (type,
+	// properties, etc.), generate a named type so positional validation works.
+	if hasStructuralKeywords(resolved) {
+		_ = g.generateTypeDef(posName, resolved)
+		if g.generated[posName] {
+			return TupleItemDef{TypeName: posName}, true
+		}
+	}
+
+	// Simple type-only schema (no structural keywords) — record the JSON type
+	// for lightweight runtime type checking.
+	if jsonType := primarySchemaType(resolved); jsonType != "" {
+		return TupleItemDef{JSONType: jsonType}, true
+	}
+
+	return TupleItemDef{}, false
+}
+
 // buildTupleItemDefs extracts per-position type definitions for tuple-form arrays
 // (prefixItems in draft 2020-12, or items-as-array in draft 4-7).
 // For each position, it resolves the schema (following $ref if needed),
 // determines the Go type name, and records it for per-position validation.
-// Returns nil if the schema has no tuple items or if no position has a validatable type.
+//
+// The list is returned at full tuple length whenever anything at all is worth
+// checking -- including when only the *tail* is, since the tail's first index is
+// read off this list's length. Positions that constrain nothing render nothing.
+// Returns nil if the schema has no tuple items, or if neither a position nor the
+// tail has anything to check.
 func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []TupleItemDef {
-	var positionSchemas []*schema.Schema
-
-	// Draft 2020-12: prefixItems
-	if len(s.PrefixItems) > 0 && g.supportsPrefixItems(s) {
-		positionSchemas = s.PrefixItems
-	}
-	// Draft 4-7: items as array of schemas
-	if len(positionSchemas) == 0 && s.Items != nil && len(s.Items.Schemas) > 0 {
-		positionSchemas = s.Items.Schemas
-	}
-
+	positionSchemas := g.tuplePositionSchemas(s)
 	if len(positionSchemas) == 0 {
 		return nil
 	}
 
-	var tupleItems []TupleItemDef
+	tupleItems := make([]TupleItemDef, 0, len(positionSchemas))
 	hasValidatable := false
-
 	for i, posSch := range positionSchemas {
-		if posSch == nil {
-			tupleItems = append(tupleItems, TupleItemDef{})
-			continue
-		}
-
-		// Boolean false schema — reject any value at this position.
-		if posSch.IsFalseSchema() {
-			tupleItems = append(tupleItems, TupleItemDef{IsFalse: true})
-			hasValidatable = true
-			continue
-		}
-
-		// Boolean true schema — no constraint.
-		if posSch.IsTrueSchema() {
-			tupleItems = append(tupleItems, TupleItemDef{})
-			continue
-		}
-
-		// Resolve $ref chain to find the target schema and its generated type name.
-		resolved := posSch
-		refName := ""
-		if !g.refOverridesSiblingsForSchema(posSch) && hasRefStructuralSiblings(posSch) && (posSch.EffectiveRef() != "" || posSch.DynamicRef != "") {
-			posName := fmt.Sprintf("%sItem%d", parentName, i)
-			_ = g.generateTypeDef(posName, posSch)
-			if g.generated[posName] {
-				tupleItems = append(tupleItems, TupleItemDef{TypeName: posName})
-				hasValidatable = true
-				continue
-			}
-		}
-		if ref := posSch.EffectiveRef(); ref != "" {
-			if r := g.resolveRefInContext(ref, posSch); r != nil {
-				resolved = r
-				refName = g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
-			}
-		}
-
-		// Ensure the ref target type is generated. This is safe from infinite
-		// recursion because the caller (generateTypeDef for an array) marks the
-		// parent type as generated BEFORE calling buildTupleItemDefs.
-		if refName != "" {
-			_ = g.generateTypeDef(refName, resolved)
-			if g.generated[refName] {
-				tupleItems = append(tupleItems, TupleItemDef{TypeName: refName})
-				hasValidatable = true
-				continue
-			}
-		}
-
-		// Non-ref position schema: for schemas with structural keywords (type,
-		// properties, etc.), generate a named type so positional validation works.
-		if hasStructuralKeywords(resolved) {
-			posName := fmt.Sprintf("%sItem%d", parentName, i)
-			_ = g.generateTypeDef(posName, resolved)
-			if g.generated[posName] {
-				tupleItems = append(tupleItems, TupleItemDef{TypeName: posName})
-				hasValidatable = true
-				continue
-			}
-		}
-
-		// Simple type-only schema (no structural keywords) — record the JSON type
-		// for lightweight runtime type checking.
-		if jsonType := primarySchemaType(resolved); jsonType != "" {
-			tupleItems = append(tupleItems, TupleItemDef{JSONType: jsonType})
-			hasValidatable = true
-			continue
-		}
-
-		tupleItems = append(tupleItems, TupleItemDef{})
+		def, ok := g.tupleItemDefFor(posSch, fmt.Sprintf("%sItem%d", parentName, i))
+		tupleItems = append(tupleItems, def)
+		hasValidatable = hasValidatable || ok
 	}
 
-	if !hasValidatable {
+	if !hasValidatable && g.buildTupleTailDef(s, parentName) == nil {
 		return nil
 	}
 	return tupleItems
+}
+
+// buildTupleTailDef builds the check every position past a tuple's prefix
+// carries, or nil when there is none to make.
+//
+// A false tail is normally left to the length bound: extractValidationRules
+// turns "items": false beside a tuple into an implicit maxItems of the tuple's
+// length, which rejects the same documents with a clearer message. That
+// inference only fires when the schema states no maxItems of its own, so a
+// stated bound *wider* than the prefix used to disable the keyword outright --
+// {"prefixItems":[a,b],"items":false,"maxItems":5} accepted a third element.
+// That, and only that, is what the false tail covers.
+func (g *Generator) buildTupleTailDef(s *schema.Schema, parentName string) *TupleItemDef {
+	positionSchemas := g.tuplePositionSchemas(s)
+	if len(positionSchemas) == 0 {
+		return nil
+	}
+	tail := g.tupleTailSchema(s)
+	if tail == nil || tail.IsTrueSchema() {
+		return nil
+	}
+	if tail.IsFalseSchema() {
+		if s.MaxItems != nil && s.MaxItems.Int() > len(positionSchemas) {
+			return &TupleItemDef{IsFalse: true}
+		}
+		return nil
+	}
+	def, ok := g.tupleItemDefFor(tail, parentName+"Rest")
+	if !ok {
+		return nil
+	}
+	return &def
 }
 
 // sortedKeys returns the sorted keys of a map[string]*schema.Schema.

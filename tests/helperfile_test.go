@@ -42,6 +42,13 @@ func sharedHelpersFor(content string) generator.HelperSet {
 		set.Annotations = true
 		set.Dynamic = true
 	}
+	// jsonInteger and its three container rebuilders come as one block, and the
+	// name appears in every use of any of them -- the shadow field's type, the
+	// closure parameter of a rebuilder, the conversion at the leaf -- so one
+	// substring pulls the whole family in.
+	if strings.Contains(content, "jsonInteger") {
+		set.Integer = true
+	}
 	return set
 }
 

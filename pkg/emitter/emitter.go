@@ -63,18 +63,23 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 
 	// Imports are fixed by which helpers are included, not by the schemas.
 	var imports []generator.Import
-	if helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator {
-		imports = append(imports, generator.Import{Path: "encoding/json"})
+	// Each path is added at most once: the list goes straight into the file's
+	// import block, and naming the same package twice does not compile.
+	add := func(cond bool, path string) {
+		if !cond {
+			return
+		}
+		for _, existing := range imports {
+			if existing.Path == path {
+				return
+			}
+		}
+		imports = append(imports, generator.Import{Path: path})
 	}
-	if helpers.OneOfDiscriminator {
-		imports = append(imports, generator.Import{Path: "fmt"})
-	}
-	if helpers.Dynamic {
-		imports = append(imports, generator.Import{Path: "math"})
-	}
-	if helpers.Annotations {
-		imports = append(imports, generator.Import{Path: "reflect"})
-	}
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer, "fmt")
+	add(helpers.Dynamic || helpers.Integer, "math")
+	add(helpers.Annotations, "reflect")
 
 	data := helperFileData{
 		PackageName: packageName,

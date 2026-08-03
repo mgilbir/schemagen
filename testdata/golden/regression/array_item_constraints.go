@@ -177,12 +177,28 @@ func (i *ItemConstraints) UnmarshalJSON(data []byte) error {
 	type Alias ItemConstraints
 	aux := &struct {
 		*Alias
+		Counts *[]jsonInteger   `json:"counts"`
+		Grid   *[][]jsonInteger `json:"grid"`
 	}{
 		Alias: (*Alias)(i),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Counts != nil {
+		_iv := *aux.Counts
+		i.Counts = jsonIntegerSlice(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	}
+	if aux.Grid != nil {
+		_iv := *aux.Grid
+		i.Grid = jsonIntegerSlice(_iv, func(_ix0 []jsonInteger) []int64 {
+			return jsonIntegerSlice(_ix0, func(_ix1 jsonInteger) int64 { return int64(_ix1) })
+		})
 	}
 	{
 		var raw map[string]json.RawMessage

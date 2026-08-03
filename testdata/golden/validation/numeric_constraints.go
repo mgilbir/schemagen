@@ -25,12 +25,21 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 	type Alias Measurement
 	aux := &struct {
 		*Alias
+		Count *jsonInteger `json:"count"`
 	}{
 		Alias: (*Alias)(m),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Count != nil {
+		_iv := *aux.Count
+		m.Count = int64(_iv)
 	}
 	{
 		var raw map[string]json.RawMessage

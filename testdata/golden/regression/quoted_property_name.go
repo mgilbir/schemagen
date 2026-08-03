@@ -69,9 +69,14 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 			}
 		}
 		if v, ok := raw["map\"key"]; ok {
-			if err := json.Unmarshal(v, &q.MapKey); err != nil {
+			// Decoded through the shadow for the reason the aux fields above are:
+			// a property name that cannot go in a struct tag is decoded by hand,
+			// but its integers are the same integers.
+			var _iv map[string]jsonInteger
+			if err := json.Unmarshal(v, &_iv); err != nil {
 				return fmt.Errorf("unmarshaling QuotedPropertyName.MapKey: %w", err)
 			}
+			q.MapKey = jsonIntegerMap(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 		}
 	}
 	{

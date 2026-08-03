@@ -81,12 +81,21 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 	type Alias EventRecordItem2
 	aux := &struct {
 		*Alias
+		Code **jsonInteger `json:"code"`
 	}{
 		Alias: (*Alias)(e),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
+	// above are what let encoding/json see it. Each outer pointer is nil when
+	// the property was absent or null, both of which leave the field as it was.
+	if aux.Code != nil {
+		_iv := *aux.Code
+		e.Code = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
 		var raw map[string]json.RawMessage

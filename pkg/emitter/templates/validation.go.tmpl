@@ -992,6 +992,32 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- /* prefixItems on an array property. No presence gate is needed the way
+	       contains needs one: an absent property is a nil slice, the loop runs
+	       zero times, and a tuple states nothing about an array it has no
+	       elements of. A *[]any still needs the nil guard, since ranging over a
+	       dereferenced nil pointer panics. */}}
+	{{- range $ft := $struct.TupleValidations}}
+	{{- if $ft.IsPointer}}
+	if {{$recv}}.{{$ft.FieldName}} != nil {
+	{{- template "tuple_items_check" (mkTupleCtx (printf "*%s.%s" $recv $ft.FieldName) (printf "%s: items" (jsonErrorName $ft.JSONName)) $ft.Items $ft.Tail)}}
+	}
+	{{- else}}
+	{{- template "tuple_items_check" (mkTupleCtx (printf "%s.%s" $recv $ft.FieldName) (printf "%s: items" (jsonErrorName $ft.JSONName)) $ft.Items $ft.Tail)}}
+	{{- end}}
+	{{- end}}
+	{{- /* unevaluatedItems on an array property. Absent needs no gate for the
+	       same reason: the check only ever looks past the evaluated positions,
+	       and an empty array has none to look past. */}}
+	{{- range $fu := $struct.UnevalItemsValidations}}
+	{{- if $fu.IsPointer}}
+	if {{$recv}}.{{$fu.FieldName}} != nil {
+	{{- template "uneval_items_check" (mkUnevalItemsCtx (printf "*%s.%s" $recv $fu.FieldName) (printf "%s: unevaluatedItems" (jsonErrorName $fu.JSONName)) $fu.Def)}}
+	}
+	{{- else}}
+	{{- template "uneval_items_check" (mkUnevalItemsCtx (printf "%s.%s" $recv $fu.FieldName) (printf "%s: unevaluatedItems" (jsonErrorName $fu.JSONName)) $fu.Def)}}
+	{{- end}}
+	{{- end}}
 	{{- if $struct.HasDependentSchemas}}
 	// dependentSchemas: when a trigger key is present, validate against the dependent sub-schema.
 	{{- range $dep := $struct.DependentSchemas}}
@@ -1026,44 +1052,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("dependentSchema %q: has %d properties, maximum is {{deref $dep.MaxProperties}}", {{printf "%q" $dep.TriggerKey}}, len({{$recv}}._jsonKeys))
 		}
 		{{- end}}
-		{{- if $dep.PropertyTypes}}
-		{{- range $pt := $dep.PropertyTypes}}
-		if _raw, _ok := {{$recv}}.AdditionalProperties[{{printf "%q" $pt.PropName}}]; _ok {
-			var _v any
-			if _dErr := json.Unmarshal(_raw, &_v); _dErr == nil {
-				{{- if eq $pt.JSONType "integer"}}
-				_f, _fOk := _v.(float64)
-				if !_fOk || _f != math.Trunc(_f) {
-					return fmt.Errorf("dependentSchema %q: property %q: expected integer", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "number"}}
-				if _, _fOk := _v.(float64); !_fOk {
-					return fmt.Errorf("dependentSchema %q: property %q: expected number", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "string"}}
-				if _, _sOk := _v.(string); !_sOk {
-					return fmt.Errorf("dependentSchema %q: property %q: expected string", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "boolean"}}
-				if _, _bOk := _v.(bool); !_bOk {
-					return fmt.Errorf("dependentSchema %q: property %q: expected boolean", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "null"}}
-				if _v != nil {
-					return fmt.Errorf("dependentSchema %q: property %q: expected null", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "array"}}
-				if _, _aOk := _v.([]any); !_aOk {
-					return fmt.Errorf("dependentSchema %q: property %q: expected array", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- else if eq $pt.JSONType "object"}}
-				if _, _oOk := _v.(map[string]any); !_oOk {
-					return fmt.Errorf("dependentSchema %q: property %q: expected object", {{printf "%q" $dep.TriggerKey}}, {{printf "%q" $pt.PropName}})
-				}
-				{{- end}}
-			}
+		{{- if $dep.Branch}}
+		{{- /* The rest of the branch: what it demands of the object's shape.
+		       Read off the raw JSON the unmarshaler kept, so a constraint
+		       reaches a property whether or not the struct declares a field for
+		       it -- the per-property type check this replaces read the overflow
+		       map, which a declared property never reaches. A nil map means the
+		       value was not built from JSON, where the trigger's own presence is
+		       already unknowable and the whole group is skipped. */}}
+		if {{$recv}}._jsonRawProps != nil {
+			{{- template "object_cond_branch" mkCondCtx $recv $dep.Branch}}
 		}
-		{{- end}}
 		{{- end}}
 	}
 	{{- end}}
@@ -1490,6 +1489,15 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	}
 	{{- end}}
 	{{- end}}
+	{{- /* An element that is itself a tuple. The same checks an array property
+	       gets, over this level's element instead of a field, with the enclosing
+	       loop's indices carried into the error path. */}}
+	{{- if $lv.HasTupleItems}}
+	{{- template "tuple_items_check" (mkTupleCtxIn $elem (printf "%s: items" $path) $args $lv.TupleItems $lv.TupleTail)}}
+	{{- end}}
+	{{- if $lv.UnevalItems}}
+	{{- template "uneval_items_check" (mkUnevalItemsCtxIn $elem (printf "%s: unevaluatedItems" $path) $args $lv.UnevalItems)}}
+	{{- end}}
 	{{- if lt (add $li 1) (len $iv.Levels)}}
 	{{- template "item_level" (mkItemLevelCtx $recv $iv (add $li 1))}}
 	{{- end}}
@@ -1558,7 +1566,10 @@ declares a field for it at all.
 */}}
 {{define "object_cond_branch"}}
 {{- $recv := .Recv}}
-{{- $kw := .Branch.Keyword}}
+{{- /* The keyword lands inside a Go format literal. "then" and "else" need no
+       escaping; a dependentSchemas branch names its trigger, which is a
+       property name and may carry a quote, a backslash or a percent sign. */}}
+{{- $kw := jsonErrorName .Branch.Keyword}}
 {{- range .Branch.RequiredKeys}}
 			if _, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .}}]; !_ok {
 				return fmt.Errorf("{{$kw}}: required property %q is missing", {{printf "%q" .}})
@@ -1784,4 +1795,206 @@ declares a field for it at all.
 		}
 		{{- end}}
 	}
+{{- end}}
+
+{{- /* tuple_items_check emits the per-position checks of a tuple array: one
+       arm per declared position, then one arm for everything past the prefix.
+
+       The context is {Expr, Path, Args, Items, Tail, TailStart}. Expr is the Go
+       expression naming the slice -- a receiver for an array alias, a field for
+       an array property, an element variable for a tuple nested inside another
+       array -- and Path the prefix its errors are reported under, with Args
+       filling any verbs an enclosing loop put in that prefix.
+       Sharing one definition is what lets an inline array *property* be checked
+       at all: the property is never materialized as a named type, so it has no
+       Validate of its own for the alias form of this check to hang off.
+
+       Every arm reads the element as an `any`, which is what a tuple's slice
+       always holds: no single Go element type can carry positions of different
+       JSON types, so resolveType answers []any for any array whose positions
+       prefixItems names. See isTupleArray. */}}
+{{define "tuple_items_check"}}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range {{.Expr}} {
+		_ = _elem
+		{{- $path := .Path}}
+		{{- $args := .Args}}
+		{{- range $i, $ti := .Items}}
+		{{- template "tuple_item_case" (mkTupleCase (printf "_idx == %d" $i) $ti $path $args)}}
+		{{- end}}
+		{{- with .Tail}}
+		{{- template "tuple_item_case" (mkTupleCase (printf "_idx >= %d" $.TailStart) . $path $args)}}
+		{{- end}}
+	}
+{{- end}}
+
+{{- /* tuple_item_case emits one arm of tuple_items_check: the guard naming the
+       positions it governs, and the check those positions carry. The context is
+       {Cond, Item, Path}. An item that constrains nothing emits nothing, which
+       is what keeps a `true` position -- and the gaps in a tuple whose only
+       content is its tail -- from producing an empty if. */}}
+{{define "tuple_item_case"}}
+{{- $path := .Path}}
+{{- $args := argPrefix .Args}}
+{{- with .Item}}
+{{- if .IsFalse}}
+		if {{$.Cond}} {
+			return fmt.Errorf("{{$path}}[%d]: value is not allowed (schema is false)", {{$args}}_idx)
+		}
+{{- else if .TypeName}}
+		if {{$.Cond}} {
+			_raw, _mErr := json.Marshal(_elem)
+			if _mErr != nil {
+				return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_idx, _mErr)
+			}
+			var _typed {{.TypeName}}
+			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+				return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_idx, _uErr)
+			}
+			if _vErr := _typed.Validate(); _vErr != nil {
+				return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_idx, _vErr)
+			}
+		}
+{{- else if .JSONType}}
+		if {{$.Cond}} {
+			{{- if eq .JSONType "integer"}}
+			_cv, _cvOk := _elem.(float64)
+			if !_cvOk || _cv != math.Trunc(_cv) {
+				return fmt.Errorf("{{$path}}[%d]: expected integer, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "number"}}
+			if _, _cvOk := _elem.(float64); !_cvOk {
+				return fmt.Errorf("{{$path}}[%d]: expected number, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "string"}}
+			if _, _cvOk := _elem.(string); !_cvOk {
+				return fmt.Errorf("{{$path}}[%d]: expected string, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "boolean"}}
+			if _, _cvOk := _elem.(bool); !_cvOk {
+				return fmt.Errorf("{{$path}}[%d]: expected boolean, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "null"}}
+			if _elem != nil {
+				return fmt.Errorf("{{$path}}[%d]: expected null, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "array"}}
+			if _, _cvOk := _elem.([]any); !_cvOk {
+				return fmt.Errorf("{{$path}}[%d]: expected array, got %T", {{$args}}_idx, _elem)
+			}
+			{{- else if eq .JSONType "object"}}
+			if _, _cvOk := _elem.(map[string]any); !_cvOk {
+				return fmt.Errorf("{{$path}}[%d]: expected object, got %T", {{$args}}_idx, _elem)
+			}
+			{{- end}}
+		}
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{- /* uneval_items_check emits the static form of `unevaluatedItems`: every
+       position past the ones the schema's own keywords evaluate must satisfy
+       the sub-schema, or -- for unevaluatedItems: false -- must not exist.
+
+       The context is {Expr, Path, Args, Def}, on the same terms as
+       contains_check and tuple_items_check: one definition, and the caller says
+       which slice it runs over and how its failures are named. That is what lets
+       an inline array *property* be checked at all, since it never becomes a
+       named type with a Validate of its own.
+
+       Only the statically decidable shapes reach here. Where the evaluated set
+       depends on which branches match the value -- unevaluatedItems beside an
+       allOf, anyOf, oneOf or if -- the schema is routed to the runtime
+       annotation evaluator instead and never produces an UnevaluatedItemsDef.
+       See needsRuntimeAnnotations. */}}
+{{define "uneval_items_check"}}
+{{- $expr := .Expr}}
+{{- $path := .Path}}
+{{- $args := argPrefix .Args}}
+{{- with .Def}}
+	// unevaluatedItems validation
+	{
+		evaluatedCount := {{.EvaluatedCount}}
+		allEvaluated := {{if .AllEvaluated}}true{{else}}false{{end}}
+		if !allEvaluated && len({{$expr}}) > evaluatedCount {
+			{{- if .IsForbidden}}
+			return fmt.Errorf("{{$path}}: %d unevaluated items found (only %d items are evaluated)", {{$args}}len({{$expr}})-evaluatedCount, evaluatedCount)
+			{{- else}}
+			for _ui := evaluatedCount; _ui < len({{$expr}}); _ui++ {
+				_uiElem := any({{$expr}}[_ui])
+				_ = _uiElem
+				{{- if .ValueType}}
+				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
+				if _uiMarshalErr != nil {
+					return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_ui, _uiMarshalErr)
+				}
+				{{- if eq .ValueType "string"}}
+				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+					return fmt.Errorf("{{$path}}[%d]: must be a string", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "integer"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
+					return fmt.Errorf("{{$path}}[%d]: must be an integer", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "number"}}
+				var _uiNum float64
+				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
+					return fmt.Errorf("{{$path}}[%d]: must be a number", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "boolean"}}
+				_uiString := string(_uiBytes)
+				if _uiString != "true" && _uiString != "false" {
+					return fmt.Errorf("{{$path}}[%d]: must be a boolean", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "object"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
+					return fmt.Errorf("{{$path}}[%d]: must be an object", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "array"}}
+				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
+					return fmt.Errorf("{{$path}}[%d]: must be an array", {{$args}}_ui)
+				}
+				{{- else if eq .ValueType "null"}}
+				if string(_uiBytes) != "null" {
+					return fmt.Errorf("{{$path}}[%d]: must be null", {{$args}}_ui)
+				}
+				{{- end}}
+				{{- end}}
+				{{- /* The numeric bounds a schema-valued unevaluatedItems may
+				       state alongside its type, or instead of one. Without these
+				       arms a sub-schema whose whole content is a bound -- say
+				       {"minimum":5} -- produced a loop that read the element and
+				       then checked nothing at all. */}}
+				{{- range .Checks}}
+				{{- if eq .CheckType "minimum"}}
+				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal < {{.Value}} {
+					return fmt.Errorf("{{$path}}[%d]: must be >= {{.Value}}", {{$args}}_ui)
+				}
+				{{- else if eq .CheckType "maximum"}}
+				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal > {{.Value}} {
+					return fmt.Errorf("{{$path}}[%d]: must be <= {{.Value}}", {{$args}}_ui)
+				}
+				{{- else if eq .CheckType "exclusiveMinimum"}}
+				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal <= {{.Value}} {
+					return fmt.Errorf("{{$path}}[%d]: must be > {{.Value}}", {{$args}}_ui)
+				}
+				{{- else if eq .CheckType "exclusiveMaximum"}}
+				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal >= {{.Value}} {
+					return fmt.Errorf("{{$path}}[%d]: must be < {{.Value}}", {{$args}}_ui)
+				}
+				{{- else if eq .CheckType "multipleOf"}}
+				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk {
+					_uiQuot := _uiNumVal / {{.Value}}
+					if math.Abs(_uiQuot-math.Round(_uiQuot)) > 1e-9 {
+						return fmt.Errorf("{{$path}}[%d]: must be a multiple of {{.Value}}", {{$args}}_ui)
+					}
+				}
+				{{- end}}
+				{{- end}}
+			}
+			{{- end}}
+		}
+	}
+{{- end}}
 {{- end}}

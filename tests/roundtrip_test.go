@@ -1801,3 +1801,123 @@ func TestUnevaluatedItemsCousins(t *testing.T) {
 		[]string{`[1]`, `["anything"]`},
 	)
 }
+
+// TestIntegerFloatNotationAcceptedEverywhere is the behavioural half of issue
+// #90. From draft 6 on, a number with a zero fractional part is an integer, so
+// every document in the valid list is one the schema admits and one that
+// python-jsonschema and js-ajv both accept.
+//
+// The list is a position sweep on purpose. A root alias already accepted 1.0
+// while a struct field refused it, and the defect is that disagreement rather
+// than any one position, so every place an integer can sit has to answer the
+// same way: a required field, an optional one, a slice element at two depths, a
+// map value, a nullable, the three named shapes, an enum member, a oneOf branch,
+// a nested struct and a field carrying multipleOf.
+//
+// runValidationCases treats an unmarshal failure on a valid document as a
+// failure of the test, which is exactly the defect's signature -- the document
+// was refused before any constraint was consulted.
+func TestIntegerFloatNotationAcceptedEverywhere(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_float_notation.json",
+		[]string{
+			`{"req":1.0}`,
+			`{"req":1e2}`,
+			`{"req":-0.0}`,
+			`{"req":1,"opt":2.0}`,
+			`{"req":1,"arr":[1.0,2,3.0]}`,
+			`{"req":1,"grid":[[1.0],[2.0,3]]}`,
+			`{"req":1,"mp":{"k":1.0,"j":2}}`,
+			`{"req":1,"nullint":4.0}`,
+			`{"req":1,"nullint":null}`,
+			`{"req":1,"named":5.0}`,
+			`{"req":1,"namedarr":[6.0]}`,
+			`{"req":1,"namedmap":{"k":7.0}}`,
+			`{"req":1,"enm":2.0}`,
+			`{"req":1,"un":12.0}`,
+			`{"req":1,"nest":{"deep":8.0}}`,
+			`{"req":1,"mult":4.0}`,
+			// The plain spelling keeps working at each of them.
+			`{"req":1,"arr":[1],"mp":{"k":2},"enm":3,"un":11,"nest":{"deep":4},"mult":6}`,
+		},
+		[]string{
+			// A fraction that is not zero is not an integer in any draft.
+			`{"req":1.5}`,
+			`{"req":1,"arr":[1.5]}`,
+			`{"req":1,"mp":{"k":2.5}}`,
+			`{"req":1,"named":3.5}`,
+			`{"req":1,"namedarr":[4.5]}`,
+			`{"req":1,"namedmap":{"k":5.5}}`,
+			`{"req":1,"nest":{"deep":6.5}}`,
+			// A JSON string is not an integer however it reads.
+			`{"req":"1"}`,
+			`{"req":1,"arr":["2"]}`,
+			// The constraints still apply to a value written in float notation.
+			`{"req":1,"mult":3.0}`,
+			`{"req":1,"enm":4.0}`,
+			`{"req":1,"un":9.0}`,
+		},
+	)
+}
+
+// TestIntegerStrictTokenUnderDraft4 is the same sweep in the draft that reads
+// "integer" the other way.
+//
+// Draft 4 defines an integer as a number with no fraction and no exponent, so
+// 1.0 is not one -- the suite says so in draft4/optional/zeroTerminatedFloats.
+// Everything in the invalid list must therefore stay refused, and this test is
+// what stops the draft-6 repair from being applied where it is wrong. The valid
+// list is the same documents written the one way draft 4 admits.
+func TestIntegerStrictTokenUnderDraft4(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/integer_strict_token_draft4.json",
+		[]string{
+			`{"req":1}`,
+			`{"req":1,"arr":[1,2]}`,
+			`{"req":1,"mp":{"k":3}}`,
+			`{"req":1,"named":4}`,
+			`{"req":1,"enm":2}`,
+		},
+		[]string{
+			`{"req":1.0}`,
+			`{"req":1,"arr":[1.0]}`,
+			`{"req":1,"mp":{"k":1.0}}`,
+			`{"req":1,"named":1.0}`,
+			`{"req":1,"enm":1.0}`,
+			`{"req":1e2}`,
+		},
+	)
+}
+
+// TestNullableTypedAdditionalPropertiesValidatesItsValues is the behavioural
+// half of issue #91: a ["object","null"] whose whole shape is
+// additionalProperties came out *map[string]any, so neither the value type nor
+// its keywords survived and every document in the invalid list was accepted.
+//
+// The nulls are here as well as the violations. The fix drops the pointer the
+// property used to carry, on the precedent of the nullable array beside it, and
+// a nil map has to keep meaning "null" in both directions for that to be sound.
+func TestNullableTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_typed_additional_properties.json",
+		[]string{
+			`{}`,
+			`{"labels":null}`,
+			`{"labels":{}}`,
+			`{"labels":{"a":"abc"}}`,
+			`{"labels":{"a":"abc","b":"defg"},"counts":{"x":5,"y":99}}`,
+			`{"counts":null,"groups":null,"nested":null}`,
+			`{"groups":{"g":["ab","cd"]}}`,
+			`{"nested":{"outer":{"inner":9}}}`,
+			`{"nested":{"outer":null}}`,
+		},
+		[]string{
+			`{"labels":{"a":"ab"}}`,
+			`{"labels":{"a":"abc","b":"x"}}`,
+			`{"counts":{"x":4}}`,
+			`{"groups":{"g":["abcde"]}}`,
+			`{"nested":{"outer":{"inner":10}}}`,
+			`{"labels":{"a":1}}`,
+		},
+	)
+}

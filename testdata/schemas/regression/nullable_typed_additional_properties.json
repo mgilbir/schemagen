@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NullableTypedAdditionalProperties",
+  "type": "object",
+  "properties": {
+    "labels": {"type": ["object", "null"], "additionalProperties": {"type": "string", "minLength": 3}},
+    "counts": {"type": ["object", "null"], "additionalProperties": {"type": "integer", "minimum": 5}},
+    "groups": {"type": ["object", "null"], "additionalProperties": {"type": "array", "maxItems": 2, "items": {"type": "string", "maxLength": 4}}},
+    "nested": {"type": ["object", "null"], "additionalProperties": {"type": ["object", "null"], "additionalProperties": {"type": "integer", "maximum": 9}}}
+  }
+}

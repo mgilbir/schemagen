@@ -3,7 +3,7 @@
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
@@ -29,6 +29,16 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		return _err
 	}
 	*{{$recv}} = {{.Name}}(_target)
+	return nil
+	{{- else if .IntegerDecode}}
+	// A named container of integers. Decoding through the shadow is what lets a
+	// number written 1.0 reach the int64 the schema asked for -- encoding/json
+	// decides from the destination type, and []int64 refuses it outright.
+	var _iv {{goType .IntegerDecode.ShadowType}}
+	if _err := json.Unmarshal(data, &_iv); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.IntegerDecode.Convert}}
 	return nil
 	{{- else if .IsIntegerType}}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
@@ -152,64 +162,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if .HasTupleItems}}
-	// Tuple items: validate each position against its schema type.
-	for _idx, _elem := range {{$recv}} {
-		_ = _elem
-		{{- range $i, $ti := .TupleItems}}
-		{{- if $ti.IsFalse}}
-		if _idx == {{$i}} {
-			return fmt.Errorf("items[%d]: value is not allowed (schema is false)", _idx)
-		}
-		{{- else if $ti.TypeName}}
-		if _idx == {{$i}} {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
-			}
-			var _typed {{$ti.TypeName}}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
-			}
-		}
-		{{- else if $ti.JSONType}}
-		if _idx == {{$i}} {
-			{{- if eq $ti.JSONType "integer"}}
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
-				return fmt.Errorf("items[%d]: expected integer, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "number"}}
-			if _, _cvOk := _elem.(float64); !_cvOk {
-				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "string"}}
-			if _, _cvOk := _elem.(string); !_cvOk {
-				return fmt.Errorf("items[%d]: expected string, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "boolean"}}
-			if _, _cvOk := _elem.(bool); !_cvOk {
-				return fmt.Errorf("items[%d]: expected boolean, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "null"}}
-			if _elem != nil {
-				return fmt.Errorf("items[%d]: expected null, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "array"}}
-			if _, _cvOk := _elem.([]any); !_cvOk {
-				return fmt.Errorf("items[%d]: expected array, got %T", _idx, _elem)
-			}
-			{{- else if eq $ti.JSONType "object"}}
-			if _, _cvOk := _elem.(map[string]any); !_cvOk {
-				return fmt.Errorf("items[%d]: expected object, got %T", _idx, _elem)
-			}
-			{{- end}}
-		}
-		{{- end}}
-		{{- end}}
-	}
+	{{- template "tuple_items_check" (mkTupleCtx $recv "items" .TupleItems .TupleTail)}}
 	{{- end}}
 	{{- if .HasItemValidations}}
 	{{- template "item_validations" (mkItemCtx $recv .ItemValidations)}}
@@ -328,59 +281,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- template "contains_check" (mkContainsCtx $recv "contains" .Contains .MinContains .MaxContains)}}
 	{{- end}}
 	{{- if .HasUnevaluatedItems}}
-	// unevaluatedItems validation
-	{
-		evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
-		allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
-		if !allEvaluated && len({{$recv}}) > evaluatedCount {
-			{{- if .UnevaluatedItems.IsForbidden}}
-			return fmt.Errorf("unevaluatedItems: %d unevaluated items found (only %d items are evaluated)", len({{$recv}})-evaluatedCount, evaluatedCount)
-			{{- else}}
-			for _ui := evaluatedCount; _ui < len({{$recv}}); _ui++ {
-				_uiElem := any({{$recv}}[_ui])
-				_ = _uiElem
-				{{- if .UnevaluatedItems.ValueType}}
-				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
-				if _uiMarshalErr != nil {
-					return fmt.Errorf("unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
-				}
-				{{- if eq .UnevaluatedItems.ValueType "string"}}
-				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "integer"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "number"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
-				_uiString := string(_uiBytes)
-				if _uiString != "true" && _uiString != "false" {
-					return fmt.Errorf("unevaluatedItems[%d]: must be a boolean", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "object"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an object", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "array"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
-					return fmt.Errorf("unevaluatedItems[%d]: must be an array", _ui)
-				}
-				{{- else if eq .UnevaluatedItems.ValueType "null"}}
-				if string(_uiBytes) != "null" {
-					return fmt.Errorf("unevaluatedItems[%d]: must be null", _ui)
-				}
-				{{- end}}
-				{{- end}}
-			}
-			{{- end}}
-		}
-	}
+	{{- template "uneval_items_check" (mkUnevalItemsCtx $recv "unevaluatedItems" .UnevaluatedItems)}}
 	{{- end}}
 	return nil
 }

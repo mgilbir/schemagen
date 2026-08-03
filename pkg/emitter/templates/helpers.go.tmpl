@@ -148,3 +148,77 @@ func _dynConstOK(v any, want string) bool {
 	return err == nil && string(b) == want
 }
 {{- end}}
+
+{{define "integer_helpers"}}
+// jsonInteger is an int64 that decodes a JSON number the way JSON Schema draft
+// 6 and later define "integer": a number with a zero fractional part is an
+// integer however it happens to be written, so 1.0 and 1e2 name the same
+// integers that 1 and 100 do. encoding/json refuses those for an int64
+// destination, and the destination type is the only thing it decides from --
+// which is why a named integer type accepted them while an int64 struct field
+// rejected them, for one and the same schema.
+//
+// A JSON string is refused explicitly: json.Number is a string type underneath
+// and would otherwise take "1".
+type jsonInteger int64
+
+func (j *jsonInteger) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return fmt.Errorf("cannot unmarshal string into Go value of type int64")
+	}
+	var _n json.Number
+	if _err := json.Unmarshal(data, &_n); _err != nil {
+		return _err
+	}
+	if _i, _iErr := _n.Int64(); _iErr == nil {
+		*j = jsonInteger(_i)
+		return nil
+	}
+	// Float notation with nothing after the point (1.0, 1e2). The bounds are the
+	// int64 range as a float64, which the value has to survive to be
+	// representable at all.
+	if _f, _fErr := _n.Float64(); _fErr == nil {
+		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
+			*j = jsonInteger(int64(_f))
+			return nil
+		}
+	}
+	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+}
+
+// jsonIntegerSlice, jsonIntegerMap and jsonIntegerPtr rebuild a container of
+// jsonInteger as the container of int64 that was declared. A conversion cannot
+// do it -- Go requires identical element types, and these differ in exactly the
+// element -- so the value is copied through. Each preserves nil rather than
+// allocating, which is what keeps an absent property, a JSON null and an empty
+// collection as distinguishable after the rebuild as encoding/json left them.
+func jsonIntegerSlice[E any, T any](s []E, f func(E) T) []T {
+	if s == nil {
+		return nil
+	}
+	out := make([]T, len(s))
+	for i, v := range s {
+		out[i] = f(v)
+	}
+	return out
+}
+
+func jsonIntegerMap[E any, T any](m map[string]E, f func(E) T) map[string]T {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]T, len(m))
+	for k, v := range m {
+		out[k] = f(v)
+	}
+	return out
+}
+
+func jsonIntegerPtr[E any, T any](p *E, f func(E) T) *T {
+	if p == nil {
+		return nil
+	}
+	v := f(*p)
+	return &v
+}
+{{- end}}

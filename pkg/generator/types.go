@@ -78,31 +78,33 @@ type TypeDef interface {
 
 // StructDef represents a Go struct.
 type StructDef struct {
-	Name                  string
-	Description           string
-	Fields                []FieldDef
-	OneOfs                []OneOfDef
-	AdditionalProperties  *AdditionalPropertiesDef
-	PatternProperties     []PatternPropertyDef
-	DependentSchemas      []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
-	DependentRequired     []DependentRequiredDef      // dependentRequired constraints
-	PropertyNames         *PropertyNamesDef           // propertyNames constraint (Draft 6+)
-	Validations           []ValidationRule
-	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
-	ItemValidations       []ItemValidationDef       // per-element checks for slice and map fields whose element type has no Validate()
-	ContainsValidations   []FieldContainsDef        // contains/minContains/maxContains for slice fields that never became a named type
-	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
-	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
-	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
-	CousinUnevalChecks    []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
-	ObjectOneOfs          []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
-	ObjectAnyOfs          []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
-	ObjectConditionals    []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
-	OwnPropertyNames      []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
-	NeedsMarshal          bool
-	NeedsUnmarshal        bool
-	NeedsNullCheck        bool // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonObject       bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+	Name                   string
+	Description            string
+	Fields                 []FieldDef
+	OneOfs                 []OneOfDef
+	AdditionalProperties   *AdditionalPropertiesDef
+	PatternProperties      []PatternPropertyDef
+	DependentSchemas       []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
+	DependentRequired      []DependentRequiredDef      // dependentRequired constraints
+	PropertyNames          *PropertyNamesDef           // propertyNames constraint (Draft 6+)
+	Validations            []ValidationRule
+	ValidatableFields      []ValidatableFieldDef     // fields whose types have their own Validate() method
+	ItemValidations        []ItemValidationDef       // per-element checks for slice and map fields whose element type has no Validate()
+	ContainsValidations    []FieldContainsDef        // contains/minContains/maxContains for slice fields that never became a named type
+	TupleValidations       []FieldTupleDef           // prefixItems positions (and the tail past them) for slice fields that never became a named type
+	UnevalItemsValidations []FieldUnevalItemsDef     // unevaluatedItems for slice fields that never became a named type
+	RequiredJSON           []string                  // JSON property names that must be present (for required validation)
+	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
+	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
+	CousinUnevalChecks     []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
+	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
+	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
+	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
+	OwnPropertyNames       []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
+	NeedsMarshal           bool
+	NeedsUnmarshal         bool
+	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonObject        bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
 }
 
 // DependentRequiredDef describes a dependentRequired constraint: when the
@@ -125,20 +127,25 @@ type PropertyNamesDef struct {
 // DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
 // is present in the JSON object, the sub-schema's constraints are applied.
 type DependentSchemaConstraint struct {
-	TriggerKey    string                  // JSON property name that activates the constraint
-	IsFalse       bool                    // boolean false schema — always reject when trigger is present
-	AllowedKeys   []string                // set of JSON property names allowed (additionalProperties: false)
-	RequiredProps []string                // required properties from the sub-schema
-	MinProperties *int                    // minProperties from the sub-schema
-	MaxProperties *int                    // maxProperties from the sub-schema
-	PropertyTypes []DependentPropertyType // per-property type constraints from the sub-schema
-}
+	TriggerKey    string   // JSON property name that activates the constraint
+	IsFalse       bool     // boolean false schema — always reject when trigger is present
+	AllowedKeys   []string // set of JSON property names allowed (additionalProperties: false)
+	RequiredProps []string // required properties from the sub-schema
+	MinProperties *int     // minProperties from the sub-schema
+	MaxProperties *int     // maxProperties from the sub-schema
 
-// DependentPropertyType describes a JSON type constraint on a specific property
-// within a dependentSchemas sub-schema.
-type DependentPropertyType struct {
-	PropName string // JSON property name
-	JSONType string // required JSON type (e.g., "integer", "string")
+	// Branch carries what the sub-schema demands of the object's *shape*,
+	// beyond which keys it demands be present. A dependentSchemas branch is an
+	// ordinary subschema and may state any keyword; until this existed
+	// everything in one but `required` was dropped, so the dependency fired on
+	// presence and never on shape.
+	//
+	// It is the same definition an object-level `then` carries, and for the
+	// same reason: the constraints bind only when the trigger key is there, so
+	// they cannot be folded into a field's own rules, and the branch may name a
+	// property the struct does not declare at all. Its RequiredKeys are left
+	// empty -- RequiredProps above already answers for `required`.
+	Branch *ObjectConditionalBranch
 }
 
 // ValidatableFieldDef describes a struct field whose type has a Validate() method
@@ -249,6 +256,13 @@ func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 func (d *StructDef) NeedsRawProps() bool {
 	if len(d.ObjectOneOfs) > 0 || len(d.ObjectAnyOfs) > 0 || len(d.ObjectConditionals) > 0 {
 		return true
+	}
+	// A dependentSchemas branch judges each property it names against the raw
+	// value, for the same reason a conditional branch does.
+	for _, ds := range d.DependentSchemas {
+		if ds.Branch != nil {
+			return true
+		}
 	}
 	if d.UnevaluatedProperties == nil {
 		return false
@@ -413,20 +427,51 @@ type ObjectPropertyConstraint struct {
 // if/then/else group.
 func (d *StructDef) HasObjectConditionals() bool { return len(d.ObjectConditionals) > 0 }
 
+// HasIntegerDecodes reports whether any field is decoded through an integer
+// shadow, so the unmarshal template can introduce the block once.
+func (d *StructDef) HasIntegerDecodes() bool {
+	for i := range d.Fields {
+		if d.Fields[i].IntegerDecode != nil && !d.Fields[i].ManualJSON {
+			return true
+		}
+	}
+	return false
+}
+
+// HasDependentSchemaBranches reports whether any dependentSchemas entry carries
+// a branch whose checks run through the dynamic evaluator. It is the second
+// source of those checks beside ObjectConditionals, and needs the same imports
+// and helpers.
+func (d *StructDef) HasDependentSchemaBranches() bool {
+	for _, ds := range d.DependentSchemas {
+		if ds.Branch != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // anyConditionalCheck reports whether any check in any conditional group
-// satisfies pred. It drives the import decisions for the emitted checks.
+// satisfies pred. It drives the import decisions for the emitted checks, and so
+// covers every branch the dynamic evaluator judges: the sides of an
+// object-level if/then/else, and the branch of a dependentSchemas entry.
 func (d *StructDef) anyConditionalCheck(pred func(DynamicCheck) bool) bool {
+	branches := make([]*ObjectConditionalBranch, 0, len(d.ObjectConditionals)*3+len(d.DependentSchemas))
 	for i := range d.ObjectConditionals {
 		cond := &d.ObjectConditionals[i]
-		for _, branch := range []*ObjectConditionalBranch{&cond.If, cond.Then, cond.Else} {
-			if branch == nil {
-				continue
-			}
-			for _, prop := range branch.Properties {
-				for _, c := range prop.Checks {
-					if pred(c) {
-						return true
-					}
+		branches = append(branches, &cond.If, cond.Then, cond.Else)
+	}
+	for i := range d.DependentSchemas {
+		branches = append(branches, d.DependentSchemas[i].Branch)
+	}
+	for _, branch := range branches {
+		if branch == nil {
+			continue
+		}
+		for _, prop := range branch.Properties {
+			for _, c := range prop.Checks {
+				if pred(c) {
+					return true
 				}
 			}
 		}
@@ -476,6 +521,9 @@ type PatternPropertyDef struct {
 type AdditionalPropertiesDef struct {
 	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
 	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
+	// IntegerDecode is set when the value type holds an int64 the draft lets be
+	// written in float notation; the per-key decode goes through it.
+	IntegerDecode *IntegerDecodeDef
 }
 
 // UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
@@ -587,6 +635,9 @@ type FieldDef struct {
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
 	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
+	// IntegerDecode is set when the field's type holds an int64 that the
+	// document's draft lets be written in float notation. See IntegerDecodeDef.
+	IntegerDecode *IntegerDecodeDef
 }
 
 // OneOfDef represents a oneOf group on a struct.
@@ -661,6 +712,12 @@ type OneOfVariant struct {
 	// and while such a branch is in play the narrowing does not run. See
 	// oneOfVariantFullyChecked.
 	FullyChecked bool
+	// IntegerDecode is set when the variant's type holds an int64 the draft lets
+	// be written in float notation. Selection gates on whether the candidate
+	// decodes, so without it an integer branch could fail to be selected for a
+	// document the branch accepts -- a disagreement about what an integer is,
+	// reported as "no matching oneOf variant".
+	IntegerDecode *IntegerDecodeDef
 }
 
 // EnumDef represents an enum type.
@@ -670,6 +727,9 @@ type EnumDef struct {
 	Values      []EnumValue
 	Description string
 	IsRaw       bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
+	// IntegerToken is set on an int64-based const enum whose draft admits a
+	// number written in float notation, which the bare named type would refuse.
+	IntegerToken bool
 }
 
 func (d *EnumDef) TypeName() string { return d.Name }
@@ -696,20 +756,25 @@ type TupleItemDef struct {
 // is a pointer or interface (e.g., *T or any), Validate() cannot be
 // attached — CanHaveMethods() returns false and the template skips it.
 type AliasDef struct {
-	Name              string
-	Underlying        GoType
-	Description       string
-	Validations       []ValidationRule
-	AnyOfVariants     [][]ValidationRule  // each inner slice is one anyOf variant's rules; at least one must pass
-	OneOfVariants     [][]ValidationRule  // each inner slice is one oneOf variant's rules; exactly one must pass
-	TupleItems        []TupleItemDef      // per-position type validation for tuple arrays (prefixItems / items-as-array)
-	ItemValidations   []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema, or a map with a single additionalProperties sub-schema
-	Contains          *ContainsDef        // contains sub-schema validation
-	MinContains       *int                // minContains (default 1 if contains is present)
-	MaxContains       *int                // maxContains
-	UnevaluatedItems  *UnevaluatedItemsDef
-	ValidateAs        string // named underlying type whose Validate method should be delegated to
-	UnmarshalAs       string // named underlying type whose UnmarshalJSON behavior should be delegated to
+	Name             string
+	Underlying       GoType
+	Description      string
+	Validations      []ValidationRule
+	AnyOfVariants    [][]ValidationRule  // each inner slice is one anyOf variant's rules; at least one must pass
+	OneOfVariants    [][]ValidationRule  // each inner slice is one oneOf variant's rules; exactly one must pass
+	TupleItems       []TupleItemDef      // per-position type validation for tuple arrays (prefixItems / items-as-array)
+	TupleTail        *TupleItemDef       // what every position past the prefix must satisfy (2020-12 items, pre-2020 additionalItems)
+	ItemValidations  []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema, or a map with a single additionalProperties sub-schema
+	Contains         *ContainsDef        // contains sub-schema validation
+	MinContains      *int                // minContains (default 1 if contains is present)
+	MaxContains      *int                // maxContains
+	UnevaluatedItems *UnevaluatedItemsDef
+	ValidateAs       string // named underlying type whose Validate method should be delegated to
+	UnmarshalAs      string // named underlying type whose UnmarshalJSON behavior should be delegated to
+	// IntegerDecode is set when the underlying is a container holding int64
+	// that the draft lets be written in float notation. A bare int64 underlying
+	// is not here: it takes the IsIntegerType arm, which already does this.
+	IntegerDecode     *IntegerDecodeDef
 	MarshalAs         string // named underlying type whose MarshalJSON behavior should be delegated to
 	StrictInteger     bool   // true when integer JSON must use an integer token, not 1.0/1e0
 	NoMethods         bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
@@ -775,6 +840,14 @@ func (d *AliasDef) HasTupleItems() bool {
 	return len(d.TupleItems) > 0
 }
 
+// TupleTailStart is the first index the tail governs: everything past the
+// declared prefix. It is read off the position list, which is why that list is
+// kept at full tuple length whenever a tail exists, even where no position of
+// its own has anything to check.
+func (d *AliasDef) TupleTailStart() int {
+	return len(d.TupleItems)
+}
+
 // HasUnevaluatedItems returns true if this alias has unevaluatedItems validation.
 func (d *AliasDef) HasUnevaluatedItems() bool {
 	return d.UnevaluatedItems != nil
@@ -800,6 +873,20 @@ type ItemValidationDef struct {
 	JSONName  string // JSON property name for the error path; empty for a container alias
 	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
 	Levels    []ItemLevel
+
+	// PathName leads the error path where the container is not a declared
+	// property and so has no JSON name to report under. The
+	// additionalProperties overflow map is the case: it reports under the
+	// keyword that governs it.
+	PathName string
+
+	// OwnsOutermost says this definition answers for the outermost element's
+	// own Validate as well as for its inline rules. A struct *field's*
+	// outermost element is already dispatched to by ValidatableFields, so a
+	// definition built for one leaves that call alone and a second would check
+	// every element twice. The overflow map is reached by nothing else, so its
+	// definition has to emit the call itself.
+	OwnsOutermost bool
 }
 
 // FieldContainsDef carries the `contains` constraint an array *property* states.
@@ -830,6 +917,55 @@ type FieldContainsDef struct {
 	MaxContains *int // nil means no upper bound
 }
 
+// FieldTupleDef carries the positional shape an array *property* states through
+// prefixItems (2020-12) or items-as-array (draft 4-7).
+//
+// It exists for the same reason FieldContainsDef does: an inline array property
+// never becomes a named type, so the alias form of the per-position check had
+// nothing to hang off and the sub-schemas were dropped outright. A prefixItems
+// entry contributed nothing but a length, and
+// {"arr":{"type":"array","prefixItems":[{"type":"string","minLength":2},
+// {"type":"integer","minimum":5}]}} accepted ["a",1] -- both positions violated.
+//
+// Only a field whose Go type is []any gets one. That is not a restriction in
+// practice but the consequence of typing a tuple: a heterogeneous tuple has no
+// homogeneous Go element type, so resolveType answers []any for any array
+// whose positions prefixItems names (see isTupleArray). A property that became
+// a *named*
+// type is answered by that type's own Validate, which ValidatableFields already
+// dispatches to, and a second check here would report the same failure twice.
+type FieldTupleDef struct {
+	FieldName string // Go field name
+	JSONName  string // JSON property name, for the error path
+	IsPointer bool   // the field is *[]any, so the loop needs a nil guard
+
+	Items []TupleItemDef // one entry per declared position; a position that constrains nothing renders nothing
+	Tail  *TupleItemDef  // what every position past the prefix must satisfy, when anything does
+}
+
+// TupleTailStart is the first index Tail governs. See AliasDef.TupleTailStart.
+func (d FieldTupleDef) TupleTailStart() int {
+	return len(d.Items)
+}
+
+// FieldUnevalItemsDef carries the `unevaluatedItems` constraint an array
+// *property* states, for the shapes that can be decided statically.
+//
+// The runtime-annotation shapes -- unevaluatedItems beside an allOf, anyOf,
+// oneOf or if, where which items count as evaluated depends on which branches
+// match the value in hand -- do not come through here at all. Those properties
+// are materialized into a named type carrying the annotation evaluator, the
+// same route a bare `not` or a bare if/then/else property already takes; see
+// inlineAnnotationWrapper. What is left for this def is the static case, which
+// is exactly what buildUnevaluatedItemsDef already decides for an array alias.
+type FieldUnevalItemsDef struct {
+	FieldName string // Go field name
+	JSONName  string // JSON property name, for the error path
+	IsPointer bool   // the field is *[]any, so the loop needs a nil guard
+
+	Def *UnevaluatedItemsDef
+}
+
 // ItemLevel is one container level of an ItemValidationDef.
 type ItemLevel struct {
 	IndexVar      string // loop index (slice) or key (map) variable for this level
@@ -840,10 +976,31 @@ type ItemLevel struct {
 	ElemType      GoType // the element's Go type
 	CallValidate  bool   // settled after generation: dispatch to the element's own Validate
 	Rules         []ValidationRule
+
+	// An element that is itself a tuple carries its positions here, and what
+	// unevaluatedItems says about the positions past them. A tuple nested this
+	// deep -- {"type":"array","items":{"type":"array","prefixItems":[...]}} --
+	// is a []any inside a [][]any, so it is neither a field the struct-level
+	// FieldTupleDef can name nor a type with a Validate of its own, and until
+	// these existed its positions were checked nowhere: {"arr":[[7]]} was
+	// accepted where position 0 must be a string.
+	TupleItems  []TupleItemDef
+	TupleTail   *TupleItemDef
+	UnevalItems *UnevaluatedItemsDef
 }
 
 // carries reports whether this level emits a check of its own.
-func (l ItemLevel) carries() bool { return l.CallValidate || len(l.Rules) > 0 }
+func (l ItemLevel) carries() bool {
+	return l.CallValidate || len(l.Rules) > 0 || len(l.TupleItems) > 0 || l.UnevalItems != nil
+}
+
+// HasTupleItems reports whether this level's element is a tuple whose positions
+// are checked here.
+func (l ItemLevel) HasTupleItems() bool { return len(l.TupleItems) > 0 }
+
+// TupleTailStart is the first index this level's tail governs. See
+// AliasDef.TupleTailStart.
+func (l ItemLevel) TupleTailStart() int { return len(l.TupleItems) }
 
 // pending reports whether this level may still acquire a check. A named element
 // type's Validate call is only settled once every type def exists, so before
@@ -1038,6 +1195,13 @@ type BigIntAliasDef struct {
 	AnyOfVariants  [][]ValidationRule
 	OneOfVariants  [][]ValidationRule
 	NeedsNullCheck bool
+	// StrictInteger is set under a draft that defines an integer as a number
+	// written without a fraction or an exponent -- draft 3 and draft 4, where
+	// 1.0 is not an integer. The wrapper otherwise accepts the float notation
+	// unconditionally, which is right from draft 6 on and wrong before it, and
+	// is the same draft question the plain integer alias answers through its own
+	// StrictInteger.
+	StrictInteger bool
 	// AllowsNull is set when the schema's type list carries "null" beside
 	// "integer". The wrapper then gains an explicit null state -- a third
 	// field, and a branch in decode, encode and Validate -- because neither of

@@ -62,12 +62,18 @@ func FuncMap() template.FuncMap {
 		"mkCondCtx":           mkCondCtxFunc,
 		"mkItemCtx":           mkItemCtxFunc,
 		"mkContainsCtx":       mkContainsCtxFunc,
+		"mkTupleCtx":          mkTupleCtxFunc,
+		"mkTupleCtxIn":        mkTupleCtxInFunc,
+		"mkTupleCase":         mkTupleCaseFunc,
+		"mkUnevalItemsCtx":    mkUnevalItemsCtxFunc,
+		"mkUnevalItemsCtxIn":  mkUnevalItemsCtxInFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
 		"itemRange":           itemRangeFunc,
 		"itemElem":            itemElemFunc,
 		"itemPath":            itemPathFunc,
 		"itemArgs":            itemArgsFunc,
+		"argPrefix":           argPrefixFunc,
 	}
 }
 
@@ -129,6 +135,86 @@ func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContain
 	return ctx
 }
 
+// TupleContext is passed to the tuple_items_check template. As with
+// ContainsContext, Expr names the slice and Path prefixes the errors, which is
+// all that separates an array alias's positional checks from an array
+// property's. TailStart is derived rather than passed: the tail begins where
+// the declared positions end.
+// Args is what an enclosing loop contributes to the error path. Path is a fmt
+// format string, so a caller nested inside another loop -- a tuple that is
+// itself an array's element -- hands in a path carrying that loop's verbs and
+// the variables that fill them, and every Errorf below puts them first.
+// Callers not inside such a loop pass "", and the emitted code is unchanged.
+type TupleContext struct {
+	Expr      string
+	Path      string
+	Args      string
+	Items     []generator.TupleItemDef
+	Tail      *generator.TupleItemDef
+	TailStart int
+}
+
+func mkTupleCtxFunc(expr, path string, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
+	return TupleContext{Expr: expr, Path: path, Items: items, Tail: tail, TailStart: len(items)}
+}
+
+// mkTupleCtxIn is mkTupleCtx for a tuple reached inside an enclosing loop.
+func mkTupleCtxInFunc(expr, path, args string, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
+	ctx := mkTupleCtxFunc(expr, path, items, tail)
+	ctx.Args = args
+	return ctx
+}
+
+// TupleCaseContext is one arm of tuple_items_check: the index condition the arm
+// governs, and the check to make there. The item arrives by value when it came
+// from ranging the position list and by pointer when it is the tail, so both are
+// accepted rather than making the template reach for an address it cannot take.
+type TupleCaseContext struct {
+	Cond string
+	Path string
+	Args string
+	Item generator.TupleItemDef
+}
+
+func mkTupleCaseFunc(cond string, item any, path, args string) TupleCaseContext {
+	ctx := TupleCaseContext{Cond: cond, Path: path, Args: args}
+	switch v := item.(type) {
+	case generator.TupleItemDef:
+		ctx.Item = v
+	case *generator.TupleItemDef:
+		if v != nil {
+			ctx.Item = *v
+		}
+	}
+	return ctx
+}
+
+// UnevalItemsContext is passed to the uneval_items_check template, on the same
+// terms as ContainsContext and TupleContext: one definition of the check, and
+// the caller says which slice it runs over and how its failures are named.
+type UnevalItemsContext struct {
+	Expr string
+	Path string
+	Args string // see TupleContext.Args
+	Def  generator.UnevaluatedItemsDef
+}
+
+func mkUnevalItemsCtxFunc(expr, path string, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
+	ctx := UnevalItemsContext{Expr: expr, Path: path}
+	if def != nil {
+		ctx.Def = *def
+	}
+	return ctx
+}
+
+// mkUnevalItemsCtxIn is mkUnevalItemsCtx for an array reached inside an
+// enclosing loop.
+func mkUnevalItemsCtxInFunc(expr, path, args string, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
+	ctx := mkUnevalItemsCtxFunc(expr, path, def)
+	ctx.Args = args
+	return ctx
+}
+
 // BigIntVariantContext is passed to the bigint_alias_variant_checks template,
 // which needs the receiver name alongside one anyOf / oneOf branch's rules to
 // render the big.Float comparisons.
@@ -173,9 +259,12 @@ func itemElemFunc(def generator.ItemValidationDef, level int) string {
 // constrains it.
 func itemPathFunc(def generator.ItemValidationDef, level int) string {
 	name := "items"
-	if def.JSONName != "" {
+	switch {
+	case def.PathName != "":
+		name = jsonErrorNameFunc(def.PathName)
+	case def.JSONName != "":
 		name = jsonErrorNameFunc(def.JSONName)
-	} else if len(def.Levels) > 0 && def.Levels[0].IsMap {
+	case len(def.Levels) > 0 && def.Levels[0].IsMap:
 		name = "properties"
 	}
 	var b strings.Builder
@@ -188,6 +277,16 @@ func itemPathFunc(def generator.ItemValidationDef, level int) string {
 		}
 	}
 	return b.String()
+}
+
+// argPrefixFunc turns an enclosing loop's fmt arguments into the text that goes
+// in front of a check's own: "_i0" becomes "_i0, ", and the empty string stays
+// empty so a check not nested inside a loop emits exactly what it always did.
+func argPrefixFunc(args string) string {
+	if args == "" {
+		return ""
+	}
+	return args + ", "
 }
 
 // itemArgsFunc renders the loop indices that fill in itemPathFunc's verbs.

@@ -24,3 +24,6 @@ import (
 {{- if .Helpers.OneOfDiscriminator}}
 {{template "oneof_discriminator_helper"}}
 {{- end}}
+{{- if .Helpers.Integer}}
+{{template "integer_helpers"}}
+{{- end}}
