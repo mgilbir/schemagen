@@ -773,3 +773,113 @@ func TestEmitBigIntAliasOneOfVariants(t *testing.T) {
 		t.Fatalf("big-int Validate compared through float64, losing precision past int64:\n%s", src)
 	}
 }
+
+// TestEmitOneOfUnionValidateDispatch is the emitter half of issue #61: the
+// owner's Validate never descended into a oneOf union field, so an object
+// variant's nested constraints were never applied. The generator half -- which
+// variants are marked Validatable -- is pinned in
+// pkg/generator/generator_test.go.
+//
+// Only Payload is marked Validatable here. Text is a scalar variant whose
+// wrapper holds a plain Go string, so a dispatch case for it would emit
+// _oneOfSel.Text.Validate() on a string and Emit's go/format pass would reject
+// the file.
+func TestEmitOneOfUnionValidateDispatch(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Envelope",
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{
+							WrapperName: "Envelope_Payload",
+							FieldName:   "Payload",
+							Type:        &generator.NamedType{Name: "Payload", Pointer: true},
+							Validatable: true,
+						},
+						{
+							WrapperName: "Envelope_Text",
+							FieldName:   "Text",
+							Type:        &generator.PrimitiveType{Name: "string"},
+						},
+					},
+				}},
+			},
+			&generator.StructDef{Name: "Payload"},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	for _, want := range []string{
+		"switch _oneOfSel := e.Body.(type) {",
+		"case *Envelope_Payload:",
+		"if _oneOfSel.Payload != nil {",
+		"if err := _oneOfSel.Payload.Validate(); err != nil {",
+		`return fmt.Errorf("body.%w", err)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("Envelope.Validate is missing %q:\n%s", want, src)
+		}
+	}
+	// The scalar variant must not be dispatched to. Asserting on the absence of
+	// the case is what keeps the Validatable gate honest: without it the
+	// emitted file would not compile, and Emit's format pass would say so.
+	if strings.Contains(src, "case *Envelope_Text:") {
+		t.Fatalf("Envelope.Validate dispatches to a scalar variant, whose type has no Validate:\n%s", src)
+	}
+}
+
+// TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch guards the gate that
+// decides whether the dispatch is written at all. A type switch with no cases
+// binds _oneOfSel and never reads it, which does not compile -- so a union of
+// nothing but scalars has to emit nothing rather than an empty switch.
+func TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Envelope",
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{WrapperName: "Envelope_String", FieldName: "String", Type: &generator.PrimitiveType{Name: "string"}},
+						{WrapperName: "Envelope_Integer", FieldName: "Integer", Type: &generator.PrimitiveType{Name: "int64"}},
+					},
+				}},
+			},
+		},
+	}
+
+	// Emit runs go/format, so an empty type switch fails here rather than in a
+	// user's build.
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	if strings.Contains(string(out), "_oneOfSel") {
+		t.Fatalf("a union with no validatable variant still emitted a dispatch:\n%s", out)
+	}
+}

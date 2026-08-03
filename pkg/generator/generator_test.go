@@ -5324,3 +5324,110 @@ func TestBigIntAliasCarriesItsOneOfVariants(t *testing.T) {
 		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
 	}
 }
+
+// TestOneOfObjectVariantsAreMarkedValidatable pins the generator half of issue
+// #61: Validate never descended into a oneOf union field, so an object
+// variant's nested constraints were dead. PR #58 closed the scalar case by
+// applying each branch's rules during selection, but selection only decides
+// which branch decodes -- {"a":{"x":"z"}} was accepted against a branch
+// requiring minLength 3, and a hand-built value escaped checking entirely.
+//
+// The dispatch the emitter writes is keyed on OneOfVariant.Validatable, so this
+// is where the decision is made. The emitter half -- the type switch itself --
+// is pinned in pkg/emitter/emitter_test.go, since a template test from here
+// would close an import cycle.
+func TestOneOfObjectVariantsAreMarkedValidatable(t *testing.T) {
+	input := `{"type":"object",
+		"properties":{"a":{"oneOf":[
+			{"type":"object","properties":{"x":{"type":"string","minLength":3}},"required":["x"]},
+			{"type":"object","properties":{"y":{"type":"integer"}},"required":["y"]}]}},
+		"required":["a"]}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var root *StructDef
+	for _, td := range ir.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			root = sd
+		}
+	}
+	if root == nil {
+		t.Fatalf("expected a StructDef named Root, got %#v", ir.TypeDefs)
+	}
+	if len(root.OneOfs) != 1 || len(root.OneOfs[0].Variants) != 2 {
+		t.Fatalf("Root.OneOfs = %#v, want one union of 2 variants", root.OneOfs)
+	}
+	if !root.OneOfs[0].HasValidatableVariants() {
+		t.Fatalf("Root.OneOfs[0].HasValidatableVariants() = false; the union emits no dispatch at all")
+	}
+	for _, v := range root.OneOfs[0].Variants {
+		if !v.Validatable {
+			t.Fatalf("variant %s (type %s) Validatable = false, want true: its own type carries the branch's constraints and nothing else applies them",
+				v.FieldName, v.Type.GoTypeName())
+		}
+		// The wrapper holds the variant by pointer, which is what lets the
+		// dispatch skip a nil rather than call a value-receiver method through
+		// one. The template reads Type.IsPointer directly, so a variant that
+		// stopped being a pointer would silently change the emitted guard.
+		if !v.Type.IsPointer() {
+			t.Fatalf("variant %s type = %s, want a pointer", v.FieldName, v.Type.GoTypeName())
+		}
+	}
+}
+
+// TestOneOfScalarVariantsAreNotMarkedValidatable is the over-reach guard for
+// the arm above. A scalar variant's wrapper holds a plain Go string or int64
+// and a constraint-only branch resolves to `any`; neither has a Validate, so a
+// dispatch case for one would not compile, and a group with no dispatchable
+// variant at all would emit a type switch whose bound variable goes unused.
+// Their branch constraints ride on OneOfVariant.Checks instead, applied during
+// selection.
+func TestOneOfScalarVariantsAreNotMarkedValidatable(t *testing.T) {
+	input := `{"type":"object","properties":{
+		"a":{"oneOf":[{"type":"string","minLength":3},{"type":"integer","minimum":5}]},
+		"b":{"oneOf":[{"required":["p"]},{"required":["q"]}]}}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	groups := 0
+	for _, td := range ir.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for _, oof := range sd.OneOfs {
+			groups++
+			if oof.HasValidatableVariants() {
+				t.Fatalf("%s.%s HasValidatableVariants() = true; an empty type switch does not compile",
+					sd.Name, oof.FieldName)
+			}
+			for _, v := range oof.Variants {
+				if v.Validatable {
+					t.Fatalf("%s.%s variant %s (type %s) Validatable = true; that type has no Validate method",
+						sd.Name, oof.FieldName, v.FieldName, v.Type.GoTypeName())
+				}
+			}
+		}
+	}
+	if groups != 2 {
+		t.Fatalf("found %d oneOf groups, want 2 (the scalar union and the required-only union)", groups)
+	}
+}

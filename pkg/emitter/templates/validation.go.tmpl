@@ -933,6 +933,42 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- range $oneOf := $struct.OneOfs}}
+	{{- if $oneOf.HasValidatableVariants}}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := {{$recv}}.{{$oneOf.FieldName}}.(type) {
+	{{- range $v := $oneOf.Variants}}
+	{{- if $v.Validatable}}
+	case *{{$v.WrapperName}}:
+		{{- if $v.Type.IsPointer}}
+		if _oneOfSel.{{$v.FieldName}} != nil {
+			if err := _oneOfSel.{{$v.FieldName}}.Validate(); err != nil {
+				{{- if $oneOf.JSONName}}
+				return fmt.Errorf("{{jsonErrorName $oneOf.JSONName}}.%w", err)
+				{{- else}}
+				return err
+				{{- end}}
+			}
+		}
+		{{- else}}
+		if err := _oneOfSel.{{$v.FieldName}}.Validate(); err != nil {
+			{{- if $oneOf.JSONName}}
+			return fmt.Errorf("{{jsonErrorName $oneOf.JSONName}}.%w", err)
+			{{- else}}
+			return err
+			{{- end}}
+		}
+		{{- end}}
+	{{- end}}
+	{{- end}}
+	}
+	{{- end}}
+	{{- end}}
 	{{- if $struct.ItemValidations}}
 	{{- template "item_validations" (mkItemCtx $recv $struct.ItemValidations)}}
 	{{- end}}

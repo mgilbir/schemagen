@@ -1337,6 +1337,91 @@ func TestOneOfRequiredOnlyObject(t *testing.T) {
 	)
 }
 
+// TestOneOfObjectVariantConstraints is the end-to-end guard for issue #61: the
+// owner's Validate never descended into a oneOf union field, so an object
+// variant's *nested* constraints were dead. PR #58 closed the scalar case by
+// applying each branch's rules during selection, but selection only decides
+// which branch decodes -- {"a":{"x":"z"}} decodes cleanly into the first
+// variant and nothing then checked its minLength.
+//
+// The two invalid documents that carry a branch's required key are the ones
+// that matter, and neither can be caught anywhere but Validate: both decode,
+// because the value is of the right JSON type for the field it lands in.
+func TestOneOfObjectVariantConstraints(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_object_variant_constraints.json",
+		[]string{
+			`{"a":{"x":"zzz"}}`, // first branch, at its minLength
+			`{"a":{"y":10}}`,    // second branch, at its minimum
+			`{"a":{"y":42}}`,    // second branch, above it
+		},
+		[]string{
+			`{"a":{"x":"z"}}`,          // first branch selected, minLength 3 violated
+			`{"a":{"y":9}}`,            // second branch selected, minimum 10 violated
+			`{"a":{}}`,                 // neither branch's required key
+			`{"a":{"x":"zzz","y":10}}`, // both branches → 2 matches
+		},
+	)
+}
+
+// TestHandBuiltOneOfVariantValidate is the other half of issue #61: a union
+// value that was never unmarshalled escaped checking entirely, because
+// selection was the only thing enforcing anything and selection only runs
+// during UnmarshalJSON. It also pins the nil guards -- the dispatch must step
+// over an empty wrapper rather than call a value-receiver Validate through a
+// nil pointer.
+func TestHandBuiltOneOfVariantValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Never unmarshalled, so _jsonKeys is nil inside the variant and its
+	// required-property check is skipped -- but minLength speaks about the
+	// value that is there, and must still be applied.
+	bad := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{
+			OneOfObjectVariantConstraintsAOption0: &OneOfObjectVariantConstraintsAOption0{X: "z"},
+		},
+	}
+	if err := bad.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "hand-built variant violating minLength should fail Validate but passed")
+		os.Exit(1)
+	}
+
+	good := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{
+			OneOfObjectVariantConstraintsAOption0: &OneOfObjectVariantConstraintsAOption0{X: "zzz"},
+		},
+	}
+	if err := good.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built conforming variant should pass: %v\n", err)
+		os.Exit(1)
+	}
+
+	// A wrapper holding nothing, and a union field holding nothing. Neither is
+	// a value the schema has anything to say about, and neither may panic.
+	empty := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{},
+	}
+	if err := empty.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "empty wrapper should be stepped over: %v\n", err)
+		os.Exit(1)
+	}
+	if err := (OneOfObjectVariantConstraints{}).Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "unset union field should be stepped over: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/oneof_object_variant_constraints.json", "handbuilt_oneof_test", mainGo)
+}
+
 // TestOneOfStringLengthVariants covers a constraint-only oneOf attached to a
 // declared string type. The branch checks use utf8.RuneCountInString, so the
 // generated file must import "unicode/utf8" — it previously did not and failed

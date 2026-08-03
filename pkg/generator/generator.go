@@ -7138,6 +7138,23 @@ func (g *Generator) populateValidatableFields() {
 				})
 			}
 		}
+
+		// A oneOf union field is not in sd.Fields as its variant type — it is
+		// the sealed interface — so the loop above cannot reach it. Mark the
+		// variants whose own type answers for the branch's constraints, and the
+		// parent's Validate dispatches on the wrapper it actually holds.
+		for oi := range sd.OneOfs {
+			for vi := range sd.OneOfs[oi].Variants {
+				v := &sd.OneOfs[oi].Variants[vi]
+				typeName := namedTypeName(v.Type)
+				if typeName == "" {
+					continue
+				}
+				if validatableTypes[typeName] || crossPackageValidatable(v.Type) {
+					v.Validatable = true
+				}
+			}
+		}
 	}
 }
 

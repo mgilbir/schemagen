@@ -636,5 +636,45 @@ func (n Notification) Validate() error {
 			}
 		}
 	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := n.Content.(type) {
+	case *Notification_TextContent:
+		if _oneOfSel.TextContent != nil {
+			if err := _oneOfSel.TextContent.Validate(); err != nil {
+				return fmt.Errorf("content.%w", err)
+			}
+		}
+	case *Notification_HTMLContent:
+		if _oneOfSel.HTMLContent != nil {
+			if err := _oneOfSel.HTMLContent.Validate(); err != nil {
+				return fmt.Errorf("content.%w", err)
+			}
+		}
+	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := n.Target.(type) {
+	case *Notification_EmailTarget:
+		if _oneOfSel.EmailTarget != nil {
+			if err := _oneOfSel.EmailTarget.Validate(); err != nil {
+				return fmt.Errorf("target.%w", err)
+			}
+		}
+	case *Notification_SmsTarget:
+		if _oneOfSel.SmsTarget != nil {
+			if err := _oneOfSel.SmsTarget.Validate(); err != nil {
+				return fmt.Errorf("target.%w", err)
+			}
+		}
+	}
 	return nil
 }

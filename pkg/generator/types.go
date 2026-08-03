@@ -609,6 +609,18 @@ func (d *OneOfDef) HasVariantChecks() bool {
 	return false
 }
 
+// HasValidatableVariants reports whether any variant's type carries a Validate
+// method, which is what the parent's Validate dispatches to. A union of nothing
+// but scalars and `any` has nowhere to descend and emits no switch at all.
+func (d *OneOfDef) HasValidatableVariants() bool {
+	for _, v := range d.Variants {
+		if v.Validatable {
+			return true
+		}
+	}
+	return false
+}
+
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
 	WrapperName        string   // TypeName_VariantName
@@ -625,6 +637,12 @@ type OneOfVariant struct {
 	// candidate, that variant selection must satisfy before this variant counts
 	// as matched. See oneOfVariantChecks.
 	Checks []ValidationRule
+	// Validatable is true when Type names a generated type that carries a
+	// Validate method, so the parent's Validate can descend into this variant.
+	// Set by populateValidatableFields, which is the only place that knows
+	// which types ended up with methods. A scalar or `any` variant is false:
+	// its constraints ride on Checks instead, applied during selection.
+	Validatable bool
 }
 
 // EnumDef represents an enum type.

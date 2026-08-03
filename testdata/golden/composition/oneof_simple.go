@@ -363,5 +363,25 @@ func (d Drawing) Validate() error {
 			}
 		}
 	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := d.Shape.(type) {
+	case *Drawing_Circle:
+		if _oneOfSel.Circle != nil {
+			if err := _oneOfSel.Circle.Validate(); err != nil {
+				return fmt.Errorf("shape.%w", err)
+			}
+		}
+	case *Drawing_Rectangle:
+		if _oneOfSel.Rectangle != nil {
+			if err := _oneOfSel.Rectangle.Validate(); err != nil {
+				return fmt.Errorf("shape.%w", err)
+			}
+		}
+	}
 	return nil
 }

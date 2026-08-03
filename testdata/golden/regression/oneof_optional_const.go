@@ -426,5 +426,25 @@ func (o OneOfOptionalConst) MarshalJSON() ([]byte, error) {
 
 // Validate checks OneOfOptionalConst against its JSON Schema constraints.
 func (o OneOfOptionalConst) Validate() error {
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := o.P.(type) {
+	case *OneOfOptionalConst_OneOfOptionalConstPOption0:
+		if _oneOfSel.OneOfOptionalConstPOption0 != nil {
+			if err := _oneOfSel.OneOfOptionalConstPOption0.Validate(); err != nil {
+				return fmt.Errorf("p.%w", err)
+			}
+		}
+	case *OneOfOptionalConst_OneOfOptionalConstPOption1:
+		if _oneOfSel.OneOfOptionalConstPOption1 != nil {
+			if err := _oneOfSel.OneOfOptionalConstPOption1.Validate(); err != nil {
+				return fmt.Errorf("p.%w", err)
+			}
+		}
+	}
 	return nil
 }

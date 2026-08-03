@@ -67,12 +67,17 @@ const coMaxDepth = 3
 //	                branch and typed there. On a property, two typed scalar
 //	                alternatives ({"type":"string","minLength":n} and
 //	                {"type":"integer","minimum":m}).
-//	oneOf           three forms. On any object node, root or nested, the same
+//	oneOf           four forms. On any object node, root or nested, the same
 //	                discriminator branches as anyOf. On a property, the same
 //	                two typed scalar alternatives as anyOf. As a composition
 //	                leaf, two overlapping integer windows, so that a value
 //	                matching *both* branches is reachable and can be made a
-//	                mutant.
+//	                mutant. Also on a property, two *object* branches, each
+//	                requiring a key the other does not mention and constraining
+//	                that key's value -- the one form whose branch constraints
+//	                sit a level below the branch, and so the one form that can
+//	                tell whether the union's owner validates the variant
+//	                selection chose.
 //	if/then/else    over an integer pivot: `if` {minimum: P}, `then` {maximum:
 //	                P+K}, `else` {minimum: P-K}. Both outcomes of `if` are
 //	                generated. Emitted as a composition leaf and inline as a
@@ -155,6 +160,14 @@ const coMaxDepth = 3
 // and becomes a property type carrying the branches as constraints; that is the
 // hoisted spelling of coOneOfWin, and it is emitted inline for exactly that
 // reason.
+//
+// An inline oneOf of *object* branches -- coOneOfObj -- is the same union with
+// the branch constraints moved one level down, into the variant types, where
+// only the owner's Validate can reach them. It is emitted because the scalar
+// spelling above cannot substitute for it: a scalar variant's constraints are
+// applied by selection during UnmarshalJSON, so they hold whether or not the
+// owner descends, and a union that never descends looks identical from there.
+// That is why issue #61 stood while the harness was green.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
@@ -290,6 +303,12 @@ const (
 	coOneOfWin // oneOf over two overlapping integer windows, typed per branch or once above them
 	coIfElse   // if/then/else over an integer pivot
 	coNot      // not: {"type": T}
+	// coOneOfObj is a oneOf over two *object* branches, each requiring a key
+	// the other does not mention and constraining that key's value. It is the
+	// only shape in the grammar whose branch constraints live one level below
+	// the branch itself, which is what makes it the shape that tests whether
+	// the union's owner descends into the variant it selected.
+	coOneOfObj
 )
 
 // coComp says which applicator, if any, an object node routes its own
@@ -483,6 +502,22 @@ type coNode struct {
 	winValue       int64
 	winHoist       bool
 
+	// coOneOfObj: two object branches. Branch 0 declares and requires
+	// coOneOfObjKeys[0], typed string with minLength objStrMin; branch 1
+	// declares and requires coOneOfObjKeys[1], typed integer with minimum
+	// objIntMin. The two required keys are different names, so a document
+	// carrying one of them satisfies that branch's `required` and fails the
+	// other's -- which is what makes "exactly one branch" a fact about which
+	// key is present rather than a claim that has to be evaluated.
+	//
+	// objUseStr says which branch the instance takes; objStr and objInt are the
+	// conforming values, chosen at or above their bound.
+	objStrMin int
+	objIntMin int64
+	objUseStr bool
+	objStr    string
+	objInt    int64
+
 	// coIfElse: if {minimum: pivot}, then {maximum: pivot+span},
 	// else {minimum: pivot-span}. iteIf records which side the instance is on.
 	pivot, span int64
@@ -550,6 +585,19 @@ var coDefNames = []string{"DefA", "DefB", "DefC"}
 // which would put two schemas on one name and break the "exactly one branch"
 // argument.
 var coDiscNames = []string{"tagOne", "tagTwo", "tagThree"}
+
+// coOneOfObjKeys name the properties the two object branches of a coOneOfObj
+// declare and require, one each. The whole construct rests on the two names
+// being different: the branch the instance does not take is unsatisfied because
+// its required key is absent, and a mutant that violates one branch's nested
+// constraint cannot accidentally satisfy the other. The names live in their own
+// vocabulary rather than borrowing coPropNames so that reading a failing
+// document says which construct a key belongs to.
+//
+// They need not be disjoint from the keys of any enclosing object: these are
+// keys of the union's own value, a different JSON object from the one that
+// holds it.
+var coOneOfObjKeys = [2]string{"varStr", "varInt"}
 
 // The key vocabularies below are pairwise disjoint, and disjoint from
 // coPropNames and coDiscNames. That is what lets every argument about them be
@@ -1156,6 +1204,27 @@ func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
 	return n
 }
 
+// buildOneOfObj builds two object branches keyed by different required
+// properties, each constraining its own property's value.
+//
+// minLength is at least 1 so a string one rune shorter than the bound exists;
+// that string, under the branch's key, is a document that satisfies the
+// branch's `required` and violates its nested constraint -- the mutant no
+// scalar-branch shape in this grammar can express, because a scalar branch has
+// no interior to violate.
+func (b *coBuilder) buildOneOfObj() *coNode {
+	n := &coNode{kind: coOneOfObj}
+	n.objStrMin = 1 + b.rng.IntN(4)
+	n.objIntMin = int64(b.rng.IntN(21) - 10)
+	n.objUseStr = b.chance(2)
+	if n.objUseStr {
+		n.objStr = coFillString(n.objStrMin + b.rng.IntN(3))
+	} else {
+		n.objInt = n.objIntMin + int64(b.rng.IntN(5))
+	}
+	return n
+}
+
 // buildValue picks the schema for an object property.
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
@@ -1177,8 +1246,18 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	// declared type. The unhoisted spelling inline is a union of two same-typed
 	// variants, a different construct that coAltAnyOf's oneOf form already
 	// covers at this position.
-	kinds = append(kinds, coIfElse, coNot, coOneOfWin)
+	//
+	// coOneOfObj belongs here and nowhere else. It is a union whose variants
+	// are named object types, so the branch constraints sit inside those types
+	// rather than on the union, and only the owner's Validate can reach them --
+	// which is exactly the position where a missing descent goes unnoticed. The
+	// scalar-branch spellings above cannot stand in for it: their constraints
+	// are applied by variant selection during UnmarshalJSON, so they are
+	// enforced whether or not anything descends.
+	kinds = append(kinds, coIfElse, coNot, coOneOfWin, coOneOfObj)
 	switch kinds[b.rng.IntN(len(kinds))] {
+	case coOneOfObj:
+		return b.buildOneOfObj()
 	case coObject:
 		return b.buildObject(depth, visible)
 	case coArray:
@@ -1576,6 +1655,24 @@ func (n *coNode) fragment() map[string]any {
 			map[string]any{"type": "integer", "minimum": n.winLo1, "maximum": n.winHi1},
 		}
 
+	case coOneOfObj:
+		m["oneOf"] = []any{
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					coOneOfObjKeys[0]: map[string]any{"type": "string", "minLength": n.objStrMin},
+				},
+				"required": []string{coOneOfObjKeys[0]},
+			},
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					coOneOfObjKeys[1]: map[string]any{"type": "integer", "minimum": n.objIntMin},
+				},
+				"required": []string{coOneOfObjKeys[1]},
+			},
+		}
+
 	case coIfElse:
 		m["if"] = map[string]any{"type": "integer", "minimum": n.pivot}
 		m["then"] = map[string]any{"type": "integer", "maximum": n.pivot + n.span}
@@ -1735,6 +1832,14 @@ func (d *coDoc) value(n *coNode) any {
 		return n.altInt
 	case coOneOfWin:
 		return n.winValue
+	case coOneOfObj:
+		// Exactly one branch's required key goes in, so the other branch is
+		// unsatisfied by construction and "exactly one" holds without anything
+		// having to evaluate the branches.
+		if n.objUseStr {
+			return map[string]any{coOneOfObjKeys[0]: n.objStr}
+		}
+		return map[string]any{coOneOfObjKeys[1]: n.objInt}
 	case coIfElse:
 		return n.iteValue
 	case coNot:
@@ -2087,10 +2192,12 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		// stored as and UnmarshalJSON is the only place that can say so. The
 		// mutants are marked Loose for that reason and not because the check is
 		// weaker -- an accepted mutant is still a failure, which is the property
-		// under test. It does leave a hand-built value unguarded, since Validate
-		// does not descend into the union; that is a separate gap in the union
-		// shape, not something this position can settle. Want records the
-		// message the union does emit, for the day the site changes.
+		// under test. Want records the message the union does emit, for the day
+		// the site changes.
+		//
+		// This position says nothing about whether Validate descends into the
+		// union, and cannot: a scalar variant is a plain Go string or int64 with
+		// no Validate to descend to. coOneOfObj is the position that settles it.
 		what := "anyOf"
 		want := []string{prop, "is not allowed"}
 		loose := false
@@ -2122,6 +2229,39 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		*out = append(*out, coMutation{
 			Keyword: "oneOfMatchesNone", Path: path, Prop: prop, Value: n.winLo0 - 1,
 			Want: []string{prop, "oneOf"},
+		})
+
+	case coOneOfObj:
+		// Both mutants are emitted whichever branch the instance took, on the
+		// same reasoning as coAltAnyOf: a mutant has to be invalid, not a near
+		// miss of the branch in play. Each replaces the whole union value with
+		// an object carrying one branch's required key and a value that branch
+		// forbids. That branch is then selected -- its required key is the only
+		// one present, so the other branch's `required` fails and selection is
+		// unambiguous -- and it is violated, so no branch is satisfied and the
+		// document is invalid.
+		//
+		// Neither is Loose, and that is the whole point of this node. The value
+		// is of the right JSON type for the field it lands in, so it decodes;
+		// the only place left that can reject it is the owner's Validate
+		// descending into the variant selection chose. A generator that skips
+		// that descent accepts both, which is what issue #61 was.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjBranchString", Path: path, Prop: prop,
+			Value: map[string]any{coOneOfObjKeys[0]: coFillString(n.objStrMin - 1)},
+			Want:  []string{prop, coOneOfObjKeys[0], "is less than minimum"},
+		})
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjBranchNumber", Path: path, Prop: prop,
+			Value: map[string]any{coOneOfObjKeys[1]: n.objIntMin - 1},
+			Want:  []string{prop, coOneOfObjKeys[1], "is less than minimum"},
+		})
+		// An object carrying neither required key satisfies neither branch.
+		// Selection is the only thing that can say so -- there is no variant to
+		// store the value as -- so this one is expected in the decoder.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjMatchesNone", Path: path, Prop: prop,
+			Value: map[string]any{}, Want: []string{"oneOf"}, Loose: true,
 		})
 
 	case coIfElse:
@@ -2505,7 +2645,7 @@ func coReduce(d *coDoc) []*coDoc {
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {
-				case coObject, coArray, coTuple, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot:
+				case coObject, coArray, coTuple, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot, coOneOfObj:
 					c := d.clone()
 					coNodesOf(c)[i].props[j].node = &coNode{kind: coBoolean}
 					out = append(out, c)
