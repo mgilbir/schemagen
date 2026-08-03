@@ -209,11 +209,12 @@ func (d *StructDef) HasPatternProperties() bool {
 	return len(d.PatternProperties) > 0
 }
 
-// HasPatternPropertyValidation returns true if any pattern property has validation
-// constraints (IsForbidden or Validations) that need to be checked in Validate().
+// HasPatternPropertyValidation returns true if any pattern property has
+// something to check in Validate(): a forbidden pattern, a type to decode the
+// value through, or scalar constraints on the raw value.
 func (d *StructDef) HasPatternPropertyValidation() bool {
 	for _, pp := range d.PatternProperties {
-		if pp.IsForbidden || len(pp.Validations) > 0 {
+		if pp.IsForbidden || pp.TypeName != "" || len(pp.Validations) > 0 {
 			return true
 		}
 	}
@@ -512,9 +513,26 @@ type ObjectPropertyCheck struct {
 // to preserve them through marshal/unmarshal round-trips. The patterns are used
 // during unmarshal to distinguish pattern-matched keys from truly additional keys.
 type PatternPropertyDef struct {
-	Pattern     string           // regex pattern (e.g., "^v", "f.o")
-	IsForbidden bool             // true when sub-schema is boolean false (matching keys rejected)
-	Validations []ValidationRule // constraints on matched values (type, minimum, etc.)
+	Pattern     string // regex pattern (e.g., "^v", "f.o")
+	IsForbidden bool   // true when sub-schema is boolean false (matching keys rejected)
+	// TypeName is the generated type a matching value is decoded into and
+	// validated through. It is how everything beyond a scalar keyword reaches a
+	// matched value: nested properties, a $ref, an enum, items, a composition.
+	// Empty when the sub-schema produced no type carrying a Validate, in which
+	// case Validations below is what is left. resolvePatternPropertyTypes
+	// settles which of the two a pattern gets, once every type def exists.
+	TypeName string
+	// Validations are the scalar constraints checked against the raw value
+	// in place. They are the fallback for a sub-schema with no type of its own;
+	// where TypeName is set this is nil, since that type answers for the whole
+	// sub-schema and checking twice would only duplicate the message.
+	Validations []ValidationRule
+	// StrictInteger is set for the drafts that read an integer off the token
+	// rather than the value -- 3 and 4, where 1.0 is not an integer. From draft
+	// 6 on a zero fractional part is one, so the in-place `type` check has to
+	// read the number rather than scan for a '.'. Same distinction, and same
+	// source, as AliasDef.StrictInteger.
+	StrictInteger bool
 }
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.

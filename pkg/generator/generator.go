@@ -95,6 +95,14 @@ type Generator struct {
 	// generation never terminates.
 	nodeTypeNames map[*schema.Schema]string
 
+	// patternMintedTypes maps a name minted for a patternProperties bucket to the
+	// node it was minted from. Only names invented here are listed -- a bucket
+	// whose sub-schema is a $ref uses the target's own name, which this mechanism
+	// does not own and must not withdraw. resolvePatternPropertyTypes reads it to
+	// take back a type it turns out cannot carry a Validate, so the package is
+	// not left exporting a name nothing refers to.
+	patternMintedTypes map[string]*schema.Schema
+
 	// nodesInProgress marks schema nodes whose type is still being generated
 	// further up the stack. A reference back to one of those closes a cycle, so
 	// it must be emitted as a pointer -- Go rejects a struct that contains
@@ -136,6 +144,7 @@ func New(cfg Config) *Generator {
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
 		nodeTypeNames:      make(map[*schema.Schema]string),
+		patternMintedTypes: make(map[string]*schema.Schema),
 		nodesInProgress:    make(map[*schema.Schema]bool),
 		nullChecked:        make(map[*schema.Schema]bool),
 	}
@@ -325,6 +334,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Must run after resolveAliasMethodability so we know which types actually have methods.
 	g.populateValidatableFields()
 	g.resolveItemValidations()
+	g.resolvePatternPropertyTypes()
 	g.populateAliasDelegates()
 	// Must run after resolveAliasMethodability: an alias that cannot carry
 	// methods has nowhere to put a tolerant decode.
@@ -622,9 +632,21 @@ func (g *Generator) addRequiredImports() {
 			if sd.HasPatternPropertyValidation() {
 				needsFmt = true
 				for _, pp := range sd.PatternProperties {
+					if pp.TypeName != "" {
+						// The bucket decodes the raw value into that type and
+						// calls its Validate.
+						needsJSON = true
+						needsFmt = true
+					}
 					for _, v := range pp.Validations {
 						if v.RuleType == "ppType" {
 							needsBytes = true
+							if !pp.StrictInteger {
+								// The lenient integer classification parses the
+								// number instead of scanning its token.
+								needsJSON = true
+								needsMath = true
+							}
 						}
 						if v.RuleType == "ppMultipleOf" {
 							needsMath = true
@@ -1991,18 +2013,25 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 // "minLength":7}}]} came out `type X any` -- the merge had the keyword by then
 // and this predicate did not ask for it.
 //
-// Two keywords are deliberately absent. With no properties declared,
-// `additionalProperties: false` forbids every key, so honouring it would turn a
-// schema that accepts any object into one that accepts only {} -- which is why
-// the arm above admits a schema value and not a boolean one. And `type` alone
-// would make the struct reject non-object instances, which the `any` alias
-// accepts today. Both are corrections the spec supports, and both are far
-// larger claims than the merge gap this predicate exists to close.
+// `additionalProperties: false` is another, for the reason forbidsEveryKey
+// gives: with no properties declared it permits no key at all, and the struct
+// rejects the whole overflow map. It was left out on the grounds that honouring
+// it turns a schema accepting any object into one accepting only {} -- which is
+// what the schema says, and what the same schema in a $defs entry has always
+// done, so leaving it out here made the answer depend on where the schema was
+// written rather than on what it says.
+//
+// One keyword is still deliberately absent: `type` alone would make the struct
+// reject non-object instances, which the `any` alias accepts today. That is a
+// correction the spec supports and a far larger claim than the merge gap this
+// predicate exists to close. A boolean `true` is absent for the opposite
+// reason -- it permits everything, so there is nothing to enforce.
 func (g *Generator) propertylessObjectHasChecks(s *schema.Schema) bool {
 	if !g.validationKeywordsEnabled() {
 		return false
 	}
 	return mapValueSchema(s, "object") != nil ||
+		forbidsEveryKey(s) ||
 		s.PropertyNames != nil ||
 		s.MinProperties != nil || s.MaxProperties != nil ||
 		len(s.Required) > 0 ||
@@ -2614,7 +2643,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// These are regex patterns that match additional property keys which should
 	// be preserved through round-trip even when additionalProperties is false.
 	var patternProps []PatternPropertyDef
-	for _, pattern := range sortedKeys(s.PatternProperties) {
+	for i, pattern := range sortedKeys(s.PatternProperties) {
 		ppSchema := s.PatternProperties[pattern]
 		ppDef := PatternPropertyDef{Pattern: pattern}
 		if ppSchema.IsFalseSchema() {
@@ -2622,7 +2651,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		} else if ppSchema.IsBooleanSchema() {
 			// boolean true → no constraints
 		} else if g.validationKeywordsEnabled() {
+			// Both routes are prepared here and one is chosen later, by
+			// resolvePatternPropertyTypes: whether the materialized type carries
+			// a Validate is only knowable once every type def exists, and the
+			// scalar rules are what the pattern falls back to when it does not.
+			// The name is indexed over the sorted patterns, which is the only
+			// stable identifier a regex position has -- a pattern is arbitrary
+			// text and cannot be turned into a Go name.
+			ppDef.TypeName = g.patternValueTypeName(ppSchema, fmt.Sprintf("%sPattern%d", name, i))
 			ppDef.Validations = extractPatternPropertyValidationRules(ppSchema)
+			ppDef.StrictInteger = g.requiresStrictIntegerToken(ppSchema)
 		}
 		patternProps = append(patternProps, ppDef)
 	}
@@ -5084,8 +5122,8 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if inner == "" {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}, nil
 		}
-		// Nullable object that names its keys → pointer to named struct
-		if inner == "object" && namesObjectKeys(s) {
+		// Nullable object that is a struct rather than a map → pointer to named struct
+		if inner == "object" && objectIsStruct(s) {
 			nestedName := parentName + fieldName
 			if err := g.generateTypeDef(nestedName, s); err != nil {
 				return nil, err
@@ -5384,7 +5422,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		if inner == "" {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}
 		}
-		if inner == "object" && namesObjectKeys(s) {
+		if inner == "object" && objectIsStruct(s) {
 			n, _ := g.materializeNamed(s, contextName)
 			return &PointerType{Inner: &NamedType{Name: n}}
 		}
@@ -5421,14 +5459,14 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &PointerType{Inner: baseType}
 	}
 
-	// Object that names its keys → nested struct (explicit type:"object", or
-	// inferred from the properties/patternProperties keyword). See namesObjectKeys.
-	if primaryType == "object" && namesObjectKeys(s) {
+	// Object that is a struct rather than a map → nested struct (explicit
+	// type:"object", or inferred from an object-only keyword). See objectIsStruct.
+	if primaryType == "object" && objectIsStruct(s) {
 		n, cyclic := g.materializeNamed(s, contextName)
 		return namedOrPointer(n, cyclic)
 	}
-	// Named keys without explicit type → pointer to struct (nil when absent, enabling omitempty)
-	if primaryType == "" && namesObjectKeys(s) {
+	// The same without an explicit type → pointer to struct (nil when absent, enabling omitempty)
+	if primaryType == "" && objectIsStruct(s) {
 		n, _ := g.materializeNamed(s, contextName)
 		return &PointerType{Inner: &NamedType{Name: n}}
 	}
@@ -6668,9 +6706,11 @@ func (g *Generator) allOfNamesObjectKeys(s *schema.Schema) bool {
 // value from the schema's own (absent) keywords.
 //
 // The second arm mirrors the narrow case the merge takes: no branch names a key,
-// and exactly one states a schema-valued additionalProperties, so the parent's
-// overflow map holds exactly the keys that keyword governs. A boolean one is
-// excluded on the same terms propertylessObjectHasChecks excludes it.
+// and exactly one states an additionalProperties the merged struct will enforce
+// -- a schema value, whose keywords are checked against the overflow map, or the
+// boolean false, which rejects it outright. Those are the two
+// propertylessObjectHasChecks admits, so the delegation and the merge agree on
+// which allOfs produce a type worth naming. A boolean `true` is neither.
 func (g *Generator) allOfBuildsObjectType(s *schema.Schema) bool {
 	if s == nil || len(s.AllOf) == 0 {
 		return false
@@ -6686,7 +6726,13 @@ func (g *Generator) allOfBuildsObjectType(s *schema.Schema) bool {
 		return false
 	}
 	ap := g.soleBranchAdditionalProperties(s.AllOf, make(map[*schema.Schema]bool))
-	return ap != nil && ap.Schema != nil && !ap.Schema.IsBooleanSchema()
+	if ap == nil {
+		return false
+	}
+	if ap.Bool != nil {
+		return !*ap.Bool
+	}
+	return ap.Schema != nil && !ap.Schema.IsBooleanSchema()
 }
 
 // allOfNamesObjectKeysOnPath is allOfNamesObjectKeys carrying the set of schemas
@@ -6824,28 +6870,58 @@ func namesObjectKeys(s *schema.Schema) bool {
 	return hasProperties(s) || len(s.PatternProperties) > 0
 }
 
+// forbidsEveryKey reports whether an object schema permits no key at all: its
+// additionalProperties is the boolean false and it names none of its keys, so
+// every key an instance could carry is an additional one and forbidden. Only
+// {} satisfies such a schema.
+//
+// The boolean is read the way generatePropertylessObjectDef reads it -- the
+// Bool arm of the SchemaOrBool -- so the predicate admits exactly the schemas
+// the struct it asks for will actually enforce.
+func forbidsEveryKey(s *schema.Schema) bool {
+	if s == nil || namesObjectKeys(s) {
+		return false
+	}
+	ap := s.AdditionalProperties
+	return ap != nil && ap.Bool != nil && !*ap.Bool
+}
+
+// objectIsStruct reports whether an object schema has to be materialized rather
+// than answered with a bare Go map: it names its keys, or it forbids every key.
+//
+// The second is not a map because there is nothing for a map to hold, and it is
+// the shape resolveType used to collapse to map[string]any --
+// {"type":"object","additionalProperties":false} written as a property accepted
+// {"x":1}, while the identical schema in a $defs entry has always rejected it
+// through the Forbidden overflow map generatePropertylessObjectDef emits. The
+// named position was right and the inline one was the outlier.
+//
+// What is deliberately absent is a *schema-valued* additionalProperties: that
+// does describe the values, one schema for all of them, and it is a Go map --
+// which is the whole of #84 and must not be undone here.
+func objectIsStruct(s *schema.Schema) bool {
+	return namesObjectKeys(s) || forbidsEveryKey(s)
+}
+
 // objectShapeNeedsNamedType reports whether an object schema states something
 // that only a generated type of its own can enforce -- because the position
 // holding it dispatches through a Validate method and has no other way to reach
 // the schema.
 //
-// Two shapes qualify, and they are the two generateTypeDef already answers with
-// a type carrying checks: an object that names its keys (a struct, see
-// namesObjectKeys), and an object whose whole shape is a schema-valued
+// Three shapes qualify, and they are the three generateTypeDef already answers
+// with a type carrying checks: an object that names its keys (a struct, see
+// namesObjectKeys), an object that forbids every key (a struct whose overflow
+// map is rejected outright), and an object whose whole shape is a schema-valued
 // additionalProperties (a struct whose overflow map is checked against that
 // sub-schema).
 //
-// A boolean additionalProperties is deliberately not one of them. There the
-// keyword is a verdict on unknown keys rather than a description of them, and
-// with no properties declared `false` forbids every key -- so naming the
-// position for it would turn a schema that accepts any object into one that
-// accepts {} alone. That is a correction the spec supports, but it is a
-// different claim from this one and belongs to whoever makes it deliberately.
+// A boolean `true` is not one of them: it permits every key and says nothing
+// about any of them, so there is nothing for a Validate to carry.
 func (g *Generator) objectShapeNeedsNamedType(s *schema.Schema) bool {
 	if s == nil || s.IsBooleanSchema() {
 		return false
 	}
-	return namesObjectKeys(s) || mapValueSchema(s, g.effectiveType(s)) != nil
+	return objectIsStruct(s) || mapValueSchema(s, g.effectiveType(s)) != nil
 }
 
 // resolveArrayItemType resolves the Go type for an array's items schema.
@@ -10414,10 +10490,188 @@ func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRul
 	return variants
 }
 
+// patternValueScalarKeywords is what extractPatternPropertyValidationRules can
+// express by reading the raw JSON value in place, plus the annotations that
+// assert nothing. It is the same set aliasVariantKeywords lists, and for the
+// same reason: both describe checks that need no decode.
+var patternValueScalarKeywords = map[string]bool{
+	"type": true, "minimum": true, "maximum": true,
+	"exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+	"minLength": true, "maxLength": true, "pattern": true,
+	"minItems": true, "maxItems": true,
+
+	"$schema": true, "$id": true, "title": true, "description": true,
+	"$comment": true, "default": true, "examples": true,
+	"deprecated": true, "readOnly": true, "writeOnly": true,
+}
+
+// patternRulesCoverSchema reports whether the scalar rule list already says
+// everything a patternProperties sub-schema says, so the bucket needs no type of
+// its own.
+//
+// Decided from the re-marshaled key set rather than from a list of struct
+// fields, so a keyword the parser learns later fails closed -- it is not in the
+// set, the answer is no, and the position gets a materialized type that does
+// understand it. That is the rule aliasVariantRules and dynamicBranchChecks
+// already follow, and here it is what stops this from becoming a second
+// hand-maintained list of keywords that silently lags the first.
+func patternRulesCoverSchema(s *schema.Schema) bool {
+	if s == nil {
+		return true
+	}
+	if len(s.Extensions) > 0 || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return false
+	}
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &present); err != nil {
+		return false
+	}
+	for key := range present {
+		if !patternValueScalarKeywords[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// patternValueTypeName materializes the type a patternProperties sub-schema is
+// checked through and returns its name, or "" when the sub-schema states nothing
+// a type could carry.
+//
+// A pattern's keys are not known until a document arrives, so the values sit in
+// a raw-JSON bucket and there is no field for the usual dispatch to reach. Until
+// this existed the only thing checking them was a hand-listed set of scalar
+// rules -- type, the numeric bounds, multipleOf, the length bounds, pattern and
+// the item-count bounds -- so everything else a sub-schema can say was enforced
+// nowhere: an enum, a const, required, nested properties, a $ref, the contents
+// of items, format, uniqueItems, a composition, and a nested patternProperties
+// or additionalProperties. {"patternProperties":{"^a":{"$ref":"#/$defs/D"}}}
+// generated D with a correct Validate and never called it.
+//
+// Naming the position is what closes that, and it is the same move the tuple
+// positions make (see tupleItemDefFor): decode the raw value into the type the
+// sub-schema generated and let that type answer for its own schema. The routes
+// into a sub-schema are the ones tupleItemDefFor takes, and for the same
+// reasons -- a $ref carrying structural siblings is an implicit allOf and has to
+// be named here, a plain $ref reuses the target's own type rather than minting a
+// copy, and anything else is materialized under posName.
+//
+// It answers "" for a sub-schema the scalar rules already say everything about,
+// so a bucket whose whole content is a `type` and a length bound keeps the
+// cheaper in-place check and gains no exported name. Whether the type it does
+// materialize actually carries a Validate is settled later, by
+// resolvePatternPropertyTypes, which is the only point at which that is known.
+func (g *Generator) patternValueTypeName(sub *schema.Schema, posName string) string {
+	if sub == nil || sub.IsBooleanSchema() || !g.validationKeywordsEnabled() {
+		return ""
+	}
+	if patternRulesCoverSchema(sub) {
+		return ""
+	}
+	if (sub.EffectiveRef() != "" || sub.DynamicRef != "") &&
+		!g.refOverridesSiblingsForSchema(sub) && hasRefStructuralSiblings(sub) {
+		_ = g.generateTypeDef(posName, sub)
+		if g.generated[posName] {
+			g.patternMintedTypes[posName] = sub
+			return posName
+		}
+	}
+	if ref := sub.EffectiveRef(); ref != "" {
+		if r := g.resolveRefInContext(ref, sub); r != nil {
+			refName := g.uniqueTypeName(g.goNameForResolvedRef(ref, r, refToGoName(ref)), r)
+			_ = g.generateTypeDef(refName, r)
+			if g.generated[refName] {
+				return refName
+			}
+		}
+		return ""
+	}
+	_ = g.generateTypeDef(posName, sub)
+	if g.generated[posName] {
+		g.patternMintedTypes[posName] = sub
+		return posName
+	}
+	return ""
+}
+
+// resolvePatternPropertyTypes settles, for each patternProperties bucket,
+// whether the type materialized for its sub-schema is dispatched to or the
+// scalar rules are used instead. Both were prepared during generation because
+// the answer depends on every type def existing: an alias whose underlying chain
+// ends at `any` cannot carry a method, and resolveAliasMethodability only knows
+// that once the chain is complete.
+//
+// Where the type is dispatched to, the scalar rules are dropped. They are a
+// partial restatement of the same sub-schema, and keeping both would report one
+// violation twice -- and would keep the raw-JSON `type` scan, which reads a
+// number written 1.0 as "number" and so rejects it against {"type":"integer"}
+// in every draft from 6 on, where the spec says a zero fractional part is an
+// integer. The generated type decodes integers per draft and does not.
+//
+// A type this mechanism minted and then declined is withdrawn from the file. It
+// happens where the sub-schema resolves to `any` or to a pointer -- a bare
+// `format` with no type, a $ref to an empty schema -- which Go forbids methods
+// on, so the bucket falls back to the scalar rules and nothing refers to the
+// name any more. Only names minted here are taken back: a bucket whose
+// sub-schema is a $ref uses the target's own type, which exists for reasons of
+// its own. Nothing materializes after this pass runs, so no later lookup can
+// find the withdrawn name.
+func (g *Generator) resolvePatternPropertyTypes() {
+	validatable := make(map[string]bool)
+	for _, td := range g.output.TypeDefs {
+		if localTypeIsValidatable(td) {
+			validatable[td.TypeName()] = true
+		}
+	}
+	declined := make(map[string]bool)
+	for _, td := range g.output.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for i := range sd.PatternProperties {
+			pp := &sd.PatternProperties[i]
+			if pp.TypeName == "" {
+				continue
+			}
+			if !validatable[pp.TypeName] {
+				declined[pp.TypeName] = true
+				pp.TypeName = ""
+				continue
+			}
+			pp.Validations = nil
+		}
+	}
+	if len(declined) == 0 {
+		return
+	}
+	// No second bucket can still be using one of these: a minted name carries the
+	// owning struct and the bucket's own index, so exactly one bucket ever refers
+	// to it, and the names that are shared -- a $ref target's -- are not minted
+	// here and are never withdrawn.
+	kept := g.output.TypeDefs[:0]
+	for _, td := range g.output.TypeDefs {
+		node, minted := g.patternMintedTypes[td.TypeName()]
+		if minted && declined[td.TypeName()] {
+			g.config.CrossPackage.forgetType(node)
+			continue
+		}
+		kept = append(kept, td)
+	}
+	g.output.TypeDefs = kept
+}
+
 // extractPatternPropertyValidationRules extracts validation rules from a
 // patternProperties sub-schema. These rules are checked at runtime against
 // json.RawMessage values, so we include a "type" rule when the sub-schema
 // specifies a type constraint.
+//
+// They are the fallback route, taken only where patternValueTypeName found no
+// type to dispatch through; see resolvePatternPropertyTypes.
 func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	var rules []ValidationRule
 	// Type constraint — checked by inspecting the raw JSON value at runtime.

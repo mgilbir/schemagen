@@ -1621,6 +1621,166 @@ func TestWholeObjectMapValidatesInEveryPosition(t *testing.T) {
 	)
 }
 
+// TestPatternValueSubschemaIsChecked covers a patternProperties sub-schema that
+// says more than a scalar keyword.
+//
+// A pattern's keys are not known until a document arrives, so the values sit in
+// a raw-JSON bucket with no field for the usual Validate dispatch to reach. The
+// only thing that checked them was a hand-listed set of in-place rules -- type,
+// the numeric bounds, multipleOf, the length bounds, pattern and the item-count
+// bounds -- so every other keyword under a pattern was enforced nowhere. Each
+// letter below is one of them, and each was accepted before the sub-schema was
+// given a type of its own: {"^e":{"$ref":"#/$defs/D"}} generated D with a
+// correct Validate and never called it.
+//
+// The valid list is the larger half on purpose. A key that matches no pattern is
+// unconstrained, an empty object satisfies a sub-schema that only forbids
+// things, and both branches of the oneOf and of the if/then are still
+// selectable. Turning under-enforcement into over-enforcement would be the worse
+// trade, so every bucket has an accepted document beside its rejected one.
+//
+// The last two letters are the scalar keywords the in-place rules still handle,
+// pinned here so a change that routes everything through a materialized type is
+// seen to leave them working rather than silently rewriting them.
+func TestPatternValueSubschemaIsChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_subschemas.json",
+		[]string{
+			`{}`,
+			`{"zz":"anything","zq":{"whatever":true}}`, // no pattern matches
+			`{"aa":"aaa"}`, `{"bb":"aaa"}`,
+			`{"cc":{"x":1}}`, `{"cc":{"x":1,"y":2}}`,
+			`{"dd":{"x":"abcde"}}`, `{"dd":{}}`, `{"dd":{"y":1}}`,
+			`{"ee":7}`,
+			`{"ff":["abcde"]}`, `{"ff":[]}`,
+			`{"gg":[1,2]}`, `{"gg":[]}`,
+			`{"hh":5}`, `{"hh":true}`,
+			`{"ii":"abcde"}`,
+			`{"jj":{"x":1}}`, `{"jj":{}}`,
+			`{"kk":{"zz":"abcde"}}`, `{"kk":{"qq":1}}`,
+			`{"ll":{"k":"abcde"}}`, `{"ll":{}}`,
+			`{"mm":"x"}`, `{"mm":5}`,
+			`{"nn":"abcde"}`, `{"nn":1}`,
+			`{"oo":{"zx":1}}`, `{"oo":{}}`,
+			`{"pp":{"x":1,"y":2}}`, `{"pp":{"y":2}}`, `{"pp":{}}`,
+			`{"qq":{}}`,
+			`{"rr":1}`, `{"rr":1.0}`, // draft 2020-12: a zero fractional part is an integer
+			`{"ss":"abcde"}`,
+			// The two sub-schemas whose materialized type Go forbids methods on:
+			// a $ref to an empty schema, and a bare `format` with no type. Both
+			// assert nothing, so both must accept anything -- and both are here
+			// because the emitted dispatch would not compile if the pass that
+			// notices a type carries no Validate stopped noticing.
+			`{"tt":{"anything":1}}`, `{"tt":null}`,
+			`{"uu":"not-an-ip"}`, `{"uu":5}`,
+		},
+		[]string{
+			`{"aa":"ccc"}`,         // enum
+			`{"bb":"bbb"}`,         // const
+			`{"cc":{}}`,            // required
+			`{"dd":{"x":"abc"}}`,   // a nested property's own constraint
+			`{"ee":1}`,             // a $ref target's constraint
+			`{"ff":["abc"]}`,       // an items sub-schema's constraint
+			`{"gg":[1,1]}`,         // uniqueItems
+			`{"hh":"x"}`,           // not
+			`{"ii":"abc"}`,         // an allOf branch's constraint
+			`{"jj":{"x":1,"y":2}}`, // maxProperties
+			`{"kk":{"zz":"abc"}}`,  // a patternProperties nested under a pattern
+			`{"ll":{"k":"abc"}}`,   // an additionalProperties nested under a pattern
+			`{"mm":true}`,          // oneOf: no branch matches
+			`{"nn":"abc"}`,         // if/then
+			`{"oo":{"qq":1}}`,      // propertyNames
+			`{"pp":{"x":1}}`,       // dependentRequired
+			`{"qq":{"x":1}}`,       // additionalProperties:false under a pattern
+			`{"rr":1.5}`,           // still not an integer in any draft
+			`{"ss":"abc"}`,         // minLength, still on the in-place path
+		},
+	)
+}
+
+// TestPatternValueIntegerDraft4ReadsTheToken is the other half of the integer
+// case above. Draft 4 decides `integer` on the token, so 1.0 is a number and not
+// an integer; from draft 6 the value decides and 1.0 is one. The in-place check
+// scanned the raw bytes for a '.' in every draft, which is right for 4 and wrong
+// for the rest -- {"rr":1.0} was rejected under 2020-12 against a schema that
+// permits it, a false rejection. Fixing that must not turn draft 4 lenient,
+// which is what this pins.
+func TestPatternValueIntegerDraft4ReadsTheToken(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_integer_draft4.json",
+		[]string{`{"rr":1}`, `{"zz":1.0}`, `{}`},
+		[]string{`{"rr":1.0}`, `{"rr":1.5}`, `{"rr":"x"}`},
+	)
+}
+
+// TestPatternValueDescentComposes checks that the descent nests rather than
+// working one level down. Each property puts a pattern bucket behind a different
+// container -- an array element, a map value, a tuple slot, and a pattern whose
+// value is an array of objects carrying a pattern of their own -- and the
+// innermost constraint is a $ref or a required property, neither of which the
+// in-place rules can express at any depth.
+func TestPatternValueDescentComposes(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_value_nesting.json",
+		[]string{
+			`{}`,
+			`{"rows":[{"bb":7}]}`, `{"rows":[]}`, `{"rows":[{"zz":1}]}`,
+			`{"byKey":{"k":{"bb":{"x":"abcde"}}}}`, `{"byKey":{}}`, `{"byKey":{"k":{}}}`,
+			`{"tuple":[{"bb":7}]}`, `{"tuple":[]}`,
+			`{"deep":{"bb":[{"cc":7}]}}`, `{"deep":{"bb":[]}}`, `{"deep":{}}`,
+		},
+		[]string{
+			`{"rows":[{"bb":1}]}`,
+			`{"rows":[{"bb":7},{"bb":2}]}`, // the second element is the one that violates
+			`{"byKey":{"k":{"bb":{"x":"abc"}}}}`,
+			`{"byKey":{"k":{"bb":{}}}}`,
+			`{"tuple":[{"bb":1}]}`,
+			`{"deep":{"bb":[{"cc":1}]}}`,
+		},
+	)
+}
+
+// TestEmptyObjectForbidsEveryKey covers {"type":"object","additionalProperties":
+// false} with no properties declared. It permits no key at all, so only {}
+// satisfies it -- and a $defs entry of that shape has always rejected {"x":1}
+// through the Forbidden overflow map, while every position that went through
+// resolveType collapsed to map[string]any and accepted it. The answer depended
+// on where the schema was written, which is the defect this pins closed in each
+// position the object can occupy.
+//
+// `permissive` is the control the fix must not touch: `additionalProperties:
+// true` permits every key and constrains none, so it stays a bare map and
+// accepts what it always did.
+func TestEmptyObjectForbidsEveryKey(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/empty_object_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{},"ref":{},"inItems":[{}],"mapValue":{"k":{}},"nullable":{},` +
+				`"noType":{},"inAllOf":{},"inTuple":[{}],"nested":{"inner":{}},` +
+				`"inOneOf":{},"inPattern":{"bb":{}}}`,
+			`{"nullable":null}`,
+			`{"inOneOf":5}`,
+			`{"inItems":[]}`, `{"inTuple":[]}`, `{"mapValue":{}}`,
+			`{"inPattern":{"zz":{"anything":1}}}`, // no pattern matches, nothing applies
+			`{"permissive":{"x":1,"y":2}}`,        // additionalProperties:true is untouched
+		},
+		[]string{
+			`{"prop":{"x":1}}`,
+			`{"ref":{"x":1}}`,
+			`{"inItems":[{"x":1}]}`,
+			`{"mapValue":{"k":{"x":1}}}`,
+			`{"nullable":{"x":1}}`,
+			`{"noType":{"x":1}}`,
+			`{"inAllOf":{"x":1}}`,
+			`{"inTuple":[{"x":1}]}`,
+			`{"nested":{"inner":{"x":1}}}`,
+			`{"inOneOf":{"x":1}}`,
+			`{"inPattern":{"bb":{"x":1}}}`,
+		},
+	)
+}
+
 // TestBigIntNullableDefinitionAcceptsNull is the behavioural half of issue #85.
 // A named ["integer","null"] reaches the big-integer wrapper, which held an
 // int64 and a *big.Int and had no state for null: `{"n":null}` was rejected as

@@ -2670,7 +2670,10 @@ func TestPropertyNameCollidesWithGeneratedMember(t *testing.T) {
 		t.Fatalf("Generate() returned an error for colliding property names: %v", err)
 	}
 
-	sd := file.TypeDefs[0].(*StructDef)
+	// Found by name rather than by position: the schema's patternProperties
+	// sub-schema is materialized into a type of its own, and a nested type is
+	// emitted before the struct that refers to it, so index 0 is not the root.
+	sd := structNamed(t, file, "Root")
 
 	// JSON tags (JSONName) must be preserved verbatim for every property.
 	for _, jsonName := range []string{"validate", "additionalProperties", "pattern_properties"} {
@@ -4032,10 +4035,10 @@ func TestNamedAdditionalPropertiesValueStillDispatches(t *testing.T) {
 // case is held by the arm ahead of this one, which materializes an object with
 // declared properties into a struct before the map arm is ever reached -- pinned
 // here because moving the map arm ahead of it would now silently retype every
-// such property, which it could not before. The boolean and bare-object cases
-// come out map[string]any either way; they are pinned because that is the
-// documented answer for a keyword that names no value type, not because a
-// widened predicate would visibly change them today.
+// such property, which it could not before. The `additionalProperties: true`
+// and bare-object cases come out map[string]any either way; they are pinned
+// because that is the documented answer for a keyword that names no value type,
+// not because a widened predicate would visibly change them today.
 //
 // `withPatt` used to be pinned at map[string]any, and that pin was wrong. It
 // asked mapValueSchema the right question -- this is not a Go map -- and then
@@ -4048,7 +4051,16 @@ func TestNamedAdditionalPropertiesValueStillDispatches(t *testing.T) {
 // additionalProperties was dropped as well -- issue #96, with the same schema
 // enforced correctly at a document root and behind a $ref. It now names the
 // struct, which is the API change #96 records; the map-arm blast radius this
-// test exists to guard is unchanged, and the three cases below still say so.
+// test exists to guard is unchanged, and the two cases below still say so.
+//
+// `boolFalse` moved for a related reason of its own. With no properties
+// declared, `additionalProperties: false` permits no key at all, so only {}
+// satisfies it -- and the same schema in a $defs entry has always rejected
+// {"x":1}, through the Forbidden overflow map generatePropertylessObjectDef
+// emits. Pinning map[string]any here recorded the inline position failing to
+// reach that struct, which made the answer depend on where the schema was
+// written. It is a struct now in both. `boolTrue` is untouched: it permits every
+// key and constrains none, so there is nothing for a type to carry.
 func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
@@ -4067,7 +4079,7 @@ func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 		"withProps": "*DocWithProps",
 		"withPatt":  "*DocWithPatt",
 		"boolTrue":  "map[string]any",
-		"boolFalse": "map[string]any",
+		"boolFalse": "*DocBoolFalse",
 		"plainObj":  "map[string]any",
 	} {
 		field := fieldNamedJSON(t, doc, jsonName)
@@ -4092,22 +4104,25 @@ func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	if len(withPatt.PatternProperties) != 1 || withPatt.PatternProperties[0].Pattern != "^a" {
 		t.Fatalf("DocWithPatt patternProperties = %+v, want the single ^a bucket", withPatt.PatternProperties)
 	}
-	if !containsString(ruleTypesOf(withPatt.PatternProperties[0].Validations), "ppType") {
-		t.Fatalf("DocWithPatt ^a rules = %+v -- nothing checks that a matching key holds a string", withPatt.PatternProperties[0].Validations)
+	// `{"type":"string"}` is a sub-schema the in-place scalar rules say
+	// everything about, so it keeps them and mints no type: patternRulesCoverSchema
+	// is what holds the blast radius of the materialization down to the buckets
+	// that need it.
+	if pp := withPatt.PatternProperties[0]; pp.TypeName != "" || !containsString(ruleTypesOf(pp.Validations), "ppType") {
+		t.Fatalf("DocWithPatt ^a bucket = %+v, want the in-place ppType rule and no minted type", pp)
 	}
 	if withPatt.AdditionalProperties == nil || withPatt.AdditionalProperties.ValueType.GoTypeName() != "int64" {
 		t.Fatalf("DocWithPatt additionalProperties = %+v, want an int64-valued overflow map -- the sibling keyword was dropped with the struct", withPatt.AdditionalProperties)
 	}
-}
-
-// ruleTypesOf lists the RuleType of each rule, for asserting on a bucket of
-// checks without pinning the values beside them.
-func ruleTypesOf(rules []ValidationRule) []string {
-	out := make([]string, 0, len(rules))
-	for _, r := range rules {
-		out = append(out, r.RuleType)
+	// The same two questions for the key-forbidding struct: Doc has to descend
+	// into it, and it has to carry the rejection that makes it worth having.
+	if !hasValidatableField(doc.ValidatableFields, "boolFalse") {
+		t.Fatalf("boolFalse is never validated by Doc: %+v", doc.ValidatableFields)
 	}
-	return out
+	boolFalse := structNamed(t, ir, "DocBoolFalse")
+	if boolFalse.AdditionalProperties == nil || !boolFalse.AdditionalProperties.Forbidden {
+		t.Fatalf("DocBoolFalse additionalProperties = %+v, want a Forbidden overflow map -- nothing else rejects a key the schema permits none of", boolFalse.AdditionalProperties)
+	}
 }
 
 // TestNullableTypedAdditionalPropertiesKeepsItsValueType pins issue #91, the
@@ -4226,11 +4241,12 @@ func TestNullableTypedMapKeepsTheNullContract(t *testing.T) {
 // retype every ["object","null"] property in the corpus.
 //
 // A nullable object with declared properties is held by the branch before it
-// and stays a pointer to a named struct; the boolean and bare-object cases name
-// no value type, so each keeps the *map[string]any the fallback answers. The
-// named-value case is the other half: a value schema that materializes into a
-// type of its own keeps that type and is reached through ValidatableFields, not
-// through per-value rules, so its values are not checked twice.
+// and stays a pointer to a named struct; `additionalProperties: true` and the
+// bare object name no value type and constrain nothing, so each keeps the
+// *map[string]any the fallback answers. The named-value case is the other half:
+// a value schema that materializes into a type of its own keeps that type and is
+// reached through ValidatableFields, not through per-value rules, so its values
+// are not checked twice.
 //
 // `withPatt` and `inItems` were pinned at *map[string]any and []*map[string]any,
 // and both pins were wrong for the reason the non-nullable twin gives: an object
@@ -4240,6 +4256,11 @@ func TestNullableTypedMapKeepsTheNullContract(t *testing.T) {
 // nothing -- issue #96 in its nullable spelling, and in the array-element
 // position that reaches the arm through resolveType alone. Both now name the
 // struct, behind the pointer the nullable arm has always used for one.
+//
+// `boolFalse` moved with them, and for the reason the non-nullable twin records:
+// with no key named, `additionalProperties: false` permits none, so only {} (or
+// a null) satisfies it -- which the same schema behind a $ref has always
+// enforced and which the inline position dropped.
 func TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
@@ -4260,7 +4281,7 @@ func TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 		"withProps": "*DocWithProps",
 		"withPatt":  "*DocWithPatt",
 		"boolTrue":  "*map[string]any",
-		"boolFalse": "*map[string]any",
+		"boolFalse": "*DocBoolFalse",
 		"plainObj":  "*map[string]any",
 		"namedVal":  "map[string]DocNamedValValue",
 		// An array element reaches the nullable arm through resolveType alone,
@@ -4282,10 +4303,13 @@ func TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 	if !hasValidatableField(doc.ValidatableFields, "namedVal") {
 		t.Fatalf("namedVal is never validated by Doc: %+v -- a named value type answers for its own schema", doc.ValidatableFields)
 	}
-	for _, jsonName := range []string{"withPatt", "inItems"} {
+	for _, jsonName := range []string{"withPatt", "inItems", "boolFalse"} {
 		if !hasValidatableField(doc.ValidatableFields, jsonName) {
 			t.Fatalf("%s is never validated by Doc: %+v -- naming the struct achieves nothing if Validate does not descend into it", jsonName, doc.ValidatableFields)
 		}
+	}
+	if bf := structNamed(t, ir, "DocBoolFalse"); bf.AdditionalProperties == nil || !bf.AdditionalProperties.Forbidden {
+		t.Fatalf("DocBoolFalse additionalProperties = %+v, want a Forbidden overflow map -- nothing else rejects a key the schema permits none of", bf.AdditionalProperties)
 	}
 	for _, name := range []string{"DocWithPatt", "DocInItemsItem"} {
 		sd := structNamed(t, ir, name)
@@ -4296,6 +4320,16 @@ func TestOnlyAWholeNullableAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
 			t.Fatalf("%s additionalProperties = %+v, want an int64-valued overflow map -- the sibling keyword was dropped with the struct", name, sd.AdditionalProperties)
 		}
 	}
+}
+
+// ruleTypesOf lists the RuleType of each rule, for asserting on a bucket of
+// checks without pinning the values beside them.
+func ruleTypesOf(rules []ValidationRule) []string {
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, r.RuleType)
+	}
+	return out
 }
 
 // fieldNamedJSON returns the struct field carrying a JSON property name.

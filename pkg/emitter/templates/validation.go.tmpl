@@ -689,10 +689,24 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		for k, v := range {{$recv}}.PatternProperties {
 			_ = v
 			{{- range $i, $pp := $struct.PatternProperties}}
-			{{- if or $pp.IsForbidden (gt (len $pp.Validations) 0)}}
+			{{- if or $pp.IsForbidden (ne $pp.TypeName "") (gt (len $pp.Validations) 0)}}
 			if ppRegexps[{{$i}}].MatchString(k) {
 				{{- if $pp.IsForbidden}}
 				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, {{printf "%q" $pp.Pattern}})
+				{{- end}}
+				{{- if $pp.TypeName}}
+				{
+					// The sub-schema's own type answers for it: the value is
+					// decoded into it, so the decode enforces shape and the
+					// Validate enforces everything beyond it.
+					var _pv {{$pp.TypeName}}
+					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, k, _uErr)
+					}
+					if _vErr := _pv.Validate(); _vErr != nil {
+						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, k, _vErr)
+					}
+				}
 				{{- end}}
 				{{- range $pp.Validations}}
 				{{- if eq .RuleType "ppType"}}
@@ -710,7 +724,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 						case 'n': jt = "null"
 						default:
 							jt = "number"
-							// Check if it's an integer (no '.' or 'e'/'E')
+							{{- if $pp.StrictInteger}}
+							// Draft 3 and 4 read the token: a number written with a
+							// fractional part or an exponent is not an integer,
+							// whatever its value.
 							isInt := true
 							for _, c := range b {
 								if c == '.' || c == 'e' || c == 'E' {
@@ -721,6 +738,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 							if isInt {
 								jt = "integer"
 							}
+							{{- else}}
+							// Draft 6 onward reads the value: 1.0 is an integer, so
+							// the number is parsed rather than scanned. Every arm
+							// below that accepts "number" also accepts "integer", so
+							// widening this classification narrows nothing.
+							var _ppNum float64
+							if json.Unmarshal(b, &_ppNum) == nil &&
+								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
+								jt = "integer"
+							}
+							{{- end}}
 						}
 					}
 					{{- $wants := ppTypeValues .Value}}

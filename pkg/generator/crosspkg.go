@@ -89,6 +89,16 @@ func (r *CrossPackageRegistry) RecordType(s *schema.Schema, importPath, typeName
 	}
 }
 
+// forgetType removes s's registration, for a type that was materialized and
+// then withdrawn from the file. Leaving it would let another package of the same
+// run import a name that is not declared anywhere.
+func (r *CrossPackageRegistry) forgetType(s *schema.Schema) {
+	if r == nil || s == nil {
+		return
+	}
+	delete(r.types, s)
+}
+
 // lookup returns the package and type name s was generated as, if any.
 func (r *CrossPackageRegistry) lookup(s *schema.Schema) (qualifiedType, bool) {
 	if r == nil {

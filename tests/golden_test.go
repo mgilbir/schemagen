@@ -77,6 +77,10 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/pp_pattern_ecma", "testdata/schemas/regression/pp_pattern_ecma.json", "testdata/golden/regression/pp_pattern_ecma.go"},
 		{"regression/unevaluated_properties_pattern", "testdata/schemas/regression/unevaluated_properties_pattern.json", "testdata/golden/regression/unevaluated_properties_pattern.go"},
 		{"regression/pp_type_list", "testdata/schemas/regression/pp_type_list.json", "testdata/golden/regression/pp_type_list.go"},
+		// Pins which patternProperties buckets get a type of their own and which
+		// keep the in-place scalar rules, and that a type minted for a bucket that
+		// cannot carry a Validate is not left declared in the file.
+		{"regression/pattern_value_subschemas", "testdata/schemas/regression/pattern_value_subschemas.json", "testdata/golden/regression/pattern_value_subschemas.go"},
 		{"regression/field_name_collisions", "testdata/schemas/regression/field_name_collisions.json", "testdata/golden/regression/field_name_collisions.go"},
 		{"regression/struct_reuse", "testdata/schemas/regression/struct_reuse.json", "testdata/golden/regression/struct_reuse.go"},
 		{"regression/untyped_oneof_branches", "testdata/schemas/regression/untyped_oneof_branches.json", "testdata/golden/regression/untyped_oneof_branches.go"},

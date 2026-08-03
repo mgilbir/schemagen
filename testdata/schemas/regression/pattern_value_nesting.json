@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatternValueNesting",
+  "$defs": {
+    "D": {"type": "integer", "minimum": 5},
+    "P": {"type": "object", "patternProperties": {"^b": {"$ref": "#/$defs/D"}}}
+  },
+  "type": "object",
+  "properties": {
+    "rows": {"type": "array", "items": {"type": "object", "patternProperties": {"^b": {"$ref": "#/$defs/D"}}}},
+    "byKey": {"type": "object", "additionalProperties": {"type": "object", "patternProperties": {"^b": {"type": "object", "properties": {"x": {"type": "string", "minLength": 5}}, "required": ["x"]}}}},
+    "tuple": {"type": "array", "prefixItems": [{"$ref": "#/$defs/P"}]},
+    "deep": {"type": "object", "patternProperties": {"^b": {"type": "array", "items": {"type": "object", "patternProperties": {"^c": {"$ref": "#/$defs/D"}}}}}}
+  }
+}

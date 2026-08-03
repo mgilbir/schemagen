@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatternValueSubschemas",
+  "$defs": {
+    "D": {"type": "integer", "minimum": 5},
+    "Anything": {}
+  },
+  "type": "object",
+  "patternProperties": {
+    "^a": {"enum": ["aaa", "bbb"]},
+    "^b": {"const": "aaa"},
+    "^c": {"type": "object", "required": ["x"]},
+    "^d": {"type": "object", "properties": {"x": {"type": "string", "minLength": 5}}},
+    "^e": {"$ref": "#/$defs/D"},
+    "^f": {"type": "array", "items": {"type": "string", "minLength": 5}},
+    "^g": {"type": "array", "uniqueItems": true},
+    "^h": {"not": {"type": "string"}},
+    "^i": {"allOf": [{"type": "string", "minLength": 5}]},
+    "^j": {"type": "object", "maxProperties": 1},
+    "^k": {"type": "object", "patternProperties": {"^z": {"type": "string", "minLength": 5}}},
+    "^l": {"type": "object", "additionalProperties": {"type": "string", "minLength": 5}},
+    "^m": {"oneOf": [{"type": "string"}, {"type": "integer"}]},
+    "^n": {"if": {"type": "string"}, "then": {"minLength": 5}},
+    "^o": {"type": "object", "propertyNames": {"pattern": "^z"}},
+    "^p": {"type": "object", "dependentRequired": {"x": ["y"]}},
+    "^q": {"type": "object", "additionalProperties": false},
+    "^r": {"type": "integer"},
+    "^s": {"type": "string", "minLength": 5},
+    "^t": {"$ref": "#/$defs/Anything"},
+    "^u": {"format": "ipv4"}
+  }
+}
