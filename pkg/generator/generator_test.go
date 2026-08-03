@@ -3526,10 +3526,11 @@ func TestDynamicWrapperPropertyIsValidatedByOwner(t *testing.T) {
 // have to hold once the wrapper is validated at all, both of which are about the
 // absent value.
 //
-// The presence guard must be empty. A wrapper is a struct, so the `""` fallback
-// in zeroLiteralForType would have the owner emit `x.A != ""` around the call —
-// which does not compile. Nothing is lost by dropping the guard: the wrapper's
-// own Validate returns nil when it holds no bytes.
+// The zero-literal guard must be empty. A wrapper is a struct, so the `""`
+// fallback in zeroLiteralForType would have the owner emit `x.A != ""` around
+// the call — which does not compile. Nothing is lost by dropping it: the
+// wrapper's own Validate returns nil when it holds no bytes, and an optional
+// field's call is gated on _jsonKeys anyway (PresenceGuard).
 //
 // The tag must be ",omitzero" rather than ",omitempty". omitempty never
 // considers a struct empty, and the wrapper's MarshalJSON writes null when it
@@ -4227,8 +4228,14 @@ func TestObjectLevelIfThenElseInsideAllOfIsChecked(t *testing.T) {
 // TestObjectLevelConditionalFailsClosed is the guard that matters most here.
 // The condition decides which branch binds, so a condition evaluated with one
 // of its keywords ignored applies the wrong branch and rejects a document the
-// schema allows. Anything outside what the checks model must drop the whole
+// schema allows. An `if` outside what the checks model must drop the whole
 // group rather than approximate it.
+//
+// This is the half that stayed exact when issue #64 relaxed `then` and `else`
+// (see TestObjectLevelConditionalThenKeepsItsExpressiblePart). Relaxing the
+// condition the same way is what would turn under-enforcement into false
+// rejection, so every case below is an `if`, or a `then` that leaves nothing at
+// all behind.
 func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 	for name, input := range map[string]string{
 		"if uses an unmodelled keyword": `{
@@ -4253,17 +4260,24 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 			"if": {"required": ["kind"], "minProperties": 2},
 			"then": {"required": ["a"]}
 		}`,
-		"then is only partly expressible": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
-			"if": {"required": ["kind"]},
-			"then": {"required": ["a"], "minProperties": 3}
-		}`,
-		"then uses an unmodelled keyword": `{
+		// `then` is lenient now, but leniency leaves nothing here: `enum` is the
+		// property's only keyword, so the property carries no check, the branch
+		// carries no property, and a group with neither branch is no group.
+		"then is left with nothing to check": `{
 			"title": "Doc", "type": "object",
 			"properties": {"a": {"type":"string"}},
 			"if": {"required": ["a"]},
 			"then": {"properties": {"a": {"enum": ["p","q"]}}}
+		}`,
+		// The one keyword leniency must not read past. Before draft 2019-09 a
+		// `$ref` replaces the schema object it sits in, so this `required` does
+		// not apply and enforcing it would reject a document the schema allows.
+		"then carries a ref beside its constraints": `{
+			"title": "Doc", "type": "object",
+			"$defs": {"other": {"type": "object"}},
+			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+			"if": {"required": ["kind"]},
+			"then": {"$ref": "#/$defs/other", "required": ["a"]}
 		}`,
 		"if constrains nothing": `{
 			"title": "Doc", "type": "object",
@@ -4279,5 +4293,1034 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 				t.Fatalf("expected no conditional group; got %+v", doc.ObjectConditionals)
 			}
 		})
+	}
+}
+
+// TestObjectLevelConditionalThenKeepsItsExpressiblePart pins issue #64. A
+// `then` or `else` used to be held to the `if`'s exact-or-nothing bar, so one
+// keyword the checks do not model -- an `items` inside a property, say -- cost
+// the whole group its check, the condition included. That is more conservative
+// than the reasoning requires: a schema object's keywords are conjunctive, so
+// enforcing part of a consequence accepts a superset of what the whole one
+// accepts and can only ever under-enforce. Only the condition, which selects
+// between the branches, has to be exact.
+func TestObjectLevelConditionalThenKeepsItsExpressiblePart(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input        string
+		wantRequired []string
+		wantChecks   map[string][]string // JSON property name -> check kinds, in order
+	}{
+		// The reproducer from the issue, reduced: the `then` types a property
+		// with `items`, which the checks cannot express. The `type` beside it
+		// can be, and dropping only `items` leaves a demand the schema makes.
+		"property typed with items keeps its type": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"properties": {"kind": {"const":"tool"}}, "required": ["kind"]},
+				"then": {
+					"properties": {"tool": {"type":"array","items":{"type":"object"}}},
+					"required": ["tool"]
+				}
+			}`,
+			wantRequired: []string{"tool"},
+			wantChecks:   map[string][]string{"tool": {"type"}},
+		},
+		// A branch-level keyword outside object shape. minProperties is a
+		// conjunct of the `then`, so ignoring it keeps the `required` honest.
+		"branch keyword outside object shape is ignored": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"required": ["a"], "minProperties": 3}
+			}`,
+			wantRequired: []string{"a"},
+			wantChecks:   map[string][]string{},
+		},
+		// Per-property mixing: one property is expressible, one is not, and the
+		// expressible one survives on its own.
+		"an inexpressible property does not take the others with it": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"then": {"properties": {
+					"a": {"type":"string","minLength":2},
+					"b": {"enum": ["p","q"]}
+				}},
+				"if": {"required": ["kind"]}
+			}`,
+			wantRequired: nil,
+			wantChecks:   map[string][]string{"a": {"type", "minLength"}},
+		},
+		// `else` is the same rule, and the branch it is paired with being
+		// unusable does not stop it.
+		"else keeps its part when then has none": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"properties": {"a": {"enum": ["p","q"]}}},
+				"else": {"required": ["b"], "not": {"required": ["c"]}}
+			}`,
+			wantRequired: []string{"b"},
+			wantChecks:   map[string][]string{},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir := generateForItemTest(t, tc.input)
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ObjectConditionals) != 1 {
+				t.Fatalf("expected one conditional group; got %+v", doc.ObjectConditionals)
+			}
+			group := doc.ObjectConditionals[0]
+			branch := group.Then
+			if branch == nil {
+				branch = group.Else
+			}
+			if branch == nil {
+				t.Fatalf("group carries neither then nor else: %+v", group)
+			}
+			if !slicesEqualString(branch.RequiredKeys, tc.wantRequired) {
+				t.Fatalf("%s.RequiredKeys = %v, want %v", branch.Keyword, branch.RequiredKeys, tc.wantRequired)
+			}
+			got := map[string][]string{}
+			for _, prop := range branch.Properties {
+				var kinds []string
+				for _, c := range prop.Checks {
+					kinds = append(kinds, c.Kind)
+				}
+				got[prop.JSONName] = kinds
+			}
+			if len(got) != len(tc.wantChecks) {
+				t.Fatalf("%s constrains %v, want %v", branch.Keyword, got, tc.wantChecks)
+			}
+			for name, want := range tc.wantChecks {
+				if !slicesEqualString(got[name], want) {
+					t.Fatalf("%s property %q checks = %v, want %v", branch.Keyword, name, got[name], want)
+				}
+			}
+		})
+	}
+}
+
+func slicesEqualString(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestOptionalRefToWrapperTypeIsAPointer covers the third instance of one
+// defect: an optional property whose Go type is a materialized name loses the
+// difference between "absent" and the Go zero.
+//
+// A definition that carries constraints but no "type" becomes an
+// InferredAliasDef, and BigIntSupport turns a named integer into a
+// BigIntAliasDef. Both are structs, and omitempty never omits a struct — so an
+// absent optional property came back as the wrapper's zero, was fabricated into
+// the output as 0, and was then measured against the definition's bounds, which
+// rejected a document that conformed. A pointer is the only representation of
+// absence such a wrapper has: unlike the raw-value wrappers it carries no
+// IsZero, because its zero is exactly what a present 0 decodes to.
+func TestOptionalRefToWrapperTypeIsAPointer(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input string
+		cfg   Config
+	}{
+		// The default configuration reaches it: no "type" on the definition.
+		"inferred wrapper": {
+			input: `{
+				"title": "Root",
+				"$defs": {"DefA": {"exclusiveMinimum": 17}},
+				"type": "object",
+				"properties": {"charlie": {"$ref": "#/$defs/DefA"}}
+			}`,
+			cfg: Config{PackageName: "testpkg", OmitEmpty: true},
+		},
+		// The same defect one flag over: BigIntSupport puts a wrapper over a
+		// named integer that would otherwise be `type DefA int64` and a pointer.
+		"big-int wrapper": {
+			input: `{
+				"title": "Root",
+				"$defs": {"DefA": {"type": "integer", "exclusiveMinimum": 17}},
+				"type": "object",
+				"properties": {"charlie": {"$ref": "#/$defs/DefA"}}
+			}`,
+			cfg: Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.input), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+
+			ir, err := New(tc.cfg).Generate(&s)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			root := structNamed(t, ir, "Root")
+			charlie, ok := fieldByJSONName(root, "charlie")
+			if !ok {
+				t.Fatalf("expected field for property charlie")
+			}
+			if got := charlie.Type.GoTypeName(); got != "*DefA" {
+				t.Fatalf("charlie type = %q, want *DefA (a value wrapper is never omitted, so absent comes back as 0)", got)
+			}
+			if !charlie.OmitEmpty {
+				t.Fatalf("charlie lost omitempty, so nil marshals as null rather than being omitted")
+			}
+			// omitzero is for the wrappers that can say "empty" themselves; a
+			// pointer says it with nil and omitempty already drops that.
+			if charlie.OmitZero {
+				t.Fatalf("charlie is tagged ,omitzero as well as being a pointer")
+			}
+			// The pointer removes the second symptom too: the owner guards the
+			// call on nil rather than handing Validate a zero the document
+			// never carried.
+			var vf ValidatableFieldDef
+			for _, f := range root.ValidatableFields {
+				if f.JSONName == "charlie" {
+					vf = f
+				}
+			}
+			if vf.JSONName == "" {
+				t.Fatalf("charlie is never validated by Root: %#v", root.ValidatableFields)
+			}
+			if !vf.IsPointer {
+				t.Fatalf("charlie's Validate call is not nil-guarded: %#v", vf)
+			}
+		})
+	}
+}
+
+// TestRequiredRefToWrapperTypeStaysAValue guards the trade the fix must not
+// make. A required property is always there, so it has nothing to say with nil
+// and stays a value — the pointer rule is about absence, not about wrappers.
+// The raw-value wrappers stay values as well: they carry IsZero, so ",omitzero"
+// already omits an absent one and their own Validate passes over it.
+func TestRequiredRefToWrapperTypeStaysAValue(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"$defs": {
+			"DefA": {"exclusiveMinimum": 17},
+			"Window": {"oneOf": [{"type":"integer","minimum":10}, {"type":"string"}]}
+		},
+		"type": "object",
+		"properties": {
+			"charlie": {"$ref": "#/$defs/DefA"},
+			"window": {"$ref": "#/$defs/Window"}
+		},
+		"required": ["charlie"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{
+		"charlie": "DefA",
+		"window":  "Window",
+	} {
+		f, ok := fieldByJSONName(root, jsonName)
+		if !ok {
+			t.Fatalf("expected field for property %q", jsonName)
+		}
+		if got := f.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q", jsonName, got, want)
+		}
+	}
+	// The optional raw-value wrapper keeps the tag that omits it.
+	window, _ := fieldByJSONName(root, "window")
+	if !window.OmitZero {
+		t.Fatalf("window lost ,omitzero, so an absent value marshals as null")
+	}
+}
+
+// TestOptionalNamedFieldValidationIsGuardedByPresence covers the same family
+// where no pointer is available. With OmitEmpty false every optional property
+// is a value field, so the owner's Validate called the field type's Validate
+// with no guard at all: a property the document did not carry was judged by its
+// Go zero — `{"alpha":""}` was rejected with `delta.invalid RootDelta value: `
+// against a schema that only asks delta to be "red" when it is there.
+//
+// The information was already on hand. _jsonKeys records the keys the source
+// JSON carried, and an optional property with *inline* keywords is gated on it;
+// only the arm for a materialized named type was not. A nil _jsonKeys means the
+// value was not built from JSON, and there the call still has to run.
+func TestOptionalNamedFieldValidationIsGuardedByPresence(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"enum": [""]},
+			"delta": {"const": "red"},
+			"echo": {"const": "blue"}
+		},
+		"required": ["echo"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	// OmitEmpty false is the configuration that always takes this arm.
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+
+	guards := make(map[string]ValidatableFieldDef, len(root.ValidatableFields))
+	for _, vf := range root.ValidatableFields {
+		guards[vf.JSONName] = vf
+	}
+	for _, jsonName := range []string{"alpha", "delta"} {
+		vf, ok := guards[jsonName]
+		if !ok {
+			t.Fatalf("%q: expected among ValidatableFields", jsonName)
+		}
+		if vf.IsPointer {
+			t.Fatalf("%q: OmitEmpty false is meant to leave the field a value", jsonName)
+		}
+		if !vf.PresenceGuard {
+			t.Fatalf("%q: Validate is called unguarded, so an absent property is judged by its Go zero: %#v", jsonName, vf)
+		}
+	}
+	// A required property is present by definition, and its own check reports a
+	// missing key first; gating it would only hide a genuine violation.
+	if echo, ok := guards["echo"]; !ok || echo.PresenceGuard {
+		t.Fatalf("required property echo is presence-gated: %#v", echo)
+	}
+	// The guard has to have something to read. _jsonKeys is only emitted when
+	// the struct says it needs it.
+	if !root.NeedsJSONKeys() {
+		t.Fatalf("Root does not carry _jsonKeys, so the presence guard cannot compile")
+	}
+}
+
+// TestOptionalNamedPointerFieldNeedsNoPresenceGuard pins the other half: with
+// omitempty the same properties are pointers, where nil already says "absent".
+// Adding _jsonKeys there would gate the check on a second, weaker fact — a
+// field set by hand after unmarshal would stop being validated.
+func TestOptionalNamedPointerFieldNeedsNoPresenceGuard(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"type": "object",
+		"properties": {"delta": {"const": "red"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for _, vf := range root.ValidatableFields {
+		if vf.JSONName != "delta" {
+			continue
+		}
+		if !vf.IsPointer {
+			t.Fatalf("delta is not a pointer under omitempty: %#v", vf)
+		}
+		if vf.PresenceGuard {
+			t.Fatalf("delta is guarded twice, on nil and on _jsonKeys: %#v", vf)
+		}
+		return
+	}
+	t.Fatalf("delta is never validated by Root: %#v", root.ValidatableFields)
+}
+
+// TestAllOfKeepsParentObjectKeywords is a regression for the allOf flattening
+// path rebuilding the schema object from scratch: generateAllOfDef starts from a
+// fresh schema.Schema and copies the parent's keywords across one at a time, and
+// propertyNames, minProperties, maxProperties and dependentRequired were not on
+// that list. Each is enforced on the same object without the allOf, and each
+// survives an anyOf, a oneOf or an if/then in the same position -- the allOf
+// alone dropped them, so an object that said "no key may start with a digit"
+// silently accepted {"9-bad":1}.
+func TestAllOfKeepsParentObjectKeywords(t *testing.T) {
+	input := `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type":"string"}},
+		"allOf": [{"properties": {"bravo": {"type":"string"}}}],
+		"propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+		"minProperties": 1,
+		"maxProperties": 2,
+		"dependentRequired": {"alpha": ["bravo"]}
+	}`
+
+	doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+	if doc.PropertyNames == nil {
+		t.Fatalf("propertyNames dropped beside allOf; StructDef.PropertyNames is nil")
+	}
+	if doc.PropertyNames.Pattern != "^[A-Za-z_][A-Za-z0-9_]*$" {
+		t.Fatalf("PropertyNames.Pattern = %q, want the parent's pattern", doc.PropertyNames.Pattern)
+	}
+
+	var minProps, maxProps bool
+	for _, v := range doc.Validations {
+		switch v.RuleType {
+		case "minProperties":
+			minProps = true
+			if v.Value != 1 {
+				t.Fatalf("minProperties value = %v, want 1", v.Value)
+			}
+		case "maxProperties":
+			maxProps = true
+			if v.Value != 2 {
+				t.Fatalf("maxProperties value = %v, want 2", v.Value)
+			}
+		}
+	}
+	if !minProps || !maxProps {
+		t.Fatalf("min/maxProperties dropped beside allOf; rules = %+v", doc.Validations)
+	}
+
+	if len(doc.DependentRequired) != 1 ||
+		doc.DependentRequired[0].TriggerKey != "alpha" ||
+		len(doc.DependentRequired[0].Required) != 1 ||
+		doc.DependentRequired[0].Required[0] != "bravo" {
+		t.Fatalf("dependentRequired dropped or mangled beside allOf: %+v", doc.DependentRequired)
+	}
+}
+
+// TestAllOfCombinesPropertyBoundsWithBranches checks the direction the parent's
+// bounds are folded in. allOf means every branch binds at once, so the tighter
+// of the parent's bound and a branch's is the one that holds, whichever side it
+// came from. Propagating the parent's after the merge -- the shape every other
+// keyword in generateAllOfDef uses -- would instead let the branch's win by
+// having got there first, which is the "parent tighter" row below.
+func TestAllOfCombinesPropertyBoundsWithBranches(t *testing.T) {
+	for name, bounds := range map[string]struct{ parent, branch string }{
+		"parent tighter": {`"minProperties":3,"maxProperties":3`, `"minProperties":1,"maxProperties":5`},
+		"branch tighter": {`"minProperties":1,"maxProperties":5`, `"minProperties":3,"maxProperties":3`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"alpha": {"type":"string"}},
+				` + bounds.parent + `,
+				"allOf": [{"properties": {"bravo": {"type":"string"}}, ` + bounds.branch + `}]
+			}`
+
+			doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+			got := map[string]any{}
+			for _, v := range doc.Validations {
+				if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+					got[v.RuleType] = v.Value
+				}
+			}
+			if got["minProperties"] != 3 {
+				t.Fatalf("minProperties = %v, want 3 (the tighter lower bound of the two)", got["minProperties"])
+			}
+			if got["maxProperties"] != 3 {
+				t.Fatalf("maxProperties = %v, want 3 (the tighter upper bound of the two)", got["maxProperties"])
+			}
+		})
+	}
+}
+
+// TestAllOfUnionsDependentRequired covers the one keyword of the four that a
+// branch can also carry. mergeAllOfBranches takes a branch's dependentRequired
+// only when the target has none, so seeding the parent's before the merge would
+// have silently discarded the branch's. Both bind, so both must survive -- and
+// the union must not be written back into the branch's own map.
+//
+// $schema is stated because mergeAllOfBranches reads a branch's
+// dependentRequired only for a 2019-09 or later dialect.
+func TestAllOfUnionsDependentRequired(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type":"string"}, "bravo": {"type":"string"}, "charlie": {"type":"string"}},
+		"dependentRequired": {"alpha": ["bravo"]},
+		"allOf": [{"dependentRequired": {"alpha": ["charlie"], "bravo": ["charlie"]}}]
+	}`
+
+	doc := structNamed(t, generateForItemTest(t, input), "Doc")
+
+	got := map[string][]string{}
+	for _, dr := range doc.DependentRequired {
+		got[dr.TriggerKey] = dr.Required
+	}
+	if len(got) != 2 {
+		t.Fatalf("dependentRequired triggers = %+v, want alpha and bravo", doc.DependentRequired)
+	}
+	if !containsString(got["alpha"], "bravo") || !containsString(got["alpha"], "charlie") {
+		t.Fatalf(`dependentRequired["alpha"] = %v, want both "bravo" (parent) and "charlie" (branch)`, got["alpha"])
+	}
+	if !containsString(got["bravo"], "charlie") {
+		t.Fatalf(`dependentRequired["bravo"] = %v, want "charlie" from the branch`, got["bravo"])
+	}
+}
+
+// TestContainsIntegerTypeImportsMath guards the import side of the per-element
+// contains check. A contains sub-schema whose type is "integer" emits
+// math.Trunc for every element, exactly as an items check does, but the import
+// scan for a ContainsDef looked only for multipleOf and pattern. The generated
+// file called math without importing it and did not compile.
+func TestContainsIntegerTypeImportsMath(t *testing.T) {
+	input := `{"type":"array","items":{"type":"integer"},"contains":{"type":"integer","minimum":10}}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "math") {
+		t.Fatalf("imports = %v, want math (the contains integer check calls math.Trunc)", paths)
+	}
+}
+
+// TestTupleAliasIntegerPositionImportsMath is the same import gap one type
+// definition over. An AliasDef's tuple positions test an "integer" with
+// math.Trunc exactly as an InferredAliasDef's do, but only the inferred side's
+// TupleItems were scanned for it. A one-position prefixItems typed "integer"
+// beside unevaluatedItems:false takes the alias path and emitted a file calling
+// math without importing it.
+func TestTupleAliasIntegerPositionImportsMath(t *testing.T) {
+	input := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "array",
+		"prefixItems": [{"type":"integer"}],
+		"unevaluatedItems": false
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var paths []string
+	for _, imp := range ir.Imports {
+		paths = append(paths, imp.Path)
+	}
+	if !containsString(paths, "math") {
+		t.Fatalf("imports = %v, want math (the tuple integer position calls math.Trunc)", paths)
+	}
+}
+
+// TestUntaggableOptionalFieldsSkipTheirAbsentValue pins issue #63. A property
+// whose JSON name cannot go in a struct tag gets `json:"-"` and is written by
+// hand in MarshalJSON, so neither omitempty nor omitzero ever reaches it. PR
+// #53 taught the hand-written arm to skip an absent *pointer*; the slice, map
+// and interface arms still wrote unconditionally, so `{}` came back as
+// `{"a\"b":null}` -- an absent optional property invented as an explicit null,
+// and a document that no longer round-trips.
+//
+// The omission follows omitzero's rule, not omitempty's: skip only the value
+// unmarshal leaves for an absent property, never one the document carried.
+// Unmarshal assigns only when the key is present, so a present [] or {} is
+// non-nil and survives; omitempty would erase it.
+func TestUntaggableOptionalFieldsSkipTheirAbsentValue(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"s\"l": {"type": "array", "items": {"type": "string"}},
+			"m\"p": {"type": "object", "additionalProperties": {"type": "string"}},
+			"a\"n": {"type": ["string", "number"]},
+			"p\"t": {"type": "string"},
+			"w\"r": {"if": {"type": "string"}, "then": {"minLength": 2}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for _, tc := range []struct {
+		jsonName string
+		goType   string
+		want     string
+	}{
+		{"s\"l", "[]string", "nil"},
+		{"m\"p", "map[string]any", "nil"},
+		{"a\"n", "any", "nil"},
+		{"p\"t", "*string", "nil"},
+		{"w\"r", "DocWR", "iszero"},
+	} {
+		field := fieldNamedJSON(t, doc, tc.jsonName)
+		if !field.ManualJSON {
+			t.Fatalf("%q: ManualJSON = false, want true (the name cannot go in a struct tag)", tc.jsonName)
+		}
+		if got := field.Type.GoTypeName(); got != tc.goType {
+			t.Fatalf("%q: type = %q, want %q -- the arm under test moved", tc.jsonName, got, tc.goType)
+		}
+		if field.ManualOmit != tc.want {
+			t.Fatalf("%q (%s): ManualOmit = %q, want %q -- an absent optional value would be written as null", tc.jsonName, tc.goType, field.ManualOmit, tc.want)
+		}
+	}
+}
+
+// TestUntaggableRequiredFieldIsWrittenUnconditionally guards the narrowness of
+// the arm above. A required property has to appear in the output whatever its
+// Go value is, so it must keep writing unconditionally: extending the skip to
+// it would drop a required key and produce a document its own schema rejects.
+func TestUntaggableRequiredFieldIsWrittenUnconditionally(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"r\"q": {"type": "array", "items": {"type": "string"}}
+		},
+		"required": ["r\"q"]
+	}`)
+
+	field := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "r\"q")
+	if !field.ManualJSON {
+		t.Fatalf("r\"q: ManualJSON = false, want true")
+	}
+	if field.ManualOmit != "" {
+		t.Fatalf("r\"q: ManualOmit = %q, want \"\" -- a required property must be written even when its Go value is nil", field.ManualOmit)
+	}
+}
+
+// TestBigIntSupportReachesAnInlineInteger covers the defect that made
+// BigIntSupport a flag with no effect on the commonest way to write the schema.
+//
+// The flag replaces `type DefA int64` with a struct over an int64, a *big.Int
+// and a flag, so an integer too large for an int64 still decodes. Only
+// generateTypeDef builds that struct, and generateTypeDef is only reached for a
+// schema being given a name. An integer written *inline* as a property's schema
+// never had a name, so the field stayed an int64 and
+// `{"alpha":10000000000000000000000}` failed inside encoding/json before any of
+// the flag's machinery ran -- while the identical integer behind a $ref decoded,
+// validated and re-marshalled unchanged.
+//
+// An array element and a map value are the same position one container down:
+// []int64 holds no more than an int64 does.
+func TestBigIntSupportReachesAnInlineInteger(t *testing.T) {
+	ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"type": "integer", "maximum": 40},
+			"beta": {"type": "array", "items": {"type": "integer", "maximum": 40}},
+			"gamma": {"type": "object", "additionalProperties": {"type": "integer", "maximum": 40}}
+		},
+		"required": ["alpha", "beta", "gamma"]
+	}`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	// Each position is named after where it sits, and each name is the
+	// arbitrary-precision wrapper rather than an int64 under another name.
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{
+		"alpha": "RootAlpha",
+		"beta":  "[]RootBetaItem",
+		"gamma": "map[string]RootGammaValue",
+	} {
+		field := fieldNamedJSON(t, root, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q (an int64 cannot hold what BigIntSupport is for)", jsonName, got, want)
+		}
+	}
+	for _, name := range []string{"RootAlpha", "RootBetaItem", "RootGammaValue"} {
+		var wrapper *BigIntAliasDef
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*BigIntAliasDef); ok && d.Name == name {
+				wrapper = d
+			}
+		}
+		if wrapper == nil {
+			t.Fatalf("expected a %s big-integer wrapper; got %v", name, ir.TypeDefs)
+		}
+		// The keyword has to travel with the value: the wrapper's own Validate is
+		// the only place a bound can be compared against a number no int64 holds.
+		var ruleTypes []string
+		for _, r := range wrapper.Validations {
+			ruleTypes = append(ruleTypes, r.RuleType)
+		}
+		if !containsString(ruleTypes, "maximum") {
+			t.Fatalf("%s checks %v, want maximum", name, ruleTypes)
+		}
+	}
+
+	// The owner dispatches to each wrapper's Validate, which is what carries the
+	// bound now that the field-level rule is gone.
+	for _, jsonName := range []string{"alpha", "beta", "gamma"} {
+		if !hasValidatableField(root.ValidatableFields, jsonName) {
+			t.Fatalf("%s is never validated by Root: %+v", jsonName, root.ValidatableFields)
+		}
+	}
+	// And it does not *also* check the bound itself. That rule converts the field
+	// to a float64; the field is a struct, so the emitted file would not compile
+	// at all -- "cannot convert r.Alpha (variable of struct type RootAlpha) to
+	// type float64".
+	if got := fieldRuleTypes(root, "alpha"); len(got) != 0 {
+		t.Fatalf("Root checks %v on alpha itself; the wrapper's Validate carries those, and a numeric rule against a struct does not compile", got)
+	}
+}
+
+// TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag guards the blast radius of
+// the arm above. Materializing a wrapper changes the property's Go type, which
+// is a change to the API of the generated code, so it is confined to the flag
+// that asks for arbitrary precision. A default run must be what it was: a plain
+// int64 field, with the bound checked by the owner.
+func TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag(t *testing.T) {
+	ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true}, `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"type": "integer", "maximum": 40},
+			"beta": {"type": "array", "items": {"type": "integer", "maximum": 40}}
+		},
+		"required": ["alpha", "beta"]
+	}`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{"alpha": "int64", "beta": "[]int64"} {
+		field := fieldNamedJSON(t, root, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q; BigIntSupport is off, so nothing here may change", jsonName, got, want)
+		}
+	}
+	if got := fieldRuleTypes(root, "alpha"); !containsString(got, "maximum") {
+		t.Fatalf("Root checks %v on alpha, want maximum; with no wrapper to dispatch to, the owner is the only place the bound can live", got)
+	}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*BigIntAliasDef); ok {
+			t.Fatalf("generated a %s big-integer wrapper with BigIntSupport off", d.Name)
+		}
+	}
+}
+
+// TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne guards the other
+// side. Materializing a schema generateTypeDef answers some *other* way does not
+// leave the property alone -- it silently retypes it to that other answer. So
+// the predicate admits only the schema that reaches the BigIntAliasDef arm, and
+// every keyword routing generateTypeDef elsewhere disqualifies it.
+//
+// ["integer","null"] is the sharpest of these, and the reason the rule is stated
+// over the whole type list rather than over "the first non-null type": it
+// resolves to *int64, which decodes a JSON null. The wrapper has no way to say
+// null -- a *named* ["integer","null"] does reach the BigIntAliasDef arm today,
+// and rejects `null` with "value  is not a valid integer" -- so taking this
+// position over would buy precision by breaking a value the schema allows.
+func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) {
+	for name, tc := range map[string]struct{ schema, want string }{
+		"nullable":  {`{"type": ["integer","null"], "maximum": 40}`, "*int64"},
+		"enum":      {`{"type": "integer", "enum": [1,2,3]}`, "RootAlpha"},
+		"const":     {`{"type": "integer", "const": 5}`, "int64"},
+		"allOf":     {`{"type": "integer", "allOf": [{"maximum": 40}]}`, "int64"},
+		"ref":       {`{"$ref": "#/$defs/DefA"}`, "DefA"},
+		"untyped":   {`{"maximum": 40}`, "float64"},
+		"notAnInt":  {`{"type": "number", "maximum": 40}`, "float64"},
+		"objectish": {`{"type": "integer", "properties": {"x": {"type": "string"}}}`, "int64"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+				"title": "Root",
+				"$defs": {"DefA": {"type": "integer", "maximum": 40}},
+				"type": "object",
+				"properties": {"alpha": `+tc.schema+`},
+				"required": ["alpha"]
+			}`)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			field := fieldNamedJSON(t, structNamed(t, ir, "Root"), "alpha")
+			if got := field.Type.GoTypeName(); got != tc.want {
+				t.Fatalf("alpha type = %q, want %q", got, tc.want)
+			}
+			// Several of these do keep a definition of their own -- an enum, an
+			// inferred wrapper, a struct. What none of them may be is the
+			// big-integer wrapper, which is what over-reach here would produce
+			// under exactly the same name.
+			for _, td := range ir.TypeDefs {
+				if d, ok := td.(*BigIntAliasDef); ok && d.Name == "RootAlpha" {
+					t.Fatalf("alpha was materialized into a big-integer wrapper (%s); generateTypeDef answers this schema with %s instead, and taking it over loses that", d.Name, tc.want)
+				}
+			}
+		})
+	}
+
+	// An array element takes the rule on its own. The property path above has an
+	// arm for a nullable schema ahead of this one, so the type-list rule is only
+	// load-bearing here: nothing else stands between ["integer","null"] and the
+	// wrapper that cannot express the null it allows.
+	t.Run("nullable element", func(t *testing.T) {
+		ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+			"title": "Root",
+			"type": "object",
+			"properties": {"beta": {"type": "array", "items": {"type": ["integer","null"], "maximum": 40}}},
+			"required": ["beta"]
+		}`)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		field := fieldNamedJSON(t, structNamed(t, ir, "Root"), "beta")
+		if got := field.Type.GoTypeName(); got != "[]*int64" {
+			t.Fatalf("beta type = %q, want []*int64; the wrapper has no representation for the null this schema allows", got)
+		}
+	})
+}
+
+// oneOfDefFor returns the sealed-interface union group a struct carries for a
+// property, or nil when the property is not rendered as a union.
+func oneOfDefFor(sd *StructDef, jsonName string) *OneOfDef {
+	for i := range sd.OneOfs {
+		if sd.OneOfs[i].JSONName == jsonName {
+			return &sd.OneOfs[i]
+		}
+	}
+	return nil
+}
+
+// aliasNamed returns the AliasDef with the given name, or nil.
+func aliasNamed(ir *File, name string) *AliasDef {
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == name {
+			return d
+		}
+	}
+	return nil
+}
+
+// validatableFieldFor returns the entry that makes the owner's Validate call the
+// field's own Validate, or nil when it carries none.
+func validatableFieldFor(sd *StructDef, jsonName string) *ValidatableFieldDef {
+	for i := range sd.ValidatableFields {
+		if sd.ValidatableFields[i].JSONName == jsonName {
+			return &sd.ValidatableFields[i]
+		}
+	}
+	return nil
+}
+
+// TestConstraintOnlyOneOfPropertyLeavesTheUnionPath pins the defect where a
+// oneOf whose branches state bounds and no type made a property unusable.
+//
+//	{"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]}
+//
+// Neither branch says what the value is, so resolveOneOfVariant gave each one
+// `any` and oneOfVariantChecks gave each one no checks. The union then held two
+// variants that both matched every JSON value: 20, 12 and 3 each satisfy
+// exactly one branch and are valid, 7 satisfies none, and all four were
+// rejected as "multiple oneOf variants matched (2)". No value was accepted, and
+// the one correct rejection named the wrong reason. The sibling "type", the
+// only keyword in the schema that says what the value is, went with it.
+//
+// The repair is to leave the union path -- there is nothing to select on -- and
+// materialize the property's own type, where the declared "integer" becomes the
+// Go type and the branches become the oneOf rules its Validate counts. That is
+// what the identical schema at the document root has always done.
+func TestConstraintOnlyOneOfPropertyLeavesTheUnionPath(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := oneOfDefFor(doc, "a"); got != nil {
+		t.Fatalf("a became a sealed-interface union with variants %+v; branches carrying no type give it nothing to select on", got.Variants)
+	}
+
+	alias := aliasNamed(ir, "DocA")
+	if alias == nil {
+		t.Fatalf("expected a DocA alias carrying the branches; got %v", ir.TypeDefs)
+	}
+	if got := alias.Underlying.GoTypeName(); got != "int64" {
+		t.Fatalf("DocA underlying = %q, want int64 (the sibling type the union dropped)", got)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
+	}
+	var ruleTypes []string
+	for _, variant := range alias.OneOfVariants {
+		for _, rule := range variant {
+			ruleTypes = append(ruleTypes, rule.RuleType)
+		}
+	}
+	if !containsString(ruleTypes, "minimum") || !containsString(ruleTypes, "maximum") {
+		t.Fatalf("DocA oneOf variant rules = %v, want the branch bounds", ruleTypes)
+	}
+
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA", got)
+	}
+	// The branches only enforce anything if the owner calls the field's Validate.
+	if validatableFieldFor(doc, "a") == nil {
+		t.Fatalf("expected Doc.Validate to call a.Validate; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestConstraintOnlyOneOfPropertyWithNoTypeReachesTheDynamicEvaluator is the
+// same defect where the schema does not even name a type:
+//
+//	{"oneOf":[{"minimum":10},{"maximum":5}]}
+//
+// There is no declared type for the branches to attach to, so the property has
+// to become the raw-JSON wrapper whose Validate evaluates them against the
+// decoded value -- again what the document root already does. Leaving the union
+// path without materializing that wrapper would take the property to a bare
+// `any` field and drop the oneOf outright, which is a quieter spelling of the
+// same bug.
+func TestConstraintOnlyOneOfPropertyWithNoTypeReachesTheDynamicEvaluator(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	if got := oneOfDefFor(doc, "a"); got != nil {
+		t.Fatalf("a became a sealed-interface union with variants %+v", got.Variants)
+	}
+
+	var wrapper *DynamicSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*DynamicSchemaDef); ok && d.Name == "DocA" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocA dynamic wrapper carrying the branches; got %v", ir.TypeDefs)
+	}
+
+	field := fieldNamedJSON(t, doc, "a")
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA", got)
+	}
+	if validatableFieldFor(doc, "a") == nil {
+		t.Fatalf("expected Doc.Validate to call a.Validate; got %+v", doc.ValidatableFields)
+	}
+}
+
+// TestSelectableOneOfPropertiesStayUnions is the other side of that repair.
+// Leaving the union path is only right where the branches give it nothing to
+// select on; a branch that names a type, declares properties or lists required
+// keys does, and the union is how those are generated. Discriminated unions are
+// what the tool emits for the shapes users actually write, so an over-broad
+// reading of "constraint-only" would take every one of them off the union path
+// at once.
+//
+// Each case is a branch shape that must keep its union: a typed scalar pair, a
+// required-key pair (`any` variants that still discriminate, on the required
+// keys rather than on the type), an inline object pair, and a same-typed pair
+// separated only by their bounds.
+func TestSelectableOneOfPropertiesStayUnions(t *testing.T) {
+	cases := []struct {
+		name     string
+		branches string
+	}{
+		{"typed scalars", `[{"type":"string"},{"type":"integer"}]`},
+		{"required keys only", `[{"required":["x"]},{"required":["y"]}]`},
+		{"inline objects", `[{"properties":{"x":{"type":"string"}},"required":["x"]},{"properties":{"y":{"type":"integer"}},"required":["y"]}]`},
+		{"same type, different bounds", `[{"type":"integer","maximum":5},{"type":"integer","minimum":10}]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"oneOf": `+tc.branches+`}},
+				"required": ["a"]
+			}`)
+
+			doc := structNamed(t, ir, "Doc")
+			group := oneOfDefFor(doc, "a")
+			if group == nil {
+				t.Fatalf("a lost its sealed-interface union; struct oneOfs = %+v, typedefs = %v", doc.OneOfs, ir.TypeDefs)
+			}
+			if len(group.Variants) != 2 {
+				t.Fatalf("a union variants = %+v, want two", group.Variants)
+			}
+		})
+	}
+}
+
+// TestBigIntAliasCarriesItsOneOfVariants pins the generator half of the defect
+// the co-generation harness found once a constraint-only oneOf could reach a
+// property: under BigIntSupport an integer becomes a BigIntAliasDef, and the
+// branches have to travel with it. The emitter half -- the Validate template
+// that rendered Validations and dropped these -- is pinned in
+// pkg/emitter/emitter_test.go, since a template test from here would close an
+// import cycle.
+func TestBigIntAliasCarriesItsOneOfVariants(t *testing.T) {
+	input := `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"type": "integer", "oneOf": [{"minimum": 10}, {"maximum": 5}]}
+		},
+		"required": ["a"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	var alias *BigIntAliasDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*BigIntAliasDef); ok && d.Name == "DocA" {
+			alias = d
+		}
+	}
+	if alias == nil {
+		t.Fatalf("expected a DocA big-int alias; got %v", ir.TypeDefs)
+	}
+	if len(alias.OneOfVariants) != 2 {
+		t.Fatalf("DocA oneOf variants = %+v, want two", alias.OneOfVariants)
 	}
 }

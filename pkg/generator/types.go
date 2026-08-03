@@ -162,6 +162,16 @@ type ValidatableFieldDef struct {
 
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
+
+	// PresenceGuard is set for an optional field that is neither a pointer nor a
+	// collection, so nothing about the Go value says whether the source JSON
+	// carried the property. Its Go zero is not a value the schema ever saw, and
+	// handing it to the field type's Validate rejects a document that conforms.
+	// The emitted call is gated on _jsonKeys, which records the keys the JSON
+	// actually had. A nil _jsonKeys means the value was not built from JSON at
+	// all, and there the call still runs: presence is unknowable, and skipping
+	// would stop checking hand-constructed values.
+	PresenceGuard bool
 }
 
 // HasRequiredFields returns true if the struct has required field validation.
@@ -298,6 +308,14 @@ func (d *StructDef) NeedsJSONKeys() bool {
 			return true
 		}
 	}
+	// An optional field whose type carries its own Validate() is gated on key
+	// presence for the same reason an inline optional rule is: its Go zero is
+	// not something the document said.
+	for _, vf := range d.ValidatableFields {
+		if vf.PresenceGuard {
+			return true
+		}
+	}
 	return false
 }
 
@@ -341,11 +359,18 @@ type ObjectOneOfBranch struct {
 // folded into the field's own rules, and it may well name a property the struct
 // does not declare at all.
 //
-// A group is only built when every part of it is expressible exactly (see
+// A group is only built when the *condition* is expressible exactly (see
 // objectConditionalDef). An `if` that were evaluated approximately would decide
 // the wrong branch, and applying an `else` to a value the `if` actually matched
 // rejects a document the schema allows -- worse than the missing check this
 // replaces.
+//
+// `then` and `else` are held to a weaker bar, because they can be: they add
+// demands to a branch the condition has already selected, and a schema object's
+// keywords are conjunctive, so whatever part of one is expressible enforces a
+// subset of what it says and refuses only documents the schema refuses too.
+// Each carries the part of itself that survived, and a branch left with nothing
+// is absent rather than fatal to the group.
 type ObjectConditionalDef struct {
 	If   ObjectConditionalBranch
 	Then *ObjectConditionalBranch
@@ -552,6 +577,7 @@ type FieldDef struct {
 	Required       bool
 	Description    string
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
+	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
 }
 

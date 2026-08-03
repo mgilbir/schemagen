@@ -187,10 +187,12 @@ type Trigger struct {
 	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
 	Type                 *TriggerType               `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
 func (t *Trigger) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
+	t._jsonRawProps = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Trigger")
 	}
@@ -209,6 +211,7 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		t._jsonRawProps = raw
 		knownFields := map[string]bool{
 			"condition": true,
 			"default":   true,
@@ -255,6 +258,116 @@ func (t Trigger) MarshalJSON() ([]byte, error) {
 
 // Validate checks Trigger against its JSON Schema constraints.
 func (t Trigger) Validate() error {
+	// object-level if/then/else: whichever branch the condition selects must
+	// hold. Both sides read the raw JSON the unmarshaler kept (_jsonRawProps),
+	// so the check is skipped for hand-constructed values, consistent with how
+	// the required-property and object-level oneOf/anyOf checks above treat
+	// untracked presence. A non-object document never reaches here either, and
+	// need not: `properties` and `required` are both vacuously satisfied by one.
+	if t._jsonRawProps != nil {
+		_condHolds := true
+		if _, _ok := t._jsonRawProps["type"]; !_ok {
+			_condHolds = false
+		}
+		if _condHolds {
+			if _raw, _ok := t._jsonRawProps["type"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil || !(_dynConstOK(_v, "\"tool\"")) {
+					_condHolds = false
+				}
+			}
+		}
+		if _condHolds {
+			if _, _ok := t._jsonRawProps["tool"]; !_ok {
+				return fmt.Errorf("then: required property %q is missing", "tool")
+			}
+			if _raw, _ok := t._jsonRawProps["default"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "default", _err)
+				}
+				if !(_dynIsString(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "default")
+				}
+			}
+			if _raw, _ok := t._jsonRawProps["tool"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "tool", _err)
+				}
+				if !(_dynIsArray(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "tool")
+				}
+			}
+		}
+	}
+	// object-level if/then/else: whichever branch the condition selects must
+	// hold. Both sides read the raw JSON the unmarshaler kept (_jsonRawProps),
+	// so the check is skipped for hand-constructed values, consistent with how
+	// the required-property and object-level oneOf/anyOf checks above treat
+	// untracked presence. A non-object document never reaches here either, and
+	// need not: `properties` and `required` are both vacuously satisfied by one.
+	if t._jsonRawProps != nil {
+		_condHolds := true
+		if _, _ok := t._jsonRawProps["type"]; !_ok {
+			_condHolds = false
+		}
+		if _condHolds {
+			if _raw, _ok := t._jsonRawProps["type"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil || !(_dynConstOK(_v, "\"notify\"")) {
+					_condHolds = false
+				}
+			}
+		}
+		if _condHolds {
+			if _, _ok := t._jsonRawProps["message"]; !_ok {
+				return fmt.Errorf("then: required property %q is missing", "message")
+			}
+			if _, _ok := t._jsonRawProps["notify"]; !_ok {
+				return fmt.Errorf("then: required property %q is missing", "notify")
+			}
+			if _, _ok := t._jsonRawProps["title"]; !_ok {
+				return fmt.Errorf("then: required property %q is missing", "title")
+			}
+			if _raw, _ok := t._jsonRawProps["default"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "default", _err)
+				}
+				if !(_dynIsBool(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "default")
+				}
+			}
+			if _raw, _ok := t._jsonRawProps["message"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "message", _err)
+				}
+				if !(_dynIsString(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "message")
+				}
+			}
+			if _raw, _ok := t._jsonRawProps["notify"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "notify", _err)
+				}
+				if !(_dynIsArray(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "notify")
+				}
+			}
+			if _raw, _ok := t._jsonRawProps["title"]; _ok {
+				var _v any
+				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+					return fmt.Errorf("then: property %q: cannot decode value: %w", "title", _err)
+				}
+				if !(_dynIsString(_v)) {
+					return fmt.Errorf("then: property %q does not satisfy the then schema", "title")
+				}
+			}
+		}
+	}
 	for _i, _item := range t.Tool {
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("tool[%d].%w", _i, err)

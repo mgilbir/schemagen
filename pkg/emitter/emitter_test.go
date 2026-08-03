@@ -700,3 +700,76 @@ func TestEmitMultilineDescriptions(t *testing.T) {
 		t.Errorf("field description not continued as a comment:\n%s", src)
 	}
 }
+
+// TestEmitBigIntAliasOneOfVariants pins the emitter half of a defect the
+// co-generation harness found. The generator has always filled a
+// BigIntAliasDef's AnyOfVariants and OneOfVariants, and the big-int Validate
+// template rendered Validations and nothing else -- so under --big-int
+// {"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]} emitted a Validate
+// that checked nothing and accepted every integer, including 7, which satisfies
+// neither branch.
+//
+// The plain alias template has rendered both all along; this is the same
+// counting, through big.Float so an integer past int64 is compared at full
+// precision rather than through float64.
+func TestEmitBigIntAliasOneOfVariants(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+			{Path: "math"},
+			{Path: "math/big"},
+			{Path: "strings"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.BigIntAliasDef{
+				Name: "Windowed",
+				OneOfVariants: [][]generator.ValidationRule{
+					{{RuleType: "minimum", Value: 10}},
+					{{RuleType: "maximum", Value: 5}},
+				},
+				AnyOfVariants: [][]generator.ValidationRule{
+					{{RuleType: "multipleOf", Value: 3}},
+					{{RuleType: "exclusiveMinimum", Value: 100}},
+				},
+			},
+		},
+	}
+
+	// Emit runs go/format, so a template that produced uncompilable Go for the
+	// big-int receiver fails here rather than in a user's build.
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	for _, want := range []string{
+		"oneOf: exactly one variant must be satisfied.",
+		"if oneOfCount != 1 {",
+		"anyOf: at least one variant must be satisfied.",
+		"value does not match any anyOf variant",
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("big-int Validate is missing %q:\n%s", want, src)
+		}
+	}
+	// Each branch bound has to reach the emitted comparison, at big.Float
+	// precision rather than through float64.
+	for _, want := range []string{
+		`_limit.SetString("10")`,
+		`_limit.SetString("5")`,
+		`_divisor.SetString("3")`,
+		`_limit.SetString("100")`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("big-int Validate is missing the branch bound %q:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, "float64(w)") {
+		t.Fatalf("big-int Validate compared through float64, losing precision past int64:\n%s", src)
+	}
+}

@@ -4,7 +4,9 @@
   "type": "object",
   "properties": {
     "foo\"bar": {"$ref": "#/definitions/num"},
-    "pct%d": {"type": "string", "minLength": 1}
+    "pct%d": {"type": "string", "minLength": 1},
+    "arr\"key": {"type": "array", "items": {"type": "string"}},
+    "map\"key": {"type": "object", "additionalProperties": {"type": "integer"}}
   },
   "definitions": {
     "num": {"type": "number", "minimum": 0}

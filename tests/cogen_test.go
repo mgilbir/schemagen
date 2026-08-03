@@ -199,10 +199,9 @@ var coConfigs = []*coConfig{
 	// integer the grammar writes fits in an int64 several times over.
 	// coBigIntOverflowMutations supplies a value that does not.
 	{
-		name:   "bigint",
-		cfg:    generator.Config{PackageName: coPackageName, OmitEmpty: true, BigIntSupport: true},
-		adjust: coPresentNamedIntegers,
-		extra:  coBigIntOverflowMutations,
+		name:  "bigint",
+		cfg:   generator.Config{PackageName: coPackageName, OmitEmpty: true, BigIntSupport: true},
+		extra: coBigIntOverflowMutations,
 	},
 
 	// Absent additionalProperties treated as false. This is the one
@@ -221,7 +220,7 @@ var coConfigs = []*coConfig{
 	{
 		name:   "noomit",
 		cfg:    generator.Config{PackageName: coPackageName},
-		adjust: func(d *coDoc) { coForcePresent(d); coRepresentableDependents(d) },
+		adjust: coForcePresent,
 	},
 
 	// Refs that nothing can serve degrade to `any` instead of failing
@@ -245,9 +244,7 @@ var coConfigs = []*coConfig{
 	// Everything at once. Flags that are individually correct can still
 	// interact -- a big-integer wrapper as a value field, an overflow check on a
 	// struct whose optional properties are no longer pointers -- and no
-	// single-axis entry can see that. coForcePresent subsumes
-	// coPresentNamedIntegers here, so the bigint entry's known gap is out of
-	// reach without naming it again.
+	// single-axis entry can see that.
 	{
 		name: "all",
 		cfg: generator.Config{
@@ -257,7 +254,7 @@ var coConfigs = []*coConfig{
 			LenientRefs:      true,
 			Validation:       generator.ValidationModeHybrid,
 		},
-		adjust: func(d *coDoc) { coForcePresent(d); coRepresentableDependents(d); coStrictNarrow(d) },
+		adjust: func(d *coDoc) { coForcePresent(d); coStrictNarrow(d) },
 		extra: func(d *coDoc) []coMutation {
 			return append(coExtraPropertyMutations(d), coBigIntOverflowMutations(d)...)
 		},
@@ -433,20 +430,17 @@ func coStripDiscriminators(d *coDoc) {
 // unevaluatedProperties mutant -- are all statements about `then`. They keep
 // running under the six configurations that do not set StrictProperties.
 //
-// One narrower exclusion was considered and rejected. schemagen does not in
-// fact synthesise the ban on an object that carries unevaluatedProperties --
-// generator.go takes an earlier branch for that case and leaves Forbidden
-// false, so
-//
-//	config   generator.Config{StrictProperties: true}
-//	schema   the object above with "unevaluatedProperties":false added
-//	         emits `unevaluated property %q is not allowed` and no
-//	         `additional property %q is not allowed` at all
-//
-// and a conditional on such an object survives StrictProperties today. Keeping
-// those would have the harness assert that a document the flag's own documented
-// meaning -- "absent additionalProperties is treated as false" -- rejects is
-// accepted, which is blessing that inconsistency rather than reporting it.
+// One narrower exclusion was considered and rejected: keeping the conditional
+// alive on objects that also carry unevaluatedProperties, which schemagen used
+// to leave outside the ban altogether -- generator.go took an earlier branch
+// for that case and left Forbidden false, so such an object emitted
+// `unevaluated property %q is not allowed` and no `additional property %q is
+// not allowed` at all. That would have had the harness assert that a document
+// the flag's own documented meaning -- "absent additionalProperties is treated
+// as false" -- rejects is accepted, blessing the inconsistency rather than
+// reporting it. It was reported instead, as issue #71, and fixed: the ban is
+// now synthesised on that object too, so the exclusion no longer exists to be
+// taken. coStripUnevaluatedProperties below is the consequence.
 func coStripConditionals(d *coDoc) {
 	for _, n := range coNodesOf(d) {
 		n.cond = nil
@@ -488,13 +482,63 @@ func coStripPropertyNames(d *coDoc) {
 	}
 }
 
+// coStripUnevaluatedProperties removes the unevaluatedProperties constraint.
+//
+// It is both of the arguments above at once, which is why it needs neither a
+// new one nor an exception.
+//
+// The instance first. A schema-valued unevaluatedProperties is only worth
+// writing if something is left for it to judge, so the grammar puts coUnevalKey
+// in the instance -- a key no applicator evaluates, which is the point of it.
+// That key is not among the object's own `properties` either, so under
+// StrictProperties it is additional and the conforming instance is refused:
+//
+//	config   generator.Config{StrictProperties: true}
+//	schema   {"type":"object","properties":{"bravo":{"type":"boolean"}},
+//	          "unevaluatedProperties":{"type":"integer","minimum":-3}}
+//	instance {"bravo":true,"xtraKey":-3}
+//	         Validate reports `additional property "xtraKey" is not allowed`
+//
+// No document satisfies both, so as with the conditional this is a fact about
+// the schema under the flag, not a defect in the code generated for it.
+//
+// Then the mutant, for unevaluatedProperties: false, whose instance does
+// conform. It is violated by adding a key nothing evaluates, and every such key
+// is one the object's `properties` does not declare -- so under StrictProperties
+// it is additional too, and the ban reports first:
+//
+//	config   generator.Config{StrictProperties: true}
+//	schema   {"type":"object","properties":{"bravo":{"type":"boolean"}},
+//	          "unevaluatedProperties":false}
+//	instance {}
+//	mutant   {"zzExtra":1}
+//	         Validate reports `additional property "zzExtra" is not allowed`
+//
+// Both refusals are correct and the verdict is the same either way, but taking
+// whichever answers would stop the mutant proving unevaluatedProperties is
+// enforced at all. The keyword comes out under this configuration and keeps
+// proving it under the other six.
+//
+// This is new with the fix for issue #71 and is its cost, honestly stated: the
+// ban used not to be synthesised at all on an object carrying
+// unevaluatedProperties, so both documents above were accepted and the harness
+// was passing on that inconsistency rather than on the flag's meaning.
+func coStripUnevaluatedProperties(d *coDoc) {
+	for _, n := range coNodesOf(d) {
+		if n.extra == coExtraUnevalFalse || n.extra == coExtraUnevalSchema {
+			n.extra = coExtraNone
+		}
+	}
+}
+
 // coStrictNarrow is every adjustment StrictProperties needs: the constructs
 // whose keys live inside an applicator additionalProperties cannot see, and the
-// one keyword whose mutant the ban pre-empts.
+// two keywords whose mutants the ban pre-empts.
 func coStrictNarrow(d *coDoc) {
 	coStripDiscriminators(d)
 	coStripConditionals(d)
 	coStripPropertyNames(d)
+	coStripUnevaluatedProperties(d)
 }
 
 // ---------------------------------------------------------------------------
@@ -563,204 +607,6 @@ func coExtraPropertyMutations(d *coDoc) []coMutation {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// Known gaps
-// ---------------------------------------------------------------------------
-//
-// A gap is a construct the harness steps around because schemagen is already
-// known to handle it wrongly, kept out so a run reports regressions rather than
-// re-reporting the same defect on every iteration. Each one is a predicate with
-// the minimal reproducer in its doc comment, and each is re-admitted by
-// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusion stays something that can
-// be checked rather than a claim in a comment. (The env var is read directly
-// rather than through a shared package-level toggle: this mechanism has been
-// added to and removed from the grammar file twice, and a second declaration of
-// the same name there would not compile.)
-
-// coGapBigIntInlineInteger: BigIntSupport rewrites *named* integer types only.
-// An integer written inline as a property's schema stays a plain int64 field,
-// so an integer too large for int64 does not decode at all -- the flag whose
-// entire purpose is arbitrary precision has no effect there.
-//
-//	config   generator.Config{BigIntSupport: true}
-//	schema   {"type":"object","properties":{"alpha":{"type":"integer","maximum":40}},
-//	          "required":["alpha"]}
-//	instance {"alpha":10000000000000000000000}
-//	         json: cannot unmarshal number 10000000000000000000000 into Go
-//	         struct field .Alias.alpha of type int64
-//
-// The same integer behind a $ref is handled correctly, which is what makes this
-// a gap rather than an unimplemented feature:
-//
-//	schema   {"$defs":{"DefA":{"type":"integer","maximum":40}},"type":"object",
-//	          "properties":{"alpha":{"$ref":"#/$defs/DefA"}},"required":["alpha"]}
-//	instance {"alpha":10000000000000000000000}
-//	         decodes; Validate reports
-//	         `alpha.value: 10000000000000000000000 exceeds maximum 40`;
-//	         re-marshals unchanged
-func coGapBigIntInlineInteger() bool {
-	return os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-}
-
-// coGapBigIntOptionalNamedInteger: with BigIntSupport an optional property whose
-// schema is a $ref to an integer definition is emitted as a *value* field of the
-// wrapper struct, tagged omitempty -- and encoding/json's omitempty never omits
-// a struct. An absent property therefore comes back as the wrapper's zero: it
-// reappears in the output as 0, and Validate then measures that 0 against the
-// definition's bounds and rejects a document that conforms.
-//
-//	config   generator.Config{OmitEmpty: true, BigIntSupport: true}
-//	schema   {"$defs":{"DefA":{"type":"integer","exclusiveMinimum":17}},
-//	          "type":"object","properties":{"charlie":{"$ref":"#/$defs/DefA"}}}
-//	instance {}
-//	         marshals back as {"charlie":0}
-//	         Validate reports `charlie.value: 0 must be greater than 17`
-//
-// Without BigIntSupport the same property is *DefA and both symptoms go away,
-// which is what makes this a gap rather than a limitation of wrapper types.
-//
-// It is not really about big integers, though: the same thing happens to any
-// wrapper-struct named type in an optional property, and one such type is
-// reachable on the *default* configuration -- a $defs entry with constraints but
-// no "type" becomes an InferredAliasDef, and
-//
-//	config   generator.Config{OmitEmpty: true}
-//	schema   {"$defs":{"DefA":{"exclusiveMinimum":17}},"type":"object",
-//	          "properties":{"charlie":{"$ref":"#/$defs/DefA"}}}
-//	instance {}
-//
-// produces exactly the same {"charlie":0} and the same rejection. The grammar
-// always writes a "type", so that spelling is out of reach here; BigIntSupport
-// is what brings the defect within range by turning "type":"integer" into a
-// wrapper too.
-//
-// Root cause, for whoever fixes it: an optional field is wrapped in a pointer by
-// two rules in generator.go, and a named integer under BigIntSupport falls
-// between them. isObjectProperty does not fire, because the property's schema is
-// an integer rather than an object; isZeroLossyNamedType does not fire either,
-// because zeroLossyTypeName answers false in its default arm for every wrapper
-// type -- BigIntAliasDef, InferredAliasDef and the raw-value wrappers alike --
-// on the grounds that "the caller wraps them for their own reasons, or not at
-// all", which here is "not at all".
-//
-// Excluded by making such a property present in the instance, the narrowest move
-// that steps around it: everything else about the wrapper still runs, including
-// the decode, the big.Float comparisons and the overflow mutant.
-func coGapBigIntOptionalNamedInteger() bool {
-	return os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-}
-
-// coPresentNamedIntegers marks every property whose schema is a $ref to an
-// integer definition as present in the instance. See
-// coGapBigIntOptionalNamedInteger for what it steps around and why.
-func coPresentNamedIntegers(d *coDoc) {
-	if coGapBigIntOptionalNamedInteger() {
-		return
-	}
-	for _, n := range coNodesOf(d) {
-		for _, p := range n.props {
-			if p.node.kind == coRef && d.deref(p.node).kind == coInteger {
-				p.present = true
-			}
-		}
-	}
-}
-
-// coGapOptionalNamedZeroValidated: with OmitEmpty false, an *optional* property
-// whose Go type is a named one -- an enum, a const, a $ref, an object, a null,
-// or one of the raw-JSON wrappers the composition leaves become -- is validated
-// unconditionally. The generated Validate calls the field's own Validate with no
-// guard, so when the document did not carry the key the field's Go zero is
-// measured against the property's schema and a conforming document is rejected.
-//
-//	config   generator.Config{}                       // OmitEmpty false
-//	schema   {"type":"object","properties":{"alpha":{"enum":[""]},
-//	                                        "delta":{"const":"red"}}}
-//	instance {"alpha":""}                              // delta is optional
-//	         Validate reports `delta.invalid RootDelta value: `
-//
-// It is not a consequence of the flag being unable to represent absence. The
-// machinery for the distinction is already there and already used: an optional
-// property with *inline* keywords gets exactly the same treatment the pointer
-// case gets, gated on _jsonKeys, which records the keys the source JSON actually
-// carried. Under the same configuration
-//
-//	schema   {"type":"object","properties":{"alpha":{"type":"integer"},
-//	                     "delta":{"type":"string","minLength":3}}}
-//	instance {"alpha":1}
-//	         emits `if r._jsonKeys["delta"] { ... }` and accepts
-//
-// so one spelling of "this optional property is constrained" is gated and the
-// other is not, purely according to whether the property's schema happened to
-// materialise a named Go type. Root cause, for whoever fixes it: the
-// ValidatableFields arm of validation.go.tmpl guards the call with `!= nil` for
-// a pointer field and with `!= <zero literal>` when OmitEmpty is set, and has no
-// arm for the remaining case -- the one this configuration always takes.
-//
-// Reached from the harness only through a mutation that *deletes* an optional
-// property, since coForcePresent has already made every declared property
-// present in the conforming instance. Of those, only the dependentRequired and
-// dependentSchemas mutants are affected: both checks are emitted after the field
-// validations, so the field's complaint about its zero is what comes back, while
-// `required` and `minProperties` are checked before them and still report
-// themselves.
-//
-// Excluded by coRepresentableDependents, which keeps a dependency only where its
-// dependents are properties the flag can represent as absent. Everything else
-// about the dependency still runs: the keyword is still emitted, the conforming
-// instance is still checked against it, and the mutant still has to be rejected
-// naming it.
-func coGapOptionalNamedZeroValidated() bool {
-	return os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-}
-
-// coZeroRepresentsAbsent reports whether a property of this shape can be left
-// out of the instance under OmitEmpty false without the generated Validate
-// judging its Go zero.
-//
-// The four kinds below are the ones that become a primitive field -- string,
-// int64, float64, bool -- whose checks the generator emits inline and gates on
-// _jsonKeys. That includes a string whose length keywords are reached through
-// an allOf, which is emitted as two inline rules, both gated. Every other kind
-// this grammar builds materialises a named type with a Validate of its own,
-// including "type":"null", and takes the ungated arm.
-func coZeroRepresentsAbsent(n *coNode) bool {
-	switch n.kind {
-	case coString, coInteger, coNumber, coBoolean:
-		return true
-	}
-	return false
-}
-
-// coRepresentableDependents narrows each object's dependentRequired /
-// dependentSchemas to the dependents whose absence the configuration can
-// represent, and drops the dependency where none are left. See
-// coGapOptionalNamedZeroValidated for what it steps around and why.
-func coRepresentableDependents(d *coDoc) {
-	if coGapOptionalNamedZeroValidated() {
-		return
-	}
-	for _, n := range coNodesOf(d) {
-		if n.dep == coDepNone {
-			continue
-		}
-		kept := make([]string, 0, len(n.depOn))
-		for _, name := range n.depOn {
-			for _, p := range n.props {
-				if p.name == name && coZeroRepresentsAbsent(p.node) {
-					kept = append(kept, name)
-					break
-				}
-			}
-		}
-		n.depOn = kept
-		if len(kept) == 0 {
-			n.dep = coDepNone
-			n.depTrig = ""
-		}
-	}
-}
-
 // coBigIntOverflow is an integer twenty-three digits long: far past int64, and
 // far past every bound the grammar writes, whose lattice sits within a few
 // dozen of zero. It is a json.RawMessage so it survives the mutation's
@@ -778,34 +624,35 @@ var coBigIntOverflow = json.RawMessage("99999999999999999999999")
 // big.Int rather than reporting "cannot be represented as int64", and Validate
 // has to compare through big.Float and reject it against the bound.
 //
-// Only integers reached through a $ref qualify, because only those get the
-// wrapper -- see coGapBigIntInlineInteger, which is what re-admits the rest.
+// Every integer the instance carries qualifies, wherever it was written. That
+// was once restricted to the ones reached through a $ref, because only a *named*
+// integer became the wrapper and an inline one stayed a plain int64 field that
+// no such value could decode into at all (issue #67); an inline integer is now
+// materialized into a wrapper of its own, so the restriction would only be
+// hiding the commonest way to write the schema.
 //
 // A node with no upper bound is skipped: an enormous integer satisfies a lone
 // minimum, so there would be nothing to reject.
 func coBigIntOverflowMutations(d *coDoc) []coMutation {
 	var out []coMutation
-	var walk func(n *coNode, path []any, prop string, viaRef bool)
-	walk = func(n *coNode, path []any, prop string, viaRef bool) {
+	var walk func(n *coNode, path []any, prop string)
+	walk = func(n *coNode, path []any, prop string) {
 		if n.kind == coRef {
-			walk(d.defs[n.refName], path, prop, true)
+			walk(d.defs[n.refName], path, prop)
 			return
 		}
 		switch n.kind {
 		case coObject:
 			for _, p := range n.props {
 				if p.present {
-					walk(p.node, coPath(path, p.name), p.name, false)
+					walk(p.node, coPath(path, p.name), p.name)
 				}
 			}
 		case coArray:
 			if n.numItems > 0 {
-				walk(n.elem, coPath(path, 0), prop, false)
+				walk(n.elem, coPath(path, 0), prop)
 			}
 		case coInteger:
-			if !viaRef && !coGapBigIntInlineInteger() {
-				return
-			}
 			var want []string
 			switch n.maxStyle {
 			case coBoundInclusive:
@@ -823,7 +670,7 @@ func coBigIntOverflowMutations(d *coDoc) []coMutation {
 			})
 		}
 	}
-	walk(d.root, nil, "", false)
+	walk(d.root, nil, "")
 	return out
 }
 

@@ -27,7 +27,9 @@ func (n Num) Validate() error {
 }
 
 type QuotedPropertyName struct {
+	ArrKey               []string                   `json:"-"`
 	FooBar               *Num                       `json:"-"`
+	MapKey               map[string]any             `json:"-"`
 	PctD                 *string                    `json:"pct%d,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -56,9 +58,19 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		if v, ok := raw["arr\"key"]; ok {
+			if err := json.Unmarshal(v, &q.ArrKey); err != nil {
+				return fmt.Errorf("unmarshaling QuotedPropertyName.ArrKey: %w", err)
+			}
+		}
 		if v, ok := raw["foo\"bar"]; ok {
 			if err := json.Unmarshal(v, &q.FooBar); err != nil {
 				return fmt.Errorf("unmarshaling QuotedPropertyName.FooBar: %w", err)
+			}
+		}
+		if v, ok := raw["map\"key"]; ok {
+			if err := json.Unmarshal(v, &q.MapKey); err != nil {
+				return fmt.Errorf("unmarshaling QuotedPropertyName.MapKey: %w", err)
 			}
 		}
 	}
@@ -72,7 +84,9 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 			q._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
+			"arr\"key": true,
 			"foo\"bar": true,
+			"map\"key": true,
 			"pct%d":    true,
 		}
 		for rawKey, rawVal := range raw {
@@ -105,14 +119,39 @@ func (q QuotedPropertyName) MarshalJSON() ([]byte, error) {
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
 	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer marshals to would be written as if the property were
-	// present with a null value.
+	// null a nil pointer/slice/map marshals to would be written as if the
+	// property were present with a null value. A present-but-empty collection
+	// is non-nil and still written.
+	if q.ArrKey != nil {
+		raw, err := json.Marshal(q.ArrKey)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", err)
+		}
+		obj["arr\"key"] = raw
+	}
+	// The property name cannot go in a struct tag, so omitempty never reaches
+	// this field: an absent optional value has to be skipped by hand, or the
+	// null a nil pointer/slice/map marshals to would be written as if the
+	// property were present with a null value. A present-but-empty collection
+	// is non-nil and still written.
 	if q.FooBar != nil {
 		raw, err := json.Marshal(q.FooBar)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", err)
 		}
 		obj["foo\"bar"] = raw
+	}
+	// The property name cannot go in a struct tag, so omitempty never reaches
+	// this field: an absent optional value has to be skipped by hand, or the
+	// null a nil pointer/slice/map marshals to would be written as if the
+	// property were present with a null value. A present-but-empty collection
+	// is non-nil and still written.
+	if q.MapKey != nil {
+		raw, err := json.Marshal(q.MapKey)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", err)
+		}
+		obj["map\"key"] = raw
 	}
 	for k, v := range q.AdditionalProperties {
 		obj[k] = v

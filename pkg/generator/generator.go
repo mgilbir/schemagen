@@ -805,6 +805,13 @@ func (g *Generator) addRequiredImports() {
 			if ad.HasTupleItems() {
 				needsJSON = true // Validate() uses json.Marshal/json.Unmarshal for tuple items
 				needsFmt = true  // Validate() uses fmt.Errorf for tuple item errors
+				for _, ti := range ad.TupleItems {
+					// The per-position "integer" test is math.Trunc, as it is
+					// for an InferredAliasDef's tuple positions.
+					if ti.JSONType == "integer" {
+						needsMath = true
+					}
+				}
 			}
 			noteItemValidationImports(ad.ItemValidations,
 				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
@@ -887,6 +894,11 @@ func (g *Generator) addRequiredImports() {
 				}
 				for _, chk := range ad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
+						needsMath = true
+					}
+					// The per-element "integer" test is math.Trunc, exactly as
+					// it is for an items check.
+					if chk.CheckType == "type" && chk.Value == "integer" {
 						needsMath = true
 					}
 					if chk.CheckType == "pattern" {
@@ -1052,6 +1064,11 @@ func (g *Generator) addRequiredImports() {
 					if chk.CheckType == "multipleOf" {
 						needsMath = true
 					}
+					// The per-element "integer" test is math.Trunc, exactly as
+					// it is for an items check.
+					if chk.CheckType == "type" && chk.Value == "integer" {
+						needsMath = true
+					}
 					if chk.CheckType == "pattern" {
 						needsStdRegexp = true
 					}
@@ -1125,6 +1142,14 @@ func (g *Generator) isBigIntAlias(name string) bool {
 		}
 	}
 	return false
+}
+
+// isBigIntAliasType is isBigIntAlias for a field's Go type: an optional field of
+// such a type is pointer-wrapped (its zero is exactly what a present 0 decodes
+// to), and the wrapper behind the pointer is still what carries the keywords.
+func (g *Generator) isBigIntAliasType(t GoType) bool {
+	name := namedTypeName(t)
+	return name != "" && g.isBigIntAlias(name)
 }
 
 // isNotSchema returns true if a type name was generated as a NotSchemaDef.
@@ -2056,10 +2081,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 
 		// Check if this property uses oneOf. Only when the union would carry the
-		// whole property schema: otherwise the siblings it declares — its own
-		// properties and required, most damagingly — never reach any generated
-		// type. See oneOfUnionKeepsWholeSchema.
-		if propSchema != nil && len(propSchema.OneOf) > 0 && oneOfUnionKeepsWholeSchema(propSchema) {
+		// whole property schema — otherwise the siblings it declares, its own
+		// properties and required most damagingly, never reach any generated
+		// type — and only when the branches give it something to select on.
+		// See oneOfUnionKeepsWholeSchema and oneOfIsUnselectableUnion.
+		if propSchema != nil && len(propSchema.OneOf) > 0 && g.oneOfRendersAsUnion(propSchema) {
 			oneOfDef, err := g.generateOneOfForProperty(name, propName, goFieldName, propSchema)
 			if err != nil {
 				return fmt.Errorf("property %s (oneOf): %w", propName, err)
@@ -2136,6 +2162,39 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// omitzero omits exactly the absent case.
 		omitZero := omitEmpty && (g.isCollectionType(goType) || g.isRawValueWrapperType(goType))
 
+		// A property name that cannot go in a struct tag gets `json:"-"` and is
+		// written by hand in MarshalJSON, so neither omitempty nor omitzero ever
+		// reaches it -- the omission has to be spelled out. The rule is
+		// omitzero's, not omitempty's: skip only the value that unmarshal leaves
+		// when the property was absent, never a value the document actually
+		// carried. A pointer, a collection and an interface are nil exactly in
+		// that case -- unmarshal assigns only when the key is present, so a
+		// present [] or {} comes back non-nil -- and a raw-value wrapper reports
+		// it through IsZero. omitempty would additionally drop a
+		// present-but-empty collection, inventing an absence the document did
+		// not have: the same class of round-trip break as the invented null this
+		// replaces, in the other direction.
+		//
+		// An interface is also nil for an explicit null, which the nil arm would
+		// drop. That case does not arise: a schema admitting null has had
+		// omitEmpty cleared above, so this arm is only reached where null is not
+		// a legal value.
+		//
+		// A scalar is left unconditional. Its zero is indistinguishable from
+		// absence without presence tracking, and writing it can only ever add a
+		// property, while omitting it would erase an explicit "", 0 or false --
+		// though in practice an optional scalar has been pointer-wrapped by now
+		// and takes the nil arm.
+		manualOmit := ""
+		if manualJSON && omitEmpty {
+			switch {
+			case goType.IsPointer() || g.isCollectionType(goType) || g.isInterfaceType(goType):
+				manualOmit = "nil"
+			case g.isRawValueWrapperType(goType):
+				manualOmit = "iszero"
+			}
+		}
+
 		// Compute default literal if schema provides a default value.
 		var defaultLiteral string
 		if propSchema.Default != nil {
@@ -2155,6 +2214,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			Required:       required,
 			Description:    propSchema.Description,
 			ManualJSON:     manualJSON,
+			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
 		})
 	}
@@ -2209,8 +2269,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	} else if s.UnevaluatedProperties != nil {
 		// unevaluatedProperties without explicit additionalProperties:
 		// need an overflow map to capture unknown keys for unevaluated checking.
+		//
+		// additionalProperties is still absent here, so StrictProperties applies
+		// exactly as it does in the arm below: the flag is documented as "treat
+		// absent additionalProperties as false", and an unrelated keyword being
+		// present is no reason for it to stop meaning that. The two bans are not
+		// the same rule -- unevaluatedProperties also counts keys evaluated by
+		// $ref/allOf/if-then subschemas, which additionalProperties:false does
+		// not -- so leaving this one out let a key through on exactly the objects
+		// where they differ.
 		additionalProps = &AdditionalPropertiesDef{
 			ValueType: &PrimitiveType{Name: "json.RawMessage"},
+			Forbidden: g.config.StrictProperties,
 		}
 		needsMarshal = true
 		needsUnmarshal = true
@@ -2341,6 +2411,17 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// own Validate says the same thing more completely -- `!= nil`
 				// misses a present JSON null, which {"not":{}} also forbids.
 				if g.isRawValueWrapperType(ft) {
+					continue
+				}
+				// The same applies to the arbitrary-precision wrapper an inline
+				// integer is materialized into under BigIntSupport (see
+				// bigIntInlineWrapper). It was generated from this property's
+				// own schema, so its Validate already carries these keywords --
+				// compared through big.Float, which is the only comparison that
+				// holds for a value no int64 can express. Emitted here the rule
+				// would not compile at all: it converts the field to a float64,
+				// and the field is a struct.
+				if g.isBigIntAliasType(ft) {
 					continue
 				}
 				// A const promoted to a single-value enum type is enforced by that
@@ -2601,6 +2682,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
+		// The parent's own property-count bounds bind the same object the allOf
+		// branches do. Seeding them before the merge lets mergeConstraints keep
+		// whichever bound is tighter; propagating them afterwards would instead
+		// let a branch's bound win by having got there first.
+		merged.MinProperties = s.MinProperties
+		merged.MaxProperties = s.MaxProperties
 	}
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
@@ -2657,6 +2744,27 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	if g.validationKeywordsEnabled() && len(s.DependentSchemas) > 0 && len(merged.DependentSchemas) == 0 {
 		merged.DependentSchemas = s.DependentSchemas
+	}
+	// propertyNames and dependentRequired constrain the object the parent
+	// declares, and an allOf beside them says nothing about either. Neither is
+	// read off the branches by mergeAllOfBranches -- propertyNames not at all,
+	// dependentRequired only when the target has none -- so without these the
+	// keywords vanish for no reason other than the allOf being there.
+	if g.validationKeywordsEnabled() && s.PropertyNames != nil && merged.PropertyNames == nil {
+		merged.PropertyNames = s.PropertyNames
+	}
+	if g.validationKeywordsEnabled() && len(s.DependentRequired) > 0 {
+		// A branch may already have contributed a map of its own. Both bind, so
+		// the two are unioned into a fresh map -- mutating merged's would write
+		// through to the sub-schema mergeAllOfBranches took it from.
+		combined := make(map[string][]string, len(merged.DependentRequired)+len(s.DependentRequired))
+		for trigger, deps := range merged.DependentRequired {
+			combined[trigger] = deps
+		}
+		for trigger, deps := range s.DependentRequired {
+			combined[trigger] = mergeStringSets(combined[trigger], deps)
+		}
+		merged.DependentRequired = combined
 	}
 	// Propagate array-structural keywords from parent schema.
 	// Per JSON Schema spec, items/additionalItems scoping is per-schema (they don't
@@ -4421,6 +4529,20 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &NamedType{Name: nestedName}, nil
 		}
+		// A oneOf whose branches are all constraint-only reaches here for the
+		// other reason the caller declines the union: there is nothing to select
+		// on (see oneOfIsUnselectableUnion). Materialize the named type so
+		// generateTypeDef evaluates the branches against the value — as an alias
+		// carrying OneOfVariants when a type is declared or inferred, and as the
+		// dynamic wrapper when it is not. Without this the arms below would take
+		// the declared type and drop the oneOf entirely.
+		if oneOfUnionKeepsWholeSchema(s) && g.oneOfIsUnselectableUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
+			nestedName := parentName + fieldName
+			if err := g.generateTypeDef(nestedName, s); err != nil {
+				return nil, err
+			}
+			return &NamedType{Name: nestedName}, nil
+		}
 	}
 
 	// anyOf with null + single variant → pointer to the variant type (same as oneOf pattern above).
@@ -4589,7 +4711,72 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &NamedType{Name: nestedName}, nil
 	}
 
+	// An integer written inline under BigIntSupport, which resolveType below
+	// would answer with a bare int64 -- the one Go type the flag exists to get
+	// away from. See bigIntInlineWrapper.
+	if g.bigIntInlineWrapper(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		return &NamedType{Name: nestedName}, nil
+	}
+
 	return g.resolveType(s, parentName+fieldName), nil
+}
+
+// bigIntInlineWrapper reports whether an integer written inline -- as a
+// property's schema, or as the item schema of an array or a map -- has to be
+// materialized into a named type of its own because BigIntSupport is on.
+//
+// BigIntSupport replaces `type DefA int64` with a struct holding an int64, a
+// *big.Int and a flag, so that an integer too large for an int64 still decodes.
+// generateTypeDef builds that struct, and generateTypeDef is only ever reached
+// for a schema that is being given a name -- a $defs entry, the target of a
+// $ref. An integer written inline never had a name, so it never reached the
+// arm: the field stayed an int64 and `{"alpha":10000000000000000000000}` failed
+// in encoding/json before any of the flag's machinery ran. That is the
+// commonest way to write the schema, and the flag did nothing there.
+//
+// Naming the position is the whole fix: the wrapper's behaviour is decided by
+// its own UnmarshalJSON, MarshalJSON and Validate, all of which the $ref case
+// already exercises, and a property named after its position is the shape
+// several other arms here already produce (an inline enum, an inline `not`, an
+// inline object). It does change the field's Go type from int64 to that name,
+// which is why it is confined to the flag: without BigIntSupport nothing here
+// fires.
+//
+// The predicate is exact rather than approximate, because materializing under a
+// schema generateTypeDef would answer some other way does not leave the type
+// alone -- it changes it to that other answer. So it admits only a schema whose
+// "type" is exactly ["integer"] and which states no keyword that routes
+// generateTypeDef to an arm ahead of the primitive one: an enum or const
+// (generateEnumDef), a $ref or $dynamicRef, a composition, a draft-3 type
+// alternative, object keywords (generateStructDef), or the unevaluatedItems
+// shapes that go to the runtime annotation evaluator. What is left is the
+// schema that reaches the BigIntAliasDef arm and nothing else.
+func (g *Generator) bigIntInlineWrapper(s *schema.Schema) bool {
+	if s == nil || !g.config.BigIntSupport {
+		return false
+	}
+	// Exactly {"type":"integer"}. A second type alongside it makes the property
+	// a raw-value wrapper that already keeps the bytes. ["integer","null"] is
+	// excluded for a sharper reason: it resolves to *int64, which decodes a JSON
+	// null correctly, and the wrapper cannot say null at all -- a *named*
+	// ["integer","null"] does reach the BigIntAliasDef arm, and rejects `null`
+	// with "value  is not a valid integer". Widening precision by breaking null
+	// is not a trade this makes; that wrapper needs a null representation first.
+	if len(s.Type) != 1 || s.Type[0] != "integer" {
+		return false
+	}
+	if len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull ||
+		s.EffectiveRef() != "" || s.DynamicRef != "" ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		len(s.TypeSchemas) > 0 ||
+		hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil {
+		return false
+	}
+	return g.annotationSchemaDef("", s) == nil
 }
 
 // inlineConstraintWrapper reports whether a property's own schema is one that
@@ -5874,11 +6061,13 @@ func isZeroLossyPrimitive(goType GoType) bool {
 	return false
 }
 
-// isZeroLossyNamedType reports whether t names a generated type whose
-// underlying Go type is a zero-lossy primitive — a $ref to a "type":"string"
-// definition, an inline enum, a const promoted to a single-value enum. The name
-// does not give the value a nil to be absent in, so such a field loses a
-// legitimate "", 0 or false to omitempty exactly as a bare primitive would.
+// isZeroLossyNamedType reports whether t names a generated type that has no
+// representation for "absent" of its own — either because its underlying Go
+// type is a zero-lossy primitive (a $ref to a "type":"string" definition, an
+// inline enum, a const promoted to a single-value enum), or because it is a
+// wrapper struct over one (see zeroLossyTypeName). The name does not give the
+// value a nil to be absent in, so such a field loses a legitimate "", 0 or
+// false to omitempty exactly as a bare primitive would.
 //
 // The answer comes from the generated type rather than from the property's
 // schema because a $ref says nothing about the shape of its target. Both are
@@ -5919,10 +6108,24 @@ func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
 			// A heterogeneous enum is backed by json.RawMessage, whose zero is
 			// nil — absent already has a representation there.
 			return g.zeroLossyGoType(def.BaseType, depth)
+		case *InferredAliasDef, *BigIntAliasDef:
+			// A wrapper struct over a scalar: the InferredAliasDef built for a
+			// definition that carries constraints but no "type", and the
+			// BigIntAliasDef that BigIntSupport puts over a named integer. It is
+			// worse off than a named primitive, not better — omitempty never
+			// omits a struct, so an absent optional property is fabricated into
+			// the output as the wrapper's zero and then measured against the
+			// definition's constraints. And unlike the raw-value wrappers below
+			// it carries no IsZero to hand ",omitzero": its zero is exactly what
+			// a present 0 or "" decodes to, so omitzero would drop a legitimate
+			// value. The pointer is the only representation of absence left.
+			return true
 		default:
-			// Structs and the wrapper types (inferred, big-int, raw-value) have
-			// no zero literal at all: zeroLiteralForType returns "" for them and
-			// the caller wraps them for their own reasons, or not at all.
+			// A struct is pointer-wrapped by isObjectProperty, and the raw-value
+			// wrappers (TypeOnlySchemaDef, NotSchemaDef, DynamicSchemaDef) keep
+			// the bytes they were handed: an absent one holds no bytes, which
+			// their IsZero reports to ",omitzero" and their Validate treats as
+			// nothing to check. Neither needs a pointer here.
 			return false
 		}
 	}
@@ -6090,6 +6293,13 @@ func hasProperties(s *schema.Schema) bool {
 // declared or inferred type.
 func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
 	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
+		_ = g.generateTypeDef(itemContext, items)
+		return &NamedType{Name: itemContext}
+	}
+	// An inline integer element of an array (or value of a map) is the same gap
+	// as an inline integer property: []int64 cannot hold what BigIntSupport is
+	// for. See bigIntInlineWrapper.
+	if g.bigIntInlineWrapper(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
 	}
@@ -6887,6 +7097,13 @@ func (g *Generator) populateValidatableFields() {
 					IsPointer:   f.Type.IsPointer(),
 					OmitEmpty:   f.OmitEmpty,
 					ZeroLiteral: zeroLit,
+					// A pointer already says "absent" with nil. Anything else
+					// optional needs _jsonKeys to say it, or the Go zero of a
+					// property the document never carried is measured against
+					// the schema — which is how OmitEmpty false, where no
+					// optional field is a pointer, rejected conforming
+					// documents.
+					PresenceGuard: !f.Required && !f.Type.IsPointer(),
 				})
 				continue
 			}
@@ -7270,6 +7487,24 @@ func (g *Generator) isCollectionType(t GoType) bool {
 		return true
 	case *NamedType:
 		return g.isArrayAlias(v.Name) || g.isMapAlias(v.Name)
+	}
+	return false
+}
+
+// isInterfaceType reports whether a Go type is the empty interface (directly or
+// via a named alias). Like a pointer or a collection, its nil is what unmarshal
+// leaves when the property was absent, and it marshals to null.
+func (g *Generator) isInterfaceType(t GoType) bool {
+	switch v := t.(type) {
+	case *PrimitiveType:
+		return v.Name == "any"
+	case *NamedType:
+		for _, td := range g.output.TypeDefs {
+			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
+				pt, isPrim := d.Underlying.(*PrimitiveType)
+				return isPrim && pt.Name == "any"
+			}
+		}
 	}
 	return false
 }
@@ -9587,6 +9822,69 @@ func oneOfUnionKeepsWholeSchema(s *schema.Schema) bool {
 		s.Not == nil && s.If == nil && s.Then == nil && s.Else == nil &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
 		len(s.Enum) == 0 && s.Const == nil && !s.ConstIsNull
+}
+
+// oneOfBranchIsUnselectable reports whether a oneOf branch gives the
+// sealed-interface union nothing to select on.
+//
+// A union decides which branch a value belongs to by trying to decode it into
+// each variant's Go type, then applying whatever that variant carries:
+// resolveOneOfVariant picks the type, oneOfVariantChecks picks the scalar
+// bounds, and the union's required-key test picks the object shapes. A branch
+// with no type, no $ref, no properties and no required reaches none of those —
+// resolveOneOfVariant gives it `any`, oneOfVariantChecks returns nil for `any`,
+// and there are no required keys — so the branch matches every value that is
+// JSON at all.
+func oneOfBranchIsUnselectable(v *schema.Schema) bool {
+	if v == nil || v.IsBooleanSchema() {
+		return false
+	}
+	return v.EffectiveRef() == "" && !hasProperties(v) &&
+		primarySchemaType(v) == "" && len(v.Required) == 0
+}
+
+// oneOfIsUnselectableUnion reports whether every non-null branch of s's oneOf is
+// unselectable, which makes the sealed-interface union not merely lossy but
+// wrong: every branch matches every value, so the union reports "multiple oneOf
+// variants matched" for each of them — for the values that satisfy exactly one
+// branch as much as for the values that satisfy none. No document is accepted
+// and the rejections name the wrong reason.
+//
+// {"type":"integer","oneOf":[{"minimum":10},{"maximum":5}]} is the shape: 20,
+// 12 and 3 each match exactly one branch and are valid, 7 matches none, and the
+// union rejects all four as "matched 2". The caller must take the ordinary type
+// path instead, where extractOneOfVariantRules (for a declared or inferred
+// type) or dynamicSchemaDef (for neither) evaluates the branches against the
+// value rather than trying to pick one to decode into. That is what the
+// document root already does with the identical schema.
+//
+// One branch short of all is deliberately left alone: a union with a typed
+// branch beside an unselectable one still selects on the typed branch, and
+// changing that shape would reach far past the construct this repairs.
+func (g *Generator) oneOfIsUnselectableUnion(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	nonNull, _ := g.separateNullFromOneOf(s.OneOf)
+	// Fewer than two branches never reaches the union: one non-null branch
+	// beside a null one is the nullable-pointer shape, and zero is not a union
+	// at all.
+	if len(nonNull) < 2 {
+		return false
+	}
+	for _, v := range nonNull {
+		if !oneOfBranchIsUnselectable(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// oneOfRendersAsUnion reports whether a oneOf in a property (or property-like)
+// position should be rendered as a sealed-interface union: the union must carry
+// everything the schema asserts, and it must have something to select on.
+func (g *Generator) oneOfRendersAsUnion(s *schema.Schema) bool {
+	return oneOfUnionKeepsWholeSchema(s) && !g.oneOfIsUnselectableUnion(s)
 }
 
 // isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct
