@@ -4915,3 +4915,188 @@ func TestUntaggableRequiredFieldIsWrittenUnconditionally(t *testing.T) {
 		t.Fatalf("r\"q: ManualOmit = %q, want \"\" -- a required property must be written even when its Go value is nil", field.ManualOmit)
 	}
 }
+
+// TestBigIntSupportReachesAnInlineInteger covers the defect that made
+// BigIntSupport a flag with no effect on the commonest way to write the schema.
+//
+// The flag replaces `type DefA int64` with a struct over an int64, a *big.Int
+// and a flag, so an integer too large for an int64 still decodes. Only
+// generateTypeDef builds that struct, and generateTypeDef is only reached for a
+// schema being given a name. An integer written *inline* as a property's schema
+// never had a name, so the field stayed an int64 and
+// `{"alpha":10000000000000000000000}` failed inside encoding/json before any of
+// the flag's machinery ran -- while the identical integer behind a $ref decoded,
+// validated and re-marshalled unchanged.
+//
+// An array element and a map value are the same position one container down:
+// []int64 holds no more than an int64 does.
+func TestBigIntSupportReachesAnInlineInteger(t *testing.T) {
+	ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"type": "integer", "maximum": 40},
+			"beta": {"type": "array", "items": {"type": "integer", "maximum": 40}},
+			"gamma": {"type": "object", "additionalProperties": {"type": "integer", "maximum": 40}}
+		},
+		"required": ["alpha", "beta", "gamma"]
+	}`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	// Each position is named after where it sits, and each name is the
+	// arbitrary-precision wrapper rather than an int64 under another name.
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{
+		"alpha": "RootAlpha",
+		"beta":  "[]RootBetaItem",
+		"gamma": "map[string]RootGammaValue",
+	} {
+		field := fieldNamedJSON(t, root, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q (an int64 cannot hold what BigIntSupport is for)", jsonName, got, want)
+		}
+	}
+	for _, name := range []string{"RootAlpha", "RootBetaItem", "RootGammaValue"} {
+		var wrapper *BigIntAliasDef
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*BigIntAliasDef); ok && d.Name == name {
+				wrapper = d
+			}
+		}
+		if wrapper == nil {
+			t.Fatalf("expected a %s big-integer wrapper; got %v", name, ir.TypeDefs)
+		}
+		// The keyword has to travel with the value: the wrapper's own Validate is
+		// the only place a bound can be compared against a number no int64 holds.
+		var ruleTypes []string
+		for _, r := range wrapper.Validations {
+			ruleTypes = append(ruleTypes, r.RuleType)
+		}
+		if !containsString(ruleTypes, "maximum") {
+			t.Fatalf("%s checks %v, want maximum", name, ruleTypes)
+		}
+	}
+
+	// The owner dispatches to each wrapper's Validate, which is what carries the
+	// bound now that the field-level rule is gone.
+	for _, jsonName := range []string{"alpha", "beta", "gamma"} {
+		if !hasValidatableField(root.ValidatableFields, jsonName) {
+			t.Fatalf("%s is never validated by Root: %+v", jsonName, root.ValidatableFields)
+		}
+	}
+	// And it does not *also* check the bound itself. That rule converts the field
+	// to a float64; the field is a struct, so the emitted file would not compile
+	// at all -- "cannot convert r.Alpha (variable of struct type RootAlpha) to
+	// type float64".
+	if got := fieldRuleTypes(root, "alpha"); len(got) != 0 {
+		t.Fatalf("Root checks %v on alpha itself; the wrapper's Validate carries those, and a numeric rule against a struct does not compile", got)
+	}
+}
+
+// TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag guards the blast radius of
+// the arm above. Materializing a wrapper changes the property's Go type, which
+// is a change to the API of the generated code, so it is confined to the flag
+// that asks for arbitrary precision. A default run must be what it was: a plain
+// int64 field, with the bound checked by the owner.
+func TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag(t *testing.T) {
+	ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true}, `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"type": "integer", "maximum": 40},
+			"beta": {"type": "array", "items": {"type": "integer", "maximum": 40}}
+		},
+		"required": ["alpha", "beta"]
+	}`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{"alpha": "int64", "beta": "[]int64"} {
+		field := fieldNamedJSON(t, root, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q; BigIntSupport is off, so nothing here may change", jsonName, got, want)
+		}
+	}
+	if got := fieldRuleTypes(root, "alpha"); !containsString(got, "maximum") {
+		t.Fatalf("Root checks %v on alpha, want maximum; with no wrapper to dispatch to, the owner is the only place the bound can live", got)
+	}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*BigIntAliasDef); ok {
+			t.Fatalf("generated a %s big-integer wrapper with BigIntSupport off", d.Name)
+		}
+	}
+}
+
+// TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne guards the other
+// side. Materializing a schema generateTypeDef answers some *other* way does not
+// leave the property alone -- it silently retypes it to that other answer. So
+// the predicate admits only the schema that reaches the BigIntAliasDef arm, and
+// every keyword routing generateTypeDef elsewhere disqualifies it.
+//
+// ["integer","null"] is the sharpest of these, and the reason the rule is stated
+// over the whole type list rather than over "the first non-null type": it
+// resolves to *int64, which decodes a JSON null. The wrapper has no way to say
+// null -- a *named* ["integer","null"] does reach the BigIntAliasDef arm today,
+// and rejects `null` with "value  is not a valid integer" -- so taking this
+// position over would buy precision by breaking a value the schema allows.
+func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) {
+	for name, tc := range map[string]struct{ schema, want string }{
+		"nullable":  {`{"type": ["integer","null"], "maximum": 40}`, "*int64"},
+		"enum":      {`{"type": "integer", "enum": [1,2,3]}`, "RootAlpha"},
+		"const":     {`{"type": "integer", "const": 5}`, "int64"},
+		"allOf":     {`{"type": "integer", "allOf": [{"maximum": 40}]}`, "int64"},
+		"ref":       {`{"$ref": "#/$defs/DefA"}`, "DefA"},
+		"untyped":   {`{"maximum": 40}`, "float64"},
+		"notAnInt":  {`{"type": "number", "maximum": 40}`, "float64"},
+		"objectish": {`{"type": "integer", "properties": {"x": {"type": "string"}}}`, "int64"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+				"title": "Root",
+				"$defs": {"DefA": {"type": "integer", "maximum": 40}},
+				"type": "object",
+				"properties": {"alpha": `+tc.schema+`},
+				"required": ["alpha"]
+			}`)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			field := fieldNamedJSON(t, structNamed(t, ir, "Root"), "alpha")
+			if got := field.Type.GoTypeName(); got != tc.want {
+				t.Fatalf("alpha type = %q, want %q", got, tc.want)
+			}
+			// Several of these do keep a definition of their own -- an enum, an
+			// inferred wrapper, a struct. What none of them may be is the
+			// big-integer wrapper, which is what over-reach here would produce
+			// under exactly the same name.
+			for _, td := range ir.TypeDefs {
+				if d, ok := td.(*BigIntAliasDef); ok && d.Name == "RootAlpha" {
+					t.Fatalf("alpha was materialized into a big-integer wrapper (%s); generateTypeDef answers this schema with %s instead, and taking it over loses that", d.Name, tc.want)
+				}
+			}
+		})
+	}
+
+	// An array element takes the rule on its own. The property path above has an
+	// arm for a nullable schema ahead of this one, so the type-list rule is only
+	// load-bearing here: nothing else stands between ["integer","null"] and the
+	// wrapper that cannot express the null it allows.
+	t.Run("nullable element", func(t *testing.T) {
+		ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+			"title": "Root",
+			"type": "object",
+			"properties": {"beta": {"type": "array", "items": {"type": ["integer","null"], "maximum": 40}}},
+			"required": ["beta"]
+		}`)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		field := fieldNamedJSON(t, structNamed(t, ir, "Root"), "beta")
+		if got := field.Type.GoTypeName(); got != "[]*int64" {
+			t.Fatalf("beta type = %q, want []*int64; the wrapper has no representation for the null this schema allows", got)
+		}
+	})
+}

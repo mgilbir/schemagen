@@ -1144,6 +1144,14 @@ func (g *Generator) isBigIntAlias(name string) bool {
 	return false
 }
 
+// isBigIntAliasType is isBigIntAlias for a field's Go type: an optional field of
+// such a type is pointer-wrapped (its zero is exactly what a present 0 decodes
+// to), and the wrapper behind the pointer is still what carries the keywords.
+func (g *Generator) isBigIntAliasType(t GoType) bool {
+	name := namedTypeName(t)
+	return name != "" && g.isBigIntAlias(name)
+}
+
 // isNotSchema returns true if a type name was generated as a NotSchemaDef.
 func (g *Generator) isNotSchema(name string) bool {
 	for _, td := range g.output.TypeDefs {
@@ -2402,6 +2410,17 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// own Validate says the same thing more completely -- `!= nil`
 				// misses a present JSON null, which {"not":{}} also forbids.
 				if g.isRawValueWrapperType(ft) {
+					continue
+				}
+				// The same applies to the arbitrary-precision wrapper an inline
+				// integer is materialized into under BigIntSupport (see
+				// bigIntInlineWrapper). It was generated from this property's
+				// own schema, so its Validate already carries these keywords --
+				// compared through big.Float, which is the only comparison that
+				// holds for a value no int64 can express. Emitted here the rule
+				// would not compile at all: it converts the field to a float64,
+				// and the field is a struct.
+				if g.isBigIntAliasType(ft) {
 					continue
 				}
 				// A const promoted to a single-value enum type is enforced by that
@@ -4677,7 +4696,72 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &NamedType{Name: nestedName}, nil
 	}
 
+	// An integer written inline under BigIntSupport, which resolveType below
+	// would answer with a bare int64 -- the one Go type the flag exists to get
+	// away from. See bigIntInlineWrapper.
+	if g.bigIntInlineWrapper(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		return &NamedType{Name: nestedName}, nil
+	}
+
 	return g.resolveType(s, parentName+fieldName), nil
+}
+
+// bigIntInlineWrapper reports whether an integer written inline -- as a
+// property's schema, or as the item schema of an array or a map -- has to be
+// materialized into a named type of its own because BigIntSupport is on.
+//
+// BigIntSupport replaces `type DefA int64` with a struct holding an int64, a
+// *big.Int and a flag, so that an integer too large for an int64 still decodes.
+// generateTypeDef builds that struct, and generateTypeDef is only ever reached
+// for a schema that is being given a name -- a $defs entry, the target of a
+// $ref. An integer written inline never had a name, so it never reached the
+// arm: the field stayed an int64 and `{"alpha":10000000000000000000000}` failed
+// in encoding/json before any of the flag's machinery ran. That is the
+// commonest way to write the schema, and the flag did nothing there.
+//
+// Naming the position is the whole fix: the wrapper's behaviour is decided by
+// its own UnmarshalJSON, MarshalJSON and Validate, all of which the $ref case
+// already exercises, and a property named after its position is the shape
+// several other arms here already produce (an inline enum, an inline `not`, an
+// inline object). It does change the field's Go type from int64 to that name,
+// which is why it is confined to the flag: without BigIntSupport nothing here
+// fires.
+//
+// The predicate is exact rather than approximate, because materializing under a
+// schema generateTypeDef would answer some other way does not leave the type
+// alone -- it changes it to that other answer. So it admits only a schema whose
+// "type" is exactly ["integer"] and which states no keyword that routes
+// generateTypeDef to an arm ahead of the primitive one: an enum or const
+// (generateEnumDef), a $ref or $dynamicRef, a composition, a draft-3 type
+// alternative, object keywords (generateStructDef), or the unevaluatedItems
+// shapes that go to the runtime annotation evaluator. What is left is the
+// schema that reaches the BigIntAliasDef arm and nothing else.
+func (g *Generator) bigIntInlineWrapper(s *schema.Schema) bool {
+	if s == nil || !g.config.BigIntSupport {
+		return false
+	}
+	// Exactly {"type":"integer"}. A second type alongside it makes the property
+	// a raw-value wrapper that already keeps the bytes. ["integer","null"] is
+	// excluded for a sharper reason: it resolves to *int64, which decodes a JSON
+	// null correctly, and the wrapper cannot say null at all -- a *named*
+	// ["integer","null"] does reach the BigIntAliasDef arm, and rejects `null`
+	// with "value  is not a valid integer". Widening precision by breaking null
+	// is not a trade this makes; that wrapper needs a null representation first.
+	if len(s.Type) != 1 || s.Type[0] != "integer" {
+		return false
+	}
+	if len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull ||
+		s.EffectiveRef() != "" || s.DynamicRef != "" ||
+		len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		len(s.TypeSchemas) > 0 ||
+		hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil {
+		return false
+	}
+	return g.annotationSchemaDef("", s) == nil
 }
 
 // inlineConstraintWrapper reports whether a property's own schema is one that
@@ -6194,6 +6278,13 @@ func hasProperties(s *schema.Schema) bool {
 // declared or inferred type.
 func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
 	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
+		_ = g.generateTypeDef(itemContext, items)
+		return &NamedType{Name: itemContext}
+	}
+	// An inline integer element of an array (or value of a map) is the same gap
+	// as an inline integer property: []int64 cannot hold what BigIntSupport is
+	// for. See bigIntInlineWrapper.
+	if g.bigIntInlineWrapper(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
 	}

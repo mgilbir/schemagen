@@ -607,45 +607,6 @@ func coExtraPropertyMutations(d *coDoc) []coMutation {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// Known gaps
-// ---------------------------------------------------------------------------
-//
-// A gap is a construct the harness steps around because schemagen is already
-// known to handle it wrongly, kept out so a run reports regressions rather than
-// re-reporting the same defect on every iteration. Each one is a predicate with
-// the minimal reproducer in its doc comment, and each is re-admitted by
-// SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1 so the exclusion stays something that can
-// be checked rather than a claim in a comment. (The env var is read directly
-// rather than through a shared package-level toggle: this mechanism has been
-// added to and removed from the grammar file twice, and a second declaration of
-// the same name there would not compile.)
-
-// coGapBigIntInlineInteger: BigIntSupport rewrites *named* integer types only.
-// An integer written inline as a property's schema stays a plain int64 field,
-// so an integer too large for int64 does not decode at all -- the flag whose
-// entire purpose is arbitrary precision has no effect there.
-//
-//	config   generator.Config{BigIntSupport: true}
-//	schema   {"type":"object","properties":{"alpha":{"type":"integer","maximum":40}},
-//	          "required":["alpha"]}
-//	instance {"alpha":10000000000000000000000}
-//	         json: cannot unmarshal number 10000000000000000000000 into Go
-//	         struct field .Alias.alpha of type int64
-//
-// The same integer behind a $ref is handled correctly, which is what makes this
-// a gap rather than an unimplemented feature:
-//
-//	schema   {"$defs":{"DefA":{"type":"integer","maximum":40}},"type":"object",
-//	          "properties":{"alpha":{"$ref":"#/$defs/DefA"}},"required":["alpha"]}
-//	instance {"alpha":10000000000000000000000}
-//	         decodes; Validate reports
-//	         `alpha.value: 10000000000000000000000 exceeds maximum 40`;
-//	         re-marshals unchanged
-func coGapBigIntInlineInteger() bool {
-	return os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
-}
-
 // coBigIntOverflow is an integer twenty-three digits long: far past int64, and
 // far past every bound the grammar writes, whose lattice sits within a few
 // dozen of zero. It is a json.RawMessage so it survives the mutation's
@@ -663,34 +624,35 @@ var coBigIntOverflow = json.RawMessage("99999999999999999999999")
 // big.Int rather than reporting "cannot be represented as int64", and Validate
 // has to compare through big.Float and reject it against the bound.
 //
-// Only integers reached through a $ref qualify, because only those get the
-// wrapper -- see coGapBigIntInlineInteger, which is what re-admits the rest.
+// Every integer the instance carries qualifies, wherever it was written. That
+// was once restricted to the ones reached through a $ref, because only a *named*
+// integer became the wrapper and an inline one stayed a plain int64 field that
+// no such value could decode into at all (issue #67); an inline integer is now
+// materialized into a wrapper of its own, so the restriction would only be
+// hiding the commonest way to write the schema.
 //
 // A node with no upper bound is skipped: an enormous integer satisfies a lone
 // minimum, so there would be nothing to reject.
 func coBigIntOverflowMutations(d *coDoc) []coMutation {
 	var out []coMutation
-	var walk func(n *coNode, path []any, prop string, viaRef bool)
-	walk = func(n *coNode, path []any, prop string, viaRef bool) {
+	var walk func(n *coNode, path []any, prop string)
+	walk = func(n *coNode, path []any, prop string) {
 		if n.kind == coRef {
-			walk(d.defs[n.refName], path, prop, true)
+			walk(d.defs[n.refName], path, prop)
 			return
 		}
 		switch n.kind {
 		case coObject:
 			for _, p := range n.props {
 				if p.present {
-					walk(p.node, coPath(path, p.name), p.name, false)
+					walk(p.node, coPath(path, p.name), p.name)
 				}
 			}
 		case coArray:
 			if n.numItems > 0 {
-				walk(n.elem, coPath(path, 0), prop, false)
+				walk(n.elem, coPath(path, 0), prop)
 			}
 		case coInteger:
-			if !viaRef && !coGapBigIntInlineInteger() {
-				return
-			}
 			var want []string
 			switch n.maxStyle {
 			case coBoundInclusive:
@@ -708,7 +670,7 @@ func coBigIntOverflowMutations(d *coDoc) []coMutation {
 			})
 		}
 	}
-	walk(d.root, nil, "", false)
+	walk(d.root, nil, "")
 	return out
 }
 
