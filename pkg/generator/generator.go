@@ -4899,6 +4899,31 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}, nil
 	}
 
+	// A variant whose whole schema is an allOf. It states no type of its own, so
+	// every arm above declines it and the fallback below answers `any` -- which
+	// carries no Validate, so the branch's constraints are enforced nowhere and
+	// selection cannot tell it from any other untyped branch. The merge is what
+	// knows the type; name the variant after it, as the inline-object arm does
+	// one type up. See allOfNeedsNamedType.
+	if g.allOfNeedsNamedType(variant) {
+		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
+		if variant.Title != "" {
+			variantName = SchemaNameToGoName(variant.Title)
+		}
+		if !g.generated[variantName] {
+			if err := g.generateTypeDef(variantName, variant); err != nil {
+				return oneOfVariantResult{}, err
+			}
+		}
+		if g.generated[variantName] {
+			return oneOfVariantResult{
+				Name:           variantName,
+				Type:           &NamedType{Name: variantName},
+				RequiredFields: variant.Required,
+			}, nil
+		}
+	}
+
 	// Primitive variant
 	pt := primarySchemaType(variant)
 	if pt != "" {
@@ -5606,10 +5631,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
 	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
 	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
-	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfBuildsObjectType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfNeedsNamedType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		return namedOrPointer(canonical, g.nodesInProgress[s])
 	}
-	if !g.generating[contextName] && (g.allOfBuildsObjectType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	if !g.generating[contextName] && (g.allOfNeedsNamedType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		g.generating[contextName] = true
 		_ = g.generateTypeDef(contextName, s)
 		delete(g.generating, contextName)
@@ -6882,6 +6907,91 @@ func (g *Generator) allOfBuildsObjectType(s *schema.Schema) bool {
 		return !*ap.Bool
 	}
 	return ap.Schema != nil && !ap.Schema.IsBooleanSchema()
+}
+
+// allOfNeedsNamedType reports whether an allOf has to be materialized into a
+// named type for the value to keep what the allOf says about it.
+//
+// The properties case is the one this arm was built for: the merged struct is
+// the only place the branches' fields can live. The scalar case is the same
+// argument one type down. resolveType has no arm that reads an allOf, so a
+// property whose whole schema is {"allOf":[{"$ref":"#/$defs/Stamp"}]} fell past
+// every arm to `any` -- and `any` carries no Validate and is filtered out of the
+// field's own rules, so the Go type and every constraint the branch states were
+// both gone. `type Stamp time.Time` sitting correctly generated in the same file
+// made no difference: it is the *position* that lost it.
+//
+// The second condition is what keeps this from claiming schemas that already
+// resolve. Anything on s itself that gives resolveType an answer -- a type, a
+// $ref, an enum, properties, array or object structure, a sibling composition --
+// disqualifies it, because those arms know things the merge does not and taking
+// the schema over would drop them. What is left is a schema whose allOf is the
+// only thing saying what the value is.
+func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
+	if g.allOfBuildsObjectType(s) {
+		return true
+	}
+	if s == nil || len(s.AllOf) == 0 {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 || hasProperties(s) ||
+		len(s.PatternProperties) > 0 || s.AdditionalProperties != nil ||
+		s.EffectiveRef() != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
+		len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull ||
+		len(s.AnyOf) > 0 || len(s.OneOf) > 0 ||
+		s.Items != nil || len(s.PrefixItems) > 0 {
+		return false
+	}
+	return g.allOfNamesATypeOnPath(s, nil)
+}
+
+// allOfNamesATypeOnPath reports whether some branch of the allOf states a
+// keyword that fixes the value's Go type. It follows $refs and nested allOf
+// chains exactly as allOfHasPropertiesOnPath does, and carries the same on-path
+// set for the same reason: {"allOf":[{"$ref":"#"}]} would otherwise re-enter
+// forever.
+//
+// Only "type", "enum" and "const" are asked about. Those are what the merge
+// reads to decide a Go type, and they are what generateAllOfDef can answer with
+// something better than `any`. A branch stating only a bound -- {"minLength":3}
+// -- is deliberately not here: the merge would infer a type from it and produce
+// a wrapper, which is a wider change of shape than this defect calls for, and
+// the constraint is still dropped in that case. Reported, not smuggled in.
+func (g *Generator) allOfNamesATypeOnPath(s *schema.Schema, onPath map[*schema.Schema]bool) bool {
+	if s == nil || len(s.AllOf) == 0 || onPath[s] {
+		return false
+	}
+	if onPath == nil {
+		onPath = make(map[*schema.Schema]bool)
+	}
+	onPath[s] = true
+	defer delete(onPath, s)
+	for _, sub := range s.AllOf {
+		if sub == nil {
+			continue
+		}
+		if branchNamesAType(sub) {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if branchNamesAType(r) {
+					return true
+				}
+				if g.allOfNamesATypeOnPath(r, onPath) {
+					return true
+				}
+			}
+		}
+		if g.allOfNamesATypeOnPath(sub, onPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func branchNamesAType(s *schema.Schema) bool {
+	return len(s.Type) > 0 || len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull
 }
 
 // allOfNamesObjectKeysOnPath is allOfNamesObjectKeys carrying the set of schemas

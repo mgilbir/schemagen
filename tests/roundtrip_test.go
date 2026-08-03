@@ -2642,6 +2642,55 @@ func TestAllOfKeepsBranchType(t *testing.T) {
 	)
 }
 
+// TestAllOfInlinePositionsKeepBranchType is the sibling half of
+// TestAllOfKeepsBranchType. That one reaches the allOf through a $ref, so the
+// merge runs under generateTypeDef and lands on a named type. Written inline,
+// the same subschema is resolved rather than named, and resolveType has no arm
+// that reads an allOf: it fell past every arm to `any`, which carries no
+// Validate and is filtered out of the field's own rules. So both the Go type and
+// every constraint the branch states were gone -- while the branch's own
+// definition sat correctly generated in the same file.
+//
+// Six positions resolve rather than name, and each is listed below with a
+// document that must be accepted beside one that must be refused. The tuple slot
+// is here as the control: prefixItems materializes its positions through
+// generateTypeDef, so it was already right, and a change that fixed the others
+// by breaking the shared path would show up here.
+func TestAllOfInlinePositionsKeepBranchType(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_inline_positions.json",
+		[]string{
+			`{}`,
+			`{"chain":"2020-01-02T03:04:05Z"}`,   // property
+			`{"nested":"2020-01-02T03:04:05Z"}`,  // allOf inside an allOf
+			`{"pick":"red"}`,                     // property, enum branch
+			`{"lvl":"high"}`,                     // property, const branch
+			`{"ip":"192.0.2.7"}`,                 // property, ipv4 branch
+			`{"raw":"a"}`,                        // property, heterogeneous enum
+			`{"raw":1}`,                          //
+			`{"raw":null}`,                       //
+			`{"list":["2020-01-02T03:04:05Z"]}`,  // array element
+			`{"map":{"k":"green"}}`,              // map value
+			`{"tuple":["2020-01-02T03:04:05Z"]}`, // tuple slot (control)
+			`{"union":"red"}`,                    // oneOf branch
+			`{"union":7}`,                        // its sibling branch
+		},
+		[]string{
+			`{"chain":"nope"}`,     // not a date-time
+			`{"nested":"nope"}`,    //
+			`{"pick":"blue"}`,      // outside the enum
+			`{"lvl":"low"}`,        // outside the const
+			`{"ip":"2001:db8::1"}`, // an IPv6 address against an ipv4 branch
+			`{"raw":"zzz"}`,        // outside the heterogeneous enum
+			`{"raw":2}`,            //
+			`{"list":["nope"]}`,    // through an array element
+			`{"map":{"k":"blue"}}`, // through a map value
+			`{"tuple":["nope"]}`,   // through the tuple slot
+			`{"union":"blue"}`,     // matches neither oneOf branch
+		},
+	)
+}
+
 // TestAllOfKeepsBigIntWrapper is the --big-int half of the same defect: the
 // allOf arm built a plain int64 alias where the no-allOf arm builds the
 // arbitrary-precision wrapper, so a value too large for an int64 was silently
