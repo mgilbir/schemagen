@@ -1522,6 +1522,105 @@ func TestTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
 	)
 }
 
+// TestPatternPropertiesObjectValidatesInEveryPosition is the behavioural half of
+// issue #96, and of the pattern half of #98. An object whose entire shape is
+// `patternProperties` declares no property names, so resolveType's object arm --
+// which asked hasProperties -- did not take it and the fallback answered
+// map[string]any. The pattern was never matched, the value sub-schema was never
+// checked and a sibling `additionalProperties` was dropped with the struct: the
+// generated Validate returned nil for every document in `invalid` below.
+//
+// The schema states one shape and puts it in each position the generator reaches
+// an object schema through, because this defect's family is "fixed in one arm,
+// not its twin" -- #84, #91, #92 and #97 were four spellings of one keyword's
+// gap. The root and $ref positions already worked; they are here so that a
+// change which fixes an inline property by breaking them is not mistaken for a
+// pass. Each invalid document isolates a single position, so a position that
+// regresses names itself.
+//
+// The valid list carries the controls that matter more than the rejections: a
+// key the pattern does not match is unconstrained, an absent property is not a
+// violation, an explicit null satisfies ["object","null"], and the integer
+// branch of the oneOf is still selectable. A fix that started rejecting these
+// would be worse than the bug.
+func TestPatternPropertiesObjectValidatesInEveryPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/pattern_properties_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{"aa":"abc"},"ref":{"aa":"abc"},"inItems":[{"aa":"abc"}],` +
+				`"mapValue":{"k":{"aa":"abc"}},"nullable":{"aa":"abc"},"noType":{"aa":"abc"},` +
+				`"inAllOf":{"aa":"abc"},"inTuple":[{"aa":"abc"}],"nested":{"inner":{"aa":"abc"}},` +
+				`"inOneOf":{"aa":"abc"},"spare":{"aa":"abc"}}`,
+			`{"nullable":null}`, // ["object","null"] still admits the null
+			`{"inOneOf":5}`,     // the integer branch is still selectable
+			`{"prop":{"zz":1}}`, // no pattern matches, so no sub-schema applies
+			`{"prop":{}}`,       // an empty object matches nothing and violates nothing
+			`{"inItems":[]}`,    // no element, no check
+			`{"inTuple":[]}`,    // the tuple position is absent, not empty
+		},
+		[]string{
+			`{"prop":{"aa":"ab"}}`,             // inline property
+			`{"ref":{"aa":"ab"}}`,              // behind a $ref to a named definition
+			`{"inItems":[{"aa":"ab"}]}`,        // array element
+			`{"mapValue":{"k":{"aa":"ab"}}}`,   // map value
+			`{"nullable":{"aa":"ab"}}`,         // the nullable spelling
+			`{"noType":{"aa":"ab"}}`,           // patternProperties with no declared "type"
+			`{"inAllOf":{"aa":"ab"}}`,          // inside an allOf branch
+			`{"inTuple":[{"aa":"ab"}]}`,        // a prefixItems position
+			`{"nested":{"inner":{"aa":"ab"}}}`, // a property of a nested object
+			`{"inOneOf":{"aa":"ab"}}`,          // the object branch of a oneOf union
+			`{"spare":{"aa":"ab"}}`,            // the parent's own overflow map
+			`{"prop":{"aa":5}}`,                // matching key, wrong JSON type
+		},
+	)
+}
+
+// TestWholeObjectMapValidatesInEveryPosition is the behavioural half of issue
+// #97 -- a named definition whose whole shape is `additionalProperties`, whose
+// value type survived so a wrong JSON type died in the decoder while `minLength`
+// was enforced nowhere -- carried across the same positions as the pattern shape
+// above, since the two defects meet in the arms that decide whether an object
+// gets a type of its own.
+//
+// The reproducer #97 states (the named-definition position) already passes on
+// the branch this lands on, fixed by the overflow-value descent that went with
+// #92. Positions it did not reach are the substance here: a lone allOf branch, a
+// tuple slot, a oneOf branch, and an object that states no "type" at all -- that
+// last one typed map[string]string correctly and then never checked it, because
+// the value schema was looked up with the declared type rather than the inferred
+// one the Go type had been chosen by.
+func TestWholeObjectMapValidatesInEveryPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/whole_object_map_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":{"k":"ab"},"ref":{"k":"ab"},"inItems":[{"k":"ab"}],` +
+				`"mapValue":{"k":{"j":"ab"}},"nullable":{"k":"ab"},"noType":{"k":"ab"},` +
+				`"inAllOf":{"k":"ab"},"inTuple":[{"k":"ab"}],"nested":{"inner":{"k":"ab"}},` +
+				`"inOneOf":{"k":"ab"},"spare":{"k":"ab"}}`,
+			`{"nullable":null}`,
+			`{"inOneOf":5}`,
+			`{"prop":{}}`,
+			`{"inItems":[]}`,
+			`{"inTuple":[]}`,
+		},
+		[]string{
+			`{"prop":{"k":"a"}}`,
+			`{"ref":{"k":"a"}}`,
+			`{"inItems":[{"k":"a"}]}`,
+			`{"mapValue":{"k":{"j":"a"}}}`,
+			`{"nullable":{"k":"a"}}`,
+			`{"noType":{"k":"a"}}`,
+			`{"inAllOf":{"k":"a"}}`,
+			`{"inTuple":[{"k":"a"}]}`,
+			`{"nested":{"inner":{"k":"a"}}}`,
+			`{"inOneOf":{"k":"a"}}`,
+			`{"spare":{"k":"a"}}`,
+		},
+	)
+}
+
 // TestBigIntNullableDefinitionAcceptsNull is the behavioural half of issue #85.
 // A named ["integer","null"] reaches the big-integer wrapper, which held an
 // int64 and a *big.Int and had no state for null: `{"n":null}` was rejected as

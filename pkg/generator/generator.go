@@ -1539,10 +1539,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// (they say nothing about object shape) is not an object union and must not
 	// force a struct — those fall through to the primitive/array alias paths so
 	// the oneOf branches attach to the declared/inferred type.
-	if hasProperties(s) || len(s.PatternProperties) > 0 || g.oneOfDescribesObject(s) || s.UnevaluatedProperties != nil {
+	if namesObjectKeys(s) || g.oneOfDescribesObject(s) || s.UnevaluatedProperties != nil {
 		// Only accept non-object data for schemas with object keywords (properties/patternProperties)
 		// but without oneOf (which is type-agnostic and should validate all types).
-		canAcceptNonObject := (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
+		canAcceptNonObject := (namesObjectKeys(s) || s.UnevaluatedProperties != nil) && len(s.OneOf) == 0
 		return g.generateStructDef(name, s, canAcceptNonObject)
 	}
 
@@ -1983,17 +1983,27 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 // that struct enforces: an overflow map on its own validates nothing, and a
 // struct built for one would be a worse type than the `any` it replaced.
 //
+// A schema-valued `additionalProperties` is one of them, because that struct
+// does check it: with nothing declared beside it the overflow map holds every
+// key, and generatePropertylessObjectDef hangs the sub-schema's own keywords off
+// it (see buildOverflowValidation). Leaving it out was the reason
+// {"allOf":[{"type":"object","additionalProperties":{"type":"string",
+// "minLength":7}}]} came out `type X any` -- the merge had the keyword by then
+// and this predicate did not ask for it.
+//
 // Two keywords are deliberately absent. With no properties declared,
 // `additionalProperties: false` forbids every key, so honouring it would turn a
-// schema that accepts any object into one that accepts only {}. And `type`
-// alone would make the struct reject non-object instances, which the `any`
-// alias accepts today. Both are corrections the spec supports, and both are far
+// schema that accepts any object into one that accepts only {} -- which is why
+// the arm above admits a schema value and not a boolean one. And `type` alone
+// would make the struct reject non-object instances, which the `any` alias
+// accepts today. Both are corrections the spec supports, and both are far
 // larger claims than the merge gap this predicate exists to close.
 func (g *Generator) propertylessObjectHasChecks(s *schema.Schema) bool {
 	if !g.validationKeywordsEnabled() {
 		return false
 	}
-	return s.PropertyNames != nil ||
+	return mapValueSchema(s, "object") != nil ||
+		s.PropertyNames != nil ||
 		s.MinProperties != nil || s.MaxProperties != nil ||
 		len(s.Required) > 0 ||
 		len(s.DependentRequired) > 0 ||
@@ -2843,6 +2853,26 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			merged.PatternProperties[k] = v
 		}
 	}
+	// A branch's own additionalProperties, in the one case where the parent's
+	// overflow map holds exactly the keys that branch governs.
+	//
+	// additionalProperties is scoped to the schema stating it, so a branch's
+	// keyword speaks about every key of the instance -- including any the parent
+	// or a sibling branch declares. Hanging it off the parent's overflow map,
+	// which holds only the keys nothing declares, would check it on a smaller
+	// set than the schema demands; that is why the merge drops it, and why
+	// issue #96 records the general case as needing a per-branch overflow notion
+	// rather than this.
+	//
+	// When nothing anywhere in the merge names a property or a pattern, the gap
+	// closes: every key is additional in the branch's scope and every key lands
+	// in the overflow map in the parent's, so the two sets are the same one and
+	// the keyword is enforced exactly. Only a lone branch is taken -- two
+	// branches each stating additionalProperties would have to be satisfied
+	// together, which one overflow map cannot say.
+	if merged.AdditionalProperties == nil && len(merged.Properties) == 0 && len(merged.PatternProperties) == 0 {
+		merged.AdditionalProperties = g.soleBranchAdditionalProperties(s.AllOf, make(map[*schema.Schema]bool))
+	}
 	// Preserve allOf on the merged schema so that collectEvaluatedProperties
 	// can walk the original allOf branches to find evaluated property names
 	// and patterns (since mergeAllOfInto only copies properties/required/constraints,
@@ -2926,9 +2956,17 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		merged.UnevaluatedItems = s.UnevaluatedItems
 	}
 
-	// If no sub-schema contributed properties, don't generate an empty struct.
+	// If no sub-schema contributed a named key, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
-	if len(merged.Properties) == 0 {
+	//
+	// patternProperties counts as a named key here, for the reason namesObjectKeys
+	// gives: a merge that produced patterns has an object shape only a struct can
+	// carry, and the alias arms below answer `any` for it -- so
+	// {"allOf":[{"type":"object","patternProperties":{...}}]} validated nothing,
+	// while the identical branch written without the allOf around it validated
+	// fully. generateStructDef builds the pattern bucket whether or not any
+	// property was declared beside it.
+	if len(merged.Properties) == 0 && len(merged.PatternProperties) == 0 {
 		// Check for type-only merged result (null-only or multi-type like ["integer","string"]).
 		// These don't map to a single Go type, so use TypeOnlySchemaDef.
 		// We check the merged type directly rather than calling extractTypeOnlySchemaDef,
@@ -3103,6 +3141,63 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		}
 	}
 	return nil
+}
+
+// soleBranchAdditionalProperties returns the one additionalProperties stated
+// anywhere in an allOf, or nil when none is or more than one is.
+//
+// It follows the same routes into a branch that mergeAllOfBranches does -- a
+// $ref chain, a nested allOf -- so it sees the branches the merge saw, and
+// onPath is shared with nothing: each call starts a fresh set, and a node
+// already on the path answers nothing so a self-referential allOf terminates.
+//
+// "More than one" answers nil rather than picking: two branches each stating
+// the keyword both govern every key, and satisfying both is an allOf of the two
+// sub-schemas, which the single overflow value type this feeds cannot express.
+// A boolean additionalProperties is returned like any other -- the caller's own
+// arms decide what to do with `false`, exactly as they do for one written on the
+// schema itself.
+func (g *Generator) soleBranchAdditionalProperties(allOf []*schema.Schema, onPath map[*schema.Schema]bool) *schema.SchemaOrBool {
+	var found *schema.SchemaOrBool
+	take := func(ap *schema.SchemaOrBool) bool {
+		if ap == nil {
+			return true
+		}
+		if found != nil {
+			return false
+		}
+		found = ap
+		return true
+	}
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		resolved := sub
+		for {
+			if !take(resolved.AdditionalProperties) {
+				return nil
+			}
+			if nested := g.soleBranchAdditionalProperties(resolved.AllOf, onPath); nested != nil {
+				if found != nil && found != nested {
+					return nil
+				}
+				found = nested
+			}
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
+			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil || onPath[r] {
+				break
+			}
+			onPath[r] = true
+			resolved = r
+		}
+	}
+	return found
 }
 
 // mergeAllOfInto recursively merges properties, required fields, and validation
@@ -4612,8 +4707,14 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}, nil
 	}
 
-	// Inline object variant → create a named type, disambiguated by index
-	if hasProperties(variant) {
+	// Inline object variant → create a named type, disambiguated by index.
+	// The predicate is objectShapeNeedsNamedType rather than hasProperties: a
+	// branch whose whole shape is patternProperties, or a schema-valued
+	// additionalProperties, describes an object just as much as one that
+	// declares property names. The primitive arm below answers map[string]any
+	// for those -- a variant with no Validate for the union's dispatch to call,
+	// so the branch's own keywords decide nothing.
+	if g.objectShapeNeedsNamedType(variant) {
 		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
@@ -4983,8 +5084,8 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if inner == "" {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}, nil
 		}
-		// Nullable object with properties → pointer to named struct
-		if inner == "object" && hasProperties(s) {
+		// Nullable object that names its keys → pointer to named struct
+		if inner == "object" && namesObjectKeys(s) {
 			nestedName := parentName + fieldName
 			if err := g.generateTypeDef(nestedName, s); err != nil {
 				return nil, err
@@ -5283,7 +5384,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		if inner == "" {
 			return &PointerType{Inner: &PrimitiveType{Name: "any"}}
 		}
-		if inner == "object" && hasProperties(s) {
+		if inner == "object" && namesObjectKeys(s) {
 			n, _ := g.materializeNamed(s, contextName)
 			return &PointerType{Inner: &NamedType{Name: n}}
 		}
@@ -5320,13 +5421,14 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &PointerType{Inner: baseType}
 	}
 
-	// Object with properties → nested struct (explicit type:"object" or inferred from properties keyword)
-	if primaryType == "object" && hasProperties(s) {
+	// Object that names its keys → nested struct (explicit type:"object", or
+	// inferred from the properties/patternProperties keyword). See namesObjectKeys.
+	if primaryType == "object" && namesObjectKeys(s) {
 		n, cyclic := g.materializeNamed(s, contextName)
 		return namedOrPointer(n, cyclic)
 	}
-	// Properties without explicit type → pointer to struct (nil when absent, enabling omitempty)
-	if primaryType == "" && hasProperties(s) {
+	// Named keys without explicit type → pointer to struct (nil when absent, enabling omitempty)
+	if primaryType == "" && namesObjectKeys(s) {
 		n, _ := g.materializeNamed(s, contextName)
 		return &PointerType{Inner: &NamedType{Name: n}}
 	}
@@ -5336,10 +5438,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
 	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
 	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
-	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfBuildsObjectType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		return namedOrPointer(canonical, g.nodesInProgress[s])
 	}
-	if !g.generating[contextName] && (g.allOfHasProperties(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	if !g.generating[contextName] && (g.allOfBuildsObjectType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		g.generating[contextName] = true
 		_ = g.generateTypeDef(contextName, s)
 		delete(g.generating, contextName)
@@ -6547,14 +6649,47 @@ func isNullOnly(s *schema.Schema) bool {
 // primitives and should not be turned into a merged struct.
 // Self-references ($ref: "#") are excluded because they point back to the root
 // schema and don't represent actual property contributions from the anyOf variant.
-// allOfHasProperties returns true if any allOf sub-schema contributes properties
-// (directly or via $ref resolution). Used by resolveType to decide whether a
-// schema with allOf but no direct properties should generate a struct.
-func (g *Generator) allOfHasProperties(s *schema.Schema) bool {
-	return g.allOfHasPropertiesOnPath(s, nil)
+// allOfNamesObjectKeys returns true if any allOf sub-schema contributes a named
+// key -- a property, or a pattern the keys must match -- directly or via $ref
+// resolution. Used by resolveType to decide whether a schema with allOf but no
+// direct properties should generate a struct.
+//
+// patternProperties counts because the merge carries it into the struct exactly
+// as it carries properties (see mergeAllOfBranches), so a branch that states one
+// does produce a type with checks on it. Asking about properties alone left
+// {"allOf":[{"type":"object","patternProperties":{...}}]} typed `any`.
+func (g *Generator) allOfNamesObjectKeys(s *schema.Schema) bool {
+	return g.allOfNamesObjectKeysOnPath(s, nil)
 }
 
-// allOfHasPropertiesOnPath is allOfHasProperties carrying the set of schemas
+// allOfBuildsObjectType reports whether generateAllOfDef would answer this
+// schema's allOf with a type that carries object checks, which is what
+// resolveType needs to know before delegating to it rather than typing the
+// value from the schema's own (absent) keywords.
+//
+// The second arm mirrors the narrow case the merge takes: no branch names a key,
+// and exactly one states a schema-valued additionalProperties, so the parent's
+// overflow map holds exactly the keys that keyword governs. A boolean one is
+// excluded on the same terms propertylessObjectHasChecks excludes it.
+func (g *Generator) allOfBuildsObjectType(s *schema.Schema) bool {
+	if s == nil || len(s.AllOf) == 0 {
+		return false
+	}
+	if g.allOfNamesObjectKeys(s) {
+		return true
+	}
+	// The parent's own keys are the other half of what the merge sees, and the
+	// merge's overflow arm requires the merged schema to name none at all. The
+	// arm above answered for the branches; this answers for the parent, so the
+	// two conditions are the same one.
+	if namesObjectKeys(s) {
+		return false
+	}
+	ap := g.soleBranchAdditionalProperties(s.AllOf, make(map[*schema.Schema]bool))
+	return ap != nil && ap.Schema != nil && !ap.Schema.IsBooleanSchema()
+}
+
+// allOfNamesObjectKeysOnPath is allOfNamesObjectKeys carrying the set of schemas
 // whose allOf the search is already inside. Both recursions below follow $ref,
 // so an allOf branch pointing back at the schema that owns it --
 // {"allOf": [{"$ref": "#"}]} -- re-enters this function forever, a stack
@@ -6563,7 +6698,7 @@ func (g *Generator) allOfHasProperties(s *schema.Schema) bool {
 // is there to be found, that frame finds it. The mark comes off on the way out,
 // leaving sibling branches that name the same schema free to answer for
 // themselves, and the set is only allocated for a schema that has an allOf.
-func (g *Generator) allOfHasPropertiesOnPath(s *schema.Schema, onPath map[*schema.Schema]bool) bool {
+func (g *Generator) allOfNamesObjectKeysOnPath(s *schema.Schema, onPath map[*schema.Schema]bool) bool {
 	if s == nil || len(s.AllOf) == 0 || onPath[s] {
 		return false
 	}
@@ -6573,22 +6708,22 @@ func (g *Generator) allOfHasPropertiesOnPath(s *schema.Schema, onPath map[*schem
 	onPath[s] = true
 	defer delete(onPath, s)
 	for _, sub := range s.AllOf {
-		if len(sub.Properties) > 0 {
+		if namesObjectKeys(sub) {
 			return true
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if len(r.Properties) > 0 {
+				if namesObjectKeys(r) {
 					return true
 				}
 				// Recursively check resolved schema's allOf chain.
-				if g.allOfHasPropertiesOnPath(r, onPath) {
+				if g.allOfNamesObjectKeysOnPath(r, onPath) {
 					return true
 				}
 			}
 		}
 		// Recursively check nested allOf.
-		if g.allOfHasPropertiesOnPath(sub, onPath) {
+		if g.allOfNamesObjectKeysOnPath(sub, onPath) {
 			return true
 		}
 	}
@@ -6665,6 +6800,52 @@ func (g *Generator) constrainsObjectShape(s *schema.Schema) bool {
 // hasProperties returns true if the schema defines any properties.
 func hasProperties(s *schema.Schema) bool {
 	return len(s.Properties) > 0
+}
+
+// namesObjectKeys reports whether an object schema decides its keys one group at
+// a time -- by naming them under `properties`, or by naming the patterns they
+// have to match under `patternProperties`. Either way the object is not one map
+// of uniform values, so it is a struct: the generated type keeps a field per
+// declared property and a pattern bucket beside it, and the sub-schemas hang off
+// those.
+//
+// It is the object half of the condition generateTypeDef has always used to
+// route a schema to generateStructDef. resolveType used hasProperties alone, so an object whose
+// entire shape was patternProperties had nothing to declare, fell past the
+// object arm and came out map[string]any -- with the patterns unmatched, the
+// value sub-schemas unchecked and any sibling additionalProperties dropped
+// (issue #96, and the map half of #98). The two now agree, so a node cannot be
+// routed to a struct when it is named and to a bare map when it is written
+// inline.
+func namesObjectKeys(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	return hasProperties(s) || len(s.PatternProperties) > 0
+}
+
+// objectShapeNeedsNamedType reports whether an object schema states something
+// that only a generated type of its own can enforce -- because the position
+// holding it dispatches through a Validate method and has no other way to reach
+// the schema.
+//
+// Two shapes qualify, and they are the two generateTypeDef already answers with
+// a type carrying checks: an object that names its keys (a struct, see
+// namesObjectKeys), and an object whose whole shape is a schema-valued
+// additionalProperties (a struct whose overflow map is checked against that
+// sub-schema).
+//
+// A boolean additionalProperties is deliberately not one of them. There the
+// keyword is a verdict on unknown keys rather than a description of them, and
+// with no properties declared `false` forbids every key -- so naming the
+// position for it would turn a schema that accepts any object into one that
+// accepts {} alone. That is a correction the spec supports, but it is a
+// different claim from this one and belongs to whoever makes it deliberately.
+func (g *Generator) objectShapeNeedsNamedType(s *schema.Schema) bool {
+	if s == nil || s.IsBooleanSchema() {
+		return false
+	}
+	return namesObjectKeys(s) || mapValueSchema(s, g.effectiveType(s)) != nil
 }
 
 // resolveArrayItemType resolves the Go type for an array's items schema.
@@ -6803,6 +6984,13 @@ func (g *Generator) inferTypeFromConstraints(s *schema.Schema) string {
 	// Structural object keywords → object
 	// required, additionalProperties, dependentRequired, dependentSchemas,
 	// propertyNames, and unevaluatedProperties only apply to objects.
+	//
+	// patternProperties is deliberately not one of them, though it is just as
+	// object-only. resolveType's own no-declared-type arm already materializes
+	// the struct for it (see namesObjectKeys), so inferring the type here would
+	// be a second route to the same answer -- and neither could then be shown to
+	// be doing the work, while this one is read by four other callers that have
+	// nothing to do with the defect.
 	if s.AdditionalProperties != nil || s.UnevaluatedProperties != nil {
 		return "object"
 	}
@@ -7636,11 +7824,29 @@ func containerElem(t GoType) (GoType, bool) {
 
 // containerElemSchema returns the sub-schema governing what a container holds:
 // `items` for a slice, `additionalProperties` for a map.
+//
+// The map arm asks effectiveType, not primarySchemaType, because that is the
+// question resolveType asked when it made this position a Go map in the first
+// place. Asking the narrower one instead answered nil for every object that
+// states no "type" of its own -- {"additionalProperties":{"type":"string",
+// "minLength":7}} is an object by inference and was typed map[string]string,
+// but the descent stopped before it and minLength was enforced nowhere.
 func (g *Generator) containerElemSchema(s *schema.Schema, isMap bool) *schema.Schema {
 	if isMap {
-		return mapValueSchema(s, primarySchemaType(s))
+		return mapValueSchema(s, g.effectiveType(s))
 	}
 	return g.singleItemsSchema(s)
+}
+
+// effectiveType is the JSON type a schema is generated as: the one it declares,
+// or the one its keywords imply when it declares none. resolveType picks a Go
+// type by exactly this rule, so anything that must agree with the Go type it
+// produced has to ask the same question.
+func (g *Generator) effectiveType(s *schema.Schema) string {
+	if t := primarySchemaType(s); t != "" {
+		return t
+	}
+	return g.inferTypeFromConstraints(s)
 }
 
 // buildItemValidation walks a slice- or map-typed field's Go type and its
@@ -11256,7 +11462,7 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 
 	// Non-ref position schema: for schemas with structural keywords (type,
 	// properties, etc.), generate a named type so positional validation works.
-	if hasStructuralKeywords(resolved) {
+	if hasStructuralKeywords(resolved) || g.objectShapeNeedsNamedType(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true
@@ -11348,6 +11554,12 @@ func sortedKeys[V any](m map[string]V) []string {
 // produce a meaningful Go type with validation (properties, type constraints,
 // validation keywords, etc.). Used to decide whether an inline tuple position
 // schema is worth generating as a named type.
+//
+// It answers only for the keywords listed below; an object whose shape is
+// patternProperties or a schema-valued additionalProperties is recognised by
+// objectShapeNeedsNamedType, which the caller consults alongside this. Without
+// that the position fell through to the JSONType arm and got "expected object"
+// and nothing else -- the tuple slot accepted any object at all.
 func hasStructuralKeywords(s *schema.Schema) bool {
 	if s == nil || s.IsBooleanSchema() {
 		return false
