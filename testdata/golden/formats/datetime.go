@@ -10,7 +10,7 @@ import (
 )
 
 type Event struct {
-	EndsAt               time.Time                  `json:"ends_at,omitempty"`
+	EndsAt               *time.Time                 `json:"ends_at,omitempty"`
 	Name                 string                     `json:"name"`
 	StartsAt             time.Time                  `json:"starts_at"`
 	URL                  *string                    `json:"url,omitempty"`

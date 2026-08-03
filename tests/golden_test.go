@@ -92,6 +92,8 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/format_alias_root", "testdata/schemas/regression/format_alias_root.json", "testdata/golden/regression/format_alias_root.go"},
 		{"regression/format_map_values", "testdata/schemas/regression/format_map_values.json", "testdata/golden/regression/format_map_values.go"},
 		{"regression/enum_alias_delegation", "testdata/schemas/regression/enum_alias_delegation.json", "testdata/golden/regression/enum_alias_delegation.go"},
+		{"regression/format_alias_assertions", "testdata/schemas/regression/format_alias_assertions.json", "testdata/golden/regression/format_alias_assertions.go"},
+		{"regression/allof_single_branch_type", "testdata/schemas/regression/allof_single_branch_type.json", "testdata/golden/regression/allof_single_branch_type.go"},
 	}
 }
 

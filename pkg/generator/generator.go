@@ -356,7 +356,8 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 			}
 			g.config.CrossPackage.noteTypeInfo(s,
 				g.zeroLiteralForType(&NamedType{Name: name}),
-				localTypeIsValidatable(td))
+				localTypeIsValidatable(td),
+				g.isZeroLossyNamedType(&NamedType{Name: name}))
 		}
 	}
 
@@ -905,6 +906,22 @@ func (g *Generator) addRequiredImports() {
 					}
 					if v.RuleType == "minLength" || v.RuleType == "maxLength" {
 						needsUTF8 = true
+					}
+					// A format check on the alias's own value reaches for the
+					// same packages the struct-field arm does.
+					if v.RuleType == "format" {
+						switch v.Value.(string) {
+						case "date", "time":
+							needsTime = true
+						case "email", "idn-email":
+							needsNetMail = true
+						case "uri", "uri-reference", "iri", "iri-reference", "uri-template":
+							needsNetURL = true
+						case "uuid", "hostname", "idn-hostname", "json-pointer", "relative-json-pointer", "regex", "duration":
+							needsStdRegexp = true
+						case "ipv4", "ipv6":
+							needsNetIP = true
+						}
 					}
 				}
 			}
@@ -3060,6 +3077,20 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// fully. generateStructDef builds the pattern bucket whether or not any
 	// property was declared beside it.
 	if len(merged.Properties) == 0 && len(merged.PatternProperties) == 0 {
+		// An enum a branch contributed is the whole of what that branch asserts,
+		// and it is the one keyword nothing downstream can infer a type from. So
+		// {"allOf":[{"$ref":"#/$defs/SomeEnum"}]} reached the `any` fall-through
+		// at the end of this block, and `type X any` carries no Validate: every
+		// value outside the enum was accepted. This is the same dispatch
+		// generateTypeDef makes before it looks at anything else, for the same
+		// reason -- the enum decides the type as well as the constraint.
+		if g.validationKeywordsEnabled() {
+			merged = promoteConstToEnum(merged)
+			if len(merged.Enum) > 0 {
+				g.generated[name] = true
+				return g.generateEnumDef(name, merged)
+			}
+		}
 		// Check for type-only merged result (null-only or multi-type like ["integer","string"]).
 		// These don't map to a single Go type, so use TypeOnlySchemaDef.
 		// We check the merged type directly rather than calling extractTypeOnlySchemaDef,
@@ -3158,6 +3189,24 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
 			g.generated[name] = true
+			if g.config.BigIntSupport && primaryType == "integer" {
+				// The same wrapper an integer without an allOf gets. Without this
+				// arm, --big-int silently stopped applying the moment a
+				// definition was written {"allOf":[{"$ref": someInteger}]}: the
+				// alias was a plain int64, and the arbitrary precision the flag
+				// exists to provide was gone with no diagnostic.
+				g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
+					Name:           name,
+					Description:    s.Description,
+					Validations:    rules,
+					AnyOfVariants:  anyOfVariants,
+					OneOfVariants:  oneOfVariants,
+					NeedsNullCheck: !schemaAllowsNull(merged),
+					AllowsNull:     schemaAllowsNull(merged),
+					StrictInteger:  g.requiresStrictIntegerToken(merged),
+				})
+				return nil
+			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
 				Underlying:     goType,
@@ -3165,6 +3214,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
+				StrictInteger:  primaryType == "integer" && g.requiresStrictIntegerToken(merged),
 				NeedsNullCheck: !schemaAllowsNull(merged),
 			})
 			return nil
@@ -3960,6 +4010,31 @@ func mergeConstraints(dst, src *schema.Schema) {
 		// Two distinct patterns must both match; a single regex can't express
 		// that in general, so the first is kept (a known narrow limitation).
 		dst.Pattern = src.Pattern
+	}
+	if dst.Format == nil && src.Format != nil {
+		// A branch's `format` binds the same instance the branch's `type` does,
+		// and the type was already being read off the branch -- so leaving the
+		// format behind produced a merged schema that said "string" where the
+		// branch said "a date-time string". {"allOf":[{"$ref":"#/$defs/Stamp"}]}
+		// then generated `type X string` while Stamp itself was time.Time: two
+		// Go types for one schema, and the format assertion enforced on one of
+		// them only.
+		//
+		// First-set-wins, as `pattern` above: two different formats on one
+		// instance is a schema that almost nothing can satisfy, and there is one
+		// slot to put an answer in.
+		dst.Format = src.Format
+	}
+	// enum and const say which values are legal at all, so a branch stating one
+	// is the whole of what that branch asserts. Dropped, the merged schema had
+	// nothing left to infer a type from and fell through to `type X any`, which
+	// carries no Validate -- so every member of the enum and every value outside
+	// it were accepted alike. Intersecting two enums is what allOf means, but a
+	// merged schema holds one list; the first is kept, which under-enforces
+	// rather than rejecting values the schema allows. Same direction as
+	// mergePropertyNames, which already resolves this pair that way.
+	if len(dst.Enum) == 0 && dst.Const == nil && !dst.ConstIsNull {
+		dst.Enum, dst.Const, dst.ConstIsNull = src.Enum, src.Const, src.ConstIsNull
 	}
 	// Array constraints.
 	dst.MinItems = tighterLowerFlexInt(dst.MinItems, src.MinItems)
@@ -6631,13 +6706,29 @@ func (g *Generator) isStructType(name string) bool {
 
 // isZeroLossyPrimitive returns true if the Go type is a primitive whose zero value
 // would be lost with omitempty ("", false, int64=0, float64=0.0).
+//
+// time.Time and netip.Addr are worse off than the scalars, not better, and for
+// the reason the whole rule exists. omitempty never omits a struct, so an
+// optional property the document did not carry is not merely invisible -- it is
+// *invented into the output*: an absent `format: date-time` marshals as
+// "0001-01-01T00:00:00Z" through time.Time's own MarshalJSON, and an absent
+// `format: ipv4` as "" through netip.Addr's MarshalText. Both are values the
+// document never held and the schema never saw.
+//
+// ",omitzero" would omit them, since time.Time has IsZero and netip.Addr is
+// comparable, but it omits by *value*: a document that genuinely carries
+// "0001-01-01T00:00:00Z" would come back without the property. That trades
+// inventing a value for dropping one, which is the same round-trip break in the
+// other direction. The pointer distinguishes the two exactly -- nil is absent,
+// non-nil is present whatever the instant -- which is the contract every other
+// zero-lossy type here already has.
 func isZeroLossyPrimitive(goType GoType) bool {
 	pt, ok := goType.(*PrimitiveType)
 	if !ok {
 		return false
 	}
 	switch pt.Name {
-	case "string", "bool", "int64", "float64":
+	case "string", "bool", "int64", "float64", "time.Time", "netip.Addr":
 		return true
 	}
 	return false
@@ -6662,14 +6753,17 @@ func (g *Generator) isZeroLossyNamedType(t GoType) bool {
 	}
 	if nt.PkgAlias != "" {
 		// A type owned by another package of a cross-package run. The owning
-		// generator published its zero literal, which is the same fact reached
-		// by the only route available here; a type whose owner has not been
-		// generated yet leaves the literal empty and answers no.
-		switch nt.foreignZeroLiteral {
-		case `""`, "0", "false":
-			return true
-		}
-		return false
+		// generator ran this same predicate over it and published the answer;
+		// a type whose owner has not been generated yet published nothing and
+		// answers no.
+		//
+		// The answer is carried rather than re-derived from the published zero
+		// literal, which is what this used to do. The two are not the same
+		// question, and reading one for the other made a change to the literal
+		// silently change which foreign fields got a pointer: an alias over
+		// time.Time has no zero literal at all -- it is a struct -- yet it is
+		// exactly the kind of type that needs one.
+		return nt.foreignZeroLossy
 	}
 	return g.zeroLossyTypeName(nt.Name, 0)
 }
@@ -10384,12 +10478,41 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 		if ruleVacuousForType(goType, r.RuleType) {
 			continue
 		}
+		if r.RuleType == "format" && !aliasFormatCheckable(goType, r) {
+			continue
+		}
 		rules = append(rules, r)
 	}
 	if len(rules) == 0 {
 		return nil
 	}
 	return rules
+}
+
+// aliasFormatCheckable reports whether the alias template can express this
+// format check against a value of the alias's own type.
+//
+// The check is written over the receiver converted back to the underlying type,
+// so the two have to agree: the string formats read a string, and ipv4/ipv6 ask
+// netip.Addr whether the address it parsed is of the right family. A format rule
+// that reached an alias of some other shape -- a `format` stated beside an
+// allOf, say, which resolves by its branches and not by the format -- has no
+// expression here, and emitting one anyway would not compile.
+func aliasFormatCheckable(goType GoType, r ValidationRule) bool {
+	format, ok := r.Value.(string)
+	if !ok {
+		return false
+	}
+	pt, isPrimitive := goType.(*PrimitiveType)
+	if !isPrimitive {
+		return false
+	}
+	switch format {
+	case "ipv4", "ipv6":
+		return pt.Name == "netip.Addr"
+	default:
+		return formatNeedsValidation(format) && pt.Name == "string"
+	}
 }
 
 // aliasVariantKeywords are the keywords an anyOf/oneOf branch of a scalar or
@@ -12140,6 +12263,7 @@ func (g *Generator) foreignTypeFor(resolved *schema.Schema) (*NamedType, bool) {
 		PkgAlias:           alias,
 		foreignZeroLiteral: qt.ZeroLiteral,
 		foreignValidatable: qt.Validatable,
+		foreignZeroLossy:   qt.ZeroLossy,
 	}, true
 }
 

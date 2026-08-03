@@ -69,6 +69,7 @@ func FuncMap() template.FuncMap {
 		"mkUnevalItemsCtxIn":  mkUnevalItemsCtxInFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
+		"mkAliasFormatCtx":    mkAliasFormatCtxFunc,
 		"itemRange":           itemRangeFunc,
 		"itemElem":            itemElemFunc,
 		"itemPath":            itemPathFunc,
@@ -225,6 +226,17 @@ type BigIntVariantContext struct {
 
 func mkBigIntVariantCtxFunc(recv string, rules []generator.ValidationRule) BigIntVariantContext {
 	return BigIntVariantContext{Recv: recv, Rules: rules}
+}
+
+// AliasFormatContext is passed to the alias_format_check template, which needs
+// the receiver name alongside the format the rule names.
+type AliasFormatContext struct {
+	Recv  string
+	Value any
+}
+
+func mkAliasFormatCtxFunc(recv string, rule generator.ValidationRule) AliasFormatContext {
+	return AliasFormatContext{Recv: recv, Value: rule.Value}
 }
 
 // itemRangeFunc renders what a level's loop ranges over: the slice itself at

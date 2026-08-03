@@ -28,6 +28,9 @@ func (a Addr) MarshalJSON() ([]byte, error) {
 
 // Validate checks Addr against its JSON Schema constraints.
 func (a Addr) Validate() error {
+	if _a := netip.Addr(a); _a.IsValid() && !_a.Is4() {
+		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
+	}
 	return nil
 }
 
@@ -77,10 +80,10 @@ func (s StampAlias) Validate() error {
 
 // FormatAliasPositions - Every position a format that maps to a self-marshalling Go type can reach through a named definition
 type FormatAliasPositions struct {
-	Addr                 Addr                       `json:"addr,omitempty"`
+	Addr                 *Addr                      `json:"addr,omitempty"`
 	AddrList             []Addr                     `json:"addr_list,omitzero"`
-	ChainedStamp         StampAlias                 `json:"chained_stamp,omitempty"`
-	OptionalStamp        Stamp                      `json:"optional_stamp,omitempty"`
+	ChainedStamp         *StampAlias                `json:"chained_stamp,omitempty"`
+	OptionalStamp        *Stamp                     `json:"optional_stamp,omitempty"`
 	RequiredStamp        Stamp                      `json:"required_stamp"`
 	StampGrid            [][]Stamp                  `json:"stamp_grid,omitzero"`
 	StampList            []Stamp                    `json:"stamp_list,omitzero"`
@@ -173,11 +176,7 @@ func (f FormatAliasPositions) Validate() error {
 			}
 		}
 	}
-	// An optional property the source JSON did not carry left its Go zero
-	// behind, which is not a value the schema ever saw. _jsonKeys records the
-	// keys the JSON had; when nil the value was not built from JSON and
-	// presence is unknowable, so the check still runs.
-	if f._jsonKeys == nil || f._jsonKeys["addr"] {
+	if f.Addr != nil {
 		if err := f.Addr.Validate(); err != nil {
 			return fmt.Errorf("addr.%w", err)
 		}
@@ -187,20 +186,12 @@ func (f FormatAliasPositions) Validate() error {
 			return fmt.Errorf("addr_list[%d].%w", _i, err)
 		}
 	}
-	// An optional property the source JSON did not carry left its Go zero
-	// behind, which is not a value the schema ever saw. _jsonKeys records the
-	// keys the JSON had; when nil the value was not built from JSON and
-	// presence is unknowable, so the check still runs.
-	if f._jsonKeys == nil || f._jsonKeys["chained_stamp"] {
+	if f.ChainedStamp != nil {
 		if err := f.ChainedStamp.Validate(); err != nil {
 			return fmt.Errorf("chained_stamp.%w", err)
 		}
 	}
-	// An optional property the source JSON did not carry left its Go zero
-	// behind, which is not a value the schema ever saw. _jsonKeys records the
-	// keys the JSON had; when nil the value was not built from JSON and
-	// presence is unknowable, so the check still runs.
-	if f._jsonKeys == nil || f._jsonKeys["optional_stamp"] {
+	if f.OptionalStamp != nil {
 		if err := f.OptionalStamp.Validate(); err != nil {
 			return fmt.Errorf("optional_stamp.%w", err)
 		}

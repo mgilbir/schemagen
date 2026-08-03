@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatAliasAssertions",
+  "description": "Formats behind a $ref, where the assertion has to be carried by the named type's own Validate",
+  "type": "object",
+  "properties": {
+    "v4": { "$ref": "#/$defs/V4" },
+    "v6": { "$ref": "#/$defs/V6" },
+    "email": { "$ref": "#/$defs/Email" },
+    "uuid": { "$ref": "#/$defs/UUID" },
+    "day": { "$ref": "#/$defs/Day" },
+    "site": { "$ref": "#/$defs/Site" },
+    "v4_list": { "type": "array", "items": { "$ref": "#/$defs/V4" } },
+    "email_map": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Email" } }
+  },
+  "$defs": {
+    "V4": { "type": "string", "format": "ipv4" },
+    "V6": { "type": "string", "format": "ipv6" },
+    "Email": { "type": "string", "format": "email" },
+    "UUID": { "type": "string", "format": "uuid" },
+    "Day": { "type": "string", "format": "date" },
+    "Site": { "type": "string", "format": "uri" }
+  }
+}

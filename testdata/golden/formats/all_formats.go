@@ -18,7 +18,7 @@ type NetworkConfig struct {
 	CreatedDate          *string                    `json:"created_date,omitempty"`
 	DeviceID             *string                    `json:"device_id,omitempty"`
 	DocsRef              *string                    `json:"docs_ref,omitempty"`
-	GatewayIP            netip.Addr                 `json:"gateway_ip,omitempty"`
+	GatewayIP            *netip.Addr                `json:"gateway_ip,omitempty"`
 	Homepage             *string                    `json:"homepage,omitempty"`
 	Host                 *string                    `json:"host,omitempty"`
 	Name                 string                     `json:"name"`
@@ -153,8 +153,8 @@ func (n NetworkConfig) Validate() error {
 		}
 	}
 	if n._jsonKeys["gateway_ip"] {
-		if n.GatewayIP.IsValid() && !n.GatewayIP.Is6() {
-			return fmt.Errorf("gateway_ip: value %q is not a valid IPv6 address", n.GatewayIP)
+		if _a := n.GatewayIP; _a != nil && _a.IsValid() && !_a.Is6() {
+			return fmt.Errorf("gateway_ip: value %q is not a valid IPv6 address", *_a)
 		}
 	}
 	if n._jsonKeys["homepage"] {
@@ -178,8 +178,8 @@ func (n NetworkConfig) Validate() error {
 			}
 		}
 	}
-	if n.PrimaryIP.IsValid() && !n.PrimaryIP.Is4() {
-		return fmt.Errorf("primary_ip: value %q is not a valid IPv4 address", n.PrimaryIP)
+	if _a := n.PrimaryIP; _a.IsValid() && !_a.Is4() {
+		return fmt.Errorf("primary_ip: value %q is not a valid IPv4 address", _a)
 	}
 	if n._jsonKeys["start_time"] {
 		if n.StartTime != nil && *n.StartTime != "" {

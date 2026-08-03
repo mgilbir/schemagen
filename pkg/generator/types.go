@@ -27,6 +27,11 @@ type NamedType struct {
 	// types (the local typedef lookup cannot see foreign definitions).
 	foreignZeroLiteral string
 	foreignValidatable bool
+	// foreignZeroLossy is the owning package's answer to isZeroLossyNamedType.
+	// It is carried rather than re-derived here because a type can need the
+	// pointer without having a zero literal to be recognised by -- an alias over
+	// time.Time is a struct, and its literal is empty.
+	foreignZeroLossy bool
 }
 
 func (t *NamedType) GoTypeName() string {

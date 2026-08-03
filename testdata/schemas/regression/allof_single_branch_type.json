@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfSingleBranchType",
+  "description": "An allOf whose branches carry the format or the enum that decides the type",
+  "type": "object",
+  "properties": {
+    "stamp": { "$ref": "#/$defs/WrappedStamp" },
+    "addr": { "$ref": "#/$defs/WrappedAddr" },
+    "choice": { "$ref": "#/$defs/WrappedChoice" },
+    "raw": { "$ref": "#/$defs/WrappedRaw" },
+    "level": { "$ref": "#/$defs/WrappedLevel" }
+  },
+  "required": ["stamp", "choice", "raw"],
+  "$defs": {
+    "Stamp": { "type": "string", "format": "date-time" },
+    "WrappedStamp": { "allOf": [{ "$ref": "#/$defs/Stamp" }] },
+    "Addr": { "type": "string", "format": "ipv4" },
+    "WrappedAddr": { "allOf": [{ "$ref": "#/$defs/Addr" }] },
+    "Choice": { "type": "string", "enum": ["red", "green"] },
+    "WrappedChoice": { "allOf": [{ "$ref": "#/$defs/Choice" }] },
+    "Raw": { "enum": ["a", 1, null] },
+    "WrappedRaw": { "allOf": [{ "$ref": "#/$defs/Raw" }] },
+    "WrappedLevel": { "allOf": [{ "const": "high" }] }
+  }
+}

@@ -457,15 +457,34 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- /*
+	The nil arms are not decoration. An optional ipv4/ipv6 property is a
+	*netip.Addr, so that an absent one is nil rather than the zero Addr that
+	netip.Addr's MarshalText writes back out as "". A JSON null leaves the
+	pointer nil while _jsonKeys still records the key as present, so the guard
+	above lets this run and the family test must dereference nothing.
+	*/ -}}
 	{{- if eq .Value "ipv4"}}
-	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is4() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", {{$recv}}.{{.FieldName}})
+	{{- if .IsPointer}}
+	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is4() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", *_a)
+	}
+	{{- else}}
+	if _a := {{$recv}}.{{.FieldName}}; _a.IsValid() && !_a.Is4() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", _a)
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .Value "ipv6"}}
-	if {{$recv}}.{{.FieldName}}.IsValid() && !{{$recv}}.{{.FieldName}}.Is6() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", {{$recv}}.{{.FieldName}})
+	{{- if .IsPointer}}
+	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is6() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", *_a)
 	}
+	{{- else}}
+	if _a := {{$recv}}.{{.FieldName}}; _a.IsValid() && !_a.Is6() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", _a)
+	}
+	{{- end}}
 	{{- end}}
 	{{- end}}
 	{{- if .Optional}}

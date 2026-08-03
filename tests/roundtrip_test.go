@@ -2216,9 +2216,7 @@ func fail(format string, args ...any) {
 	os.Exit(1)
 }
 
-// Every property is present, so the round trip is exact rather than
-// approximate: an absent optional would be re-emitted as its Go zero, which is
-// a separate defect and not the one under test here.
+// Every property is present, so the round trip is exact.
 const doc = ` + "`" + `{"addr":"192.0.2.7","addr_list":["192.0.2.8"],"chained_stamp":"2020-01-02T03:04:05Z","optional_stamp":"2020-01-02T03:04:05Z","required_stamp":"2020-01-02T03:04:05Z","stamp_grid":[["2020-01-02T03:04:05Z"]],"stamp_list":["2020-01-02T03:04:05Z"],"stamp_map":{"k":"2020-01-02T03:04:05Z"},"tuple":["2020-01-02T03:04:05Z","192.0.2.9"]}` + "`" + `
 
 func main() {
@@ -2239,8 +2237,8 @@ func main() {
 		got   time.Time
 	}{
 		{"required_stamp", time.Time(v.RequiredStamp)},
-		{"optional_stamp", time.Time(v.OptionalStamp)},
-		{"chained_stamp", time.Time(v.ChainedStamp)},
+		{"optional_stamp", time.Time(*v.OptionalStamp)},
+		{"chained_stamp", time.Time(*v.ChainedStamp)},
 		{"stamp_list[0]", time.Time(v.StampList[0])},
 		{"stamp_map[k]", time.Time(v.StampMap["k"])},
 		{"stamp_grid[0][0]", time.Time(v.StampGrid[0][0])},
@@ -2249,7 +2247,7 @@ func main() {
 			fail("%s decoded to %v, want %v", c.where, c.got, want)
 		}
 	}
-	if got := netip.Addr(v.Addr).String(); got != "192.0.2.7" {
+	if got := netip.Addr(*v.Addr).String(); got != "192.0.2.7" {
 		fail("addr decoded to %q, want 192.0.2.7", got)
 	}
 	if got := netip.Addr(v.AddrList[0]).String(); got != "192.0.2.8" {
@@ -2264,6 +2262,46 @@ func main() {
 	}
 	if string(out) != doc {
 		fail("round trip changed the document\n  in:  %s\n  out: %s", doc, string(out))
+	}
+
+	// A document carrying only what it must. Every optional property is absent,
+	// and none of them may appear in the output: omitempty never omits a struct,
+	// so before the pointer these came back as "0001-01-01T00:00:00Z" and "" --
+	// values the document never held. The pointer is also what keeps the other
+	// direction honest, which the zero-instant case below measures.
+	minimal := ` + "`" + `{"required_stamp":"2020-01-02T03:04:05Z"}` + "`" + `
+	var mv FormatAliasPositions
+	if err := json.Unmarshal([]byte(minimal), &mv); err != nil {
+		fail("decoding %s: %v", minimal, err)
+	}
+	if err := mv.Validate(); err != nil {
+		fail("validating %s: %v", minimal, err)
+	}
+	mOut, err := json.Marshal(mv)
+	if err != nil {
+		fail("marshalling the minimal document: %v", err)
+	}
+	if string(mOut) != minimal {
+		fail("an absent optional property was invented into the output\n  in:  %s\n  out: %s", minimal, string(mOut))
+	}
+
+	// The zero instant is a legitimate value, not an absence. ",omitzero" would
+	// have omitted it -- that is the reason the pointer was chosen over it --
+	// so a document that carries it must get it back.
+	zeroInstant := ` + "`" + `{"optional_stamp":"0001-01-01T00:00:00Z","required_stamp":"2020-01-02T03:04:05Z"}` + "`" + `
+	var zv FormatAliasPositions
+	if err := json.Unmarshal([]byte(zeroInstant), &zv); err != nil {
+		fail("decoding %s: %v", zeroInstant, err)
+	}
+	if zv.OptionalStamp == nil {
+		fail("%s: optional_stamp is nil; a present zero instant is not an absence", zeroInstant)
+	}
+	zOut, err := json.Marshal(zv)
+	if err != nil {
+		fail("marshalling the zero-instant document: %v", err)
+	}
+	if string(zOut) != zeroInstant {
+		fail("a present zero instant was dropped from the output\n  in:  %s\n  out: %s", zeroInstant, string(zOut))
 	}
 
 	// A malformed value must still be refused. The whole point is that the
@@ -2498,5 +2536,166 @@ func main() {
 		"testdata/schemas/regression/enum_alias_delegation.json",
 		"enum_alias_delegation_test",
 		mainGo,
+	)
+}
+
+// TestFormatAliasAssertsItsFormat covers a `format` that reached a named type.
+// The rule was collected onto the alias and the alias template had no arm to
+// emit it, so every format assertion behind a $ref was enforced nowhere: `type
+// V4 netip.Addr` and `type Email string` both validated to `return nil` while
+// the identical subschema written inline as a property was checked. An IPv6
+// address satisfied an ipv4 definition, and "not-an-email" satisfied an email
+// one.
+//
+// runValidationCases is the right harness here: the valid half must still pass
+// (the risk in adding an assertion is rejecting what the schema allows) and the
+// invalid half is what the missing check let through. The list covers the alias
+// itself, an element of a slice of it and a value of a map of it, since the
+// element positions reach the same Validate by a different route.
+func TestFormatAliasAssertsItsFormat(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_alias_assertions.json",
+		[]string{
+			`{}`,
+			`{"v4":"192.0.2.7"}`,
+			`{"v6":"2001:db8::1"}`,
+			`{"email":"a@b.test"}`,
+			`{"uuid":"123e4567-e89b-12d3-a456-426614174000"}`,
+			`{"day":"2020-01-02"}`,
+			`{"site":"https://example.test/x"}`,
+			`{"v4_list":["192.0.2.7","192.0.2.8"]}`,
+			`{"email_map":{"k":"a@b.test"}}`,
+		},
+		[]string{
+			`{"v4":"2001:db8::1"}`,              // an IPv6 address against an ipv4 definition
+			`{"v6":"192.0.2.7"}`,                // and the reverse
+			`{"email":"not-an-email"}`,          //
+			`{"uuid":"123e4567-e89b-12d3"}`,     // too short to be a UUID
+			`{"day":"2020-13-45"}`,              // not a date
+			`{"day":"2020-01-02T03:04:05Z"}`,    // a date-time is not a date
+			`{"site":"not a uri"}`,              // no scheme
+			`{"v4_list":["2001:db8::1"]}`,       // through a slice element
+			`{"email_map":{"k":"not-email"}}`,   // through a map value
+			`{"v4":"192.0.2.7","v6":"1.2.3.4"}`, // the second property is the one that fails
+		},
+	)
+}
+
+// TestNullIPAddressDoesNotPanic guards the interaction between the two changes
+// above. An optional ipv4/ipv6 property became a *netip.Addr so an absent one
+// is nil rather than the zero Addr, which netip.Addr's MarshalText writes back
+// out as "". The family assertion was written against a value and read
+// `n.Field.IsValid()`; a JSON null leaves the pointer nil while _jsonKeys still
+// records the key as present, so that line panicked on a document the schema
+// permits nothing about.
+//
+// `{"name":"x","primary_ip":"1.2.3.4"}` is here as the control: without the
+// required property present, Validate returns before it ever reaches the
+// address arm, and the panic hides.
+func TestNullIPAddressDoesNotPanic(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/formats/all_formats.json",
+		[]string{
+			`{"name":"x","primary_ip":"1.2.3.4"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"2001:db8::1"}`,
+		},
+		[]string{
+			`{"name":"x","primary_ip":"2001:db8::1"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"1.2.3.4"}`,
+		},
+	)
+}
+
+// TestAllOfKeepsBranchType is the third of the family: an allOf branch's
+// contribution to the *type* was dropped where its contribution to the bounds
+// was kept.
+//
+// `format` was not merged, so {"allOf":[{"$ref":"#/$defs/Stamp"}]} produced
+// `type WrappedStamp string` while Stamp itself was time.Time -- two Go types
+// for one schema, and the format assertion on one of them only. `enum` was not
+// merged either, and it is the sharp case: nothing downstream can infer a type
+// from an enum, so the merged schema fell through to `type X any`, which cannot
+// carry a Validate at all. Every value outside the enum was accepted. `const`
+// takes the same route through promoteConstToEnum, and under --big-int the
+// integer arm lost the arbitrary-precision wrapper the flag exists to provide.
+//
+// The valid half matters as much as the invalid: a fix that merged the enum but
+// got the type wrong would reject the members themselves.
+func TestAllOfKeepsBranchType(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_single_branch_type.json",
+		[]string{
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a"}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"green","raw":1}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":null}`,
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","addr":"192.0.2.7","level":"high"}`,
+		},
+		[]string{
+			`{"stamp":"not-a-timestamp","choice":"red","raw":"a"}`,                           // the format the branch carried
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"blue","raw":"a"}`,                     // outside the branch's enum
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"zzz"}`,                    // outside the heterogeneous enum
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":2}`,                        // a number outside it
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","addr":"2001:db8::1"}`, // ipv4 branch, v6 value
+			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a","level":"low"}`,        // outside the branch's const
+		},
+	)
+}
+
+// TestAllOfKeepsBigIntWrapper is the --big-int half of the same defect: the
+// allOf arm built a plain int64 alias where the no-allOf arm builds the
+// arbitrary-precision wrapper, so a value too large for an int64 was silently
+// truncated -- or refused -- under the flag whose whole purpose is to carry it.
+func TestAllOfKeepsBigIntWrapper(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	const doc = ` + "`" + `{"n":123456789012345678901234567890}` + "`" + `
+	var v AllOfBigInt
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if err := v.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "validating %s: %v\n", doc, err)
+		os.Exit(1)
+	}
+	if !v.N.IsBigInt() {
+		fmt.Fprintf(os.Stderr, "%s: N.IsBigInt() = false; the value does not fit an int64\n", doc)
+		os.Exit(1)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "marshalling: %v\n", err)
+		os.Exit(1)
+	}
+	if string(out) != doc {
+		fmt.Fprintf(os.Stderr, "round trip: %s -> %s\n", doc, string(out))
+		os.Exit(1)
+	}
+	// The branch's own bound still binds.
+	var under AllOfBigInt
+	if err := json.Unmarshal([]byte(` + "`" + `{"n":3}` + "`" + `), &under); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding a small n: %v\n", err)
+		os.Exit(1)
+	}
+	if err := under.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "n=3 passed a minimum of 5 carried by the allOf branch")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/allof_bigint.json",
+		"allof_bigint_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
 	)
 }

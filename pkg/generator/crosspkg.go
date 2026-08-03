@@ -38,12 +38,18 @@ type qualifiedType struct {
 	// the owning generator knows the underlying type).
 	ZeroLiteral string
 	Validatable bool
-	infoKnown   bool
+	// ZeroLossy is the owning generator's isZeroLossyNamedType answer: whether
+	// an optional field of this type needs a pointer to tell absent from a
+	// present zero. Published rather than left to the referencing package to
+	// infer from ZeroLiteral, which cannot see a type whose zero has no literal
+	// at all -- an alias over time.Time, for one.
+	ZeroLossy bool
+	infoKnown bool
 }
 
 // noteTypeInfo records validation info for a type previously registered via
 // RecordType.
-func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, zeroLiteral string, validatable bool) {
+func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, zeroLiteral string, validatable, zeroLossy bool) {
 	if r == nil || s == nil {
 		return
 	}
@@ -53,6 +59,7 @@ func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, zeroLiteral string
 	}
 	qt.ZeroLiteral = zeroLiteral
 	qt.Validatable = validatable
+	qt.ZeroLossy = zeroLossy
 	qt.infoKnown = true
 	r.types[s] = qt
 }
