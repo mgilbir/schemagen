@@ -3008,3 +3008,107 @@ func TestAllOfBranchOverflowIsEnforced(t *testing.T) {
 		},
 	)
 }
+
+// TestAllOfObjectEnumIsEnforced covers an enum an allOf branch states over whole
+// objects, beside properties the parent declares.
+//
+// The merge produces a struct, and the enum's members are whole documents, so
+// there is no field for the check to hang off: it is a comparison of the
+// document against each member. Dropped, every object satisfying `properties`
+// was accepted rather than only the ones the enum permits.
+//
+// Both sides of the comparison go through one JSON encoder, which is what makes
+// it sound: `reordered` pins that key order does not decide the answer and
+// `nested` that a member is compared as a whole document rather than key by key.
+// `plain` is the control -- an allOf branch stating no enum must leave the
+// object unconstrained.
+//
+// Every verdict was cross-checked against python-jsonschema and js-ajv through
+// Bowtie; the two agree with each other on all of them.
+func TestAllOfObjectEnumIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_object_enum.json",
+		[]string{
+			`{}`,
+			`{"inline":{"k":1}}`,
+			`{"inline":{"k":2}}`,
+			`{"viaRef":{"k":1}}`,
+			// The same document written with its keys in either order.
+			`{"reordered":{"a":1,"b":2}}`,
+			`{"reordered":{"b":2,"a":1}}`,
+			// A const is a one-member enum, and the merge carries it in the Const
+			// slot rather than the Enum one.
+			`{"constMember":{"k":1}}`,
+			`{"nested":{"k":{"n":[1,2]}}}`,
+			// The same document with a number written another way. Both sides go
+			// through one encoder, so 1.0 and 1 are the same member -- a
+			// comparison against the bytes as they arrived would refuse this.
+			`{"inline":{"k":1.0}}`,
+			`{"nested":{"k":{"n":[1.0,2]}}}`,
+			`{"standalone":{"k":1}}`,
+			// Control: a branch with no enum leaves the object to `properties`.
+			`{"plain":{"k":1}}`,
+			`{"plain":{"k":99}}`,
+		},
+		[]string{
+			`{"inline":{"k":3}}`,       // satisfies properties, outside the enum
+			`{"inline":{}}`,            // no member is the empty object
+			`{"inline":{"k":1,"z":9}}`, // a member plus an extra key is not a member
+			`{"viaRef":{"k":3}}`,
+			`{"reordered":{"a":1}}`,        // a subset of a member is not a member
+			`{"constMember":{"k":2}}`,      // outside the const
+			`{"nested":{"k":{"n":[2,1]}}}`, // array order does decide it
+			`{"standalone":{"k":3}}`,
+		},
+	)
+}
+
+// TestHandBuiltObjectEnumValidate pins the one thing a whole-document enum
+// cannot answer: a value that was never a document.
+//
+// The comparison is against the JSON the unmarshaler kept, because that is the
+// instance the enum speaks about. A hand-constructed struct has none, and its Go
+// zero values are not something the schema ever saw -- an optional field left
+// nil is indistinguishable from an absent property, so marshalling the struct
+// and comparing that would refuse values a caller built correctly. The check is
+// skipped there instead, the same way required-property presence is, and the
+// gate is what makes that a decision rather than an accident: without it the nil
+// map encodes as `null` and every hand-built value is rejected.
+func TestHandBuiltObjectEnumValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Built by hand: no document, so the enum has nothing to compare against.
+	k := int64(3)
+	byHand := AllOfObjectEnumInline{K: &k}
+	if err := byHand.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built value rejected: %v\n", err)
+		os.Exit(1)
+	}
+	// The same value decoded from JSON does carry its document, and k=3 is not
+	// a member. This is the accept-control's other half: the skip above is
+	// about the absence of a document, not about the check being inert.
+	var fromJSON AllOfObjectEnumInline
+	if err := json.Unmarshal([]byte(` + "`" + `{"k":3}` + "`" + `), &fromJSON); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding: %v\n", err)
+		os.Exit(1)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "a decoded {\"k\":3} passed an enum permitting only {\"k\":1} and {\"k\":2}")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/allof_object_enum.json",
+		"allof_object_enum_handbuilt_test",
+		mainGo,
+	)
+}

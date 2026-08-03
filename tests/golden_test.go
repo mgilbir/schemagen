@@ -102,6 +102,9 @@ func allGoldenTests() []goldenTestCase {
 		// the overflow map they always had, and a branch stating no overflow
 		// keyword gains nothing.
 		{"regression/allof_branch_overflow", "testdata/schemas/regression/allof_branch_overflow.json", "testdata/golden/regression/allof_branch_overflow.go"},
+		// Pins that an enum a branch stated over whole objects is carried by the
+		// merged struct, and that a branch stating none leaves it alone.
+		{"regression/allof_object_enum", "testdata/schemas/regression/allof_object_enum.json", "testdata/golden/regression/allof_object_enum.go"},
 	}
 }
 

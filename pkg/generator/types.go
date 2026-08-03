@@ -102,6 +102,7 @@ type StructDef struct {
 	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
 	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf/anyOf sub-schemas
+	ObjectEnum             []string                  // canonical JSON of the whole documents an enum permits, when one was merged in beside the declared properties
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
@@ -363,6 +364,12 @@ func (d *StructDef) HasBranchOverflowChecks() bool {
 	return len(d.BranchOverflowChecks) > 0
 }
 
+// HasObjectEnum returns true if an enum over whole documents applies to the
+// struct.
+func (d *StructDef) HasObjectEnum() bool {
+	return len(d.ObjectEnum) > 0
+}
+
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
 // is a schema (not just true/false) with validation rules for each unevaluated value.
 func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
@@ -387,6 +394,11 @@ func (d *StructDef) NeedsRawProps() bool {
 	// values too. Only the raw map has both; the declared fields have been
 	// decoded into Go types by then and the overflow map never held them.
 	if len(d.BranchOverflowChecks) > 0 {
+		return true
+	}
+	// An enum over whole documents is compared against the document, which is
+	// what the raw map is.
+	if len(d.ObjectEnum) > 0 {
 		return true
 	}
 	if d.UnevaluatedProperties == nil {

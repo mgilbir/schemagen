@@ -1222,6 +1222,44 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasObjectEnum}}
+	{{- /* An enum an allOf branch stated about the whole object. Its members are
+	       documents, so the comparison is against the document -- read off the
+	       raw JSON the unmarshaler kept and put through the same encoder the
+	       members were, which settles key order and number format. A value that
+	       was not built from JSON has no document to compare, and is passed over
+	       the way a required-property check is. */}}
+	// enum: the object as a whole must be one of the permitted documents.
+	if {{$recv}}._jsonRawProps != nil {
+		_enumAllowed := []string{
+			{{- range $struct.ObjectEnum}}
+			{{goStringQuote .}},
+			{{- end}}
+		}
+		_enumRaw, _enumErr := json.Marshal({{$recv}}._jsonRawProps)
+		if _enumErr != nil {
+			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+		}
+		var _enumAny any
+		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
+		}
+		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		if _enumErr != nil {
+			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+		}
+		_enumOK := false
+		for _, _allowed := range _enumAllowed {
+			if string(_enumCanon) == _allowed {
+				_enumOK = true
+				break
+			}
+		}
+		if !_enumOK {
+			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+		}
+	}
+	{{- end}}
 	{{- if $struct.HasUnevaluatedProperties}}
 	{{- $uneval := $struct.UnevaluatedProperties}}
 	{{- if and (not $uneval.IsAllowed) (not $uneval.AllEvaluated)}}

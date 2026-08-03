@@ -774,6 +774,11 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(sd.ObjectEnum) > 0 {
+				// The document is re-encoded to compare it against the members.
+				needsFmt = true
+				needsJSON = true
+			}
 			// Validatable fields emit fmt.Errorf to wrap the nested error path,
 			// so the file needs fmt even when the struct has no other fmt use.
 			if len(sd.ValidatableFields) > 0 {
@@ -2941,6 +2946,25 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 
+	// An enum a branch contributed is about the whole document, not any one
+	// field, so it cannot become a field rule and the merged struct has to carry
+	// it. generateTypeDef routes a schema stating its own enum to generateEnumDef
+	// long before this, so the only way one reaches a struct is the allOf merge.
+	//
+	// A `const` is read through the same promotion the rest of the generator
+	// uses: it is a one-member enum, and the merge carries it in the Const slot
+	// rather than the Enum one, so asking only about Enum would enforce
+	// {"allOf":[{"enum":[{"k":1}]}]} and drop {"allOf":[{"const":{"k":1}}]}.
+	var objectEnum []string
+	if g.validationKeywordsEnabled() {
+		if promoted := promoteConstToEnum(s); len(promoted.Enum) > 0 {
+			objectEnum = canonicalJSONValues(promoted.Enum)
+		}
+	}
+	if len(objectEnum) > 0 {
+		needsUnmarshal = true
+	}
+
 	// Extract propertyNames constraint.
 	var propertyNamesDef *PropertyNamesDef
 	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
@@ -2968,6 +2992,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		NonObjectValidations:   nonObjRules,
 		UnevaluatedProperties:  unevalProps,
 		BranchOverflowChecks:   branchChecks,
+		ObjectEnum:             objectEnum,
 		ObjectOneOfs:           objectOneOfs,
 		ObjectAnyOfs:           objectAnyOfs,
 		ObjectConditionals:     objectConditionals,
@@ -5161,6 +5186,37 @@ func isHeterogeneousEnum(values []any) bool {
 		}
 	}
 	return false
+}
+
+// canonicalJSONValues renders enum members to the form an instance is compared
+// against: the JSON encoding of the decoded value, which is what makes the
+// comparison sound at all. An enum member and an instance are equal as JSON
+// *documents*, not as byte strings -- {"a":1,"b":2} and {"b":2,"a":1} are the
+// same document, and so are 1, 1.0 and 1e0 -- so both sides are put through one
+// encoder before being compared. encoding/json writes a map's keys in sorted
+// order and a number in one format, which settles both.
+//
+// This is the form generateRawEnumDef already stores and the form its Validate
+// already computes for the instance. Sharing it is what keeps a whole-document
+// enum answering the same way whether the merge left it a standalone raw enum
+// type or a struct that carries the enum itself.
+//
+// A member that cannot be encoded is dropped rather than compared as its Go
+// rendering: an entry no instance could ever equal would turn the enum into a
+// rejection of documents the schema admits.
+func canonicalJSONValues(values []any) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		b, err := json.Marshal(v)
+		if err != nil {
+			continue
+		}
+		out = append(out, string(b))
+	}
+	if len(out) != len(values) {
+		return nil
+	}
+	return out
 }
 
 // generateRawEnumDef generates a json.RawMessage-based enum for heterogeneous
