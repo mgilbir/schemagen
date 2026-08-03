@@ -1466,6 +1466,18 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 		return fmt.Errorf("{{$path}}: has %d items, maximum is {{.Value}}", {{$args}}, len({{$elem}}))
 	}
 	{{- end}}
+	{{- if eq .RuleType "format"}}
+	{{- /*
+	An element's format, which reached nothing at all until now: elementRules
+	dropped the keyword through its default arm, so
+	{"items":{"type":"string","format":"ipv4"}} accepted an IPv6 address in
+	every element while the identical subschema written as a property was
+	checked. Same helper as every other position, chosen by StringBacked as
+	usual -- the element is a netip.Addr where the format maps to one, and the
+	JSON string where it does not.
+	*/ -}}
+	{{- template "string_format_check" (mkStringFormatCtxArgs (formatElemExpr $elem .StringBacked) $path $args .Value .StringBacked)}}
+	{{- end}}
 	{{- if eq .RuleType "const"}}
 	{
 		_constGot, _constErr := json.Marshal({{$elem}})

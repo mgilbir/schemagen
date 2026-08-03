@@ -47,6 +47,17 @@ func sharedHelpersFor(content string) generator.HelperSet {
 	if strings.Contains(content, "schemagenFormat") {
 		set.Format = true
 	}
+	// The hostname block is separate because it is the only one that needs
+	// x/net/idna, so it is detected by the four calls that reach it rather than
+	// by the general prefix.
+	for _, call := range []string{
+		"schemagenFormatHostname(", "schemagenFormatIDNHostname(",
+		"schemagenFormatEmail(", "schemagenFormatIDNEmail(",
+	} {
+		if strings.Contains(content, call) {
+			set.FormatHostname = true
+		}
+	}
 	// jsonInteger and its three container rebuilders come as one block, and the
 	// name appears in every use of any of them -- the shadow field's type, the
 	// closure parameter of a rebuilder, the conversion at the leaf -- so one

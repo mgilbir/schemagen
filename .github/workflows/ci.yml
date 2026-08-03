@@ -35,10 +35,12 @@ jobs:
           fi
 
       # Several tests build and run a throwaway module that imports the ECMA-262
-      # regexp package. That dependency is only reachable from generated code,
-      # so `go build ./...` never fetches it and the first such test would do the
-      # download itself. Pull everything up front: a network problem then fails
-      # here, plainly, instead of inside a test.
+      # regexp package, and x/net/idna for the two hostname formats. Those
+      # dependencies are only reachable from generated code, so `go build ./...`
+      # never fetches them and the first such test would do the download itself.
+      # They are named in go.mod for exactly this reason -- nothing in this
+      # repository imports them -- so a bare `go mod download` still pulls them.
+      # A network problem then fails here, plainly, instead of inside a test.
       - name: download dependencies
         run: go mod download
 

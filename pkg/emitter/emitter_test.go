@@ -1161,7 +1161,9 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
-	src, ok, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true})
+	// Both blocks: the hostname checks live in their own, so that a package
+	// naming no hostname does not import x/net/idna.
+	src, ok, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
 	if err != nil || !ok {
 		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
 	}
@@ -1175,6 +1177,77 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 			if !strings.Contains(body, "func "+name+"(") {
 				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
 			}
+		}
+	}
+}
+
+// TestHostnameHelpersAreConfinedToSchemasThatNeedThem pins the one thing the
+// helper-set split exists for: a package whose schemas name no hostname does not
+// import golang.org/x/net/idna.
+//
+// Generated code putting a dependency on its caller is a real imposition, and
+// the two hostname checks are the only ones that need one. Nothing else would
+// notice if the split collapsed -- the code would compile and the tests would
+// pass -- so this is the only thing standing between "a schema with a date-time
+// in it" and "every consumer of that schema now depends on x/net and x/text".
+func TestHostnameHelpersAreConfinedToSchemasThatNeedThem(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	general, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true})
+	if err != nil {
+		t.Fatalf("EmitHelpers(Format) error: %v", err)
+	}
+	if strings.Contains(string(general), "golang.org/x/net/idna") {
+		t.Errorf("the general format block imports x/net/idna:\n%s", general)
+	}
+	if strings.Contains(string(general), "func schemagenFormatHostname(") {
+		t.Errorf("the general format block declares the hostname check")
+	}
+
+	withHostname, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
+	if err != nil {
+		t.Fatalf("EmitHelpers(Format+FormatHostname) error: %v", err)
+	}
+	if !strings.Contains(string(withHostname), "golang.org/x/net/idna") {
+		t.Errorf("the hostname block does not import x/net/idna:\n%s", withHostname)
+	}
+	if !strings.Contains(string(withHostname), "func schemagenFormatHostname(") {
+		t.Errorf("the hostname block does not declare the hostname check")
+	}
+}
+
+// TestFormatHelperSetTracksTheFormatsUsed checks the generator half of the same
+// split: which block a file needs is read off the rules it carries, and `email`
+// counts as a hostname because an address's domain is judged by that check.
+func TestFormatHelperSetTracksTheFormatsUsed(t *testing.T) {
+	fileWith := func(format string) *generator.File {
+		return &generator.File{TypeDefs: []generator.TypeDef{
+			&generator.AliasDef{
+				Name:        "X",
+				Underlying:  &generator.PrimitiveType{Name: "string"},
+				Validations: []generator.ValidationRule{{RuleType: "format", Value: format}},
+			},
+		}}
+	}
+	for _, tc := range []struct {
+		format            string
+		wantFmt, wantHost bool
+	}{
+		{"uuid", true, false},
+		{"date-time", true, false},
+		{"ipv4", true, false},
+		{"hostname", true, true},
+		{"idn-hostname", true, true},
+		{"email", true, true},
+		{"idn-email", true, true},
+	} {
+		set := fileWith(tc.format).Helpers()
+		if set.Format != tc.wantFmt || set.FormatHostname != tc.wantHost {
+			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v",
+				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost)
 		}
 	}
 }

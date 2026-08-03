@@ -1696,14 +1696,12 @@ func writeCogenGoMod(dir string, needsRuntime bool) error {
 		return fmt.Errorf("write stub go.mod: %w", err)
 	}
 
-	goMod := fmt.Sprintf("module cogen_test\n\ngo 1.23\n\nrequire (\n\tgithub.com/mgilbir/goecma262 %s\n\tgithub.com/mgilbir/schemagen v0.0.0\n)\n\nreplace github.com/mgilbir/schemagen => ./schemagenstub\n",
-		goecma262Version)
+	goMod := fmt.Sprintf("module cogen_test\n\ngo 1.23.0\n\nrequire (\n\tgithub.com/mgilbir/goecma262 %s\n\tgithub.com/mgilbir/schemagen v0.0.0\n\tgolang.org/x/net %s\n)\n\nrequire golang.org/x/text %s // indirect\n\nreplace github.com/mgilbir/schemagen => ./schemagenstub\n",
+		goecma262Version, xnetVersion, xtextVersion)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}
-	goSum := fmt.Sprintf("github.com/mgilbir/goecma262 %s %s\ngithub.com/mgilbir/goecma262 %s/go.mod %s\n",
-		goecma262Version, goecma262H1, goecma262Version, goecma262GoMod)
-	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte(goSum), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte(testGoSum()), 0o644); err != nil {
 		return fmt.Errorf("write go.sum: %w", err)
 	}
 	return nil

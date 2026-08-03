@@ -32,26 +32,62 @@ const remoteBaseURL = "http://localhost:1234"
 // "make download-metaschemas". The suite refers to them but does not ship them.
 const metaSchemaDir = "../testdata/external/metaschemas"
 
-// goecma262 module metadata for temp go.mod files.
+// Module metadata for the temp go.mod files the harnesses write.
+//
+// These are the modules *generated code* imports: the ECMA-262 engine for
+// `pattern` and `format: regex`, and x/net/idna for the two hostname formats
+// (which pulls x/text). They are pinned here as well as in the repository's own
+// go.mod because the harness builds a throwaway module per test group, and a
+// module with no go.sum entry cannot build offline.
 const (
 	goecma262Version = "v0.0.0-20260219184840-8bfa4bb752b0"
 	goecma262H1      = "h1:g5uVjex1bABu72M6R0A//gQDoVXPSatqP50yZDX5wUQ="
 	goecma262GoMod   = "h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI="
+
+	// Pinned to the newest pair whose own go directive is 1.23, which is what
+	// the throwaway modules below declare and what generated code should not
+	// need more than. A later x/net raises the floor to Go 1.25 and would make
+	// that the requirement for anyone whose schema names a hostname; the idna
+	// behaviour is identical across the range, measured against this corpus.
+	xnetVersion = "v0.38.0"
+	xnetH1      = "h1:vRMAPTMaeGqVhG5QyLJHqNDwecKTomGeqbnfZyKlBI8="
+	xnetGoMod   = "h1:ivrbrMbzFq5J41QOQh0siUuly180yBYtLp+CKbEaFx8="
+
+	xtextVersion = "v0.24.0"
+	xtextH1      = "h1:dd5Bzh4yt5KYA8f9CJHCP4FB4D51c2c6JvN37xJJkJ0="
+	xtextGoMod   = "h1:L8rBsPeo2pSS+xqN0d5u2ikmjtmoJbDBT1b7nHvFCdU="
 )
 
-// writeTestGoMod writes a go.mod and go.sum in dir that includes the goecma262 dependency.
-// moduleName is the module name for the temp project (e.g. "compile_test", "roundtrip_test").
+// writeTestGoMod writes a go.mod and go.sum in dir naming every module the
+// generated code may import. moduleName is the module name for the temp project
+// (e.g. "compile_test", "roundtrip_test").
+//
+// All three are required unconditionally rather than by inspecting the emitted
+// source: an unused require is harmless, a missing one is a build failure in a
+// throwaway module nobody will read the go.mod of.
 func writeTestGoMod(dir, moduleName string) error {
-	goMod := fmt.Sprintf("module %s\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 %s\n", moduleName, goecma262Version)
+	// x/text is indirect: nothing generated imports it, but x/net/idna does, and
+	// a module that names only its direct requirements does not build offline.
+	goMod := fmt.Sprintf("module %s\n\ngo 1.23.0\n\nrequire (\n\tgithub.com/mgilbir/goecma262 %s\n\tgolang.org/x/net %s\n)\n\nrequire golang.org/x/text %s // indirect\n",
+		moduleName, goecma262Version, xnetVersion, xtextVersion)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		return fmt.Errorf("write go.mod: %w", err)
 	}
-	goSum := fmt.Sprintf("github.com/mgilbir/goecma262 %s %s\ngithub.com/mgilbir/goecma262 %s/go.mod %s\n",
-		goecma262Version, goecma262H1, goecma262Version, goecma262GoMod)
-	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte(goSum), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), []byte(testGoSum()), 0o644); err != nil {
 		return fmt.Errorf("write go.sum: %w", err)
 	}
 	return nil
+}
+
+// testGoSum is the go.sum body naming every module writeTestGoMod requires.
+func testGoSum() string {
+	return fmt.Sprintf(
+		"github.com/mgilbir/goecma262 %s %s\ngithub.com/mgilbir/goecma262 %s/go.mod %s\n"+
+			"golang.org/x/net %s %s\ngolang.org/x/net %s/go.mod %s\n"+
+			"golang.org/x/text %s %s\ngolang.org/x/text %s/go.mod %s\n",
+		goecma262Version, goecma262H1, goecma262Version, goecma262GoMod,
+		xnetVersion, xnetH1, xnetVersion, xnetGoMod,
+		xtextVersion, xtextH1, xtextVersion, xtextGoMod)
 }
 
 // allDrafts lists all draft directories in the test suite.

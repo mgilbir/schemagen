@@ -5674,7 +5674,13 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// permits, while neither carries a Validate for the union's dispatch to
 	// call, so the branch is both over- and under-enforced at once. See
 	// formatOnlyStringSchema and nullableFormatUnion.
-	if g.formatOnlyStringSchema(variant) || g.nullableFormatUnion(variant) {
+	// A declared string with a format joins them: the primitive arm below
+	// answers a bare Go string, which carries no Validate, so
+	// {"oneOf":[{"type":"string","format":"ipv4"}, ...]} accepted an IPv6
+	// address through that branch while the identical subschema behind a $ref
+	// was checked. Naming it gives the union's dispatch something to call, which
+	// is what every other branch shape already has.
+	if g.formatOnlyStringSchema(variant) || g.nullableFormatUnion(variant) || g.declaredFormatStringSchema(variant) {
 		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
@@ -9362,6 +9368,15 @@ func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, e
 		}
 		if level.ElemTypeName == "" {
 			level.Rules = elementRules(elemType, elemSchema)
+			// The format posture is the schema's, not the container's: an
+			// element is read under the dialect of the document it is written
+			// in, like every other position. elementRules cannot ask, having no
+			// generator.
+			if !g.formatAssertsFor(elemSchema) {
+				level.Rules = withoutFormatRules(level.Rules)
+			} else {
+				level.Rules = g.formatRulesForDialect(elemSchema, level.Rules)
+			}
 			// An element that is a tuple in its own right. The descent stops
 			// here either way -- singleItemsSchema answers nil for a tuple,
 			// since `items` there governs only the tail -- so without this the
@@ -9644,6 +9659,18 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 			if kind == "raw" {
 				continue
 			}
+		case "format":
+			// The element carries a format check on the same terms a field
+			// does, decided from the element's own Go type. Until this arm
+			// existed the keyword fell through the default below and
+			// {"items":{"type":"string","format":"ipv4"}} accepted an IPv6
+			// address in every element, while the identical subschema written
+			// as a property was checked.
+			stringBacked, ok := formatRuleShape(elemType, rule, false)
+			if !ok {
+				continue
+			}
+			rule.StringBacked = stringBacked
 		default:
 			continue
 		}
@@ -9828,6 +9855,22 @@ func (g *Generator) populateAliasDelegates() {
 		}
 	}
 
+	// An alias that gains a delegate becomes worth delegating to in turn, and
+	// the tables above were built before any of that was assigned. `type C2 C1;
+	// type C1 D; type D netip.Addr` is two $refs in a schema and was the case
+	// that failed: C1 was recorded as having no marshalling of its own -- true
+	// when the table was built, false by the end of this loop -- so C2 got no
+	// UnmarshalJSON at all. A defined type inherits none of netip.Addr's
+	// methods, so C2 fell through to the underlying representation and refused
+	// the ordinary address string that both C1 and D accept. A document the
+	// schema permits, rejected in the decoder, because two loops ran in that
+	// order.
+	//
+	// Recording each assignment as it is made is what closes it, and one pass is
+	// enough because a chain is always generated innermost first: reaching C2
+	// resolves its $ref to C1, which resolves to D, and each is appended when it
+	// completes. The loop below therefore meets a delegate before whatever
+	// borrows from it.
 	for _, td := range g.output.TypeDefs {
 		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
 			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
@@ -9851,6 +9894,16 @@ func (g *Generator) populateAliasDelegates() {
 		}
 		if marshalTypes[name] {
 			ad.MarshalAs = name
+		}
+		// What this alias just gained, the next one along may borrow.
+		if ad.UnmarshalAs != "" {
+			unmarshalTypes[ad.Name] = true
+		}
+		if ad.MarshalAs != "" {
+			marshalTypes[ad.Name] = true
+		}
+		if ad.ValidateAs != "" || ad.CanHaveMethods() {
+			validatableTypes[ad.Name] = true
 		}
 	}
 }
@@ -11158,6 +11211,39 @@ func (g *Generator) formatOnlyStringDef(name string, s *schema.Schema) *Inferred
 		InferredJSONType: "string",
 		Validations:      g.aliasValidationRules(s, &PrimitiveType{Name: "string"}),
 	}
+}
+
+// declaredFormatStringSchema reports whether s is {"type":"string"} with a
+// format the dialect asserts, and nothing else that would route it elsewhere.
+//
+// It exists for the two positions that judge a value without giving it a type of
+// its own: a tuple slot, which falls back to checking the JSON type, and a oneOf
+// branch, which falls back to a bare Go primitive. Both answered "string" for
+// this schema -- true, and silent about the format -- so the assertion was lost
+// in exactly the positions the sibling spellings had already been fixed in.
+// Naming the position gives the check somewhere to live, which is the same
+// answer a $ref to the identical definition has always produced.
+//
+// Gated on the posture: under an annotating dialect there is no check to place,
+// and materializing a type to hold nothing would change the generated API for
+// no reason.
+func (g *Generator) declaredFormatStringSchema(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if s.Format == nil || !FormatCheckableOnString(*s.Format) {
+		return false
+	}
+	if len(s.Type) != 1 || s.Type[0] != "string" || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if !g.formatAssertsFor(s) {
+		return false
+	}
+	// Anything that decides the value some other way keeps the arm that decides
+	// it: an enum or const fixes the value, a reference names another type, an
+	// applicator is judged by its branches.
+	return !hasNonTypeScopedConstraints(s)
 }
 
 // formatOnlyStringWrapperType materializes formatOnlyStringDef for a position
@@ -13527,7 +13613,16 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// rejects the null the schema permits and says nothing about the format; and
 	// nothing at all for a format with no type. Both have a generated type that
 	// answers correctly, so the position delegates to it.
-	if g.nullableFormatUnion(resolved) || g.formatOnlyStringSchema(resolved) {
+	//
+	// A declared string with a format is here for the same reason. The JSONType
+	// fallback answers "string" for it, which is true and says nothing about the
+	// format, so {"prefixItems":[{"type":"string","format":"ipv4"}]} accepted an
+	// IPv6 address at that position while the identical subschema written as a
+	// property was checked. hasStructuralKeywords does not count `format` among
+	// the keywords that need a named type, and is left alone: it is read by
+	// nothing else here and widening it would change which schemas every other
+	// caller materializes.
+	if g.nullableFormatUnion(resolved) || g.formatOnlyStringSchema(resolved) || g.declaredFormatStringSchema(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true

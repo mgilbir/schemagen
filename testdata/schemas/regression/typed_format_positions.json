@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TypedFormatPositions",
+  "description": "A declared string with a format, in every position it can be written. Four of them asserted nothing: an array element and a map value, whose element rules dropped the keyword; a tuple slot, which fell back to checking the JSON type; and a oneOf branch, which fell back to a bare Go string with no Validate for the union to call.",
+  "type": "object",
+  "properties": {
+    "inline": {"type": "string", "format": "ipv4"},
+    "ref": {"$ref": "#/$defs/TypedV4"},
+    "chain": {"$ref": "#/$defs/TypedChainOuter"},
+    "list": {"type": "array", "items": {"type": "string", "format": "ipv4"}},
+    "map": {"type": "object", "additionalProperties": {"type": "string", "format": "ipv4"}},
+    "tuple": {"type": "array", "prefixItems": [{"type": "string", "format": "ipv4"}, {"type": "integer"}]},
+    "branch": {"oneOf": [{"type": "string", "format": "ipv4"}, {"type": "integer"}]},
+    "wrapped": {"allOf": [{"type": "string", "format": "ipv4"}]},
+    "buckets": {"type": "object", "patternProperties": {"^p": {"type": "string", "format": "ipv4"}}},
+    "mailList": {"type": "array", "items": {"type": "string", "format": "email"}},
+    "stampList": {"type": "array", "items": {"type": "string", "format": "date-time"}}
+  },
+  "$defs": {
+    "TypedV4": {"type": "string", "format": "ipv4"},
+    "TypedChainInner": {"$ref": "#/$defs/TypedV4"},
+    "TypedChainOuter": {"$ref": "#/$defs/TypedChainInner"}
+  }
+}

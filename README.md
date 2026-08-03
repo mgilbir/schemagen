@@ -91,11 +91,17 @@ represent a leap second, so `1998-12-31T23:59:60Z` — which RFC 3339 admits —
 refused by a `date-time` field held as one. A `format` written without a `type`
 keeps the JSON string and accepts it.
 
-Two formats are checked less thoroughly than the suite's optional corpus asks,
-and both are recorded in the generated helpers rather than left implicit:
-`hostname` accepts a malformed `xn--` A-label, and `idn-hostname` is checked
-structurally rather than against IDNA2008. Both under-enforce; neither rejects a
-name the spec permits.
+`hostname`, `idn-hostname`, `email` and `idn-email` are checked with
+[`golang.org/x/net/idna`](https://pkg.go.dev/golang.org/x/net/idna), which is the
+only dependency generated code takes beyond the ECMA-262 engine `pattern`
+already needs. It is imported **only** into packages whose schemas name one of
+those four formats; a package with, say, a `date-time` in it takes neither.
+
+One gap remains there, and it is recorded in the generated helpers rather than
+left implicit: IDNA2008's "exceptions that are DISALLOWED" table, which UTS-46
+lookup processing maps rather than refuses. Three documents per hostname format
+are accepted that the official suite rejects. That is under-enforcement; nothing
+is rejected that the spec permits.
 
 ### Unresolvable References
 

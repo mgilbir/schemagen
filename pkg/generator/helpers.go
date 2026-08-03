@@ -16,11 +16,21 @@ type HelperSet struct {
 	Integer            bool // jsonInteger and the shape-preserving converters
 	NullCheck          bool // jsonNullRule and the recursive walker that applies one
 	Format             bool // schemagenFormat* -- one function per asserted format
+
+	// FormatHostname pulls in the two hostname checks, which are kept apart
+	// from the rest because they are the only ones that need a dependency the
+	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
+	// IDNA2008 derived properties, the bidi rule and the ContextJ rules. None of
+	// that is expressible without it, and none of it is wanted by a package
+	// whose schemas name no hostname. `format: email` sets this too -- an email
+	// domain is a hostname and is judged by the same function.
+	FormatHostname bool
 }
 
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
-	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer && !h.NullCheck && !h.Format
+	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
+		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname
 }
 
 // Merge folds another set into this one.
@@ -34,6 +44,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
+	h.FormatHostname = h.FormatHostname || other.FormatHostname
 }
 
 // Helpers reports which shared helpers this file's generated code calls.
@@ -45,10 +56,9 @@ func (f *File) Helpers() HelperSet {
 	// package each claim a different subset and neither claim what the other
 	// needs, which is the bug the per-package helper file exists to prevent.
 	for _, td := range f.TypeDefs {
-		if defCarriesFormatRule(td) {
-			set.Format = true
-			break
-		}
+		general, hostname := defFormatRuleKinds(td)
+		set.Format = set.Format || general || hostname
+		set.FormatHostname = set.FormatHostname || hostname
 	}
 	for _, td := range f.TypeDefs {
 		switch d := td.(type) {
@@ -117,28 +127,46 @@ func (f *File) Helpers() HelperSet {
 	return set
 }
 
-// defCarriesFormatRule reports whether a generated type emits a format check.
+// defFormatRuleKinds reports whether a generated type emits a format check, and
+// whether any of them is one of the hostname checks, which need a dependency of
+// their own.
 //
-// Only the three definitions that can hold one are asked, which are the three
-// the format posture and formatRuleShape already agree on: a struct's field
-// rules, an alias over its own value, and the wrapper an inferred or untyped
-// string resolves to.
-func defCarriesFormatRule(td TypeDef) bool {
-	hasFormat := func(rules []ValidationRule) bool {
+// Only the three definitions that can hold a format rule are asked, which are
+// the three the format posture and formatRuleShape already agree on: a struct's
+// field rules, an alias over its own value, and the wrapper an inferred or
+// untyped string resolves to.
+func defFormatRuleKinds(td TypeDef) (general, hostname bool) {
+	scan := func(rules []ValidationRule) {
 		for _, r := range rules {
-			if r.RuleType == "format" {
-				return true
+			if r.RuleType != "format" {
+				continue
+			}
+			if formatNeedsHostnameHelpers(r.Value) {
+				hostname = true
+			} else {
+				general = true
 			}
 		}
-		return false
 	}
 	switch d := td.(type) {
 	case *StructDef:
-		return hasFormat(d.Validations)
+		scan(d.Validations)
 	case *AliasDef:
-		return hasFormat(d.Validations)
+		scan(d.Validations)
 	case *InferredAliasDef:
-		return hasFormat(d.Validations)
+		scan(d.Validations)
+	}
+	return general, hostname
+}
+
+// formatNeedsHostnameHelpers reports whether a format's check is one of the two
+// that go through x/net/idna. The email formats are here because an address's
+// domain is judged by the hostname check, so a schema naming only `email` still
+// needs the block.
+func formatNeedsHostnameHelpers(value any) bool {
+	switch value {
+	case "hostname", "idn-hostname", "email", "idn-email":
+		return true
 	}
 	return false
 }

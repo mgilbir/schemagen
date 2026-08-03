@@ -3905,12 +3905,31 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"mail":"\"joe..bloggs\"@example.com"}`,
 			`{"mail":"\"joe@bloggs\"@example.com"}`,
 			// An internationalized name is not ASCII, which is what the check
-			// used to require of it -- so every one of these was refused.
+			// used to require of it -- so every one of these was refused. They
+			// are also the accept-controls for the ContextO and IDNA rejections
+			// below: each carries the very character those rules constrain, in a
+			// position where the rule is satisfied.
 			`{"intlHost":"실례.테스트"}`,
 			`{"intlHost":"ßς་〇"}`,
-			`{"intlHost":"א״ב"}`,
+			`{"intlHost":"א״ב"}`, // GERSHAYIM preceded by Hebrew
+			`{"intlHost":"א׳ב"}`, // GERESH preceded by Hebrew
+			`{"intlHost":"l·l"}`, // MIDDLE DOT between two 'l'
+			`{"intlHost":"α͵β"}`, // KERAIA followed by Greek
+			`{"intlHost":"・ぁ"}`,  // KATAKANA MIDDLE DOT beside Hiragana
+			`{"intlHost":"・ァ"}`,  // ... beside Katakana
+			`{"intlHost":"・丈"}`,  // ... beside Han
+			`{"intlHost":"۽۾"}`,
+			`{"intlHost":"ب٠ب"}`,
+			`{"intlHost":"۰0"}`,
+			// The four UTS-46 label separators, and a name long enough that
+			// counting octets rather than characters would have refused it.
+			`{"intlHost":"a｡b"}`, `{"intlHost":"a。b"}`, `{"intlHost":"a．b"}`,
 			`{"intlHost":"παράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπα.com"}`,
+			`{"intlHost":"παράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπα｡com"}`,
 			`{"intlMail":"실례@실례.테스트"}`,
+			// A well-formed A-label. The ASCII check accepted every xn-- label on
+			// sight; this one has to survive being decoded and judged.
+			`{"host":"xn--bcher-kva.example"}`,
 			// An IP-literal host is bracketed, and the brackets are what tell it
 			// from a bare IPv6 address with a port.
 			`{"link":"ldap://[2001:db8::7]/c=GB?objectClass?one"}`,
@@ -3978,11 +3997,127 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"linkRef":"\\\\WINDOWS\\fileshare"}`,
 			// A bare IPv6 address is not a host; only the bracketed form is.
 			`{"link":"http://2001:0db8:85a3:0000:0000:8a2e:0370:7334"}`,
+			// ContextO, from RFC 5892 appendix A.3-A.9. x/net/idna implements
+			// ContextJ and not these, so they are the rules schemagenContextO
+			// adds -- and each has its satisfied twin in the valid list above.
+			`{"intlHost":"a·l"}`,     // MIDDLE DOT with no preceding 'l'
+			`{"intlHost":"·l"}`,      // ... with nothing preceding
+			`{"intlHost":"l·a"}`,     // ... with no following 'l'
+			`{"intlHost":"l·"}`,      // ... with nothing following
+			`{"intlHost":"α͵S"}`,     // KERAIA not followed by Greek
+			`{"intlHost":"α͵"}`,      // ... followed by nothing
+			`{"intlHost":"׳ב"}`,      // GERESH not preceded by anything
+			`{"intlHost":"״ב"}`,      // GERSHAYIM not preceded by anything
+			`{"intlHost":"def・abc"}`, // KATAKANA MIDDLE DOT with no Kana or Han
+			`{"intlHost":"・"}`,       // ... with nothing else at all
+			// The same rules reached through punycode: an A-label is decoded
+			// before it is judged, which the ASCII check could not do.
+			`{"host":"xn--al-0ea"}`, // MIDDLE DOT with no preceding 'l'
+			`{"host":"xn--wva3j"}`,  // KERAIA followed by nothing
+			`{"host":"xn--5db1e"}`,  // GERESH preceded by nothing
+			`{"host":"xn--vek"}`,    // KATAKANA MIDDLE DOT alone
+			`{"host":"xn--X"}`,      // not punycode at all
+			// A trailing separator is the DNS root label, which a hostname does
+			// not carry. idna's lookup profile tolerates it.
+			`{"intlHost":"example."}`,
+			`{"intlHost":"example。"}`,
 			// Still the ordinary failures.
 			`{"mail":"2962"}`,
 			`{"host":"-leading-hyphen"}`,
 			`{"day":"2021-02-29"}`,
 			`{"id":"123e4567-e89b-12d3"}`,
 		},
+	)
+}
+
+// TestTypedFormatIsAssertedEverywhere covers a declared string with a format --
+// {"type":"string","format":"ipv4"} -- in every position it can be written.
+//
+// Four of the nine asserted nothing, and they are the four this test exists
+// for. An array element and a map value went through elementRules, whose switch
+// dropped every keyword it had not been taught, and `format` was one. A tuple
+// slot fell back to checking the position's JSON type, which answered "string":
+// true, and silent about the format. A oneOf branch fell back to a bare Go
+// string, which carries no Validate for the union's dispatch to call. In all
+// four an IPv6 address satisfied an ipv4 schema, while the identical subschema
+// written as a property, behind a $ref or under an allOf was checked -- the
+// ninth instance in this repository of a keyword bound in one position and
+// dropped in its sibling.
+//
+// Run under the asserting configuration because the fixture declares 2020-12,
+// where format is an annotation. TestFormatPostureFollowsTheDialect is what
+// holds the other side of that.
+func TestTypedFormatIsAssertedEverywhere(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/typed_format_positions.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// Empty containers, and a key no pattern claims: adding a check to a
+			// position must not make the position itself mandatory.
+			`{"list":[]}`, `{"map":{}}`, `{"buckets":{}}`,
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The other branch of the oneOf still selects.
+			`{"branch":7}`,
+			// The two formats whose Go type is not netip.Addr, through the
+			// element position that dropped them.
+			`{"mailList":["a@b.test"]}`,
+			`{"stampList":["2020-01-02T03:04:05Z"]}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family: it parses, so only the
+			// format assertion can reject it. The four positions this test is
+			// about come first.
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			// And the five that already worked, so a change that moved the check
+			// rather than adding one is still caught.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// The other two formats, in the element position.
+			`{"mailList":["not-an-email"]}`,
+			`{"stampList":["not-a-timestamp"]}`,
+		},
+	)
+}
+
+// TestTypedFormatAnnotatesOnNewerDrafts is the accept-control for the test
+// above, at the same fixture and the ordinary configuration.
+//
+// Every document the assertion run rejects is valid here, because 2020-12 makes
+// format an annotation -- so this is what catches a change that reaches the four
+// new positions but forgets the posture, which would be a false rejection in
+// four more places rather than a fix.
+func TestTypedFormatAnnotatesOnNewerDrafts(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/typed_format_positions.json",
+		[]string{
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			`{"mailList":["not-an-email"]}`,
+			`{"stampList":["not-a-timestamp"]}`,
+		},
+		nil,
 	)
 }

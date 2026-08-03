@@ -22,7 +22,7 @@ a rule for one nothing judges.
 {{- $fn := formatHelperName .Value .StringBacked}}
 {{- if $fn}}
 if _err := {{$fn}}({{$v}}); _err != nil {
-	return fmt.Errorf("{{$path}}: %w", _err)
+	return fmt.Errorf("{{$path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
 }
 {{- end}}
 {{- end}}

@@ -8,4 +8,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 )

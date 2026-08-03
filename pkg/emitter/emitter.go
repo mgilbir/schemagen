@@ -100,15 +100,26 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// any of them needs whether or not the schema uses that particular format.
 	// Splitting the block per format is what would let a package end up with a
 	// helper it cannot compile; see HelperSet.Format.
-	add(helpers.Format, "net/mail")
 	add(helpers.Format, "net/netip")
 	add(helpers.Format, "net/url")
 	add(helpers.Format, "regexp")
 	add(helpers.Format, "strings")
 	add(helpers.Format, "time")
-	add(helpers.Format, "unicode/utf8")
 	addAliased(helpers.Format, "github.com/mgilbir/goecma262", "ecma262")
 	addAliased(helpers.Format, "github.com/mgilbir/goecma262/flags", "ecmaflags")
+	// The hostname block is separate for one reason: x/net/idna. A package whose
+	// schemas name no hostname, email or idn-* format neither emits these
+	// functions nor imports the module, which is the whole point of the split --
+	// generated code putting a dependency on its caller is a real imposition, so
+	// it is confined to callers whose schemas ask for it. See
+	// HelperSet.FormatHostname.
+	add(helpers.FormatHostname, "net/mail")
+	add(helpers.FormatHostname, "net/netip")
+	add(helpers.FormatHostname, "strings")
+	add(helpers.FormatHostname, "unicode")
+	add(helpers.FormatHostname, "unicode/utf8")
+	add(helpers.FormatHostname, "fmt")
+	add(helpers.FormatHostname, "golang.org/x/net/idna")
 
 	data := helperFileData{
 		PackageName: packageName,
