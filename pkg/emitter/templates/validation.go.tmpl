@@ -457,15 +457,54 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 	}
 	{{- end}}
+	{{- if eq .Value "date-time"}}
+	{{- /*
+	Only reached when the value is held as a string. A field typed time.Time
+	decoded from RFC 3339 or failed, so there is nothing left for a check to
+	find, and formatRuleShape drops the rule rather than emit one that cannot
+	fail. No "" exemption here, for the reason the ipv4 arms give below.
+	*/ -}}
+	{{- if .IsPointer}}
+	if {{validationNonNil $recv .}} {
+		if _, _err := time.Parse(time.RFC3339, {{$value}}); _err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid date-time (RFC 3339): %w", {{$value}}, _err)
+		}
+	}
+	{{- else}}
+	if _, _err := time.Parse(time.RFC3339, {{$value}}); _err != nil {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid date-time (RFC 3339): %w", {{$value}}, _err)
+	}
+	{{- end}}
+	{{- end}}
 	{{- /*
 	The nil arms are not decoration. An optional ipv4/ipv6 property is a
 	*netip.Addr, so that an absent one is nil rather than the zero Addr that
 	netip.Addr's MarshalText writes back out as "". A JSON null leaves the
 	pointer nil while _jsonKeys still records the key as present, so the guard
 	above lets this run and the family test must dereference nothing.
+
+	The StringBacked arms are the same assertion against a value the generator
+	kept as the JSON string -- a format with no "type", or one stated beside a
+	length or pattern keyword, neither of which netip.Addr can carry. There the
+	parse has not happened yet, so failing it is a failure of the format, unlike
+	the netip.Addr arms where an unparseable value never reached the field.
+	That is also why these carry no `!= ""` exemption: "" is not an address, and
+	the sibling netip.Addr position rejects it at decode time, so exempting it
+	would be a disagreement rather than the shared looseness the string formats
+	deliberately keep.
 	*/ -}}
 	{{- if eq .Value "ipv4"}}
-	{{- if .IsPointer}}
+	{{- if and .StringBacked .IsPointer}}
+	if {{validationNonNil $recv .}} {
+		if _a, _err := netip.ParseAddr({{$value}}); _err != nil || !_a.Is4() {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", {{$value}})
+		}
+	}
+	{{- else if .StringBacked}}
+	if _a, _err := netip.ParseAddr({{$value}}); _err != nil || !_a.Is4() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", {{$value}})
+	}
+	{{- else if .IsPointer}}
 	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is4() {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", *_a)
 	}
@@ -476,7 +515,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if eq .Value "ipv6"}}
-	{{- if .IsPointer}}
+	{{- if and .StringBacked .IsPointer}}
+	if {{validationNonNil $recv .}} {
+		if _a, _err := netip.ParseAddr({{$value}}); _err != nil || !_a.Is6() {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", {{$value}})
+		}
+	}
+	{{- else if .StringBacked}}
+	if _a, _err := netip.ParseAddr({{$value}}); _err != nil || !_a.Is6() {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", {{$value}})
+	}
+	{{- else if .IsPointer}}
 	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is6() {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", *_a)
 	}

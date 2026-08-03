@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NullableFormatPositions",
+  "description": "The nullable spelling of a formatted string, in every position it can be written. Each resolved to *string, losing the Go type the non-nullable spelling gets; the named form became `type X *string`, a pointer underlying type Go forbids methods on, so it carried no Validate and the format was enforced nowhere.",
+  "type": "object",
+  "properties": {
+    "inline": {"type": ["string", "null"], "format": "ipv4"},
+    "ref": {"$ref": "#/$defs/NullableV4"},
+    "chain": {"$ref": "#/$defs/ChainOuter"},
+    "list": {"type": "array", "items": {"type": ["string", "null"], "format": "ipv4"}},
+    "map": {"type": "object", "additionalProperties": {"type": ["string", "null"], "format": "ipv4"}},
+    "tuple": {"type": "array", "prefixItems": [{"type": ["string", "null"], "format": "ipv4"}, {"type": "integer"}]},
+    "branch": {"oneOf": [{"type": ["string", "null"], "format": "ipv4"}, {"type": "integer"}]},
+    "wrapped": {"allOf": [{"type": ["string", "null"], "format": "ipv4"}]},
+    "buckets": {"type": "object", "patternProperties": {"^p": {"type": ["string", "null"], "format": "ipv4"}}},
+    "stamp": {"type": ["string", "null"], "format": "date-time"},
+    "mail": {"type": ["string", "null"], "format": "email"}
+  },
+  "$defs": {
+    "NullableV4": {"type": ["string", "null"], "format": "ipv4"},
+    "ChainInner": {"$ref": "#/$defs/NullableV4"},
+    "ChainOuter": {"$ref": "#/$defs/ChainInner"}
+  }
+}

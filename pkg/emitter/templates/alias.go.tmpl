@@ -204,15 +204,43 @@ if {{$v}} != "" {
 	}
 }
 {{- end}}
+{{- if eq .Value "date-time"}}
+{{- /*
+Only reached when the alias is over a string. `type X time.Time` decoded from
+RFC 3339 or refused the document, so nothing is left to assert and
+formatRuleShape drops the rule instead of emitting a check that cannot fail.
+*/}}
+if _, _err := time.Parse(time.RFC3339, {{$v}}); _err != nil {
+	return fmt.Errorf("value: %q is not a valid date-time (RFC 3339): %w", {{$v}}, _err)
+}
+{{- end}}
 {{- if eq .Value "ipv4"}}
+{{- if .StringBacked}}
+{{- /*
+The alias holds the JSON string rather than a netip.Addr -- a format stated
+beside minLength, say, whose characters netip.Addr cannot carry. Nothing has
+parsed the value yet, so the parse itself is the assertion, and an unparseable
+string is a failure rather than the zero Addr the arm below passes over.
+*/}}
+if _a, _err := netip.ParseAddr({{$v}}); _err != nil || !_a.Is4() {
+	return fmt.Errorf("value: %q is not a valid IPv4 address", {{$v}})
+}
+{{- else}}
 if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is4() {
 	return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
 }
 {{- end}}
+{{- end}}
 {{- if eq .Value "ipv6"}}
+{{- if .StringBacked}}
+if _a, _err := netip.ParseAddr({{$v}}); _err != nil || !_a.Is6() {
+	return fmt.Errorf("value: %q is not a valid IPv6 address", {{$v}})
+}
+{{- else}}
 if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is6() {
 	return fmt.Errorf("value: %q is not a valid IPv6 address", _a)
 }
+{{- end}}
 {{- end}}
 {{- end}}
 

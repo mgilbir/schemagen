@@ -803,6 +803,18 @@ type ValidationRule struct {
 	// does not convert a named type implicitly, so the emitter wraps the value
 	// in an explicit conversion.
 	StringConvert bool
+
+	// StringBacked is set on a "format" rule whose value is held as the JSON
+	// string itself rather than as the Go type the format otherwise maps to.
+	// ipv4, ipv6 and date-time are the formats that have such a mapping, and
+	// their checks are written two ways: against a netip.Addr or a time.Time,
+	// where decoding already refused anything unparseable and only the address
+	// family or nothing at all is left to test; and against a string, where the
+	// parse itself is the assertion. A schema reaches the second form whenever
+	// the mapping was given up -- a format stated without a "type", or beside a
+	// keyword that reads the string's characters -- and emitting the first there
+	// does not compile.
+	StringBacked bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

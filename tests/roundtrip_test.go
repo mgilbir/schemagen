@@ -3514,3 +3514,143 @@ func TestRefSiblingTypeSuppressedBeforeDraft2019(t *testing.T) {
 		},
 	)
 }
+
+// TestNullableFormatIsAssertedEverywhere covers the nullable spelling of a
+// formatted string -- {"type":["string","null"],"format":"ipv4"} -- in every
+// position it can be written.
+//
+// It resolved to *string wherever it appeared, losing the netip.Addr or
+// time.Time the non-nullable spelling gets, and the named form became `type
+// NullableV4 *string`. Go forbids methods on a pointer underlying type, so that
+// type carried no Validate at all: a nullable format asserted nothing, in the
+// one position where the non-nullable form asserts correctly. Inline it was
+// worse than unenforced -- the emitted family check read netip.Addr's methods
+// off a *string, and the generated file did not compile.
+//
+// The valid half is the larger one, and deliberately so. A null is permitted in
+// every one of these positions and must stay permitted: turning a missing
+// assertion into a rejection of what the schema allows would be the worse trade,
+// and a wrapper that rejected null would pass every case in the invalid list
+// while being wrong about all of them.
+func TestNullableFormatIsAssertedEverywhere(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_format_positions.json",
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// The null the type list permits, position by position. These are
+			// the accept-controls: every rejection below is only correct if all
+			// of these still pass.
+			`{"inline":null}`,
+			`{"ref":null}`,
+			`{"chain":null}`,
+			`{"list":[null,"192.0.2.7"]}`,
+			`{"map":{"k":null}}`,
+			`{"tuple":[null,1]}`,
+			`{"wrapped":null}`,
+			`{"buckets":{"pp":null}}`,
+			// A key the pattern does not match is unconstrained.
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The two other formats, whose Go types differ from ipv4's.
+			`{"stamp":"2020-01-02T03:04:05Z"}`, `{"stamp":null}`,
+			`{"mail":"a@b.test"}`, `{"mail":null}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family: it parses, so only the
+			// format assertion can reject it.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// Not an address at all.
+			`{"inline":"not-an-ip"}`,
+			`{"ref":"not-an-ip"}`,
+			// A type the list does not carry. "null" widened the schema by
+			// exactly one instance type, not to everything.
+			`{"inline":5}`,
+			`{"ref":{"a":1}}`,
+			`{"list":[5]}`,
+			`{"map":{"k":true}}`,
+			// The other two formats.
+			`{"stamp":"not-a-timestamp"}`,
+			`{"mail":"not-an-email"}`,
+		},
+	)
+}
+
+// TestFormatBesideLengthCompilesAndChecksBoth covers a format that maps to a Go
+// type written beside a keyword that reads the string's characters.
+//
+// The two are irreconcilable as they stood: minLength is measured with
+// utf8.RuneCountInString, which takes a string, and neither netip.Addr nor
+// time.Time converts to one. The generator emitted the length check anyway and
+// the result did not compile -- `cannot convert i (variable of struct type
+// IPWithLen) to type string` for the alias, and `cannot use *s.B (variable of
+// struct type netip.Addr) as string value` for the field. That is the harshest
+// failure a generator has, and every one of these six properties produced it.
+//
+// The fix gives up the Go type rather than the length check, so this test's
+// whole point is that *both* keywords still bind: the length half and the format
+// half each have a rejection here, and the compile is the third assertion, made
+// by runValidationCases building the program at all.
+func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_beside_length.json",
+		[]string{
+			`{}`,
+			`{"declaredV4":"192.0.2.77"}`,
+			`{"declaredStamp":"2020-01-02T03:04:05+01:00"}`,
+			`{"inferredV4":"192.0.2.77"}`,
+			`{"refV4":"192.0.2.77"}`,
+			`{"refStamp":"2020-01-02T03:04:05+01:00"}`,
+			`{"patternedV4":"192.0.2.7"}`,
+		},
+		[]string{
+			`{"declaredV4":"1.2.3.4"}`,     // 7 characters, under minLength 9
+			`{"declaredV4":"2001:db8::1"}`, // long enough, wrong family
+			// A valid RFC 3339 date-time, 20 characters, under minLength 25.
+			// The length half of the pair, on the format whose Go type is
+			// time.Time rather than netip.Addr.
+			`{"declaredStamp":"2020-01-02T03:04:05Z"}`,
+			`{"declaredStamp":"not-a-timestamp-at-all-xx"}`, // 25 characters, not a date-time
+			// The inferred property is checked for length only. Its format needs
+			// the wrapper a "format" with no declared type resolves to, which is
+			// the next commit's business (issue #106); here the point is that it
+			// compiles and that the length keyword survived the change.
+			`{"inferredV4":"1.2.3.4"}`,
+			`{"refV4":"1.2.3.4"}`,
+			`{"refV4":"2001:db8::1"}`,
+			`{"refStamp":"2020-01-02T03:04:05Z"}`,
+			`{"refStamp":"not-a-timestamp-at-all-xx"}`,
+			`{"patternedV4":"10.0.0.1"}`,    // an address the pattern excludes
+			`{"patternedV4":"192.0.2.999"}`, // matches the pattern, not an address
+		},
+	)
+}
+
+// TestFormatRootPositionsAssert is the position the tests above cannot reach:
+// the schema as a whole document, where the wrapper is the root type itself
+// rather than something a field refers to. A fix that reached only the positions
+// inside an object would leave the document root asserting nothing, which is
+// where a $defs entry lands when it is split into a file of its own.
+func TestFormatRootPositionsAssert(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_format_root.json",
+		[]string{`"192.0.2.7"`, `null`},
+		[]string{`"2001:db8::1"`, `"not-an-ip"`, `5`, `{"a":1}`},
+	)
+}

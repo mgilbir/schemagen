@@ -229,14 +229,16 @@ func mkBigIntVariantCtxFunc(recv string, rules []generator.ValidationRule) BigIn
 }
 
 // AliasFormatContext is passed to the alias_format_check template, which needs
-// the receiver name alongside the format the rule names.
+// the receiver name alongside the format the rule names, and whether the alias
+// holds the JSON string rather than the Go type the format maps to.
 type AliasFormatContext struct {
-	Recv  string
-	Value any
+	Recv         string
+	Value        any
+	StringBacked bool
 }
 
 func mkAliasFormatCtxFunc(recv string, rule generator.ValidationRule) AliasFormatContext {
-	return AliasFormatContext{Recv: recv, Value: rule.Value}
+	return AliasFormatContext{Recv: recv, Value: rule.Value, StringBacked: rule.StringBacked}
 }
 
 // itemRangeFunc renders what a level's loop ranges over: the slice itself at
