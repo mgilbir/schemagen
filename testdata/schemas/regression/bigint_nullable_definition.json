@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BigIntNullableDefinition",
+  "$defs": {
+    "NullableCount": {"type": ["integer", "null"]},
+    "NullableBounded": {"type": ["integer", "null"], "minimum": 5},
+    "PlainCount": {"type": "integer"}
+  },
+  "type": "object",
+  "properties": {
+    "n": {"$ref": "#/$defs/NullableCount"},
+    "b": {"$ref": "#/$defs/NullableBounded"},
+    "p": {"$ref": "#/$defs/PlainCount"}
+  },
+  "required": ["n", "b", "p"]
+}

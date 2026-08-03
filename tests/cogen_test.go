@@ -652,6 +652,14 @@ func coBigIntOverflowMutations(d *coDoc) []coMutation {
 			if n.numItems > 0 {
 				walk(n.elem, coPath(path, 0), prop)
 			}
+		case coMap:
+			// A map's values reach the wrapper the same way an array's elements
+			// do -- resolveArrayItemType serves both -- so an integer under
+			// additionalProperties is as much a big-integer position as one
+			// under items, and skipping it would leave the map half-covered.
+			if len(n.mapKeys) > 0 {
+				walk(n.elem, coPath(path, n.mapKeys[len(n.mapKeys)-1]), prop)
+			}
 		case coInteger:
 			var want []string
 			switch n.maxStyle {

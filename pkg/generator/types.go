@@ -89,7 +89,7 @@ type StructDef struct {
 	PropertyNames         *PropertyNamesDef           // propertyNames constraint (Draft 6+)
 	Validations           []ValidationRule
 	ValidatableFields     []ValidatableFieldDef     // fields whose types have their own Validate() method
-	ItemValidations       []ItemValidationDef       // per-element checks for slice fields whose element type has no Validate()
+	ItemValidations       []ItemValidationDef       // per-element checks for slice and map fields whose element type has no Validate()
 	RequiredJSON          []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations  []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
@@ -685,7 +685,7 @@ type AliasDef struct {
 	AnyOfVariants     [][]ValidationRule  // each inner slice is one anyOf variant's rules; at least one must pass
 	OneOfVariants     [][]ValidationRule  // each inner slice is one oneOf variant's rules; exactly one must pass
 	TupleItems        []TupleItemDef      // per-position type validation for tuple arrays (prefixItems / items-as-array)
-	ItemValidations   []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema
+	ItemValidations   []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema, or a map with a single additionalProperties sub-schema
 	Contains          *ContainsDef        // contains sub-schema validation
 	MinContains       *int                // minContains (default 1 if contains is present)
 	MaxContains       *int                // maxContains
@@ -738,25 +738,28 @@ func (d *AliasDef) HasItemValidations() bool {
 	return len(d.ItemValidations) > 0
 }
 
-// ItemValidationDef carries the constraints an `items` sub-schema places on the
-// elements of a slice. Dispatching to an element's own Validate only works when
-// the element Go type is named; a []string, a []any or a nested [][]int64
-// carries no such method, so without this the keywords under `items` are
-// enforced nowhere and the generated Validate accepts data the schema forbids.
+// ItemValidationDef carries the constraints an `items` or `additionalProperties`
+// sub-schema places on what a slice or map holds. Dispatching to an element's
+// own Validate only works when the element Go type is named; a []string, a
+// map[string]string, a []any or a nested [][]int64 carries no such method, so
+// without this the keywords under those sub-schemas are enforced nowhere and the
+// generated Validate accepts data the schema forbids.
 //
-// Levels holds one entry per array dimension — [][]string carries two — and
-// each level owns the checks for the value at that depth.
+// Levels holds one entry per container level — [][]string and
+// map[string][]string each carry two — and each level owns the checks for the
+// value at that depth.
 type ItemValidationDef struct {
-	FieldName string // Go field name; empty when the slice is the receiver itself (an array alias)
-	JSONName  string // JSON property name for the error path; empty for an array alias
+	FieldName string // Go field name; empty when the container is the receiver itself (an array alias)
+	JSONName  string // JSON property name for the error path; empty for a container alias
 	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
 	Levels    []ItemLevel
 }
 
-// ItemLevel is one array dimension of an ItemValidationDef.
+// ItemLevel is one container level of an ItemValidationDef.
 type ItemLevel struct {
-	IndexVar      string // loop index variable for this dimension
-	ElemVar       string // element variable for this dimension
+	IndexVar      string // loop index (slice) or key (map) variable for this level
+	ElemVar       string // element variable for this level
+	IsMap         bool   // the level ranges over a map, so it is addressed by key rather than by index
 	ElemIsPointer bool   // the element is a pointer, so a JSON null left nil behind
 	ElemTypeName  string // the element's named Go type, when it has one
 	ElemType      GoType // the element's Go type
@@ -960,6 +963,21 @@ type BigIntAliasDef struct {
 	AnyOfVariants  [][]ValidationRule
 	OneOfVariants  [][]ValidationRule
 	NeedsNullCheck bool
+	// AllowsNull is set when the schema's type list carries "null" beside
+	// "integer". The wrapper then gains an explicit null state -- a third
+	// field, and a branch in decode, encode and Validate -- because neither of
+	// the two it already has can say it: the int64 zero is what a literal 0
+	// decodes to, and a nil *big.Int is what every int64-sized value leaves
+	// behind. Without it a permitted `null` was rejected as "not a valid
+	// integer" (issue #85).
+	//
+	// It is the exact complement of NeedsNullCheck for this def -- a
+	// BigIntAliasDef is only built where the schema states an explicit type --
+	// but the two are kept apart because they answer different questions:
+	// NeedsNullCheck asks whether to reject null, AllowsNull whether to
+	// represent it. Emitting the state unconditionally would put an unused
+	// field and a dead branch into every big-int wrapper.
+	AllowsNull bool
 }
 
 func (d *BigIntAliasDef) TypeName() string { return d.Name }

@@ -1679,6 +1679,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
 				NeedsNullCheck: !schemaAllowsNull(s),
+				AllowsNull:     schemaAllowsNull(s),
 			})
 		} else {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
@@ -4762,10 +4763,14 @@ func (g *Generator) bigIntInlineWrapper(s *schema.Schema) bool {
 	// Exactly {"type":"integer"}. A second type alongside it makes the property
 	// a raw-value wrapper that already keeps the bytes. ["integer","null"] is
 	// excluded for a sharper reason: it resolves to *int64, which decodes a JSON
-	// null correctly, and the wrapper cannot say null at all -- a *named*
-	// ["integer","null"] does reach the BigIntAliasDef arm, and rejects `null`
-	// with "value  is not a valid integer". Widening precision by breaking null
-	// is not a trade this makes; that wrapper needs a null representation first.
+	// null correctly, so there is no defect here to fix -- and taking the
+	// position over would retype the field from *int64 to a named wrapper, which
+	// is a change to the API of the generated code with nothing behind it.
+	//
+	// The wrapper itself can say null since issue #85 (see
+	// BigIntAliasDef.AllowsNull), so this exclusion is no longer forced. It is
+	// kept deliberately: widening it is a separate decision about which
+	// positions trade a Go type for arbitrary precision, not a bug fix.
 	if len(s.Type) != 1 || s.Type[0] != "integer" {
 		return false
 	}
@@ -4973,17 +4978,16 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// type is the one the schema names -- map[string]any would drop the schema
 	// and with it any validation of what the object holds.
 	//
-	// Only when the value schema materializes into a generated type, since that
-	// is what the parent's Validate dispatches to. A value schema that resolves
-	// to a bare Go type carries nothing to dispatch on, and retyping the field
-	// for it would change the generated API without validating anything more.
-	if primaryType == "object" && !hasProperties(s) && len(s.PatternProperties) == 0 &&
-		s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil &&
-		!s.AdditionalProperties.Schema.IsBooleanSchema() {
-		valueType := g.resolveArrayItemType(s.AdditionalProperties.Schema, contextName+"Value")
-		if namedTypeName(valueType) != "" {
-			return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
-		}
+	// The value type is kept whether or not it is a named one. A named value
+	// answers for its own schema through its Validate, which the parent
+	// dispatches over the map; a bare value type carries no such method, and its
+	// keywords ride buildItemValidation instead -- the same machinery that
+	// reaches the elements of a []string. Stopping at named types, as this arm
+	// once did, left `additionalProperties: {"type":"string","minLength":3}`
+	// typed map[string]any with minLength enforced nowhere.
+	if mapVals := mapValueSchema(s, primaryType); mapVals != nil {
+		valueType := g.resolveArrayItemType(mapVals, contextName+"Value")
+		return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
 	}
 
 	// Primitive or default
@@ -7181,9 +7185,63 @@ func (g *Generator) singleItemsSchema(s *schema.Schema) *schema.Schema {
 	return s.Items.Schema
 }
 
-// buildItemValidation walks a slice-typed field's Go type and its schema's
-// `items` chain in step, collecting the constraints that apply at each
-// dimension. Returns nil when nothing is left to check.
+// mapValueSchema returns the sub-schema that governs every value of an object
+// whose whole shape is additionalProperties -- no declared property names, no
+// patternProperties, one schema for everything the object holds. It answers nil
+// for any other object, including one whose additionalProperties is a boolean:
+// there the keyword is a verdict on unknown keys, not a description of them.
+//
+// This is the map counterpart of singleItemsSchema, and it is the same test
+// resolveType makes before typing such a node as a Go map. The two callers must
+// agree: the descent below hangs the value schema's keywords off the map the
+// other one produced, and a predicate that admitted more here would attach them
+// to a Go type that did not come from this schema.
+//
+// primaryType is passed in rather than recomputed because resolveType may have
+// inferred it from constraint keywords where the schema states no "type".
+func mapValueSchema(s *schema.Schema, primaryType string) *schema.Schema {
+	if s == nil || primaryType != "object" || hasProperties(s) || len(s.PatternProperties) > 0 {
+		return nil
+	}
+	if s.AdditionalProperties == nil || s.AdditionalProperties.Schema == nil ||
+		s.AdditionalProperties.Schema.IsBooleanSchema() {
+		return nil
+	}
+	return s.AdditionalProperties.Schema
+}
+
+// containerElem returns what a slice or a map holds, and whether the container
+// was a map. A type that is neither answers nil, which ends the descent.
+func containerElem(t GoType) (GoType, bool) {
+	switch v := t.(type) {
+	case *ArrayType:
+		return v.ItemType, false
+	case *MapType:
+		return v.ValueType, true
+	}
+	return nil, false
+}
+
+// containerElemSchema returns the sub-schema governing what a container holds:
+// `items` for a slice, `additionalProperties` for a map.
+func (g *Generator) containerElemSchema(s *schema.Schema, isMap bool) *schema.Schema {
+	if isMap {
+		return mapValueSchema(s, primarySchemaType(s))
+	}
+	return g.singleItemsSchema(s)
+}
+
+// buildItemValidation walks a slice- or map-typed field's Go type and its
+// schema's `items` / `additionalProperties` chain in step, collecting the
+// constraints that apply at each level. Returns nil when nothing is left to
+// check.
+//
+// A map is here for the same reason a slice is. Dispatching to a value's own
+// Validate only works when the value Go type is named; a map[string]string
+// carries no such method, so without this the keywords under
+// additionalProperties are enforced nowhere and the generated Validate accepts
+// data the schema forbids. What differs is only how the level is addressed --
+// by key rather than by index -- which the emitter reads off ItemLevel.IsMap.
 //
 // The descent stops at a named element type: that type was generated from this
 // very sub-schema and answers for it through its own Validate. Whether such a
@@ -7199,18 +7257,18 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 		base = pt.Inner
 		isPointer = true
 	}
-	arr, ok := base.(*ArrayType)
-	if !ok {
+	elemType, isMap := containerElem(base)
+	if elemType == nil {
 		return nil
 	}
 
 	def := &ItemValidationDef{FieldName: fieldName, JSONName: jsonName, IsPointer: isPointer}
-	elemSchema := g.singleItemsSchema(s)
-	elemType := arr.ItemType
+	elemSchema := g.containerElemSchema(s, isMap)
 	for elemSchema != nil && len(def.Levels) < maxItemLevels {
 		level := ItemLevel{
-			IndexVar:      fmt.Sprintf("_i%d", len(def.Levels)),
+			IndexVar:      itemLevelVar(isMap, len(def.Levels)),
 			ElemVar:       fmt.Sprintf("_e%d", len(def.Levels)),
+			IsMap:         isMap,
 			ElemIsPointer: elemType.IsPointer(),
 			ElemType:      elemType,
 			ElemTypeName:  namedTypeName(elemType),
@@ -7226,17 +7284,26 @@ func (g *Generator) buildItemValidation(fieldName, jsonName string, fieldType Go
 		if pt, ok := inner.(*PointerType); ok {
 			inner = pt.Inner
 		}
-		nested, isArray := inner.(*ArrayType)
-		if !isArray {
+		nested, nestedIsMap := containerElem(inner)
+		if nested == nil {
 			break
 		}
-		elemSchema = g.singleItemsSchema(elemSchema)
-		elemType = nested.ItemType
+		elemSchema = g.containerElemSchema(elemSchema, nestedIsMap)
+		elemType, isMap = nested, nestedIsMap
 	}
 	if !def.trim(ItemLevel.pending) {
 		return nil
 	}
 	return def
+}
+
+// itemLevelVar names a level's loop variable, so that generated source reads as
+// what it iterates: an index over a slice, a key over a map.
+func itemLevelVar(isMap bool, level int) string {
+	if isMap {
+		return fmt.Sprintf("_k%d", level)
+	}
+	return fmt.Sprintf("_i%d", level)
 }
 
 // elementRules keeps the constraints from an element schema that compile

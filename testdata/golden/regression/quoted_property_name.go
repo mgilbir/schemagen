@@ -29,7 +29,7 @@ func (n Num) Validate() error {
 type QuotedPropertyName struct {
 	ArrKey               []string                   `json:"-"`
 	FooBar               *Num                       `json:"-"`
-	MapKey               map[string]any             `json:"-"`
+	MapKey               map[string]int64           `json:"-"`
 	PctD                 *string                    `json:"pct%d,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation

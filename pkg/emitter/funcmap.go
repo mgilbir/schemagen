@@ -147,14 +147,26 @@ func itemElemFunc(def generator.ItemValidationDef, level int) string {
 }
 
 // itemPathFunc renders the error path down to a level, as a format string with
-// one %d per dimension. An array alias has no property name to lead with, so it
-// reports the position under the keyword that constrains it.
+// one verb per level: %d for a slice index, %q for a map key. An alias has no
+// property name to lead with, so it reports the position under the keyword that
+// constrains it.
 func itemPathFunc(def generator.ItemValidationDef, level int) string {
 	name := "items"
 	if def.JSONName != "" {
 		name = jsonErrorNameFunc(def.JSONName)
+	} else if len(def.Levels) > 0 && def.Levels[0].IsMap {
+		name = "properties"
 	}
-	return name + strings.Repeat("[%d]", level+1)
+	var b strings.Builder
+	b.WriteString(name)
+	for i := 0; i <= level; i++ {
+		if def.Levels[i].IsMap {
+			b.WriteString("[%q]")
+		} else {
+			b.WriteString("[%d]")
+		}
+	}
+	return b.String()
 }
 
 // itemArgsFunc renders the loop indices that fill in itemPathFunc's verbs.

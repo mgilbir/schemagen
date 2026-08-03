@@ -46,6 +46,12 @@ const coMaxDepth = 3
 //	root            {"type":"object"} with 1..4 properties, or a composition
 //	                leaf as the whole document (see below)
 //	object          type, properties (1..4), required (any subset)
+//	map             an object whose *whole* shape is additionalProperties: no
+//	                declared property names, no patternProperties, one value
+//	                sub-schema drawn from the same set an array element takes,
+//	                and 1..3 keys in the instance. This is the shape schemagen
+//	                types as a Go map; the mutation violates the value schema
+//	                under the last key.
 //	array           type, items (a single schema), minItems, maxItems
 //	string          type, and either {minLength, maxLength} or pattern
 //	integer         type, minimum | exclusiveMinimum, maximum |
@@ -195,11 +201,11 @@ const coMaxDepth = 3
 // promise more than it delivers.
 var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
 
-// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties types
-// the overflow map, so a value of the wrong JSON type dies in the decoder, but
-// the subschema's own constraints are never checked. The grammar therefore only
-// emits additionalProperties: false, whose whole content is a rejection and so
-// cannot be half-enforced.
+// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties *beside
+// declared properties* types the overflow map, so a value of the wrong JSON type
+// dies in the decoder, but the subschema's own constraints are never checked.
+// The grammar therefore only emits additionalProperties: false in that position,
+// whose whole content is a rejection and so cannot be half-enforced.
 //
 //	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
 //	          "additionalProperties":{"type":"integer","minimum":5}}
@@ -207,6 +213,12 @@ var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
 //
 // patternProperties in the same position *is* enforced, constraints and all,
 // which is the form the grammar emits.
+//
+// This gap is about the *overflow* position only. A schema-valued
+// additionalProperties governing the whole object -- no `properties`, no
+// `patternProperties` -- is a different construct: it becomes a Go map and its
+// value constraints are enforced, since issue #84. That form is coMap, and it is
+// emitted unconditionally.
 func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +307,12 @@ const (
 	// coTuple is an array in tuple form: prefixItems types the positions it
 	// has, and unevaluatedItems: false forbids the ones it does not.
 	coTuple
+	// coMap is an object whose *whole* shape is additionalProperties: it
+	// declares no property names and no patternProperties, so one sub-schema
+	// governs everything it holds and the generated Go type is a map. The
+	// value sub-schema is the same set of leaves an array element draws from,
+	// and the mutation violates it under one key.
+	coMap
 
 	// Composition leaves. Each is a whole schema whose only keywords are
 	// applicators, so each is a value the grammar picks first and a schema it
@@ -435,6 +453,13 @@ type coNode struct {
 
 	// coTuple: one JSON type name per prefixItems position.
 	tupleTypes []string
+
+	// coMap: the keys the instance carries. The value schema is `elem`, shared
+	// with coArray, so the node walk and the clone reach it without a second
+	// field to keep in step. Every key holds a value drawn from that one
+	// sub-schema, so a mutation under one key violates it there and nowhere
+	// else.
+	mapKeys []string
 
 	// string. lenLo/lenHi always hold the effective window even when the
 	// corresponding keyword is not emitted, so value generation has a range to
@@ -1229,7 +1254,7 @@ func (b *coBuilder) buildOneOfObj() *coNode {
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
 	if depth < coMaxDepth {
-		kinds = append(kinds, coObject, coArray, coTuple)
+		kinds = append(kinds, coObject, coArray, coTuple, coMap)
 	}
 	if visible > 0 {
 		kinds = append(kinds, coRef)
@@ -1262,6 +1287,8 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 		return b.buildObject(depth, visible)
 	case coArray:
 		return b.buildArray(depth, visible)
+	case coMap:
+		return b.buildMap(depth, visible)
 	case coTuple:
 		return b.buildTuple()
 	case coAltAnyOf:
@@ -1346,6 +1373,28 @@ func (b *coBuilder) buildArray(depth, visible int) *coNode {
 	if b.chance(3) {
 		n.unique = true
 		n.elem = &coNode{kind: coInteger}
+	}
+	return n
+}
+
+// buildMap builds an object whose whole shape is additionalProperties: no
+// declared property names, no patternProperties, one sub-schema for every value.
+// That is the shape schemagen types as a Go map, and the position where the
+// value sub-schema used to be thrown away (issue #84): the field came out
+// map[string]any and the keywords under additionalProperties were enforced
+// nowhere.
+//
+// The value schema is drawn from buildElem, the same set an array element takes.
+// That is deliberate rather than convenient: an array element and a map value
+// reach their checks through one mechanism, so the same leaves are the ones
+// whose enforcement is already established at the sibling position, and a
+// divergence between the two shows up as a map failure on a leaf arrays pass.
+//
+// At least one key, so there is always a value for the mutation to work on.
+func (b *coBuilder) buildMap(depth, visible int) *coNode {
+	n := &coNode{kind: coMap, elem: b.buildElem(depth+1, visible)}
+	for i := 0; i < 1+b.rng.IntN(3); i++ {
+		n.mapKeys = append(n.mapKeys, fmt.Sprintf("k%d", i))
 	}
 	return n
 }
@@ -1562,6 +1611,13 @@ func (n *coNode) fragment() map[string]any {
 		}
 		m["prefixItems"] = prefix
 		m["unevaluatedItems"] = false
+
+	case coMap:
+		// No `properties` and no `patternProperties`: additionalProperties
+		// governs the whole object, which is what makes it a map rather than a
+		// struct with an overflow.
+		m["type"] = "object"
+		m["additionalProperties"] = n.elem.fragment()
 
 	case coArray:
 		m["type"] = "array"
@@ -1811,6 +1867,12 @@ func (d *coDoc) value(n *coNode) any {
 		return d.tupleValue(n, len(n.tupleTypes))
 	case coArray:
 		return d.arrayValue(n, n.numItems)
+	case coMap:
+		m := map[string]any{}
+		for _, k := range n.mapKeys {
+			m[k] = d.value(n.elem)
+		}
+		return m
 	case coString:
 		return n.strValue
 	case coInteger:
@@ -2055,6 +2117,22 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		}
 		if n.numItems > 0 {
 			d.collect(n.elem, coPath(path, 0), prop, out)
+		}
+		if len(path) > 0 {
+			*out = append(*out, coMutation{
+				Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
+			})
+		}
+
+	case coMap:
+		// The value sub-schema's own mutants, under the last key rather than the
+		// first. Every key holds the same value, so any one of them would do;
+		// taking the last one means a map carrying more than one key is only
+		// accepted if the check reached past the first, which a loop that broke
+		// early would not.
+		if len(n.mapKeys) > 0 {
+			last := n.mapKeys[len(n.mapKeys)-1]
+			d.collect(n.elem, coPath(path, last), prop, out)
 		}
 		if len(path) > 0 {
 			*out = append(*out, coMutation{
@@ -2490,6 +2568,7 @@ func (n *coNode) clone() *coNode {
 	c.patKeys = append([]string(nil), n.patKeys...)
 	c.depOn = append([]string(nil), n.depOn...)
 	c.tupleTypes = append([]string(nil), n.tupleTypes...)
+	c.mapKeys = append([]string(nil), n.mapKeys...)
 	if n.cond != nil {
 		cond := *n.cond
 		c.cond = &cond
@@ -2645,7 +2724,7 @@ func coReduce(d *coDoc) []*coDoc {
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {
-				case coObject, coArray, coTuple, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot, coOneOfObj:
+				case coObject, coArray, coTuple, coMap, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot, coOneOfObj:
 					c := d.clone()
 					coNodesOf(c)[i].props[j].node = &coNode{kind: coBoolean}
 					out = append(out, c)
@@ -2671,6 +2750,17 @@ func coReduce(d *coDoc) []*coDoc {
 			if n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems) {
 				c := d.clone()
 				coNodesOf(c)[i].numItems--
+				out = append(out, c)
+			}
+
+		case coMap:
+			// Fewer keys is the same map with the same value schema behind it.
+			// The mutation follows the last key, so dropping keys from the front
+			// keeps the mutated one in place.
+			if len(n.mapKeys) > 1 {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				t.mapKeys = t.mapKeys[1:]
 				out = append(out, c)
 			}
 

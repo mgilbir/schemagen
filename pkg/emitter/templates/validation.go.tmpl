@@ -1358,12 +1358,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 {{- end}}
 
 {{- /* item_validations emits the per-element checks for every slice the schema
-       constrains through `items` but whose element Go type carries no Validate
-       of its own. The context is {Recv, Defs}: a receiver name and a
+       constrains through `items`, and every map it constrains through
+       `additionalProperties`, whose element Go type carries no Validate of its
+       own. The context is {Recv, Defs}: a receiver name and a
        []ItemValidationDef.
 
-       A nil slice ranges zero times, so an absent optional property needs no
-       presence guard; a *[]T does need one, since ranging over a dereferenced
+       A nil slice or map ranges zero times, so an absent optional property needs
+       no presence guard; a *[]T does need one, since ranging over a dereferenced
        nil pointer panics. */}}
 {{define "item_validations"}}
 {{- $recv := .Recv}}
@@ -1378,8 +1379,10 @@ if {{$recv}}.{{$iv.FieldName}} != nil {
 {{- end}}
 {{- end}}
 
-{{- /* item_level emits one array dimension's loop and the checks that apply at
-       that depth, then recurses into the dimension below it. */}}
+{{- /* item_level emits one container level's loop and the checks that apply at
+       that depth, then recurses into the level below it. A map level differs
+       only in what the loop variable is -- a key rather than an index -- which
+       itemPath already accounts for in the error format string. */}}
 {{define "item_level"}}
 {{- $recv := .Recv}}
 {{- $iv := .Def}}

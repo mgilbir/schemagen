@@ -3886,6 +3886,178 @@ func TestArrayAliasValidatesItsElements(t *testing.T) {
 	}
 }
 
+// TestTypedAdditionalPropertiesKeepsItsValueType pins issue #84. An object whose
+// whole shape is `additionalProperties` is a Go map, and the sub-schema says
+// what its values are. The map arm used to keep the value type only when it had
+// been materialized into a *named* type, on the reasoning that a bare value type
+// carries no Validate to dispatch to -- so
+// {"type":"object","additionalProperties":{"type":"string","minLength":3}} came
+// out map[string]any, which is both a weaker Go type and, because the value
+// schema was dropped with it, a document {"m":{"a":"x"}} the schema forbids and
+// the generated Validate accepted.
+//
+// Both halves are asserted here: the Go type, and the per-value checks that
+// answer the reasoning the arm used to give. The checks ride the same
+// ItemValidationDef machinery as a []string's elements, so a nested map or a
+// map of slices descends exactly as [][]string does.
+func TestTypedAdditionalPropertiesKeepsItsValueType(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"strs":   {"type":"object", "additionalProperties":{"type":"string", "minLength":3}},
+			"ints":   {"type":"object", "additionalProperties":{"type":"integer", "minimum":5}},
+			"lists":  {"type":"object", "additionalProperties":{"type":"array", "maxItems":2, "items":{"type":"string", "maxLength":4}}},
+			"nested": {"type":"object", "additionalProperties":{"type":"object", "additionalProperties":{"type":"integer", "maximum":9}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for jsonName, want := range map[string]string{
+		"strs":   "map[string]string",
+		"ints":   "map[string]int64",
+		"lists":  "map[string][]string",
+		"nested": "map[string]map[string]int64",
+	} {
+		field := fieldNamedJSON(t, doc, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q -- the value schema names the type, and map[string]any drops it", jsonName, got, want)
+		}
+	}
+
+	// A map level is addressed by key, not by index. The emitter reads IsMap to
+	// pick the error-path verb, so a level that forgot it would format a string
+	// key with %d.
+	for jsonName, wantRule := range map[string]string{"strs": "minLength", "ints": "minimum"} {
+		def := itemValidationFor(t, doc, jsonName)
+		if len(def.Levels) != 1 {
+			t.Fatalf("%s: %d levels, want 1: %+v", jsonName, len(def.Levels), def.Levels)
+		}
+		if !def.Levels[0].IsMap {
+			t.Fatalf("%s: level 0 is not marked as a map; its error path would index a string key with %%d", jsonName)
+		}
+		if got := itemRuleTypes(def, 0); !containsString(got, wantRule) {
+			t.Fatalf("%s value rules %v are missing %s -- nothing enforces it on the map's values", jsonName, got, wantRule)
+		}
+	}
+
+	// map[string][]string: the map level, then the slice level beneath it.
+	lists := itemValidationFor(t, doc, "lists")
+	if len(lists.Levels) != 2 {
+		t.Fatalf("lists: %d levels, want 2 for map[string][]string: %+v", len(lists.Levels), lists.Levels)
+	}
+	if !lists.Levels[0].IsMap || lists.Levels[1].IsMap {
+		t.Fatalf("lists: level kinds = map:%v map:%v, want map then slice", lists.Levels[0].IsMap, lists.Levels[1].IsMap)
+	}
+	if got := itemRuleTypes(lists, 0); !containsString(got, "maxItems") {
+		t.Fatalf("lists value rules %v are missing maxItems", got)
+	}
+	if got := itemRuleTypes(lists, 1); !containsString(got, "maxLength") {
+		t.Fatalf("lists element rules %v are missing maxLength", got)
+	}
+
+	// map[string]map[string]int64: both levels are maps, and the inner one
+	// carries the keyword.
+	nested := itemValidationFor(t, doc, "nested")
+	if len(nested.Levels) != 2 {
+		t.Fatalf("nested: %d levels, want 2: %+v", len(nested.Levels), nested.Levels)
+	}
+	if !nested.Levels[0].IsMap || !nested.Levels[1].IsMap {
+		t.Fatalf("nested: level kinds = map:%v map:%v, want two maps", nested.Levels[0].IsMap, nested.Levels[1].IsMap)
+	}
+	if got := itemRuleTypes(nested, 1); !containsString(got, "maximum") {
+		t.Fatalf("nested inner value rules %v are missing maximum", got)
+	}
+	for _, def := range []*ItemValidationDef{lists, nested} {
+		if def.Levels[0].IndexVar == def.Levels[1].IndexVar || def.Levels[0].ElemVar == def.Levels[1].ElemVar {
+			t.Fatalf("nested loops share variable names: %+v", def.Levels)
+		}
+	}
+}
+
+// TestNamedAdditionalPropertiesValueStillDispatches guards the half of the arm
+// that already worked. A value schema that does materialize into a named type
+// keeps that type, and the owner reaches it through ValidatableFields rather
+// than through a per-value rule -- emitting both would validate every value
+// twice, and emitting a numeric rule against a struct would not compile.
+func TestNamedAdditionalPropertiesValueStillDispatches(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"m": {"type":"object", "additionalProperties":{"type":"object", "properties":{"x":{"type":"string","minLength":2}}}}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	field := fieldNamedJSON(t, doc, "m")
+	if got := field.Type.GoTypeName(); got != "map[string]DocMValue" {
+		t.Fatalf("m type = %q, want map[string]DocMValue", got)
+	}
+	if !hasValidatableField(doc.ValidatableFields, "m") {
+		t.Fatalf("m is never validated by Doc: %+v", doc.ValidatableFields)
+	}
+	for i := range doc.ItemValidations {
+		if doc.ItemValidations[i].JSONName == "m" {
+			t.Fatalf("m carries per-value checks as well as a Validate dispatch: %+v -- every value would be checked twice", doc.ItemValidations[i])
+		}
+	}
+}
+
+// TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap guards the blast radius of
+// the arm above, which now keeps every value type rather than only named ones
+// and so has more to over-reach with. `additionalProperties` describes a Go map
+// only where it describes the *whole* object: beside `properties` or
+// `patternProperties` it speaks about the keys those do not claim, and typing
+// the property as a map would throw the declared ones away. A boolean
+// `additionalProperties` is a verdict on unknown keys, not a description of
+// them, and names no value type at all.
+//
+// The patternProperties case is the one mapValueSchema itself holds, and it is a
+// real loss if dropped: `{"^a":{"type":"string"}}` beside
+// `additionalProperties:{"type":"integer"}` would become map[string]int64, into
+// which a matching key's string value cannot decode at all. The `properties`
+// case is held by the arm ahead of this one, which materializes an object with
+// declared properties into a struct before the map arm is ever reached -- pinned
+// here because moving the map arm ahead of it would now silently retype every
+// such property, which it could not before. The boolean and bare-object cases
+// come out map[string]any either way; they are pinned because that is the
+// documented answer for a keyword that names no value type, not because a
+// widened predicate would visibly change them today.
+func TestOnlyAWholeAdditionalPropertiesObjectBecomesAMap(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"withProps":  {"type":"object", "properties":{"x":{"type":"string"}}, "additionalProperties":{"type":"integer"}},
+			"withPatt":   {"type":"object", "patternProperties":{"^a":{"type":"string"}}, "additionalProperties":{"type":"integer"}},
+			"boolTrue":   {"type":"object", "additionalProperties":true},
+			"boolFalse":  {"type":"object", "additionalProperties":false},
+			"plainObj":   {"type":"object"}
+		}
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+	for jsonName, want := range map[string]string{
+		"withProps": "*DocWithProps",
+		"withPatt":  "map[string]any",
+		"boolTrue":  "map[string]any",
+		"boolFalse": "map[string]any",
+		"plainObj":  "map[string]any",
+	} {
+		field := fieldNamedJSON(t, doc, jsonName)
+		if got := field.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q -- additionalProperties only types the whole object where it governs the whole object", jsonName, got, want)
+		}
+	}
+	for i := range doc.ItemValidations {
+		switch doc.ItemValidations[i].JSONName {
+		case "withProps", "withPatt", "boolTrue", "boolFalse", "plainObj":
+			t.Fatalf("%s carries per-value checks: %+v -- no single schema governs its values", doc.ItemValidations[i].JSONName, doc.ItemValidations[i])
+		}
+	}
+}
+
 // fieldNamedJSON returns the struct field carrying a JSON property name.
 func fieldNamedJSON(t *testing.T, sd *StructDef, jsonName string) *FieldDef {
 	t.Helper()
@@ -4875,7 +5047,10 @@ func TestUntaggableOptionalFieldsSkipTheirAbsentValue(t *testing.T) {
 		want     string
 	}{
 		{"s\"l", "[]string", "nil"},
-		{"m\"p", "map[string]any", "nil"},
+		// map[string]string, not map[string]any: issue #84 taught the map arm
+		// to keep a bare value type. The map is still nil when absent, which is
+		// what this case is here to pin.
+		{"m\"p", "map[string]string", "nil"},
 		{"a\"n", "any", "nil"},
 		{"p\"t", "*string", "nil"},
 		{"w\"r", "DocWR", "iszero"},
@@ -5038,10 +5213,12 @@ func TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag(t *testing.T) {
 //
 // ["integer","null"] is the sharpest of these, and the reason the rule is stated
 // over the whole type list rather than over "the first non-null type": it
-// resolves to *int64, which decodes a JSON null. The wrapper has no way to say
-// null -- a *named* ["integer","null"] does reach the BigIntAliasDef arm today,
-// and rejects `null` with "value  is not a valid integer" -- so taking this
-// position over would buy precision by breaking a value the schema allows.
+// resolves to *int64, which decodes a JSON null and needs nothing from the
+// wrapper. Taking this position over would retype the field to a named wrapper
+// -- an API change to the generated code -- for a value that already works. The
+// wrapper has been able to represent null since issue #85; that made the
+// exclusion a choice rather than a necessity, and it is still the choice made
+// here.
 func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) {
 	for name, tc := range map[string]struct{ schema, want string }{
 		"nullable":  {`{"type": ["integer","null"], "maximum": 40}`, "*int64"},
@@ -5083,7 +5260,7 @@ func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) 
 	// An array element takes the rule on its own. The property path above has an
 	// arm for a nullable schema ahead of this one, so the type-list rule is only
 	// load-bearing here: nothing else stands between ["integer","null"] and the
-	// wrapper that cannot express the null it allows.
+	// wrapper.
 	t.Run("nullable element", func(t *testing.T) {
 		ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
 			"title": "Root",
@@ -5096,9 +5273,91 @@ func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) 
 		}
 		field := fieldNamedJSON(t, structNamed(t, ir, "Root"), "beta")
 		if got := field.Type.GoTypeName(); got != "[]*int64" {
-			t.Fatalf("beta type = %q, want []*int64; the wrapper has no representation for the null this schema allows", got)
+			t.Fatalf("beta type = %q, want []*int64; the inline nullable spelling is not the wrapper's to take", got)
 		}
 	})
+}
+
+// TestNamedNullableBigIntWrapperRepresentsNull pins issue #85. A *named*
+// ["integer","null"] does reach the BigIntAliasDef arm -- unlike the inline
+// spelling, which resolves to *int64 -- and the wrapper it built held an int64
+// and a *big.Int and nothing else. A JSON null decodes into a json.Number as the
+// empty string, so every numeric parse failed and the generated UnmarshalJSON
+// rejected `{"n":null}` with "value  is not a valid integer", against a schema
+// that explicitly permits it.
+//
+// The repair is a third state on the wrapper. Neither existing field can stand
+// in for null: the int64 zero is what a literal 0 decodes to, and a nil *big.Int
+// is what every int64-sized value leaves behind. AllowsNull is what turns that
+// state on, and it is off wherever the schema does not admit null -- so the
+// non-nullable wrapper, and its generated source, are untouched.
+func TestNamedNullableBigIntWrapperRepresentsNull(t *testing.T) {
+	ir, err := generateJSON(t, Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, `{
+		"title": "Root",
+		"$defs": {
+			"Nullable": {"type": ["integer","null"], "maximum": 40},
+			"Plain":    {"type": "integer", "maximum": 40}
+		},
+		"type": "object",
+		"properties": {
+			"n": {"$ref": "#/$defs/Nullable"},
+			"p": {"$ref": "#/$defs/Plain"}
+		},
+		"required": ["n", "p"]
+	}`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	wrappers := map[string]*BigIntAliasDef{}
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*BigIntAliasDef); ok {
+			wrappers[d.Name] = d
+		}
+	}
+
+	nullable := wrappers["Nullable"]
+	if nullable == nil {
+		t.Fatalf("expected a Nullable big-integer wrapper; got %v", ir.TypeDefs)
+	}
+	if !nullable.AllowsNull {
+		t.Fatalf("Nullable.AllowsNull = false; the wrapper has no state for the null the schema permits, and decoding one fails as \"not a valid integer\"")
+	}
+	if nullable.NeedsNullCheck {
+		t.Fatalf("Nullable.NeedsNullCheck = true; the schema lists \"null\", so nothing may reject it")
+	}
+	// The keyword still travels with the value. Representing null must not cost
+	// the bound that made the wrapper worth generating.
+	var ruleTypes []string
+	for _, r := range nullable.Validations {
+		ruleTypes = append(ruleTypes, r.RuleType)
+	}
+	if !containsString(ruleTypes, "maximum") {
+		t.Fatalf("Nullable checks %v, want maximum", ruleTypes)
+	}
+
+	// The non-nullable wrapper keeps neither the state nor the branches that go
+	// with it. Emitting them unconditionally would put a dead field and a dead
+	// branch into every big-integer wrapper in every generated file.
+	plain := wrappers["Plain"]
+	if plain == nil {
+		t.Fatalf("expected a Plain big-integer wrapper; got %v", ir.TypeDefs)
+	}
+	if plain.AllowsNull {
+		t.Fatalf("Plain.AllowsNull = true; this schema does not admit null and gains nothing from a state that says it does")
+	}
+	if !plain.NeedsNullCheck {
+		t.Fatalf("Plain.NeedsNullCheck = false; a null is not an integer and must still be rejected")
+	}
+
+	// And the field keeps the wrapper. Declining ["integer","null"] at this arm
+	// -- resolving it the way the inline spelling does -- was the alternative
+	// fix, and it would have cost the arbitrary precision the flag was asked
+	// for: a value beyond int64 in a named nullable position would no longer
+	// survive the round trip.
+	if got := fieldNamedJSON(t, structNamed(t, ir, "Root"), "n").Type.GoTypeName(); got != "Nullable" {
+		t.Fatalf("n type = %q, want Nullable; resolving it to a plain integer buys null by giving up precision", got)
+	}
 }
 
 // oneOfDefFor returns the sealed-interface union group a struct carries for a
