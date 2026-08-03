@@ -917,6 +917,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 		}
 	}
+	{{- else if .PresenceGuard}}
+	// An optional property the source JSON did not carry left its Go zero
+	// behind, which is not a value the schema ever saw. _jsonKeys records the
+	// keys the JSON had; when nil the value was not built from JSON and
+	// presence is unknowable, so the check still runs.
+	if {{$recv}}._jsonKeys == nil || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
+		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
+		}
+	}
 	{{- else}}
 	if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)

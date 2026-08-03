@@ -3526,10 +3526,11 @@ func TestDynamicWrapperPropertyIsValidatedByOwner(t *testing.T) {
 // have to hold once the wrapper is validated at all, both of which are about the
 // absent value.
 //
-// The presence guard must be empty. A wrapper is a struct, so the `""` fallback
-// in zeroLiteralForType would have the owner emit `x.A != ""` around the call —
-// which does not compile. Nothing is lost by dropping the guard: the wrapper's
-// own Validate returns nil when it holds no bytes.
+// The zero-literal guard must be empty. A wrapper is a struct, so the `""`
+// fallback in zeroLiteralForType would have the owner emit `x.A != ""` around
+// the call — which does not compile. Nothing is lost by dropping it: the
+// wrapper's own Validate returns nil when it holds no bytes, and an optional
+// field's call is gated on _jsonKeys anyway (PresenceGuard).
 //
 // The tag must be ",omitzero" rather than ",omitempty". omitempty never
 // considers a struct empty, and the wrapper's MarshalJSON writes null when it
@@ -4280,4 +4281,240 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOptionalRefToWrapperTypeIsAPointer covers the third instance of one
+// defect: an optional property whose Go type is a materialized name loses the
+// difference between "absent" and the Go zero.
+//
+// A definition that carries constraints but no "type" becomes an
+// InferredAliasDef, and BigIntSupport turns a named integer into a
+// BigIntAliasDef. Both are structs, and omitempty never omits a struct — so an
+// absent optional property came back as the wrapper's zero, was fabricated into
+// the output as 0, and was then measured against the definition's bounds, which
+// rejected a document that conformed. A pointer is the only representation of
+// absence such a wrapper has: unlike the raw-value wrappers it carries no
+// IsZero, because its zero is exactly what a present 0 decodes to.
+func TestOptionalRefToWrapperTypeIsAPointer(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input string
+		cfg   Config
+	}{
+		// The default configuration reaches it: no "type" on the definition.
+		"inferred wrapper": {
+			input: `{
+				"title": "Root",
+				"$defs": {"DefA": {"exclusiveMinimum": 17}},
+				"type": "object",
+				"properties": {"charlie": {"$ref": "#/$defs/DefA"}}
+			}`,
+			cfg: Config{PackageName: "testpkg", OmitEmpty: true},
+		},
+		// The same defect one flag over: BigIntSupport puts a wrapper over a
+		// named integer that would otherwise be `type DefA int64` and a pointer.
+		"big-int wrapper": {
+			input: `{
+				"title": "Root",
+				"$defs": {"DefA": {"type": "integer", "exclusiveMinimum": 17}},
+				"type": "object",
+				"properties": {"charlie": {"$ref": "#/$defs/DefA"}}
+			}`,
+			cfg: Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.input), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+
+			ir, err := New(tc.cfg).Generate(&s)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			root := structNamed(t, ir, "Root")
+			charlie, ok := fieldByJSONName(root, "charlie")
+			if !ok {
+				t.Fatalf("expected field for property charlie")
+			}
+			if got := charlie.Type.GoTypeName(); got != "*DefA" {
+				t.Fatalf("charlie type = %q, want *DefA (a value wrapper is never omitted, so absent comes back as 0)", got)
+			}
+			if !charlie.OmitEmpty {
+				t.Fatalf("charlie lost omitempty, so nil marshals as null rather than being omitted")
+			}
+			// omitzero is for the wrappers that can say "empty" themselves; a
+			// pointer says it with nil and omitempty already drops that.
+			if charlie.OmitZero {
+				t.Fatalf("charlie is tagged ,omitzero as well as being a pointer")
+			}
+			// The pointer removes the second symptom too: the owner guards the
+			// call on nil rather than handing Validate a zero the document
+			// never carried.
+			var vf ValidatableFieldDef
+			for _, f := range root.ValidatableFields {
+				if f.JSONName == "charlie" {
+					vf = f
+				}
+			}
+			if vf.JSONName == "" {
+				t.Fatalf("charlie is never validated by Root: %#v", root.ValidatableFields)
+			}
+			if !vf.IsPointer {
+				t.Fatalf("charlie's Validate call is not nil-guarded: %#v", vf)
+			}
+		})
+	}
+}
+
+// TestRequiredRefToWrapperTypeStaysAValue guards the trade the fix must not
+// make. A required property is always there, so it has nothing to say with nil
+// and stays a value — the pointer rule is about absence, not about wrappers.
+// The raw-value wrappers stay values as well: they carry IsZero, so ",omitzero"
+// already omits an absent one and their own Validate passes over it.
+func TestRequiredRefToWrapperTypeStaysAValue(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"$defs": {
+			"DefA": {"exclusiveMinimum": 17},
+			"Window": {"oneOf": [{"type":"integer","minimum":10}, {"type":"string"}]}
+		},
+		"type": "object",
+		"properties": {
+			"charlie": {"$ref": "#/$defs/DefA"},
+			"window": {"$ref": "#/$defs/Window"}
+		},
+		"required": ["charlie"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for jsonName, want := range map[string]string{
+		"charlie": "DefA",
+		"window":  "Window",
+	} {
+		f, ok := fieldByJSONName(root, jsonName)
+		if !ok {
+			t.Fatalf("expected field for property %q", jsonName)
+		}
+		if got := f.Type.GoTypeName(); got != want {
+			t.Fatalf("%s type = %q, want %q", jsonName, got, want)
+		}
+	}
+	// The optional raw-value wrapper keeps the tag that omits it.
+	window, _ := fieldByJSONName(root, "window")
+	if !window.OmitZero {
+		t.Fatalf("window lost ,omitzero, so an absent value marshals as null")
+	}
+}
+
+// TestOptionalNamedFieldValidationIsGuardedByPresence covers the same family
+// where no pointer is available. With OmitEmpty false every optional property
+// is a value field, so the owner's Validate called the field type's Validate
+// with no guard at all: a property the document did not carry was judged by its
+// Go zero — `{"alpha":""}` was rejected with `delta.invalid RootDelta value: `
+// against a schema that only asks delta to be "red" when it is there.
+//
+// The information was already on hand. _jsonKeys records the keys the source
+// JSON carried, and an optional property with *inline* keywords is gated on it;
+// only the arm for a materialized named type was not. A nil _jsonKeys means the
+// value was not built from JSON, and there the call still has to run.
+func TestOptionalNamedFieldValidationIsGuardedByPresence(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"type": "object",
+		"properties": {
+			"alpha": {"enum": [""]},
+			"delta": {"const": "red"},
+			"echo": {"const": "blue"}
+		},
+		"required": ["echo"]
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	// OmitEmpty false is the configuration that always takes this arm.
+	ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+
+	guards := make(map[string]ValidatableFieldDef, len(root.ValidatableFields))
+	for _, vf := range root.ValidatableFields {
+		guards[vf.JSONName] = vf
+	}
+	for _, jsonName := range []string{"alpha", "delta"} {
+		vf, ok := guards[jsonName]
+		if !ok {
+			t.Fatalf("%q: expected among ValidatableFields", jsonName)
+		}
+		if vf.IsPointer {
+			t.Fatalf("%q: OmitEmpty false is meant to leave the field a value", jsonName)
+		}
+		if !vf.PresenceGuard {
+			t.Fatalf("%q: Validate is called unguarded, so an absent property is judged by its Go zero: %#v", jsonName, vf)
+		}
+	}
+	// A required property is present by definition, and its own check reports a
+	// missing key first; gating it would only hide a genuine violation.
+	if echo, ok := guards["echo"]; !ok || echo.PresenceGuard {
+		t.Fatalf("required property echo is presence-gated: %#v", echo)
+	}
+	// The guard has to have something to read. _jsonKeys is only emitted when
+	// the struct says it needs it.
+	if !root.NeedsJSONKeys() {
+		t.Fatalf("Root does not carry _jsonKeys, so the presence guard cannot compile")
+	}
+}
+
+// TestOptionalNamedPointerFieldNeedsNoPresenceGuard pins the other half: with
+// omitempty the same properties are pointers, where nil already says "absent".
+// Adding _jsonKeys there would gate the check on a second, weaker fact — a
+// field set by hand after unmarshal would stop being validated.
+func TestOptionalNamedPointerFieldNeedsNoPresenceGuard(t *testing.T) {
+	input := `{
+		"title": "Root",
+		"type": "object",
+		"properties": {"delta": {"const": "red"}}
+	}`
+
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	root := structNamed(t, ir, "Root")
+	for _, vf := range root.ValidatableFields {
+		if vf.JSONName != "delta" {
+			continue
+		}
+		if !vf.IsPointer {
+			t.Fatalf("delta is not a pointer under omitempty: %#v", vf)
+		}
+		if vf.PresenceGuard {
+			t.Fatalf("delta is guarded twice, on nil and on _jsonKeys: %#v", vf)
+		}
+		return
+	}
+	t.Fatalf("delta is never validated by Root: %#v", root.ValidatableFields)
 }

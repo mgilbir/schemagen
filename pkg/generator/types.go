@@ -162,6 +162,16 @@ type ValidatableFieldDef struct {
 
 	OmitEmpty   bool   // true if the field can be zero-value (optional, no validate on zero)
 	ZeroLiteral string // Go zero value literal for the type (e.g., `""`, `0`, `false`)
+
+	// PresenceGuard is set for an optional field that is neither a pointer nor a
+	// collection, so nothing about the Go value says whether the source JSON
+	// carried the property. Its Go zero is not a value the schema ever saw, and
+	// handing it to the field type's Validate rejects a document that conforms.
+	// The emitted call is gated on _jsonKeys, which records the keys the JSON
+	// actually had. A nil _jsonKeys means the value was not built from JSON at
+	// all, and there the call still runs: presence is unknowable, and skipping
+	// would stop checking hand-constructed values.
+	PresenceGuard bool
 }
 
 // HasRequiredFields returns true if the struct has required field validation.
@@ -295,6 +305,14 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		// in _jsonKeys. Without it the count would be a compile-time constant
 		// (number of declared fields) rather than the number of present ones.
 		if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+			return true
+		}
+	}
+	// An optional field whose type carries its own Validate() is gated on key
+	// presence for the same reason an inline optional rule is: its Go zero is
+	// not something the document said.
+	for _, vf := range d.ValidatableFields {
+		if vf.PresenceGuard {
 			return true
 		}
 	}

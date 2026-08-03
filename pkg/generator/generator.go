@@ -5874,11 +5874,13 @@ func isZeroLossyPrimitive(goType GoType) bool {
 	return false
 }
 
-// isZeroLossyNamedType reports whether t names a generated type whose
-// underlying Go type is a zero-lossy primitive — a $ref to a "type":"string"
-// definition, an inline enum, a const promoted to a single-value enum. The name
-// does not give the value a nil to be absent in, so such a field loses a
-// legitimate "", 0 or false to omitempty exactly as a bare primitive would.
+// isZeroLossyNamedType reports whether t names a generated type that has no
+// representation for "absent" of its own — either because its underlying Go
+// type is a zero-lossy primitive (a $ref to a "type":"string" definition, an
+// inline enum, a const promoted to a single-value enum), or because it is a
+// wrapper struct over one (see zeroLossyTypeName). The name does not give the
+// value a nil to be absent in, so such a field loses a legitimate "", 0 or
+// false to omitempty exactly as a bare primitive would.
 //
 // The answer comes from the generated type rather than from the property's
 // schema because a $ref says nothing about the shape of its target. Both are
@@ -5919,10 +5921,24 @@ func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
 			// A heterogeneous enum is backed by json.RawMessage, whose zero is
 			// nil — absent already has a representation there.
 			return g.zeroLossyGoType(def.BaseType, depth)
+		case *InferredAliasDef, *BigIntAliasDef:
+			// A wrapper struct over a scalar: the InferredAliasDef built for a
+			// definition that carries constraints but no "type", and the
+			// BigIntAliasDef that BigIntSupport puts over a named integer. It is
+			// worse off than a named primitive, not better — omitempty never
+			// omits a struct, so an absent optional property is fabricated into
+			// the output as the wrapper's zero and then measured against the
+			// definition's constraints. And unlike the raw-value wrappers below
+			// it carries no IsZero to hand ",omitzero": its zero is exactly what
+			// a present 0 or "" decodes to, so omitzero would drop a legitimate
+			// value. The pointer is the only representation of absence left.
+			return true
 		default:
-			// Structs and the wrapper types (inferred, big-int, raw-value) have
-			// no zero literal at all: zeroLiteralForType returns "" for them and
-			// the caller wraps them for their own reasons, or not at all.
+			// A struct is pointer-wrapped by isObjectProperty, and the raw-value
+			// wrappers (TypeOnlySchemaDef, NotSchemaDef, DynamicSchemaDef) keep
+			// the bytes they were handed: an absent one holds no bytes, which
+			// their IsZero reports to ",omitzero" and their Validate treats as
+			// nothing to check. Neither needs a pointer here.
 			return false
 		}
 	}
@@ -6887,6 +6903,13 @@ func (g *Generator) populateValidatableFields() {
 					IsPointer:   f.Type.IsPointer(),
 					OmitEmpty:   f.OmitEmpty,
 					ZeroLiteral: zeroLit,
+					// A pointer already says "absent" with nil. Anything else
+					// optional needs _jsonKeys to say it, or the Go zero of a
+					// property the document never carried is measured against
+					// the schema — which is how OmitEmpty false, where no
+					// optional field is a pointer, rejected conforming
+					// documents.
+					PresenceGuard: !f.Required && !f.Type.IsPointer(),
 				})
 				continue
 			}
