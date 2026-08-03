@@ -7,8 +7,6 @@ import (
 	"fmt"
 	ecma262 "github.com/mgilbir/goecma262"
 	ecmaflags "github.com/mgilbir/goecma262/flags"
-	"net/netip"
-	"time"
 	"unicode/utf8"
 )
 
@@ -26,9 +24,6 @@ func (b *BoundedStamp) UnmarshalJSON(data []byte) error {
 func (b BoundedStamp) Validate() error {
 	if utf8.RuneCountInString(string(b)) < 25 {
 		return fmt.Errorf("value: length %d is less than minimum 25", utf8.RuneCountInString(string(b)))
-	}
-	if _, _err := time.Parse(time.RFC3339, string(b)); _err != nil {
-		return fmt.Errorf("value: %q is not a valid date-time (RFC 3339): %w", string(b), _err)
 	}
 	return nil
 }
@@ -48,22 +43,79 @@ func (b BoundedV4) Validate() error {
 	if utf8.RuneCountInString(string(b)) < 9 {
 		return fmt.Errorf("value: length %d is less than minimum 9", utf8.RuneCountInString(string(b)))
 	}
-	if _a, _err := netip.ParseAddr(string(b)); _err != nil || !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", string(b))
+	return nil
+}
+
+// FormatBesideLengthInferredV4 accepts any JSON value. Constraints apply only when the value is string.
+type FormatBesideLengthInferredV4 struct {
+	_value string
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (f *FormatBesideLengthInferredV4) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		f._raw = append(f._raw[:0], data...)
+		f._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &f._value); _err == nil {
+		f._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	f._raw = append(f._raw[:0], data...)
+	f._isRaw = true
+	return nil
+}
+func (f FormatBesideLengthInferredV4) MarshalJSON() ([]byte, error) {
+	if f._isRaw {
+		if len(f._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return f._raw, nil
+	}
+	return json.Marshal(f._value)
+}
+func (f FormatBesideLengthInferredV4) StringValue() string { return f._value }
+func (f FormatBesideLengthInferredV4) IsString() bool      { return !f._isRaw }
+func (f FormatBesideLengthInferredV4) Raw() json.RawMessage {
+	if f._isRaw {
+		return f._raw
+	}
+	_b, _ := json.Marshal(f._value)
+	return _b
+}
+func (f FormatBesideLengthInferredV4) String() string {
+	if f._isRaw {
+		return string(f._raw)
+	}
+	return fmt.Sprintf("%v", f._value)
+}
+
+// Validate checks FormatBesideLengthInferredV4 against its JSON Schema constraints.
+func (f FormatBesideLengthInferredV4) Validate() error {
+	if f._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if utf8.RuneCountInString(string(f._value)) < 9 {
+		return fmt.Errorf("value: length %d is less than minimum 9", utf8.RuneCountInString(string(f._value)))
 	}
 	return nil
 }
 
 // FormatBesideLength - A format that maps to a Go type, stated beside a keyword that reads the string's characters. netip.Addr and time.Time do not carry those characters, so the emitted length check did not compile at all -- as a $defs alias and as a struct field alike. The mapping is given up here and the value kept as the string, so both keywords are checked.
 type FormatBesideLength struct {
-	DeclaredStamp        *string                    `json:"declaredStamp,omitempty"`
-	DeclaredV4           *string                    `json:"declaredV4,omitempty"`
-	InferredV4           *string                    `json:"inferredV4,omitempty"`
-	PatternedV4          *string                    `json:"patternedV4,omitempty"`
-	RefStamp             *BoundedStamp              `json:"refStamp,omitempty"`
-	RefV4                *BoundedV4                 `json:"refV4,omitempty"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	DeclaredStamp        *string                       `json:"declaredStamp,omitempty"`
+	DeclaredV4           *string                       `json:"declaredV4,omitempty"`
+	InferredV4           *FormatBesideLengthInferredV4 `json:"inferredV4,omitempty"`
+	PatternedV4          *string                       `json:"patternedV4,omitempty"`
+	RefStamp             *BoundedStamp                 `json:"refStamp,omitempty"`
+	RefV4                *BoundedV4                    `json:"refV4,omitempty"`
+	AdditionalProperties map[string]json.RawMessage    `json:"-"`
+	_jsonKeys            map[string]bool               // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (f *FormatBesideLength) UnmarshalJSON(data []byte) error {
@@ -157,28 +209,9 @@ func (f FormatBesideLength) Validate() error {
 			return fmt.Errorf("declaredStamp: length %d is less than minimum 25", utf8.RuneCountInString(*f.DeclaredStamp))
 		}
 	}
-	if f._jsonKeys["declaredStamp"] {
-		if f.DeclaredStamp != nil {
-			if _, _err := time.Parse(time.RFC3339, *f.DeclaredStamp); _err != nil {
-				return fmt.Errorf("declaredStamp: value %q is not a valid date-time (RFC 3339): %w", *f.DeclaredStamp, _err)
-			}
-		}
-	}
 	if f._jsonKeys["declaredV4"] {
 		if f.DeclaredV4 != nil && utf8.RuneCountInString(*f.DeclaredV4) < 9 {
 			return fmt.Errorf("declaredV4: length %d is less than minimum 9", utf8.RuneCountInString(*f.DeclaredV4))
-		}
-	}
-	if f._jsonKeys["declaredV4"] {
-		if f.DeclaredV4 != nil {
-			if _a, _err := netip.ParseAddr(*f.DeclaredV4); _err != nil || !_a.Is4() {
-				return fmt.Errorf("declaredV4: value %q is not a valid IPv4 address", *f.DeclaredV4)
-			}
-		}
-	}
-	if f._jsonKeys["inferredV4"] {
-		if f.InferredV4 != nil && utf8.RuneCountInString(*f.InferredV4) < 9 {
-			return fmt.Errorf("inferredV4: length %d is less than minimum 9", utf8.RuneCountInString(*f.InferredV4))
 		}
 	}
 	if f._jsonKeys["patternedV4"] {
@@ -188,11 +221,9 @@ func (f FormatBesideLength) Validate() error {
 			}
 		}
 	}
-	if f._jsonKeys["patternedV4"] {
-		if f.PatternedV4 != nil {
-			if _a, _err := netip.ParseAddr(*f.PatternedV4); _err != nil || !_a.Is4() {
-				return fmt.Errorf("patternedV4: value %q is not a valid IPv4 address", *f.PatternedV4)
-			}
+	if f.InferredV4 != nil {
+		if err := f.InferredV4.Validate(); err != nil {
+			return fmt.Errorf("inferredV4.%w", err)
 		}
 	}
 	if f.RefStamp != nil {

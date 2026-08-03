@@ -843,7 +843,32 @@ func main() {
 // input in invalid fails it. Used by focused validation regression tests.
 func runValidationCases(t *testing.T, schemaPath string, valid, invalid []string) {
 	t.Helper()
-	generated := generateFromSchema(t, schemaPath)
+	runValidationCasesWithConfig(t, schemaPath, generator.Config{
+		PackageName: "testpkg",
+		OmitEmpty:   true,
+	}, valid, invalid)
+}
+
+// formatAssertingConfig is the configuration a test uses when its subject is
+// the format assertion itself.
+//
+// Every fixture below declares draft 2020-12, whose default meta-schema makes
+// `format` an annotation -- so under the ordinary configuration these documents
+// are all valid and there is nothing for the test to see. The flag is what asks
+// the question each of these tests is about. TestFormatPostureFollowsTheDialect
+// is the one that asks whether the flag matters.
+func formatAssertingConfig() generator.Config {
+	return generator.Config{PackageName: "testpkg", OmitEmpty: true, FormatAssertion: true}
+}
+
+// runValidationCasesWithConfig is runValidationCases under a chosen generator
+// configuration. It exists for the format posture: the same fixture has to be
+// judged twice, once under the dialect's own answer and once under
+// --format-assertion, since a test that only ever ran one of them could not tell
+// a working flag from a flag that does nothing.
+func runValidationCasesWithConfig(t *testing.T, schemaPath string, cfg generator.Config, valid, invalid []string) {
+	t.Helper()
+	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
 	rootType := extractRootTypeName(t, string(generated))
 	tmpDir := t.TempDir()
 
@@ -1676,13 +1701,21 @@ func TestPatternValueSubschemaIsChecked(t *testing.T) {
 			`{"qq":{}}`,
 			`{"rr":1}`, `{"rr":1.0}`, // draft 2020-12: a zero fractional part is an integer
 			`{"ss":"abcde"}`,
-			// The two sub-schemas whose materialized type Go forbids methods on:
-			// a $ref to an empty schema, and a bare `format` with no type. Both
-			// assert nothing, so both must accept anything -- and both are here
+			// A $ref to an empty schema: its materialized type is one Go forbids
+			// methods on, so it asserts nothing and must accept anything. Here
 			// because the emitted dispatch would not compile if the pass that
 			// notices a type carries no Validate stopped noticing.
 			`{"tt":{"anything":1}}`, `{"tt":null}`,
-			`{"uu":"not-an-ip"}`, `{"uu":5}`,
+			// A bare `format` with no type. It has a type and a Validate now
+			// (issue #106), but this fixture declares 2020-12, whose default
+			// meta-schema makes `format` an annotation -- so the Validate
+			// asserts nothing here and every instance satisfies the bucket,
+			// malformed address included. The assertion side of the same
+			// schema is TestUntypedFormatIsAssertedOnStringsOnly, which asks
+			// for it; the draft gate itself is
+			// TestFormatPostureFollowsTheDialect.
+			`{"uu":"1.2.3.4"}`, `{"uu":"not-an-ip"}`,
+			`{"uu":5}`, `{"uu":{"a":1}}`, `{"uu":[1]}`, `{"uu":true}`, `{"uu":null}`,
 		},
 		[]string{
 			`{"aa":"ccc"}`,         // enum
@@ -2347,10 +2380,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_alias_positions.json",
 		"format_alias_positions_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2396,10 +2430,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_alias_root.json",
 		"format_alias_root_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2446,10 +2481,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_map_values.json",
 		"format_map_values_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2563,8 +2599,9 @@ func main() {
 // itself, an element of a slice of it and a value of a map of it, since the
 // element positions reach the same Validate by a different route.
 func TestFormatAliasAssertsItsFormat(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/format_alias_assertions.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			`{"v4":"192.0.2.7"}`,
@@ -2610,8 +2647,9 @@ func TestFormatAliasAssertsItsFormat(t *testing.T) {
 // guards is unchanged either way: a panic is not a rejection, and the harness
 // reports one as a failure whichever list the document sits in.
 func TestNullIPAddressDoesNotPanic(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/formats/all_formats.json",
+		formatAssertingConfig(),
 		[]string{
 			`{"name":"x","primary_ip":"1.2.3.4"}`,
 			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"2001:db8::1"}`,
@@ -2640,8 +2678,9 @@ func TestNullIPAddressDoesNotPanic(t *testing.T) {
 // The valid half matters as much as the invalid: a fix that merged the enum but
 // got the type wrong would reject the members themselves.
 func TestAllOfKeepsBranchType(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/allof_single_branch_type.json",
+		formatAssertingConfig(),
 		[]string{
 			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a"}`,
 			`{"stamp":"2020-01-02T03:04:05Z","choice":"green","raw":1}`,
@@ -2674,8 +2713,9 @@ func TestAllOfKeepsBranchType(t *testing.T) {
 // generateTypeDef, so it was already right, and a change that fixed the others
 // by breaking the shared path would show up here.
 func TestAllOfInlinePositionsKeepBranchType(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/allof_inline_positions.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			`{"chain":"2020-01-02T03:04:05Z"}`,   // property
@@ -3533,8 +3573,9 @@ func TestRefSiblingTypeSuppressedBeforeDraft2019(t *testing.T) {
 // and a wrapper that rejected null would pass every case in the invalid list
 // while being wrong about all of them.
 func TestNullableFormatIsAssertedEverywhere(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/nullable_format_positions.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			// A conforming address, position by position.
@@ -3592,6 +3633,75 @@ func TestNullableFormatIsAssertedEverywhere(t *testing.T) {
 	)
 }
 
+// TestUntypedFormatIsAssertedOnStringsOnly covers a `format` written with no
+// "type" beside it, in every position it can be written.
+//
+// It resolved to `any`, and Go forbids methods on `any`, so the format was
+// asserted nowhere -- inline, behind a $ref, through an alias chain, as an
+// element, a map value, a tuple slot, a oneOf branch, an allOf branch and a
+// patternProperties bucket alike.
+//
+// The narrowness is the point, and it is what the second half of the valid list
+// pins. `format` is scoped to string instances: a number, an object, an array, a
+// boolean and a null satisfy {"format":"ipv4"} outright, so the fix cannot be
+// "give it a string type" -- that would reject documents the schema admits, in
+// every one of these positions at once. Each of those five is here beside the
+// rejection it must not become.
+func TestUntypedFormatIsAssertedOnStringsOnly(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/untyped_format_positions.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// The accept-controls: five instance types the format says nothing
+			// about, in the positions whose Go type the fix changed.
+			`{"inline":5}`, `{"inline":{"a":1}}`, `{"inline":[1]}`, `{"inline":true}`, `{"inline":null}`,
+			`{"ref":5}`, `{"ref":{"a":1}}`, `{"ref":null}`,
+			`{"chain":5}`, `{"chain":null}`,
+			`{"list":[5,{"a":1},null,true]}`,
+			`{"map":{"k":5}}`, `{"map":{"k":null}}`,
+			`{"tuple":[5,1]}`, `{"tuple":[null,1]}`, `{"tuple":[{"a":1},1]}`,
+			`{"wrapped":5}`, `{"wrapped":null}`,
+			`{"buckets":{"pp":5}}`, `{"buckets":{"pp":null}}`,
+			// A key the pattern does not match is unconstrained.
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The two other formats, and their non-string accept-controls.
+			`{"stamp":"2020-01-02T03:04:05Z"}`, `{"stamp":5}`, `{"stamp":null}`,
+			`{"mail":"a@b.test"}`, `{"mail":5}`, `{"mail":null}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family, which only the format
+			// assertion can reject.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// Not an address at all.
+			`{"inline":"not-an-ip"}`,
+			`{"ref":"not-an-ip"}`,
+			`{"chain":"not-an-ip"}`,
+			// The other two formats, on a string instance.
+			`{"stamp":"not-a-timestamp"}`,
+			`{"mail":"not-an-email"}`,
+		},
+	)
+}
+
 // TestFormatBesideLengthCompilesAndChecksBoth covers a format that maps to a Go
 // type written beside a keyword that reads the string's characters.
 //
@@ -3608,8 +3718,9 @@ func TestNullableFormatIsAssertedEverywhere(t *testing.T) {
 // half each have a rejection here, and the compile is the third assertion, made
 // by runValidationCases building the program at all.
 func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/format_beside_length.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			`{"declaredV4":"192.0.2.77"}`,
@@ -3618,6 +3729,10 @@ func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
 			`{"refV4":"192.0.2.77"}`,
 			`{"refStamp":"2020-01-02T03:04:05+01:00"}`,
 			`{"patternedV4":"192.0.2.7"}`,
+			// The type this schema is not about. Only the inferred property can
+			// hold one -- the others declare "type":"string" -- and there the
+			// length and format keywords are both vacuous.
+			`{"inferredV4":5}`, `{"inferredV4":null}`, `{"inferredV4":{"a":1}}`,
 		},
 		[]string{
 			`{"declaredV4":"1.2.3.4"}`,     // 7 characters, under minLength 9
@@ -3627,11 +3742,8 @@ func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
 			// time.Time rather than netip.Addr.
 			`{"declaredStamp":"2020-01-02T03:04:05Z"}`,
 			`{"declaredStamp":"not-a-timestamp-at-all-xx"}`, // 25 characters, not a date-time
-			// The inferred property is checked for length only. Its format needs
-			// the wrapper a "format" with no declared type resolves to, which is
-			// the next commit's business (issue #106); here the point is that it
-			// compiles and that the length keyword survived the change.
 			`{"inferredV4":"1.2.3.4"}`,
+			`{"inferredV4":"2001:db8::999"}`,
 			`{"refV4":"1.2.3.4"}`,
 			`{"refV4":"2001:db8::1"}`,
 			`{"refStamp":"2020-01-02T03:04:05Z"}`,
@@ -3642,15 +3754,228 @@ func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
 	)
 }
 
-// TestFormatRootPositionsAssert is the position the tests above cannot reach:
-// the schema as a whole document, where the wrapper is the root type itself
-// rather than something a field refers to. A fix that reached only the positions
-// inside an object would leave the document root asserting nothing, which is
-// where a $defs entry lands when it is split into a file of its own.
+// TestFormatRootPositionsAssert is the position the two tests above cannot
+// reach: the schema as a whole document, where the wrapper is the root type
+// itself rather than something a field refers to. Both shapes are here because
+// they take different routes to a root type -- the nullable one through the
+// "type" union wrapper, the untyped one through the inferred-value wrapper --
+// and a fix that reached only the positions inside an object would leave the
+// document root asserting nothing, which is where a $defs entry lands when it is
+// split into a file of its own.
 func TestFormatRootPositionsAssert(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/nullable_format_root.json",
+		formatAssertingConfig(),
 		[]string{`"192.0.2.7"`, `null`},
 		[]string{`"2001:db8::1"`, `"not-an-ip"`, `5`, `{"a":1}`},
+	)
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/untyped_format_root.json",
+		formatAssertingConfig(),
+		// Every non-string instance satisfies a bare format, so all four are
+		// accept-controls for the two rejections.
+		[]string{`"192.0.2.7"`, `null`, `5`, `{"a":1}`, `[1]`, `true`},
+		[]string{`"2001:db8::1"`, `"not-an-ip"`},
+	)
+}
+
+// malformedByFormat is one document per spelling of a format, each carrying a
+// value that is well-formed JSON, is of the right instance type, and is not of
+// the named format. Whether these are rejected is the whole of the format
+// posture, so the same list is used for all three of its answers.
+var malformedByFormat = []string{
+	`{"typed":"2001:db8::1"}`,
+	`{"untyped":"not-an-ip"}`,
+	`{"nullable":"2001:db8::1"}`,
+	`{"stamp":"not-a-timestamp"}`,
+	`{"mail":"not-an-email"}`,
+}
+
+// conformingByFormat is the same set of properties carrying values that do
+// match. They are the control on every arm below: a posture that accepted
+// nothing would pass the annotation arm's expectations by accident.
+var conformingByFormat = []string{
+	`{}`,
+	`{"typed":"192.0.2.7"}`,
+	`{"untyped":"192.0.2.7"}`,
+	`{"nullable":"192.0.2.7"}`, `{"nullable":null}`,
+	`{"stamp":"2020-01-02T03:04:05Z"}`,
+	`{"mail":"a@b.test"}`,
+	// A format says nothing about an instance of another type, on any draft
+	// and under any posture. Only the untyped spelling can hold one.
+	`{"untyped":5}`, `{"untyped":null}`, `{"untyped":{"a":1}}`,
+}
+
+// TestFormatPostureFollowsTheDialect pins which drafts assert a format, and
+// what --format-assertion changes.
+//
+// The generator asserted `format` on every draft and could not be told not to.
+// That is a legitimate reading of draft 3 through 7, which say an implementation
+// SHOULD validate a format it recognises and MAY treat it as an annotation. It
+// is not a legitimate reading of 2019-09 or 2020-12: their default meta-schema
+// declares the format-annotation vocabulary, whose content is that format
+// produces an annotation and no assertion, and the official suite marks
+// {"format":"email"} satisfied by "2962" accordingly. Rejecting those documents
+// is rejecting what the schema permits.
+//
+// The three arms are the three answers, and each is needed. Without the first
+// the change is untested; without the second the older drafts could have been
+// broken silently, since nothing else in the tree still asserts by default;
+// without the third the flag could be doing nothing at all and every other
+// format test in this file -- all of which now pass it -- would still pass.
+func TestFormatPostureFollowsTheDialect(t *testing.T) {
+	t.Run("2020-12 annotates", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/format_posture_2020.json",
+			append(append([]string{}, conformingByFormat...), malformedByFormat...),
+			nil,
+		)
+	})
+	t.Run("draft-07 asserts", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/format_posture_draft7.json",
+			conformingByFormat,
+			malformedByFormat,
+		)
+	})
+	t.Run("2020-12 asserts under the flag", func(t *testing.T) {
+		runValidationCasesWithConfig(t,
+			"testdata/schemas/regression/format_posture_2020.json",
+			formatAssertingConfig(),
+			conformingByFormat,
+			malformedByFormat,
+		)
+	})
+}
+
+// TestFormatChecksMatchTheSuite pins the format checks against the cases where
+// they used to disagree with the official suite's optional/format corpus.
+//
+// Every document in the valid list was rejected by the released checks, and a
+// rejection of a conforming document is the worst thing this generator can do:
+// it is not a missing check that someone might notice, it is a build that
+// refuses to accept data the schema permits. They are grouped by what was wrong
+// rather than by format, because one cause usually produced several.
+//
+// The invalid list is the control. Loosening a check until nothing is rejected
+// would satisfy every line above and mean nothing, so each cause has a rejection
+// beside it -- and the leap-second cases in particular, where the rule is not
+// "second 60 is fine" but "second 60 at the last minute of the UTC day".
+func TestFormatChecksMatchTheSuite(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_accuracy.json",
+		[]string{
+			`{}`,
+			// RFC 3339 admits a leap second, and time.Parse does not.
+			//
+			// Through stampStr rather than stamp, and the difference is not
+			// incidental. A declared "type":"string" with format date-time is
+			// held as a time.Time, and a time.Time cannot represent 23:59:60 at
+			// all -- the value is refused by the decoder, before any check runs.
+			// That is a property of the representation rather than of the check,
+			// and it is why the untyped spelling, which keeps the JSON string,
+			// is the one that can accept a leap second.
+			`{"stampStr":"1998-12-31T23:59:60Z"}`,
+			`{"stampStr":"1998-12-31T15:59:60.123-08:00"}`,
+			`{"clock":"23:59:60Z"}`,
+			`{"clock":"23:59:60+00:00"}`,
+			`{"clock":"01:29:60+01:30"}`,
+			`{"clock":"23:29:60+23:30"}`,
+			`{"clock":"15:59:60-08:00"}`,
+			`{"clock":"00:29:60-23:30"}`,
+			// RFC 3339 says the T and the Z are case-insensitive.
+			`{"stampStr":"1963-06-19t08:30:06.283185z"}`,
+			`{"clock":"08:30:06z"}`,
+			// "format":"regex" is ECMA-262, not Go's RE2. Both of these compile
+			// in the former and neither in the latter.
+			`{"pattern":"[^]"}`,
+			`{"pattern":"(?<=foo)bar"}`,
+			// An address literal is a legal domain, and net/mail refuses it.
+			`{"mail":"joe.bloggs@[IPv6:::1]"}`,
+			`{"mail":"joe.bloggs@[127.0.0.1]"}`,
+			// A quoted local part may hold a space, two dots or an "@".
+			`{"mail":"\"joe bloggs\"@example.com"}`,
+			`{"mail":"\"joe..bloggs\"@example.com"}`,
+			`{"mail":"\"joe@bloggs\"@example.com"}`,
+			// An internationalized name is not ASCII, which is what the check
+			// used to require of it -- so every one of these was refused.
+			`{"intlHost":"실례.테스트"}`,
+			`{"intlHost":"ßς་〇"}`,
+			`{"intlHost":"א״ב"}`,
+			`{"intlHost":"παράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπα.com"}`,
+			`{"intlMail":"실례@실례.테스트"}`,
+			// An IP-literal host is bracketed, and the brackets are what tell it
+			// from a bare IPv6 address with a port.
+			`{"link":"ldap://[2001:db8::7]/c=GB?objectClass?one"}`,
+			// "" is a URI reference (this document) and a JSON Pointer (the whole
+			// document), and each check says so on its own terms rather than by
+			// an exemption.
+			`{"linkRef":""}`,
+			`{"pointer":""}`,
+			`{"pattern":""}`,
+			// Ordinary conforming values, so a check that rejected everything
+			// could not pass this test by accident.
+			`{"stamp":"2020-01-02T03:04:05Z"}`,
+			`{"clock":"08:30:06Z"}`,
+			`{"day":"2020-02-29"}`,
+			`{"mail":"a@b.test"}`,
+			`{"host":"example.test"}`,
+			`{"span":"P4DT12H30M5S"}`,
+			`{"span":"P2W"}`,
+			`{"link":"https://example.test/x"}`,
+			`{"id":"123e4567-e89b-12d3-a456-426614174000"}`,
+			`{"relPointer":"0"}`, `{"relPointer":"1/a"}`, `{"relPointer":"2#"}`,
+		},
+		[]string{
+			// The leap second is only the last second of the UTC day, so the
+			// rule is arithmetic rather than "60 is allowed".
+			`{"clock":"22:59:60Z"}`,
+			`{"clock":"23:58:60Z"}`,
+			`{"clock":"23:59:60+01:00"}`,
+			`{"clock":"23:59:60-01:00"}`,
+			`{"stampStr":"1998-12-31T23:58:60Z"}`,
+			`{"stampStr":"1998-12-31T23:59:61Z"}`,
+			// An offset is not optional in an RFC 3339 full-time.
+			`{"clock":"12:00:00"}`,
+			`{"clock":"01:02:03Z+00:30"}`,
+			`{"clock":"01:02:03+24:00"}`,
+			// Non-ASCII digits are not digits here.
+			`{"stampStr":"1963-06-11T0৪:00:00Z"}`,
+			`{"day":"1963-06-1৪"}`,
+			// "" is not an email address, a hostname, a UUID, a duration or a
+			// relative JSON Pointer, and the exemption used to accept it as all
+			// five.
+			`{"mail":""}`,
+			`{"host":""}`,
+			`{"id":""}`,
+			`{"span":""}`,
+			`{"relPointer":""}`,
+			`{"intlHost":""}`,
+			// The duration grammar wants a value for every designator, a "T"
+			// followed by something, and a week count that stands alone.
+			`{"span":"P"}`,
+			`{"span":"PT"}`,
+			`{"span":"P1YT"}`,
+			`{"span":"P1Y2W"}`,
+			`{"span":"PT1D"}`,
+			`{"span":"P1"}`,
+			// A URI's character set excludes each of these, and url.Parse takes
+			// them all.
+			`{"link":"https://example.org/foo bar.txt"}`,
+			`{"link":"https://example.org/foobar\\.txt"}`,
+			`{"link":"https://example.org/foobar<>.txt"}`,
+			`{"link":"https://example.org/foobar{}.txt"}`,
+			`{"link":"https://example.org/foobar|.txt"}`,
+			`{"link":"https://example.org/foobar®.txt"}`,
+			`{"link":"/abc"}`,
+			`{"linkRef":"\\\\WINDOWS\\fileshare"}`,
+			// A bare IPv6 address is not a host; only the bracketed form is.
+			`{"link":"http://2001:0db8:85a3:0000:0000:8a2e:0370:7334"}`,
+			// Still the ordinary failures.
+			`{"mail":"2962"}`,
+			`{"host":"-leading-hyphen"}`,
+			`{"day":"2021-02-29"}`,
+			`{"id":"123e4567-e89b-12d3"}`,
+		},
 	)
 }

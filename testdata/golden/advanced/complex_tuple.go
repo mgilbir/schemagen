@@ -6,25 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"time"
 	"unicode/utf8"
 )
 
-type Timestamp time.Time
+type Timestamp string
 
 func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Timestamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*t = Timestamp(_target)
-	return nil
-}
-func (t Timestamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t))
+	type Alias Timestamp
+	return json.Unmarshal(data, (*Alias)(t))
 }
 
 // Validate checks Timestamp against its JSON Schema constraints.

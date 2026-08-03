@@ -819,7 +819,7 @@ func (g *Generator) addRequiredImports() {
 			for _, v := range sd.Validations {
 				if v.RuleType == "format" {
 					needsFmt = true
-					noteFormatImports(v, &needsTime, &needsNetMail, &needsNetURL, &needsStdRegexp, &needsNetIP)
+					noteFormatImports(v, &needsFmt, &needsNetIP)
 				}
 			}
 		}
@@ -930,7 +930,7 @@ func (g *Generator) addRequiredImports() {
 					// A format check on the alias's own value reaches for the
 					// same packages the struct-field arm does.
 					if v.RuleType == "format" {
-						noteFormatImports(v, &needsTime, &needsNetMail, &needsNetURL, &needsStdRegexp, &needsNetIP)
+						noteFormatImports(v, &needsFmt, &needsNetIP)
 					}
 				}
 			}
@@ -1094,6 +1094,12 @@ func (g *Generator) addRequiredImports() {
 				if v.RuleType == "multipleOf" {
 					needsMath = true
 				}
+				// The wrapper a format with no declared "type" resolves to
+				// carries the same check the alias and struct-field arms do,
+				// and reaches for the same packages.
+				if v.RuleType == "format" {
+					noteFormatImports(v, &needsFmt, &needsNetIP)
+				}
 			}
 			for _, variant := range iad.AnyOfVariants {
 				for _, v := range variant {
@@ -1238,6 +1244,14 @@ func (g *Generator) isBigIntAlias(name string) bool {
 func (g *Generator) isBigIntAliasType(t GoType) bool {
 	name := namedTypeName(t)
 	return name != "" && g.isBigIntAlias(name)
+}
+
+// isInferredAliasType is isInferredAlias for a field's Go type, on the same
+// terms: an optional field of such a type is pointer-wrapped, and the wrapper
+// behind the pointer is what carries the keywords.
+func (g *Generator) isInferredAliasType(t GoType) bool {
+	name := namedTypeName(t)
+	return name != "" && g.isInferredAlias(name)
 }
 
 // isNotSchema returns true if a type name was generated as a NotSchemaDef.
@@ -1402,31 +1416,31 @@ func formatNeedsValidation(format string) bool {
 // resolves to. All three emit the same assertions, so they cannot answer this
 // question differently; keeping one copy is what stops a new format arm from
 // compiling in one position and failing to import in another.
-func noteFormatImports(r ValidationRule, needsTime, needsNetMail, needsNetURL, needsStdRegexp, needsNetIP *bool) {
+func noteFormatImports(r ValidationRule, needsFmt, needsNetIP *bool) {
 	format, ok := r.Value.(string)
 	if !ok {
 		return
 	}
+	// The check itself is a call to a shared helper, so the file needs fmt to
+	// wrap the error it returns and nothing else. Every package the checks
+	// themselves reach for -- net/mail, net/url, regexp, time, the ECMA-262
+	// engine -- is imported by the helper file, once per destination package,
+	// which is where the functions live.
+	*needsFmt = true
+	// Except netip, which is named by the emitted call rather than by the
+	// helper: an ipv4 or ipv6 value held as a netip.Addr is converted at the
+	// call site. The field or alias type names netip.Addr too, so this is
+	// belt and braces -- but the conversion is what the line would not compile
+	// without.
 	switch format {
-	case "date", "time":
-		*needsTime = true
-	case "date-time":
-		// Only emitted where the value is held as a string; a time.Time field
-		// has nothing left to check and carries no rule. Either way the file
-		// needs time, since the field's own type names it.
-		*needsTime = true
-	case "email", "idn-email":
-		*needsNetMail = true
-	case "uri", "uri-reference", "iri", "iri-reference", "uri-template":
-		*needsNetURL = true
-	case "uuid", "hostname", "idn-hostname", "json-pointer", "relative-json-pointer", "regex", "duration":
-		*needsStdRegexp = true
 	case "ipv4", "ipv6":
-		*needsNetIP = true
+		if !r.StringBacked {
+			*needsNetIP = true
+		}
 	}
 }
 
-// formatCheckableOnString reports whether this generator can assert the format
+// FormatCheckableOnString reports whether this generator can assert the format
 // against a value it holds as a plain Go string.
 //
 // Two sets meet here. formatNeedsValidation names the formats that never had a
@@ -1437,7 +1451,12 @@ func noteFormatImports(r ValidationRule, needsTime, needsNetMail, needsNetURL, n
 // including an unrecognised format, answers false: `format` is an annotation
 // unless something can judge it, and inventing a type for one nothing checks
 // would change the generated API for nothing.
-func formatCheckableOnString(format string) bool {
+//
+// Exported because the emitter has to answer the same question from the other
+// side -- every format admitted here needs a helper function to call, or a rule
+// is built and then renders nothing at all. See emitter.formatHelperNameFunc
+// and the test that walks the two together.
+func FormatCheckableOnString(format string) bool {
 	switch format {
 	case "ipv4", "ipv6", "date-time":
 		return true
@@ -1461,14 +1480,97 @@ func formatCheckableOnString(format string) bool {
 // The alternative -- keeping netip.Addr and discarding minLength as
 // inexpressible, which is what the alias path does for a format it cannot write
 // -- would compile while silently enforcing less than the schema says.
-func formatGoTypeForSchema(s *schema.Schema) GoType {
+//
+// Nor when the dialect makes format an annotation. time.Time and netip.Addr
+// enforce the format by decoding it: an unparseable value fails
+// json.Unmarshal, which is a rejection the schema does not license. See
+// formatAssertsFor.
+func (g *Generator) formatGoTypeForSchema(s *schema.Schema) GoType {
 	if s == nil || s.Format == nil {
 		return nil
 	}
 	if s.MinLength != nil || s.MaxLength != nil || s.Pattern != nil {
 		return nil
 	}
+	if !g.formatAssertsFor(s) {
+		return nil
+	}
 	return formatGoType(*s.Format)
+}
+
+// formatAssertsFor reports whether "format" binds as an assertion for a schema
+// read under its own dialect, or is an annotation the generated code must not
+// act on.
+//
+// The drafts disagree, and the disagreement is normative rather than a matter of
+// taste. Draft 3 through draft 7 say an implementation SHOULD validate a format
+// it recognises and MAY treat it as an annotation, so asserting is a legitimate
+// reading and the one this generator has always taken. From 2019-09 the default
+// meta-schema declares the format-annotation vocabulary, whose whole content is
+// that format produces an annotation and no assertion: {"format":"email"} is
+// satisfied by "2962", {"format":"regex"} by "^(abc]", and the official test
+// suite marks both documents valid. Rejecting them is rejecting what the schema
+// permits, which is the one failure mode this generator treats as worse than a
+// missing check.
+//
+// So the dialect decides, and Config.FormatAssertion overrides it upwards for
+// callers who want the older behaviour on a newer draft. There is no override
+// downwards: a draft-07 document that does not want its formats asserted can say
+// so by naming a dialect that does not assert them.
+//
+// A document that declares no $schema at all answers "annotation", which is the
+// same conservative choice refOverridesSiblingsForDraft already makes for an
+// unknown dialect -- and it is the safe direction here, since it withholds a
+// rejection rather than inventing one.
+func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
+	if g.config.FormatAssertion {
+		return true
+	}
+	switch g.draftForSchema(s) {
+	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
+		return true
+	default:
+		return false
+	}
+}
+
+// aliasValidationRules is extractAliasValidationRules under the dialect's format
+// posture: the rules a named type carries for its own value, with the format
+// assertion withheld where the dialect makes format an annotation.
+//
+// This and the field-rule filter in generateStructDef are the only two places a
+// format rule reaches emitted code. Every other consumer of
+// extractValidationRules already drops it -- oneOfVariantChecks and
+// aliasVariantRules by keyword whitelist, elementRules and allOfConstraintRules
+// by a default-deny switch, and the unevaluatedProperties template by having no
+// arm for it -- so gating those two gates the keyword.
+func (g *Generator) aliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
+	rules := extractAliasValidationRules(s, goType)
+	if g.formatAssertsFor(s) {
+		return rules
+	}
+	return withoutFormatRules(rules)
+}
+
+// withoutFormatRules returns rules with every "format" entry removed, or the
+// slice unchanged when it carries none.
+func withoutFormatRules(rules []ValidationRule) []ValidationRule {
+	kept := rules[:0:0]
+	dropped := false
+	for _, r := range rules {
+		if r.RuleType == "format" {
+			dropped = true
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if !dropped {
+		return rules
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
 
 // selfMarshallingTypeName names the type t is, when that type carries its own
@@ -1846,6 +1948,15 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// A format with no "type": `type X any` carries no Validate, so the format
+	// was asserted nowhere. The wrapper accepts every JSON value and checks the
+	// format only when the value arrived as a string. See formatOnlyStringSchema.
+	if fDef := g.formatOnlyStringDef(name, s); fDef != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, fDef)
+		return nil
+	}
+
 	// Draft 3 allows schema-valued alternatives inside the type array. When mixed
 	// with a single primitive type (for example integer OR an object schema), use
 	// the same raw wrapper as multi-type schemas so both alternatives can validate.
@@ -1877,7 +1988,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		var anyOfVariants [][]ValidationRule
 		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
-			rules = extractAliasValidationRules(s, goType)
+			rules = g.aliasValidationRules(s, goType)
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
 			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
@@ -1936,7 +2047,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		var anyOfVariants [][]ValidationRule
 		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
-			rules = extractAliasValidationRules(s, goType)
+			rules = g.aliasValidationRules(s, goType)
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
 			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
@@ -2056,7 +2167,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	// The rules extractAliasValidationRules would return are dropped here on
+	// The rules aliasValidationRules would return are dropped here on
 	// purpose, and always have been: an alias whose underlying type is `any` is
 	// interface-underlying, Go forbids methods on it, and the emitter's
 	// CanHaveMethods gate never writes the Validate they would go in. Building
@@ -2812,6 +2923,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				if g.isBigIntAliasType(ft) {
 					continue
 				}
+				// And to the wrapper a "format" with no declared type is
+				// materialized into (see formatOnlyStringSchema), for the same
+				// two reasons: it was built from this property's own schema, so
+				// its Validate already carries the format and any length bound
+				// or pattern beside it -- and it carries them *correctly*, only
+				// when the instance turned out to be a string, which a
+				// field-level rule cannot express. Emitted here the rule would
+				// not compile: it hands the field to utf8.RuneCountInString, and
+				// the field is a struct.
+				if g.isInferredAliasType(ft) {
+					continue
+				}
 				// A const promoted to a single-value enum type is enforced by that
 				// type's own Validate(); an additional const rule on the field would
 				// be redundant.
@@ -2839,6 +2962,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// compile. This is the same decision aliasFormatCheckable makes
 				// for a $defs alias, through the same function.
 				if rules[i].RuleType == "format" {
+					// And dropped outright where the dialect makes format an
+					// annotation, which is the other half of the same question:
+					// whether the check is written at all comes before how.
+					if !g.formatAssertsFor(propSchema) {
+						continue
+					}
 					stringBacked, ok := formatRuleShape(ft, rules[i], rules[i].StringConvert)
 					if !ok {
 						continue
@@ -3435,16 +3564,16 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			}
 		}
 
-		// The nullable spelling of a formatted string, on the schema the merge
-		// produced. A branch is what carries the format here --
-		// {"allOf":[{"type":["string","null"],"format":"ipv4"}]} -- and
+		// The two format shapes, on the schema the merge produced. A branch is
+		// what carries the format here -- {"allOf":[{"format":"ipv4"}]} -- and
 		// mergeConstraints has already lifted it onto `merged`, so the same
 		// answer the schema would get without the allOf around it is available;
-		// without this the arms below reached `type X *string` and the format
-		// was enforced nowhere, which is the composition position of issue #104.
+		// without this the arms below reached `type X any` or `type X *string`
+		// and the format was enforced nowhere, which is the position half of
+		// issues #104 and #106.
 		//
 		// Asked of a copy with "allOf" cleared: the merge preserves it for
-		// unevaluatedProperties, and the predicate refuses an unmerged
+		// unevaluatedProperties, and both predicates refuse an unmerged
 		// applicator. The other applicators are left in place deliberately --
 		// an anyOf or a oneOf beside the allOf is carried by the alias arms
 		// below through extractAnyOfVariantRules, and a wrapper here would drop
@@ -3455,6 +3584,11 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			if _, ok := g.typeUnionWrapper(&mergedNoAllOf, name); ok {
 				return nil
 			}
+		}
+		if fDef := g.formatOnlyStringDef(name, &mergedNoAllOf); fDef != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, fDef)
+			return nil
 		}
 
 		primaryType := primarySchemaType(merged)
@@ -3544,7 +3678,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var anyOfVariants [][]ValidationRule
 			var oneOfVariants [][]ValidationRule
 			if g.validationKeywordsEnabled() {
-				rules = extractAliasValidationRules(merged, goType)
+				rules = g.aliasValidationRules(merged, goType)
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
@@ -3606,7 +3740,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var anyOfVariants [][]ValidationRule
 			var oneOfVariants [][]ValidationRule
 			if g.validationKeywordsEnabled() {
-				rules = extractAliasValidationRules(merged, goType)
+				rules = g.aliasValidationRules(merged, goType)
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
@@ -5506,11 +5640,14 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}
 	}
 
-	// A branch whose value is the nullable spelling of a formatted string. The
-	// arm below answers it with a bare string, which rejects the null the branch
-	// permits and carries no Validate for the union's dispatch to call, so the
-	// branch is over- and under-enforced at once. See nullableFormatUnion.
-	if g.nullableFormatUnion(variant) {
+	// A branch whose value is a formatted string that no Go primitive can carry
+	// the assertion for: a format stated without a "type", or the nullable
+	// spelling of one. The arms below answer `any` for the first and a bare
+	// string for the second -- and the string rejects the null the branch
+	// permits, while neither carries a Validate for the union's dispatch to
+	// call, so the branch is both over- and under-enforced at once. See
+	// formatOnlyStringSchema and nullableFormatUnion.
+	if g.formatOnlyStringSchema(variant) || g.nullableFormatUnion(variant) {
 		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
@@ -5907,6 +6044,13 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return goType, nil
 	}
 
+	// A format with no "type", which the fallback would answer `any` -- and
+	// `any` carries no Validate, so the format would be asserted nowhere. See
+	// formatOnlyStringSchema.
+	if goType, ok := g.formatOnlyStringWrapperType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
 	// A property that must be null. Checked before the nullable case, whose
 	// pointer says neither of the two things this schema needs said.
 	if goType, ok := g.nullOnlyWrapperType(s, parentName+fieldName); ok {
@@ -5954,7 +6098,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// Check for format-based type mapping on string types.
 	if primarySchemaType(s) == "string" {
-		if goType := formatGoTypeForSchema(s); goType != nil {
+		if goType := g.formatGoTypeForSchema(s); goType != nil {
 			return goType, nil
 		}
 	}
@@ -6246,11 +6390,14 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		primaryType = g.inferTypeFromConstraints(s)
 	}
 
-	// ["string","null"] beside a format, before the nullable pointer below,
-	// whose answer it must displace. It materializes a named type, so an array
-	// element, a map value, a tuple slot and a composition branch all reach the
-	// same one the property arm does.
+	// The two format shapes, before the arms whose answer they must displace:
+	// the nullable pointer below, and the `any` fallback at the end. Both
+	// materialize a named type, so an array element, a map value, a tuple slot
+	// and a composition branch all reach the same one the property arm does.
 	if goType, ok := g.nullableFormatUnionType(s, contextName); ok {
+		return goType
+	}
+	if goType, ok := g.formatOnlyStringWrapperType(s, contextName); ok {
 		return goType
 	}
 
@@ -6359,7 +6506,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if primaryType != "" {
 		// Check for format-based type mapping on string types.
 		if primaryType == "string" {
-			if goType := formatGoTypeForSchema(s); goType != nil {
+			if goType := g.formatGoTypeForSchema(s); goType != nil {
 				return goType
 			}
 		}
@@ -7701,6 +7848,20 @@ func (g *Generator) branchNamesAType(s *schema.Schema) bool {
 		return false
 	}
 	if len(s.Type) > 0 || len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
+		return true
+	}
+	// A format names a type in the sense this asks about: the merge answers such
+	// a branch with the wrapper formatOnlyStringDef builds, which checks the
+	// format when the value is a string and accepts every other instance type.
+	// Without it, {"allOf":[{"format":"ipv4"}]} written inline resolved to `any`
+	// and the format was enforced nowhere, while the same branch behind a $ref
+	// was checked -- the position half of issue #106.
+	//
+	// Not asked of inferTypeFromConstraints, which deliberately does not read
+	// "format": a format states nothing about the *Go* type, only about what a
+	// string instance must look like, so inferring "string" there would narrow
+	// every position that consults it and reject the numbers the schema allows.
+	if s.Format != nil && FormatCheckableOnString(*s.Format) {
 		return true
 	}
 	return g.inferTypeFromConstraints(s) != ""
@@ -10231,13 +10392,20 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	// For formats that DO map to a distinct type (ipv4/ipv6 → netip.Addr),
 	// emit a validation rule to enforce the specific subtype (v4 vs v6).
 	//
+	// A schema that names no "type" is admitted too. `format` applies to strings
+	// and to nothing else, so such a schema is still one whose string instances
+	// this generator can judge -- and the rule was skipped there purely because
+	// "type" was unwritten, which is why {"format":"ipv4"} asserted nothing
+	// anywhere (issue #106). It is this guard that lets the rule reach the
+	// wrapper formatOnlyStringDef builds, whose Validate is where the check
+	// belongs.
 	//
 	// Which positions can actually carry the check is decided afterwards from
-	// the Go type, by formatRuleShape: ipv4 and ipv6 are written one way against
-	// netip.Addr and another against the JSON string, and a field typed `any` or
-	// a wrapper struct drops the rule entirely.
-	if s.Format != nil && primarySchemaType(s) == "string" {
-		if format := *s.Format; formatCheckableOnString(format) {
+	// the Go type, by formatRuleShape: a field typed `any` or a wrapper struct
+	// drops it again, so admitting it here cannot put a rule somewhere it does
+	// not compile.
+	if s.Format != nil && (primarySchemaType(s) == "string" || len(s.Type) == 0) {
+		if format := *s.Format; FormatCheckableOnString(format) {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "format", Value: format,
@@ -10862,7 +11030,7 @@ func (g *Generator) nullableFormatUnion(s *schema.Schema) bool {
 	if !isNullable(s) || primarySchemaType(s) != "string" {
 		return false
 	}
-	if s.Format == nil || !formatCheckableOnString(*s.Format) {
+	if s.Format == nil || !FormatCheckableOnString(*s.Format) {
 		return false
 	}
 	// An applicator, an enum or a const is not scoped to a type and so cannot be
@@ -10877,6 +11045,114 @@ func (g *Generator) nullableFormatUnionType(s *schema.Schema, contextName string
 		return nil, false
 	}
 	return g.typeUnionWrapper(s, contextName)
+}
+
+// formatOnlyStringSchema reports whether a "format" is what the schema is about,
+// with no "type" beside it.
+//
+// Such a schema resolved to `any`, and Go forbids methods on `any`, so the
+// format was enforced in no position at all (issue #106). The type it deserves
+// is not "a string": `format` applies only to strings, so a number, an object or
+// a null satisfies {"format":"ipv4"} trivially, and narrowing the Go type would
+// reject documents the schema admits. What it deserves is "anything, but a
+// string must be a valid IPv4 address" -- which is exactly the wrapper an
+// inferred type already produces, whose Validate returns early for a value that
+// turned out to be of some other type.
+//
+// A length bound or a pattern is admitted alongside, because they are about the
+// same string the format is and the wrapper carries all three. That spelling is
+// not merely unenforced today but actively wrong: {"format":"ipv4","minLength":9}
+// has its type inferred from the bound, so the property became a *string and a
+// number -- which the schema permits, both keywords being vacuous for it -- was
+// refused at decode time. The wrapper answers the format, the bound and the
+// number together.
+//
+// Everything else is refused, and exactly rather than approximately:
+// materializing under a schema some other arm would answer differently does not
+// leave that answer alone, it replaces it. So there must be no "type", no
+// reference, no enum or const, no applicator, and nothing that would make the
+// schema about some *other* JSON type -- which is asked of
+// inferTypeFromConstraints itself rather than by listing keywords, so the two
+// cannot drift apart. {"format":"ipv4","minimum":3} is about numbers by that
+// reading and keeps the arm that types it as one.
+func (g *Generator) formatOnlyStringSchema(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if s.Format == nil || !FormatCheckableOnString(*s.Format) {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if hasNonTypeScopedConstraints(s) {
+		return false
+	}
+	withoutFormat := *s
+	withoutFormat.Format = nil
+	switch g.inferTypeFromConstraints(&withoutFormat) {
+	case "", "string":
+		return true
+	default:
+		return false
+	}
+}
+
+// formatOnlyStringDef builds the wrapper formatOnlyStringSchema describes: a
+// value held as a Go string when the instance is one, kept verbatim when it is
+// not, and a Validate that asserts the format only in the first case.
+//
+// InferredGoType is written out rather than taken from resolveType, and it is
+// always a plain string. netip.Addr would look like the closer type, and it is
+// the one the declared spelling gets -- but here it would turn the fix into a
+// silent acceptance: a malformed address fails netip.Addr's decoder, the wrapper
+// files it under "not a string" and Validate then passes it, which is the exact
+// hole this is meant to close. Keeping the JSON string means the value always
+// decodes and the format check is what judges it.
+//
+// The rules come from the same extractor every other string position uses, so a
+// length bound or a pattern stated beside the format is carried too, and by the
+// same code that carries it when the schema is written with "type":"string" --
+// including the dialect's format posture, so under an annotation-only dialect
+// the wrapper is built and the format check is not written into it.
+//
+// The wrapper is built either way, and the type is the same either way. That is
+// deliberate: --format-assertion decides what Validate does, not what the
+// generated API is, and a flag that silently retyped a field would be a worse
+// thing to hand a caller than one that silently checked less.
+func (g *Generator) formatOnlyStringDef(name string, s *schema.Schema) *InferredAliasDef {
+	if !g.formatOnlyStringSchema(s) {
+		return nil
+	}
+	return &InferredAliasDef{
+		Name:             name,
+		Description:      s.Description,
+		InferredGoType:   &PrimitiveType{Name: "string"},
+		InferredJSONType: "string",
+		Validations:      g.aliasValidationRules(s, &PrimitiveType{Name: "string"}),
+	}
+}
+
+// formatOnlyStringWrapperType materializes formatOnlyStringDef for a position
+// that resolves a Go type -- a property, an array element, a map value, a tuple
+// slot -- so the check lives in the same one type wherever the schema is
+// written. Without it the wrapper existed only where the schema was given a
+// name, which is the "fixed in one position, not its sibling" shape these
+// wrappers exist to avoid.
+func (g *Generator) formatOnlyStringWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
+	if g.generated[contextName] {
+		if g.formatOnlyStringSchema(s) {
+			return &NamedType{Name: contextName}, true
+		}
+		return nil, false
+	}
+	def := g.formatOnlyStringDef(contextName, s)
+	if def == nil {
+		return nil, false
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	return &NamedType{Name: contextName}, true
 }
 
 // nullOnlyWrapperType represents a {"type":"null"} property as the same
@@ -11597,7 +11873,7 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 // caller sets StringConvert so the conversion is emitted.
 func formatRuleShape(goType GoType, r ValidationRule, stringNamed bool) (stringBacked, ok bool) {
 	format, isString := r.Value.(string)
-	if !isString || !formatCheckableOnString(format) {
+	if !isString || !FormatCheckableOnString(format) {
 		return false, false
 	}
 	base := goType
@@ -13218,12 +13494,13 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// Non-ref position schema: for schemas with structural keywords (type,
 	// properties, etc.), generate a named type so positional validation works.
 	//
-	// The nullable spelling of a formatted string is named here for the same
-	// reason, and because the JSONType fallback below cannot say what it means:
-	// it would answer "string", which rejects the null the schema permits and
-	// says nothing about the format. The generated type answers both, so the
-	// position delegates to it.
-	if g.nullableFormatUnion(resolved) {
+	// The two format shapes are named here for the same reason, and because the
+	// JSONType fallback below cannot say what either of them means. It would
+	// answer "string" for {"type":["string","null"],"format":"ipv4"}, which
+	// rejects the null the schema permits and says nothing about the format; and
+	// nothing at all for a format with no type. Both have a generated type that
+	// answers correctly, so the position delegates to it.
+	if g.nullableFormatUnion(resolved) || g.formatOnlyStringSchema(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true

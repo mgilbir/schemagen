@@ -8,33 +8,20 @@ import (
 	ecma262 "github.com/mgilbir/goecma262"
 	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
-	"net/mail"
-	"net/netip"
-	"time"
 )
 
-type NullableV4String netip.Addr
+type NullableV4String string
 
 func (n *NullableV4String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableV4String")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableV4String(_target)
-	return nil
-}
-func (n NullableV4String) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableV4String
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableV4String against its JSON Schema constraints.
 func (n NullableV4String) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -121,28 +108,18 @@ func (n NullableV4) Validate() error {
 	}
 }
 
-type ChainInnerString netip.Addr
+type ChainInnerString string
 
 func (c *ChainInnerString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ChainInnerString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*c = ChainInnerString(_target)
-	return nil
-}
-func (c ChainInnerString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(c))
+	type Alias ChainInnerString
+	return json.Unmarshal(data, (*Alias)(c))
 }
 
 // Validate checks ChainInnerString against its JSON Schema constraints.
 func (c ChainInnerString) Validate() error {
-	if _a := netip.Addr(c); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -229,28 +206,18 @@ func (c ChainInner) Validate() error {
 	}
 }
 
-type ChainOuterString netip.Addr
+type ChainOuterString string
 
 func (c *ChainOuterString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ChainOuterString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*c = ChainOuterString(_target)
-	return nil
-}
-func (c ChainOuterString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(c))
+	type Alias ChainOuterString
+	return json.Unmarshal(data, (*Alias)(c))
 }
 
 // Validate checks ChainOuterString against its JSON Schema constraints.
 func (c ChainOuterString) Validate() error {
-	if _a := netip.Addr(c); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -337,28 +304,18 @@ func (c ChainOuter) Validate() error {
 	}
 }
 
-type NullableFormatPositionsBranchOption0String netip.Addr
+type NullableFormatPositionsBranchOption0String string
 
 func (n *NullableFormatPositionsBranchOption0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsBranchOption0String")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsBranchOption0String(_target)
-	return nil
-}
-func (n NullableFormatPositionsBranchOption0String) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsBranchOption0String
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsBranchOption0String against its JSON Schema constraints.
 func (n NullableFormatPositionsBranchOption0String) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -445,28 +402,18 @@ func (n NullableFormatPositionsBranchOption0) Validate() error {
 	}
 }
 
-type NullableFormatPositionsBucketsPattern0String netip.Addr
+type NullableFormatPositionsBucketsPattern0String string
 
 func (n *NullableFormatPositionsBucketsPattern0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsBucketsPattern0String")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsBucketsPattern0String(_target)
-	return nil
-}
-func (n NullableFormatPositionsBucketsPattern0String) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsBucketsPattern0String
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsBucketsPattern0String against its JSON Schema constraints.
 func (n NullableFormatPositionsBucketsPattern0String) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -662,28 +609,18 @@ func (n NullableFormatPositionsBuckets) Validate() error {
 	return nil
 }
 
-type NullableFormatPositionsInlineString netip.Addr
+type NullableFormatPositionsInlineString string
 
 func (n *NullableFormatPositionsInlineString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsInlineString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsInlineString(_target)
-	return nil
-}
-func (n NullableFormatPositionsInlineString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsInlineString
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsInlineString against its JSON Schema constraints.
 func (n NullableFormatPositionsInlineString) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -770,28 +707,18 @@ func (n NullableFormatPositionsInline) Validate() error {
 	}
 }
 
-type NullableFormatPositionsListItemString netip.Addr
+type NullableFormatPositionsListItemString string
 
 func (n *NullableFormatPositionsListItemString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsListItemString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsListItemString(_target)
-	return nil
-}
-func (n NullableFormatPositionsListItemString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsListItemString
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsListItemString against its JSON Schema constraints.
 func (n NullableFormatPositionsListItemString) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -890,11 +817,6 @@ func (n *NullableFormatPositionsMailString) UnmarshalJSON(data []byte) error {
 
 // Validate checks NullableFormatPositionsMailString against its JSON Schema constraints.
 func (n NullableFormatPositionsMailString) Validate() error {
-	if string(n) != "" {
-		if _, _err := mail.ParseAddress(string(n)); _err != nil {
-			return fmt.Errorf("value: %q is not a valid email address: %w", string(n), _err)
-		}
-	}
 	return nil
 }
 
@@ -981,28 +903,18 @@ func (n NullableFormatPositionsMail) Validate() error {
 	}
 }
 
-type NullableFormatPositionsMapValueString netip.Addr
+type NullableFormatPositionsMapValueString string
 
 func (n *NullableFormatPositionsMapValueString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsMapValueString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsMapValueString(_target)
-	return nil
-}
-func (n NullableFormatPositionsMapValueString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsMapValueString
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsMapValueString against its JSON Schema constraints.
 func (n NullableFormatPositionsMapValueString) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -1089,21 +1001,14 @@ func (n NullableFormatPositionsMapValue) Validate() error {
 	}
 }
 
-type NullableFormatPositionsStampString time.Time
+type NullableFormatPositionsStampString string
 
 func (n *NullableFormatPositionsStampString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsStampString")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsStampString(_target)
-	return nil
-}
-func (n NullableFormatPositionsStampString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(n))
+	type Alias NullableFormatPositionsStampString
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsStampString against its JSON Schema constraints.
@@ -1194,28 +1099,18 @@ func (n NullableFormatPositionsStamp) Validate() error {
 	}
 }
 
-type NullableFormatPositionsWrappedString netip.Addr
+type NullableFormatPositionsWrappedString string
 
 func (n *NullableFormatPositionsWrappedString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsWrappedString")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsWrappedString(_target)
-	return nil
-}
-func (n NullableFormatPositionsWrappedString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsWrappedString
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsWrappedString against its JSON Schema constraints.
 func (n NullableFormatPositionsWrappedString) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -1302,28 +1197,18 @@ func (n NullableFormatPositionsWrapped) Validate() error {
 	}
 }
 
-type NullableFormatPositionsTupleItem0String netip.Addr
+type NullableFormatPositionsTupleItem0String string
 
 func (n *NullableFormatPositionsTupleItem0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type NullableFormatPositionsTupleItem0String")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*n = NullableFormatPositionsTupleItem0String(_target)
-	return nil
-}
-func (n NullableFormatPositionsTupleItem0String) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(n))
+	type Alias NullableFormatPositionsTupleItem0String
+	return json.Unmarshal(data, (*Alias)(n))
 }
 
 // Validate checks NullableFormatPositionsTupleItem0String against its JSON Schema constraints.
 func (n NullableFormatPositionsTupleItem0String) Validate() error {
-	if _a := netip.Addr(n); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 

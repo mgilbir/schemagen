@@ -30,3 +30,6 @@ import (
 {{- if .Helpers.NullCheck}}
 {{template "nullcheck_helpers"}}
 {{- end}}
+{{- if .Helpers.Format}}
+{{template "format_helpers"}}
+{{- end}}

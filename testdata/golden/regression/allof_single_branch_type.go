@@ -5,32 +5,20 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
-	"time"
 )
 
-type Addr netip.Addr
+type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Addr")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = Addr(_target)
-	return nil
-}
-func (a Addr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(a))
+	type Alias Addr
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
 func (a Addr) Validate() error {
-	if _a := netip.Addr(a); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -91,21 +79,14 @@ func (r Raw) Validate() error {
 	return fmt.Errorf("invalid Raw value: %s", s)
 }
 
-type Stamp time.Time
+type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Stamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*s = Stamp(_target)
-	return nil
-}
-func (s Stamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(s))
+	type Alias Stamp
+	return json.Unmarshal(data, (*Alias)(s))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -113,28 +94,18 @@ func (s Stamp) Validate() error {
 	return nil
 }
 
-type WrappedAddr netip.Addr
+type WrappedAddr string
 
 func (w *WrappedAddr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type WrappedAddr")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*w = WrappedAddr(_target)
-	return nil
-}
-func (w WrappedAddr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(w))
+	type Alias WrappedAddr
+	return json.Unmarshal(data, (*Alias)(w))
 }
 
 // Validate checks WrappedAddr against its JSON Schema constraints.
 func (w WrappedAddr) Validate() error {
-	if _a := netip.Addr(w); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -211,21 +182,14 @@ func (w WrappedRaw) Validate() error {
 	return fmt.Errorf("invalid WrappedRaw value: %s", s)
 }
 
-type WrappedStamp time.Time
+type WrappedStamp string
 
 func (w *WrappedStamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type WrappedStamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*w = WrappedStamp(_target)
-	return nil
-}
-func (w WrappedStamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(w))
+	type Alias WrappedStamp
+	return json.Unmarshal(data, (*Alias)(w))
 }
 
 // Validate checks WrappedStamp against its JSON Schema constraints.

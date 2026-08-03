@@ -42,6 +42,11 @@ func sharedHelpersFor(content string) generator.HelperSet {
 		set.Annotations = true
 		set.Dynamic = true
 	}
+	// Every format check calls a schemagenFormat* function, and the block is
+	// emitted whole, so one substring pulls all of them in.
+	if strings.Contains(content, "schemagenFormat") {
+		set.Format = true
+	}
 	// jsonInteger and its three container rebuilders come as one block, and the
 	// name appears in every use of any of them -- the shadow field's type, the
 	// closure parameter of a rebuilder, the conversion at the leaf -- so one

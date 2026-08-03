@@ -145,6 +145,7 @@ func allGoldenTests() []goldenTestCase {
 		// do -- "fmt" and "unicode/utf8" imported and not used.
 		{"regression/nullable_scalar_bound", "testdata/schemas/regression/nullable_scalar_bound.json", "testdata/golden/regression/nullable_scalar_bound.go"},
 		{"regression/nullable_format_positions", "testdata/schemas/regression/nullable_format_positions.json", "testdata/golden/regression/nullable_format_positions.go"},
+		{"regression/untyped_format_positions", "testdata/schemas/regression/untyped_format_positions.json", "testdata/golden/regression/untyped_format_positions.go"},
 		{"regression/format_beside_length", "testdata/schemas/regression/format_beside_length.json", "testdata/golden/regression/format_beside_length.go"},
 	}
 }

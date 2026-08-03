@@ -994,6 +994,63 @@ func (p PatternValueSubschemasPattern16) Validate() error {
 	return nil
 }
 
+// PatternValueSubschemasPattern20 accepts any JSON value. Constraints apply only when the value is string.
+type PatternValueSubschemasPattern20 struct {
+	_value string
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (p *PatternValueSubschemasPattern20) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		p._raw = append(p._raw[:0], data...)
+		p._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &p._value); _err == nil {
+		p._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	p._raw = append(p._raw[:0], data...)
+	p._isRaw = true
+	return nil
+}
+func (p PatternValueSubschemasPattern20) MarshalJSON() ([]byte, error) {
+	if p._isRaw {
+		if len(p._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return p._raw, nil
+	}
+	return json.Marshal(p._value)
+}
+func (p PatternValueSubschemasPattern20) StringValue() string { return p._value }
+func (p PatternValueSubschemasPattern20) IsString() bool      { return !p._isRaw }
+func (p PatternValueSubschemasPattern20) Raw() json.RawMessage {
+	if p._isRaw {
+		return p._raw
+	}
+	_b, _ := json.Marshal(p._value)
+	return _b
+}
+func (p PatternValueSubschemasPattern20) String() string {
+	if p._isRaw {
+		return string(p._raw)
+	}
+	return fmt.Sprintf("%v", p._value)
+}
+
+// Validate checks PatternValueSubschemasPattern20 against its JSON Schema constraints.
+func (p PatternValueSubschemasPattern20) Validate() error {
+	if p._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	return nil
+}
+
 type PatternValueSubschemas struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
@@ -1439,6 +1496,20 @@ func (p PatternValueSubschemas) Validate() error {
 						if utf8.RuneCountInString(s) < 5 {
 							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^s", k)
 						}
+					}
+				}
+			}
+			if ppRegexps[20].MatchString(k) {
+				{
+					// The sub-schema's own type answers for it: the value is
+					// decoded into it, so the decode enforces shape and the
+					// Validate enforces everything beyond it.
+					var _pv PatternValueSubschemasPattern20
+					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %q: %w", "^u", k, _uErr)
+					}
+					if _vErr := _pv.Validate(); _vErr != nil {
+						return fmt.Errorf("patternProperties %s: key %q: %w", "^u", k, _vErr)
 					}
 				}
 			}

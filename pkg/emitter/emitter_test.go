@@ -1111,3 +1111,70 @@ func TestEmitFieldContainsFalseIsVetClean(t *testing.T) {
 		t.Fatalf("contains: false emitted an unconditional return; the rest of Validate is unreachable:\n%s", src)
 	}
 }
+
+// allFormatKeywords is every "format" this repository has an opinion about,
+// listed once so the two halves of that opinion can be checked against each
+// other. The list is what a schema may write; which of them are asserted is
+// generator.FormatCheckableOnString's answer, and which have code to assert
+// them is formatHelperNameFunc's.
+var allFormatKeywords = []string{
+	"date", "date-time", "time", "duration",
+	"email", "idn-email",
+	"hostname", "idn-hostname",
+	"ipv4", "ipv6",
+	"uri", "uri-reference", "uri-template",
+	"iri", "iri-reference",
+	"uuid", "json-pointer", "relative-json-pointer", "regex",
+	// Not asserted, and here to prove the pair agree about that too.
+	"unknown-format", "byte", "int32",
+}
+
+// TestFormatHelperNamesCoverCheckableFormats holds the generator's list of
+// assertable formats and the emitter's list of helper functions together.
+//
+// They are two halves of one decision and they live in different packages. A
+// format the generator admits but the emitter cannot name builds a rule that
+// renders nothing -- the schema looks checked and is not, which is the exact
+// shape of the defect this area keeps producing. A format the emitter can name
+// but the generator does not admit is dead code, which is cheaper but still a
+// lie about what is enforced.
+func TestFormatHelperNamesCoverCheckableFormats(t *testing.T) {
+	for _, format := range allFormatKeywords {
+		checkable := generator.FormatCheckableOnString(format)
+		named := formatHelperNameFunc(format, true) != ""
+		if checkable != named {
+			t.Errorf("format %q: generator says checkable=%v, emitter says it has a helper=%v", format, checkable, named)
+		}
+	}
+}
+
+// TestFormatHelpersAreDefinedForEveryName renders the helper block once and
+// checks that every function formatHelperNameFunc can emit a call to is
+// actually declared in it.
+//
+// The call and the declaration are in different templates, and nothing else
+// connects them: a renamed helper would emit a call to a function that does not
+// exist, and the failure would surface as a compile error in whatever someone
+// generated next rather than here.
+func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	src, ok, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true})
+	if err != nil || !ok {
+		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
+	}
+	body := string(src)
+	for _, format := range allFormatKeywords {
+		for _, stringBacked := range []bool{true, false} {
+			name := formatHelperNameFunc(format, stringBacked)
+			if name == "" {
+				continue
+			}
+			if !strings.Contains(body, "func "+name+"(") {
+				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
+			}
+		}
+	}
+}

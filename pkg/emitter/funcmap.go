@@ -70,6 +70,9 @@ func FuncMap() template.FuncMap {
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
 		"mkAliasFormatCtx":    mkAliasFormatCtxFunc,
+		"mkStringFormatCtx":   mkStringFormatCtxFunc,
+		"formatHelperName":    formatHelperNameFunc,
+		"formatValueExpr":     formatValueExprFunc,
 		"itemRange":           itemRangeFunc,
 		"itemElem":            itemElemFunc,
 		"itemPath":            itemPathFunc,
@@ -239,6 +242,102 @@ type AliasFormatContext struct {
 
 func mkAliasFormatCtxFunc(recv string, rule generator.ValidationRule) AliasFormatContext {
 	return AliasFormatContext{Recv: recv, Value: rule.Value, StringBacked: rule.StringBacked}
+}
+
+// StringFormatContext is passed to the string_format_check template, which
+// writes a format assertion over an arbitrary Go expression of type string
+// rather than over a named field or receiver.
+type StringFormatContext struct {
+	Expr string
+	Path string
+	// Value is the format keyword; StringBacked says whether Expr is the JSON
+	// string or the Go type the format maps to, which decides which of the two
+	// helper spellings is called.
+	Value        any
+	StringBacked bool
+}
+
+func mkStringFormatCtxFunc(expr, path string, value any, stringBacked bool) StringFormatContext {
+	return StringFormatContext{Expr: expr, Path: path, Value: value, StringBacked: stringBacked}
+}
+
+// formatValueExprFunc renders an alias receiver as the value its format helper
+// takes: the string it is defined over, or the netip.Addr it is defined over.
+func formatValueExprFunc(recv string, stringBacked bool) string {
+	if stringBacked {
+		return "string(" + recv + ")"
+	}
+	return "netip.Addr(" + recv + ")"
+}
+
+// formatHelperNameFunc maps a format keyword to the shared helper that checks
+// it, or "" when this generator has no check for it.
+//
+// The table is the emitter's half of formatCheckableOnString: a format that
+// answers true there must have a name here, or a rule would be built and then
+// render nothing. TestFormatHelperNamesCoverCheckableFormats holds the two
+// together.
+func formatHelperNameFunc(v any, stringBacked bool) string {
+	format, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	if !stringBacked {
+		// The value is the Go type the format maps to. Decoding already refused
+		// anything the parser rejects, so all that is left is the address
+		// family -- and it is read off the netip.Addr rather than off a string
+		// that no longer exists.
+		switch format {
+		case "ipv4":
+			return "schemagenFormatIPv4Addr"
+		case "ipv6":
+			return "schemagenFormatIPv6Addr"
+		default:
+			return ""
+		}
+	}
+	switch format {
+	case "date":
+		return "schemagenFormatDate"
+	case "time":
+		return "schemagenFormatTime"
+	case "date-time":
+		return "schemagenFormatDateTime"
+	case "duration":
+		return "schemagenFormatDuration"
+	case "email":
+		return "schemagenFormatEmail"
+	case "idn-email":
+		return "schemagenFormatIDNEmail"
+	case "hostname":
+		return "schemagenFormatHostname"
+	case "idn-hostname":
+		return "schemagenFormatIDNHostname"
+	case "uri":
+		return "schemagenFormatURI"
+	case "iri":
+		return "schemagenFormatIRI"
+	case "uri-reference":
+		return "schemagenFormatURIReference"
+	case "iri-reference":
+		return "schemagenFormatIRIReference"
+	case "uri-template":
+		return "schemagenFormatURITemplate"
+	case "uuid":
+		return "schemagenFormatUUID"
+	case "json-pointer":
+		return "schemagenFormatJSONPointer"
+	case "relative-json-pointer":
+		return "schemagenFormatRelativeJSONPointer"
+	case "regex":
+		return "schemagenFormatRegex"
+	case "ipv4":
+		return "schemagenFormatIPv4"
+	case "ipv6":
+		return "schemagenFormatIPv6"
+	default:
+		return ""
+	}
 }
 
 // itemRangeFunc renders what a level's loop ranges over: the slice itself at

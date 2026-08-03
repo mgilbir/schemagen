@@ -1,0 +1,28 @@
+{{/*
+string_format_check emits a "format" assertion against a value already known to
+be a Go string.
+
+There is one arm, and it dispatches to the shared helper for the format. Every
+position that asserts a format comes through here -- a struct field, an alias
+over its own value, and the wrapper a format with no declared "type" resolves
+to -- so the three cannot disagree about what a format means, which they did for
+as long as each carried a copy of the checks. See format_helpers.
+
+.Expr  a Go expression of type string
+.Path  what to name the value in the error message ("value", a JSON pointer, ...)
+.Value the format keyword
+
+An unrecognised format renders nothing: `format` is an annotation unless
+something can judge it, and formatCheckableOnString has already refused to build
+a rule for one nothing judges.
+*/}}
+{{define "string_format_check"}}
+{{- $v := .Expr}}
+{{- $path := .Path}}
+{{- $fn := formatHelperName .Value .StringBacked}}
+{{- if $fn}}
+if _err := {{$fn}}({{$v}}); _err != nil {
+	return fmt.Errorf("{{$path}}: %w", _err)
+}
+{{- end}}
+{{- end}}

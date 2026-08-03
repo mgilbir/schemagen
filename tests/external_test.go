@@ -402,6 +402,29 @@ func isBignumFile(file string) bool {
 	return strings.Contains(file, "optional/bignum") || strings.Contains(file, "optional/float-overflow")
 }
 
+// isFormatAssertionFile reports whether a file describes the behaviour of an
+// implementation that asserts "format", and so has to be generated with
+// FormatAssertion set.
+//
+// The suite states both postures and keeps them apart by directory. The
+// non-optional format.json says what a format means by default: from 2019-09
+// the format-annotation vocabulary makes it an annotation, so "2962" satisfies
+// {"format":"email"} and every one of those cases is marked valid.
+// optional/format/*.json says what the assertion means for an implementation
+// that opts in, and marks the same document invalid. Neither is wrong; they
+// describe different configurations, which is what "optional" means here.
+//
+// Running the second set under the default configuration would therefore ask
+// this generator to fail: it would have to reject a document its own dialect
+// permits in order to pass, and rejecting what the schema permits is the one
+// thing this repository does not trade away. Running it under the flag asks the
+// question the file is actually about -- how accurate the checks are -- which is
+// what the file can answer. This is the same per-file configuration switch
+// isBignumFile already makes, for the same reason.
+func isFormatAssertionFile(file string) bool {
+	return strings.Contains(filepath.ToSlash(file), "optional/format")
+}
+
 // loadTestGroups reads and parses a JSTS test file.
 func loadTestGroups(t *testing.T, path string) []jstsTestGroup {
 	t.Helper()
@@ -799,7 +822,7 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt bool) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt, formatAssertion bool) (string, error) {
 	var s schema.Schema
 	// Handle boolean false schema: "false" is not a JSON object, so we construct
 	// the Schema struct manually with BooleanSchema set to false.
@@ -816,7 +839,7 @@ func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.Schem
 	// serve fails generation rather than degrading to any. Leniency let a
 	// schema the harness had silently emptied out still count as a pass, so
 	// the suite measured a validator built from a schema nobody wrote.
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt, FormatAssertion: formatAssertion}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -1093,7 +1116,7 @@ func TestExternalValidation(t *testing.T) {
 						groupKey := failureKey(draft, filenameWithoutExt(file), group.Description)
 
 						// Generate code once per group.
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file))
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file), isFormatAssertionFile(file))
 
 						if cgErr != nil {
 							skippedCG++

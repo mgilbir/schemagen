@@ -5,50 +5,31 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
-	"time"
 )
 
-type Addr netip.Addr
+type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Addr")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = Addr(_target)
-	return nil
-}
-func (a Addr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(a))
+	type Alias Addr
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
 func (a Addr) Validate() error {
-	if _a := netip.Addr(a); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
-type Stamp time.Time
+type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Stamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*s = Stamp(_target)
-	return nil
-}
-func (s Stamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(s))
+	type Alias Stamp
+	return json.Unmarshal(data, (*Alias)(s))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -65,9 +46,6 @@ func (s *StampAlias) UnmarshalJSON(data []byte) error {
 	}
 	*s = StampAlias(_target)
 	return nil
-}
-func (s StampAlias) MarshalJSON() ([]byte, error) {
-	return json.Marshal(Stamp(s))
 }
 
 // Validate checks StampAlias against its JSON Schema constraints.

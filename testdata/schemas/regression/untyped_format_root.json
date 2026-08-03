@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UntypedFormatRoot",
+  "description": "A format with no type as the whole document, so the wrapper is the root type itself",
+  "format": "ipv4"
+}

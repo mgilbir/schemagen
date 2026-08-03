@@ -5,12 +5,10 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/mail"
-	"time"
 )
 
 type Metadata struct {
-	Created              time.Time                  `json:"created"`
+	Created              string                     `json:"created"`
 	Tags                 []string                   `json:"tags,omitzero"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -210,13 +208,6 @@ func (p Person) Validate() error {
 		for _, _req := range []string{"name"} {
 			if !p._jsonKeys[_req] {
 				return fmt.Errorf("%s: required property is missing", _req)
-			}
-		}
-	}
-	if p._jsonKeys["email"] {
-		if p.Email != nil && *p.Email != "" {
-			if _, err := mail.ParseAddress(*p.Email); err != nil {
-				return fmt.Errorf("email: value %q is not a valid email address: %w", *p.Email, err)
 			}
 		}
 	}

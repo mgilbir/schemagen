@@ -78,13 +78,17 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
 	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "fmt")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.Format, "fmt")
 	add(helpers.Dynamic || helpers.Integer, "math")
 	add(helpers.Annotations, "reflect")
 	add(helpers.Annotations, "strconv")
 	// The regexp engine only comes in when a compiled schema actually names a
 	// pattern: it is a third-party dependency, and a package that never asks for
-	// one should not acquire it.
+	// one should not acquire it. The format block needs the same engine for
+	// `format: regex`, so both routes go through addAliased -- naming a path
+	// twice in one import block does not compile, and a package that compiles a
+	// pattern to the runtime evaluator *and* asserts a format reaches it from
+	// both sides.
 	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262", "ecma262")
 	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 	// The walker reports the first offending key in name order, so that a
@@ -92,6 +96,19 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// evaluator visits an object's properties in the same fixed order, for the
 	// same reason.
 	add(helpers.NullCheck || helpers.Annotations, "sort")
+	// The format helpers are emitted as one block, so they name every package
+	// any of them needs whether or not the schema uses that particular format.
+	// Splitting the block per format is what would let a package end up with a
+	// helper it cannot compile; see HelperSet.Format.
+	add(helpers.Format, "net/mail")
+	add(helpers.Format, "net/netip")
+	add(helpers.Format, "net/url")
+	add(helpers.Format, "regexp")
+	add(helpers.Format, "strings")
+	add(helpers.Format, "time")
+	add(helpers.Format, "unicode/utf8")
+	addAliased(helpers.Format, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(helpers.Format, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 
 	data := helperFileData{
 		PackageName: packageName,

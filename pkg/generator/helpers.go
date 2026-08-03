@@ -15,11 +15,12 @@ type HelperSet struct {
 	AnnotationsPattern bool // the evaluator's ECMA-262 arms, and the engine they need
 	Integer            bool // jsonInteger and the shape-preserving converters
 	NullCheck          bool // jsonNullRule and the recursive walker that applies one
+	Format             bool // schemagenFormat* -- one function per asserted format
 }
 
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
-	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer && !h.NullCheck
+	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst && !h.Annotations && !h.Integer && !h.NullCheck && !h.Format
 }
 
 // Merge folds another set into this one.
@@ -32,11 +33,23 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.AnnotationsPattern = h.AnnotationsPattern || other.AnnotationsPattern
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
+	h.Format = h.Format || other.Format
 }
 
 // Helpers reports which shared helpers this file's generated code calls.
 func (f *File) Helpers() HelperSet {
 	var set HelperSet
+	// The format checks are one block: every asserted format calls a
+	// schemagenFormat* function, and a rule of that type anywhere in the file
+	// pulls the block in. Splitting it per format would let two schemas in one
+	// package each claim a different subset and neither claim what the other
+	// needs, which is the bug the per-package helper file exists to prevent.
+	for _, td := range f.TypeDefs {
+		if defCarriesFormatRule(td) {
+			set.Format = true
+			break
+		}
+	}
 	for _, td := range f.TypeDefs {
 		switch d := td.(type) {
 		case *DynamicSchemaDef:
@@ -102,4 +115,30 @@ func (f *File) Helpers() HelperSet {
 		}
 	}
 	return set
+}
+
+// defCarriesFormatRule reports whether a generated type emits a format check.
+//
+// Only the three definitions that can hold one are asked, which are the three
+// the format posture and formatRuleShape already agree on: a struct's field
+// rules, an alias over its own value, and the wrapper an inferred or untyped
+// string resolves to.
+func defCarriesFormatRule(td TypeDef) bool {
+	hasFormat := func(rules []ValidationRule) bool {
+		for _, r := range rules {
+			if r.RuleType == "format" {
+				return true
+			}
+		}
+		return false
+	}
+	switch d := td.(type) {
+	case *StructDef:
+		return hasFormat(d.Validations)
+	case *AliasDef:
+		return hasFormat(d.Validations)
+	case *InferredAliasDef:
+		return hasFormat(d.Validations)
+	}
+	return false
 }

@@ -53,6 +53,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
+| `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
 | `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
@@ -65,6 +66,36 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--schema-output` | | | Output file for a document: `<document $id>=<file path>`. Requires `--schema-package` |
 | `--config` | | | Path to a JSON generation config (see below). Flags override it |
 | `--verbose` | `-v` | `false` | Print progress information |
+
+### Format: assertion or annotation
+
+`format` means different things in different drafts, and the generated code
+follows the document's own dialect rather than a single house rule.
+
+| Dialect | Default | Why |
+| --- | --- | --- |
+| draft 3, 4, 6, 7 | **asserts** | The spec says an implementation SHOULD validate a format it recognises, and MAY treat it as an annotation. Asserting is the reading this generator takes. |
+| 2019-09, 2020-12 | **annotates** | The default meta-schema declares the `format-annotation` vocabulary, whose content is that `format` produces an annotation and no assertion. `{"format":"email"}` is satisfied by `"2962"`, and the official test suite marks that document valid. |
+| no `$schema` | **annotates** | An unknown dialect is read as a modern one everywhere else in the generator, and withholding a rejection is the safe direction. |
+
+`--format-assertion` asserts on every draft, for callers who want the older
+behaviour on a newer document.
+
+The flag reaches the Go type as well as the check. `date-time` maps to
+`time.Time` and `ipv4`/`ipv6` to `netip.Addr`, and those types assert the format
+by decoding it — an unparseable value simply fails `json.Unmarshal`, whatever
+`Validate` does. Under an annotating dialect the mapping is therefore withheld
+too and the value stays a `string`; pass `--format-assertion` to get the typed
+representation back. One consequence is worth stating: `time.Time` cannot
+represent a leap second, so `1998-12-31T23:59:60Z` — which RFC 3339 admits — is
+refused by a `date-time` field held as one. A `format` written without a `type`
+keeps the JSON string and accepts it.
+
+Two formats are checked less thoroughly than the suite's optional corpus asks,
+and both are recorded in the generated helpers rather than left implicit:
+`hostname` accepts a malformed `xn--` A-label, and `idn-hostname` is checked
+structurally rather than against IDNA2008. Both under-enforce; neither rejects a
+name the spec permits.
 
 ### Unresolvable References
 

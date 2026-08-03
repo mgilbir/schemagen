@@ -31,6 +31,7 @@ type ConfigFile struct {
 	OmitEmpty            *bool   `json:"omitEmpty,omitempty"`
 	StrictProperties     *bool   `json:"strictProperties,omitempty"`
 	BigInt               *bool   `json:"bigInt,omitempty"`
+	FormatAssertion      *bool   `json:"formatAssertion,omitempty"`
 	AllowRemoteRefs      *bool   `json:"allowRemoteRefs,omitempty"`
 	LenientRefs          *bool   `json:"lenientRefs,omitempty"`
 	SharedTypes          *bool   `json:"sharedTypes,omitempty"`

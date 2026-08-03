@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 )
 
@@ -113,9 +112,9 @@ func (e Event) Validate() error {
 		}
 	}
 	if e._jsonKeys["url"] {
-		if e.URL != nil && *e.URL != "" {
-			if _u, _err := url.Parse(*e.URL); _err != nil || _u.Scheme == "" {
-				return fmt.Errorf("url: value %q is not a valid URI", *e.URL)
+		if e.URL != nil {
+			if _err := schemagenFormatURI(*e.URL); _err != nil {
+				return fmt.Errorf("url: %w", _err)
 			}
 		}
 	}

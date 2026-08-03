@@ -5,11 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/mail"
-	"net/netip"
-	"net/url"
-	"regexp"
-	"time"
 )
 
 type Day string
@@ -24,11 +19,6 @@ func (d *Day) UnmarshalJSON(data []byte) error {
 
 // Validate checks Day against its JSON Schema constraints.
 func (d Day) Validate() error {
-	if string(d) != "" {
-		if _, _err := time.Parse("2006-01-02", string(d)); _err != nil {
-			return fmt.Errorf("value: %q is not a valid date (YYYY-MM-DD): %w", string(d), _err)
-		}
-	}
 	return nil
 }
 
@@ -44,11 +34,6 @@ func (e *Email) UnmarshalJSON(data []byte) error {
 
 // Validate checks Email against its JSON Schema constraints.
 func (e Email) Validate() error {
-	if string(e) != "" {
-		if _, _err := mail.ParseAddress(string(e)); _err != nil {
-			return fmt.Errorf("value: %q is not a valid email address: %w", string(e), _err)
-		}
-	}
 	return nil
 }
 
@@ -64,11 +49,6 @@ func (s *Site) UnmarshalJSON(data []byte) error {
 
 // Validate checks Site against its JSON Schema constraints.
 func (s Site) Validate() error {
-	if string(s) != "" {
-		if _u, _err := url.Parse(string(s)); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("value: %q is not a valid URI", string(s))
-		}
-	}
 	return nil
 }
 
@@ -84,61 +64,36 @@ func (u *UUID) UnmarshalJSON(data []byte) error {
 
 // Validate checks UUID against its JSON Schema constraints.
 func (u UUID) Validate() error {
-	if string(u) != "" {
-		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(string(u)) {
-			return fmt.Errorf("value: %q is not a valid UUID", string(u))
-		}
-	}
 	return nil
 }
 
-type V4 netip.Addr
+type V4 string
 
 func (v *V4) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type V4")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*v = V4(_target)
-	return nil
-}
-func (v V4) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(v))
+	type Alias V4
+	return json.Unmarshal(data, (*Alias)(v))
 }
 
 // Validate checks V4 against its JSON Schema constraints.
 func (v V4) Validate() error {
-	if _a := netip.Addr(v); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
-type V6 netip.Addr
+type V6 string
 
 func (v *V6) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type V6")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*v = V6(_target)
-	return nil
-}
-func (v V6) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(v))
+	type Alias V6
+	return json.Unmarshal(data, (*Alias)(v))
 }
 
 // Validate checks V6 against its JSON Schema constraints.
 func (v V6) Validate() error {
-	if _a := netip.Addr(v); _a.IsValid() && !_a.Is6() {
-		return fmt.Errorf("value: %q is not a valid IPv6 address", _a)
-	}
 	return nil
 }
 

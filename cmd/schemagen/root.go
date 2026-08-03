@@ -40,6 +40,7 @@ func newGenerateCmd() *cobra.Command {
 		omitEmpty        bool
 		strictProperties bool
 		bigInt           bool
+		formatAssertion  bool
 		verbose          bool
 		allowRemoteRefs  bool
 		draftStr         string
@@ -82,6 +83,7 @@ func newGenerateCmd() *cobra.Command {
 				applyBool(cmd, "omit-empty", cfg.OmitEmpty, &omitEmpty)
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
+				applyBool(cmd, "format-assertion", cfg.FormatAssertion, &formatAssertion)
 				applyBool(cmd, "allow-remote-refs", cfg.AllowRemoteRefs, &allowRemoteRefs)
 				applyBool(cmd, "lenient-refs", cfg.LenientRefs, &lenientRefs)
 				applyBool(cmd, "shared-types", cfg.SharedTypes, &sharedTypes)
@@ -203,6 +205,7 @@ func newGenerateCmd() *cobra.Command {
 					omitEmpty:        omitEmpty,
 					strictProperties: strictProperties,
 					bigInt:           bigInt,
+					formatAssertion:  formatAssertion,
 					allowRemoteRefs:  allowRemoteRefs,
 					verbose:          verbose,
 					draft:            draft,
@@ -271,6 +274,7 @@ func newGenerateCmd() *cobra.Command {
 					OmitEmpty:        omitEmpty,
 					StrictProperties: strictProperties,
 					BigIntSupport:    bigInt,
+					FormatAssertion:  formatAssertion,
 					Resolver:         schema.NewCompositeResolver(resolvers...),
 					Draft:            draft,
 					Validation:       validationMode,
@@ -324,6 +328,7 @@ func newGenerateCmd() *cobra.Command {
 						OmitEmpty:        omitEmpty,
 						StrictProperties: strictProperties,
 						BigIntSupport:    bigInt,
+						FormatAssertion:  formatAssertion,
 						Resolver:         resolver,
 						Draft:            draft,
 						Validation:       validationMode,
@@ -417,6 +422,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
+	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows the newer drafts. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().BoolVar(&lenientRefs, "lenient-refs", false, "Degrade $refs that no resolver can serve to any instead of failing generation")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
@@ -552,6 +558,7 @@ type multiPackageParams struct {
 	omitEmpty        bool
 	strictProperties bool
 	bigInt           bool
+	formatAssertion  bool
 	allowRemoteRefs  bool
 	verbose          bool
 	draft            schema.Draft
@@ -700,6 +707,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			OmitEmpty:        p.omitEmpty,
 			StrictProperties: p.strictProperties,
 			BigIntSupport:    p.bigInt,
+			FormatAssertion:  p.formatAssertion,
 			Resolver:         resolver,
 			Draft:            p.draft,
 			Validation:       p.validationMode,
