@@ -250,6 +250,15 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isDrawing_Shape
+			var oneofStrictErr error
 
 			// Try variant: Circle
 			{
@@ -258,6 +267,16 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						d.Shape = &Drawing_Circle{Circle: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Drawing_Circle{Circle: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant Circle: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -271,6 +290,16 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						d.Shape = &Drawing_Rectangle{Rectangle: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Drawing_Rectangle{Rectangle: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant Rectangle: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -279,6 +308,23 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("Drawing.Shape: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					d.Shape = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("Drawing.Shape: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("Drawing.Shape: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
@@ -360,6 +406,26 @@ func (d Drawing) Validate() error {
 		for _, _req := range []string{"name", "shape"} {
 			if !d._jsonKeys[_req] {
 				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := d.Shape.(type) {
+	case *Drawing_Circle:
+		if _oneOfSel.Circle != nil {
+			if err := _oneOfSel.Circle.Validate(); err != nil {
+				return fmt.Errorf("shape.%w", err)
+			}
+		}
+	case *Drawing_Rectangle:
+		if _oneOfSel.Rectangle != nil {
+			if err := _oneOfSel.Rectangle.Validate(); err != nil {
+				return fmt.Errorf("shape.%w", err)
 			}
 		}
 	}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfObjectVariantConstraints",
+  "type": "object",
+  "properties": {
+    "a": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "x": { "type": "string", "minLength": 3 } },
+          "required": ["x"]
+        },
+        {
+          "type": "object",
+          "properties": { "y": { "type": "integer", "minimum": 10 } },
+          "required": ["y"]
+        }
+      ]
+    }
+  },
+  "required": ["a"]
+}

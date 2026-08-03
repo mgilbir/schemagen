@@ -4,10 +4,19 @@
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
 // {{.Name}} holds an integer value with arbitrary-precision support (int64 + *big.Int).
+{{- if .AllowsNull}}
+// The schema also admits null, so the wrapper carries an explicit null state:
+// neither the int64 nor the *big.Int can stand in for it, since the int64 zero
+// is what a literal 0 decodes to and a nil *big.Int is what every int64-sized
+// value leaves behind. IsNull reports it, and the zero value is 0, not null.
+{{- end}}
 type {{.Name}} struct {
 	_int64    int64
 	_bigInt   *big.Int
 	_isBigInt bool
+	{{- if .AllowsNull}}
+	_isNull   bool
+	{{- end}}
 }
 
 {{template "bigint_alias_unmarshal" .}}
@@ -24,6 +33,20 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
 	}
+	{{- end}}
+	{{- if .AllowsNull}}
+	// The schema admits null. Take it before json.Number does: a null decodes
+	// into a json.Number as the empty string, which then fails every numeric
+	// parse below -- which is how a permitted null came to be reported as
+	// "not a valid integer".
+	if string(data) == "null" {
+		{{$recv}}._isNull = true
+		{{$recv}}._int64 = 0
+		{{$recv}}._isBigInt = false
+		{{$recv}}._bigInt = nil
+		return nil
+	}
+	{{$recv}}._isNull = false
 	{{- end}}
 	// Reject JSON strings (e.g., "1").
 	if len(data) > 0 && data[0] == '"' {
@@ -86,6 +109,11 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	{{- if .AllowsNull}}
+	if {{$recv}}._isNull {
+		return []byte("null"), nil
+	}
+	{{- end}}
 	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
 		return []byte({{$recv}}._bigInt.String()), nil
 	}
@@ -104,6 +132,13 @@ func ({{$recv}} {{.Name}}) BigInt() *big.Int {
 	return big.NewInt({{$recv}}._int64)
 }
 func ({{$recv}} {{.Name}}) IsBigInt() bool { return {{$recv}}._isBigInt }
+{{- if .AllowsNull}}
+
+// IsNull reports whether the value decoded from a JSON null. The accessors
+// above answer 0 in that case, which is also what a literal 0 answers, so this
+// is the only way to tell the two apart.
+func ({{$recv}} {{.Name}}) IsNull() bool { return {{$recv}}._isNull }
+{{- end}}
 func ({{$recv}} {{.Name}}) String() string { return {{$recv}}.BigInt().String() }
 {{- end}}
 
@@ -112,6 +147,15 @@ func ({{$recv}} {{.Name}}) String() string { return {{$recv}}.BigInt().String() 
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .AllowsNull}}
+	// The numeric keywords say nothing about a null: under JSON Schema a
+	// keyword that applies to numbers is satisfied vacuously by every other
+	// instance type. Checking them against the zero the accessors answer for a
+	// null would reject a value the schema permits.
+	if {{$recv}}._isNull {
+		return nil
+	}
+	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minimum"}}
 	{
@@ -208,11 +252,23 @@ the arbitrary-precision value.
 Only the numeric keywords are emitted. A branch keyword that speaks about
 strings or arrays does not constrain an integer at all -- under JSON Schema it
 is satisfied vacuously -- so leaving variantValid alone is what the branch
-actually asserts, not a check being dropped.
+actually asserts, not a check being dropped. The generator drops those keywords
+before they reach here (ruleVacuousForType); the emission side stays selective
+so a rule arriving from elsewhere cannot be read as a numeric bound.
+
+"never" is the one branch that asserts nothing and matches nothing: its own
+"type" excludes every integer, so it is counted as unmatched rather than
+dropped, because a oneOf whose branches are all impossible is satisfied by no
+value at all.
 */}}
 {{define "bigint_alias_variant_checks"}}
 {{- $recv := .Recv -}}
 {{- range .Rules}}
+{{- if eq .RuleType "never"}}
+// The branch's own "type" excludes every value this type can hold, so the
+// branch matches nothing.
+variantValid = false
+{{- end}}
 {{- if eq .RuleType "minimum"}}
 {
 	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())

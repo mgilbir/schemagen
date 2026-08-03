@@ -46,7 +46,14 @@ const coMaxDepth = 3
 //	root            {"type":"object"} with 1..4 properties, or a composition
 //	                leaf as the whole document (see below)
 //	object          type, properties (1..4), required (any subset)
-//	array           type, items (a single schema), minItems, maxItems
+//	map             an object whose *whole* shape is additionalProperties: no
+//	                declared property names, no patternProperties, one value
+//	                sub-schema drawn from the same set an array element takes,
+//	                and 1..3 keys in the instance. This is the shape schemagen
+//	                types as a Go map; the mutation violates the value schema
+//	                under the last key.
+//	array           type, items (a single schema), minItems, maxItems, or
+//	                contains (see "Array keywords" below)
 //	string          type, and either {minLength, maxLength} or pattern
 //	integer         type, minimum | exclusiveMinimum, maximum |
 //	                exclusiveMaximum, multipleOf
@@ -67,12 +74,17 @@ const coMaxDepth = 3
 //	                branch and typed there. On a property, two typed scalar
 //	                alternatives ({"type":"string","minLength":n} and
 //	                {"type":"integer","minimum":m}).
-//	oneOf           three forms. On any object node, root or nested, the same
+//	oneOf           four forms. On any object node, root or nested, the same
 //	                discriminator branches as anyOf. On a property, the same
 //	                two typed scalar alternatives as anyOf. As a composition
 //	                leaf, two overlapping integer windows, so that a value
 //	                matching *both* branches is reachable and can be made a
-//	                mutant.
+//	                mutant. Also on a property, two *object* branches, each
+//	                requiring a key the other does not mention and constraining
+//	                that key's value -- the one form whose branch constraints
+//	                sit a level below the branch, and so the one form that can
+//	                tell whether the union's owner validates the variant
+//	                selection chose.
 //	if/then/else    over an integer pivot: `if` {minimum: P}, `then` {maximum:
 //	                P+K}, `else` {minimum: P-K}. Both outcomes of `if` are
 //	                generated. Emitted as a composition leaf and inline as a
@@ -124,13 +136,30 @@ const coMaxDepth = 3
 //	                    computed from the same decisions that build it.
 //	propertyNames       {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, which every
 //	                    name the grammar emits satisfies; the mutant adds one
-//	                    that does not.
+//	                    that does not. Declared beside the node's allOf or
+//	                    inside one of its branches, half each: only the second
+//	                    position asks whether a *branch's* propertyNames is read
+//	                    at all, since one stated beside the allOf would be
+//	                    enforced either way.
 //
 // Array keywords:
 //
 //	uniqueItems         on an array whose elements are a plain integer and
 //	                    whose i-th element is i, so the array is unique by
 //	                    construction at every length the length mutants need.
+//	contains +          on the same numbered-integer array, with the sub-schema
+//	minContains +       {"type":"integer","minimum":k}: element i matches iff
+//	maxContains         i >= k, so the number of matching elements is decided
+//	                    rather than read back. minContains and maxContains are
+//	                    pinned to that number, which is what makes "one element
+//	                    stops matching" and "one more element matches" each a
+//	                    violation of exactly one bound. minContains is always
+//	                    stated when more than one element matches: under the
+//	                    default of 1, dropping one match would leave a
+//	                    conforming document and there would be no mutant.
+//	                    Exclusive with uniqueItems, minItems and maxItems --
+//	                    every one of their mutants would move the match count
+//	                    too.
 //	prefixItems +       tuple form: 1..3 prefix entries typed string / integer
 //	unevaluatedItems    / boolean and an instance of exactly that length. The
 //	                    mutant appends one element, which no prefix entry
@@ -155,6 +184,14 @@ const coMaxDepth = 3
 // and becomes a property type carrying the branches as constraints; that is the
 // hoisted spelling of coOneOfWin, and it is emitted inline for exactly that
 // reason.
+//
+// An inline oneOf of *object* branches -- coOneOfObj -- is the same union with
+// the branch constraints moved one level down, into the variant types, where
+// only the owner's Validate can reach them. It is emitted because the scalar
+// spelling above cannot substitute for it: a scalar variant's constraints are
+// applied by selection during UnmarshalJSON, so they hold whether or not the
+// owner descends, and a union that never descends looks identical from there.
+// That is why issue #61 stood while the harness was green.
 //
 // Deliberately not emitted, because co-generating a *conforming* instance for
 // them is its own project and a wrong instance produces false failures that
@@ -182,11 +219,11 @@ const coMaxDepth = 3
 // promise more than it delivers.
 var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
 
-// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties types
-// the overflow map, so a value of the wrong JSON type dies in the decoder, but
-// the subschema's own constraints are never checked. The grammar therefore only
-// emits additionalProperties: false, whose whole content is a rejection and so
-// cannot be half-enforced.
+// coGapAdditionalPropertiesSchema: a schema-valued additionalProperties *beside
+// declared properties* types the overflow map, so a value of the wrong JSON type
+// dies in the decoder, but the subschema's own constraints are never checked.
+// The grammar therefore only emits additionalProperties: false in that position,
+// whose whole content is a rejection and so cannot be half-enforced.
 //
 //	schema   {"type":"object","properties":{"alpha":{"type":"string"}},
 //	          "additionalProperties":{"type":"integer","minimum":5}}
@@ -194,13 +231,19 @@ var coIncludeKnownGaps = os.Getenv("SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS") == "1"
 //
 // patternProperties in the same position *is* enforced, constraints and all,
 // which is the form the grammar emits.
+//
+// This gap is about the *overflow* position only. A schema-valued
+// additionalProperties governing the whole object -- no `properties`, no
+// `patternProperties` -- is a different construct: it becomes a Go map and its
+// value constraints are enforced, since issue #84. That form is coMap, and it is
+// emitted unconditionally.
 func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 
 // ---------------------------------------------------------------------------
 // Not emitted at all
 // ---------------------------------------------------------------------------
 //
-// Reaching the four defects below would need a shape the grammar does not
+// Reaching the three defects below would need a shape the grammar does not
 // build, so none of them carries a coGap toggle: a predicate nothing consults
 // would promise a reachability it does not have. They are recorded here because
 // a defect nobody wrote down is a defect that gets rediscovered. Each
@@ -209,8 +252,7 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 //
 // The grammar's own choices are what dodge them: a `required`-only
 // dependentSchemas branch, prefixItems entries carrying a type and nothing
-// else, unevaluatedItems only ever a direct sibling of prefixItems, and no
-// `contains` anywhere.
+// else, and unevaluatedItems only ever a direct sibling of prefixItems.
 //
 // dependentSchemas branch keywords other than `required`. A branch is reduced
 // to its `required` list, so the dependency fires on presence and never on
@@ -252,15 +294,6 @@ func coGapAdditionalPropertiesSchema() bool { return coIncludeKnownGaps }
 //	          "prefixItems":[{"type":"string"}],
 //	          "unevaluatedItems":{"type":"integer"}}},"required":["arr"]}
 //	instance {"arr":["a","b"]}            accepted; index 1 is not an integer
-//
-// contains, minContains and maxContains produce no check at all.
-//
-//	schema   {"type":"object","properties":{"arr":{"type":"array",
-//	          "items":{"type":"integer"},"contains":{"type":"integer","minimum":10},
-//	          "minContains":2,"maxContains":3}},"required":["arr"]}
-//	instance {"arr":[1,2]}                accepted; nothing matches `contains`
-//	instance {"arr":[1,2,3]}              accepted; 0 matches, minContains is 2
-//	instance {"arr":[11,12,13,14]}        accepted; 4 matches, maxContains is 3
 
 // ---------------------------------------------------------------------------
 // Node model
@@ -282,6 +315,12 @@ const (
 	// coTuple is an array in tuple form: prefixItems types the positions it
 	// has, and unevaluatedItems: false forbids the ones it does not.
 	coTuple
+	// coMap is an object whose *whole* shape is additionalProperties: it
+	// declares no property names and no patternProperties, so one sub-schema
+	// governs everything it holds and the generated Go type is a map. The
+	// value sub-schema is the same set of leaves an array element draws from,
+	// and the mutation violates it under one key.
+	coMap
 
 	// Composition leaves. Each is a whole schema whose only keywords are
 	// applicators, so each is a value the grammar picks first and a schema it
@@ -290,6 +329,18 @@ const (
 	coOneOfWin // oneOf over two overlapping integer windows, typed per branch or once above them
 	coIfElse   // if/then/else over an integer pivot
 	coNot      // not: {"type": T}
+	// coOneOfObj is a oneOf over two *object* branches, each requiring a key
+	// the other does not mention and constraining that key's value. It is the
+	// only shape in the grammar whose branch constraints live one level below
+	// the branch itself, which is what makes it the shape that tests whether
+	// the union's owner descends into the variant it selected.
+	//
+	// Half its instances carry both branches' required keys (objBoth), with the
+	// branch that is not taken failing on its nested constraint rather than on
+	// its `required`. That is the arrangement in which "exactly one branch"
+	// cannot be read off the key set, so it is the one that tests whether
+	// selection consults the branch at all rather than only its required keys.
+	coOneOfObj
 )
 
 // coComp says which applicator, if any, an object node routes its own
@@ -394,14 +445,17 @@ type coNode struct {
 	// from the schema and its mutation from the catalogue together.
 	extra     coExtra
 	unevalMin int64 // coExtraUnevalSchema: the minimum the subschema carries
-	patKeys   []string
-	patStr    bool // the patternProperties value schema is a string, not an integer
-	patBound  int  // its minLength, or its minimum
-	dep       coDepKind
-	depTrig   string   // the property whose presence triggers the dependency
-	depOn     []string // the properties it then requires
-	minProps  bool     // emit minProperties at the instance's own key count
-	cond      *coCond
+	// propNamesBranch declares coExtraPropNames inside an allOf branch rather
+	// than beside it. See propNamesInBranch.
+	propNamesBranch bool
+	patKeys         []string
+	patStr          bool // the patternProperties value schema is a string, not an integer
+	patBound        int  // its minLength, or its minimum
+	dep             coDepKind
+	depTrig         string   // the property whose presence triggers the dependency
+	depOn           []string // the properties it then requires
+	minProps        bool     // emit minProperties at the instance's own key count
+	cond            *coCond
 
 	// array
 	elem     *coNode
@@ -414,8 +468,26 @@ type coNode struct {
 	// on, so the two cannot share an element schema.
 	unique bool
 
+	// contains takes the same numbered-integer element shape as unique, and
+	// states {"type":"integer","minimum":containsMin}: element i matches exactly
+	// when i >= containsMin, so numItems-containsMin elements match and the
+	// count is a decision rather than something read back off the instance.
+	// minContains and maxContains, when emitted, are pinned to that count --
+	// which is what makes changing one element a violation of exactly one bound.
+	contains        bool
+	containsMin     int
+	emitMinContains bool
+	emitMaxContains bool
+
 	// coTuple: one JSON type name per prefixItems position.
 	tupleTypes []string
+
+	// coMap: the keys the instance carries. The value schema is `elem`, shared
+	// with coArray, so the node walk and the clone reach it without a second
+	// field to keep in step. Every key holds a value drawn from that one
+	// sub-schema, so a mutation under one key violates it there and nowhere
+	// else.
+	mapKeys []string
 
 	// string. lenLo/lenHi always hold the effective window even when the
 	// corresponding keyword is not emitted, so value generation has a range to
@@ -482,6 +554,32 @@ type coNode struct {
 	winLo1, winHi1 int64
 	winValue       int64
 	winHoist       bool
+
+	// coOneOfObj: two object branches. Branch 0 declares and requires
+	// coOneOfObjKeys[0], typed string with minLength objStrMin; branch 1
+	// declares and requires coOneOfObjKeys[1], typed integer with minimum
+	// objIntMin. The two required keys are different names, so a document
+	// carrying one of them satisfies that branch's `required` and fails the
+	// other's -- which is what makes "exactly one branch" a fact about which
+	// key is present rather than a claim that has to be evaluated.
+	//
+	// objUseStr says which branch the instance takes; objStr and objInt are the
+	// conforming values, chosen at or above their bound.
+	//
+	// objBoth widens that: the instance carries *both* branches' required keys,
+	// the taken branch's key at a conforming value and the other branch's key at
+	// a value that branch forbids. "Exactly one branch" is then a fact about the
+	// branches' nested constraints rather than about which key is present, which
+	// is the only shape that can tell a selection reading the whole branch from
+	// one gating on required-key presence alone (issue #81). Both reference
+	// implementations were asked: with varStr below its minLength and varInt at
+	// or above its minimum, {"varStr":..,"varInt":..} is valid.
+	objStrMin int
+	objIntMin int64
+	objUseStr bool
+	objBoth   bool
+	objStr    string
+	objInt    int64
 
 	// coIfElse: if {minimum: pivot}, then {maximum: pivot+span},
 	// else {minimum: pivot-span}. iteIf records which side the instance is on.
@@ -550,6 +648,19 @@ var coDefNames = []string{"DefA", "DefB", "DefC"}
 // which would put two schemas on one name and break the "exactly one branch"
 // argument.
 var coDiscNames = []string{"tagOne", "tagTwo", "tagThree"}
+
+// coOneOfObjKeys name the properties the two object branches of a coOneOfObj
+// declare and require, one each. The whole construct rests on the two names
+// being different: the branch the instance does not take is unsatisfied because
+// its required key is absent, and a mutant that violates one branch's nested
+// constraint cannot accidentally satisfy the other. The names live in their own
+// vocabulary rather than borrowing coPropNames so that reading a failing
+// document says which construct a key belongs to.
+//
+// They need not be disjoint from the keys of any enclosing object: these are
+// keys of the union's own value, a different JSON object from the one that
+// holds it.
+var coOneOfObjKeys = [2]string{"varStr", "varInt"}
 
 // The key vocabularies below are pairwise disjoint, and disjoint from
 // coPropNames and coDiscNames. That is what lets every argument about them be
@@ -827,6 +938,12 @@ func (b *coBuilder) applyObjectExtras(n *coNode) {
 		}
 	case 5:
 		n.extra = coExtraPropNames
+		// Half of them declare the keyword inside an allOf branch instead of
+		// beside it. Only that position can tell whether a branch's
+		// propertyNames is read at all -- the parent's has been carried through
+		// an allOf since #68, and a keyword the parent also states would be
+		// enforced whether or not the branch was ever looked at.
+		n.propNamesBranch = b.chance(2)
 	}
 
 	if b.chance(3) {
@@ -953,6 +1070,27 @@ func (n *coNode) maxPropsActive() bool {
 // declared.
 func (n *coNode) propNamesActive() bool {
 	return n.extra == coExtraPropNames
+}
+
+// propNamesInBranch reports whether the node's propertyNames is declared inside
+// one of its allOf branches rather than beside them. Both positions bind the
+// same object -- allOf branches all apply to the instance the parent describes
+// -- so the instance and the mutant are unchanged by the move; what changes is
+// that the constraint is now only reachable by reading the branch.
+//
+// It needs a branch to sit in, and the shrinker can empty the last one by
+// dropping its properties, so this is a predicate over the props rather than a
+// flag on its own.
+func (n *coNode) propNamesInBranch() bool {
+	if !n.propNamesBranch || n.comp != coCompAllOf || !n.propNamesActive() {
+		return false
+	}
+	for _, p := range n.props {
+		if p.group > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // minPropsActive holds only where nothing else at this node removes a key.
@@ -1156,11 +1294,46 @@ func (b *coBuilder) buildAltAnyOf(oneOf bool) *coNode {
 	return n
 }
 
+// buildOneOfObj builds two object branches keyed by different required
+// properties, each constraining its own property's value.
+//
+// minLength is at least 1 so a string one rune shorter than the bound exists;
+// that string, under the branch's key, is a document that satisfies the
+// branch's `required` and violates its nested constraint -- the mutant no
+// scalar-branch shape in this grammar can express, because a scalar branch has
+// no interior to violate.
+//
+// That same string is what objBoth puts beside a conforming varInt, and the
+// integer one below objIntMin is what it puts beside a conforming varStr: a
+// document carrying both required keys where only one branch is satisfied. Both
+// are conforming instances, and the mutants below turn each into an invalid one
+// by moving the violating key to a value its branch accepts (two branches
+// matched) or the conforming key to one its branch rejects (none matched).
+func (b *coBuilder) buildOneOfObj() *coNode {
+	n := &coNode{kind: coOneOfObj}
+	n.objStrMin = 1 + b.rng.IntN(4)
+	n.objIntMin = int64(b.rng.IntN(21) - 10)
+	n.objUseStr = b.chance(2)
+	n.objBoth = b.chance(2)
+	if n.objUseStr {
+		n.objStr = coFillString(n.objStrMin + b.rng.IntN(3))
+		if n.objBoth {
+			n.objInt = n.objIntMin - 1
+		}
+	} else {
+		n.objInt = n.objIntMin + int64(b.rng.IntN(5))
+		if n.objBoth {
+			n.objStr = coFillString(n.objStrMin - 1)
+		}
+	}
+	return n
+}
+
 // buildValue picks the schema for an object property.
 func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	kinds := []coKind{coString, coInteger, coNumber, coBoolean, coNull, coEnum, coConst, coAltAnyOf}
 	if depth < coMaxDepth {
-		kinds = append(kinds, coObject, coArray, coTuple)
+		kinds = append(kinds, coObject, coArray, coTuple, coMap)
 	}
 	if visible > 0 {
 		kinds = append(kinds, coRef)
@@ -1177,12 +1350,24 @@ func (b *coBuilder) buildValue(depth, visible int) *coNode {
 	// declared type. The unhoisted spelling inline is a union of two same-typed
 	// variants, a different construct that coAltAnyOf's oneOf form already
 	// covers at this position.
-	kinds = append(kinds, coIfElse, coNot, coOneOfWin)
+	//
+	// coOneOfObj belongs here and nowhere else. It is a union whose variants
+	// are named object types, so the branch constraints sit inside those types
+	// rather than on the union, and only the owner's Validate can reach them --
+	// which is exactly the position where a missing descent goes unnoticed. The
+	// scalar-branch spellings above cannot stand in for it: their constraints
+	// are applied by variant selection during UnmarshalJSON, so they are
+	// enforced whether or not anything descends.
+	kinds = append(kinds, coIfElse, coNot, coOneOfWin, coOneOfObj)
 	switch kinds[b.rng.IntN(len(kinds))] {
+	case coOneOfObj:
+		return b.buildOneOfObj()
 	case coObject:
 		return b.buildObject(depth, visible)
 	case coArray:
 		return b.buildArray(depth, visible)
+	case coMap:
+		return b.buildMap(depth, visible)
 	case coTuple:
 		return b.buildTuple()
 	case coAltAnyOf:
@@ -1264,9 +1449,63 @@ func (b *coBuilder) buildArray(depth, visible int) *coNode {
 	// integer element instead, and arrayValue numbers the positions: the
 	// minItems and maxItems mutants stay unique, and the only way to make a
 	// duplicate is the mutation that means to.
-	if b.chance(3) {
+	//
+	// contains needs the same numbered shape, for a different reason -- it
+	// counts, so its elements have to be tellable apart. The two are
+	// alternatives rather than options that compose: every contains mutant
+	// writes a value the array already holds, which uniqueItems would reject
+	// for a second reason and so leave the contains bound unproven.
+	switch b.rng.IntN(3) {
+	case 0:
 		n.unique = true
 		n.elem = &coNode{kind: coInteger}
+	case 1:
+		// minItems and maxItems come off for the same reason uniqueItems is
+		// excluded: their mutants change the array's length, and with numbered
+		// elements a shorter array holds fewer matches and a longer one more,
+		// so each would violate a contains bound as well as its own.
+		n.contains = true
+		n.elem = &coNode{kind: coInteger}
+		n.minItems, n.maxItems = nil, nil
+		n.numItems = 2 + b.rng.IntN(3)
+		// At least one match, and at least one element below the threshold for
+		// the maxContains mutant to raise.
+		matches := 1 + b.rng.IntN(n.numItems-1)
+		n.containsMin = n.numItems - matches
+		// minContains has to be stated whenever more than one element matches:
+		// under the default of 1, dropping a single match still leaves one, and
+		// the mutant would be a conforming document. Where exactly one matches
+		// the default says the same thing, so both spellings are generated.
+		n.emitMinContains = matches > 1 || b.chance(2)
+		n.emitMaxContains = b.chance(2)
+	}
+	return n
+}
+
+// containsMatches is how many elements satisfy the contains sub-schema: the
+// positions numbered at or above its minimum. It is derived from numItems
+// rather than stored, so a shrink step that shortens the array moves the
+// emitted minContains and maxContains with it.
+func (n *coNode) containsMatches() int { return n.numItems - n.containsMin }
+
+// buildMap builds an object whose whole shape is additionalProperties: no
+// declared property names, no patternProperties, one sub-schema for every value.
+// That is the shape schemagen types as a Go map, and the position where the
+// value sub-schema used to be thrown away (issue #84): the field came out
+// map[string]any and the keywords under additionalProperties were enforced
+// nowhere.
+//
+// The value schema is drawn from buildElem, the same set an array element takes.
+// That is deliberate rather than convenient: an array element and a map value
+// reach their checks through one mechanism, so the same leaves are the ones
+// whose enforcement is already established at the sibling position, and a
+// divergence between the two shows up as a map failure on a leaf arrays pass.
+//
+// At least one key, so there is always a value for the mutation to work on.
+func (b *coBuilder) buildMap(depth, visible int) *coNode {
+	n := &coNode{kind: coMap, elem: b.buildElem(depth+1, visible)}
+	for i := 0; i < 1+b.rng.IntN(3); i++ {
+		n.mapKeys = append(n.mapKeys, fmt.Sprintf("k%d", i))
 	}
 	return n
 }
@@ -1457,6 +1696,13 @@ func (n *coNode) fragment() map[string]any {
 			branches = append(branches, branch)
 		}
 		if len(branches) > 0 {
+			// A branch's propertyNames binds the same object the parent's does,
+			// and putting it here is the only way to ask whether the branch was
+			// read for it: stated beside the allOf it would be enforced either
+			// way. See propNamesInBranch.
+			if n.propNamesInBranch() {
+				branches[0].(map[string]any)["propertyNames"] = map[string]any{"pattern": coPropNamePattern}
+			}
 			m["allOf"] = branches
 		}
 		if len(n.branches) > 0 {
@@ -1484,6 +1730,13 @@ func (n *coNode) fragment() map[string]any {
 		m["prefixItems"] = prefix
 		m["unevaluatedItems"] = false
 
+	case coMap:
+		// No `properties` and no `patternProperties`: additionalProperties
+		// governs the whole object, which is what makes it a map rather than a
+		// struct with an overflow.
+		m["type"] = "object"
+		m["additionalProperties"] = n.elem.fragment()
+
 	case coArray:
 		m["type"] = "array"
 		m["items"] = n.elem.fragment()
@@ -1495,6 +1748,15 @@ func (n *coNode) fragment() map[string]any {
 		}
 		if n.unique {
 			m["uniqueItems"] = true
+		}
+		if n.contains {
+			m["contains"] = map[string]any{"type": "integer", "minimum": n.containsMin}
+			if n.emitMinContains {
+				m["minContains"] = n.containsMatches()
+			}
+			if n.emitMaxContains {
+				m["maxContains"] = n.containsMatches()
+			}
 		}
 	case coString:
 		m["type"] = "string"
@@ -1576,6 +1838,24 @@ func (n *coNode) fragment() map[string]any {
 			map[string]any{"type": "integer", "minimum": n.winLo1, "maximum": n.winHi1},
 		}
 
+	case coOneOfObj:
+		m["oneOf"] = []any{
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					coOneOfObjKeys[0]: map[string]any{"type": "string", "minLength": n.objStrMin},
+				},
+				"required": []string{coOneOfObjKeys[0]},
+			},
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					coOneOfObjKeys[1]: map[string]any{"type": "integer", "minimum": n.objIntMin},
+				},
+				"required": []string{coOneOfObjKeys[1]},
+			},
+		}
+
 	case coIfElse:
 		m["if"] = map[string]any{"type": "integer", "minimum": n.pivot}
 		m["then"] = map[string]any{"type": "integer", "maximum": n.pivot + n.span}
@@ -1630,7 +1910,7 @@ func (n *coNode) emitKeyKeywords(m map[string]any) {
 		m["unevaluatedProperties"] = map[string]any{"type": "integer", "minimum": n.unevalMin}
 	case n.maxPropsActive():
 		m["maxProperties"] = n.instanceKeyCount()
-	case n.propNamesActive():
+	case n.propNamesActive() && !n.propNamesInBranch():
 		m["propertyNames"] = map[string]any{"pattern": coPropNamePattern}
 	}
 
@@ -1714,6 +1994,12 @@ func (d *coDoc) value(n *coNode) any {
 		return d.tupleValue(n, len(n.tupleTypes))
 	case coArray:
 		return d.arrayValue(n, n.numItems)
+	case coMap:
+		m := map[string]any{}
+		for _, k := range n.mapKeys {
+			m[k] = d.value(n.elem)
+		}
+		return m
 	case coString:
 		return n.strValue
 	case coInteger:
@@ -1735,6 +2021,20 @@ func (d *coDoc) value(n *coNode) any {
 		return n.altInt
 	case coOneOfWin:
 		return n.winValue
+	case coOneOfObj:
+		// Under objBoth both required keys go in and the branch that is not
+		// taken is unsatisfied by its own nested constraint instead -- the one
+		// arrangement where "exactly one branch" cannot be read off the key set.
+		if n.objBoth {
+			return map[string]any{coOneOfObjKeys[0]: n.objStr, coOneOfObjKeys[1]: n.objInt}
+		}
+		// Otherwise exactly one branch's required key goes in, so the other
+		// branch is unsatisfied by construction and "exactly one" holds without
+		// anything having to evaluate the branches.
+		if n.objUseStr {
+			return map[string]any{coOneOfObjKeys[0]: n.objStr}
+		}
+		return map[string]any{coOneOfObjKeys[1]: n.objInt}
 	case coIfElse:
 		return n.iteValue
 	case coNot:
@@ -1751,11 +2051,12 @@ func (d *coDoc) value(n *coNode) any {
 func (d *coDoc) arrayValue(n *coNode, count int) []any {
 	out := make([]any, 0, count)
 	for i := 0; i < count; i++ {
-		if n.unique {
+		if n.unique || n.contains {
 			// Numbering the positions makes the array unique at every length,
 			// so the length mutants stay violations of exactly minItems or
 			// maxItems and the only duplicate is the one uniqueItems' own
-			// mutant plants.
+			// mutant plants. It is also what gives `contains` a decided number
+			// of matching elements: position i matches iff i >= containsMin.
 			out = append(out, int64(i))
 			continue
 		}
@@ -1948,8 +2249,48 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 				Value: int64(0), Want: []string{prop, "not unique"},
 			})
 		}
+		if n.contains {
+			// The lowest matching element is at index containsMin and holds
+			// that same value. Writing 0 over it makes it stop matching and
+			// changes nothing else: the length is untouched, it is still an
+			// integer, and uniqueItems is not on a contains array -- so the
+			// count is one short of the bound and nothing else is violated.
+			want := []string{prop, "no element matches"}
+			if n.emitMinContains {
+				want = []string{prop, "minimum is"}
+			}
+			*out = append(*out, coMutation{
+				Keyword: "contains", Path: coPath(path, n.containsMin), Prop: prop,
+				Value: int64(0), Want: want,
+			})
+			if n.emitMaxContains {
+				// The mirror image: the highest element below the threshold is
+				// at index containsMin-1, and raising it to the threshold adds
+				// a match the upper bound does not allow.
+				*out = append(*out, coMutation{
+					Keyword: "maxContains", Path: coPath(path, n.containsMin-1), Prop: prop,
+					Value: int64(n.containsMin), Want: []string{prop, "maximum is"},
+				})
+			}
+		}
 		if n.numItems > 0 {
 			d.collect(n.elem, coPath(path, 0), prop, out)
+		}
+		if len(path) > 0 {
+			*out = append(*out, coMutation{
+				Keyword: "type", Path: path, Prop: prop, Value: 7, Loose: true,
+			})
+		}
+
+	case coMap:
+		// The value sub-schema's own mutants, under the last key rather than the
+		// first. Every key holds the same value, so any one of them would do;
+		// taking the last one means a map carrying more than one key is only
+		// accepted if the check reached past the first, which a loop that broke
+		// early would not.
+		if len(n.mapKeys) > 0 {
+			last := n.mapKeys[len(n.mapKeys)-1]
+			d.collect(n.elem, coPath(path, last), prop, out)
 		}
 		if len(path) > 0 {
 			*out = append(*out, coMutation{
@@ -2087,10 +2428,12 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 		// stored as and UnmarshalJSON is the only place that can say so. The
 		// mutants are marked Loose for that reason and not because the check is
 		// weaker -- an accepted mutant is still a failure, which is the property
-		// under test. It does leave a hand-built value unguarded, since Validate
-		// does not descend into the union; that is a separate gap in the union
-		// shape, not something this position can settle. Want records the
-		// message the union does emit, for the day the site changes.
+		// under test. Want records the message the union does emit, for the day
+		// the site changes.
+		//
+		// This position says nothing about whether Validate descends into the
+		// union, and cannot: a scalar variant is a plain Go string or int64 with
+		// no Validate to descend to. coOneOfObj is the position that settles it.
 		what := "anyOf"
 		want := []string{prop, "is not allowed"}
 		loose := false
@@ -2123,6 +2466,76 @@ func (d *coDoc) collect(n *coNode, path []any, prop string, out *[]coMutation) {
 			Keyword: "oneOfMatchesNone", Path: path, Prop: prop, Value: n.winLo0 - 1,
 			Want: []string{prop, "oneOf"},
 		})
+
+	case coOneOfObj:
+		// Both mutants are emitted whichever branch the instance took, on the
+		// same reasoning as coAltAnyOf: a mutant has to be invalid, not a near
+		// miss of the branch in play. Each replaces the whole union value with
+		// an object carrying one branch's required key and a value that branch
+		// forbids. That branch is then selected -- its required key is the only
+		// one present, so the other branch's `required` fails and selection is
+		// unambiguous -- and it is violated, so no branch is satisfied and the
+		// document is invalid.
+		//
+		// Neither is Loose, and that is the whole point of this node. The value
+		// is of the right JSON type for the field it lands in, so it decodes;
+		// the only place left that can reject it is the owner's Validate
+		// descending into the variant selection chose. A generator that skips
+		// that descent accepts both, which is what issue #61 was.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjBranchString", Path: path, Prop: prop,
+			Value: map[string]any{coOneOfObjKeys[0]: coFillString(n.objStrMin - 1)},
+			Want:  []string{prop, coOneOfObjKeys[0], "is less than minimum"},
+		})
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjBranchNumber", Path: path, Prop: prop,
+			Value: map[string]any{coOneOfObjKeys[1]: n.objIntMin - 1},
+			Want:  []string{prop, coOneOfObjKeys[1], "is less than minimum"},
+		})
+		// An object carrying neither required key satisfies neither branch.
+		// Selection is the only thing that can say so -- there is no variant to
+		// store the value as -- so this one is expected in the decoder.
+		*out = append(*out, coMutation{
+			Keyword: "oneOfObjMatchesNone", Path: path, Prop: prop,
+			Value: map[string]any{}, Want: []string{"oneOf"}, Loose: true,
+		})
+
+		if !n.objBoth {
+			break
+		}
+		// Both required keys are present, so neither of the two mutants below
+		// changes which branches selection *considers* -- only whether each one
+		// is satisfied. They are the pair that separates a selection reading the
+		// whole branch from one that stops at the required keys: under the
+		// latter every one of these documents, and the conforming instance they
+		// are derived from, counts two matches and is rejected alike.
+		//
+		// Both are Loose. Once the branches are read, a value satisfying two of
+		// them and a value satisfying none both leave the union with no single
+		// variant to store the value as, which is the decoder's to say.
+		if n.objUseStr {
+			// varInt sits one below its minimum, so branch 1 is unsatisfied.
+			// Raise it to the bound and both branches hold.
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesTwo", Path: coPath(path, coOneOfObjKeys[1]), Prop: prop,
+				Value: n.objIntMin, Want: []string{"oneOf"}, Loose: true,
+			})
+			// Shorten varStr below its minLength and branch 0 stops holding
+			// too, leaving no branch satisfied.
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesNone", Path: coPath(path, coOneOfObjKeys[0]), Prop: prop,
+				Value: coFillString(n.objStrMin - 1), Want: []string{"oneOf"}, Loose: true,
+			})
+		} else {
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesTwo", Path: coPath(path, coOneOfObjKeys[0]), Prop: prop,
+				Value: coFillString(n.objStrMin), Want: []string{"oneOf"}, Loose: true,
+			})
+			*out = append(*out, coMutation{
+				Keyword: "oneOfObjBothMatchesNone", Path: coPath(path, coOneOfObjKeys[1]), Prop: prop,
+				Value: n.objIntMin - 1, Want: []string{"oneOf"}, Loose: true,
+			})
+		}
 
 	case coIfElse:
 		// Above the pivot, so `if` holds and `then` applies -- and above
@@ -2278,9 +2691,13 @@ func (d *coDoc) collectKeyKeywords(n *coNode, path []any, prop string, out *[]co
 			Value: int64(1), Want: []string{"too many properties", "exceeds maximum"},
 		})
 	case n.propNamesActive():
+		via := ""
+		if n.propNamesInBranch() {
+			via = "allOf"
+		}
 		*out = append(*out, coMutation{
 			Keyword: "propertyNames", Path: coPath(path, coBadPropName), Prop: prop,
-			Value: int64(1), Want: []string{"propertyNames", coBadPropName},
+			Value: int64(1), Want: []string{"propertyNames", coBadPropName}, Via: via,
 		})
 	}
 
@@ -2350,6 +2767,7 @@ func (n *coNode) clone() *coNode {
 	c.patKeys = append([]string(nil), n.patKeys...)
 	c.depOn = append([]string(nil), n.depOn...)
 	c.tupleTypes = append([]string(nil), n.tupleTypes...)
+	c.mapKeys = append([]string(nil), n.mapKeys...)
 	if n.cond != nil {
 		cond := *n.cond
 		c.cond = &cond
@@ -2505,7 +2923,7 @@ func coReduce(d *coDoc) []*coDoc {
 				}
 				// Collapse a composite property to a scalar leaf.
 				switch n.props[j].node.kind {
-				case coObject, coArray, coTuple, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot:
+				case coObject, coArray, coTuple, coMap, coRef, coAltAnyOf, coOneOfWin, coIfElse, coNot, coOneOfObj:
 					c := d.clone()
 					coNodesOf(c)[i].props[j].node = &coNode{kind: coBoolean}
 					out = append(out, c)
@@ -2518,6 +2936,11 @@ func coReduce(d *coDoc) []*coDoc {
 				coNodesOf(c)[i].unique = false
 				out = append(out, c)
 			}
+			if n.contains {
+				c := d.clone()
+				coNodesOf(c)[i].contains = false
+				out = append(out, c)
+			}
 			if n.minItems != nil {
 				c := d.clone()
 				coNodesOf(c)[i].minItems = nil
@@ -2528,9 +2951,28 @@ func coReduce(d *coDoc) []*coDoc {
 				coNodesOf(c)[i].maxItems = nil
 				out = append(out, c)
 			}
-			if n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems) {
+			// A contains array stops conforming once fewer elements are
+			// numbered at or above the threshold than its own minContains, and
+			// its mutants address indices either side of that threshold, so it
+			// shrinks no further than one matching element.
+			shorter := n.numItems > 0 && (n.minItems == nil || n.numItems > *n.minItems)
+			if n.contains && n.numItems <= n.containsMin+1 {
+				shorter = false
+			}
+			if shorter {
 				c := d.clone()
 				coNodesOf(c)[i].numItems--
+				out = append(out, c)
+			}
+
+		case coMap:
+			// Fewer keys is the same map with the same value schema behind it.
+			// The mutation follows the last key, so dropping keys from the front
+			// keeps the mutated one in place.
+			if len(n.mapKeys) > 1 {
+				c := d.clone()
+				t := coNodesOf(c)[i]
+				t.mapKeys = t.mapKeys[1:]
 				out = append(out, c)
 			}
 

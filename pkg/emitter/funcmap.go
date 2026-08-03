@@ -61,6 +61,7 @@ func FuncMap() template.FuncMap {
 		"jsonErrorName":       jsonErrorNameFunc,
 		"mkCondCtx":           mkCondCtxFunc,
 		"mkItemCtx":           mkItemCtxFunc,
+		"mkContainsCtx":       mkContainsCtxFunc,
 		"mkItemLevelCtx":      mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":  mkBigIntVariantCtxFunc,
 		"itemRange":           itemRangeFunc,
@@ -108,6 +109,26 @@ func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int)
 	return ItemLevelContext{Recv: recv, Def: def, Level: level}
 }
 
+// ContainsContext is passed to the contains_check template. Expr is the Go
+// expression naming the slice the count runs over and Path the prefix its
+// errors are reported under, which is all that separates an array alias's
+// contains check from an array property's.
+type ContainsContext struct {
+	Expr        string
+	Path        string
+	Def         generator.ContainsDef
+	MinContains *int
+	MaxContains *int
+}
+
+func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+	ctx := ContainsContext{Expr: expr, Path: path, MinContains: minContains, MaxContains: maxContains}
+	if def != nil {
+		ctx.Def = *def
+	}
+	return ctx
+}
+
 // BigIntVariantContext is passed to the bigint_alias_variant_checks template,
 // which needs the receiver name alongside one anyOf / oneOf branch's rules to
 // render the big.Float comparisons.
@@ -147,14 +168,26 @@ func itemElemFunc(def generator.ItemValidationDef, level int) string {
 }
 
 // itemPathFunc renders the error path down to a level, as a format string with
-// one %d per dimension. An array alias has no property name to lead with, so it
-// reports the position under the keyword that constrains it.
+// one verb per level: %d for a slice index, %q for a map key. An alias has no
+// property name to lead with, so it reports the position under the keyword that
+// constrains it.
 func itemPathFunc(def generator.ItemValidationDef, level int) string {
 	name := "items"
 	if def.JSONName != "" {
 		name = jsonErrorNameFunc(def.JSONName)
+	} else if len(def.Levels) > 0 && def.Levels[0].IsMap {
+		name = "properties"
 	}
-	return name + strings.Repeat("[%d]", level+1)
+	var b strings.Builder
+	b.WriteString(name)
+	for i := 0; i <= level; i++ {
+		if def.Levels[i].IsMap {
+			b.WriteString("[%q]")
+		} else {
+			b.WriteString("[%d]")
+		}
+	}
+	return b.String()
 }
 
 // itemArgsFunc renders the loop indices that fill in itemPathFunc's verbs.

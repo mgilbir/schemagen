@@ -222,6 +222,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if !anyOfValid {
 			variantValid := true
 			{{- range $variant}}
+			{{- if eq .RuleType "never"}}
+			// The branch's own "type" excludes every value this type can hold,
+			// so the branch matches nothing.
+			variantValid = false
+			{{- end}}
 			{{- if eq .RuleType "minLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
 			{{- end}}
@@ -272,6 +277,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{
 			variantValid := true
 			{{- range $variant}}
+			{{- if eq .RuleType "never"}}
+			// The branch's own "type" excludes every value this type can hold,
+			// so the branch matches nothing.
+			variantValid = false
+			{{- end}}
 			{{- if eq .RuleType "minLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
 			{{- end}}
@@ -315,192 +325,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if .HasContainsValidation}}
-	// contains validation: count elements matching the contains sub-schema.
-	{
-		{{- if .Contains.IsFalse}}
-		// contains: false — no element can ever match.
-		return fmt.Errorf("contains: no element matches (schema is false)")
-		{{- else}}
-		_containsCount := 0
-		{{- if .Contains.IsTrue}}
-		_containsCount = len({{$recv}})
-		{{- else if .Contains.ConstJSON}}
-		for _, _cElem := range {{$recv}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
-				_containsCount++
-			}
-		}
-		{{- else if .Contains.EnumJSON}}
-		for _, _cElem := range {{$recv}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr == nil {
-				_cStr := string(_cBytes)
-				{{- range .Contains.EnumJSON}}
-				if _cStr == {{printf "%q" .}} {
-					_containsCount++
-					continue
-				}
-				{{- end}}
-			}
-		}
-		{{- else if .Contains.Checks}}
-		for _, _cElem := range {{$recv}} {
-			_cMatch := true
-			{{- range .Contains.Checks}}
-			{{- if eq .CheckType "type"}}
-			{{- if eq .Value "integer"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "number"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "string"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) < 2 || _cBytes[0] != '"' {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "boolean"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				_cs := string(_cBytes)
-				if _cs != "true" && _cs != "false" {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "null"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if string(_cBytes) != "null" {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "array"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) == 0 || _cBytes[0] != '[' {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .Value "object"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) == 0 || _cBytes[0] != '{' {
-					_cMatch = false
-				}
-			}
-			{{- end}}
-			{{- else if eq .CheckType "minimum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "maximum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "exclusiveMinimum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "exclusiveMaximum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "multipleOf"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil {
-					_cMatch = false
-				} else {
-					_cq := _cf / {{.Value}}
-					if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
-						_cMatch = false
-					}
-				}
-			}
-			{{- else if eq .CheckType "minLength"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "maxLength"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{.Value}} {
-					_cMatch = false
-				}
-			}
-			{{- else if eq .CheckType "pattern"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil {
-					_cMatch = false
-				} else {
-					_cRe := regexp.MustCompile({{printf "%q" .Value}})
-					if !_cRe.MatchString(_cs) {
-						_cMatch = false
-					}
-				}
-			}
-			{{- end}}
-			{{- end}}
-			if _cMatch {
-				_containsCount++
-			}
-		}
-		{{- end}}
-		{{- if and .MinContains (eq (deref .MinContains) 0)}}
-		{{- /* minContains=0 means contains always passes for minContains check */}}
-		{{- else if .MinContains}}
-		if _containsCount < {{deref .MinContains}} {
-			return fmt.Errorf("contains: %d matching elements, minimum is {{deref .MinContains}}", _containsCount)
-		}
-		{{- else}}
-		if _containsCount < 1 {
-			return fmt.Errorf("contains: no element matches the contains schema")
-		}
-		{{- end}}
-		{{- if .MaxContains}}
-		if _containsCount > {{deref .MaxContains}} {
-			return fmt.Errorf("contains: %d matching elements, maximum is {{deref .MaxContains}}", _containsCount)
-		}
-		{{- end}}
-		{{- end}}
-	}
+	{{- template "contains_check" (mkContainsCtx $recv "contains" .Contains .MinContains .MaxContains)}}
 	{{- end}}
 	{{- if .HasUnevaluatedItems}}
 	// unevaluatedItems validation

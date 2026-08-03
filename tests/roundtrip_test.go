@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
 // roundTripTestCase defines a round-trip test: schema + fixture JSON.
@@ -1337,6 +1339,101 @@ func TestOneOfRequiredOnlyObject(t *testing.T) {
 	)
 }
 
+// TestOneOfObjectVariantConstraints is the end-to-end guard for issue #61: the
+// owner's Validate never descended into a oneOf union field, so an object
+// variant's *nested* constraints were dead. PR #58 closed the scalar case by
+// applying each branch's rules during selection, but selection only decides
+// which branch decodes -- {"a":{"x":"z"}} decodes cleanly into the first
+// variant and nothing then checked its minLength.
+//
+// The two invalid documents that carry a branch's required key are the ones
+// that matter, and neither can be caught anywhere but Validate: both decode,
+// because the value is of the right JSON type for the field it lands in.
+//
+// The documents carrying *both* required keys are issue #81. Selection gated a
+// branch on the presence of its required keys and consulted nothing else, so
+// all three counted two matches and were rejected -- including the two the
+// schema allows, where the other branch's own constraint fails. Both reference
+// implementations were asked: {"x":"z","y":10} and {"x":"zzz","y":9} are valid,
+// {"x":"z","y":9} and {"x":"zzz","y":10} are not.
+func TestOneOfObjectVariantConstraints(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_object_variant_constraints.json",
+		[]string{
+			`{"a":{"x":"zzz"}}`,       // first branch, at its minLength
+			`{"a":{"y":10}}`,          // second branch, at its minimum
+			`{"a":{"y":42}}`,          // second branch, above it
+			`{"a":{"x":"z","y":10}}`,  // both required keys, only the second branch satisfied
+			`{"a":{"x":"zzz","y":9}}`, // both required keys, only the first branch satisfied
+		},
+		[]string{
+			`{"a":{"x":"z"}}`,          // first branch selected, minLength 3 violated
+			`{"a":{"y":9}}`,            // second branch selected, minimum 10 violated
+			`{"a":{}}`,                 // neither branch's required key
+			`{"a":{"x":"zzz","y":10}}`, // both branches → 2 matches
+			`{"a":{"x":"z","y":9}}`,    // both required keys, neither branch satisfied
+		},
+	)
+}
+
+// TestHandBuiltOneOfVariantValidate is the other half of issue #61: a union
+// value that was never unmarshalled escaped checking entirely, because
+// selection was the only thing enforcing anything and selection only runs
+// during UnmarshalJSON. It also pins the nil guards -- the dispatch must step
+// over an empty wrapper rather than call a value-receiver Validate through a
+// nil pointer.
+func TestHandBuiltOneOfVariantValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Never unmarshalled, so _jsonKeys is nil inside the variant and its
+	// required-property check is skipped -- but minLength speaks about the
+	// value that is there, and must still be applied.
+	bad := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{
+			OneOfObjectVariantConstraintsAOption0: &OneOfObjectVariantConstraintsAOption0{X: "z"},
+		},
+	}
+	if err := bad.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "hand-built variant violating minLength should fail Validate but passed")
+		os.Exit(1)
+	}
+
+	good := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{
+			OneOfObjectVariantConstraintsAOption0: &OneOfObjectVariantConstraintsAOption0{X: "zzz"},
+		},
+	}
+	if err := good.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built conforming variant should pass: %v\n", err)
+		os.Exit(1)
+	}
+
+	// A wrapper holding nothing, and a union field holding nothing. Neither is
+	// a value the schema has anything to say about, and neither may panic.
+	empty := OneOfObjectVariantConstraints{
+		A: &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{},
+	}
+	if err := empty.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "empty wrapper should be stepped over: %v\n", err)
+		os.Exit(1)
+	}
+	if err := (OneOfObjectVariantConstraints{}).Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "unset union field should be stepped over: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/oneof_object_variant_constraints.json", "handbuilt_oneof_test", mainGo)
+}
+
 // TestOneOfStringLengthVariants covers a constraint-only oneOf attached to a
 // declared string type. The branch checks use utf8.RuneCountInString, so the
 // generated file must import "unicode/utf8" — it previously did not and failed
@@ -1359,7 +1456,17 @@ func TestOneOfStringLengthVariants(t *testing.T) {
 // with the supplied main() body and asserts the program prints "PASS".
 func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string) {
 	t.Helper()
-	generated := generateFromSchema(t, schemaPath)
+	runGeneratedMainProgramWithConfig(t, schemaPath, moduleName, mainGo, generator.Config{
+		PackageName: "testpkg",
+		OmitEmpty:   true,
+	})
+}
+
+// runGeneratedMainProgramWithConfig is the same, for a defect that only appears
+// under a non-default generator configuration.
+func runGeneratedMainProgramWithConfig(t *testing.T, schemaPath, moduleName, mainGo string, cfg generator.Config) {
+	t.Helper()
+	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
 	tmpDir := t.TempDir()
 
 	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
@@ -1385,6 +1492,143 @@ func runGeneratedMainProgram(t *testing.T, schemaPath, moduleName, mainGo string
 	if outputStr := programOutput(output); outputStr != "PASS" {
 		t.Fatalf("%s output:\n%s", moduleName, outputStr)
 	}
+}
+
+// TestTypedAdditionalPropertiesValidatesItsValues is the behavioural half of
+// issue #84. An object whose whole shape is `additionalProperties` came out
+// map[string]any, so the value sub-schema was dropped and its keywords were
+// enforced nowhere: every document below in `invalid` was accepted by the
+// generated Validate.
+//
+// The type change is what makes the wrong-typed cases fail in the decoder; the
+// per-value checks are what make the right-typed but out-of-bounds ones fail in
+// Validate. Both are needed, and neither is visible from the IR alone.
+func TestTypedAdditionalPropertiesValidatesItsValues(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/typed_additional_properties.json",
+		[]string{
+			`{"labels":{"a":"abc"}}`,
+			`{"labels":{}}`,
+			`{"labels":{"a":"abc","b":"defg"},"counts":{"x":5,"y":99}}`,
+			`{"labels":{"a":"abc"},"groups":{"g":["ab","cd"]}}`,
+		},
+		[]string{
+			`{"labels":{"a":"ab"}}`,                           // minLength 3 on a map value
+			`{"labels":{"a":"abc","b":"x"}}`,                  // the second key is the one that violates
+			`{"labels":{"a":"abc"},"counts":{"x":4}}`,         // minimum 5 on a map value
+			`{"labels":{"a":"abc"},"groups":{"g":["abcde"]}}`, // maxLength 4 one level under the map
+			`{"labels":{"a":1}}`,                              // wrong JSON type for a map value
+		},
+	)
+}
+
+// TestBigIntNullableDefinitionAcceptsNull is the behavioural half of issue #85.
+// A named ["integer","null"] reaches the big-integer wrapper, which held an
+// int64 and a *big.Int and had no state for null: `{"n":null}` was rejected as
+// "value  is not a valid integer" against a schema that permits it.
+//
+// This is a template-level fix, so nothing in the IR proves it. The program
+// below asserts what the repair must hold together: null decodes, round-trips
+// and validates; a literal 0 is still not a null in either direction; a numeric
+// keyword beside the null is not applied to it, since under JSON Schema a
+// keyword about numbers is satisfied vacuously by every other instance type; a
+// plain integer is unaffected; and the arbitrary precision the flag was asked
+// for still survives in the nullable position -- which is what the alternative
+// fix, declining ["integer","null"] at the arm and resolving it to *int64, would
+// have cost.
+func TestBigIntNullableDefinitionAcceptsNull(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func decode(doc string) BigIntNullableDefinition {
+	var v BigIntNullableDefinition
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("decoding %s: %v", doc, err)
+	}
+	if err := v.Validate(); err != nil {
+		fail("validating %s: %v", doc, err)
+	}
+	return v
+}
+
+func roundTrip(doc string) string {
+	out, err := json.Marshal(decode(doc))
+	if err != nil {
+		fail("marshalling %s: %v", doc, err)
+	}
+	return string(out)
+}
+
+func main() {
+	// The null the schema permits: accepted, distinguishable from a literal 0,
+	// and written back as null rather than as the wrapper's zero. "b" carries a
+	// minimum beside the null, which the null does not have to satisfy -- its
+	// accessors answer 0, and applying the bound to that zero would reject a
+	// value the schema allows.
+	nullDoc := ` + "`" + `{"n":null,"b":null,"p":7}` + "`" + `
+	if v := decode(nullDoc); !v.N.IsNull() || !v.B.IsNull() {
+		fail("%s: N.IsNull()=%v B.IsNull()=%v", nullDoc, v.N.IsNull(), v.B.IsNull())
+	}
+	// The overflow-map marshal path re-serializes through a map, so the output
+	// is key-sorted rather than in document order.
+	if got := roundTrip(nullDoc); got != ` + "`" + `{"b":null,"n":null,"p":7}` + "`" + ` {
+		fail("%s round-tripped to %s", nullDoc, got)
+	}
+
+	// The bound still bites on a value that is a number.
+	var underMin BigIntNullableDefinition
+	if err := json.Unmarshal([]byte(` + "`" + `{"n":1,"b":4,"p":7}` + "`" + `), &underMin); err != nil {
+		fail("decoding an under-minimum b: %v", err)
+	}
+	if err := underMin.Validate(); err == nil {
+		fail("b=4 passed a minimum of 5; the null branch must not skip the check for numbers")
+	}
+
+	// A literal zero is not a null, and must not be written back as one.
+	zeroDoc := ` + "`" + `{"n":0,"b":5,"p":7}` + "`" + `
+	if v := decode(zeroDoc); v.N.IsNull() {
+		fail("%s: N.IsNull() = true; the int64 zero is not the null state", zeroDoc)
+	}
+	if got := roundTrip(zeroDoc); got != ` + "`" + `{"b":5,"n":0,"p":7}` + "`" + ` {
+		fail("%s round-tripped to %s", zeroDoc, got)
+	}
+
+	// Arbitrary precision still holds in the nullable position. Resolving the
+	// definition to *int64 instead would lose this value.
+	bigDoc := ` + "`" + `{"n":123456789012345678901234567890,"b":null,"p":7}` + "`" + `
+	v := decode(bigDoc)
+	if !v.N.IsBigInt() || v.N.IsNull() {
+		fail("%s: IsBigInt=%v IsNull=%v", bigDoc, v.N.IsBigInt(), v.N.IsNull())
+	}
+	if got := roundTrip(bigDoc); got != ` + "`" + `{"b":null,"n":123456789012345678901234567890,"p":7}` + "`" + ` {
+		fail("%s round-tripped to %s", bigDoc, got)
+	}
+
+	// The non-nullable definition is untouched: a null is still not an integer.
+	var rejected BigIntNullableDefinition
+	if err := json.Unmarshal([]byte(` + "`" + `{"n":1,"b":null,"p":null}` + "`" + `), &rejected); err == nil {
+		fail("p accepted a null; its schema lists only \"integer\"")
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/bigint_nullable_definition.json",
+		"bigint_nullable_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
+	)
 }
 
 // TestStructReuseResetsState is a regression guard for C5: reusing a value

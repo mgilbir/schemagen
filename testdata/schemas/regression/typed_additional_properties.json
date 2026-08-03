@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TypedAdditionalProperties",
+  "type": "object",
+  "properties": {
+    "labels": {"type": "object", "additionalProperties": {"type": "string", "minLength": 3}},
+    "counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 5}},
+    "groups": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string", "maxLength": 4}}}
+  },
+  "required": ["labels"]
+}

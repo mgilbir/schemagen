@@ -773,3 +773,341 @@ func TestEmitBigIntAliasOneOfVariants(t *testing.T) {
 		t.Fatalf("big-int Validate compared through float64, losing precision past int64:\n%s", src)
 	}
 }
+
+// TestEmitOneOfUnionValidateDispatch is the emitter half of issue #61: the
+// owner's Validate never descended into a oneOf union field, so an object
+// variant's nested constraints were never applied. The generator half -- which
+// variants are marked Validatable -- is pinned in
+// pkg/generator/generator_test.go.
+//
+// Only Payload is marked Validatable here. Text is a scalar variant whose
+// wrapper holds a plain Go string, so a dispatch case for it would emit
+// _oneOfSel.Text.Validate() on a string and Emit's go/format pass would reject
+// the file.
+func TestEmitOneOfUnionValidateDispatch(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Envelope",
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{
+							WrapperName: "Envelope_Payload",
+							FieldName:   "Payload",
+							Type:        &generator.NamedType{Name: "Payload", Pointer: true},
+							Validatable: true,
+						},
+						{
+							WrapperName: "Envelope_Text",
+							FieldName:   "Text",
+							Type:        &generator.PrimitiveType{Name: "string"},
+						},
+					},
+				}},
+			},
+			&generator.StructDef{Name: "Payload"},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	for _, want := range []string{
+		"switch _oneOfSel := e.Body.(type) {",
+		"case *Envelope_Payload:",
+		"if _oneOfSel.Payload != nil {",
+		"if err := _oneOfSel.Payload.Validate(); err != nil {",
+		`return fmt.Errorf("body.%w", err)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("Envelope.Validate is missing %q:\n%s", want, src)
+		}
+	}
+	// The scalar variant must not be dispatched to. Asserting on the absence of
+	// the case is what keeps the Validatable gate honest: without it the
+	// emitted file would not compile, and Emit's format pass would say so.
+	if strings.Contains(src, "case *Envelope_Text:") {
+		t.Fatalf("Envelope.Validate dispatches to a scalar variant, whose type has no Validate:\n%s", src)
+	}
+}
+
+// TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch guards the gate that
+// decides whether the dispatch is written at all. A type switch with no cases
+// binds _oneOfSel and never reads it, which does not compile -- so a union of
+// nothing but scalars has to emit nothing rather than an empty switch.
+func TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Envelope",
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{WrapperName: "Envelope_String", FieldName: "String", Type: &generator.PrimitiveType{Name: "string"}},
+						{WrapperName: "Envelope_Integer", FieldName: "Integer", Type: &generator.PrimitiveType{Name: "int64"}},
+					},
+				}},
+			},
+		},
+	}
+
+	// Emit runs go/format, so an empty type switch fails here rather than in a
+	// user's build.
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	if strings.Contains(string(out), "_oneOfSel") {
+		t.Fatalf("a union with no validatable variant still emitted a dispatch:\n%s", out)
+	}
+}
+
+// oneOfNarrowingFile builds a two-variant union whose selection is decided by
+// required-key presence, which is the shape issue #81 is about. The second
+// variant's judgement is the parameter: FullyChecked when everything it says is
+// already tested by selection, and neither that nor Validatable when it is not.
+func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
+	return &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"},
+			{Path: "fmt"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name:           "Envelope",
+				NeedsUnmarshal: true,
+				OneOfs: []generator.OneOfDef{{
+					InterfaceName: "isEnvelope_Body",
+					FieldName:     "Body",
+					JSONName:      "body",
+					Variants: []generator.OneOfVariant{
+						{
+							WrapperName:    "Envelope_Payload",
+							FieldName:      "Payload",
+							Type:           &generator.NamedType{Name: "Payload", Pointer: true},
+							RequiredFields: []string{"x"},
+							Validatable:    true,
+						},
+						{
+							WrapperName:    "Envelope_Any",
+							FieldName:      "Any",
+							Type:           &generator.PrimitiveType{Name: "any"},
+							RequiredFields: []string{"x", "y"},
+							FullyChecked:   secondFullyChecked,
+						},
+					},
+				}},
+			},
+			&generator.StructDef{Name: "Payload"},
+		},
+	}
+}
+
+// TestEmitOneOfSelectionNarrowsOnBranchConstraints is the emitter half of issue
+// #81. Selection counted a branch as matched once its required keys were
+// present, so a document carrying both branches' required keys was rejected as
+// "multiple oneOf variants matched" even when only one branch was satisfied.
+//
+// The repair reads the branches' own constraints -- an object branch keeps them
+// inside its variant type, reachable only through that type's Validate -- and
+// uses them to narrow a selection the decoder was about to reject anyway. The
+// generator half, which decides whether a branch can be judged at all, is
+// pinned in pkg/generator/generator_test.go.
+func TestEmitOneOfSelectionNarrowsOnBranchConstraints(t *testing.T) {
+	e := mustNew(t)
+
+	out, err := e.Emit(oneOfNarrowingFile(true))
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	for _, want := range []string{
+		// The stricter tally, and the branch constraint that feeds it.
+		"if _vErr := candidate.Validate(); _vErr == nil {",
+		"oneofStrict++",
+		// Only consulted where selection was already going to reject.
+		"if oneofMatched > 1 && oneofOpaque == 0 {",
+		"case oneofStrict == 1:",
+		"e.Body = oneofStrictSel",
+		// A value no branch accepts is not ambiguity, and is not reported as a
+		// count.
+		`return fmt.Errorf("Envelope.Body: no matching oneOf variant: %w", oneofStrictErr)`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("Envelope.UnmarshalJSON is missing %q:\n%s", want, src)
+		}
+	}
+	// The narrowing must not displace the ambiguity rejection: two branches that
+	// are both satisfied are still two matches.
+	if !strings.Contains(src, `multiple oneOf variants matched (%d), expected exactly 1`) {
+		t.Fatalf("Envelope.UnmarshalJSON stopped rejecting a genuinely ambiguous value:\n%s", src)
+	}
+}
+
+// TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch is the over-reach
+// guard for the arm above. Narrowing is sound only while every branch that
+// matched can be judged; a branch that is neither Validatable nor FullyChecked
+// is one nothing read, and counting it out would select a variant while a
+// sibling that also matched went unexamined -- accepting a document that
+// matches two branches.
+func TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch(t *testing.T) {
+	e := mustNew(t)
+
+	out, err := e.Emit(oneOfNarrowingFile(false))
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !strings.Contains(src, "oneofOpaque++") {
+		t.Fatalf("the unjudgeable branch does not mark itself opaque, so the narrowing runs without having read it:\n%s", src)
+	}
+	if !strings.Contains(src, "if oneofMatched > 1 && oneofOpaque == 0 {") {
+		t.Fatalf("the narrowing is not gated on every matched branch being judged:\n%s", src)
+	}
+}
+
+// TestEmitFieldContainsPointerSlice renders the one arm of the contains check
+// the generator cannot currently reach: a field typed *[]T. Ranging over a
+// dereferenced nil pointer panics, so the arm wraps the count in a nil guard,
+// and nothing else in the suite would notice if that wrapper stopped being
+// valid Go -- Emit runs the result through format.Source, so a broken arm is a
+// failure here and silence everywhere else.
+func TestEmitFieldContainsPointerSlice(t *testing.T) {
+	e := mustNew(t)
+
+	minContains, maxContains := 2, 3
+	f := &generator.File{
+		PackageName: "model",
+		Imports: []generator.Import{
+			{Path: "encoding/json"}, {Path: "fmt"}, {Path: "math"},
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Doc",
+				Fields: []generator.FieldDef{
+					{
+						Name:     "Nums",
+						JSONName: "nums",
+						Type: &generator.PointerType{
+							Inner: &generator.ArrayType{ItemType: &generator.PrimitiveType{Name: "int64"}},
+						},
+						Required: true,
+					},
+				},
+				ContainsValidations: []generator.FieldContainsDef{
+					{
+						FieldName: "Nums",
+						JSONName:  "nums",
+						IsPointer: true,
+						Contains: &generator.ContainsDef{
+							Checks: []generator.ContainsCheck{
+								{CheckType: "type", Value: "integer"},
+								{CheckType: "minimum", Value: 10.0},
+							},
+						},
+						MinContains: &minContains,
+						MaxContains: &maxContains,
+					},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !containsNormalized(src, "if d.Nums != nil {") {
+		t.Fatalf("expected a nil guard around the pointer slice's contains check:\n%s", src)
+	}
+	if !containsNormalized(src, "for _, _cElem := range *d.Nums {") {
+		t.Fatalf("expected the count to range over the dereferenced slice:\n%s", src)
+	}
+	if !containsNormalized(src, `"nums: contains: %d matching elements, minimum is 2"`) {
+		t.Fatalf("expected the error to be reported under the property name:\n%s", src)
+	}
+	if !containsNormalized(src, `"nums: contains: %d matching elements, maximum is 3"`) {
+		t.Fatalf("expected the maxContains error:\n%s", src)
+	}
+}
+
+// TestEmitFieldContainsFalseIsVetClean pins the shape `contains: false` is
+// emitted in. No element can ever match, so the count stays at zero and the
+// bounds decide -- the same code every other sub-schema gets. Returning
+// unconditionally instead, which is what this emitted before the check moved
+// onto struct fields, leaves everything after it in Validate unreachable, and
+// `go vet` fails a generated file for that. Nothing else in the suite would
+// see it: unreachable code compiles.
+func TestEmitFieldContainsFalseIsVetClean(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "model",
+		Imports:     []generator.Import{{Path: "fmt"}},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Doc",
+				Fields: []generator.FieldDef{
+					{
+						Name:     "Nums",
+						JSONName: "nums",
+						Type:     &generator.ArrayType{ItemType: &generator.PrimitiveType{Name: "int64"}},
+						Required: true,
+					},
+				},
+				ContainsValidations: []generator.FieldContainsDef{
+					{
+						FieldName: "Nums",
+						JSONName:  "nums",
+						Contains:  &generator.ContainsDef{IsFalse: true},
+					},
+				},
+			},
+		},
+	}
+
+	out, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	src := string(out)
+
+	if !containsNormalized(src, "if _containsCount < 1 {") {
+		t.Fatalf("contains: false must go through the count, not an unconditional return:\n%s", src)
+	}
+	// The literal the unconditional-return form reported through, and the only
+	// place it was ever written. Matching on the block shape instead does not
+	// work: containsNormalized collapses runs of spaces but keeps newlines, and
+	// the emitted `{` and `return` are on separate lines, so such a pattern
+	// would never match whatever the template did.
+	if strings.Contains(src, "no element matches (schema is false)") {
+		t.Fatalf("contains: false emitted an unconditional return; the rest of Validate is unreachable:\n%s", src)
+	}
+}

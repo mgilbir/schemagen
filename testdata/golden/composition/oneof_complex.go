@@ -463,6 +463,15 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isNotification_Content
+			var oneofStrictErr error
 
 			// Try variant: TextContent
 			{
@@ -471,6 +480,16 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						n.Content = &Notification_TextContent{TextContent: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Notification_TextContent{TextContent: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant TextContent: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -484,6 +503,16 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						n.Content = &Notification_HTMLContent{HTMLContent: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Notification_HTMLContent{HTMLContent: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant HTMLContent: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -492,6 +521,23 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					n.Content = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("Notification.Content: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
@@ -504,6 +550,15 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isNotification_Target
+			var oneofStrictErr error
 
 			// Try variant: EmailTarget
 			{
@@ -512,6 +567,16 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						n.Target = &Notification_EmailTarget{EmailTarget: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Notification_EmailTarget{EmailTarget: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant EmailTarget: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -525,6 +590,16 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
 						n.Target = &Notification_SmsTarget{SmsTarget: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &Notification_SmsTarget{SmsTarget: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant SmsTarget: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -533,6 +608,23 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					n.Target = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("Notification.Target: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
@@ -633,6 +725,46 @@ func (n Notification) Validate() error {
 		for _, _req := range []string{"id", "content", "target"} {
 			if !n._jsonKeys[_req] {
 				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := n.Content.(type) {
+	case *Notification_TextContent:
+		if _oneOfSel.TextContent != nil {
+			if err := _oneOfSel.TextContent.Validate(); err != nil {
+				return fmt.Errorf("content.%w", err)
+			}
+		}
+	case *Notification_HTMLContent:
+		if _oneOfSel.HTMLContent != nil {
+			if err := _oneOfSel.HTMLContent.Validate(); err != nil {
+				return fmt.Errorf("content.%w", err)
+			}
+		}
+	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := n.Target.(type) {
+	case *Notification_EmailTarget:
+		if _oneOfSel.EmailTarget != nil {
+			if err := _oneOfSel.EmailTarget.Validate(); err != nil {
+				return fmt.Errorf("target.%w", err)
+			}
+		}
+	case *Notification_SmsTarget:
+		if _oneOfSel.SmsTarget != nil {
+			if err := _oneOfSel.SmsTarget.Validate(); err != nil {
+				return fmt.Errorf("target.%w", err)
 			}
 		}
 	}
