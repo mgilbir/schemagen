@@ -983,6 +983,12 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 		// vacuously, and MarshalJSON to write the null back. See issue #110.
 		for _, _nullKey := range []string{
 			"branch",
+			"chain",
+			"inline",
+			"mail",
+			"ref",
+			"stamp",
+			"wrapped",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				if u._jsonNulls == nil {

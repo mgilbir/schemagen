@@ -181,6 +181,13 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_nested_anyof_unevaluated", "testdata/schemas/regression/allof_nested_anyof_unevaluated.json", "testdata/golden/regression/allof_nested_anyof_unevaluated.go"},
 		{"regression/allof_nested_oneof_unevaluated", "testdata/schemas/regression/allof_nested_oneof_unevaluated.json", "testdata/golden/regression/allof_nested_oneof_unevaluated.go"},
 		{"regression/allof_nested_anyof_unevaluated_items", "testdata/schemas/regression/allof_nested_anyof_unevaluated_items.json", "testdata/golden/regression/allof_nested_anyof_unevaluated_items.go"},
+		// The API promise of issue #139, which is the reason it has a golden at
+		// all: which inline positions trade a convenient Go type for the wrapper
+		// that keeps a value of any kind. A property and an element whose
+		// sub-schema states no type take it; the one that states a type keeps
+		// float64, and the prefixItems slot beside them keeps the raw wrapper it
+		// already had.
+		{"regression/inline_untyped_positions", "testdata/schemas/regression/inline_untyped_positions.json", "testdata/golden/regression/inline_untyped_positions.go"},
 		// Pins which anyOf groups keep the merged struct and which leave it for
 		// the evaluator: a branch the struct cannot hold -- a scalar, a const, a
 		// `not`, the `true` schema -- takes the group away, a `false` branch
