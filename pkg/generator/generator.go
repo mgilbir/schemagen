@@ -771,6 +771,13 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(sd.RuntimeBranchChecks) > 0 {
+				// The document is rebuilt from the raw map before the compiled
+				// applicator is evaluated over it, and a failure is reported
+				// with the reason the evaluator gave.
+				needsFmt = true
+				needsJSON = true
+			}
 			if len(sd.ObjectEnum) > 0 {
 				// The document is re-encoded to compare it against the members.
 				needsFmt = true
@@ -820,6 +827,11 @@ func (g *Generator) addRequiredImports() {
 				if v.RuleType == "format" {
 					needsFmt = true
 					noteFormatImports(v, &needsFmt, &needsNetIP)
+				}
+				// The content check is a call to a shared helper whose error
+				// this file wraps, so fmt is all it names here.
+				if v.RuleType == "content" {
+					needsFmt = true
 				}
 			}
 		}
@@ -931,6 +943,9 @@ func (g *Generator) addRequiredImports() {
 					// same packages the struct-field arm does.
 					if v.RuleType == "format" {
 						noteFormatImports(v, &needsFmt, &needsNetIP)
+					}
+					if v.RuleType == "content" {
+						needsFmt = true
 					}
 				}
 			}
@@ -1096,9 +1111,13 @@ func (g *Generator) addRequiredImports() {
 				}
 				// The wrapper a format with no declared "type" resolves to
 				// carries the same check the alias and struct-field arms do,
-				// and reaches for the same packages.
+				// and reaches for the same packages. The content vocabulary
+				// resolves to the same wrapper and needs only fmt.
 				if v.RuleType == "format" {
 					noteFormatImports(v, &needsFmt, &needsNetIP)
+				}
+				if v.RuleType == "content" {
+					needsFmt = true
 				}
 			}
 			for _, variant := range iad.AnyOfVariants {
@@ -1560,6 +1579,101 @@ func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
 	}
 }
 
+// contentAssertsFor reports whether the content vocabulary binds as an
+// assertion for a schema read under its own dialect, or is an annotation the
+// generated code must not act on.
+//
+// Only draft 7 asserts. It is the draft that introduced contentEncoding and
+// contentMediaType, and it says an implementation SHOULD decode the string and
+// MAY refuse one it cannot -- the same permission formatAssertsFor reads for
+// "format", and the suite files those cases under optional/ for the same reason.
+// From 2019-09 the content vocabulary is annotation-only by definition: the
+// official suite marks {"contentEncoding":"base64"} satisfied by
+// "eyJmb28iOi%iYmFyIn0K", which is not base64 at all, and rejecting it would be
+// rejecting what the schema permits.
+//
+// Earlier drafts do not define the keywords, so a document that carries one is
+// carrying an unknown keyword, which every draft says to ignore. Asserting there
+// would invent a rejection out of a word the dialect has no meaning for.
+//
+// There is deliberately no --format-assertion-style override. That flag is about
+// "format", and a caller who wants a draft-7 reading of the content keywords can
+// say so the same way the format posture is chosen: by naming the dialect.
+func (g *Generator) contentAssertsFor(s *schema.Schema) bool {
+	return g.draftForSchema(s) == schema.Draft07
+}
+
+// ContentEncodingCheckable reports whether a contentEncoding names a decoding
+// the generated code can perform, and so a string it can refuse.
+//
+// Only base64 is listed. RFC 4648 gives it one unambiguous spelling, which is
+// what makes "this string does not decode" a fact rather than an opinion; the
+// remaining names in RFC 2045 either encode every byte string (7bit, 8bit,
+// binary) or have enough dialects that a strict reading would refuse documents
+// another implementation accepts. An encoding not listed here is carried as an
+// annotation, exactly as it is from 2019-09 onwards.
+func ContentEncodingCheckable(encoding string) bool {
+	return encoding == "base64"
+}
+
+// ContentMediaTypeCheckable reports whether a contentMediaType names a format
+// the generated code can parse, and so a string it can refuse.
+//
+// Only JSON, which the standard library already decides. Anything else would
+// mean shipping a parser per media type into generated code, and a media type
+// this cannot judge is carried as an annotation rather than guessed at.
+func ContentMediaTypeCheckable(mediaType string) bool {
+	return mediaType == "application/json"
+}
+
+// contentCheckFor reads the content keywords a schema states into the argument
+// of a "content" rule, or reports that there is nothing to check. The keywords
+// are one rule rather than two because they compose: contentMediaType judges the
+// bytes contentEncoding produced, so "{}" fails a base64 encoding and
+// "ezp9Cg==" decodes cleanly to a document that is not JSON.
+func contentCheckFor(s *schema.Schema) (ContentCheck, bool) {
+	var c ContentCheck
+	if ContentEncodingCheckable(s.ContentEncoding) {
+		c.Encoding = s.ContentEncoding
+	}
+	if ContentMediaTypeCheckable(s.ContentMediaType) {
+		c.MediaType = s.ContentMediaType
+	}
+	if c.Encoding == "" && c.MediaType == "" {
+		return ContentCheck{}, false
+	}
+	return c, true
+}
+
+// statesContentVocabulary reports whether a schema says anything from the
+// content vocabulary, checkable or not. It is what decides that a schema is
+// *about* a string, which is a separate question from whether the dialect lets
+// the generated code assert it.
+func statesContentVocabulary(s *schema.Schema) bool {
+	return s != nil && (s.ContentEncoding != "" || s.ContentMediaType != "" || s.ContentSchema != nil)
+}
+
+// withoutContentRules returns rules with every "content" entry removed, or the
+// slice unchanged when it carries none.
+func withoutContentRules(rules []ValidationRule) []ValidationRule {
+	kept := rules[:0:0]
+	dropped := false
+	for _, r := range rules {
+		if r.RuleType == "content" {
+			dropped = true
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if !dropped {
+		return rules
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
 // aliasValidationRules is extractAliasValidationRules under the dialect's format
 // posture: the rules a named type carries for its own value, with the format
 // assertion withheld where the dialect makes format an annotation.
@@ -1572,6 +1686,9 @@ func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
 // arm for it -- so gating those two gates the keyword.
 func (g *Generator) aliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
 	rules := extractAliasValidationRules(s, goType)
+	if !g.contentAssertsFor(s) {
+		rules = withoutContentRules(rules)
+	}
 	if !g.formatAssertsFor(s) {
 		return withoutFormatRules(rules)
 	}
@@ -1869,6 +1986,40 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// A oneOf whose branches the sealed-interface union cannot judge. The arm
+	// above answers the shape where no branch describes an object; this is the
+	// shape where one does, which is what would otherwise put the group on the
+	// struct path and give it a union. See oneOfUnionOutrunsBranches for what the
+	// union gets wrong there — a false rejection for the documents that satisfy
+	// exactly one branch, and a false acceptance for the documents that satisfy
+	// none.
+	//
+	// The evaluator judges every branch against the raw value, so it needs no Go
+	// type per branch: a `false` branch refuses everything and a `const` branch
+	// admits its own value, which is what the union could express for neither.
+	// That also settles the second half of the same defect — the union lives in a
+	// struct, so a scalar the schema allows had nowhere to decode into at all.
+	//
+	// It claims the schema only when the evaluator reads the whole of it. Where
+	// it cannot, the union stays: wrong as it is about these branches, it still
+	// enforces more than the `any` alias that would otherwise follow.
+	//
+	// The guards are the arm above's, with oneOfDescribesObject inverted, so
+	// between them the two claim every bare oneOf and nothing else. In
+	// particular a schema that declares or implies its own type keeps the
+	// alias-with-OneOfVariants path, where the branches are already evaluated
+	// against the typed value: {"type":"integer","oneOf":[{"minimum":10},
+	// {"maximum":5}]} must stay an int64, not become a raw wrapper.
+	if len(s.OneOf) > 0 && !hasProperties(s) && g.oneOfDescribesObject(s) &&
+		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" &&
+		oneOfUnionKeepsWholeSchema(s) && g.oneOfUnionOutrunsBranches(s) {
+		if def := g.rawWrapperDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
+	}
+
 	// Object with properties, patternProperties, object oneOf variants, or
 	// unevaluatedProperties → struct. A oneOf whose variants are constraint-only
 	// (they say nothing about object shape) is not an object union and must not
@@ -1976,8 +2127,8 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 
 	// A format with no "type": `type X any` carries no Validate, so the format
 	// was asserted nowhere. The wrapper accepts every JSON value and checks the
-	// format only when the value arrived as a string. See formatOnlyStringSchema.
-	if fDef := g.formatOnlyStringDef(name, s); fDef != nil {
+	// format only when the value arrived as a string. See stringAnnotationOnlySchema.
+	if fDef := g.stringAnnotationOnlyDef(name, s); fDef != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, fDef)
 		return nil
@@ -2315,7 +2466,8 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// The one the merge adopted is skipped by pointer identity, so the overflow
 	// map above and a check here never both answer for the same keyword.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
-	if len(branchChecks) > 0 {
+	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
@@ -2328,6 +2480,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 		Validations:          validations,
 		ItemValidations:      itemValidations,
 		BranchOverflowChecks: branchChecks,
+		RuntimeBranchChecks:  runtimeBranchChecks,
 		RequiredJSON:         requiredJSON,
 		OverflowNullCheck:    overflowNullCheck,
 		NeedsMarshal:         needsMarshal,
@@ -2581,8 +2734,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Check if this property uses oneOf. Only when the union would carry the
 		// whole property schema — otherwise the siblings it declares, its own
 		// properties and required most damagingly, never reach any generated
-		// type — and only when the branches give it something to select on.
-		// See oneOfUnionKeepsWholeSchema and oneOfIsUnselectableUnion.
+		// type — only when the branches give it something to select on, and only
+		// when what it selects on agrees with what the branches say. See
+		// oneOfUnionKeepsWholeSchema, oneOfIsUnselectableUnion and
+		// oneOfUnionOutrunsBranches.
 		if propSchema != nil && len(propSchema.OneOf) > 0 && g.oneOfRendersAsUnion(propSchema) {
 			oneOfDef, err := g.generateOneOfForProperty(name, propName, goFieldName, propSchema)
 			if err != nil {
@@ -2606,9 +2761,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// A null-only property resolves to the raw-value wrapper, which keeps the
 		// bytes it was handed: there a present null and an absent property are
 		// different values, and the ",omitzero" tag computed below drops exactly
-		// the absent one. Every other spelling of "may be null" resolves to a
-		// pointer, whose nil means both, so the suppressions apply to those.
-		nullSurvivesOmit := isNullOnly(propSchema) && g.isRawValueWrapperType(goType)
+		// the absent one.
+		//
+		// Every other spelling of "may be null" resolves to a pointer or a
+		// collection, whose nil means both -- and the answer used to be to drop
+		// omitempty, so that nil was written as null. That kept an explicit null
+		// at the cost of inventing one for a property the document never carried,
+		// which is the same round-trip break in the other direction. Now that
+		// UnmarshalJSON records which keys arrived as null (see
+		// nullPresenceTracked), the tag no longer has to carry that distinction:
+		// omitempty drops the absent property and MarshalJSON writes back exactly
+		// the nulls the document had. See issue #110.
+		nullSurvivesOmit := (isNullOnly(propSchema) && g.isRawValueWrapperType(goType)) ||
+			g.nullPresenceTracked(propSchema, goType)
 		if omitEmpty && !nullSurvivesOmit {
 			// Suppress omitempty for properties whose schema explicitly includes null
 			// (via type list or anyOf/oneOf composition). These generate pointer types
@@ -2674,9 +2839,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// replaces, in the other direction.
 		//
 		// An interface is also nil for an explicit null, which the nil arm would
-		// drop. That case does not arise: a schema admitting null has had
-		// omitEmpty cleared above, so this arm is only reached where null is not
-		// a legal value.
+		// drop. The null is put back afterwards: a property whose schema admits
+		// one is recorded by UnmarshalJSON and re-written by MarshalJSON from
+		// that record, after the hand-written fields have had their say.
 		//
 		// A scalar is left unconditional. Its zero is indistinguishable from
 		// absence without presence tracking, and writing it can only ever add a
@@ -2876,6 +3041,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				validations = append(validations, ValidationRule{
 					FieldName: goFieldName, JSONName: propName,
 					RuleType: "forbidden", Value: true,
+					PresenceTracked: true,
 				})
 			}
 			continue
@@ -2906,6 +3072,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		for i := range rules {
 			if pointerFields[rules[i].FieldName] {
 				rules[i].IsPointer = true
+			}
+			// These rules belong to a property of this struct, so the struct's
+			// own key map can say whether the document wrote it. That is the
+			// only thing a forbidden rule wants to know, and the nil test it is
+			// otherwise emitted as cannot tell a present null from an absent
+			// property. See ValidationRule.PresenceTracked.
+			if rules[i].RuleType == "forbidden" {
+				rules[i].PresenceTracked = true
 			}
 			// Skip numeric/string/array validation on untyped 'any' fields,
 			// but keep structural rules like "forbidden" that apply to all types.
@@ -2950,7 +3124,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 					continue
 				}
 				// And to the wrapper a "format" with no declared type is
-				// materialized into (see formatOnlyStringSchema), for the same
+				// materialized into (see stringAnnotationOnlySchema), for the same
 				// two reasons: it was built from this property's own schema, so
 				// its Validate already carries the format and any length bound
 				// or pattern beside it -- and it carries them *correctly*, only
@@ -2979,6 +3153,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				if ruleTakesStringValue(rules[i].RuleType) && g.isStringBackedNamedType(ft) {
 					rules[i].StringConvert = true
 				}
+				// The content vocabulary is a dialect question and nothing
+				// else: only draft 7 asserts it, and everywhere else the
+				// keywords annotate and the check must not be written. The
+				// shape question the format rule asks below does not arise
+				// here -- ruleVacuousForType has already dropped the rule for
+				// every field whose value is not a Go string.
+				if rules[i].RuleType == "content" && !g.contentAssertsFor(propSchema) {
+					continue
+				}
+
 				// A format is asserted one way against the Go type it maps to
 				// and another against the raw string, and against several field
 				// types not at all. Deciding here rather than where the rule was
@@ -3009,6 +3193,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if !requiredSet[propName] {
 			for j := range filtered {
 				filtered[j].Optional = true
+			}
+		}
+		// And skip the ones a present null satisfies vacuously. Optional is not
+		// enough on its own: the key *is* present, so the guard above lets the
+		// rule run, and it then reads the zero encoding/json left behind -- which
+		// is how {"constrOnly":null} was rejected for a length of 0 against a
+		// schema that permits null. A required property has no guard at all and
+		// reaches the same reading, so this is not conditioned on Optional.
+		if g.nullPresenceTracked(propSchema, fieldTypes[goFieldName]) {
+			for j := range filtered {
+				if ruleVacuousForNull(filtered[j].RuleType) {
+					filtered[j].NullKey = propName
+				}
 			}
 		}
 		validations = append(validations, filtered...)
@@ -3067,6 +3264,31 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			nullChecks = append(nullChecks, NullCheckDef{JSONName: propName, Reject: true})
 		}
 	}
+	// The other half of the same erasure, for the properties whose schema
+	// *permits* a null. There is nothing to reject there, so the null is simply
+	// lost: it leaves the same nil pointer or untouched zero an absent property
+	// does, MarshalJSON writes it back as absent, and -- where the field is not
+	// pointer-wrapped, which is every optional field under --omit-empty=false --
+	// the optional rule then measures that zero against a bound the document
+	// never supplied a value for. {"constrOnly":null} against
+	// {"constrOnly":{"minLength":2}} was rejected for a length of 0. That is
+	// issue #110.
+	//
+	// The repair is the third state the decoded value cannot hold: the keys that
+	// arrived as null, recorded from the document's own bytes exactly as the
+	// rejections above are. Validate skips the keywords a null satisfies
+	// vacuously, and MarshalJSON writes the null back.
+	var nullPresenceKeys []string
+	for _, propName := range propNames {
+		if g.nullPresenceTracked(s.Properties[propName], fieldTypes[goFieldNames[propName]]) {
+			nullPresenceKeys = append(nullPresenceKeys, propName)
+		}
+	}
+	if len(nullPresenceKeys) > 0 {
+		needsUnmarshal = true
+		needsMarshal = true
+	}
+
 	// The overflow map's values are governed by a schema-valued
 	// additionalProperties, and they are decoded by hand in the routing loop --
 	// json.Unmarshal of `null` into a string leaves "" and reports no error, so
@@ -3215,6 +3437,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		unevalProps = g.buildUnevaluatedPropertiesDef(s)
 	}
 
+	// An allOf/anyOf branch stating additionalProperties or unevaluatedProperties
+	// keeps its own view of which keys it leaves unaccounted for; neither keyword
+	// can be folded into this struct's overflow map. See
+	// collectBranchOverflowChecks and collectRuntimeBranchChecks.
+	branchChecks := g.collectBranchOverflowChecks(s, name)
+	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+
 	objectOneOfs := g.extractObjectOneOfDefs(s)
 	if len(objectOneOfs) > 0 {
 		needsUnmarshal = true
@@ -3228,6 +3457,27 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
+	// Where the applicator is evaluated exactly, the flattened approximation of
+	// it is dropped rather than run beside it.
+	//
+	// The two do not merely duplicate work: the approximation decides whether a
+	// branch matches from its required keys, its consts and its declared types,
+	// and a branch stating unevaluatedProperties can fail on a key none of those
+	// mention. It then counts a branch that does not hold, which for `oneOf` is
+	// the difference between one match and two -- so
+	// {"oneOf":[{"properties":{"b":{}},"required":["b"],
+	//            "unevaluatedProperties":false},
+	//           {"properties":{"a":{}},"required":["a"]}]}
+	// rejected {"a":1,"b":1}, which satisfies the second branch alone. That is
+	// the same false rejection as #111 reached by the other keyword, and the
+	// exact check below is what settles it.
+	if runtimeBranchCheckFor(runtimeBranchChecks, "oneOf") != nil {
+		objectOneOfs = nil
+	}
+	if runtimeBranchCheckFor(runtimeBranchChecks, "anyOf") != nil {
+		objectAnyOfs = nil
+	}
+
 	// An if/then/else beside the object's properties applies to the object as a
 	// whole. Its branches are not folded into any one field's rules -- they only
 	// bind when the condition holds -- so they are checked here against the raw
@@ -3237,12 +3487,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
-	// An allOf/anyOf branch stating additionalProperties or unevaluatedProperties
-	// keeps its own view of which keys it leaves unaccounted for; neither keyword
-	// can be folded into this struct's overflow map. See
-	// collectBranchOverflowChecks.
-	branchChecks := g.collectBranchOverflowChecks(s, name)
-	if len(branchChecks) > 0 {
+	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		// The checks read the raw JSON, which only the custom unmarshaler keeps,
 		// and every key that is not a declared field must survive the round trip
 		// for the marshaler to put it back.
@@ -3301,6 +3546,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		NonObjectValidations:   nonObjRules,
 		UnevaluatedProperties:  unevalProps,
 		BranchOverflowChecks:   branchChecks,
+		RuntimeBranchChecks:    runtimeBranchChecks,
 		ObjectEnum:             objectEnum,
 		ObjectOneOfs:           objectOneOfs,
 		ObjectAnyOfs:           objectAnyOfs,
@@ -3308,6 +3554,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		RequiredJSON:           requiredJSON,
 		NullChecks:             nullChecks,
 		OverflowNullCheck:      overflowNullCheck,
+		NullPresenceKeys:       nullPresenceKeys,
 		NeedsMarshal:           needsMarshal,
 		NeedsUnmarshal:         needsUnmarshal,
 		NeedsNullCheck:         needsNullCheck,
@@ -3612,7 +3859,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				return nil
 			}
 		}
-		if fDef := g.formatOnlyStringDef(name, &mergedNoAllOf); fDef != nil {
+		if fDef := g.stringAnnotationOnlyDef(name, &mergedNoAllOf); fDef != nil {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, fDef)
 			return nil
@@ -4772,6 +5019,26 @@ func mergeConstraints(dst, src *schema.Schema) {
 		// slot to put an answer in.
 		dst.Format = src.Format
 	}
+	// The content vocabulary is carried on the same terms and for the same
+	// reason: a branch's contentEncoding binds the same string the branch's
+	// other keywords do, and leaving it behind gave a merged schema that said
+	// less than the branch it came from. {"allOf":[{"contentEncoding":"base64"}]}
+	// then had nothing left to name a type from and fell through to `type X any`
+	// -- which is issue #115 in its allOf spelling.
+	//
+	// First-set-wins, as `pattern` and `format` above, and for the same reason:
+	// there is one slot per keyword and two different answers in it cannot both
+	// be written. The direction is under-enforcement, never a rejection the
+	// schema does not state.
+	if dst.ContentEncoding == "" && src.ContentEncoding != "" {
+		dst.ContentEncoding = src.ContentEncoding
+	}
+	if dst.ContentMediaType == "" && src.ContentMediaType != "" {
+		dst.ContentMediaType = src.ContentMediaType
+	}
+	if dst.ContentSchema == nil && src.ContentSchema != nil {
+		dst.ContentSchema = src.ContentSchema
+	}
 	// enum and const say which values are legal at all, so a branch stating one
 	// is the whole of what that branch asserts. Dropped, the merged schema had
 	// nothing left to infer a type from and fell through to `type X any`, which
@@ -5035,11 +5302,26 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// any branch has no matchable criteria (required keys / const / type checks),
 	// that branch matches any object and the whole anyOf is unconstrained, so the
 	// check is skipped to avoid false rejections.
-	if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
-		if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
-			if sd, ok := last.(*StructDef); ok {
-				sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
+	//
+	// A branch stating unevaluatedProperties is taken over whole instead: the
+	// merge builds `merged` without the anyOf, so generateStructDef never sees the
+	// keyword and neither collector inside it fires. That is why the same schema
+	// written with a property of its own was checked and this one was not --
+	// {"type":"object","anyOf":[{"properties":{"b":{}},
+	//                            "unevaluatedProperties":false}]}
+	// accepted {"b":1,"c":2}, which no branch admits.
+	if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
+		if sd, ok := last.(*StructDef); ok {
+			runtimeChecks := g.collectRuntimeBranchChecks(s)
+			if len(runtimeChecks) > 0 {
+				sd.RuntimeBranchChecks = append(sd.RuntimeBranchChecks, runtimeChecks...)
 				sd.NeedsUnmarshal = true
+			}
+			if runtimeBranchCheckFor(runtimeChecks, "anyOf") == nil {
+				if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
+					sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
+					sd.NeedsUnmarshal = true
+				}
 			}
 		}
 	}
@@ -5494,8 +5776,10 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 	}
 	if variant.IsBooleanSchema() {
 		// `false` matches nothing, yet selection decodes it into `any` and
-		// counts it as matched. That is a defect of its own; it is not one this
-		// function may paper over by claiming the branch was decided.
+		// counts it as matched. Refusing to speak for it is what takes the whole
+		// group off the union path — see oneOfBranchOutrunsSelection, which
+		// reads this answer — and claiming the branch was decided would put it
+		// back with the defect intact (issue #125).
 		return false
 	}
 	if len(variant.Extensions) > 0 || len(variant.TypeSchemas) > 0 {
@@ -5673,14 +5957,14 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// string for the second -- and the string rejects the null the branch
 	// permits, while neither carries a Validate for the union's dispatch to
 	// call, so the branch is both over- and under-enforced at once. See
-	// formatOnlyStringSchema and nullableFormatUnion.
+	// stringAnnotationOnlySchema and nullableFormatUnion.
 	// A declared string with a format joins them: the primitive arm below
 	// answers a bare Go string, which carries no Validate, so
 	// {"oneOf":[{"type":"string","format":"ipv4"}, ...]} accepted an IPv6
 	// address through that branch while the identical subschema behind a $ref
 	// was checked. Naming it gives the union's dispatch something to call, which
 	// is what every other branch shape already has.
-	if g.formatOnlyStringSchema(variant) || g.nullableFormatUnion(variant) || g.declaredFormatStringSchema(variant) {
+	if g.stringAnnotationOnlySchema(variant) || g.nullableFormatUnion(variant) || g.declaredFormatStringSchema(variant) {
 		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
@@ -5955,14 +6239,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &NamedType{Name: nestedName}, nil
 		}
-		// A oneOf whose branches are all constraint-only reaches here for the
-		// other reason the caller declines the union: there is nothing to select
-		// on (see oneOfIsUnselectableUnion). Materialize the named type so
+		// A oneOf the caller declined for one of the other two reasons, both of
+		// which are about the branches rather than about the siblings: there is
+		// nothing to select on (see oneOfIsUnselectableUnion), or what selection
+		// would decide disagrees with what a branch says (see
+		// oneOfUnionOutrunsBranches). Materialize the named type so
 		// generateTypeDef evaluates the branches against the value — as an alias
 		// carrying OneOfVariants when a type is declared or inferred, and as the
-		// dynamic wrapper when it is not. Without this the arms below would take
-		// the declared type and drop the oneOf entirely.
-		if oneOfUnionKeepsWholeSchema(s) && g.oneOfIsUnselectableUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
+		// dynamic or runtime wrapper when it is not. Without this the arms below
+		// would take the declared type and drop the oneOf entirely.
+		if oneOfUnionKeepsWholeSchema(s) && !g.oneOfRendersAsUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
 			nestedName := parentName + fieldName
 			if err := g.generateTypeDef(nestedName, s); err != nil {
 				return nil, err
@@ -6079,14 +6365,21 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// A format with no "type", which the fallback would answer `any` -- and
 	// `any` carries no Validate, so the format would be asserted nowhere. See
-	// formatOnlyStringSchema.
-	if goType, ok := g.formatOnlyStringWrapperType(s, parentName+fieldName); ok {
+	// stringAnnotationOnlySchema.
+	if goType, ok := g.stringAnnotationOnlyWrapperType(s, parentName+fieldName); ok {
 		return goType, nil
 	}
 
 	// A property that must be null. Checked before the nullable case, whose
 	// pointer says neither of the two things this schema needs said.
 	if goType, ok := g.nullOnlyWrapperType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
+	// An allOf whose branches each bound the object's values. The map arm below
+	// would answer map[string]any and carry none of them. See
+	// allOfStatesUnmergeableOverflow.
+	if goType, ok := g.overflowAllOfWrapperType(s, parentName+fieldName); ok {
 		return goType, nil
 	}
 
@@ -6430,7 +6723,13 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if goType, ok := g.nullableFormatUnionType(s, contextName); ok {
 		return goType
 	}
-	if goType, ok := g.formatOnlyStringWrapperType(s, contextName); ok {
+	if goType, ok := g.stringAnnotationOnlyWrapperType(s, contextName); ok {
+		return goType
+	}
+
+	// The same for an allOf that bounds an object's values from more than one
+	// branch, which the map arm further down would answer map[string]any.
+	if goType, ok := g.overflowAllOfWrapperType(s, contextName); ok {
 		return goType
 	}
 
@@ -6549,7 +6848,50 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 	}
 
+	// Nothing above gave the value a Go type, and the fallback is `any`: a type
+	// Go forbids methods on, so a schema landing here is not weakened but
+	// dropped. json.Unmarshal into it cannot fail and there is no Validate for a
+	// check to live in, which is right for a schema that constrains nothing and a
+	// silent lie for any other.
+	//
+	// A name for the position is the whole fix, and it is the last thing tried so
+	// it cannot take a schema away from an arm that types it better. This is
+	// issue #126, and it is the same gap #113 and #114 closed at a document root:
+	// {"properties":{"b":{"not":{"type":"object","required":["foo"]}}}} came out
+	// `B any` and accepted {"b":{"foo":"x"}}, which the `not` forbids, while the
+	// identical schema written as the whole document has rejected it since #114.
+	// Every position that reaches here shares the arm -- an element, a map value,
+	// a tuple slot, a oneOf branch -- so the answer no longer depends on where
+	// the schema was written.
+	//
+	// It does change the field's Go type from `any` to the wrapper's name, across
+	// every such position. That is the same trade the root made, and the
+	// alternative is a field whose schema is enforced nowhere.
+	if def := g.constraintOnlyNamedType(s, contextName); def != nil {
+		return def
+	}
+
 	return &PrimitiveType{Name: "any"}
+}
+
+// constraintOnlyNamedType materializes a schema that constrains without naming a
+// type, and returns the type to reference it by. nil keeps today's `any`.
+//
+// The guards are what keep it from claiming a name that is already spoken for.
+// A name already generated belongs to another schema (or to this one, reached by
+// another route), and a name being generated is the frame that called us -- both
+// would have the wrapper stand in for something else.
+func (g *Generator) constraintOnlyNamedType(s *schema.Schema, contextName string) GoType {
+	if contextName == "" || g.generated[contextName] || g.generating[contextName] || g.nodesInProgress[s] {
+		return nil
+	}
+	def := g.constraintOnlyWrapperDef(contextName, s)
+	if def == nil {
+		return nil
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	return &NamedType{Name: contextName}
 }
 
 // materializeNamed generates s under contextName and returns the name to
@@ -7513,7 +7855,7 @@ func (g *Generator) isRawValueWrapperType(t GoType) bool {
 // is inert rather than wrong.
 func ruleTakesStringValue(ruleType string) bool {
 	switch ruleType {
-	case "minLength", "maxLength", "pattern", "format":
+	case "minLength", "maxLength", "pattern", "format", "content":
 		return true
 	default:
 		return false
@@ -7741,6 +8083,98 @@ func (g *Generator) allOfNamesObjectKeys(s *schema.Schema) bool {
 	return g.allOfNamesObjectKeysOnPath(s, nil)
 }
 
+// allOfStatesUnmergeableOverflow reports whether an allOf says something about
+// the keys of an object that the merged struct cannot say back.
+//
+// It is the complement of the narrow case the merge does take, and it is written
+// from the same two predicates so the two cannot drift: some branch states an
+// additionalProperties, no branch and no parent names a key, and
+// soleBranchAdditionalProperties declines -- which it does exactly when more than
+// one branch states the keyword, because satisfying both is an allOf of the two
+// sub-schemas and one overflow value type cannot express that.
+//
+// Such a schema resolved to map[string]any in a property, an element or a map
+// value, with no check anywhere: {"x":20} passed a schema whose second branch
+// bounds every value at 9 (issue #112). At the document root the same schema is
+// already answered by the runtime evaluator, which reads the allOf whole; this
+// says that a position deserves the same answer.
+func (g *Generator) allOfStatesUnmergeableOverflow(s *schema.Schema) bool {
+	if s == nil || len(s.AllOf) == 0 || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if namesObjectKeys(s) || s.AdditionalProperties != nil || g.allOfNamesObjectKeys(s) {
+		return false
+	}
+	if g.soleBranchAdditionalProperties(s.AllOf, make(map[*schema.Schema]bool)) != nil {
+		return false
+	}
+	return g.allOfBranchStatesAdditionalProperties(s.AllOf, make(map[*schema.Schema]bool))
+}
+
+// allOfBranchStatesAdditionalProperties reports whether any branch states an
+// additionalProperties at all. It walks the same routes into a branch that
+// soleBranchAdditionalProperties does -- a $ref chain, a nested allOf -- so the
+// two answer about the same set of branches.
+func (g *Generator) allOfBranchStatesAdditionalProperties(allOf []*schema.Schema, onPath map[*schema.Schema]bool) bool {
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		resolved := sub
+		for {
+			if resolved.AdditionalProperties != nil {
+				return true
+			}
+			if g.allOfBranchStatesAdditionalProperties(resolved.AllOf, onPath) {
+				return true
+			}
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
+			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil || onPath[r] {
+				break
+			}
+			onPath[r] = true
+			resolved = r
+		}
+	}
+	return false
+}
+
+// overflowAllOfWrapperType materializes the runtime-evaluator wrapper for a
+// position whose schema is the allOf allOfStatesUnmergeableOverflow describes.
+//
+// The evaluator rather than a widened merge, deliberately. Widening
+// soleBranchAdditionalProperties to combine several branches would route the
+// schema into the typed overflow map, which reads {"additionalProperties":
+// {"minimum":5}} as map[string]float64 -- and {"x":"abc"} then fails to decode,
+// though the schema admits it, because `minimum` says nothing about a string.
+// The evaluator judges the decoded JSON value instead, so a string, a null and
+// an object all pass and only an out-of-range number is refused, which is what
+// the root already does for the same document.
+//
+// A schema the evaluator cannot read is left exactly where it was. Minting a
+// named `any` alias in its place would trade a map[string]any the caller can use
+// for an interface it cannot, and buy no check with it.
+func (g *Generator) overflowAllOfWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
+	if !g.allOfStatesUnmergeableOverflow(s) {
+		return nil, false
+	}
+	if g.generated[contextName] {
+		return &NamedType{Name: contextName}, true
+	}
+	def := g.runtimeSchemaDef(contextName, s)
+	if def == nil {
+		return nil, false
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	return &NamedType{Name: contextName}, true
+}
+
 // allOfBuildsObjectType reports whether generateAllOfDef would answer this
 // schema's allOf with a type that carries object checks, which is what
 // resolveType needs to know before delegating to it rather than typing the
@@ -7884,7 +8318,7 @@ func (g *Generator) branchNamesAType(s *schema.Schema) bool {
 		return true
 	}
 	// A format names a type in the sense this asks about: the merge answers such
-	// a branch with the wrapper formatOnlyStringDef builds, which checks the
+	// a branch with the wrapper stringAnnotationOnlyDef builds, which checks the
 	// format when the value is a string and accepts every other instance type.
 	// Without it, {"allOf":[{"format":"ipv4"}]} written inline resolved to `any`
 	// and the format was enforced nowhere, while the same branch behind a $ref
@@ -7894,7 +8328,16 @@ func (g *Generator) branchNamesAType(s *schema.Schema) bool {
 	// "format": a format states nothing about the *Go* type, only about what a
 	// string instance must look like, so inferring "string" there would narrow
 	// every position that consults it and reject the numbers the schema allows.
+	//
+	// The content vocabulary is the same keyword shape and gets the same answer
+	// for the same reason -- it is the other half of what stringAnnotationOnlyDef
+	// builds a wrapper for, and inferTypeFromConstraints must go on not reading
+	// it, or {"contentEncoding":"base64"} would become a Go string and refuse the
+	// numbers and objects the schema admits (issue #115).
 	if s.Format != nil && FormatCheckableOnString(*s.Format) {
+		return true
+	}
+	if statesContentVocabulary(s) {
 		return true
 	}
 	return g.inferTypeFromConstraints(s) != ""
@@ -8124,6 +8567,25 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
 	}
+	// An element or map value whose "type" names no single Go type -- a union of
+	// two JSON types, or "null" alone. resolveType answers *any for both, and a
+	// *any decodes a null and every other value besides, so
+	// {"items":{"type":"null"}} accepted [1] and {"items":{"type":["string",
+	// "number"]}} accepted [true]. The property position has always materialized
+	// this shape; the element and map-value ones came through resolveType and did
+	// not. Part of issue #126.
+	//
+	// extractTypeOnlySchemaDef is narrow by construction and is what keeps this
+	// from claiming anything else: it declines a single non-null type, so
+	// []string and *string are untouched, and it declines a schema stating any
+	// keyword besides the type.
+	if !g.generated[itemContext] {
+		if def := g.extractTypeOnlySchemaDef(itemContext, items); def != nil {
+			g.generated[itemContext] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return &NamedType{Name: itemContext}
+		}
+	}
 	return g.resolveType(items, itemContext)
 }
 
@@ -8261,6 +8723,56 @@ func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
 		return true
 	}
 	return false
+}
+
+// nullPresenceTracked reports whether a property needs the fact that its value
+// arrived as a JSON null recorded alongside the decoded struct.
+//
+// It needs it wherever the schema does not forbid the null -- so the decoder
+// keeps it rather than refusing it -- and the Go value cannot say that it was
+// there. A nil pointer, a nil slice or map, a nil interface and an untouched
+// scalar zero are all exactly what an absent property leaves too, so without the
+// record "present and null" and "absent" are one state: the null is dropped on
+// the way out, and any keyword the property states is measured against a zero
+// the document never supplied.
+//
+// The two wrapper structs are excluded because they already hold the answer.
+// Both keep the bytes they were handed, so a null is still a null in the decoded
+// value: the raw-value wrapper reports absence through IsZero, which is what the
+// ",omitzero" tag drops, and the inferred-alias wrapper marshals its raw bytes
+// back and returns early from Validate for a value that is not of its type.
+//
+// schemaForbidsNull is deliberately the question rather than "does the schema
+// list null": it is the same predicate the rejection half (issue #103) uses, so
+// exactly the properties that path lets through are the ones this one catches,
+// and no property is claimed by both or by neither.
+func (g *Generator) nullPresenceTracked(propSchema *schema.Schema, t GoType) bool {
+	if propSchema == nil || g.schemaForbidsNull(propSchema) {
+		return false
+	}
+	if t != nil && (g.isRawValueWrapperType(t) || g.isInferredAliasType(t)) {
+		return false
+	}
+	return true
+}
+
+// ruleVacuousForNull reports whether a JSON null satisfies a rule of this type
+// whatever its argument, because the keyword speaks about some other JSON type.
+//
+// It is the null column of ruleKeywordJSONKinds, which no keyword there names --
+// minLength speaks about strings, minimum about numbers, minItems about arrays,
+// and a null is none of them. "format" is asked separately because it is not in
+// that table at all: it is built only for a schema whose type is a string or
+// unstated, and against a null it is as vacuous as the rest.
+//
+// Everything else answers false, which is the safe direction: const, enum and
+// the forbidding rules judge a null on the same terms as any other value, and a
+// rule this cannot place keeps its check.
+func ruleVacuousForNull(ruleType string) bool {
+	if _, judged := ruleKeywordJSONKinds[ruleType]; judged {
+		return true
+	}
+	return ruleType == "format"
 }
 
 func primarySchemaType(s *schema.Schema) string {
@@ -9040,6 +9552,10 @@ func (g *Generator) populateValidatableFields() {
 		if !ok {
 			continue
 		}
+		nullKeys := make(map[string]bool, len(sd.NullPresenceKeys))
+		for _, k := range sd.NullPresenceKeys {
+			nullKeys[k] = true
+		}
 		for _, f := range sd.Fields {
 			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
@@ -9062,6 +9578,10 @@ func (g *Generator) populateValidatableFields() {
 					// optional field is a pointer, rejected conforming
 					// documents.
 					PresenceGuard: !f.Required && !f.Type.IsPointer(),
+					// A present null leaves the same zero an absent property
+					// does, and the schema permits it, so the type's Validate
+					// must not be handed that zero. See NullGuard.
+					NullGuard: nullKeys[f.JSONName] && !f.Type.IsPointer(),
 				})
 				continue
 			}
@@ -9377,6 +9897,13 @@ func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, e
 			} else {
 				level.Rules = g.formatRulesForDialect(elemSchema, level.Rules)
 			}
+			// And the content posture, asked of the same schema for the same
+			// reason. Only draft 7 asserts these keywords; everywhere else they
+			// annotate, and a check written here would reject what the schema
+			// permits.
+			if !g.contentAssertsFor(elemSchema) {
+				level.Rules = withoutContentRules(level.Rules)
+			}
 			// An element that is a tuple in its own right. The descent stops
 			// here either way -- singleItemsSchema answers nil for a tuple,
 			// since `items` there governs only the tail -- so without this the
@@ -9640,7 +10167,7 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 	elemRules = append(elemRules, allOfConstraintRules("", "", s, elemType)...)
 	for _, rule := range elemRules {
 		switch rule.RuleType {
-		case "minLength", "maxLength", "pattern":
+		case "minLength", "maxLength", "pattern", "content":
 			if kind != "string" {
 				continue
 			}
@@ -10487,7 +11014,7 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	// this generator can judge -- and the rule was skipped there purely because
 	// "type" was unwritten, which is why {"format":"ipv4"} asserted nothing
 	// anywhere (issue #106). It is this guard that lets the rule reach the
-	// wrapper formatOnlyStringDef builds, whose Validate is where the check
+	// wrapper stringAnnotationOnlyDef builds, whose Validate is where the check
 	// belongs.
 	//
 	// Which positions can actually carry the check is decided afterwards from
@@ -10499,6 +11026,27 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "format", Value: format,
+			})
+		}
+	}
+	// The content vocabulary, on exactly the same terms and for the same reason
+	// (issue #115). contentEncoding and contentMediaType apply to strings and to
+	// nothing else, so a schema stating one and no "type" is still one whose
+	// string instances can be judged -- and a number or an object satisfies it
+	// trivially, which is why the type is not narrowed and the check has to be
+	// conditioned on the instance turning out to be a string.
+	//
+	// The dialect decides whether the rule survives: only draft 7 asserts these
+	// keywords, and contentAssertsFor drops the rule everywhere else. This
+	// extractor does not know the draft, so it builds the rule and the two
+	// dialect-aware filters -- aliasValidationRules and the field-rule filter in
+	// generateStructDef -- decide, which is how the format rule is handled one
+	// keyword up.
+	if primarySchemaType(s) == "string" || len(s.Type) == 0 {
+		if check, ok := contentCheckFor(s); ok {
+			rules = append(rules, ValidationRule{
+				FieldName: goFieldName, JSONName: jsonName,
+				RuleType: "content", Value: check,
 			})
 		}
 	}
@@ -10673,6 +11221,7 @@ var ruleKeywordJSONKinds = map[string]map[string]bool{
 	"minLength": {"string": true},
 	"maxLength": {"string": true},
 	"pattern":   {"string": true},
+	"content":   {"string": true},
 
 	"minimum":          {"integer": true, "number": true},
 	"maximum":          {"integer": true, "number": true},
@@ -11137,17 +11686,25 @@ func (g *Generator) nullableFormatUnionType(s *schema.Schema, contextName string
 	return g.typeUnionWrapper(s, contextName)
 }
 
-// formatOnlyStringSchema reports whether a "format" is what the schema is about,
-// with no "type" beside it.
+// stringAnnotationOnlySchema reports whether a keyword that speaks about a
+// string and nothing else is what the schema is about, with no "type" beside it.
+// Two vocabularies qualify: "format", and the content keywords
+// contentEncoding/contentMediaType/contentSchema.
 //
 // Such a schema resolved to `any`, and Go forbids methods on `any`, so the
-// format was enforced in no position at all (issue #106). The type it deserves
-// is not "a string": `format` applies only to strings, so a number, an object or
-// a null satisfies {"format":"ipv4"} trivially, and narrowing the Go type would
+// keyword was enforced in no position at all (issue #106 for format, issue #115
+// for content). The type it deserves is not "a string": both vocabularies apply
+// only to strings, so a number, an object or a null satisfies {"format":"ipv4"}
+// and {"contentEncoding":"base64"} trivially, and narrowing the Go type would
 // reject documents the schema admits. What it deserves is "anything, but a
 // string must be a valid IPv4 address" -- which is exactly the wrapper an
 // inferred type already produces, whose Validate returns early for a value that
 // turned out to be of some other type.
+//
+// The two vocabularies are one arm rather than two because they are one
+// question: they are the keywords that describe a string without saying the
+// value has to be one. A schema stating both gets one wrapper carrying both
+// checks, which is what an arm per vocabulary could not produce.
 //
 // A length bound or a pattern is admitted alongside, because they are about the
 // same string the format is and the wrapper carries all three. That spelling is
@@ -11165,11 +11722,12 @@ func (g *Generator) nullableFormatUnionType(s *schema.Schema, contextName string
 // inferTypeFromConstraints itself rather than by listing keywords, so the two
 // cannot drift apart. {"format":"ipv4","minimum":3} is about numbers by that
 // reading and keeps the arm that types it as one.
-func (g *Generator) formatOnlyStringSchema(s *schema.Schema) bool {
+func (g *Generator) stringAnnotationOnlySchema(s *schema.Schema) bool {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return false
 	}
-	if s.Format == nil || !FormatCheckableOnString(*s.Format) {
+	statesFormat := s.Format != nil && FormatCheckableOnString(*s.Format)
+	if !statesFormat && !statesContentVocabulary(s) {
 		return false
 	}
 	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 {
@@ -11178,9 +11736,15 @@ func (g *Generator) formatOnlyStringSchema(s *schema.Schema) bool {
 	if hasNonTypeScopedConstraints(s) {
 		return false
 	}
-	withoutFormat := *s
-	withoutFormat.Format = nil
-	switch g.inferTypeFromConstraints(&withoutFormat) {
+	// The content keywords are stripped alongside "format" for the same reason:
+	// inferTypeFromConstraints is being asked what *other* JSON type the schema
+	// is about, and a keyword that only ever speaks about strings is not an
+	// answer to that. (It does not read them today, so the assignment is
+	// belt-and-braces against a later arm that does.)
+	stripped := *s
+	stripped.Format = nil
+	stripped.ContentEncoding, stripped.ContentMediaType, stripped.ContentSchema = "", "", nil
+	switch g.inferTypeFromConstraints(&stripped) {
 	case "", "string":
 		return true
 	default:
@@ -11188,9 +11752,10 @@ func (g *Generator) formatOnlyStringSchema(s *schema.Schema) bool {
 	}
 }
 
-// formatOnlyStringDef builds the wrapper formatOnlyStringSchema describes: a
-// value held as a Go string when the instance is one, kept verbatim when it is
-// not, and a Validate that asserts the format only in the first case.
+// stringAnnotationOnlyDef builds the wrapper stringAnnotationOnlySchema
+// describes: a value held as a Go string when the instance is one, kept verbatim
+// when it is not, and a Validate that asserts the format and the content
+// keywords only in the first case.
 //
 // InferredGoType is written out rather than taken from resolveType, and it is
 // always a plain string. netip.Addr would look like the closer type, and it is
@@ -11203,15 +11768,19 @@ func (g *Generator) formatOnlyStringSchema(s *schema.Schema) bool {
 // The rules come from the same extractor every other string position uses, so a
 // length bound or a pattern stated beside the format is carried too, and by the
 // same code that carries it when the schema is written with "type":"string" --
-// including the dialect's format posture, so under an annotation-only dialect
-// the wrapper is built and the format check is not written into it.
+// including the dialect's format and content postures, so under an
+// annotation-only dialect the wrapper is built and the check is not written into
+// it.
 //
 // The wrapper is built either way, and the type is the same either way. That is
-// deliberate: --format-assertion decides what Validate does, not what the
-// generated API is, and a flag that silently retyped a field would be a worse
-// thing to hand a caller than one that silently checked less.
-func (g *Generator) formatOnlyStringDef(name string, s *schema.Schema) *InferredAliasDef {
-	if !g.formatOnlyStringSchema(s) {
+// deliberate: --format-assertion and the dialect decide what Validate does, not
+// what the generated API is, and a flag that silently retyped a field would be a
+// worse thing to hand a caller than one that silently checked less. It is also
+// what makes the annotation-only content dialects worth claiming at all: the
+// schema still constrains nothing there, but the caller gets a type with a
+// Validate to call instead of a bare `any` that cannot have one.
+func (g *Generator) stringAnnotationOnlyDef(name string, s *schema.Schema) *InferredAliasDef {
+	if !g.stringAnnotationOnlySchema(s) {
 		return nil
 	}
 	return &InferredAliasDef{
@@ -11256,20 +11825,20 @@ func (g *Generator) declaredFormatStringSchema(s *schema.Schema) bool {
 	return !hasNonTypeScopedConstraints(s)
 }
 
-// formatOnlyStringWrapperType materializes formatOnlyStringDef for a position
-// that resolves a Go type -- a property, an array element, a map value, a tuple
-// slot -- so the check lives in the same one type wherever the schema is
+// stringAnnotationOnlyWrapperType materializes stringAnnotationOnlyDef for a
+// position that resolves a Go type -- a property, an array element, a map value,
+// a tuple slot -- so the check lives in the same one type wherever the schema is
 // written. Without it the wrapper existed only where the schema was given a
 // name, which is the "fixed in one position, not its sibling" shape these
 // wrappers exist to avoid.
-func (g *Generator) formatOnlyStringWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
+func (g *Generator) stringAnnotationOnlyWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
 	if g.generated[contextName] {
-		if g.formatOnlyStringSchema(s) {
+		if g.stringAnnotationOnlySchema(s) {
 			return &NamedType{Name: contextName}, true
 		}
 		return nil, false
 	}
-	def := g.formatOnlyStringDef(contextName, s)
+	def := g.stringAnnotationOnlyDef(contextName, s)
 	if def == nil {
 		return nil, false
 	}
@@ -13200,11 +13769,146 @@ func (g *Generator) oneOfIsUnselectableUnion(s *schema.Schema) bool {
 	return true
 }
 
+// oneOfVariantSelectionType returns the Go type resolveOneOfVariant would answer
+// for a branch that gets no named type of its own, and nil for a branch that gets
+// one.
+//
+// The distinction is who enforces the branch. A named type — a $ref, an inline
+// object, an allOf merge, a formatted string — keeps its branch's constraints in
+// its own Validate, which the union's second tally calls. Every other branch is
+// judged by selection alone, and this is the type selection judges it with.
+//
+// It is a side-effect-free mirror of those arms' conditions, in their order,
+// because the callers need the answer before any type is generated. The arms
+// themselves must not be run to find out: each one that answers a named type
+// generates it, and a predicate that emits a type definition as the price of
+// being asked is no predicate at all. TestOneOfVariantSelectionTypeMirrorsResolution
+// holds the two in step.
+func (g *Generator) oneOfVariantSelectionType(v *schema.Schema) GoType {
+	if v == nil {
+		return nil
+	}
+	if v.IsBooleanSchema() {
+		return &PrimitiveType{Name: "any"}
+	}
+	if v.EffectiveRef() != "" {
+		return nil
+	}
+	if g.objectShapeNeedsNamedType(v) || g.allOfNeedsNamedType(v) {
+		return nil
+	}
+	if g.stringAnnotationOnlySchema(v) || g.nullableFormatUnion(v) || g.declaredFormatStringSchema(v) {
+		return nil
+	}
+	if pt := primarySchemaType(v); pt != "" {
+		if goType := PrimitiveTypeFromSchema(pt); goType != nil {
+			return goType
+		}
+	}
+	return &PrimitiveType{Name: "any"}
+}
+
+// oneOfBranchOutrunsSelection reports whether the union's selection counts this
+// branch as matched for values the branch itself refuses.
+//
+// It is one question, asked of oneOfVariantFullyChecked over the type and the
+// checks selection actually has for the branch. A branch that resolves to `any`
+// gets no checks at all, so a const, an enum, a bare bound or a not on it is
+// tested nowhere and every instance matches. A branch that resolves to a scalar
+// gets the bounds keywords and nothing else, so an enum beside its `type` is
+// tested nowhere either and every instance of that type matches. And a `false`
+// branch — the sharpest case, and the one issue #125 is written about — is
+// answered by the same rule: no instance satisfies it, resolveOneOfVariant hands
+// it the `any` every instance decodes into, and oneOfVariantFullyChecked refuses
+// to speak for it. That refusal is what sends the group away from here.
+//
+// A branch with a named type is excluded by oneOfVariantSelectionType, since its
+// own Validate carries what selection does not.
+func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
+	if v == nil {
+		return false
+	}
+	goType := g.oneOfVariantSelectionType(v)
+	if goType == nil {
+		return false
+	}
+	return !oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
+}
+
+// oneOfUnionOutrunsBranches reports whether the sealed-interface union would
+// reach the wrong verdict for s's oneOf because one of its branches outruns
+// selection.
+//
+// One such branch is enough to break the whole group, in both directions at
+// once. It is matched by every document, so a document that satisfies exactly
+// one *other* branch takes the count to two and is refused — a false rejection —
+// while a document that satisfies no branch at all is left at a count of one and
+// is accepted. {"oneOf":[{object},{"const":"x"},false]} is the shape: {"k":"a"}
+// satisfies one branch and is reported as matching three.
+//
+// Fewer than two non-null branches never reaches the union — one beside a null
+// branch is the nullable-pointer shape, and zero is not a union — so the
+// question does not arise there.
+func (g *Generator) oneOfUnionOutrunsBranches(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	// A metaschema that omits the validation vocabulary leaves the branches
+	// asserting nothing, so there is nothing for selection to outrun and no
+	// verdict to get wrong. Taking the union away there would change the type a
+	// caller sees and buy no check, since nothing in this mode emits one.
+	if !g.validationKeywordsEnabled() {
+		return false
+	}
+	nonNull, _ := g.separateNullFromOneOf(s.OneOf)
+	if len(nonNull) < 2 {
+		return false
+	}
+	for _, v := range nonNull {
+		if g.oneOfBranchOutrunsSelection(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// oneOfHasSomewhereBetterThanTheUnion reports whether declining the union leaves
+// s somewhere that enforces more than the union would, rather than at `type X
+// any`.
+//
+// This is the condition on taking a union away for outrunning its branches, and
+// only on that one. A union that miscounts still enforces something; the `any`
+// alias enforces nothing at all and cannot even be given a Validate, so trading
+// one for the other would answer a false rejection with a false acceptance of
+// every document the schema forbids. The two better homes are the two arms that
+// would claim the schema instead: a declared or inferred type takes the alias
+// path, where the branches are evaluated against the typed value, and everything
+// else has to be readable by one of the evaluators.
+//
+// rawWrapperDef is asked rather than reasoned about, since it is the code that
+// decides, and a second copy of its reasoning here would be a second thing to
+// keep in step. Asking costs the compiled form and nothing else: it appends no
+// type definition and claims no name -- the name a definition would carry does
+// not enter either evaluator's answer, so any name asks the same question -- and
+// the one thing it can leave behind, a remote document its $ref resolution
+// registered, is a document the branch would have made it fetch anyway.
+func (g *Generator) oneOfHasSomewhereBetterThanTheUnion(s *schema.Schema) bool {
+	if primarySchemaType(s) != "" || g.inferTypeFromConstraints(s) != "" {
+		return true
+	}
+	return g.rawWrapperDef("", s) != nil
+}
+
 // oneOfRendersAsUnion reports whether a oneOf in a property (or property-like)
 // position should be rendered as a sealed-interface union: the union must carry
-// everything the schema asserts, and it must have something to select on.
+// everything the schema asserts, it must have something to select on, and what
+// it selects on must agree with what the branches say -- unless disagreeing is
+// still the best on offer.
 func (g *Generator) oneOfRendersAsUnion(s *schema.Schema) bool {
-	return oneOfUnionKeepsWholeSchema(s) && !g.oneOfIsUnselectableUnion(s)
+	if !oneOfUnionKeepsWholeSchema(s) || g.oneOfIsUnselectableUnion(s) {
+		return false
+	}
+	return !(g.oneOfUnionOutrunsBranches(s) && g.oneOfHasSomewhereBetterThanTheUnion(s))
 }
 
 // isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct
@@ -13329,25 +14033,15 @@ func mergeEvalBranches(a, b *EvalBranchDef) *EvalBranchDef {
 func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName string) []BranchOverflowCheck {
 	var checks []BranchOverflowCheck
 
-	// unevaluatedProperties, from a direct allOf or anyOf branch. This is the
-	// long-standing "cousin isolation" case: an unevaluatedProperties inside an
-	// applicator branch sees the annotations of its own branch and not a
-	// sibling's.
+	// unevaluatedProperties, from a direct allOf branch. This is the long-standing
+	// "cousin isolation" case: an unevaluatedProperties inside an applicator
+	// branch sees the annotations of its own branch and not a sibling's.
+	//
+	// An allOf branch only. Every allOf branch has to hold, so its keyword and its
+	// accounted set are both readable from the schema. An anyOf or oneOf branch
+	// binds only where the instance satisfies it, so neither is knowable here; see
+	// collectRuntimeBranchChecks, which answers those against the document.
 	for _, sub := range s.AllOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
-		}
-		if resolved.UnevaluatedProperties == nil {
-			continue
-		}
-		if check := g.buildBranchUnevalCheck(resolved, ownerName, len(checks)); check != nil {
-			checks = append(checks, *check)
-		}
-	}
-	for _, sub := range s.AnyOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
@@ -13369,6 +14063,111 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 	checks = append(checks, g.collectBranchAdditionalChecks(s.AllOf, s.AdditionalProperties, ownerName, len(checks), make(map[*schema.Schema]bool))...)
 
 	return checks
+}
+
+// collectRuntimeBranchChecks compiles an `anyOf` or `oneOf` whose branches state
+// `unevaluatedProperties` to the runtime evaluator, because nothing static can
+// answer it.
+//
+// The keyword in such a branch is scoped to that branch *and* conditional on it:
+// a branch the document fails contributes nothing, neither its assertions nor
+// the annotations its own `unevaluatedProperties` exempts. Which branches
+// contribute is therefore a property of the document, and the generated code has
+// to evaluate them to find out. Enforcing the keyword unconditionally was issue
+// #111 -- a false rejection, which is worse than no check at all.
+//
+// The whole keyword is compiled rather than the branch stating it, for two
+// reasons. The branch's own `properties`, `patternProperties`,
+// `additionalProperties`, `$ref` and nested applicators are what exempt a key
+// from its `unevaluatedProperties`, and only evaluating the branch produces that
+// set; and the keyword's own assertion -- at least one branch matches, exactly
+// one for `oneOf` -- has to be judged against the same branches, or a document
+// could pass a branch that the evaluator then fails.
+//
+// A subtree the evaluator cannot model yields nothing and the check is dropped,
+// which leaves the applicator judged by the static approximation alone. That is
+// the same answer this keyword got before #111 in every position but the
+// rejecting one.
+func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranchCheck {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var checks []RuntimeBranchCheck
+	for _, group := range []struct {
+		keyword string
+		field   string
+		subs    []*schema.Schema
+	}{{"anyOf", "AnyOf", s.AnyOf}, {"oneOf", "OneOf", s.OneOf}} {
+		if !g.branchStatesUnevaluatedProperties(group.subs) {
+			continue
+		}
+		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
+		list, ok := b.list(group.subs, 2)
+		if !ok {
+			continue
+		}
+		checks = append(checks, RuntimeBranchCheck{
+			Keyword:     group.keyword,
+			NodeLiteral: fmt.Sprintf("_schemaNode{\n\t%s: %s,\n}", group.field, list),
+		})
+	}
+	return checks
+}
+
+// runtimeBranchCheckFor returns the compiled check for one applicator keyword,
+// or nil if that keyword was not taken over.
+func runtimeBranchCheckFor(checks []RuntimeBranchCheck, keyword string) *RuntimeBranchCheck {
+	for i := range checks {
+		if checks[i].Keyword == keyword {
+			return &checks[i]
+		}
+	}
+	return nil
+}
+
+// branchStatesUnevaluatedProperties reports whether any direct branch of an
+// applicator states `unevaluatedProperties`, on the branch itself or through a
+// $ref it carries.
+//
+// Both sides are read, and the draft decides whether the first one counts.
+// Through draft-07 a $ref replaces the schema object it sits in, so a keyword
+// beside it says nothing and only the target's counts; from 2019-09 the $ref is
+// an ordinary applicator and the branch's own keyword applies as well. Reading
+// only the target was what left
+// {"anyOf":[{"$ref":"#/$defs/base","properties":{"y":{}},
+//
+//	"unevaluatedProperties":false}]}
+//
+// unchecked: the target states no such keyword, so nothing here fired.
+//
+// This is a probe, so the lookup is the uncounted one: a branch that turns out
+// not to compile costs the caller nothing, and recording the reference would
+// make an optimistic look here decide whether Generate reports an unresolved
+// reference.
+//
+// Direct branches only, which is the same reach the static collector has. A
+// keyword buried deeper inside a branch was never enforced and is not enforced
+// now; taking the applicator over for it would change generated code for schemas
+// that have no defect to fix.
+func (g *Generator) branchStatesUnevaluatedProperties(subs []*schema.Schema) bool {
+	for _, sub := range subs {
+		if sub == nil {
+			continue
+		}
+		effRef := sub.EffectiveRef()
+		if effRef == "" || !g.refOverridesSiblingsForSchema(sub) {
+			if sub.UnevaluatedProperties != nil {
+				return true
+			}
+		}
+		if effRef == "" {
+			continue
+		}
+		if r := g.resolveRefInContextUncounted(effRef, sub); r != nil && r.UnevaluatedProperties != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // collectBranchAdditionalChecks walks the allOf branches for schema objects that
@@ -13632,7 +14431,7 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// the keywords that need a named type, and is left alone: it is read by
 	// nothing else here and widening it would change which schemas every other
 	// caller materializes.
-	if g.nullableFormatUnion(resolved) || g.formatOnlyStringSchema(resolved) || g.declaredFormatStringSchema(resolved) {
+	if g.nullableFormatUnion(resolved) || g.stringAnnotationOnlySchema(resolved) || g.declaredFormatStringSchema(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true
@@ -13649,6 +14448,22 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// for lightweight runtime type checking.
 	if jsonType := primarySchemaType(resolved); jsonType != "" {
 		return TupleItemDef{JSONType: jsonType}, true
+	}
+
+	// A position whose schema constrains the value without naming a type -- a
+	// bare "not", a bare if/then/else, a composition over unrelated shapes, a
+	// union of two JSON types. hasStructuralKeywords counts none of those and the
+	// JSONType arm above has nothing to say about a schema with no single type,
+	// so the position rendered nothing at all and its keywords were enforced
+	// nowhere. This is the tuple slot of issue #126, and it defers to the same
+	// ladder the element, map-value and property positions do, so the four agree
+	// on what a given subschema becomes.
+	//
+	// Last, after the arms above, for the reason every other position puts it
+	// last: a schema one of them can type is typed by it, and this must not take
+	// the position away from an answer that is already right.
+	if g.constraintOnlyNamedType(resolved, posName) != nil {
+		return TupleItemDef{TypeName: posName}, true
 	}
 
 	return TupleItemDef{}, false

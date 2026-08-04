@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnyOfBranchUnevaluatedNoProperties",
+  "type": "object",
+  "$defs": {
+    "base": {"properties": {"x": {"type": "integer"}}}
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/base",
+      "properties": {"y": {"type": "integer"}},
+      "unevaluatedProperties": false
+    },
+    {"required": ["q"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfRootScalarBranch",
+  "description": "A root oneOf whose branches the union selects on correctly, but one of which admits a value no Go struct can hold. The union keeps its sealed interface; what changes is that the document is no longer decoded into the struct first, since there is no field there to fill and the attempt refused every scalar the schema allows.",
+  "oneOf": [
+    {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+    {"type": "string"}
+  ]
+}

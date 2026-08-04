@@ -101,7 +101,8 @@ type StructDef struct {
 	RequiredJSON           []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
-	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf/anyOf sub-schemas
+	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf sub-schemas
+	RuntimeBranchChecks    []RuntimeBranchCheck      // anyOf/oneOf keywords a branch's unevaluatedProperties makes per-document; evaluated at runtime
 	ObjectEnum             []string                  // canonical JSON of the whole documents an enum permits, when one was merged in beside the declared properties
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
@@ -109,6 +110,7 @@ type StructDef struct {
 	OwnPropertyNames       []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NullChecks             []NullCheckDef            // per-property positions where an explicit JSON null is a type error
 	OverflowNullCheck      *NullCheckDef             // the same, for the values a schema-valued additionalProperties governs
+	NullPresenceKeys       []string                  // JSON names whose present null the decoded value cannot hold, recorded in _jsonNulls
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
 	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
@@ -258,6 +260,14 @@ type ValidatableFieldDef struct {
 	// all, and there the call still runs: presence is unknowable, and skipping
 	// would stop checking hand-constructed values.
 	PresenceGuard bool
+
+	// NullGuard is set for a field whose property is one of the struct's
+	// NullPresenceKeys: the schema permits a null there, and the Go value keeps
+	// no trace of one. Handing the zero the null left behind to the field type's
+	// Validate judges a value the document did not supply. Unlike PresenceGuard
+	// this is not conditioned on the field being optional -- a required property
+	// written as null leaves the same zero.
+	NullGuard bool
 }
 
 // HasRequiredFields returns true if the struct has required field validation.
@@ -302,6 +312,14 @@ func (d *StructDef) NestedNullChecks() []NullCheckDef {
 // as opposed to only testing values for being null outright.
 func (d *StructDef) NeedsNullCheckHelper() bool {
 	return len(d.NestedNullChecks()) > 0 || d.OverflowNullCheck.Nested()
+}
+
+// NeedsJSONNulls reports whether UnmarshalJSON has to record which keys the
+// document wrote as null, so that Validate can pass over the keywords a null
+// satisfies vacuously and MarshalJSON can write it back. See
+// nullPresenceTracked and issue #110.
+func (d *StructDef) NeedsJSONNulls() bool {
+	return len(d.NullPresenceKeys) > 0
 }
 
 // HasDefaults returns true if any field has a default value.
@@ -364,6 +382,12 @@ func (d *StructDef) HasBranchOverflowChecks() bool {
 	return len(d.BranchOverflowChecks) > 0
 }
 
+// HasRuntimeBranchChecks returns true if the struct carries an anyOf/oneOf whose
+// unevaluatedProperties can only be settled against the document in hand.
+func (d *StructDef) HasRuntimeBranchChecks() bool {
+	return len(d.RuntimeBranchChecks) > 0
+}
+
 // HasObjectEnum returns true if an enum over whole documents applies to the
 // struct.
 func (d *StructDef) HasObjectEnum() bool {
@@ -394,6 +418,12 @@ func (d *StructDef) NeedsRawProps() bool {
 	// values too. Only the raw map has both; the declared fields have been
 	// decoded into Go types by then and the overflow map never held them.
 	if len(d.BranchOverflowChecks) > 0 {
+		return true
+	}
+	// The runtime branch evaluator is handed the document rebuilt from the raw
+	// map: the applicator's branches speak about every key, including the ones
+	// this struct declares fields for.
+	if len(d.RuntimeBranchChecks) > 0 {
 		return true
 	}
 	// An enum over whole documents is compared against the document, which is
@@ -458,6 +488,11 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		// in _jsonKeys. Without it the count would be a compile-time constant
 		// (number of declared fields) rather than the number of present ones.
 		if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
+			return true
+		}
+		// A forbidden property asks whether the document wrote the key at all,
+		// which only _jsonKeys can answer. See ValidationRule.PresenceTracked.
+		if v.PresenceTracked {
 			return true
 		}
 	}
@@ -564,6 +599,35 @@ type ObjectPropertyConstraint struct {
 // HasObjectConditionals reports whether the struct carries any object-level
 // if/then/else group.
 func (d *StructDef) HasObjectConditionals() bool { return len(d.ObjectConditionals) > 0 }
+
+// OneOfIsWholeValue reports whether the struct's entire JSON content is a single
+// top-level oneOf, so that the union stands for the whole document and nothing
+// else on the struct is decoded from it.
+//
+// This is the shape a bare {"oneOf":[...]} produces, and the one whose generated
+// UnmarshalJSON must not open by decoding the document into the struct. There is
+// nothing for that decode to fill — the union's own field is tagged `json:"-"`
+// and set by the branch loop below it — so all it can do is refuse: a document
+// that is a string or a number does not decode into a Go struct at all, and the
+// branches never get to see it. {"oneOf":[{object},{"type":"string"}]} rejected
+// "x" for that reason alone, before any branch was tried.
+//
+// The conditions are the ones the unmarshal template's own object-shaped blocks
+// are guarded on, so a struct that answers true here reaches neither of them.
+// Anything else — a field, an overflow map, presence tracking, a null check —
+// means the document really is being read as an object, and the opening decode
+// is doing work.
+func (d *StructDef) OneOfIsWholeValue() bool {
+	if len(d.Fields) != 0 || len(d.OneOfs) != 1 || d.OneOfs[0].JSONName != "" {
+		return false
+	}
+	if d.AcceptNonObject || d.NeedsNullCheck {
+		return false
+	}
+	return d.AdditionalProperties == nil && !d.HasPatternProperties() &&
+		!d.HasRequiredFields() && !d.NeedsJSONKeys() && !d.NeedsRawProps() &&
+		!d.HasNullChecks()
+}
 
 // HasIntegerDecodes reports whether any field is decoded through an integer
 // shadow, so the unmarshal template can introduce the block once.
@@ -786,6 +850,55 @@ type BranchOverflowCheck struct {
 	TypeName string
 }
 
+// RuntimeBranchCheck is one applicator keyword -- an `anyOf` or a `oneOf` -- one
+// of whose branches states `unevaluatedProperties`, compiled to the runtime
+// evaluator and run against the document.
+//
+// It exists because that keyword cannot be answered at generation time. An
+// `allOf` branch always binds, so its `unevaluatedProperties` and the set of
+// keys it accounts for are both readable from the schema, which is what
+// BranchOverflowCheck carries. An `anyOf` or `oneOf` branch binds only if the
+// *instance* satisfies it, and a branch that fails contributes nothing at all --
+// neither its assertions nor the annotations its siblings' keyword reads. So in
+//
+//	{"properties":{"a":{"type":"integer"}},
+//	 "anyOf":[{"properties":{"b":{"type":"integer"}},"unevaluatedProperties":false},
+//	          {"required":["a"]}]}
+//
+// the document {"a":1} is valid: it satisfies the second branch, which states no
+// `unevaluatedProperties`, and the first branch's keyword never applies because
+// that branch does not match. Enforcing the keyword unconditionally rejected it
+// (issue #111), and no static approximation can do better -- which branch
+// contributes is a fact about the document, not about the schema.
+//
+// The whole keyword is compiled, not the offending branch alone: an
+// `unevaluatedProperties` inside a branch is exempted by what that branch
+// evaluates, and only evaluating the branch produces that set. A subtree the
+// evaluator cannot model compiles to nothing and the check is dropped, which
+// leaves the keyword unchecked rather than checked wrongly.
+type RuntimeBranchCheck struct {
+	// Keyword names the applicator in the error message: "anyOf" or "oneOf".
+	Keyword string
+	// NodeLiteral is the Go composite literal for the _schemaNode holding that
+	// keyword and its branches.
+	NodeLiteral string
+}
+
+// ContentCheck is the argument of a "content" validation rule: the decoding to
+// apply to a string instance and the media type to parse the result as.
+//
+// The two keywords are one rule rather than two because they compose --
+// contentMediaType judges the bytes contentEncoding produced, so a base64
+// encoding of an invalid JSON document has to fail on the media type and an
+// invalid base64 string has to fail before the media type is consulted at all.
+// Either field may be empty, meaning the schema stated no such keyword or
+// stated one the generated code cannot judge; a rule with both empty is never
+// built.
+type ContentCheck struct {
+	Encoding  string
+	MediaType string
+}
+
 // ValidationRule describes a validation constraint on a struct field.
 type ValidationRule struct {
 	FieldName string // Go field name (PascalCase)
@@ -804,6 +917,14 @@ type ValidationRule struct {
 	// in an explicit conversion.
 	StringConvert bool
 
+	// NullKey names the JSON property whose recorded null makes this rule
+	// vacuous. It is set only where the schema permits a null the Go value
+	// cannot hold (see nullPresenceTracked) and the keyword is one a null
+	// satisfies whatever its argument (see ruleVacuousForNull), so the emitted
+	// check is skipped for exactly the documents JSON Schema says it does not
+	// judge. Empty everywhere else.
+	NullKey string
+
 	// StringBacked is set on a "format" rule whose value is held as the JSON
 	// string itself rather than as the Go type the format otherwise maps to.
 	// ipv4, ipv6 and date-time are the formats that have such a mapping, and
@@ -815,6 +936,21 @@ type ValidationRule struct {
 	// keyword that reads the string's characters -- and emitting the first there
 	// does not compile.
 	StringBacked bool
+
+	// PresenceTracked is set on a "forbidden" rule that sits on a struct
+	// property, where _jsonKeys says whether the document wrote the key.
+	//
+	// The rule is emitted as `field != nil`, and for a property whose schema is
+	// `false` that is the wrong question: an explicit null decodes to a nil
+	// `any` exactly as an absent property does, so {"forbidden":null} passed a
+	// check whose whole job is to refuse the key's presence (issue #127).
+	// Presence is the question, and _jsonKeys is where the document's own keys
+	// survive the decode -- the same source #103 took the null verdict from.
+	//
+	// It is set only where the owner is a struct that has that map. An alias
+	// carries no keys and no property to speak of, so a rule reaching one keeps
+	// the nil test alone.
+	PresenceTracked bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

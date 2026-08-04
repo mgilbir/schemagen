@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FalsePropertyExplicitNull",
+  "description": "A property whose schema is the boolean `false` must refuse the key however it is written. The rule was emitted as `field != nil`, and an explicit null decodes to exactly what an absent property leaves, so {\"inline\":null} passed a check whose whole job is to refuse the key's presence (issue #127). The $ref spelling beside it already refused both, through the forbidding wrapper its target generates.",
+  "type": "object",
+  "properties": {
+    "inline": false,
+    "viaRef": {"$ref": "#/$defs/no"},
+    "nested": {
+      "type": "object",
+      "properties": {"inner": false, "ok": {"type": "string"}}
+    },
+    "list": {
+      "type": "array",
+      "items": {"type": "object", "properties": {"inner": false}}
+    },
+    "ok": {"type": "string"}
+  },
+  "$defs": {"no": false}
+}

@@ -36,3 +36,6 @@ import (
 {{- if .Helpers.FormatHostname}}
 {{template "format_hostname_helpers"}}
 {{- end}}
+{{- if .Helpers.Content}}
+{{template "content_helpers"}}
+{{- end}}

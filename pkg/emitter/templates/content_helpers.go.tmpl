@@ -1,0 +1,36 @@
+{{define "content_helpers"}}
+// schemagenContentString applies the content vocabulary to a string instance:
+// the encoding names how to turn it into bytes, and the media type what those
+// bytes have to parse as. Either may be empty, meaning the schema stated no such
+// keyword or stated one this generator does not judge.
+//
+// The order is the vocabulary's own. contentMediaType describes the document the
+// decoding produced, so "ezp9Cg==" is well-formed base64 that decodes to "{:}",
+// which is not JSON, and "{}" is a JSON document that is not base64 at all --
+// two different failures the two keywords have to report separately.
+//
+// Only a string ever reaches here. The keywords say nothing about a number, an
+// object or a null, all of which satisfy a content schema trivially, so the
+// caller checks the instance type before calling.
+func schemagenContentString(value, encoding, mediaType string) error {
+	decoded := []byte(value)
+	switch encoding {
+	case "base64":
+		// StdEncoding, with padding: RFC 4648 section 4, which is what
+		// contentEncoding names. A string that is not that is not base64 here
+		// even if some other alphabet would take it.
+		raw, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return fmt.Errorf("is not valid base64: %w", err)
+		}
+		decoded = raw
+	}
+	switch mediaType {
+	case "application/json":
+		if !json.Valid(decoded) {
+			return fmt.Errorf("is not a valid application/json document")
+		}
+	}
+	return nil
+}
+{{- end}}

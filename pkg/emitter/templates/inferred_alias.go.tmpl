@@ -148,6 +148,16 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	*/}}
 	{{- template "string_format_check" (mkStringFormatCtx (printf "string(%s._value)" $recv) "value" .Value true)}}
 	{{- end}}
+	{{- if eq .RuleType "content"}}
+	{{- /*
+	The content vocabulary with no declared "type" resolves to this same wrapper
+	(issue #115), and the guard at the top of Validate is what keeps it narrow in
+	the same way: contentEncoding and contentMediaType say nothing about a
+	number, an object or a null, all of which decoded into _raw and returned
+	there, so this line is only reached for a JSON string.
+	*/}}
+	{{- template "string_content_check" (mkStringContentCtx (printf "string(%s._value)" $recv) "value" .)}}
+	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$recv}}._value) < {{.Value}} {
 		return fmt.Errorf("value: has %d items, minimum is {{.Value}}", len({{$recv}}._value))

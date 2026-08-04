@@ -1,7 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "UnenforcedAny",
-  "$comment": "contentEncoding and contentMediaType are outside the runtime evaluator, so this schema still becomes `type UnenforcedAny any` -- and the generated source has to say so, because a type with no Validate method looks exactly like a type that was never constrained.",
-  "contentEncoding": "base64",
-  "contentMediaType": "application/json"
+  "$comment": "\"format\" is outside the runtime evaluator on purpose -- schemagen asserts a format only where the schema gives the position a string type, and a node evaluator that quietly ignored it would enforce a different schema than the static path does -- and a `not` over it is outside every static arm too, so this schema still becomes `type UnenforcedAny any`, and the generated source has to say so, because a type with no Validate method looks exactly like a type that was never constrained. Two earlier spellings of this fixture stopped being unenforced and had to be replaced: contentEncoding/contentMediaType became a string wrapper with issue #115 (pinned by regression/content_posture_draft7.json), and unevaluatedProperties gained an evaluator arm with issue #111 (pinned by regression/anyof_branch_unevaluated_properties.json). Whatever this fixture is spelled with must be a keyword TestUnmodelledKeywordsFailClosedAndAreReported still lists as unmodelled.",
+  "not": { "anyOf": [true], "format": "email" }
 }

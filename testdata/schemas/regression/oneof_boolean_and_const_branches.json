@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfBooleanAndConstBranches",
+  "description": "A oneOf mixing an object branch with branches the sealed-interface union cannot select on. Selection decodes a const, an enum and a boolean `false` branch into `any`, which matches every document -- so a document satisfying exactly one branch was counted as matching all of them and refused, and a document satisfying none was left at one match and accepted. The all-object group beside them is the control: it selects correctly and must keep its union.",
+  "type": "object",
+  "properties": {
+    "mixed": {
+      "oneOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"const": "x"},
+        false
+      ]
+    },
+    "falseBranch": {
+      "oneOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        false
+      ]
+    },
+    "typedEnumBranch": {
+      "oneOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "integer", "minimum": 10}}},
+        {"type": "string", "enum": ["a"]}
+      ]
+    },
+    "objectsOnly": {
+      "oneOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"type": "object", "required": ["j"], "properties": {"j": {"type": "string"}}}
+      ]
+    },
+    "scalarsOnly": {
+      "oneOf": [
+        {"type": "string"},
+        {"type": "integer"}
+      ]
+    },
+    "trueBranch": {
+      "oneOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        true
+      ]
+    }
+  }
+}

@@ -574,7 +574,97 @@ func extractRootTypeNameFromCode(code string) string {
 // from bloating the build cache by hundreds of gigabytes.
 var ephemeralCacheDir string
 
+// staleCacheAge is how old an abandoned cache must be before this process will
+// delete it. It has to exceed the longest a live run can go without touching
+// its own directory -- the suite compiles continuously, so minutes would do --
+// and stay far below the gap between one developer's runs. An hour is well
+// clear on both sides.
+const staleCacheAge = time.Hour
+
+// cacheLastActive reports when a cache directory was last written to.
+//
+// It is not the directory's own mtime, which is the obvious reading and the
+// wrong one. Go lays out GOCACHE as 256 subdirectories plus trim.txt on first
+// use and writes every entry *inside* those, so the root's mtime is stamped once
+// when the cache is created and never advances again however hard the cache is
+// worked -- measured at six consecutive builds over fifteen seconds, all five
+// after the first leaving the root untouched. Judging by it makes a run that
+// outlives staleCacheAge indistinguishable from an abandoned one, so a
+// concurrently starting run deletes a live cache out from under it. That is the
+// "sweeping too much" direction this function's comment calls the worse and
+// quieter of the two: nothing fails visibly, the robbed run just recompiles from
+// nothing and looks inexplicably slow.
+//
+// The immediate children do track activity -- each build touches the bucket it
+// writes into, and trim.txt is rewritten periodically -- so the newest of the
+// root and its children is the answer. Reading one level is enough and is
+// bounded: 257 entries for a Go cache, and no recursion into the thousands of
+// files below.
+func cacheLastActive(dir string, root os.FileInfo) time.Time {
+	newest := root.ModTime()
+	children, err := os.ReadDir(dir)
+	if err != nil {
+		return newest
+	}
+	for _, c := range children {
+		info, err := c.Info()
+		if err != nil {
+			continue
+		}
+		if t := info.ModTime(); t.After(newest) {
+			newest = t
+		}
+	}
+	return newest
+}
+
+// sweepStaleCaches deletes ephemeral cache directories left behind by earlier
+// runs.
+//
+// TestMain removes this process's directory on the way out, which handles the
+// common path. It cannot handle any other: a -timeout kill, a SIGTERM from a
+// harness, an interrupt, or a crash on a full disk all skip it, and each one
+// strands roughly 2G. That compounds -- a full disk kills runs, and each kill
+// strands another cache -- and it has already exhausted a 394G volume, at which
+// point the suite fails with "no space left on device" reported against
+// individual test keys, so a dead run reads like a set of real validation
+// failures.
+//
+// So the sweep happens on the way in, where it works no matter how the previous
+// process died. Errors are ignored throughout: reclaiming space is best-effort,
+// and a directory another user owns is not this process's to worry about.
+func sweepStaleCaches() { sweepStaleCachesIn(os.TempDir(), time.Now().Add(-staleCacheAge)) }
+
+// sweepStaleCachesIn is sweepStaleCaches with the directory and cutoff supplied,
+// so a test can drive it without touching the real temp directory or waiting an
+// hour for something to age.
+func sweepStaleCachesIn(tmp string, cutoff time.Time) {
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, "schemagen-gocache-") && !strings.HasPrefix(name, "schemagen-cogen-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(tmp, name)
+		if cacheLastActive(path, info).After(cutoff) {
+			continue
+		}
+		os.RemoveAll(path)
+	}
+}
+
 func init() {
+	sweepStaleCaches()
 	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
 	if err != nil {
 		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
@@ -1081,7 +1171,7 @@ func TestExternalRoundTrip(t *testing.T) {
 }
 
 // minValidatedGroups is the number of test groups this test reached a generated
-// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1752 of
+// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1765 of
 // the 1799 code-gen-suitable groups (1803 groups in the corpus, less the 4 whose
 // schema is boolean `true`, which asserts nothing and so has nothing to test).
 //
@@ -1094,6 +1184,15 @@ func TestExternalRoundTrip(t *testing.T) {
 // with 23. Each one failed by name, saying it now produces a Validate(), rather
 // than sitting in the list unread; that is the mechanism working.
 //
+// 1765 is the same three issues arriving together. #111 taught the evaluator
+// unevaluatedProperties and #115 gave the content vocabulary the string wrapper
+// #106 gave a format, so 13 more groups have something to call, the skips fall
+// from 47 to 34, and none of them is a code-generation failure. Two more
+// knownUnvalidatedRejections entries went stale with them. This number is the
+// one the combined run printed, not an estimate: the branches were each measured
+// separately or not at all, and no single-branch figure would have been true of
+// the merge.
+//
 // It is a floor, not a target. A group that produces no Validate() produces no
 // subtest either, so a change that stopped generating one would remove tests
 // from the run rather than fail any — the run would get greener as it measured
@@ -1104,7 +1203,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 1752
+const minValidatedGroups = 1765
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.

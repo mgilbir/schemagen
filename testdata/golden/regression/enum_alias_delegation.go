@@ -126,11 +126,13 @@ type EnumAliasDelegation struct {
 	RawList              []RawAlias                 `json:"raw_list,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	e._jsonKeys = nil
+	e._jsonNulls = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type EnumAliasDelegation")
 	}
@@ -167,6 +169,22 @@ func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 		for _k := range raw {
 			e._jsonKeys[_k] = true
 		}
+		// The properties whose schema permits a null. The decode above has
+		// already turned one into a nil pointer, a nil collection or an
+		// untouched zero -- the same state an absent property leaves -- so the
+		// document's own bytes are the only place the difference still exists.
+		// Validate reads this to pass over the keywords a null satisfies
+		// vacuously, and MarshalJSON to write the null back. See issue #110.
+		for _, _nullKey := range []string{
+			"raw",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				if e._jsonNulls == nil {
+					e._jsonNulls = make(map[string]bool, 1)
+				}
+				e._jsonNulls[_nullKey] = true
+			}
+		}
 		knownFields := map[string]bool{
 			"num":      true,
 			"raw":      true,
@@ -200,6 +218,31 @@ func (e EnumAliasDelegation) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
+	// The properties the source document wrote as null. Nothing left in the
+	// decoded value says they were there -- a null leaves the nil pointer or the
+	// untouched zero an absent property leaves -- so writing them back has to
+	// come from the record UnmarshalJSON kept. See issue #110.
+	//
+	// Only where the field still holds what the null left it holding. A caller
+	// who decoded a null and then assigned a value has said something newer than
+	// the document did, and writing the null over it would discard the
+	// assignment; the record is about a value nobody has touched. What the
+	// untouched state looks like is read off a zero of this very struct rather
+	// than from a per-field literal, so a field type's own MarshalJSON decides
+	// for itself and nothing here has to know how it spells "empty".
+	if len(e._jsonNulls) > 0 {
+		var _zero Alias
+		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
+			var _zeroObj map[string]json.RawMessage
+			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
+				for _k := range e._jsonNulls {
+					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
+						obj[_k] = json.RawMessage("null")
+					}
+				}
+			}
+		}
+	}
 	for k, v := range e.AdditionalProperties {
 		obj[k] = v
 	}
@@ -222,8 +265,12 @@ func (e EnumAliasDelegation) Validate() error {
 	if err := e.Num.Validate(); err != nil {
 		return fmt.Errorf("num.%w", err)
 	}
-	if err := e.Raw.Validate(); err != nil {
-		return fmt.Errorf("raw.%w", err)
+	// A property written as null leaves the same Go zero an absent one does,
+	// and the schema permits the null, so the zero is not a value to judge.
+	if !e._jsonNulls["raw"] {
+		if err := e.Raw.Validate(); err != nil {
+			return fmt.Errorf("raw.%w", err)
+		}
 	}
 	for _i, _item := range e.RawList {
 		if err := _item.Validate(); err != nil {

@@ -39,8 +39,8 @@ var annotationKeywords = map[string]bool{
 // "format" is left out because schemagen asserts a format only where the schema
 // gives the position a string type, and a node evaluator that quietly ignored it
 // would enforce a different schema here than the static path does two lines
-// away. "unevaluatedProperties" and the content keywords are left out because
-// nothing here models them. "$dynamicRef" and "$recursiveRef" are left out
+// away. The content keywords are left out because nothing here models them.
+// "$dynamicRef" and "$recursiveRef" are left out
 // because resolving them needs the dynamic scope of the *instance* evaluation,
 // which an inlined tree does not have -- which is also what makes the anchors
 // safe to accept and ignore: an anchor with nothing pointing at it constrains
@@ -64,8 +64,9 @@ var validatorKeywords = map[string]bool{
 	"dependentRequired": true, "dependentSchemas": true,
 	"allOf": true, "anyOf": true, "oneOf": true, "not": true,
 	"if": true, "then": true, "else": true,
-	"unevaluatedItems": true,
-	"$ref":             true,
+	"unevaluatedItems":      true,
+	"unevaluatedProperties": true,
+	"$ref":                  true,
 
 	// Carry no constraint of their own where they sit.
 	"$defs": true, "definitions": true,
@@ -383,7 +384,8 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		name string
 		sub  *schema.Schema
 	}{{"Not", s.Not}, {"If", s.If}, {"Then", s.Then}, {"Else", s.Else},
-		{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems}} {
+		{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems},
+		{"UnevaluatedProperties", s.UnevaluatedProperties}} {
 		if branch.sub == nil {
 			continue
 		}
@@ -602,6 +604,107 @@ func (g *Generator) rawWrapperDef(name string, s *schema.Schema) TypeDef {
 		return def
 	}
 	return nil
+}
+
+// constraintOnlyWrapperDef is rawWrapperDef's answer for a position that is not
+// being given a name of its own -- an array element, a map value, a tuple slot,
+// a property whose schema names no type.
+//
+// It is the same ladder generateTypeDef walks once every type-producing arm has
+// declined, and in the same order: the `not` wrapper, then the type-union
+// wrapper, then the two raw-JSON wrappers. Walking that ladder rather than a
+// second one of its own is the point -- a schema written inline gets the type it
+// would have got from a $defs entry and a $ref, instead of a different answer
+// depending on where it was written.
+//
+// nil means the position keeps whatever type it had. That covers the schema that
+// constrains nothing, which is what `any` describes, and the schema the evaluator
+// cannot model, which must not gain a Validate that checks less than it says.
+func (g *Generator) constraintOnlyWrapperDef(name string, s *schema.Schema) TypeDef {
+	if s == nil || name == "" || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	if g.acceptsEveryValue(s, 0, map[*schema.Schema]bool{}) {
+		return nil
+	}
+	if def := extractNotSchemaDef(name, s); def != nil {
+		return def
+	}
+	if def := g.extractTypeOnlySchemaDef(name, s); def != nil {
+		return def
+	}
+	if def := g.rawWrapperDef(name, s); def != nil {
+		return def
+	}
+	return nil
+}
+
+// acceptsEveryValue reports whether a schema forbids nothing, so that a wrapper
+// built for it would carry a Validate that can never fail.
+//
+// unownedNodeLiterals answers the same question off the compiled literal, but
+// only for a schema that reduces to a bare node. It cannot see that
+// {"allOf":[{"$ref":"#/$defs/always"}]} -- a composition whose every branch is
+// the `true` schema -- says exactly as much as {} does, so the position would
+// trade a plain `any` for a struct wrapping raw JSON and gain no check for it.
+// That is a worse type for the caller and no better a check, which is the one
+// thing the constraint-only arm must never do.
+//
+// The composition keywords are read for what they assert here, not for what
+// they usually assert. An `allOf` or an `anyOf` over branches that each accept
+// everything accepts everything. A `oneOf` does not: two branches that both
+// accept everything both match, and "exactly one" then holds for no value at
+// all, so only a single-branch oneOf can pass. Everything else answers false,
+// which builds the wrapper -- the safe direction, since a wrapper for a schema
+// that turns out to constrain nothing costs a type and never a document.
+func (g *Generator) acceptsEveryValue(s *schema.Schema, depth int, onPath map[*schema.Schema]bool) bool {
+	if s == nil {
+		return true
+	}
+	// A reference cycle, or a schema deeper than the evaluator would compile.
+	// Neither can be answered here, and false is the answer that keeps the check.
+	if depth > maxRuntimeDepth || onPath[s] {
+		return false
+	}
+	if s.IsBooleanSchema() {
+		return s.IsTrueSchema()
+	}
+	onPath[s] = true
+	defer delete(onPath, s)
+
+	// unenforcedKeywords is the list of keywords present that state a constraint,
+	// read from the re-marshaled schema, so a keyword the parser learns later is
+	// counted rather than missed.
+	for _, key := range unenforcedKeywords(s) {
+		switch key {
+		case "allOf", "anyOf", "oneOf", "$ref":
+		default:
+			return false
+		}
+	}
+	for _, sub := range s.AllOf {
+		if !g.acceptsEveryValue(sub, depth+1, onPath) {
+			return false
+		}
+	}
+	for _, sub := range s.AnyOf {
+		if !g.acceptsEveryValue(sub, depth+1, onPath) {
+			return false
+		}
+	}
+	if len(s.OneOf) > 1 {
+		return false
+	}
+	for _, sub := range s.OneOf {
+		if !g.acceptsEveryValue(sub, depth+1, onPath) {
+			return false
+		}
+	}
+	if s.Ref != "" {
+		resolved := g.resolveRefInContextUncounted(s.Ref, s)
+		return resolved != nil && g.acceptsEveryValue(resolved, depth+1, onPath)
+	}
+	return true
 }
 
 // unenforcedAliasDef builds the `any` alias, and says in the generated source

@@ -61,7 +61,8 @@ type _schemaNode struct {
 	Then *_schemaNode
 	Else *_schemaNode
 
-	UnevaluatedItems *_schemaNode
+	UnevaluatedItems      *_schemaNode
+	UnevaluatedProperties *_schemaNode
 }
 
 // _schemaMember is one entry of a keyword whose argument is an object mapping a
@@ -80,19 +81,30 @@ type _schemaDependency struct {
 	Keys []string
 }
 
-// _evalResult is one node's verdict, the reason it failed, and the item indices
-// it evaluated.
+// _evalResult is one node's verdict, the reason it failed, and the annotations
+// it produced: the item indices and the property names it evaluated.
+//
+// The two sets are what unevaluatedItems and unevaluatedProperties read. They
+// are kept apart rather than merged into one because the keywords are: an index
+// evaluated by prefixItems says nothing about a property name, and a schema can
+// state both keywords over the same node.
 type _evalResult struct {
-	ok        bool
-	reason    string
-	evaluated map[int]bool
+	ok             bool
+	reason         string
+	evaluated      map[int]bool
+	evaluatedProps map[string]bool
 }
 
-func _newEval(ok bool) _evalResult { return _evalResult{ok: ok, evaluated: map[int]bool{}} }
+func _newEval(ok bool) _evalResult {
+	return _evalResult{ok: ok, evaluated: map[int]bool{}, evaluatedProps: map[string]bool{}}
+}
 
 func (r *_evalResult) absorb(other _evalResult) {
 	for i := range other.evaluated {
 		r.evaluated[i] = true
+	}
+	for k := range other.evaluatedProps {
+		r.evaluatedProps[k] = true
 	}
 }
 
@@ -167,6 +179,9 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 {{- end}}
 
 	arr, isArray := v.([]any)
+	// Read once, up here, because unevaluatedProperties needs the object again
+	// after every in-place applicator below has had its turn.
+	obj, isObject := v.(map[string]any)
 
 	if isArray {
 		if n.MinItems != nil && len(arr) < *n.MinItems {
@@ -225,7 +240,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		}
 	}
 
-	if obj, isObject := v.(map[string]any); isObject {
+	if isObject {
 		for _, key := range n.Required {
 			if _, present := obj[key]; !present {
 				return res.fail("object is missing required property " + key)
@@ -255,6 +270,11 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if !r.ok {
 				return res.fail("property " + member.Key + ": " + r.reason)
 			}
+			// The property is evaluated by this node, so unevaluatedProperties
+			// no longer speaks about it. The subschema's own annotations are
+			// about the property's *value* and belong to it, not here, which is
+			// why r is not absorbed.
+			res.evaluatedProps[member.Key] = true
 		}
 {{- if .AnnotationsPattern}}
 		for i := range n.PatternProperties {
@@ -267,6 +287,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 				if !r.ok {
 					return res.fail("property " + key + ": " + r.reason)
 				}
+				res.evaluatedProps[key] = true
 			}
 		}
 {{- end}}
@@ -284,6 +305,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 				if !r.ok {
 					return res.fail("property " + key + ": " + r.reason)
 				}
+				res.evaluatedProps[key] = true
 			}
 		}
 		for _, dep := range n.DependentRequired {
@@ -388,6 +410,27 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 				return res.fail(r.reason)
 			}
 			res.evaluated[i] = true
+		}
+	}
+
+	// unevaluatedProperties, read the same way and for the same reason: only the
+	// properties *this* node's own subschemas evaluated are exempt, and a branch
+	// that failed evaluated nothing -- which is the whole point of settling it
+	// here rather than at generation time. In
+	// {"anyOf":[{"properties":{"b":{}},"unevaluatedProperties":false},
+	//           {"required":["a"]}]}
+	// the document {"a":1} satisfies the second branch, and the first branch's
+	// keyword never applies because that branch does not match.
+	if isObject && n.UnevaluatedProperties != nil {
+		for _, key := range _dynSortedKeys(obj) {
+			if res.evaluatedProps[key] {
+				continue
+			}
+			r := _evalNode(n.UnevaluatedProperties, obj[key])
+			if !r.ok {
+				return res.fail("unevaluated property " + key + ": " + r.reason)
+			}
+			res.evaluatedProps[key] = true
 		}
 	}
 

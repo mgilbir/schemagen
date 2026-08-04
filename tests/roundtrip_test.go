@@ -241,6 +241,20 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/allof_if_then_branches.json",
 			FixturePath: "testdata/fixtures/regression/allof_if_then_branches.json",
 		},
+		{
+			// Issue #110, and the reason it is here rather than only in the
+			// goldens: this harness compares the document against itself after
+			// a decode and a re-encode, which is exactly what the defect broke.
+			// The fixture writes a null in most of the positions the schema
+			// permits one and leaves "nullableScalar" out, so both directions
+			// are live -- a dropped null and an absence written back as null
+			// each fail the comparison. (The second is what the old convention
+			// did: omitempty was suppressed for a nullable property, so its nil
+			// was written as null whether the document had one or not.)
+			Name:        "regression/present_null_positions",
+			SchemaPath:  "testdata/schemas/regression/present_null_positions.json",
+			FixturePath: "testdata/fixtures/regression/present_null_positions.json",
+		},
 	}
 }
 
@@ -4274,4 +4288,707 @@ func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
 			`{"nested":[["2001:db8::1"]]}`,
 		},
 	)
+}
+
+// TestOneOfBooleanAndConstBranches is the behavioural half of issue #125.
+//
+// The sealed-interface union decides a branch by decoding the value into that
+// branch's Go type. A branch that resolves to `any` -- a const, an enum, a bare
+// bound -- decodes everything, and a `false` branch, which no instance
+// satisfies, was given the same `any` and so matched everything too. Either one
+// takes the count past 1 for a document satisfying exactly one *other* branch,
+// which the exactly-one rule then refuses, and holds it at 1 for a document
+// satisfying none, which it then accepts. Both directions are here: every
+// document under `valid` naming "mixed", "falseBranch" or "typedEnumBranch" was
+// refused before the fix, and {"falseBranch":{"j":"b"}} was accepted by the one
+// branch guaranteed to reject it.
+//
+// The last three properties are the narrowness control. Their branches are ones
+// selection judges correctly -- two objects, two scalars, and an object beside
+// boolean `true`, which really is matched by every instance -- so they keep the
+// union, and the verdicts below are the ones it already reached.
+func TestOneOfBooleanAndConstBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_boolean_and_const_branches.json",
+		[]string{
+			`{}`,
+			`{"mixed":{"k":"a"}}`, // the object branch alone
+			`{"mixed":"x"}`,       // the const branch alone
+			`{"falseBranch":{"k":"a"}}`,
+			`{"typedEnumBranch":{"k":10}}`,
+			`{"typedEnumBranch":"a"}`,
+			`{"objectsOnly":{"k":"a"}}`,
+			`{"objectsOnly":{"j":"b"}}`,
+			`{"scalarsOnly":"a"}`,
+			`{"scalarsOnly":1}`,
+			`{"trueBranch":{"j":"b"}}`, // the true branch alone
+			`{"trueBranch":"x"}`,
+		},
+		[]string{
+			`{"mixed":123}`,                     // no branch
+			`{"mixed":{"k":1}}`,                 // the object branch's own type
+			`{"falseBranch":{"j":"b"}}`,         // `false` matched it before the fix
+			`{"falseBranch":"x"}`,               //
+			`{"typedEnumBranch":"b"}`,           // the branch's enum, tested nowhere before
+			`{"typedEnumBranch":{"k":1}}`,       // the object branch's minimum
+			`{"objectsOnly":{"k":"a","j":"b"}}`, // both branches
+			`{"objectsOnly":"x"}`,
+			`{"scalarsOnly":true}`,
+			`{"trueBranch":{"k":"a"}}`, // both branches
+		},
+	)
+}
+
+// TestOneOfBooleanAndConstRoot is issue #125's own reproducer, where the group
+// is the whole document.
+//
+// The root union lives in a Go struct, so the miscount was only half of it:
+// UnmarshalJSON opened by decoding the document into that struct, and "x" --
+// which the const branch admits -- is not an object, so encoding/json refused it
+// before a branch was tried. Both reference implementations the issue was
+// checked against accept {"k":"a"} and "x", and reject 123.
+func TestOneOfBooleanAndConstRoot(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_boolean_and_const_root.json",
+		[]string{
+			`{"k":"a"}`,
+			`"x"`,
+		},
+		[]string{
+			`123`,
+			`{"k":1}`,
+			`{"other":1}`, // satisfies no branch; the `false` branch used to carry it
+			`"y"`,
+		},
+	)
+}
+
+// TestOneOfRootScalarBranchDecodes is the other half of the same struct
+// problem, on a union that selects perfectly well.
+//
+// Nothing is wrong with the branches here: an object and a string are told apart
+// by decoding. The document still never reached them, because the struct decode
+// ran first and a string does not go into a Go struct. The union is kept and
+// that decode is dropped, which is sound only because a struct standing for
+// nothing but a top-level oneOf has no field for it to fill.
+func TestOneOfRootScalarBranchDecodes(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_root_scalar_branch.json",
+		[]string{
+			`{"k":"a"}`,
+			`"x"`,
+		},
+		[]string{
+			`123`,
+			`true`,
+			`{"j":"b"}`, // neither branch: no "k", and not a string
+		},
+	)
+}
+
+// TestFalsePropertyRefusesExplicitNull is the behavioural half of issue #127.
+//
+// A property whose schema is `false` is satisfied by no value, so the key's
+// presence is the violation. The rule was emitted as `field != nil`, and
+// encoding/json leaves a nil `any` for an explicit null exactly as it does for
+// an absent property -- so {"inline":null} passed. The verdict comes from
+// _jsonKeys now, which is where the document's own keys survive the decode.
+//
+// The $ref spelling was already refused, by the forbidding wrapper its target
+// generates; it is here as the control that the two spellings agree. The `ok`
+// and empty documents are the control that presence, rather than the property
+// merely being declared, is what is tested.
+func TestFalsePropertyRefusesExplicitNull(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/false_property_explicit_null.json",
+		[]string{
+			`{}`,
+			`{"ok":"y"}`,
+			`{"nested":{"ok":"y"}}`,
+			`{"nested":{}}`,
+			`{"list":[{}]}`,
+			`{"list":[]}`,
+		},
+		[]string{
+			`{"inline":null}`, // the defect
+			`{"inline":1}`,
+			`{"viaRef":null}`,
+			`{"viaRef":1}`,
+			`{"nested":{"inner":null}}`,
+			`{"nested":{"inner":1}}`,
+			`{"list":[{"inner":null}]}`,
+			`{"list":[{"inner":1}]}`,
+		},
+	)
+}
+
+// TestAnyOfBranchUnevaluatedPropertiesIsPerDocument covers issue #111: an
+// `unevaluatedProperties` inside an `anyOf` branch was enforced whether or not
+// that branch matched the document.
+//
+// The first four inputs are the point. {"a":1} satisfies the *second* branch,
+// which states no `unevaluatedProperties` at all, and a branch the document
+// fails contributes nothing -- neither its assertions nor the annotations the
+// keyword reads. The generated code applied the first branch's keyword
+// unconditionally and refused it, which two reference implementations call
+// valid. A false rejection is worse than a missing check, so these four are the
+// accept-controls that must never come back.
+//
+// The last two are the reject-controls beside them, and they are why the fix is
+// an exact evaluation rather than a deletion: {"b":2,"c":3} fails the first
+// branch on c and the second on the missing `a`, so no branch holds and the
+// document really is invalid. Dropping the keyword would accept it.
+func TestAnyOfBranchUnevaluatedPropertiesIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_branch_unevaluated_properties.json",
+		[]string{
+			`{"a":1}`,
+			`{"b":2}`,
+			`{"a":1,"b":2}`,
+			// No key is unevaluated, so the first branch holds vacuously.
+			`{}`,
+		},
+		[]string{
+			`{"b":2,"c":3}`,
+			`{"c":3}`,
+		},
+	)
+}
+
+// TestAnyOfBranchUnevaluatedPropertiesWithoutParentProperties is the same
+// keyword reached by the other route into a struct.
+//
+// A parent that declares no properties of its own goes through generateAnyOfDef,
+// which builds a merged schema without the anyOf and hands that to
+// generateStructDef -- so the collector inside it never saw the keyword and the
+// applicator went unchecked entirely. The branch here also carries a $ref beside
+// its own `properties`, which is the second half: from 2019-09 a $ref is an
+// ordinary applicator, so the branch's own keyword applies and what the $ref
+// evaluates is exempt from it. Reading only the target, as the allOf collector
+// does, found no keyword and left this unchecked too.
+func TestAnyOfBranchUnevaluatedPropertiesWithoutParentProperties(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json",
+		[]string{
+			// The $ref evaluates x, the sibling properties evaluate y.
+			`{"x":1,"y":2}`,
+			// The second branch matches and states no unevaluatedProperties.
+			`{"q":1,"z":2}`,
+			`{}`,
+		},
+		[]string{
+			`{"x":1,"z":2}`,
+			`{"y":"no"}`,
+		},
+	)
+}
+
+// TestOneOfBranchUnevaluatedPropertiesIsPerDocument is issue #111 reached
+// through `oneOf`, where the count makes the false rejection sharper.
+//
+// {"a":1,"b":1} satisfies the second branch alone: the first branch declares
+// only `b`, so `a` is unevaluated and `unevaluatedProperties:false` fails it.
+// The flattened approximation decides whether a branch matches from its required
+// keys, its consts and its declared types, none of which mention `a`, so it
+// counted two matches and reported "expected exactly 1". That approximation is
+// dropped where the applicator is evaluated exactly; this is the control that
+// says so.
+func TestOneOfBranchUnevaluatedPropertiesIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_branch_unevaluated_properties.json",
+		[]string{
+			`{"a":1}`,
+			`{"b":1}`,
+			`{"a":1,"b":1}`,
+		},
+		[]string{
+			// Fails the first branch on z and the second on the missing a.
+			`{"b":1,"z":2}`,
+			`{"z":1}`,
+			`{}`,
+		},
+	)
+}
+
+// TestConstraintOnlyPositionsAreChecked covers issue #126: a schema that
+// constrains a value without naming a type collapsed to `any` everywhere except
+// a document root.
+//
+// `any` is interface-underlying, so Go forbids methods on it: such a position
+// had no Validate for a check to live in and json.Unmarshal into it could not
+// fail, which turned every one of these keywords into nothing at all. The
+// fixture writes one such schema into each position the generator reaches by a
+// different path -- a property, an array element, a map value, a tuple slot, a
+// composition branch, a type union, an array of nulls -- because this repository
+// has repeatedly fixed one of them and left its siblings, and only a case per
+// position can tell the two apart.
+//
+// The valid half is the narrowness control. Every one of these documents was
+// accepted before and must still be: the wrapper introduced here changes the Go
+// type of the field, and a wrapper that rejected what the schema permits would
+// be a worse defect than the one being fixed.
+func TestConstraintOnlyPositionsAreChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/constraint_only_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":1}`,
+			`{"list":[1]}`,
+			`{"map":{"k":"abcd"}}`,
+			`{"tuple":[1]}`,
+			`{"branch":5}`,
+			`{"branch":"s"}`,
+			`{"union":"x"}`,
+			`{"union":5}`,
+			`{"nulls":[null]}`,
+			`{"unevaluated":{"a":1}}`,
+			`{"unevaluated":{"b":2}}`,
+		},
+		[]string{
+			`{"prop":{"foo":"x"}}`,
+			`{"list":[{"foo":"x"}]}`,
+			`{"map":{"k":"ab"}}`,
+			`{"tuple":["s"]}`,
+			`{"branch":1}`,
+			`{"union":true}`,
+			`{"nulls":[1]}`,
+			`{"unevaluated":{"c":3}}`,
+		},
+	)
+}
+
+// TestPresentNullSurvivesAndDoesNotConstrain is the behavioural half of issue
+// #110. The golden pins the shape of the generated code and the round-trip case
+// pins the marshalling; this is the part neither reaches -- what Validate does
+// with a property the document wrote as null.
+//
+// Both directions and both configurations are covered, because the defect had a
+// different face in each. Under the default flags the null was accepted and then
+// dropped on the way out; under --omit-empty=false no optional field is
+// pointer-wrapped, so the null left the Go zero and the optional rule -- gated
+// on key presence, which a present null satisfies -- measured that zero against
+// a bound and rejected a document JSON Schema permits.
+func TestPresentNullSurvivesAndDoesNotConstrain(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func decode(doc string) PresentNullPositions {
+	var v PresentNullPositions
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("%s: unmarshal: %v", doc, err)
+	}
+	return v
+}
+
+func main() {
+	// A null the schema permits is not a value any of these keywords judges.
+	// Every one of these was rejected for the length of a string the document
+	// never supplied.
+	for _, doc := range []string{
+		` + "`" + `{"untyped":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"boundOnly":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"reqBoundOnly":null}` + "`" + `,
+		` + "`" + `{"nullableScalar":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"nullableList":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"nullableObject":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"refObject":null,"reqBoundOnly":"ok"}` + "`" + `,
+		// A named type whose own Validate reads the nil the null left as an
+		// array of length 0 and reports it short of minItems.
+		` + "`" + `{"refList":null,"reqBoundOnly":"ok"}` + "`" + `,
+	} {
+		if err := decode(doc).Validate(); err != nil {
+			fail("%s was rejected: %v -- the schema permits a null there", doc, err)
+		}
+	}
+
+	// And that named type's own check still bites on an array that is there.
+	if err := decode(` + "`" + `{"refList":[1],"reqBoundOnly":"ok"}` + "`" + `).Validate(); err == nil {
+		fail("refList=[1] passed a minItems of 2")
+	}
+
+	// The accept-control: a null is vacuous, an actual short string is not.
+	for _, doc := range []string{
+		` + "`" + `{"boundOnly":"x","reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"reqBoundOnly":"x"}` + "`" + `,
+		` + "`" + `{"nullableScalar":"x","reqBoundOnly":"ok"}` + "`" + `,
+	} {
+		if err := decode(doc).Validate(); err == nil {
+			fail("%s passed a minLength of 2", doc)
+		}
+	}
+
+	// And the property whose schema forbids a null keeps issue #103's refusal.
+	var forbidden PresentNullPositions
+	if err := json.Unmarshal([]byte(` + "`" + `{"typedString":null,"reqBoundOnly":"ok"}` + "`" + `), &forbidden); err == nil {
+		fail("typedString accepted a null; its schema lists only \"string\"")
+	}
+
+	// The null comes back out, and an absent property stays absent.
+	roundTrip := func(doc string) string {
+		out, err := json.Marshal(decode(doc))
+		if err != nil {
+			fail("%s: marshal: %v", doc, err)
+		}
+		return string(out)
+	}
+	for _, tc := range []struct{ in, want string }{
+		{` + "`" + `{"reqBoundOnly":"ok","untyped":null}` + "`" + `, ` + "`" + `{"reqBoundOnly":"ok","untyped":null}` + "`" + `},
+		{` + "`" + `{"boundOnly":null,"reqBoundOnly":"ok"}` + "`" + `, ` + "`" + `{"boundOnly":null,"reqBoundOnly":"ok"}` + "`" + `},
+		{` + "`" + `{"nullableScalar":null,"reqBoundOnly":"ok"}` + "`" + `, ` + "`" + `{"nullableScalar":null,"reqBoundOnly":"ok"}` + "`" + `},
+		{` + "`" + `{"nullableList":null,"reqBoundOnly":"ok"}` + "`" + `, ` + "`" + `{"nullableList":null,"reqBoundOnly":"ok"}` + "`" + `},
+		{` + "`" + `{"reqBoundOnly":"ok"}` + "`" + `, ` + "`" + `{"reqBoundOnly":"ok"}` + "`" + `},
+		{` + "`" + `{"nullableList":[],"reqBoundOnly":"ok"}` + "`" + `, ` + "`" + `{"nullableList":[],"reqBoundOnly":"ok"}` + "`" + `},
+	} {
+		if got := roundTrip(tc.in); got != tc.want {
+			fail("%s round-tripped to %s, want %s", tc.in, got, tc.want)
+		}
+	}
+
+	// A value built in Go carried no document, so there is nothing recorded and
+	// nothing invented: the absent properties are simply absent.
+	built, err := json.Marshal(PresentNullPositions{ReqBoundOnly: "ok"})
+	if err != nil {
+		fail("marshal of a hand-built value: %v", err)
+	}
+	if string(built) != ` + "`" + `{"reqBoundOnly":"ok"}` + "`" + ` {
+		fail("a hand-built value marshalled to %s", string(built))
+	}
+
+	// And an assignment after the decode is newer than what the document said.
+	// The record must not write its null back over it.
+	assigned := decode(` + "`" + `{"boundOnly":null,"untyped":null,"reqBoundOnly":"ok"}` + "`" + `)
+	replacement := "abc"
+	assigned.BoundOnly = &replacement
+	assigned.Untyped = 7
+	out, err := json.Marshal(assigned)
+	if err != nil {
+		fail("marshal after assignment: %v", err)
+	}
+	if string(out) != ` + "`" + `{"boundOnly":"abc","reqBoundOnly":"ok","untyped":7}` + "`" + ` {
+		fail("assigning over a decoded null marshalled to %s", string(out))
+	}
+	if err := assigned.Validate(); err != nil {
+		fail("assigning over a decoded null was rejected: %v", err)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/present_null_positions.json", "present_null_test", mainGo)
+}
+
+// The same schema with --omit-empty=false, where no optional field is
+// pointer-wrapped and every null therefore leaves a bare Go zero. That is the
+// configuration issue #110 reports the false rejection under.
+func TestPresentNullUnderValueFields(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	fail := func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+		os.Exit(1)
+	}
+	for _, doc := range []string{
+		` + "`" + `{"boundOnly":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"reqBoundOnly":null}` + "`" + `,
+		` + "`" + `{"nullableScalar":null,"reqBoundOnly":"ok"}` + "`" + `,
+		// Fields whose own type carries a Validate. Here they are struct values
+		// rather than pointers, so the null reaches that Validate as a zero
+		// struct missing a required key.
+		` + "`" + `{"nullableObject":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"refObject":null,"reqBoundOnly":"ok"}` + "`" + `,
+		` + "`" + `{"refList":null,"reqBoundOnly":"ok"}` + "`" + `,
+	} {
+		var v PresentNullPositions
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("%s: unmarshal: %v", doc, err)
+		}
+		if err := v.Validate(); err != nil {
+			fail("%s was rejected: %v -- with value fields the null leaves the Go zero, which is not a value the document supplied", doc, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			fail("%s: marshal: %v", doc, err)
+		}
+		var back map[string]json.RawMessage
+		if err := json.Unmarshal(out, &back); err != nil {
+			fail("%s: re-decode: %v", doc, err)
+		}
+		var probe map[string]any
+		if err := json.Unmarshal([]byte(doc), &probe); err != nil {
+			fail("%s: probe: %v", doc, err)
+		}
+		for key, val := range probe {
+			if val != nil {
+				continue
+			}
+			if got, ok := back[key]; !ok || string(got) != "null" {
+				fail("%s: %q came back as %s, want null", doc, key, string(got))
+			}
+		}
+	}
+
+	// The bound still bites on a string that is actually too short.
+	var short PresentNullPositions
+	if err := json.Unmarshal([]byte(` + "`" + `{"boundOnly":"x","reqBoundOnly":"ok"}` + "`" + `), &short); err != nil {
+		fail("unmarshal: %v", err)
+	}
+	if err := short.Validate(); err == nil {
+		fail("boundOnly=\"x\" passed a minLength of 2")
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/present_null_positions.json",
+		"present_null_values_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: false},
+	)
+}
+
+// TestContentVocabularyAssertsOnlyForStrings is the behavioural half of issue
+// #115. The check has to fire for a string the encoding or the media type
+// refuses, and must not fire at all for a value of any other JSON type: a
+// number, an object and a null satisfy {"contentEncoding":"base64"} trivially,
+// so narrowing the Go type would reject documents the schema admits.
+func TestContentVocabularyAssertsOnlyForStrings(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	fail := func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+		os.Exit(1)
+	}
+	check := func(doc string, wantErr bool) {
+		var v ContentPostureDraft7
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("%s: unmarshal: %v", doc, err)
+		}
+		err := v.Validate()
+		if wantErr && err == nil {
+			fail("%s was accepted", doc)
+		}
+		if !wantErr && err != nil {
+			fail("%s was rejected: %v", doc, err)
+		}
+		if _, mErr := json.Marshal(v); mErr != nil {
+			fail("%s: marshal: %v", doc, mErr)
+		}
+	}
+
+	// Strings the vocabulary refuses.
+	check(` + "`" + `{"blob":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `, true)
+	check(` + "`" + `{"doc":"{:}"}` + "`" + `, true)
+	check(` + "`" + `{"encodedDoc":"ezp9Cg=="}` + "`" + `, true)
+	check(` + "`" + `{"encodedDoc":"{}"}` + "`" + `, true)
+
+	// Strings it accepts.
+	check(` + "`" + `{"blob":"eyJmb28iOiAiYmFyIn0K"}` + "`" + `, false)
+	check(` + "`" + `{"doc":"{\"foo\": \"bar\"}"}` + "`" + `, false)
+	check(` + "`" + `{"encodedDoc":"eyJmb28iOiAiYmFyIn0K"}` + "`" + `, false)
+
+	// The narrowness control. Every one of these satisfies a content keyword
+	// vacuously, and a Go string could hold none of them.
+	for _, doc := range []string{
+		` + "`" + `{"blob":100}` + "`" + `,
+		` + "`" + `{"blob":null}` + "`" + `,
+		` + "`" + `{"blob":{"a":1}}` + "`" + `,
+		` + "`" + `{"blob":["x"]}` + "`" + `,
+		` + "`" + `{"blob":true}` + "`" + `,
+		` + "`" + `{"encodedDoc":100}` + "`" + `,
+		` + "`" + `{"unknownEncoding":"anything at all"}` + "`" + `,
+		` + "`" + `{"unknownEncoding":100}` + "`" + `,
+	} {
+		check(doc, false)
+	}
+
+	// A non-string is kept verbatim rather than coerced.
+	var kept ContentPostureDraft7
+	if err := json.Unmarshal([]byte(` + "`" + `{"blob":100}` + "`" + `), &kept); err != nil {
+		fail("unmarshal of a number blob: %v", err)
+	}
+	out, err := json.Marshal(kept)
+	if err != nil {
+		fail("marshal: %v", err)
+	}
+	if string(out) != ` + "`" + `{"blob":100}` + "`" + ` {
+		fail("a number blob round-tripped to %s", string(out))
+	}
+
+	// A bound beside the content keywords is carried by the same wrapper, and
+	// applies to the same string.
+	check(` + "`" + `{"boundedBlob":"YQ=="}` + "`" + `, false)
+	check(` + "`" + `{"boundedBlob":"YQ"}` + "`" + `, true)
+
+	// An element position, where the element is a plain Go string and the check
+	// rides the per-element rules rather than a named type.
+	check(` + "`" + `{"list":["eyJmb28iOiAiYmFyIn0K"]}` + "`" + `, false)
+	check(` + "`" + `{"list":["eyJmb28iOi%iYmFyIn0K"]}` + "`" + `, true)
+
+	// And a branch that states nothing but a content keyword.
+	check(` + "`" + `{"viaAllOf":"eyJmb28iOiAiYmFyIn0K"}` + "`" + `, false)
+	check(` + "`" + `{"viaAllOf":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `, true)
+	check(` + "`" + `{"viaAllOf":100}` + "`" + `, false)
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/content_posture_draft7.json", "content_draft7_test", mainGo)
+}
+
+// The other posture. From 2019-09 the content vocabulary is annotation-only by
+// definition, so every document the draft-7 types refuse must be accepted here
+// -- while the types themselves still exist and still carry a Validate, which is
+// what a bare `any` could not.
+func TestContentVocabularyAnnotatesFrom2019(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	fail := func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+		os.Exit(1)
+	}
+	for _, doc := range []string{
+		` + "`" + `{"blob":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `,
+		` + "`" + `{"doc":"{:}"}` + "`" + `,
+		` + "`" + `{"encodedDoc":"ezp9Cg=="}` + "`" + `,
+		` + "`" + `{"encodedDoc":"{}"}` + "`" + `,
+		` + "`" + `{"withSchema":"{}"}` + "`" + `,
+		` + "`" + `{"blob":100}` + "`" + `,
+		` + "`" + `{"list":["eyJmb28iOi%iYmFyIn0K"]}` + "`" + `,
+		` + "`" + `{"viaAllOf":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `,
+	} {
+		var v ContentPosture2020
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("%s: unmarshal: %v", doc, err)
+		}
+		if err := v.Validate(); err != nil {
+			fail("%s was rejected: %v -- the content vocabulary annotates from 2019-09 and asserts nothing", doc, err)
+		}
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/content_posture_2020.json", "content_2020_test", mainGo)
+}
+
+// TestAllOfOverflowPositionsAreChecked is the behavioural half of issue #112.
+// Two allOf branches each bounding the object's values produced map[string]any
+// in a property, an element or a map value, with neither bound checked anywhere.
+//
+// The controls are what the fix must not cost. A value of a type the bound says
+// nothing about -- a string, a null, an object -- has to keep passing, which is
+// exactly what a widened merge into the typed overflow map would have broken.
+func TestAllOfOverflowPositionsAreChecked(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	fail := func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+		os.Exit(1)
+	}
+	check := func(doc string, wantErr bool) {
+		var v AllOfOverflowPositions
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			if wantErr {
+				return
+			}
+			fail("%s: unmarshal: %v", doc, err)
+		}
+		err := v.Validate()
+		if wantErr && err == nil {
+			fail("%s was accepted; both branches bound every value", doc)
+		}
+		if !wantErr && err != nil {
+			fail("%s was rejected: %v", doc, err)
+		}
+	}
+
+	// Each branch bites, in every position.
+	check(` + "`" + `{"twoBranches":{"x":1}}` + "`" + `, true)
+	check(` + "`" + `{"twoBranches":{"x":20}}` + "`" + `, true)
+	check(` + "`" + `{"viaRef":{"x":1}}` + "`" + `, true)
+	check(` + "`" + `{"viaRef":{"x":20}}` + "`" + `, true)
+	check(` + "`" + `{"items":[{"x":20}]}` + "`" + `, true)
+	check(` + "`" + `{"namedKey":{"b":20}}` + "`" + `, true)
+
+	// And a value in range passes.
+	check(` + "`" + `{"twoBranches":{"x":7}}` + "`" + `, false)
+	check(` + "`" + `{"viaRef":{"x":7}}` + "`" + `, false)
+	check(` + "`" + `{"items":[{"x":7}]}` + "`" + `, false)
+	check(` + "`" + `{"twoBranches":{}}` + "`" + `, false)
+	check(` + "`" + `{}` + "`" + `, false)
+
+	// The narrowness control. "minimum" says nothing about a string, a null or
+	// an object, so each of these satisfies both branches. A typed overflow map
+	// would refuse them at decode time.
+	for _, doc := range []string{
+		` + "`" + `{"twoBranches":{"x":"abc"}}` + "`" + `,
+		` + "`" + `{"twoBranches":{"x":null}}` + "`" + `,
+		` + "`" + `{"twoBranches":{"x":{"a":1}}}` + "`" + `,
+		` + "`" + `{"viaRef":{"x":["y"]}}` + "`" + `,
+		` + "`" + `{"items":[{"x":"abc"}]}` + "`" + `,
+	} {
+		check(doc, false)
+	}
+
+	// The accept-control: the lone-branch spelling keeps the typed overflow map
+	// the merge already produced, and its bound still bites.
+	check(` + "`" + `{"soleBranch":{"x":7}}` + "`" + `, false)
+	check(` + "`" + `{"soleBranch":{"x":1}}` + "`" + `, true)
+
+	// Round-trip: the wrapper keeps the bytes it was handed.
+	var v AllOfOverflowPositions
+	doc := ` + "`" + `{"twoBranches":{"x":7},"viaRef":{"y":"abc"}}` + "`" + `
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("%s: unmarshal: %v", doc, err)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshal: %v", err)
+	}
+	if string(out) != doc {
+		fail("%s round-tripped to %s", doc, string(out))
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t, "testdata/schemas/regression/allof_overflow_positions.json", "allof_overflow_test", mainGo)
 }

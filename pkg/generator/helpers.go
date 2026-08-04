@@ -18,6 +18,7 @@ type HelperSet struct {
 	Integer            bool // jsonInteger and the shape-preserving converters
 	NullCheck          bool // jsonNullRule and the recursive walker that applies one
 	Format             bool // schemagenFormat* -- one function per asserted format
+	Content            bool // schemagenContentString -- the content vocabulary's decode-and-parse check
 
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
@@ -32,7 +33,8 @@ type HelperSet struct {
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
-		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname
+		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname &&
+		!h.Content
 }
 
 // Merge folds another set into this one.
@@ -46,6 +48,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
+	h.Content = h.Content || other.Content
 	h.FormatHostname = h.FormatHostname || other.FormatHostname
 }
 
@@ -122,6 +125,12 @@ func HelpersReferencedBy(src string) HelperSet {
 	// block is emitted whole, so the prefix pulls all of it in.
 	if strings.Contains(src, "schemagenFormat") {
 		set.Format = true
+	}
+	// The content check is one function, and its name appears at every call
+	// site. It is a block of its own rather than part of the format block
+	// because it needs encoding/base64, which nothing else here does.
+	if strings.Contains(src, "schemagenContentString(") {
+		set.Content = true
 	}
 	// The hostname block is separate because it is the only one needing
 	// x/net/idna, so it is matched by the four calls that reach it rather than

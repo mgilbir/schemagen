@@ -124,6 +124,13 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.FormatHostname, "unicode/utf8")
 	add(helpers.FormatHostname, "fmt")
 	add(helpers.FormatHostname, "golang.org/x/net/idna")
+	// The content check is its own block for the same kind of reason, one
+	// import smaller: encoding/base64 is standard library, but nothing else
+	// here needs it and a package whose schemas name no contentEncoding should
+	// not carry the function that uses it. See HelperSet.Content.
+	add(helpers.Content, "encoding/base64")
+	add(helpers.Content, "encoding/json")
+	add(helpers.Content, "fmt")
 
 	data := helperFileData{
 		PackageName: packageName,

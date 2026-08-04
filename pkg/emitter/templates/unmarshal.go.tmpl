@@ -18,6 +18,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if $struct.NeedsRawProps}}
 	{{$recv}}._jsonRawProps = nil
 	{{- end}}
+	{{- if $struct.NeedsJSONNulls}}
+	{{$recv}}._jsonNulls = nil
+	{{- end}}
 	{{- if $struct.AcceptNonObject}}
 	{{$recv}}._nonObject = false
 	{{$recv}}._rawNonObject = nil
@@ -43,6 +46,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	{{- end}}
+	{{- if $struct.OneOfIsWholeValue}}
+	{{- /* The union is the whole document, so there is no struct to decode it
+	       into first -- and attempting one would refuse every scalar the schema
+	       allows before a branch was tried. See OneOfIsWholeValue. */}}
+	{{- else}}
 	type Alias {{$struct.Name}}
 	aux := &struct {
 		*Alias
@@ -66,6 +74,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
+	{{- end}}
 	{{- if $struct.HasIntegerDecodes}}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -324,7 +333,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks}}
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks $struct.NeedsJSONNulls}}
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
@@ -362,6 +371,26 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- if $struct.NeedsRawProps}}
 		{{$recv}}._jsonRawProps = raw
+		{{- end}}
+		{{- if $struct.NeedsJSONNulls}}
+		// The properties whose schema permits a null. The decode above has
+		// already turned one into a nil pointer, a nil collection or an
+		// untouched zero -- the same state an absent property leaves -- so the
+		// document's own bytes are the only place the difference still exists.
+		// Validate reads this to pass over the keywords a null satisfies
+		// vacuously, and MarshalJSON to write the null back. See issue #110.
+		for _, _nullKey := range []string{
+			{{- range $struct.NullPresenceKeys}}
+			{{printf "%q" .}},
+			{{- end}}
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				if {{$recv}}._jsonNulls == nil {
+					{{$recv}}._jsonNulls = make(map[string]bool, 1)
+				}
+				{{$recv}}._jsonNulls[_nullKey] = true
+			}
+		}
 		{{- end}}
 		{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
 		knownFields := map[string]bool{

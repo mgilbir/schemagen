@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConstraintOnlyPositions",
+  "type": "object",
+  "properties": {
+    "prop": {"not": {"type": "object", "required": ["foo"]}},
+    "list": {"type": "array", "items": {"not": {"type": "object", "required": ["foo"]}}},
+    "map": {
+      "type": "object",
+      "additionalProperties": {"if": {"type": "string"}, "then": {"minLength": 3}}
+    },
+    "tuple": {"type": "array", "prefixItems": [{"not": {"type": "string"}}]},
+    "branch": {"anyOf": [{"minimum": 3}, {"type": "string"}]},
+    "union": {"type": ["string", "number"]},
+    "nulls": {"type": "array", "items": {"type": "null"}},
+    "unevaluated": {
+      "anyOf": [
+        {"properties": {"b": {"type": "integer"}}, "unevaluatedProperties": false},
+        {"required": ["a"]}
+      ]
+    }
+  }
+}

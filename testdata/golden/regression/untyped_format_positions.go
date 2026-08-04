@@ -817,6 +817,7 @@ type UntypedFormatPositions struct {
 	Wrapped              *UntypedFormatPositionsWrapped            `json:"wrapped,omitempty"`
 	Branch               isUntypedFormatPositions_Branch           `json:"-"`
 	AdditionalProperties map[string]json.RawMessage                `json:"-"`
+	_jsonNulls           map[string]bool                           // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 // isUntypedFormatPositions_Branch is a sealed interface for the Branch field of UntypedFormatPositions.
@@ -864,6 +865,7 @@ func (u *UntypedFormatPositions) GetBoolean() bool {
 
 func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 	u.AdditionalProperties = nil
+	u._jsonNulls = nil
 	u.Branch = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type UntypedFormatPositions")
@@ -973,6 +975,22 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
 			}
 		}
+		// The properties whose schema permits a null. The decode above has
+		// already turned one into a nil pointer, a nil collection or an
+		// untouched zero -- the same state an absent property leaves -- so the
+		// document's own bytes are the only place the difference still exists.
+		// Validate reads this to pass over the keywords a null satisfies
+		// vacuously, and MarshalJSON to write the null back. See issue #110.
+		for _, _nullKey := range []string{
+			"branch",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				if u._jsonNulls == nil {
+					u._jsonNulls = make(map[string]bool, 1)
+				}
+				u._jsonNulls[_nullKey] = true
+			}
+		}
 		knownFields := map[string]bool{
 			"buckets": true,
 			"chain":   true,
@@ -1031,6 +1049,31 @@ func (u UntypedFormatPositions) MarshalJSON() ([]byte, error) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
+	}
+	// The properties the source document wrote as null. Nothing left in the
+	// decoded value says they were there -- a null leaves the nil pointer or the
+	// untouched zero an absent property leaves -- so writing them back has to
+	// come from the record UnmarshalJSON kept. See issue #110.
+	//
+	// Only where the field still holds what the null left it holding. A caller
+	// who decoded a null and then assigned a value has said something newer than
+	// the document did, and writing the null over it would discard the
+	// assignment; the record is about a value nobody has touched. What the
+	// untouched state looks like is read off a zero of this very struct rather
+	// than from a per-field literal, so a field type's own MarshalJSON decides
+	// for itself and nothing here has to know how it spells "empty".
+	if len(u._jsonNulls) > 0 {
+		var _zero Alias
+		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
+			var _zeroObj map[string]json.RawMessage
+			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
+				for _k := range u._jsonNulls {
+					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
+						obj[_k] = json.RawMessage("null")
+					}
+				}
+			}
+		}
 	}
 	for k, v := range u.AdditionalProperties {
 		obj[k] = v

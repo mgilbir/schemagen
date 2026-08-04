@@ -41,45 +41,47 @@ func FuncMap() template.FuncMap {
 			}
 			return false
 		},
-		"requiredFieldsList":    requiredFieldsListFunc,
-		"hasRequiredFields":     func(fields []string) bool { return len(fields) > 0 },
-		"isRawMessage":          isRawMessageFunc,
-		"goStringLiteral":       goStringLiteralFunc,
-		"goStringQuote":         goStringQuoteFunc,
-		"ecmaPattern":           ecmaPatternLiteralFunc,
-		"dynNum":                dynNumFunc,
-		"hasManualFields":       hasManualFieldsFunc,
-		"ppTypeValue":           ppTypeValueFunc,
-		"ppTypeValues":          ppTypeValuesFunc,
-		"ppTypeValuesMsg":       ppTypeValuesMsgFunc,
-		"deref":                 derefIntFunc,
-		"validationFeatures":    validationFeaturesFunc,
-		"stringList":            stringListFunc,
-		"validationValue":       validationValueFunc,
-		"validationNonNil":      validationNonNilFunc,
-		"validationStringSet":   validationStringSetFunc,
-		"jsonErrorName":         jsonErrorNameFunc,
-		"mkCondCtx":             mkCondCtxFunc,
-		"mkItemCtx":             mkItemCtxFunc,
-		"mkContainsCtx":         mkContainsCtxFunc,
-		"mkTupleCtx":            mkTupleCtxFunc,
-		"mkTupleCtxIn":          mkTupleCtxInFunc,
-		"mkTupleCase":           mkTupleCaseFunc,
-		"mkUnevalItemsCtx":      mkUnevalItemsCtxFunc,
-		"mkUnevalItemsCtxIn":    mkUnevalItemsCtxInFunc,
-		"mkItemLevelCtx":        mkItemLevelCtxFunc,
-		"mkBigIntVariantCtx":    mkBigIntVariantCtxFunc,
-		"mkAliasFormatCtx":      mkAliasFormatCtxFunc,
-		"mkStringFormatCtx":     mkStringFormatCtxFunc,
-		"mkStringFormatCtxArgs": mkStringFormatCtxArgsFunc,
-		"formatElemExpr":        formatElemExprFunc,
-		"formatHelperName":      formatHelperNameFunc,
-		"formatValueExpr":       formatValueExprFunc,
-		"itemRange":             itemRangeFunc,
-		"itemElem":              itemElemFunc,
-		"itemPath":              itemPathFunc,
-		"itemArgs":              itemArgsFunc,
-		"argPrefix":             argPrefixFunc,
+		"requiredFieldsList":     requiredFieldsListFunc,
+		"hasRequiredFields":      func(fields []string) bool { return len(fields) > 0 },
+		"isRawMessage":           isRawMessageFunc,
+		"goStringLiteral":        goStringLiteralFunc,
+		"goStringQuote":          goStringQuoteFunc,
+		"ecmaPattern":            ecmaPatternLiteralFunc,
+		"dynNum":                 dynNumFunc,
+		"hasManualFields":        hasManualFieldsFunc,
+		"ppTypeValue":            ppTypeValueFunc,
+		"ppTypeValues":           ppTypeValuesFunc,
+		"ppTypeValuesMsg":        ppTypeValuesMsgFunc,
+		"deref":                  derefIntFunc,
+		"validationFeatures":     validationFeaturesFunc,
+		"stringList":             stringListFunc,
+		"validationValue":        validationValueFunc,
+		"validationNonNil":       validationNonNilFunc,
+		"validationStringSet":    validationStringSetFunc,
+		"jsonErrorName":          jsonErrorNameFunc,
+		"mkCondCtx":              mkCondCtxFunc,
+		"mkItemCtx":              mkItemCtxFunc,
+		"mkContainsCtx":          mkContainsCtxFunc,
+		"mkTupleCtx":             mkTupleCtxFunc,
+		"mkTupleCtxIn":           mkTupleCtxInFunc,
+		"mkTupleCase":            mkTupleCaseFunc,
+		"mkUnevalItemsCtx":       mkUnevalItemsCtxFunc,
+		"mkUnevalItemsCtxIn":     mkUnevalItemsCtxInFunc,
+		"mkItemLevelCtx":         mkItemLevelCtxFunc,
+		"mkBigIntVariantCtx":     mkBigIntVariantCtxFunc,
+		"mkAliasFormatCtx":       mkAliasFormatCtxFunc,
+		"mkStringFormatCtx":      mkStringFormatCtxFunc,
+		"mkStringFormatCtxArgs":  mkStringFormatCtxArgsFunc,
+		"mkStringContentCtx":     mkStringContentCtxFunc,
+		"mkStringContentCtxArgs": mkStringContentCtxArgsFunc,
+		"formatElemExpr":         formatElemExprFunc,
+		"formatHelperName":       formatHelperNameFunc,
+		"formatValueExpr":        formatValueExprFunc,
+		"itemRange":              itemRangeFunc,
+		"itemElem":               itemElemFunc,
+		"itemPath":               itemPathFunc,
+		"itemArgs":               itemArgsFunc,
+		"argPrefix":              argPrefixFunc,
 	}
 }
 
@@ -269,6 +271,40 @@ func mkStringFormatCtxFunc(expr, path string, value any, stringBacked bool) Stri
 
 func mkStringFormatCtxArgsFunc(expr, path, args string, value any, stringBacked bool) StringFormatContext {
 	return StringFormatContext{Expr: expr, Path: path, Args: args, Value: value, StringBacked: stringBacked}
+}
+
+// StringContentContext is passed to the string_content_check template, which
+// writes the content vocabulary's assertion over a Go expression of type string.
+//
+// The two keywords arrive as one rule and are emitted as one call, because
+// contentMediaType judges the bytes contentEncoding produced. See
+// generator.ContentCheck.
+//
+// Args is what an enclosing loop contributes to the error path, on the same
+// terms as StringFormatContext.Args: an element check names its index, so its
+// path is "items[%d]" and cannot be printed without one.
+type StringContentContext struct {
+	Expr      string
+	Path      string
+	Args      string
+	Encoding  string
+	MediaType string
+}
+
+func contentCtx(expr, path, args string, rule generator.ValidationRule) StringContentContext {
+	ctx := StringContentContext{Expr: expr, Path: path, Args: args}
+	if check, ok := rule.Value.(generator.ContentCheck); ok {
+		ctx.Encoding, ctx.MediaType = check.Encoding, check.MediaType
+	}
+	return ctx
+}
+
+func mkStringContentCtxFunc(expr, path string, rule generator.ValidationRule) StringContentContext {
+	return contentCtx(expr, path, "", rule)
+}
+
+func mkStringContentCtxArgsFunc(expr, path, args string, rule generator.ValidationRule) StringContentContext {
+	return contentCtx(expr, path, args, rule)
 }
 
 // formatElemExprFunc renders a container element as the value its format helper
