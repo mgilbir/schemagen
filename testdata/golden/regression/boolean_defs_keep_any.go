@@ -7,18 +7,54 @@ import (
 	"fmt"
 )
 
-type No any
+// No accepts any JSON value and validates a root-level "not" constraint.
+type No struct {
+	_raw json.RawMessage
+}
+
+func (n *No) UnmarshalJSON(data []byte) error {
+	n._raw = append(n._raw[:0], data...)
+	return nil
+}
+
+func (n No) MarshalJSON() ([]byte, error) {
+	if len(n._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return n._raw, nil
+}
+
+func (n No) Raw() json.RawMessage { return n._raw }
+
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (n No) IsZero() bool { return len(n._raw) == 0 }
+
+func (n No) String() string { return string(n._raw) }
+
+// Validate checks No against its JSON Schema "not" constraint.
+func (n No) Validate() error {
+	// No value was present. A constraint applies to a value that is there; an
+	// absent optional property is the parent's business (required), not this
+	// type's.
+	if len(n._raw) == 0 {
+		return nil
+	}
+	return fmt.Errorf("not: value is forbidden (not schema matches all values)")
+}
 
 type Yes any
 
 type BooleanDefsKeepAny struct {
 	A                    Yes                        `json:"a,omitempty"`
-	B                    No                         `json:"b,omitempty"`
+	B                    No                         `json:"b,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
+	b._jsonKeys = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type BooleanDefsKeepAny")
 	}
@@ -36,6 +72,10 @@ func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		b._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			b._jsonKeys[_k] = true
 		}
 		knownFields := map[string]bool{
 			"a": true,
@@ -77,8 +117,14 @@ func (b BooleanDefsKeepAny) MarshalJSON() ([]byte, error) {
 
 // Validate checks BooleanDefsKeepAny against its JSON Schema constraints.
 func (b BooleanDefsKeepAny) Validate() error {
-	if b.B != nil {
-		return fmt.Errorf("b: property is forbidden (not: {})")
+	// An optional property the source JSON did not carry left its Go zero
+	// behind, which is not a value the schema ever saw. _jsonKeys records the
+	// keys the JSON had; when nil the value was not built from JSON and
+	// presence is unknowable, so the check still runs.
+	if b._jsonKeys == nil || b._jsonKeys["b"] {
+		if err := b.B.Validate(); err != nil {
+			return fmt.Errorf("b.%w", err)
+		}
 	}
 	return nil
 }

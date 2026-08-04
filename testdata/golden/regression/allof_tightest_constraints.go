@@ -3,11 +3,39 @@
 package testpkg
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 )
 
-type AllOfTightestConstraints float64
+type AllOfTightestConstraints int64
+
+func (a *AllOfTightestConstraints) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfTightestConstraints")
+	}
+	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
+	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
+	if len(data) > 0 && data[0] == '"' {
+		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfTightestConstraints")
+	}
+	var _n json.Number
+	if _err := json.Unmarshal(data, &_n); _err != nil {
+		return _err
+	}
+	if _i, _iErr := _n.Int64(); _iErr == nil {
+		*a = AllOfTightestConstraints(_i)
+		return nil
+	}
+	// Try float with zero fractional part (e.g., 1.0).
+	if _f, _fErr := _n.Float64(); _fErr == nil {
+		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
+			*a = AllOfTightestConstraints(int64(_f))
+			return nil
+		}
+	}
+	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+}
 
 // Validate checks AllOfTightestConstraints against its JSON Schema constraints.
 func (a AllOfTightestConstraints) Validate() error {

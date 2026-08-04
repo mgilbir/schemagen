@@ -313,24 +313,15 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		}
 	}
 
-	// Boolean false schema at root level → nothing is valid. Generate a
-	// NotSchemaDef that rejects everything (same as {"not": {}}).
-	// This is only applied to the root schema; definitions with boolean
-	// false schemas are left as-is to avoid type conflicts when referenced.
-	if s.IsFalseSchema() {
-		g.generated[g.rootTypeName] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
-			Name:        g.rootTypeName,
-			Description: s.Description,
-			IsForbidden: true,
-		})
-	} else {
-		// Process the root type. This handles objects, compositions, primitive types
-		// with validation constraints, enums, arrays, and any other schema that can
-		// produce a Go type definition.
-		if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
-			return nil, fmt.Errorf("generating root type: %w", err)
-		}
+	// Process the root type. This handles objects, compositions, primitive types
+	// with validation constraints, enums, arrays, and any other schema that can
+	// produce a Go type definition -- including a boolean `false` root, which
+	// generateTypeDef now answers with the same everything-is-forbidden wrapper
+	// this used to special-case here. Keeping the one arm is the point: two
+	// copies of the rule are what let the root and the $defs entry disagree
+	// about the same schema in the first place.
+	if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
+		return nil, fmt.Errorf("generating root type: %w", err)
 	}
 
 	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
@@ -858,6 +849,24 @@ func (g *Generator) addRequiredImports() {
 			}
 			if usesJSONType(ad.Underlying) {
 				needsJSON = true
+			}
+			// Everything below is about code that hangs off a method, and an
+			// alias whose underlying chain resolves to a pointer or an interface
+			// gets none: Go forbids the receiver, so resolveAliasMethodability
+			// marks it and the template emits the bare declaration alone.
+			// Counting its rules anyway imports packages nothing then uses, and
+			// the file does not compile. `type Root *string` carrying a
+			// minLength -- which is what {"type":["string","null"],"minLength":2}
+			// produces -- was enough to reach it.
+			//
+			// Several arms below already ask this question one at a time. Asking
+			// it once here covers the ones that did not, and it is why no rule
+			// list needs its own copy of the test. Nothing is skipped that the
+			// declaration itself needs: the three underlying-type checks above
+			// are about the type written on the right of the `=`, not about a
+			// method, and they stay.
+			if !ad.CanHaveMethods() {
+				continue
 			}
 			if ad.NeedsNullCheck && ad.CanHaveMethods() {
 				needsJSON = true // UnmarshalJSON uses json.Unmarshal
@@ -1519,6 +1528,34 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	defer delete(g.nodesInProgress, inProgressNode)
 	g.config.CrossPackage.RecordType(s, g.config.ImportPath, name)
 
+	// The boolean `false` schema: no instance satisfies it, anywhere it appears.
+	// Emitted as the same wrapper a root-level `false` has always produced, so
+	// the answer no longer depends on the position the schema was reached from.
+	//
+	// The root arm above used to be the only one, on the reasoning that a
+	// definition left alone "avoids type conflicts when referenced". It avoided
+	// nothing: every other arm here declines a boolean schema -- it carries no
+	// enum, no $ref, no type and no applicator -- so `false` fell all the way to
+	// the `any` fallback and came out `type B any`, which cannot carry a Validate
+	// at all. A $ref to it then aliased that, so {"$ref":"#/$defs/b"} over
+	// {"b":false} accepted every document, including the ones the schema exists
+	// to reject. The referencing arm below already re-generates the referrer
+	// directly from a resolved NotSchemaDef rather than aliasing it, which is
+	// what carries the rejection through the $ref.
+	//
+	// Boolean `true` is deliberately left to fall through: it admits every
+	// instance, `type B any` is an exact description of that, and giving it a
+	// Validate would be inventing a check the schema does not state.
+	if s.IsFalseSchema() {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+
 	// Const -> treat as single-element enum for validation purposes.
 	if g.validationKeywordsEnabled() {
 		s = promoteConstToEnum(s)
@@ -1530,12 +1567,17 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// In draft2019-09+, $ref is an applicator that works alongside sibling keywords.
-	// When a schema has both $ref and structural keywords (properties, patternProperties,
-	// unevaluatedProperties, additionalProperties, or array-structural keywords like
-	// prefixItems, items, unevaluatedItems), synthesize an implicit allOf so both
-	// the $ref target and local keywords are merged into a single definition.
-	if s.Ref != "" && !g.refOverridesSiblingsForSchema(s) && (hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
-		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil) {
+	// When a schema has both $ref and a sibling keyword that has to survive the
+	// reference (see hasRefStructuralSiblings), synthesize an implicit allOf so
+	// both the $ref target and the local keywords are merged into a single
+	// definition.
+	//
+	// The condition is the predicate rather than a second copy of its keyword
+	// list: the list used to be written out twice, here and in
+	// hasRefStructuralSiblings, and the two decide the same question -- this arm
+	// claims exactly the schemas the ref-only arms below decline. Two copies is
+	// how one of them came to be widened without the other.
+	if s.Ref != "" && !g.refOverridesSiblingsForSchema(s) && hasRefStructuralSiblings(s) {
 		refSub := &schema.Schema{
 			Ref:          s.Ref,
 			BaseURI:      s.BaseURI,
@@ -1553,7 +1595,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// anyOf/oneOf with only boolean false sub-schemas → nothing can match → forbidden.
-	if len(s.AnyOf) > 0 && !hasProperties(s) && allSubsFalse(s.AnyOf) {
+	if len(s.AnyOf) > 0 && !hasProperties(s) && g.allSubsFalse(s.AnyOf) {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
@@ -1565,7 +1607,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if len(s.OneOf) > 0 && !hasProperties(s) && len(s.Type) == 0 {
 		// oneOf: all false → nothing matches → forbidden.
 		// oneOf: multiple true sub-schemas → multiple match → forbidden (oneOf requires exactly one).
-		trueCount, falseCount := countBooleanSchemas(s.OneOf)
+		trueCount, falseCount := g.countBooleanSchemas(s.OneOf)
 		total := len(s.OneOf)
 		if falseCount == total {
 			// All false → nothing matches
@@ -2630,11 +2672,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		goFieldName := goFieldNames[propName]
 		// Boolean schema false → property is forbidden (any value is invalid).
 		// Also check if a $ref/$dynamicRef resolves to a false boolean schema.
+		//
+		// Not when the field's own type is a raw-value wrapper, on the reasoning
+		// the filter below already applies to every other rule: the rule is
+		// emitted as `field != nil` and a wrapper struct is not nilable, so it
+		// does not compile there. Nothing is lost. The wrapper is the forbidding
+		// type generated from this very schema, and its Validate -- dispatched
+		// from here like any other field's -- says the same thing more
+		// completely: `!= nil` misses a property present with a JSON null, which
+		// a `false` schema forbids too.
 		if propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema) {
-			validations = append(validations, ValidationRule{
-				FieldName: goFieldName, JSONName: propName,
-				RuleType: "forbidden", Value: true,
-			})
+			if !g.isRawValueWrapperType(fieldTypes[goFieldName]) {
+				validations = append(validations, ValidationRule{
+					FieldName: goFieldName, JSONName: propName,
+					RuleType: "forbidden", Value: true,
+				})
+			}
 			continue
 		}
 		// In draft3-7, $ref overrides all sibling keywords — skip validation
@@ -3069,7 +3122,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 
 	// If any allOf sub-schema is boolean false, nothing can satisfy all constraints.
 	// Generate a forbidden type (NotSchemaDef).
-	if allOfContainsFalseSchema(s.AllOf) {
+	if g.allOfContainsFalseSchema(s.AllOf) {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
@@ -3237,6 +3290,51 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// fully. generateStructDef builds the pattern bucket whether or not any
 	// property was declared beside it.
 	if len(merged.Properties) == 0 && len(merged.PatternProperties) == 0 {
+		// The merge only ever takes a type off a *branch*, so a type the parent
+		// declared beside its allOf has not reached `merged` at all. It is still
+		// a declared type and it still binds, and every arm below reads its
+		// answer off `merged` -- resolveType for the Go type, schemaAllowsNull
+		// for the decoder's null check, extractAliasValidationRules for the
+		// rules, primarySchemaType for which arm runs. Two of those arms had
+		// grown a local patch that re-read s.Type for their own branch decision
+		// while still handing `merged` to resolveType, which is how
+		// {"type":"string","allOf":[{}]} came out `type Root any`: the arm knew
+		// it was a string and the type it asked for did not.
+		//
+		// Putting the type on the merged schema once is what makes the answer
+		// consistent, and it is what carries a declared type through the
+		// synthesized allOf a $ref-beside-a-type is rewritten into (#118) --
+		// without it the merge produced a wrapper that accepted every instance.
+		//
+		// Only inside this block: a merge that produced properties goes to
+		// generateStructDef, which has its own reading of the parent and is not
+		// part of the defect.
+		if len(merged.Type) == 0 && len(s.Type) > 0 {
+			merged.Type = s.Type
+			merged.TypeSchemas = s.TypeSchemas
+		}
+		// The schema the array arms below read their per-position checks from.
+		// Normally the merged one; when nothing in it describes the array's
+		// positions, a lone branch that does. See soleBranchArrayKeywords.
+		//
+		// It is the branch *node*, not a copy of its keywords onto `merged`.
+		// Which keywords a schema even has depends on the dialect it is read
+		// under -- 2019-09 has no prefixItems and must ignore one written there
+		// -- and a node carries its dialect through its own $id and $schema,
+		// which draftForSchema reads. A copy onto the synthesized `merged` would
+		// be read under the *parent's* dialect instead, and
+		// optional/cross-draft says that is wrong in both directions: a 2019-09
+		// document referencing a 2020-12 one must honour its prefixItems, and a
+		// 2020-12 document referencing a 2019-09 one must ignore it.
+		arraySchema := merged
+		if !statesArrayStructure(merged) {
+			if src := g.soleBranchArrayKeywords(s.AllOf, make(map[*schema.Schema]bool)); src != nil {
+				arraySchema = src
+				if len(merged.Type) == 0 {
+					merged.Type = src.Type
+				}
+			}
+		}
 		// An enum a branch contributed is the whole of what that branch asserts,
 		// and it is the one keyword nothing downstream can infer a type from. So
 		// {"allOf":[{"$ref":"#/$defs/SomeEnum"}]} reached the `any` fall-through
@@ -3270,14 +3368,6 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		}
 
 		primaryType := primarySchemaType(merged)
-		// The merge only ever takes a type off a branch, so a type the *parent*
-		// declared beside its allOf has not reached `merged`. It is still a
-		// declared type and still binds -- the propertyless-object arm below
-		// already restores it for the same reason -- and reading it here is what
-		// keeps the distinction that follows honest.
-		if primaryType == "" && len(s.Type) > 0 {
-			primaryType = primarySchemaType(s)
-		}
 		// Whether the type was *declared* or *inferred from a bound* decides the
 		// shape, exactly as it does in generateTypeDef: a declared type may be
 		// enforced by the Go type itself, an inferred one may not. A keyword
@@ -3294,6 +3384,67 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				inferredFromConstraints = true
 			}
 		}
+		if primaryType == "array" && !inferredFromConstraints {
+			// A *declared* array type is carried by the Go type itself, exactly
+			// as it is when there is no allOf: `type X []any` refuses a string
+			// in the decoder. The wrapper the inferred arm below emits cannot,
+			// because its whole contract is to accept a non-matching instance
+			// silently -- right for a type guessed from a bound, wrong for one
+			// the schema states. This arm did not exist, so every declared array
+			// beside an allOf got the wrapper: {"type":"array","allOf":[{}]}
+			// accepted "foo", and so did the synthesized allOf that
+			// {"type":"array","$ref":...} is rewritten into (#118), which is why
+			// putting the type on `merged` was not on its own enough to fix it.
+			//
+			// The body is generateTypeDef's own non-inferred array arm, reading
+			// `arraySchema` for the array's positions, `merged` for the bounds
+			// and the null rule, and `s` for the anyOf/oneOf siblings of the
+			// allOf -- the same split the inferred arm makes.
+			g.generated[name] = true
+			goType := g.resolveType(merged, name)
+			var rules []ValidationRule
+			var anyOfVariants [][]ValidationRule
+			var oneOfVariants [][]ValidationRule
+			var tupleItems []TupleItemDef
+			var tupleTail *TupleItemDef
+			var containsDef *ContainsDef
+			var minContains, maxContains *int
+			var unevalItems *UnevaluatedItemsDef
+			var itemValidations []ItemValidationDef
+			if g.validationKeywordsEnabled() {
+				rules = extractAliasValidationRules(merged, goType)
+				anyOfVariants = extractAnyOfVariantRules(s, goType)
+				oneOfVariants = extractOneOfVariantRules(s, goType)
+				tupleItems = g.buildTupleItemDefs(arraySchema, name)
+				tupleTail = g.buildTupleTailDef(arraySchema, name)
+				containsDef, minContains, maxContains = extractContainsDef(arraySchema)
+				unevalItems = g.buildUnevaluatedItemsDef(merged)
+				// The alias *is* the slice, so the per-element checks hang off
+				// the receiver rather than off a field.
+				if iv := g.buildItemValidation(name, "", "", goType, arraySchema); iv != nil {
+					itemValidations = append(itemValidations, *iv)
+				}
+			}
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				Name:             name,
+				Underlying:       goType,
+				Description:      s.Description,
+				Validations:      rules,
+				AnyOfVariants:    anyOfVariants,
+				OneOfVariants:    oneOfVariants,
+				TupleItems:       tupleItems,
+				TupleTail:        tupleTail,
+				ItemValidations:  itemValidations,
+				Contains:         containsDef,
+				MinContains:      minContains,
+				MaxContains:      maxContains,
+				UnevaluatedItems: unevalItems,
+				ValidateAs:       g.firstAllOfArrayAliasValidateAs(s.AllOf),
+				NeedsNullCheck:   !schemaAllowsNull(merged),
+				NullCheck:        g.aliasNullCheck(goType, merged),
+			})
+			return nil
+		}
 		if primaryType == "array" {
 			// Array type — extract item-level constraints and generate InferredAliasDef
 			// so that per-element validation works (items, prefixItems, contains, etc.).
@@ -3308,8 +3459,8 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
 			g.generated[name] = true
-			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(merged, name)
-			containsDef, minContains, maxContains := extractContainsDef(merged)
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(arraySchema, name)
+			containsDef, minContains, maxContains := extractContainsDef(arraySchema)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -3429,17 +3580,10 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// nothing about the object keeps the `any` alias, which is a smaller and
 		// more convenient type for callers than an empty struct.
 		if primaryType == "object" && g.propertylessObjectHasChecks(merged) {
-			// The merge only ever takes a type off a branch, so a type the parent
-			// declared itself has not reached `merged`. It decides whether a
-			// non-object instance is silently accepted, and dropping it would let
-			// a string through a schema that says "type":"object".
-			objSchema := merged
-			if len(objSchema.Type) == 0 && len(s.Type) > 0 {
-				withType := *merged
-				withType.Type = s.Type
-				objSchema = &withType
-			}
-			g.generatePropertylessObjectDef(name, objSchema)
+			// merged already carries the parent's declared type (seeded at the
+			// top of this block), which is what decides whether a non-object
+			// instance is silently accepted.
+			g.generatePropertylessObjectDef(name, merged)
 			return nil
 		}
 		// No type inferrable → alias to `any` (permissive fallback), unless the
@@ -3536,6 +3680,83 @@ func (g *Generator) soleBranchAdditionalProperties(allOf []*schema.Schema, onPat
 		}
 	}
 	return found
+}
+
+// soleBranchArrayKeywords returns the one schema in an allOf that states any
+// array-structural keyword, and nil when none does or more than one does.
+//
+// It exists for the same reason soleBranchAdditionalProperties does, and closes
+// the gap on the same terms. The merge deliberately leaves a branch's items,
+// prefixItems, additionalItems and contains alone, because those keywords are
+// scoped to the schema object stating them: a parent's `items` governs what
+// follows the parent's *own* prefix, so folding a branch's prefixItems in beside
+// it would change which elements the parent's keyword reaches.
+//
+// When the parent states none of them the objection disappears -- there is no
+// parent prefix for a merged one to shift -- and the branch's keywords speak
+// about exactly the array the merged type decodes. {"type":"array","$ref":X}
+// with X carrying prefixItems is that case, and it is the shape
+// draft2019-09/optional/cross-draft reaches: the type was enforced and the
+// prefix was not, so [1,2,3] passed a schema whose first element must be a
+// string.
+//
+// A whole schema object is returned rather than keyword by keyword, because the
+// keywords are scoped together: prefixItems and items only mean what they mean
+// relative to each other. Two branches stating them answer nil rather than
+// picking, exactly as two additionalProperties do -- satisfying both is an allOf
+// of the two, which one merged type cannot express.
+func (g *Generator) soleBranchArrayKeywords(allOf []*schema.Schema, onPath map[*schema.Schema]bool) *schema.Schema {
+	var found *schema.Schema
+	take := func(s *schema.Schema) bool {
+		if s == nil || !statesArrayStructure(s) {
+			return true
+		}
+		if found != nil && found != s {
+			return false
+		}
+		found = s
+		return true
+	}
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		resolved := sub
+		for {
+			if !take(resolved) {
+				return nil
+			}
+			if nested := g.soleBranchArrayKeywords(resolved.AllOf, onPath); nested != nil {
+				if found != nil && found != nested {
+					return nil
+				}
+				found = nested
+			}
+			effRef := resolved.EffectiveRef()
+			if effRef == "" {
+				break
+			}
+			r := g.resolveRefInContext(effRef, resolved)
+			if r == nil || onPath[r] {
+				break
+			}
+			onPath[r] = true
+			resolved = r
+		}
+	}
+	return found
+}
+
+// statesArrayStructure reports whether a schema states any of the keywords that
+// describe the positions of an array. unevaluatedItems is not among them: what
+// it evaluates depends on the other applicators, so it is not a keyword one
+// schema object can hand to another.
+func statesArrayStructure(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	return len(s.PrefixItems) > 0 || s.Items != nil || s.AdditionalItems != nil || s.Contains != nil
 }
 
 // mergeAllOfInto recursively merges properties, required fields, and validation
@@ -4145,27 +4366,106 @@ func sortedNonNullTypes(types schema.TypeList) []string {
 // allOfContainsFalseSchema returns true if any sub-schema in the allOf array
 // is a boolean false schema. In that case, nothing can satisfy all constraints
 // simultaneously, so the entire allOf is equivalent to false.
-func allOfContainsFalseSchema(allOf []*schema.Schema) bool {
+//
+// A $ref is followed, because {"allOf":[{"$ref":"#/$defs/b"}]} over {"b":false}
+// is the same schema as {"allOf":[false]} written out -- and it was the shape
+// that got past this: the branch is not itself the boolean, so the merge ran, a
+// definition saying nothing merged to nothing, and the result was `any` with the
+// rejection gone. onPath is what makes following safe against
+// {"$defs":{"a":{"allOf":[{"$ref":"#/$defs/a"}]}}}: a node already being
+// examined one frame up has nothing to add.
+func (g *Generator) allOfContainsFalseSchema(allOf []*schema.Schema) bool {
+	return g.allOfContainsFalseSchemaOnPath(allOf, nil)
+}
+
+func (g *Generator) allOfContainsFalseSchemaOnPath(allOf []*schema.Schema, onPath map[*schema.Schema]bool) bool {
 	for _, sub := range allOf {
+		if sub == nil {
+			continue
+		}
 		if sub.IsFalseSchema() {
 			return true
 		}
-		// Recursively check nested allOf: {allOf: [{allOf: [false]}]}
-		if len(sub.AllOf) > 0 && allOfContainsFalseSchema(sub.AllOf) {
+		if onPath[sub] {
+			continue
+		}
+		if onPath == nil {
+			onPath = make(map[*schema.Schema]bool)
+		}
+		onPath[sub] = true
+		hit := len(sub.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(sub.AllOf, onPath)
+		if !hit {
+			if effRef := sub.EffectiveRef(); effRef != "" {
+				if r := g.resolveRefInContext(effRef, sub); r != nil && !onPath[r] {
+					onPath[r] = true
+					hit = r.IsFalseSchema() ||
+						(len(r.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(r.AllOf, onPath))
+					delete(onPath, r)
+				}
+			}
+		}
+		delete(onPath, sub)
+		if hit {
 			return true
 		}
 	}
 	return false
 }
 
-// allSubsFalse returns true if every sub-schema in the list is a boolean false schema.
+// subIsFalse reports whether a composition branch admits nothing -- either it is
+// the boolean `false` itself, or it is a reference to one.
+//
+// The reference has to count, for the reason #116 records: a $ref is not the
+// schema it names, so a predicate that only asks IsFalseSchema sees an ordinary
+// branch, and {"anyOf":[{"$ref":"#/$defs/b"}]} over {"b":false} came out
+// `type Root any` while the identical {"anyOf":[false]} was already refused.
+func (g *Generator) subIsFalse(sub *schema.Schema) bool {
+	if sub == nil {
+		return false
+	}
+	return sub.IsFalseSchema() || g.resolvedToFalseSchema(sub)
+}
+
+// compositionAdmitsNothing reports whether an anyOf or a oneOf on this schema
+// makes it unsatisfiable, on exactly the terms generateTypeDef decides it: every
+// anyOf branch admitting nothing, every oneOf branch admitting nothing, or more
+// than one oneOf branch admitting everything (oneOf wants exactly one match).
+//
+// It exists because those arms live in generateTypeDef alone. An inline position
+// -- a property, an element, a map value -- resolves rather than names, and
+// resolveType has no arm that reads a composition, so the schema fell to `any`
+// and the rejection went with it. Delegating makes the inline answer the named
+// one. The allOf case is not here: allOfNeedsNamedType already answers for it,
+// through the same allOfContainsFalseSchema generateAllOfDef uses.
+//
+// The parent-keyword guards mirror generateTypeDef's, so this claims only
+// schemas that arm will actually forbid: a schema with properties of its own, or
+// a oneOf beside a declared type, goes to a struct or an alias there and would
+// come back from the delegation typed but not forbidding.
+func (g *Generator) compositionAdmitsNothing(s *schema.Schema) bool {
+	if s == nil || hasProperties(s) {
+		return false
+	}
+	if len(s.AnyOf) > 0 && g.allSubsFalse(s.AnyOf) {
+		return true
+	}
+	if len(s.OneOf) > 0 && len(s.Type) == 0 {
+		trueCount, falseCount := g.countBooleanSchemas(s.OneOf)
+		if falseCount == len(s.OneOf) || trueCount > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// allSubsFalse returns true if every sub-schema in the list admits nothing.
 // Used for anyOf: if all variants are false, nothing can match.
-func allSubsFalse(subs []*schema.Schema) bool {
+func (g *Generator) allSubsFalse(subs []*schema.Schema) bool {
 	if len(subs) == 0 {
 		return false
 	}
 	for _, sub := range subs {
-		if !sub.IsFalseSchema() {
+		if !g.subIsFalse(sub) {
 			return false
 		}
 	}
@@ -4174,10 +4474,11 @@ func allSubsFalse(subs []*schema.Schema) bool {
 
 // countBooleanSchemas counts how many sub-schemas are boolean true and boolean false.
 // An empty schema {} or a schema with no constraints is treated as "always true"
-// for this purpose.
-func countBooleanSchemas(subs []*schema.Schema) (trueCount, falseCount int) {
+// for this purpose. A $ref is read through to its target on both sides, so a
+// reference to `false` counts as false and one to `true` as true.
+func (g *Generator) countBooleanSchemas(subs []*schema.Schema) (trueCount, falseCount int) {
 	for _, sub := range subs {
-		if sub.IsFalseSchema() {
+		if g.subIsFalse(sub) {
 			falseCount++
 		} else if sub.IsTrueSchema() || isAcceptAllSchema(sub) {
 			trueCount++
@@ -5726,6 +6027,39 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return &NamedType{Name: enumName}
 	}
 
+	// A $ref beside a keyword that applies alongside it, from 2019-09 on. The
+	// position is neither the target nor the sibling: only the allOf
+	// generateTypeDef synthesizes for the pair merges them, and only a named
+	// type can carry the result. Every arm below answers from one half -- the
+	// ref-only arm just below from the target, the type arms further down from
+	// the sibling -- so whichever runs, something the schema states is dropped.
+	//
+	// resolvePropertyType has had this arm since $ref-beside-properties; the
+	// element, map-value and tuple positions come through resolveType instead
+	// and had none, which only became visible when "type" joined the sibling
+	// list: {"items":{"type":"string","$ref":"#/$defs/minLen3"}} then stopped
+	// taking the ref-only arm and came out []string with the minLength gone.
+	//
+	// The exclusions are what keep it from claiming work that is already done:
+	//
+	//   - objectIsStruct: the object arms below materialize this same node
+	//     through materializeNamed and know two things this does not -- an
+	//     object with no declared type is a *pointer there, and a node already
+	//     materialized keeps its first name.
+	//   - nodesInProgress: the schema whose own generateTypeDef frame called us
+	//     is being generated under this very name, so materializeNamed would
+	//     answer with it and the alias would be its own underlying.
+	//   - generating: generateAllOfDef marks the name for the length of its
+	//     body and hands us a merged schema that still carries the $ref it
+	//     merged. Re-entering for that is the same declaration twice.
+	if effRef := s.EffectiveRef(); effRef != "" && !g.refOverridesSiblingsForSchema(s) &&
+		hasRefStructuralSiblings(s) && !objectIsStruct(s) &&
+		!g.nodesInProgress[s] && !g.generating[contextName] {
+		if n, cyclic := g.materializeNamed(s, contextName); g.generated[n] {
+			return namedOrPointer(n, cyclic)
+		}
+	}
+
 	// $ref / $recursiveRef
 	if effRef := s.EffectiveRef(); effRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		if g.isSelfRefInContext(effRef, s) {
@@ -5853,10 +6187,14 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// {"allOf": [{"$ref": "#/definitions/inner"}]} where the ref target has properties.
 	// Guard against infinite recursion: generateAllOfDef may call resolveType with a merged
 	// schema that still has allOf (preserved for unevaluatedProperties evaluation).
-	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfNeedsNamedType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	//
+	// A composition that admits nothing delegates for the same reason: only
+	// generateTypeDef can emit the forbidding wrapper, and `any` here would drop
+	// the rejection entirely. See compositionAdmitsNothing.
+	if canonical, ok := g.nodeTypeNames[s]; ok && (g.allOfNeedsNamedType(s) || g.compositionAdmitsNothing(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		return namedOrPointer(canonical, g.nodesInProgress[s])
 	}
-	if !g.generating[contextName] && (g.allOfNeedsNamedType(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
+	if !g.generating[contextName] && (g.allOfNeedsNamedType(s) || g.compositionAdmitsNothing(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
 		g.generating[contextName] = true
 		_ = g.generateTypeDef(contextName, s)
 		delete(g.generating, contextName)
@@ -7156,6 +7494,19 @@ func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
 	if s == nil || len(s.AllOf) == 0 {
 		return false
 	}
+	// A branch that is the boolean `false`, or a $ref to one, makes the whole
+	// allOf unsatisfiable, and generateAllOfDef answers exactly that with the
+	// forbidden wrapper. Nothing else can: an inline position typed from the
+	// keywords that survive the merge -- or from `any` when none do -- drops the
+	// rejection entirely, which is #116 everywhere the schema is resolved rather
+	// than named.
+	//
+	// It is asked before the disqualifying keywords below, because none of them
+	// can make an unsatisfiable schema satisfiable: {"type":"string","allOf":[false]}
+	// admits no string either.
+	if g.allOfContainsFalseSchema(s.AllOf) {
+		return true
+	}
 	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 || hasProperties(s) ||
 		len(s.PatternProperties) > 0 || s.AdditionalProperties != nil ||
 		s.EffectiveRef() != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
@@ -7455,11 +7806,30 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	return g.resolveType(items, itemContext)
 }
 
+// hasRefStructuralSiblings reports whether a schema carrying a $ref also states
+// something the reference must not swallow -- so the position has to merge the
+// two rather than alias the target.
+//
+// Every caller pairs it with refOverridesSiblingsForSchema, which is the draft
+// half of the same question: through draft-07 a $ref replaces everything beside
+// it and this predicate is never consulted, while from 2019-09 on $ref is an
+// ordinary applicator and a sibling applies as if the two were an allOf. That
+// split is why the list here is a list of *keywords* and carries no draft test
+// of its own.
+//
+// "type" belongs on it for the same reason the properties and items families
+// do, and its absence was #118: {"type":"array","$ref":"#/$defs/a"} took the
+// ref-only path in every draft, so the alias described the target alone and the
+// declared type was dropped -- 2020-12 documents of any other type were accepted
+// where the identical schema without the $ref generates []any with a Validate.
+// Adding it here rather than at the individual call sites is what keeps the
+// draft split correct: draft-07 and earlier short-circuit before this is
+// reached, so they still suppress the sibling, and only 2019-09 onward changes.
 func hasRefStructuralSiblings(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
-	return hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
+	return len(s.Type) > 0 || hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
 		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil
 }
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfBranchArrayKeywords",
+  "type": "object",
+  "properties": {
+    "contains": {"$ref": "#/$defs/containsInt"},
+    "prefix": {"$ref": "#/$defs/prefixStr"},
+    "viaRef": {"$ref": "#/$defs/refToContains"},
+    "ownPrefix": {"$ref": "#/$defs/ownPrefix"},
+    "twoBranches": {"$ref": "#/$defs/twoBranches"}
+  },
+  "$defs": {
+    "containsInt": {"type": "array", "allOf": [{"contains": {"type": "integer"}}]},
+    "prefixStr": {"type": "array", "allOf": [{"prefixItems": [{"type": "string"}]}]},
+    "hasInteger": {"contains": {"type": "integer"}},
+    "refToContains": {"type": "array", "$ref": "#/$defs/hasInteger"},
+    "ownPrefix": {
+      "type": "array",
+      "prefixItems": [{"type": "string"}],
+      "allOf": [{"prefixItems": [{"type": "integer"}]}]
+    },
+    "twoBranches": {
+      "type": "array",
+      "allOf": [
+        {"prefixItems": [{"type": "string"}]},
+        {"prefixItems": [{"type": "integer"}]}
+      ]
+    }
+  }
+}

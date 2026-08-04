@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefSiblingType",
+  "type": "object",
+  "properties": {
+    "arr": {"type": "array", "$ref": "#/$defs/anything"},
+    "str": {"type": "string", "$ref": "#/$defs/anything"},
+    "num": {"type": "number", "$ref": "#/$defs/anything"},
+    "bounded": {"type": "string", "$ref": "#/$defs/minLen3"},
+    "elem": {"type": "array", "items": {"type": "string", "$ref": "#/$defs/anything"}},
+    "mapv": {"type": "object", "additionalProperties": {"type": "string", "$ref": "#/$defs/anything"}},
+    "slot": {"type": "array", "prefixItems": [{"type": "string", "$ref": "#/$defs/anything"}]},
+    "boundedElem": {"type": "array", "items": {"type": "string", "$ref": "#/$defs/minLen3"}},
+    "boundedMapv": {"type": "object", "additionalProperties": {"type": "string", "$ref": "#/$defs/minLen3"}},
+    "boundedSlot": {"type": "array", "prefixItems": [{"type": "string", "$ref": "#/$defs/minLen3"}]},
+    "plain": {"$ref": "#/$defs/minLen3"}
+  },
+  "$defs": {
+    "anything": {},
+    "minLen3": {"minLength": 3}
+  }
+}

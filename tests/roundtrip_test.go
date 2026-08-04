@@ -3143,6 +3143,54 @@ func TestRootCompositionBranchesValidation(t *testing.T) {
 	)
 }
 
+// TestRefToFalseSchemaForbidsEverything covers #116: the boolean `false` schema
+// reached through a $ref rather than written where it is used.
+//
+// A `false` schema rejects every instance. At the document root that has always
+// worked -- generateTypeDef emitted the forbidding wrapper -- but a $defs entry
+// holding `false` fell past every arm to the `any` fall-through, and `type B any`
+// cannot carry a Validate at all. {"$ref":"#/$defs/b"} then aliased that, so the
+// schema accepted "foo" and everything else.
+//
+// The accept-controls are the other half and matter more than the rejections: a
+// $ref to boolean `true` admits every instance, and a fix that answered "$ref to
+// a boolean" with a rejection rather than "$ref to `false`" would pass every
+// invalid case here and fail `always`, `alwaysAllOf` and `alwaysList`.
+func TestRefToFalseSchemaForbidsEverything(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_to_false_schema.json",
+		[]string{
+			// Nothing present: a `false` schema is about a value that is there,
+			// and an absent optional property is the parent's business.
+			`{}`,
+			// An empty array and an empty object have no position for the
+			// forbidding sub-schema to reject.
+			`{"list":[]}`,
+			`{"map":{}}`,
+			`{"tuple":[]}`,
+			// Accept-controls: $ref to boolean `true`, which admits everything.
+			`{"always":"foo"}`,
+			`{"always":5}`,
+			`{"always":null}`,
+			`{"alwaysAllOf":{"k":1}}`,
+			`{"alwaysList":[1,"two",false]}`,
+		},
+		[]string{
+			`{"prop":"foo"}`,      // the $ref itself
+			`{"prop":5}`,          //
+			`{"prop":{}}`,         //
+			`{"viaAllOf":"foo"}`,  // sole branch of an allOf
+			`{"viaAnyOf":"foo"}`,  // sole branch of an anyOf
+			`{"viaOneOf":"foo"}`,  // sole branch of a oneOf
+			`{"viaNested":"foo"}`, // an allOf inside an allOf
+			`{"beside":"foo"}`,    // a sibling "type" does not rescue it
+			`{"list":[1]}`,        // an array element
+			`{"map":{"k":1}}`,     // a map value
+			`{"tuple":[1]}`,       // a tuple slot
+		},
+	)
+}
+
 // TestRootNotObjectShapeValidation exercises a root "not" whose sub-schema
 // states object structure, which extractNotSchemaDef does not handle: the
 // schema used to come out as `type RootNotObjectShape any` and accept the one
@@ -3167,6 +3215,55 @@ func TestRootNotObjectShapeValidation(t *testing.T) {
 		[]string{
 			`{"foo":"bar"}`,         // exactly the shape the "not" forbids
 			`{"foo":"bar","baz":1}`, // extra keys do not rescue it
+		},
+	)
+}
+
+// TestRefToFalseRootForbidsEverything is the shape #116 reproduces with, at the
+// position it reproduces at: a root that is nothing but a $ref to `false`.
+//
+// It carries no valid documents on purpose. A `false` schema admits none, and a
+// root that accepted even one would mean the wrapper was not reached.
+func TestRefToFalseRootForbidsEverything(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_to_false_root.json",
+		nil,
+		[]string{`"foo"`, `5`, `true`, `null`, `[]`, `{}`, `{"k":1}`},
+	)
+}
+
+// TestDraft3DependenciesStringForm covers #117: draft 3 spells a single
+// dependency as a bare property name, {"dependencies":{"bar":"foo"}}, where
+// every later draft writes the one-element array.
+//
+// Normalization recognised the array and the sub-schema forms and not the
+// string, so unmarshalling a JSON string into a Schema failed and the entry was
+// dropped in silence. Nothing was left for the type to be inferred from either,
+// so the whole schema came out `type Root any` with no Validate and {"bar":2}
+// was accepted.
+//
+// The array form in the same fixture is the control: it worked before and must
+// go on working, so a fix that rerouted the keyword rather than adding the
+// missing spelling would show up here. The non-objects are the other control --
+// dependencies says nothing about them and all three are valid, which is what
+// the suite's draft3/dependencies group asserts.
+func TestDraft3DependenciesStringForm(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_dependencies_string.json",
+		[]string{
+			`{}`,
+			`{"foo":1}`,
+			`{"foo":1,"bar":2}`,
+			`{"foo":1,"baz":1,"quux":3}`,
+			`["bar"]`,
+			`"foobar"`,
+			`12`,
+		},
+		[]string{
+			`{"bar":2}`,          // string form: bar present, foo missing
+			`{"quux":3}`,         // array form: both dependencies missing
+			`{"quux":3,"foo":1}`, // array form: baz still missing
+			`{"bar":2,"quux":3}`, // both triggers unsatisfied
 		},
 	)
 }
@@ -3274,5 +3371,146 @@ func main() {
 		"testdata/schemas/regression/ref_to_runtime_wrapper.json",
 		"ref_to_runtime_wrapper_test",
 		mainGo,
+	)
+}
+
+// TestRefSiblingTypeApplies covers #118 from 2019-09 on, where $ref became an
+// ordinary applicator and its siblings apply as if the two were an allOf.
+//
+// hasRefStructuralSiblings listed only the properties and items families, so a
+// $ref beside a "type" took the ref-only alias path in every draft and the
+// declared type was dropped: {"type":"array","$ref":"#/$defs/a"} generated
+// `type Root A` with no Validate, where the identical schema without the $ref
+// generates []any and refuses a string.
+//
+// `plain` is the accept-control for the widening itself -- a $ref with no
+// sibling at all still takes the ref-only path and still resolves to the
+// definition's own type.
+//
+// The bounded* positions are the other half, and the half that stops the
+// widening from trading one dropped keyword for another: each states a type
+// *and* references a definition carrying a bound, so a position that answered
+// from the sibling alone would lose the bound exactly as the old one lost the
+// type. The element, map-value and tuple positions are the ones that needed a
+// merge arm of their own -- they resolve through resolveType, which had none,
+// while a property has had one since $ref-beside-properties.
+func TestRefSiblingTypeApplies(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_type.json",
+		[]string{
+			`{}`,
+			`{"arr":[]}`,
+			`{"arr":[1,"two"]}`,
+			`{"str":"x"}`,
+			`{"num":1.5}`,
+			`{"bounded":"abc"}`,           // the $ref's minLength is satisfied
+			`{"elem":["a"]}`,              // array element: sibling type kept
+			`{"mapv":{"k":"v"}}`,          // map value
+			`{"slot":["a"]}`,              // tuple slot
+			`{"boundedElem":["abc"]}`,     // element: both halves satisfied
+			`{"boundedMapv":{"k":"abc"}}`, // map value
+			`{"boundedSlot":["abc"]}`,     // tuple slot
+			`{"plain":"abc"}`,             // control: $ref with no sibling
+			`{"plain":5}`,                 // minLength is vacuous for a number
+		},
+		[]string{
+			`{"arr":"x"}`,      // the declared array type
+			`{"arr":5}`,        //
+			`{"str":5}`,        // the declared string type
+			`{"num":"x"}`,      // the declared number type
+			`{"bounded":"ab"}`, // the $ref's own constraint through the merge
+			`{"elem":[5]}`,     // the sibling type at an element
+			`{"mapv":{"k":5}}`, //
+			`{"slot":[5]}`,     //
+			// The $ref's bound at the same three positions. These are what a
+			// widening that answered from the sibling alone would accept.
+			`{"boundedElem":["ab"]}`,
+			`{"boundedMapv":{"k":"ab"}}`,
+			`{"boundedSlot":["ab"]}`,
+			`{"plain":"ab"}`, // control: the definition still constrains
+		},
+	)
+}
+
+// TestAllOfBranchArrayKeywordsAreAdopted covers the array half of the merge:
+// which of an allOf branch's items/prefixItems/contains the merged type carries.
+//
+// The merge leaves them alone by design, because they are scoped to the schema
+// object stating them -- a parent's `items` governs what follows the parent's
+// own prefix, so folding a branch's prefix in beside it would move what the
+// parent's keyword reaches. When the parent states none of them there is no
+// such interaction, and leaving the branch's unread meant a $ref beside a
+// "type":"array" enforced the type and nothing else: the whole point of #118 is
+// that both halves bind.
+//
+// The controls are the two cases the adoption must decline. `ownPrefix` states
+// its own prefixItems, so the branch's must not displace it -- [9] is refused
+// by the parent's string prefix, which a fix that let the branch win would
+// accept. `twoBranches` has two branches stating prefixItems: satisfying both is
+// an allOf of the two, which one merged type cannot express, so neither is
+// adopted and both documents pass. That under-enforcement is deliberate and
+// pinned here rather than left to be discovered.
+func TestAllOfBranchArrayKeywordsAreAdopted(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_branch_array_keywords.json",
+		[]string{
+			`{}`,
+			`{"contains":[1]}`,
+			`{"contains":["a",1]}`,
+			`{"prefix":["a",9]}`,
+			`{"prefix":[]}`, // no position 0, so the prefix says nothing
+			`{"viaRef":[1]}`,
+			`{"ownPrefix":["a",1]}`,
+			// Control: two branches state prefixItems, so neither is adopted.
+			`{"twoBranches":["a"]}`,
+			`{"twoBranches":[1]}`,
+		},
+		[]string{
+			`{"contains":["a"]}`, // the branch's contains
+			`{"contains":[]}`,    // an empty array contains no integer
+			`{"contains":"x"}`,   // and the declared array type still binds
+			`{"prefix":[9]}`,     // the branch's prefixItems
+			`{"viaRef":["a"]}`,   // the same through a $ref beside the type
+			// Control: the parent's own prefix decides, not the branch's.
+			`{"ownPrefix":[9]}`,
+		},
+	)
+}
+
+// TestRefSiblingTypeSuppressedBeforeDraft2019 is the narrowness control for
+// #118, and the half a fix that ignored the draft would break.
+//
+// Through draft-07 a $ref replaces every keyword beside it, so the reference
+// alone decides. `suppressed` declares "type":"array" and $refs the empty
+// schema, which admits everything: a string is valid there, and applying the
+// sibling would refuse it -- a false rejection, worse than the missing check it
+// would be replacing. `bounded` is the same control for a non-structural
+// sibling: minLength 5 is suppressed, so a four-character string satisfying the
+// target's own minLength 3 passes.
+//
+// Both are chosen so that suppressing and merging disagree. A sibling "type"
+// beside a $ref whose target *also* declares one does not discriminate: the
+// merge takes the branch's type over the parent's, so it lands on the same
+// answer suppression does and the control would pass under a fix that had the
+// draft split backwards.
+func TestRefSiblingTypeSuppressedBeforeDraft2019(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_type_draft7.json",
+		[]string{
+			`{}`,
+			// The $ref alone decides, and it is the empty schema.
+			`{"suppressed":"abc"}`,
+			`{"suppressed":5}`,
+			`{"suppressed":{"k":1}}`,
+			`{"suppressed":[1,2]}`,
+			// The sibling minLength 5 is suppressed; the target's own 3 is met.
+			`{"bounded":"abcd"}`,
+			`{"plain":"abc"}`,
+		},
+		[]string{
+			`{"bounded":"ab"}`, // the $ref's own minLength does bind
+			`{"plain":"ab"}`,
+			`{"plain":5}`, // and so does its type
+		},
 	)
 }

@@ -236,25 +236,33 @@ func generatorFor(t *testing.T, input string) *Generator {
 	return g
 }
 
-// A bare boolean schema keeps the type it has today. `true` accepts every value,
-// which is what `any` already says; `false` has paths of its own -- the root arm
-// that answers it with a rejecting wrapper, and the parent's forbidden-property
-// rule -- and both are written for that type. Wrapping either gains no check and
-// breaks the guards: the forbidden rule compares the field to nil, which a struct
-// is not, and the file stopped compiling.
+// The two bare boolean schemas answer differently, and each answer is load-bearing.
+//
+// `true` accepts every value, which is exactly what `any` already says, so it
+// stays an alias. Wrapping it gains no check and costs one: an alias over the
+// wrapper inherits none of its methods and stopped decoding, a false rejection.
+//
+// `false` rejects every value, so it gets the forbidding wrapper -- the same one
+// the document root has always produced, now reached in every position. The
+// parent's old forbidden-property rule compared the field to nil and so could not
+// see an explicit null; the wrapper's own Validate judges the value instead and
+// refuses `{"b":null}` as well as `{"b":1}`.
 func TestBareBooleanDefinitionsKeepTheirType(t *testing.T) {
 	defs := generateOne(t, `{"$defs":{"yes":true,"no":false},"type":"object","properties":{"a":{"$ref":"#/$defs/yes"},"b":{"$ref":"#/$defs/no"}}}`)
-	for _, name := range []string{"Yes", "No"} {
-		def := findDef(defs, name)
-		if def == nil {
-			continue // the name may not be minted at all, which is also fine
-		}
+
+	if def := findDef(defs, "Yes"); def != nil {
 		alias, ok := def.(*AliasDef)
 		if !ok {
-			t.Fatalf("%s is %T, want the alias a bare boolean schema has always produced", name, def)
+			t.Fatalf("Yes is %T, want the alias a `true` schema has always produced", def)
 		}
 		if p, ok := alias.Underlying.(*PrimitiveType); !ok || p.Name != "any" {
-			t.Fatalf("%s underlying is %v, want any", name, alias.Underlying)
+			t.Fatalf("Yes underlying is %v, want any", alias.Underlying)
+		}
+	}
+
+	if def := findDef(defs, "No"); def != nil {
+		if _, ok := def.(*NotSchemaDef); !ok {
+			t.Fatalf("No is %T, want the forbidding wrapper -- a `false` schema must reject every instance, including an explicit null", def)
 		}
 	}
 }
