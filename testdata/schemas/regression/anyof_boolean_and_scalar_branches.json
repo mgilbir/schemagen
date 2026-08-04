@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnyOfBooleanAndScalarBranches",
+  "description": "An anyOf mixing an object branch with branches the merged struct cannot place, or that the object-shape summary cannot judge. The merge is a Go struct, so a branch admitting a scalar had nowhere to decode into and the document was refused before a branch was tried; a bare \"type\":\"object\" branch admits every object, including the ones the merged field types refuse; and the summary drops the whole \"at least one branch matches\" assertion as soon as one branch states neither a required key nor a property check, so a `false` branch -- which matches nothing -- was read as one matching everything. The all-object group is the control: it selects on required keys and must keep the merge it already judges correctly.",
+  "type": "object",
+  "properties": {
+    "mixed": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"type": "string"}
+      ]
+    },
+    "constBranch": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"const": "x"}
+      ]
+    },
+    "falseBranch": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        false
+      ]
+    },
+    "notBranch": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"not": {"type": "object"}}
+      ]
+    },
+    "bareObjectBranch": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"type": "object"}
+      ]
+    },
+    "trueBranch": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        true
+      ]
+    },
+    "objectsOnly": {
+      "anyOf": [
+        {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"type": "object", "required": ["j"], "properties": {"j": {"type": "string"}}}
+      ]
+    }
+  }
+}

@@ -4422,6 +4422,152 @@ func TestFalsePropertyRefusesExplicitNull(t *testing.T) {
 	)
 }
 
+// TestAnyOfBooleanAndScalarBranches is the behavioural half of issue #133.
+//
+// The anyOf merge folds every branch into one Go struct and then approximates
+// "at least one branch matches" from the branches' required keys and property
+// checks. Both halves were wrong at once for a branch that says neither.
+//
+// The struct is the false rejection: only an object decodes into it, so
+// {"mixed":"x"} -- which the string branch admits -- was refused by
+// encoding/json before a branch was tried, and so were every const, `not` and
+// `true` branch's scalars. It is not only scalars: the struct's fields carry the
+// types the merge picked, so {"bareObjectBranch":{"k":1}} was refused too,
+// though the bare "type":"object" branch beside it admits every object. The
+// approximation is the false acceptance: it answers nil as soon as one branch
+// states neither a required key nor a property check, which drops the whole
+// assertion, so {"falseBranch":{"j":"b"}} passed on the strength of the branch
+// written to reject everything.
+//
+// The last group is the narrowness control. Two object branches keyed on
+// required keys are what the summary was written for; it judges them correctly,
+// keeps the merge, and answers exactly what it answered before.
+//
+// Every verdict is what python-jsonschema and js-ajv both answer.
+func TestAnyOfBooleanAndScalarBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_boolean_and_scalar_branches.json",
+		[]string{
+			`{}`,
+			`{"mixed":{"k":"a"}}`, // the object branch alone
+			`{"mixed":"x"}`,       // the string branch alone
+			`{"constBranch":{"k":"a"}}`,
+			`{"constBranch":"x"}`, // the const branch alone
+			`{"falseBranch":{"k":"a"}}`,
+			`{"notBranch":{"k":"a"}}`,
+			`{"notBranch":"x"}`, // not an object, so the `not` branch admits it
+			`{"notBranch":123}`,
+			`{"bareObjectBranch":{"k":"a"}}`,
+			`{"bareObjectBranch":{"j":"b"}}`,
+			`{"bareObjectBranch":{"k":1}}`, // every object satisfies the bare branch
+			`{"trueBranch":{"k":"a"}}`,
+			`{"trueBranch":"x"}`, // `true` admits every document
+			`{"trueBranch":123}`,
+			`{"trueBranch":{"j":"b"}}`,
+			`{"trueBranch":{"k":1}}`,
+			`{"objectsOnly":{"k":"a"}}`,
+			`{"objectsOnly":{"j":"b"}}`,
+			`{"objectsOnly":{"k":"a","j":"b"}}`,
+		},
+		[]string{
+			`{"mixed":{"j":"b"}}`, // no branch: no "k", and not a string
+			`{"mixed":123}`,
+			`{"mixed":{"k":1}}`, // the object branch's own type
+			`{"constBranch":"y"}`,
+			`{"constBranch":{"j":"b"}}`,
+			`{"constBranch":123}`,
+			`{"falseBranch":{"j":"b"}}`, // `false` carried it before the fix
+			`{"falseBranch":"x"}`,
+			`{"notBranch":{"j":"b"}}`, // an object, so the `not` branch refuses it
+			`{"bareObjectBranch":"x"}`,
+			`{"bareObjectBranch":123}`,
+			`{"objectsOnly":{"z":1}}`,
+			`{"objectsOnly":"x"}`,
+		},
+	)
+}
+
+// TestAnyOfScalarBranchRoot is issue #133's first table, where the group is the
+// whole document.
+//
+// "x" is what the string branch exists to admit, and the merged struct is what
+// refused it. {"j":"b"} satisfies neither branch and was accepted because the
+// summary the merge attaches had declined to speak for a branch it could not
+// read.
+func TestAnyOfScalarBranchRoot(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_scalar_branch_root.json",
+		[]string{
+			`"x"`,
+			`{"k":"a"}`,
+		},
+		[]string{
+			`{"j":"b"}`, // satisfies neither branch
+			`123`,
+			`{"k":1}`,
+			`true`,
+		},
+	)
+}
+
+// TestAnyOfFalseBranchRoot is issue #133's second table.
+//
+// Nothing satisfies a `false` branch, so it can carry no document out of the
+// merged struct and the struct stays. What it cannot do is state a required key
+// or a property check, which is the whole vocabulary of the summary -- so the
+// summary was dropped and {"j":"b"} was accepted with no branch admitting it.
+// The applicator is evaluated against the document instead.
+func TestAnyOfFalseBranchRoot(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_false_branch_root.json",
+		[]string{
+			`{"k":"a"}`,
+		},
+		[]string{
+			`{"j":"b"}`, // the defect
+			`"x"`,
+			`123`,
+			`{"k":1}`,
+		},
+	)
+}
+
+// TestIfBooleanBranchPositions is issue #134.
+//
+// An if/then/else whose `if` or whose branch is a boolean schema resolved to
+// `any` in a property, and Go forbids methods on `any` -- so the position had no
+// Validate for the keyword to live in and json.Unmarshal into it cannot fail,
+// which left the keyword enforced nowhere while the same schema at a document
+// root was judged correctly. Six of the seven rejections below were accepted
+// before issue #126 named the position; the seventh, viaRef, is the control that
+// the $ref spelling already agreed and still does.
+//
+// Every verdict is what python-jsonschema and js-ajv both answer.
+func TestIfBooleanBranchPositions(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/if_boolean_branch_positions.json",
+		[]string{
+			`{}`,
+			`{"ifFalse":1}`,     // `if:false` never matches, so `else` governs
+			`{"thenFalse":"a"}`, // the `if` does not match, so `then` does not apply
+			`{"ifTrue":1}`,      // `if:true` always matches, so `then` governs
+			`{"elseFalse":1}`,
+			`{"list":[1]}`,
+			`{"list":[]}`,
+			`{"viaRef":1}`,
+		},
+		[]string{
+			`{"ifFalse":"a"}`,
+			`{"ifFalse":true}`,
+			`{"thenFalse":1}`, // `then:false` refuses every instance the `if` matches
+			`{"ifTrue":"a"}`,
+			`{"elseFalse":"a"}`,
+			`{"list":["a"]}`,
+			`{"viaRef":"a"}`,
+		},
+	)
+}
+
 // TestAnyOfBranchUnevaluatedPropertiesIsPerDocument covers issue #111: an
 // `unevaluatedProperties` inside an `anyOf` branch was enforced whether or not
 // that branch matched the document.

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IfBooleanBranchPositions",
+  "description": "An if/then/else whose `if` or whose branch is a boolean schema, written in a property, in an array element and in a $defs entry a property refers to. The property position resolved these to `any`, which Go forbids methods on, so the keyword was enforced nowhere while the same schema at a document root was judged correctly (issue #134). The $ref column is the control that the two spellings agree.",
+  "type": "object",
+  "properties": {
+    "ifFalse": {"if": false, "then": {"type": "string"}, "else": {"type": "integer"}},
+    "thenFalse": {"if": {"type": "integer"}, "then": false},
+    "ifTrue": {"if": true, "then": {"type": "integer"}},
+    "elseFalse": {"if": {"type": "integer"}, "then": true, "else": false},
+    "list": {
+      "type": "array",
+      "items": {"if": false, "then": {"type": "string"}, "else": {"type": "integer"}}
+    },
+    "viaRef": {"$ref": "#/$defs/ifFalse"}
+  },
+  "$defs": {
+    "ifFalse": {"if": false, "then": {"type": "string"}, "else": {"type": "integer"}}
+  }
+}

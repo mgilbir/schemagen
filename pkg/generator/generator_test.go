@@ -5832,6 +5832,162 @@ func TestConstraintOnlyOneOfPropertyWithNoTypeReachesTheDynamicEvaluator(t *test
 	}
 }
 
+// TestAnyOfBranchesTheMergeCannotHoldLeaveTheStruct is the generator half of
+// issue #133's false rejection.
+//
+// The anyOf merge is a Go struct, so the only documents it can hold are objects.
+// A branch admitting anything else -- a declared scalar type, a const or an enum
+// over one, a bare bound, a `not`, or the `true` schema every value satisfies --
+// describes documents encoding/json refuses before a branch is ever consulted.
+// Each of these must therefore leave the merge for a wrapper over the raw JSON,
+// which is what carries no struct field at all.
+func TestAnyOfBranchesTheMergeCannotHoldLeaveTheStruct(t *testing.T) {
+	object := `{"type":"object","required":["k"],"properties":{"k":{"type":"string"}}}`
+	cases := []struct {
+		name   string
+		branch string
+	}{
+		{"scalar type", `{"type":"string"}`},
+		{"const", `{"const":"x"}`},
+		{"enum", `{"enum":["x",1]}`},
+		{"bare bound", `{"minimum":3}`},
+		{"not", `{"not":{"type":"object"}}`},
+		{"true", `true`},
+		// Objects alone, but every one of them -- including the ones the merged
+		// struct's own field types refuse.
+		{"bare object type", `{"type":"object"}`},
+		{"object type with a count", `{"type":"object","minProperties":2}`},
+		{"array type", `{"type":"array"}`},
+		{"type union", `{"type":["object","string"]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"anyOf": [`+object+`, `+tc.branch+`]}}
+			}`)
+
+			for _, td := range ir.TypeDefs {
+				if sd, ok := td.(*StructDef); ok && sd.Name == "DocA" {
+					t.Fatalf("DocA kept the merged struct, which no %s branch's documents fit; got %+v", tc.name, sd)
+				}
+			}
+			doc := structNamed(t, ir, "Doc")
+			if validatableFieldFor(doc, "a") == nil {
+				t.Fatalf("expected Doc.Validate to call a.Validate; got %+v", doc.ValidatableFields)
+			}
+		})
+	}
+}
+
+// TestAnyOfBranchesTheMergeHoldsKeepTheirStruct is the narrowness control beside
+// it, and it is the one to watch: an anyOf over object branches is what the
+// merge exists for, and an over-broad reading of "the struct cannot hold this"
+// would take every one of them away at once and hand the caller raw JSON.
+//
+// The two shapes here are the two the merge really does hold. A pair keyed on
+// required keys is what the object-shape summary was written for, and it keeps
+// that summary. A `false` branch admits nothing, so it can carry no document out
+// of the struct -- but it also states nothing the summary can read, so the group
+// keeps the struct and gains the runtime applicator in place of the summary that
+// used to be dropped altogether.
+func TestAnyOfBranchesTheMergeHoldsKeepTheirStruct(t *testing.T) {
+	object := `{"type":"object","required":["k"],"properties":{"k":{"type":"string"}}}`
+	cases := []struct {
+		name        string
+		branch      string
+		wantSummary bool
+		wantRuntime bool
+	}{
+		{
+			name:        "second object branch",
+			branch:      `{"type":"object","required":["j"],"properties":{"j":{"type":"string"}}}`,
+			wantSummary: true,
+		},
+		{
+			name:        "false branch",
+			branch:      `false`,
+			wantRuntime: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"anyOf": [`+object+`, `+tc.branch+`]}}
+			}`)
+
+			sd := structNamed(t, ir, "DocA")
+			if got := len(sd.ObjectAnyOfs) > 0; got != tc.wantSummary {
+				t.Fatalf("DocA object-shape anyOf summary = %v, want %v; groups = %+v", got, tc.wantSummary, sd.ObjectAnyOfs)
+			}
+			if got := hasRuntimeBranchCheck(sd.RuntimeBranchChecks, "anyOf"); got != tc.wantRuntime {
+				t.Fatalf("DocA runtime anyOf check = %v, want %v; checks = %+v", got, tc.wantRuntime, sd.RuntimeBranchChecks)
+			}
+		})
+	}
+}
+
+// TestAnyOfWithAVacuousBranchGainsNoCheck holds the other end of the same
+// predicate. A branch satisfied by every document really does make "at least one
+// branch matches" true of every document, so the summary is right to be dropped
+// there and nothing should be compiled in its place.
+//
+// The parent declares a property of its own, which is what keeps the group on
+// the struct path rather than sending it through the merge: a `true` branch
+// admits scalars, and a bare anyOf carrying one leaves the struct entirely.
+func TestAnyOfWithAVacuousBranchGainsNoCheck(t *testing.T) {
+	for _, branch := range []string{`true`, `{}`} {
+		t.Run(branch, func(t *testing.T) {
+			ir := generateForItemTest(t, `{
+				"title": "Doc",
+				"type": "object",
+				"properties": {"a": {"type": "string"}},
+				"anyOf": [{"required":["k"]}, `+branch+`]
+			}`)
+
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ObjectAnyOfs) > 0 {
+				t.Fatalf("Doc gained an anyOf summary for a group every document satisfies: %+v", doc.ObjectAnyOfs)
+			}
+			if hasRuntimeBranchCheck(doc.RuntimeBranchChecks, "anyOf") {
+				t.Fatalf("Doc gained a runtime anyOf check for a group every document satisfies: %+v", doc.RuntimeBranchChecks)
+			}
+		})
+	}
+}
+
+// TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt is the condition on taking the
+// merge away, and only on that one.
+//
+// A merge that cannot hold a branch still enforces the properties it merged. The
+// alternative on offer when the evaluator declines is `type X any`, which Go
+// forbids methods on and which therefore enforces nothing at all -- so trading
+// one for the other would answer a false rejection with a false acceptance of
+// every document the schema forbids. rawWrapperDef is asked rather than reasoned
+// about, and `format` is a keyword it does not model, so this group keeps its
+// struct. The scalar branch stays unreachable here; that is the evaluator's
+// coverage, not this arm's decision.
+func TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"a": {"anyOf": [
+				{"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+				{"type": "string", "format": "ipv4"}
+			]}
+		}
+	}`)
+
+	sd := structNamed(t, ir, "DocA")
+	if fieldNamedJSON(t, sd, "k") == nil {
+		t.Fatalf("DocA lost the merged property for a wrapper the evaluator declined to build; got %+v", sd)
+	}
+}
+
 // TestSelectableOneOfPropertiesStayUnions is the other side of that repair.
 // Leaving the union path is only right where the branches give it nothing to
 // select on; a branch that names a type, declares properties or lists required
@@ -8109,4 +8265,23 @@ func TestNullPermittingPropertyKeepsItsOmitTag(t *testing.T) {
 			t.Errorf("%s is dropped by its tag but not recorded, so a present null is lost", tc.jsonName)
 		}
 	}
+}
+
+// hasRuntimeBranchCheck reports whether any compiled applicator check carries
+// this keyword.
+//
+// The production helper, runtimeBranchTaken, asks per *owner*: with the
+// one-level allOf reach, one struct can carry an `anyOf` the evaluator took over
+// and an allOf branch's `anyOf` it could not read, and dropping the second one's
+// approximation would leave it checked by nothing. These tests put the applicator
+// on the schema under test itself, so owner-blind is the same question asked of
+// one owner -- and asking it this way keeps the tests off a production signature
+// whose precision they do not exercise.
+func hasRuntimeBranchCheck(checks []RuntimeBranchCheck, keyword string) bool {
+	for i := range checks {
+		if checks[i].Keyword == keyword {
+			return true
+		}
+	}
+	return false
 }

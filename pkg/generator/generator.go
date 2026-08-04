@@ -5266,6 +5266,24 @@ func gcdInt64(a, b int64) int64 {
 // We merge all properties from all variants into one struct, but no field
 // is marked required (since only one variant needs to be satisfied).
 func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
+	// A branch the merged struct has no room for. The merge is a struct, so the
+	// only values it can hold are objects, and a branch admitting anything else
+	// is refused by encoding/json before a branch is tried. That is issue #133's
+	// false rejection, and it is the same defect #125 answered for oneOf: the
+	// evaluator judges every branch against the raw value, so it needs no Go
+	// type per branch at all.
+	//
+	// Only when the evaluator reads the whole schema. Where it cannot, the merge
+	// stays: wrong as it is about the escaping branch, it still enforces the
+	// merged properties, where the alternative would enforce nothing.
+	if g.anyOfMergeCannotHoldBranches(s) {
+		if def := g.rawWrapperDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
+	}
+
 	merged := &schema.Schema{
 		Title:       s.Title,
 		Description: s.Description,
@@ -5386,6 +5404,99 @@ func (g *Generator) objectAnyOfDefFromVariants(variants []*schema.Schema) *Objec
 		return nil
 	}
 	return &ObjectAnyOfDef{Branches: def.Branches}
+}
+
+// anyOfBranchKeyedOnObjectShape reports whether a branch says something the
+// ObjectAnyOf summary can read: a required key, or a type or allowed value for
+// one of the properties it names.
+//
+// Those two are the whole of ObjectOneOfBranch, and both are statements about an
+// object. A branch that makes neither is a branch the summary cannot judge and
+// the merge cannot place -- which is the one question the two predicates below
+// ask, from their two different sides.
+func (g *Generator) anyOfBranchKeyedOnObjectShape(v *schema.Schema) bool {
+	branch := g.objectOneOfBranchFromSchema(v)
+	return len(branch.RequiredKeys) > 0 || len(branch.Checks) > 0
+}
+
+// anyOfMergeCannotHoldBranches reports whether some branch of s's anyOf admits a
+// value the merged struct cannot decode.
+//
+// The merge is a Go struct, so the values it can hold are objects and nothing
+// else. A branch naming any other type -- a scalar, an array, a const or an enum
+// over one, a bare bound, a `not`, or the `true` schema every value satisfies --
+// admits documents the schema permits and encoding/json refuses before a branch
+// is ever consulted. {"anyOf":[{"type":"object","required":["k"],...},
+// {"type":"string"}]} rejected "x", which is issue #133's first table.
+//
+// Two shapes are deliberately left with the merge. A `false` branch admits
+// nothing at all, so it can carry no document out of the struct; it is still an
+// under-enforcement, and that half is settled by the runtime check rather than
+// by moving the type. And a branch keyed on object shape -- one stating a
+// required key or a type or allowed value for a property it names -- is the
+// shape the merge and its summary were written for.
+//
+// Reading `required` and `properties` as naming an object is not what the spec
+// says, since a scalar satisfies both vacuously; it is what this generator has
+// always done for any schema carrying them, at a root as much as here, and
+// narrowing that belongs to the keyword rather than to this composition. A bare
+// `"type":"object"` gets no such exemption: it says nothing about which objects,
+// so the branch admits every object the merged struct's own field types refuse.
+func (g *Generator) anyOfMergeCannotHoldBranches(s *schema.Schema) bool {
+	if s == nil || len(s.AnyOf) == 0 || !g.validationKeywordsEnabled() {
+		return false
+	}
+	for _, sub := range s.AnyOf {
+		resolved := g.resolveSchemaForApplicator(sub)
+		if resolved == nil {
+			continue
+		}
+		if resolved.IsBooleanSchema() {
+			// `false` admits nothing, so nothing escapes the struct through it.
+			// `true` admits every document, including every scalar.
+			if resolved.IsTrueSchema() {
+				return true
+			}
+			continue
+		}
+		if g.anyOfBranchKeyedOnObjectShape(resolved) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// anyOfSummaryCannotJudgeBranches reports whether the ObjectAnyOf summary would
+// be dropped for branches that do constrain the document.
+//
+// objectAnyOfDefFromVariants answers nil as soon as one branch states neither a
+// required key nor a property check, and the comment on the caller reads that as
+// "this branch matches any object, so the group is unconstrained". That is true
+// of `true` and of {}, and false of everything else that reaches it -- a `false`
+// branch matches nothing, a const branch matches one document, a `not` matches
+// the complement of another schema. Dropping the group for one of those drops
+// the only check standing between the type and a document no branch admits:
+// {"anyOf":[{"type":"object","required":["k"],...},false]} accepted {"j":"b"}
+// on the strength of the branch written to reject everything (issue #133).
+//
+// acceptsEveryValue is what tells the two apart, and it is the same question
+// #126 asks before naming a constraint-only position. A group holding such a
+// branch is genuinely satisfied by every document and keeps today's answer,
+// which is no check at all.
+func (g *Generator) anyOfSummaryCannotJudgeBranches(subs []*schema.Schema) bool {
+	if len(subs) == 0 {
+		return false
+	}
+	if g.objectAnyOfDefFromVariants(subs) != nil {
+		return false
+	}
+	for _, sub := range subs {
+		if g.acceptsEveryValue(sub, 0, map[*schema.Schema]bool{}) {
+			return false
+		}
+	}
+	return true
 }
 
 // generateOneOfForProperty creates a OneOfDef for a property with oneOf variants.
@@ -14245,7 +14356,31 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 			field   string
 			subs    []*schema.Schema
 		}{{"anyOf", "AnyOf", owner.AnyOf}, {"oneOf", "OneOf", owner.OneOf}} {
-			if len(group.subs) == 0 || !g.branchStatesUnevaluatedProperties(group.subs) {
+			if len(group.subs) == 0 {
+				continue
+			}
+			// Two reasons to compile an applicator rather than approximate it.
+			//
+			// The first is that a branch states unevaluatedProperties, which only
+			// the document can settle (#111).
+			//
+			// The second is that the approximation declines to speak at all. For
+			// `anyOf` that drops the "at least one branch matches" assertion
+			// outright, so a document no branch admits is accepted -- see
+			// anyOfSummaryCannotJudgeBranches and issue #133. The evaluator judges
+			// every branch against the document, which the summary's vocabulary of
+			// required keys and property checks cannot do for a `false`, a const,
+			// an enum, a bare bound or a `not`.
+			//
+			// `oneOf` keeps its own approximation: objectOneOfDefFromVariants
+			// answers nil for the same branches, and a group reaching here has
+			// properties beside it, so the shape #125 repaired -- a bare oneOf
+			// leaving the union for the evaluator -- was already decided elsewhere.
+			needsRuntime := g.branchStatesUnevaluatedProperties(group.subs)
+			if !needsRuntime && group.keyword == "anyOf" {
+				needsRuntime = g.anyOfSummaryCannotJudgeBranches(group.subs)
+			}
+			if !needsRuntime {
 				continue
 			}
 			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
