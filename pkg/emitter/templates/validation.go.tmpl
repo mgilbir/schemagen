@@ -311,7 +311,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "forbidden"}}
-	if {{$recv}}.{{.FieldName}} != nil {
+	{{- /* The key's presence is the violation, so the document's own keys are
+	       what decide it: an explicit null decodes to exactly what an absent
+	       property leaves, and the nil test alone passed over it. _jsonKeys is
+	       nil for a value not built from JSON, where indexing it is false and
+	       the nil test is all there is -- the same reading the required-property
+	       check gives untracked presence. */}}
+	if {{$recv}}.{{.FieldName}} != nil{{if .PresenceTracked}} || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]{{end}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (not: {})")
 	}
 	{{- end}}

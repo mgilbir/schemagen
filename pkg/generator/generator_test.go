@@ -6244,36 +6244,141 @@ func TestOneOfRequiredOnlyVariantIsFullyChecked(t *testing.T) {
 	}
 }
 
+// primedGenerator returns a Generator that has been through Generate once, so
+// the per-run state an internal helper reads -- the output file it appends type
+// definitions to, the draft, the root schema -- is set up. Calling one of those
+// helpers on a bare New() dereferences a nil output.
+func primedGenerator(t *testing.T) *Generator {
+	t.Helper()
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(`{"type":"object"}`), &root); err != nil {
+		t.Fatalf("unmarshal priming schema: %v", err)
+	}
+	root.Normalize()
+	g := New(Config{PackageName: "testpkg"})
+	if _, err := g.Generate(&root); err != nil {
+		t.Fatalf("priming Generate: %v", err)
+	}
+	return g
+}
+
+// TestOneOfVariantSelectionTypeMirrorsResolution keeps oneOfVariantSelectionType
+// honest against resolveOneOfVariant, which it restates without side effects.
+//
+// The two must agree on every branch shape or the union is declined for the
+// wrong reasons: a branch wrongly reported as carrying its own named type keeps
+// a miscounting union alive, and one wrongly reported as judged by selection
+// takes a working union away. resolveOneOfVariant cannot simply be called to
+// find out -- each arm that answers a named type generates it -- so this is what
+// stands between the two copies.
+func TestOneOfVariantSelectionTypeMirrorsResolution(t *testing.T) {
+	cases := []struct {
+		name   string
+		branch string
+	}{
+		{"empty", `{}`},
+		{"true", `true`},
+		{"false", `false`},
+		{"const", `{"const":"x"}`},
+		{"enum", `{"enum":[1,2]}`},
+		{"bare bound", `{"minimum":3}`},
+		{"required only", `{"required":["a"]}`},
+		{"string", `{"type":"string"}`},
+		{"string with bound", `{"type":"string","minLength":2}`},
+		{"integer", `{"type":"integer"}`},
+		{"number", `{"type":"number"}`},
+		{"boolean", `{"type":"boolean"}`},
+		{"bare object", `{"type":"object"}`},
+		{"bare array", `{"type":"array"}`},
+		{"type union", `{"type":["string","integer"]}`},
+		{"object with properties", `{"type":"object","properties":{"k":{"type":"string"}}}`},
+		{"object by patternProperties", `{"patternProperties":{"^k":{"type":"string"}}}`},
+		{"object by additionalProperties", `{"additionalProperties":{"type":"string"}}`},
+		{"allOf merge", `{"allOf":[{"type":"string","minLength":2}]}`},
+		{"format only", `{"format":"ipv4"}`},
+		{"declared format", `{"type":"string","format":"ipv4"}`},
+		{"nested oneOf", `{"oneOf":[{"minimum":1},{"maximum":9}]}`},
+		{"not", `{"not":{"type":"string"}}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var branch schema.Schema
+			if err := json.Unmarshal([]byte(tc.branch), &branch); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			branch.Normalize()
+
+			// A fresh generator per side and per case: resolveOneOfVariant
+			// records what it generates, and a name already claimed changes the
+			// next answer.
+			mirror := primedGenerator(t).oneOfVariantSelectionType(&branch)
+			resolved, err := primedGenerator(t).resolveOneOfVariant(&branch, "Doc", "A", 0)
+			if err != nil {
+				t.Fatalf("resolveOneOfVariant: %v", err)
+			}
+
+			_, named := resolved.Type.(*NamedType)
+			if named {
+				if mirror != nil {
+					t.Fatalf("oneOfVariantSelectionType = %s, want nil: resolveOneOfVariant gives this branch the named type %s, whose own Validate carries it",
+						mirror.GoTypeName(), resolved.Type.GoTypeName())
+				}
+				return
+			}
+			if mirror == nil {
+				t.Fatalf("oneOfVariantSelectionType = nil, want %s: resolveOneOfVariant gives this branch no named type, so selection is all that judges it",
+					resolved.Type.GoTypeName())
+			}
+			if mirror.GoTypeName() != resolved.Type.GoTypeName() {
+				t.Fatalf("oneOfVariantSelectionType = %s, resolveOneOfVariant = %s", mirror.GoTypeName(), resolved.Type.GoTypeName())
+			}
+		})
+	}
+}
+
 // TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked is the
 // over-reach guard for the arm above. Narrowing an ambiguous selection is only
 // sound while every branch that matched can be judged; a branch whose type is
 // `any` and which says something the presence gate does not test -- here an
 // enum -- is not judged by anything, and claiming it was would let the
 // narrowing pick a branch while a sibling it never read also matched.
+//
+// Since issue #125 that verdict decides more than the narrowing: a branch
+// selection cannot judge is a branch selection counts *wrongly*, matching every
+// instance including the ones the branch refuses, so the union is declined
+// outright and the group goes to the evaluator. Both halves are pinned here --
+// the union is gone, and the judgement that sent it away still reads the enum as
+// unanswered, which is what the remaining unions' narrowing rests on.
 func TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked(t *testing.T) {
+	const branchJSON = `{"required": ["y"], "enum": [1, 2]}`
+
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
 		"type": "object",
 		"properties": {
 			"a": {"oneOf": [
 				{"required": ["x"], "properties": {"x": {"type": "integer", "minimum": 10}}},
-				{"required": ["y"], "enum": [1, 2]}
+				`+branchJSON+`
 			]}
 		},
 		"required": ["a"]
 	}`)
 
 	doc := structNamed(t, ir, "Doc")
-	union := oneOfDefFor(doc, "a")
-	if union == nil || len(union.Variants) != 2 {
-		t.Fatalf("expected a two-variant union on a; got %+v", doc.OneOfs)
+	if union := oneOfDefFor(doc, "a"); union != nil {
+		t.Fatalf("a still renders as a %d-variant union; the enum branch is matched by every instance, so {\"x\":10,\"y\":1} counts two matches and is refused though it satisfies exactly one branch",
+			len(union.Variants))
 	}
-	if union.Variants[1].Validatable {
-		t.Fatalf("variant 1 (type %s) Validatable = true; the guard below assumes it has no Validate", union.Variants[1].Type.GoTypeName())
+
+	var branch schema.Schema
+	if err := json.Unmarshal([]byte(branchJSON), &branch); err != nil {
+		t.Fatalf("unmarshal branch: %v", err)
 	}
-	if union.Variants[1].FullyChecked {
-		t.Fatalf("variant 1 (type %s) FullyChecked = true; its enum is tested nowhere, so selection cannot claim to have judged the branch",
-			union.Variants[1].Type.GoTypeName())
+	branch.Normalize()
+	anyType := &PrimitiveType{Name: "any"}
+	if oneOfVariantFullyChecked(&branch, anyType, branch.Required, nil) {
+		t.Fatalf("oneOfVariantFullyChecked(%s) = true; its enum is tested nowhere, so selection cannot claim to have judged the branch", branchJSON)
 	}
 }
 

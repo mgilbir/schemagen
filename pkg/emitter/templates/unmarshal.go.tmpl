@@ -43,6 +43,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	{{- end}}
+	{{- if $struct.OneOfIsWholeValue}}
+	{{- /* The union is the whole document, so there is no struct to decode it
+	       into first -- and attempting one would refuse every scalar the schema
+	       allows before a branch was tried. See OneOfIsWholeValue. */}}
+	{{- else}}
 	type Alias {{$struct.Name}}
 	aux := &struct {
 		*Alias
@@ -66,6 +71,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
+	{{- end}}
 	{{- if $struct.HasIntegerDecodes}}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows

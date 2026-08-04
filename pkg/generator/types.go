@@ -460,6 +460,11 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		if v.RuleType == "minProperties" || v.RuleType == "maxProperties" {
 			return true
 		}
+		// A forbidden property asks whether the document wrote the key at all,
+		// which only _jsonKeys can answer. See ValidationRule.PresenceTracked.
+		if v.PresenceTracked {
+			return true
+		}
 	}
 	// An optional field whose type carries its own Validate() is gated on key
 	// presence for the same reason an inline optional rule is: its Go zero is
@@ -564,6 +569,35 @@ type ObjectPropertyConstraint struct {
 // HasObjectConditionals reports whether the struct carries any object-level
 // if/then/else group.
 func (d *StructDef) HasObjectConditionals() bool { return len(d.ObjectConditionals) > 0 }
+
+// OneOfIsWholeValue reports whether the struct's entire JSON content is a single
+// top-level oneOf, so that the union stands for the whole document and nothing
+// else on the struct is decoded from it.
+//
+// This is the shape a bare {"oneOf":[...]} produces, and the one whose generated
+// UnmarshalJSON must not open by decoding the document into the struct. There is
+// nothing for that decode to fill — the union's own field is tagged `json:"-"`
+// and set by the branch loop below it — so all it can do is refuse: a document
+// that is a string or a number does not decode into a Go struct at all, and the
+// branches never get to see it. {"oneOf":[{object},{"type":"string"}]} rejected
+// "x" for that reason alone, before any branch was tried.
+//
+// The conditions are the ones the unmarshal template's own object-shaped blocks
+// are guarded on, so a struct that answers true here reaches neither of them.
+// Anything else — a field, an overflow map, presence tracking, a null check —
+// means the document really is being read as an object, and the opening decode
+// is doing work.
+func (d *StructDef) OneOfIsWholeValue() bool {
+	if len(d.Fields) != 0 || len(d.OneOfs) != 1 || d.OneOfs[0].JSONName != "" {
+		return false
+	}
+	if d.AcceptNonObject || d.NeedsNullCheck {
+		return false
+	}
+	return d.AdditionalProperties == nil && !d.HasPatternProperties() &&
+		!d.HasRequiredFields() && !d.NeedsJSONKeys() && !d.NeedsRawProps() &&
+		!d.HasNullChecks()
+}
 
 // HasIntegerDecodes reports whether any field is decoded through an integer
 // shadow, so the unmarshal template can introduce the block once.
@@ -815,6 +849,21 @@ type ValidationRule struct {
 	// keyword that reads the string's characters -- and emitting the first there
 	// does not compile.
 	StringBacked bool
+
+	// PresenceTracked is set on a "forbidden" rule that sits on a struct
+	// property, where _jsonKeys says whether the document wrote the key.
+	//
+	// The rule is emitted as `field != nil`, and for a property whose schema is
+	// `false` that is the wrong question: an explicit null decodes to a nil
+	// `any` exactly as an absent property does, so {"forbidden":null} passed a
+	// check whose whole job is to refuse the key's presence (issue #127).
+	// Presence is the question, and _jsonKeys is where the document's own keys
+	// survive the decode -- the same source #103 took the null verdict from.
+	//
+	// It is set only where the owner is a struct that has that map. An alias
+	// carries no keys and no property to speak of, so a rule reaching one keeps
+	// the nil test alone.
+	PresenceTracked bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

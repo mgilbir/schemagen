@@ -1869,6 +1869,40 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// A oneOf whose branches the sealed-interface union cannot judge. The arm
+	// above answers the shape where no branch describes an object; this is the
+	// shape where one does, which is what would otherwise put the group on the
+	// struct path and give it a union. See oneOfUnionOutrunsBranches for what the
+	// union gets wrong there — a false rejection for the documents that satisfy
+	// exactly one branch, and a false acceptance for the documents that satisfy
+	// none.
+	//
+	// The evaluator judges every branch against the raw value, so it needs no Go
+	// type per branch: a `false` branch refuses everything and a `const` branch
+	// admits its own value, which is what the union could express for neither.
+	// That also settles the second half of the same defect — the union lives in a
+	// struct, so a scalar the schema allows had nowhere to decode into at all.
+	//
+	// It claims the schema only when the evaluator reads the whole of it. Where
+	// it cannot, the union stays: wrong as it is about these branches, it still
+	// enforces more than the `any` alias that would otherwise follow.
+	//
+	// The guards are the arm above's, with oneOfDescribesObject inverted, so
+	// between them the two claim every bare oneOf and nothing else. In
+	// particular a schema that declares or implies its own type keeps the
+	// alias-with-OneOfVariants path, where the branches are already evaluated
+	// against the typed value: {"type":"integer","oneOf":[{"minimum":10},
+	// {"maximum":5}]} must stay an int64, not become a raw wrapper.
+	if len(s.OneOf) > 0 && !hasProperties(s) && g.oneOfDescribesObject(s) &&
+		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" &&
+		oneOfUnionKeepsWholeSchema(s) && g.oneOfUnionOutrunsBranches(s) {
+		if def := g.rawWrapperDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
+	}
+
 	// Object with properties, patternProperties, object oneOf variants, or
 	// unevaluatedProperties → struct. A oneOf whose variants are constraint-only
 	// (they say nothing about object shape) is not an object union and must not
@@ -2581,8 +2615,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Check if this property uses oneOf. Only when the union would carry the
 		// whole property schema — otherwise the siblings it declares, its own
 		// properties and required most damagingly, never reach any generated
-		// type — and only when the branches give it something to select on.
-		// See oneOfUnionKeepsWholeSchema and oneOfIsUnselectableUnion.
+		// type — only when the branches give it something to select on, and only
+		// when what it selects on agrees with what the branches say. See
+		// oneOfUnionKeepsWholeSchema, oneOfIsUnselectableUnion and
+		// oneOfUnionOutrunsBranches.
 		if propSchema != nil && len(propSchema.OneOf) > 0 && g.oneOfRendersAsUnion(propSchema) {
 			oneOfDef, err := g.generateOneOfForProperty(name, propName, goFieldName, propSchema)
 			if err != nil {
@@ -2876,6 +2912,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				validations = append(validations, ValidationRule{
 					FieldName: goFieldName, JSONName: propName,
 					RuleType: "forbidden", Value: true,
+					PresenceTracked: true,
 				})
 			}
 			continue
@@ -2906,6 +2943,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		for i := range rules {
 			if pointerFields[rules[i].FieldName] {
 				rules[i].IsPointer = true
+			}
+			// These rules belong to a property of this struct, so the struct's
+			// own key map can say whether the document wrote it. That is the
+			// only thing a forbidden rule wants to know, and the nil test it is
+			// otherwise emitted as cannot tell a present null from an absent
+			// property. See ValidationRule.PresenceTracked.
+			if rules[i].RuleType == "forbidden" {
+				rules[i].PresenceTracked = true
 			}
 			// Skip numeric/string/array validation on untyped 'any' fields,
 			// but keep structural rules like "forbidden" that apply to all types.
@@ -5494,8 +5539,10 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 	}
 	if variant.IsBooleanSchema() {
 		// `false` matches nothing, yet selection decodes it into `any` and
-		// counts it as matched. That is a defect of its own; it is not one this
-		// function may paper over by claiming the branch was decided.
+		// counts it as matched. Refusing to speak for it is what takes the whole
+		// group off the union path — see oneOfBranchOutrunsSelection, which
+		// reads this answer — and claiming the branch was decided would put it
+		// back with the defect intact (issue #125).
 		return false
 	}
 	if len(variant.Extensions) > 0 || len(variant.TypeSchemas) > 0 {
@@ -5955,14 +6002,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &NamedType{Name: nestedName}, nil
 		}
-		// A oneOf whose branches are all constraint-only reaches here for the
-		// other reason the caller declines the union: there is nothing to select
-		// on (see oneOfIsUnselectableUnion). Materialize the named type so
+		// A oneOf the caller declined for one of the other two reasons, both of
+		// which are about the branches rather than about the siblings: there is
+		// nothing to select on (see oneOfIsUnselectableUnion), or what selection
+		// would decide disagrees with what a branch says (see
+		// oneOfUnionOutrunsBranches). Materialize the named type so
 		// generateTypeDef evaluates the branches against the value — as an alias
 		// carrying OneOfVariants when a type is declared or inferred, and as the
-		// dynamic wrapper when it is not. Without this the arms below would take
-		// the declared type and drop the oneOf entirely.
-		if oneOfUnionKeepsWholeSchema(s) && g.oneOfIsUnselectableUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
+		// dynamic or runtime wrapper when it is not. Without this the arms below
+		// would take the declared type and drop the oneOf entirely.
+		if oneOfUnionKeepsWholeSchema(s) && !g.oneOfRendersAsUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
 			nestedName := parentName + fieldName
 			if err := g.generateTypeDef(nestedName, s); err != nil {
 				return nil, err
@@ -13200,11 +13249,146 @@ func (g *Generator) oneOfIsUnselectableUnion(s *schema.Schema) bool {
 	return true
 }
 
+// oneOfVariantSelectionType returns the Go type resolveOneOfVariant would answer
+// for a branch that gets no named type of its own, and nil for a branch that gets
+// one.
+//
+// The distinction is who enforces the branch. A named type — a $ref, an inline
+// object, an allOf merge, a formatted string — keeps its branch's constraints in
+// its own Validate, which the union's second tally calls. Every other branch is
+// judged by selection alone, and this is the type selection judges it with.
+//
+// It is a side-effect-free mirror of those arms' conditions, in their order,
+// because the callers need the answer before any type is generated. The arms
+// themselves must not be run to find out: each one that answers a named type
+// generates it, and a predicate that emits a type definition as the price of
+// being asked is no predicate at all. TestOneOfVariantSelectionTypeMirrorsResolution
+// holds the two in step.
+func (g *Generator) oneOfVariantSelectionType(v *schema.Schema) GoType {
+	if v == nil {
+		return nil
+	}
+	if v.IsBooleanSchema() {
+		return &PrimitiveType{Name: "any"}
+	}
+	if v.EffectiveRef() != "" {
+		return nil
+	}
+	if g.objectShapeNeedsNamedType(v) || g.allOfNeedsNamedType(v) {
+		return nil
+	}
+	if g.formatOnlyStringSchema(v) || g.nullableFormatUnion(v) || g.declaredFormatStringSchema(v) {
+		return nil
+	}
+	if pt := primarySchemaType(v); pt != "" {
+		if goType := PrimitiveTypeFromSchema(pt); goType != nil {
+			return goType
+		}
+	}
+	return &PrimitiveType{Name: "any"}
+}
+
+// oneOfBranchOutrunsSelection reports whether the union's selection counts this
+// branch as matched for values the branch itself refuses.
+//
+// It is one question, asked of oneOfVariantFullyChecked over the type and the
+// checks selection actually has for the branch. A branch that resolves to `any`
+// gets no checks at all, so a const, an enum, a bare bound or a not on it is
+// tested nowhere and every instance matches. A branch that resolves to a scalar
+// gets the bounds keywords and nothing else, so an enum beside its `type` is
+// tested nowhere either and every instance of that type matches. And a `false`
+// branch — the sharpest case, and the one issue #125 is written about — is
+// answered by the same rule: no instance satisfies it, resolveOneOfVariant hands
+// it the `any` every instance decodes into, and oneOfVariantFullyChecked refuses
+// to speak for it. That refusal is what sends the group away from here.
+//
+// A branch with a named type is excluded by oneOfVariantSelectionType, since its
+// own Validate carries what selection does not.
+func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
+	if v == nil {
+		return false
+	}
+	goType := g.oneOfVariantSelectionType(v)
+	if goType == nil {
+		return false
+	}
+	return !oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
+}
+
+// oneOfUnionOutrunsBranches reports whether the sealed-interface union would
+// reach the wrong verdict for s's oneOf because one of its branches outruns
+// selection.
+//
+// One such branch is enough to break the whole group, in both directions at
+// once. It is matched by every document, so a document that satisfies exactly
+// one *other* branch takes the count to two and is refused — a false rejection —
+// while a document that satisfies no branch at all is left at a count of one and
+// is accepted. {"oneOf":[{object},{"const":"x"},false]} is the shape: {"k":"a"}
+// satisfies one branch and is reported as matching three.
+//
+// Fewer than two non-null branches never reaches the union — one beside a null
+// branch is the nullable-pointer shape, and zero is not a union — so the
+// question does not arise there.
+func (g *Generator) oneOfUnionOutrunsBranches(s *schema.Schema) bool {
+	if s == nil || len(s.OneOf) == 0 {
+		return false
+	}
+	// A metaschema that omits the validation vocabulary leaves the branches
+	// asserting nothing, so there is nothing for selection to outrun and no
+	// verdict to get wrong. Taking the union away there would change the type a
+	// caller sees and buy no check, since nothing in this mode emits one.
+	if !g.validationKeywordsEnabled() {
+		return false
+	}
+	nonNull, _ := g.separateNullFromOneOf(s.OneOf)
+	if len(nonNull) < 2 {
+		return false
+	}
+	for _, v := range nonNull {
+		if g.oneOfBranchOutrunsSelection(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// oneOfHasSomewhereBetterThanTheUnion reports whether declining the union leaves
+// s somewhere that enforces more than the union would, rather than at `type X
+// any`.
+//
+// This is the condition on taking a union away for outrunning its branches, and
+// only on that one. A union that miscounts still enforces something; the `any`
+// alias enforces nothing at all and cannot even be given a Validate, so trading
+// one for the other would answer a false rejection with a false acceptance of
+// every document the schema forbids. The two better homes are the two arms that
+// would claim the schema instead: a declared or inferred type takes the alias
+// path, where the branches are evaluated against the typed value, and everything
+// else has to be readable by one of the evaluators.
+//
+// rawWrapperDef is asked rather than reasoned about, since it is the code that
+// decides, and a second copy of its reasoning here would be a second thing to
+// keep in step. Asking costs the compiled form and nothing else: it appends no
+// type definition and claims no name -- the name a definition would carry does
+// not enter either evaluator's answer, so any name asks the same question -- and
+// the one thing it can leave behind, a remote document its $ref resolution
+// registered, is a document the branch would have made it fetch anyway.
+func (g *Generator) oneOfHasSomewhereBetterThanTheUnion(s *schema.Schema) bool {
+	if primarySchemaType(s) != "" || g.inferTypeFromConstraints(s) != "" {
+		return true
+	}
+	return g.rawWrapperDef("", s) != nil
+}
+
 // oneOfRendersAsUnion reports whether a oneOf in a property (or property-like)
 // position should be rendered as a sealed-interface union: the union must carry
-// everything the schema asserts, and it must have something to select on.
+// everything the schema asserts, it must have something to select on, and what
+// it selects on must agree with what the branches say -- unless disagreeing is
+// still the best on offer.
 func (g *Generator) oneOfRendersAsUnion(s *schema.Schema) bool {
-	return oneOfUnionKeepsWholeSchema(s) && !g.oneOfIsUnselectableUnion(s)
+	if !oneOfUnionKeepsWholeSchema(s) || g.oneOfIsUnselectableUnion(s) {
+		return false
+	}
+	return !(g.oneOfUnionOutrunsBranches(s) && g.oneOfHasSomewhereBetterThanTheUnion(s))
 }
 
 // isOneOfOnlySchema returns true if the schema contains ONLY a oneOf (no direct

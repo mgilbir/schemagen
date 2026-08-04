@@ -4275,3 +4275,135 @@ func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
 		},
 	)
 }
+
+// TestOneOfBooleanAndConstBranches is the behavioural half of issue #125.
+//
+// The sealed-interface union decides a branch by decoding the value into that
+// branch's Go type. A branch that resolves to `any` -- a const, an enum, a bare
+// bound -- decodes everything, and a `false` branch, which no instance
+// satisfies, was given the same `any` and so matched everything too. Either one
+// takes the count past 1 for a document satisfying exactly one *other* branch,
+// which the exactly-one rule then refuses, and holds it at 1 for a document
+// satisfying none, which it then accepts. Both directions are here: every
+// document under `valid` naming "mixed", "falseBranch" or "typedEnumBranch" was
+// refused before the fix, and {"falseBranch":{"j":"b"}} was accepted by the one
+// branch guaranteed to reject it.
+//
+// The last three properties are the narrowness control. Their branches are ones
+// selection judges correctly -- two objects, two scalars, and an object beside
+// boolean `true`, which really is matched by every instance -- so they keep the
+// union, and the verdicts below are the ones it already reached.
+func TestOneOfBooleanAndConstBranches(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_boolean_and_const_branches.json",
+		[]string{
+			`{}`,
+			`{"mixed":{"k":"a"}}`, // the object branch alone
+			`{"mixed":"x"}`,       // the const branch alone
+			`{"falseBranch":{"k":"a"}}`,
+			`{"typedEnumBranch":{"k":10}}`,
+			`{"typedEnumBranch":"a"}`,
+			`{"objectsOnly":{"k":"a"}}`,
+			`{"objectsOnly":{"j":"b"}}`,
+			`{"scalarsOnly":"a"}`,
+			`{"scalarsOnly":1}`,
+			`{"trueBranch":{"j":"b"}}`, // the true branch alone
+			`{"trueBranch":"x"}`,
+		},
+		[]string{
+			`{"mixed":123}`,                     // no branch
+			`{"mixed":{"k":1}}`,                 // the object branch's own type
+			`{"falseBranch":{"j":"b"}}`,         // `false` matched it before the fix
+			`{"falseBranch":"x"}`,               //
+			`{"typedEnumBranch":"b"}`,           // the branch's enum, tested nowhere before
+			`{"typedEnumBranch":{"k":1}}`,       // the object branch's minimum
+			`{"objectsOnly":{"k":"a","j":"b"}}`, // both branches
+			`{"objectsOnly":"x"}`,
+			`{"scalarsOnly":true}`,
+			`{"trueBranch":{"k":"a"}}`, // both branches
+		},
+	)
+}
+
+// TestOneOfBooleanAndConstRoot is issue #125's own reproducer, where the group
+// is the whole document.
+//
+// The root union lives in a Go struct, so the miscount was only half of it:
+// UnmarshalJSON opened by decoding the document into that struct, and "x" --
+// which the const branch admits -- is not an object, so encoding/json refused it
+// before a branch was tried. Both reference implementations the issue was
+// checked against accept {"k":"a"} and "x", and reject 123.
+func TestOneOfBooleanAndConstRoot(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_boolean_and_const_root.json",
+		[]string{
+			`{"k":"a"}`,
+			`"x"`,
+		},
+		[]string{
+			`123`,
+			`{"k":1}`,
+			`{"other":1}`, // satisfies no branch; the `false` branch used to carry it
+			`"y"`,
+		},
+	)
+}
+
+// TestOneOfRootScalarBranchDecodes is the other half of the same struct
+// problem, on a union that selects perfectly well.
+//
+// Nothing is wrong with the branches here: an object and a string are told apart
+// by decoding. The document still never reached them, because the struct decode
+// ran first and a string does not go into a Go struct. The union is kept and
+// that decode is dropped, which is sound only because a struct standing for
+// nothing but a top-level oneOf has no field for it to fill.
+func TestOneOfRootScalarBranchDecodes(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_root_scalar_branch.json",
+		[]string{
+			`{"k":"a"}`,
+			`"x"`,
+		},
+		[]string{
+			`123`,
+			`true`,
+			`{"j":"b"}`, // neither branch: no "k", and not a string
+		},
+	)
+}
+
+// TestFalsePropertyRefusesExplicitNull is the behavioural half of issue #127.
+//
+// A property whose schema is `false` is satisfied by no value, so the key's
+// presence is the violation. The rule was emitted as `field != nil`, and
+// encoding/json leaves a nil `any` for an explicit null exactly as it does for
+// an absent property -- so {"inline":null} passed. The verdict comes from
+// _jsonKeys now, which is where the document's own keys survive the decode.
+//
+// The $ref spelling was already refused, by the forbidding wrapper its target
+// generates; it is here as the control that the two spellings agree. The `ok`
+// and empty documents are the control that presence, rather than the property
+// merely being declared, is what is tested.
+func TestFalsePropertyRefusesExplicitNull(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/false_property_explicit_null.json",
+		[]string{
+			`{}`,
+			`{"ok":"y"}`,
+			`{"nested":{"ok":"y"}}`,
+			`{"nested":{}}`,
+			`{"list":[{}]}`,
+			`{"list":[]}`,
+		},
+		[]string{
+			`{"inline":null}`, // the defect
+			`{"inline":1}`,
+			`{"viaRef":null}`,
+			`{"viaRef":1}`,
+			`{"nested":{"inner":null}}`,
+			`{"nested":{"inner":1}}`,
+			`{"list":[{"inner":null}]}`,
+			`{"list":[{"inner":1}]}`,
+		},
+	)
+}

@@ -149,6 +149,19 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/format_beside_length", "testdata/schemas/regression/format_beside_length.json", "testdata/golden/regression/format_beside_length.go"},
 		{"regression/typed_format_positions", "testdata/schemas/regression/typed_format_positions.json", "testdata/golden/regression/typed_format_positions.go"},
 		{"regression/format_helper_positions", "testdata/schemas/regression/format_helper_positions.json", "testdata/golden/regression/format_helper_positions.go"},
+		// Pins which oneOf groups keep the sealed-interface union and which
+		// leave it for the evaluator: a branch selection would count wrongly --
+		// a `false`, a `const`, an enum beside a `type` -- takes the group away,
+		// while the all-object, all-scalar and `true`-branch groups beside them
+		// keep the union they already select correctly on.
+		{"regression/oneof_boolean_and_const_branches", "testdata/schemas/regression/oneof_boolean_and_const_branches.json", "testdata/golden/regression/oneof_boolean_and_const_branches.go"},
+		{"regression/oneof_boolean_and_const_root", "testdata/schemas/regression/oneof_boolean_and_const_root.json", "testdata/golden/regression/oneof_boolean_and_const_root.go"},
+		// A root union that does select correctly keeps its variants, and loses
+		// only the decode into the struct that refused every scalar first.
+		{"regression/oneof_root_scalar_branch", "testdata/schemas/regression/oneof_root_scalar_branch.json", "testdata/golden/regression/oneof_root_scalar_branch.go"},
+		// Pins that a property whose schema is `false` is refused on the
+		// document's own keys rather than on the decoded field being non-nil.
+		{"regression/false_property_explicit_null", "testdata/schemas/regression/false_property_explicit_null.json", "testdata/golden/regression/false_property_explicit_null.go"},
 	}
 }
 

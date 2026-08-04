@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfBooleanAndConstRoot",
+  "description": "Issue #125's own reproducer, at the document root. The root union lives in a Go struct, so besides miscounting the branches it had nowhere for the scalar the `const` branch admits to decode into at all -- \"x\" was refused by encoding/json before a branch was tried.",
+  "oneOf": [
+    {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+    {"const": "x"},
+    false
+  ]
+}
