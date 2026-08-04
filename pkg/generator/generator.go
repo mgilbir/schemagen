@@ -2380,7 +2380,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 			Forbidden: true,
 		}
 	} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		valueType, ok := g.overflowValueType(s.AdditionalProperties.Schema, name+"Value")
+		valueType, ok := g.boxedInferredType(s.AdditionalProperties.Schema, name+"Value")
 		if !ok {
 			valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 		}
@@ -2929,7 +2929,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				needsUnmarshal = true
 			}
 		} else if s.AdditionalProperties.Schema != nil {
-			valueType, ok := g.overflowValueType(s.AdditionalProperties.Schema, name+"Value")
+			valueType, ok := g.boxedInferredType(s.AdditionalProperties.Schema, name+"Value")
 			if !ok {
 				valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
 			}
@@ -6603,6 +6603,21 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return &NamedType{Name: nestedName}, nil
 	}
 
+	// A property whose schema states no "type" and would be given one by
+	// resolveType, read off a validation keyword. {"properties":{"p":{"minimum":
+	// 5}}} typed p *float64, so {"p":"abc"} and {"p":{"a":1}} died in the
+	// decoder although `minimum` says nothing about either. See
+	// boxedInferredType, and issue #139.
+	//
+	// Last, for the reason the arms above it are ordered as they are: a schema
+	// one of them types is typed by it, and this must not take the property away
+	// from an answer that is already right. It is the same call the overflow-map
+	// positions take, so a sub-schema written under `properties` and the same one
+	// written under `additionalProperties` get the same type.
+	if goType, ok := g.boxedInferredType(s, parentName+fieldName); ok {
+		return goType, nil
+	}
+
 	return g.resolveType(s, parentName+fieldName), nil
 }
 
@@ -6968,7 +6983,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// once did, left `additionalProperties: {"type":"string","minLength":3}`
 	// typed map[string]any with minLength enforced nowhere.
 	if mapVals := mapValueSchema(s, primaryType); mapVals != nil {
-		valueType, ok := g.overflowValueType(mapVals, contextName+"Value")
+		valueType, ok := g.boxedInferredType(mapVals, contextName+"Value")
 		if !ok {
 			valueType = g.resolveArrayItemType(mapVals, contextName+"Value")
 		}
@@ -8727,6 +8742,22 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 			return &NamedType{Name: itemContext}
 		}
 	}
+	// An element (or map value) whose schema states no "type" and would be given
+	// one by resolveType, read off a validation keyword. {"type":"array","items":
+	// {"minimum":5}} typed the slice []float64, so ["abc"] died in the decoder
+	// and [null] was measured against the bound as the Go zero, although
+	// `minimum` says nothing about a string or a null. See boxedInferredType, and
+	// issue #139 -- which is #137's third row reached from the element position.
+	//
+	// The map-value callers reach this through the same tail, so a ["object",
+	// "null"] whose values are constraint-only is boxed here rather than only in
+	// the non-nullable map arm resolveType boxes directly.
+	//
+	// Last, after the arms above, for the reason every other position puts it
+	// last: a schema one of them can type is typed by it.
+	if goType, ok := g.boxedInferredType(items, itemContext); ok {
+		return goType
+	}
 	return g.resolveType(items, itemContext)
 }
 
@@ -8883,6 +8914,17 @@ func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
 // ",omitzero" tag drops, and the inferred-alias wrapper marshals its raw bytes
 // back and returns early from Validate for a value that is not of its type.
 //
+// Only while the field holds the wrapper itself. Behind a pointer encoding/json
+// never reaches it: for a JSON null the decoder sets the pointer to nil and the
+// wrapper's UnmarshalJSON is not called at all, so its raw bytes stay as empty
+// as an absent property's and the record is again the only thing that can say
+// the null was there. That is the shape an optional constraint-only property
+// takes -- {"properties":{"boundOnly":{"minLength":2}}} is typed by the
+// inferred-alias wrapper and then pointer-wrapped for omitempty -- and a $ref to
+// the same sub-schema has had it since long before (issue #139 gave the inline
+// spelling the type the $ref spelling already had, and this is what keeps
+// #110's record where the pointer puts the null out of the wrapper's reach).
+//
 // schemaForbidsNull is deliberately the question rather than "does the schema
 // list null": it is the same predicate the rejection half (issue #103) uses, so
 // exactly the properties that path lets through are the ones this one catches,
@@ -8891,7 +8933,7 @@ func (g *Generator) nullPresenceTracked(propSchema *schema.Schema, t GoType) boo
 	if propSchema == nil || g.schemaForbidsNull(propSchema) {
 		return false
 	}
-	if t != nil && (g.isRawValueWrapperType(t) || g.isInferredAliasType(t)) {
+	if t != nil && !t.IsPointer() && (g.isRawValueWrapperType(t) || g.isInferredAliasType(t)) {
 		return false
 	}
 	return true
@@ -9825,20 +9867,24 @@ func mapValueSchema(s *schema.Schema, primaryType string) *schema.Schema {
 	return s.AdditionalProperties.Schema
 }
 
-// overflowValueType names the position the values of an overflow map occupy,
-// for the sub-schema that would otherwise be typed from a keyword rather than
-// from a "type" it states. The second result is false when the position keeps
-// the type it has today, which every caller answers by resolving as before.
+// boxedInferredType names an inline position whose sub-schema would otherwise
+// be typed from a keyword rather than from a "type" it states. The second
+// result is false when the position keeps the type it has today, which every
+// caller answers by resolving as before.
 //
-// The typed overflow map asserts what the sub-schema did not say. `minimum`
-// constrains numbers and is vacuous for every other JSON kind, so
-// {"type":"object","additionalProperties":{"minimum":5}} admits {"x":"abc"},
-// {"x":{"a":1}} and {"x":null} -- and map[string]float64 refuses all three: the
-// first two die in the decoder, and the third decodes to the Go zero, which is
-// then measured against the bound. That is issue #137, and it is the same
-// narrowing for `minLength` (map[string]string refuses a number), `minItems`
-// (map[string][]any refuses a string) and `required` (map[string]map[string]any
-// refuses a scalar).
+// A type read off a keyword asserts what the sub-schema did not say. `minimum`
+// constrains numbers and is vacuous for every other JSON kind, so every one of
+//
+//	{"type":"object","additionalProperties":{"minimum":5}}   admits {"x":"abc"}, {"x":{"a":1}}, {"x":null}
+//	{"type":"object","properties":{"p":{"minimum":5}}}       admits {"p":"abc"}, {"p":{"a":1}}
+//	{"type":"array","items":{"minimum":5}}                   admits ["abc"], [null]
+//
+// and map[string]float64, *float64 and []float64 refuse them: a string or an
+// object dies in the decoder, and a null decodes to the Go zero, which is then
+// measured against the bound. That is issue #137 for the overflow map and
+// issue #139 for the other two, and it is the same narrowing for `minLength`
+// (string refuses a number), `minItems` ([]any refuses a string) and `required`
+// (map[string]any refuses a scalar).
 //
 // The type the position should have already exists, and is what the identical
 // sub-schema gets the moment it is written as a $defs entry and referenced:
@@ -9846,20 +9892,24 @@ func mapValueSchema(s *schema.Schema, primaryType string) *schema.Schema {
 // the value is of another kind and applies the keywords only when it is not --
 // InferredAliasDef for a number, a string or an array, and for an inferred
 // object the propertyless struct, whose AcceptNonObject arm does the same job.
-// So {"additionalProperties":{"$ref":"#/$defs/M"}} with M of {"minimum":5} has
-// always accepted all three documents while the inline spelling refused them.
-// Naming the position is what routes the inline one to the same type, and the
-// two stop disagreeing about a schema neither of them changed.
+// So {"properties":{"p":{"$ref":"#/$defs/M"}}} with M of {"minimum":5} has
+// always accepted all of the documents above while the inline spelling refused
+// them. Naming the position is what routes the inline one to the same type, and
+// the two stop disagreeing about a schema neither of them changed.
 //
 // Only an *inferred* type is claimed. A sub-schema that states its type has
 // authorized the narrowing -- {"type":"number","minimum":5} really does forbid
 // a string, and a decode failure there is a correct rejection -- so it keeps
-// map[string]float64 and the convenient Go type that goes with it. The keywords
-// that fix a type through an arm of resolveType above the inference are
-// excluded for the same reason: an enum, a const and a $ref each already have a
-// path that answers better than this one.
-func (g *Generator) overflowValueType(sub *schema.Schema, name string) (GoType, bool) {
-	if !g.overflowValueNeedsName(sub, name) {
+// float64 and the convenient Go type that goes with it. The keywords that fix a
+// type through an arm of resolveType above the inference are excluded for the
+// same reason: an enum, a const and a $ref each already have a path that
+// answers better than this one.
+//
+// A tuple slot does not come through here and does not need to: tupleItemDefFor
+// already names every position it cannot type, and the raw wrapper it builds
+// keeps the value whatever kind it arrives as.
+func (g *Generator) boxedInferredType(sub *schema.Schema, name string) (GoType, bool) {
+	if !g.boxedInferredTypeNeedsName(sub, name) {
 		return nil, false
 	}
 	if n, cyclic := g.materializeNamed(sub, name); g.generated[n] {
@@ -9868,8 +9918,8 @@ func (g *Generator) overflowValueType(sub *schema.Schema, name string) (GoType, 
 	return nil, false
 }
 
-// overflowValueNeedsName is overflowValueType's question, split out so the two
-// halves of the answer -- whether to name the position, and what the name
+// boxedInferredTypeNeedsName is boxedInferredType's question, split out so the
+// two halves of the answer -- whether to name the position, and what the name
 // resolves to -- can be read apart.
 //
 // The guards are constraintOnlyNamedType's, with one relaxation: a name already
@@ -9879,7 +9929,7 @@ func (g *Generator) overflowValueType(sub *schema.Schema, name string) (GoType, 
 // us, and a node already in flight would have the wrapper stand in for the
 // definition being built above it; both are refused outright, and the caller
 // then resolves the position exactly as it did before.
-func (g *Generator) overflowValueNeedsName(sub *schema.Schema, name string) bool {
+func (g *Generator) boxedInferredTypeNeedsName(sub *schema.Schema, name string) bool {
 	if sub == nil || name == "" || !g.validationKeywordsEnabled() {
 		return false
 	}

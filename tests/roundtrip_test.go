@@ -4736,6 +4736,25 @@ func decode(doc string) PresentNullPositions {
 	return v
 }
 
+// The two constraint-only properties are held by the wrapper a schema stating
+// no "type" gets since issue #139, whose value is its own business -- so a Go
+// literal is spelled as the JSON document it stands for.
+func boundOnly(doc string) PresentNullPositionsBoundOnly {
+	var v PresentNullPositionsBoundOnly
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("%s: unmarshal: %v", doc, err)
+	}
+	return v
+}
+
+func reqBoundOnly(doc string) PresentNullPositionsReqBoundOnly {
+	var v PresentNullPositionsReqBoundOnly
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("%s: unmarshal: %v", doc, err)
+	}
+	return v
+}
+
 func main() {
 	// A null the schema permits is not a value any of these keywords judges.
 	// Every one of these was rejected for the length of a string the document
@@ -4802,7 +4821,7 @@ func main() {
 
 	// A value built in Go carried no document, so there is nothing recorded and
 	// nothing invented: the absent properties are simply absent.
-	built, err := json.Marshal(PresentNullPositions{ReqBoundOnly: "ok"})
+	built, err := json.Marshal(PresentNullPositions{ReqBoundOnly: reqBoundOnly(` + "`" + `"ok"` + "`" + `)})
 	if err != nil {
 		fail("marshal of a hand-built value: %v", err)
 	}
@@ -4813,7 +4832,7 @@ func main() {
 	// And an assignment after the decode is newer than what the document said.
 	// The record must not write its null back over it.
 	assigned := decode(` + "`" + `{"boundOnly":null,"untyped":null,"reqBoundOnly":"ok"}` + "`" + `)
-	replacement := "abc"
+	replacement := boundOnly(` + "`" + `"abc"` + "`" + `)
 	assigned.BoundOnly = &replacement
 	assigned.Untyped = 7
 	out, err := json.Marshal(assigned)
@@ -5300,6 +5319,98 @@ func TestAllOfNestedAnyOfUnevaluatedItems(t *testing.T) {
 		[]string{
 			`[1,2]`,
 			`[1,"a"]`,
+		},
+	)
+}
+
+// TestInlineUntypedPositionsKeepEveryKind is the behavioural half of issue
+// #139. A declared property and an array element were typed from a validation
+// keyword rather than from a "type" the sub-schema states, which asserted what
+// the schema never said: `minimum` constrains numbers and is vacuous for every
+// other JSON kind, so *float64 refused {"num":"abc"} and {"num":{"a":1}} in the
+// decoder and []float64 turned [null] into the Go zero and measured that against
+// the bound.
+//
+// The valid list is the whole of the defect, across the keyword families the
+// inference reads -- minLength typing the position string, minItems array,
+// required a nested map -- in both positions. Every verdict was confirmed
+// against python-jsonschema before it was written down.
+//
+// The invalid list is what the fix must not cost. Each bound still bites on a
+// value of the kind it speaks about, and three controls sit beside them:
+//
+//   - typedNum and typedItems state their type, so the narrowing is authorized
+//     and a string really is a rejection -- at decode, which counts as one.
+//   - slot is the working sibling. A prefixItems position has always been boxed,
+//     so its rows are unchanged in both directions, and a fix reaching it would
+//     have gone too wide.
+//   - viaRef is the same sub-schema behind a $defs entry, which has had the
+//     wrapper all along. The inline spellings now answer as it does.
+func TestInlineUntypedPositionsKeepEveryKind(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/inline_untyped_positions.json",
+		[]string{
+			// The reported property rows.
+			`{"num":"abc"}`,
+			`{"num":{"a":1}}`,
+			`{"num":null}`,
+			`{"num":[1]}`,
+			`{"num":true}`,
+			`{"num":7}`,
+			// minLength says nothing about a number or a null.
+			`{"str":"abcd"}`,
+			`{"str":7}`,
+			`{"str":null}`,
+			// minItems says nothing about a string.
+			`{"arr":[1,2]}`,
+			`{"arr":"abc"}`,
+			// required says nothing about a scalar or a null.
+			`{"obj":{"a":1}}`,
+			`{"obj":"abc"}`,
+			`{"obj":null}`,
+			// The $defs spelling, which has always been right, still is.
+			`{"viaRef":"abc"}`,
+			`{"viaRef":7}`,
+			// The reported element rows.
+			`{"numItems":["abc"]}`,
+			`{"numItems":[null]}`,
+			`{"numItems":[{"a":1}]}`,
+			`{"numItems":[7]}`,
+			`{"strItems":["abcd"]}`,
+			`{"strItems":[7]}`,
+			`{"objItems":[{"a":1}]}`,
+			`{"objItems":["abc"]}`,
+			// The declared-type positions accept what they always did.
+			`{"typedNum":7}`,
+			`{"typedItems":[7]}`,
+			// The prefixItems slot, unchanged in every row.
+			`{"slot":["abc"]}`,
+			`{"slot":[null]}`,
+			`{"slot":[7]}`,
+			// A map value reached through the nullable arm.
+			`{"nullableMap":{"x":"abc"}}`,
+			`{"nullableMap":{"x":null}}`,
+			`{"nullableMap":null}`,
+			`{"nullableMap":{"x":7}}`,
+			`{}`,
+		},
+		[]string{
+			`{"num":3}`,
+			`{"str":"ab"}`,
+			`{"arr":[1]}`,
+			`{"obj":{}}`,
+			`{"viaRef":3}`,
+			`{"numItems":[3]}`,
+			`{"strItems":["ab"]}`,
+			`{"objItems":[{}]}`,
+			`{"slot":[3]}`,
+			`{"nullableMap":{"x":3}}`,
+			// The narrowness controls. The sub-schema states its type, so the Go
+			// type may narrow and a string is refused at decode.
+			`{"typedNum":3}`,
+			`{"typedNum":"abc"}`,
+			`{"typedItems":[3]}`,
+			`{"typedItems":["abc"]}`,
 		},
 	)
 }

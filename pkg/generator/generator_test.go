@@ -4348,6 +4348,19 @@ func ruleTypesOf(rules []ValidationRule) []string {
 	return out
 }
 
+// isInferredAliasNamed reports whether a generated type of this name is the
+// wrapper generateTypeDef builds for a schema whose type it had to infer -- the
+// one that keeps the raw JSON for a value of any other kind.
+func isInferredAliasNamed(ir *File, name string) bool {
+	for _, td := range ir.TypeDefs {
+		if td.TypeName() == name {
+			_, ok := td.(*InferredAliasDef)
+			return ok
+		}
+	}
+	return false
+}
+
 // fieldNamedJSON returns the struct field carrying a JSON property name.
 func fieldNamedJSON(t *testing.T, sd *StructDef, jsonName string) *FieldDef {
 	t.Helper()
@@ -5516,12 +5529,16 @@ func TestBigIntInlineIntegerStaysAnInt64WithoutTheFlag(t *testing.T) {
 // here.
 func TestBigIntInlineWrapperOnlyWhereGenerateTypeDefWouldBuildOne(t *testing.T) {
 	for name, tc := range map[string]struct{ schema, want string }{
-		"nullable":  {`{"type": ["integer","null"], "maximum": 40}`, "*int64"},
-		"enum":      {`{"type": "integer", "enum": [1,2,3]}`, "RootAlpha"},
-		"const":     {`{"type": "integer", "const": 5}`, "int64"},
-		"allOf":     {`{"type": "integer", "allOf": [{"maximum": 40}]}`, "int64"},
-		"ref":       {`{"$ref": "#/$defs/DefA"}`, "DefA"},
-		"untyped":   {`{"maximum": 40}`, "float64"},
+		"nullable": {`{"type": ["integer","null"], "maximum": 40}`, "*int64"},
+		"enum":     {`{"type": "integer", "enum": [1,2,3]}`, "RootAlpha"},
+		"const":    {`{"type": "integer", "const": 5}`, "int64"},
+		"allOf":    {`{"type": "integer", "allOf": [{"maximum": 40}]}`, "int64"},
+		"ref":      {`{"$ref": "#/$defs/DefA"}`, "DefA"},
+		// The inferred wrapper, not a bare float64: a schema stating no "type"
+		// is boxed at every inline position since issue #139, so `maximum`
+		// alone no longer narrows the field to a number. Still not the
+		// big-integer wrapper, which is what this test is about.
+		"untyped":   {`{"maximum": 40}`, "RootAlpha"},
 		"notAnInt":  {`{"type": "number", "maximum": 40}`, "float64"},
 		"objectish": {`{"type": "integer", "properties": {"x": {"type": "string"}}}`, "int64"},
 	} {
@@ -8195,7 +8212,7 @@ func TestPresentNullIsRecordedWhereTheSchemaPermitsIt(t *testing.T) {
 	}`)
 	doc := structNamed(t, ir, "Doc")
 
-	for _, want := range []string{"untyped", "boundOnly", "reqBound", "nullable"} {
+	for _, want := range []string{"untyped", "boundOnly", "nullable"} {
 		if !containsString(doc.NullPresenceKeys, want) {
 			t.Errorf("%q is not in NullPresenceKeys %v: the schema permits a null there and nothing else can say it was present",
 				want, doc.NullPresenceKeys)
@@ -8206,6 +8223,28 @@ func TestPresentNullIsRecordedWhereTheSchemaPermitsIt(t *testing.T) {
 			t.Errorf("%q is in NullPresenceKeys %v, but its schema forbids a null -- that is issue #103's rejection, not this record",
 				notWanted, doc.NullPresenceKeys)
 		}
+	}
+
+	// reqBound is the third answer, and it is the one that has to be shown
+	// rather than assumed. Since issue #139 a constraint-only property is typed
+	// by the inferred-alias wrapper, which keeps the bytes it was handed -- so a
+	// null is still a null in the decoded value and there is nothing for the
+	// record to add. Required is what makes that true here: an optional property
+	// is pointer-wrapped for omitempty, and behind a pointer encoding/json never
+	// calls the wrapper's UnmarshalJSON at all, which is why boundOnly above is
+	// still recorded and this one is not.
+	//
+	// So the exclusion is only sound while the field really does hold the
+	// wrapper by value. Both halves are asserted; either one alone would pass
+	// for a property whose null is simply being dropped.
+	reqBound := fieldNamedJSON(t, doc, "reqBound")
+	if reqBound.Type.IsPointer() || !isInferredAliasNamed(ir, reqBound.Type.GoTypeName()) {
+		t.Errorf("reqBound is %s, not the inferred-alias wrapper held by value -- then nothing holds its null and the record below is needed after all",
+			reqBound.Type.GoTypeName())
+	}
+	if containsString(doc.NullPresenceKeys, "reqBound") {
+		t.Errorf("reqBound is in NullPresenceKeys %v, but its own wrapper keeps the null it was handed",
+			doc.NullPresenceKeys)
 	}
 
 	// The rule guard. A bound is vacuous for a null whether the property is

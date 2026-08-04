@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InlineUntypedPositions",
+  "description": "Issue #139: a declared property and an array element typed from a keyword rather than from a \"type\" the sub-schema states, which is issue #137's narrowing in the two positions it left. `minimum` constrains numbers and is vacuous for every other JSON kind, so *float64 refused a string and an object in the decoder and []float64 measured a null's Go zero against the bound. The same follows from minLength (string), minItems (array) and required (object). Each keyword family appears in both positions, beside a sub-schema that does state its type -- which must keep narrowing -- and the $defs spelling, which has always had the wrapper.",
+  "type": "object",
+  "properties": {
+    "num": {
+      "$comment": "The reported property. minimum says nothing about a string, an object or a null.",
+      "minimum": 5
+    },
+    "str": {
+      "minLength": 3
+    },
+    "arr": {
+      "minItems": 2
+    },
+    "obj": {
+      "$comment": "An inferred object that is not a struct: `required` names no key of its own, so the property came out map[string]any and refused every scalar.",
+      "required": ["a"]
+    },
+    "typedNum": {
+      "$comment": "The accept-control: the sub-schema states its type, so the narrowing is authorized and a string really is a rejection -- at decode, which counts.",
+      "type": "number",
+      "minimum": 5
+    },
+    "viaRef": {
+      "$comment": "The same untyped sub-schema written as a $defs entry, which has always got the wrapper. The inline spelling must now agree with it.",
+      "$ref": "#/$defs/AtLeastFive"
+    },
+    "numItems": {
+      "$comment": "The reported element position. ['abc'] died at decode and [null] was measured against the bound as the Go zero.",
+      "type": "array",
+      "items": { "minimum": 5 }
+    },
+    "strItems": {
+      "type": "array",
+      "items": { "minLength": 3 }
+    },
+    "objItems": {
+      "type": "array",
+      "items": { "required": ["a"] }
+    },
+    "typedItems": {
+      "$comment": "The element accept-control, on the same terms as typedNum.",
+      "type": "array",
+      "items": { "type": "number", "minimum": 5 }
+    },
+    "slot": {
+      "$comment": "The working sibling: a prefixItems slot has always been boxed, through the raw wrapper tupleItemDefFor names it with. It must not move.",
+      "type": "array",
+      "prefixItems": [{ "minimum": 5 }]
+    },
+    "nullableMap": {
+      "$comment": "A map value reached through the nullable arm rather than the plain one. #137 boxed the non-nullable spelling; this is its sibling, and it takes the same tail.",
+      "type": ["object", "null"],
+      "additionalProperties": { "minimum": 5 }
+    }
+  },
+  "$defs": {
+    "AtLeastFive": { "minimum": 5 }
+  }
+}

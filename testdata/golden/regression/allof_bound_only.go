@@ -783,7 +783,12 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 		// Validate reads this to pass over the keywords a null satisfies
 		// vacuously, and MarshalJSON to write the null back. See issue #110.
 		for _, _nullKey := range []string{
+			"arr",
+			"nested",
+			"num",
+			"prop",
 			"union",
+			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				if a._jsonNulls == nil {

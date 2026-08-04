@@ -421,6 +421,66 @@ func (t Tagged) Validate() error {
 	return nil
 }
 
+// ExplicitNullPositionsBoundOnly accepts any JSON value. Constraints apply only when the value is string.
+type ExplicitNullPositionsBoundOnly struct {
+	_value string
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (e *ExplicitNullPositionsBoundOnly) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		e._raw = append(e._raw[:0], data...)
+		e._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &e._value); _err == nil {
+		e._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	e._raw = append(e._raw[:0], data...)
+	e._isRaw = true
+	return nil
+}
+func (e ExplicitNullPositionsBoundOnly) MarshalJSON() ([]byte, error) {
+	if e._isRaw {
+		if len(e._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return e._raw, nil
+	}
+	return json.Marshal(e._value)
+}
+func (e ExplicitNullPositionsBoundOnly) StringValue() string { return e._value }
+func (e ExplicitNullPositionsBoundOnly) IsString() bool      { return !e._isRaw }
+func (e ExplicitNullPositionsBoundOnly) Raw() json.RawMessage {
+	if e._isRaw {
+		return e._raw
+	}
+	_b, _ := json.Marshal(e._value)
+	return _b
+}
+func (e ExplicitNullPositionsBoundOnly) String() string {
+	if e._isRaw {
+		return string(e._raw)
+	}
+	return fmt.Sprintf("%v", e._value)
+}
+
+// Validate checks ExplicitNullPositionsBoundOnly against its JSON Schema constraints.
+func (e ExplicitNullPositionsBoundOnly) Validate() error {
+	if e._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if utf8.RuneCountInString(string(e._value)) < 2 {
+		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(e._value)))
+	}
+	return nil
+}
+
 type ExplicitNullPositionsBounded string
 
 func (e *ExplicitNullPositionsBounded) UnmarshalJSON(data []byte) error {
@@ -521,35 +581,35 @@ func (e ExplicitNullPositionsInline) Validate() error {
 
 // ExplicitNullPositions - Regression: an explicit JSON null was accepted, and silently erased, at every position whose schema does not admit one. Covers the positions a null can sit in -- an inline property, a $ref to a named alias or struct, an array element, a nested array, a map value, a tuple slot, a oneOf branch, an allOf, and the values a schema-valued additionalProperties governs -- beside the properties that DO admit null, which must go on accepting one.
 type ExplicitNullPositions struct {
-	Alias                *Short                        `json:"alias,omitempty"`
-	Array                []string                      `json:"array,omitzero"`
-	ArrayOfMap           []map[string]string           `json:"arrayOfMap,omitzero"`
-	BoundOnly            *string                       `json:"boundOnly,omitempty"`
-	Bounded              *ExplicitNullPositionsBounded `json:"bounded,omitempty"`
-	Count                *int64                        `json:"count,omitempty"`
-	Inline               *ExplicitNullPositionsInline  `json:"inline,omitempty"`
-	MapOfArray           map[string][]string           `json:"mapOfArray,omitzero"`
-	MapOfString          map[string]string             `json:"mapOfString,omitzero"`
-	NamedArray           Names                         `json:"namedArray,omitzero"`
-	Nested               [][]string                    `json:"nested,omitzero"`
-	NullableAlias        MaybeShort                    `json:"nullableAlias,omitempty"`
-	NullableItems        []*string                     `json:"nullableItems,omitzero"`
-	NullableOuter        []string                      `json:"nullableOuter,omitzero"`
-	NullableScalar       *string                       `json:"nullableScalar,omitempty"`
-	NullableValues       map[string]*string            `json:"nullableValues,omitzero"`
-	Overflow             *Overflow                     `json:"overflow,omitempty"`
-	ReqAlias             Short                         `json:"reqAlias"`
-	ReqArray             []string                      `json:"reqArray"`
-	ReqScalar            string                        `json:"reqScalar"`
-	ReqStruct            Leaf                          `json:"reqStruct"`
-	Scalar               *string                       `json:"scalar,omitempty"`
-	Struct               *Leaf                         `json:"struct,omitempty"`
-	Tuple                []any                         `json:"tuple,omitzero"`
-	Untyped              any                           `json:"untyped,omitempty"`
-	Union                isExplicitNullPositions_Union `json:"-"`
-	AdditionalProperties map[string]json.RawMessage    `json:"-"`
-	_jsonKeys            map[string]bool               // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls           map[string]bool               // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Alias                *Short                          `json:"alias,omitempty"`
+	Array                []string                        `json:"array,omitzero"`
+	ArrayOfMap           []map[string]string             `json:"arrayOfMap,omitzero"`
+	BoundOnly            *ExplicitNullPositionsBoundOnly `json:"boundOnly,omitempty"`
+	Bounded              *ExplicitNullPositionsBounded   `json:"bounded,omitempty"`
+	Count                *int64                          `json:"count,omitempty"`
+	Inline               *ExplicitNullPositionsInline    `json:"inline,omitempty"`
+	MapOfArray           map[string][]string             `json:"mapOfArray,omitzero"`
+	MapOfString          map[string]string               `json:"mapOfString,omitzero"`
+	NamedArray           Names                           `json:"namedArray,omitzero"`
+	Nested               [][]string                      `json:"nested,omitzero"`
+	NullableAlias        MaybeShort                      `json:"nullableAlias,omitempty"`
+	NullableItems        []*string                       `json:"nullableItems,omitzero"`
+	NullableOuter        []string                        `json:"nullableOuter,omitzero"`
+	NullableScalar       *string                         `json:"nullableScalar,omitempty"`
+	NullableValues       map[string]*string              `json:"nullableValues,omitzero"`
+	Overflow             *Overflow                       `json:"overflow,omitempty"`
+	ReqAlias             Short                           `json:"reqAlias"`
+	ReqArray             []string                        `json:"reqArray"`
+	ReqScalar            string                          `json:"reqScalar"`
+	ReqStruct            Leaf                            `json:"reqStruct"`
+	Scalar               *string                         `json:"scalar,omitempty"`
+	Struct               *Leaf                           `json:"struct,omitempty"`
+	Tuple                []any                           `json:"tuple,omitzero"`
+	Untyped              any                             `json:"untyped,omitempty"`
+	Union                isExplicitNullPositions_Union   `json:"-"`
+	AdditionalProperties map[string]json.RawMessage      `json:"-"`
+	_jsonKeys            map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool                 // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 // isExplicitNullPositions_Union is a sealed interface for the Union field of ExplicitNullPositions.
@@ -918,14 +978,14 @@ func (e ExplicitNullPositions) Validate() error {
 			}
 		}
 	}
-	if e._jsonKeys["boundOnly"] && !e._jsonNulls["boundOnly"] {
-		if e.BoundOnly != nil && utf8.RuneCountInString(*e.BoundOnly) < 2 {
-			return fmt.Errorf("boundOnly: length %d is less than minimum 2", utf8.RuneCountInString(*e.BoundOnly))
-		}
-	}
 	if e.Alias != nil {
 		if err := e.Alias.Validate(); err != nil {
 			return fmt.Errorf("alias.%w", err)
+		}
+	}
+	if e.BoundOnly != nil {
+		if err := e.BoundOnly.Validate(); err != nil {
+			return fmt.Errorf("boundOnly.%w", err)
 		}
 	}
 	if e.Bounded != nil {

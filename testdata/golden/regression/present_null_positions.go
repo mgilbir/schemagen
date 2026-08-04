@@ -149,6 +149,66 @@ func (p Pair) Validate() error {
 	return nil
 }
 
+// PresentNullPositionsBoundOnly accepts any JSON value. Constraints apply only when the value is string.
+type PresentNullPositionsBoundOnly struct {
+	_value string
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (p *PresentNullPositionsBoundOnly) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		p._raw = append(p._raw[:0], data...)
+		p._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &p._value); _err == nil {
+		p._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	p._raw = append(p._raw[:0], data...)
+	p._isRaw = true
+	return nil
+}
+func (p PresentNullPositionsBoundOnly) MarshalJSON() ([]byte, error) {
+	if p._isRaw {
+		if len(p._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return p._raw, nil
+	}
+	return json.Marshal(p._value)
+}
+func (p PresentNullPositionsBoundOnly) StringValue() string { return p._value }
+func (p PresentNullPositionsBoundOnly) IsString() bool      { return !p._isRaw }
+func (p PresentNullPositionsBoundOnly) Raw() json.RawMessage {
+	if p._isRaw {
+		return p._raw
+	}
+	_b, _ := json.Marshal(p._value)
+	return _b
+}
+func (p PresentNullPositionsBoundOnly) String() string {
+	if p._isRaw {
+		return string(p._raw)
+	}
+	return fmt.Sprintf("%v", p._value)
+}
+
+// Validate checks PresentNullPositionsBoundOnly against its JSON Schema constraints.
+func (p PresentNullPositionsBoundOnly) Validate() error {
+	if p._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if utf8.RuneCountInString(string(p._value)) < 2 {
+		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
+	}
+	return nil
+}
+
 type PresentNullPositionsNullableObject struct {
 	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -243,15 +303,75 @@ func (p PresentNullPositionsNullableObject) Validate() error {
 	return nil
 }
 
+// PresentNullPositionsReqBoundOnly accepts any JSON value. Constraints apply only when the value is string.
+type PresentNullPositionsReqBoundOnly struct {
+	_value string
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (p *PresentNullPositionsReqBoundOnly) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		p._raw = append(p._raw[:0], data...)
+		p._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &p._value); _err == nil {
+		p._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	p._raw = append(p._raw[:0], data...)
+	p._isRaw = true
+	return nil
+}
+func (p PresentNullPositionsReqBoundOnly) MarshalJSON() ([]byte, error) {
+	if p._isRaw {
+		if len(p._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return p._raw, nil
+	}
+	return json.Marshal(p._value)
+}
+func (p PresentNullPositionsReqBoundOnly) StringValue() string { return p._value }
+func (p PresentNullPositionsReqBoundOnly) IsString() bool      { return !p._isRaw }
+func (p PresentNullPositionsReqBoundOnly) Raw() json.RawMessage {
+	if p._isRaw {
+		return p._raw
+	}
+	_b, _ := json.Marshal(p._value)
+	return _b
+}
+func (p PresentNullPositionsReqBoundOnly) String() string {
+	if p._isRaw {
+		return string(p._raw)
+	}
+	return fmt.Sprintf("%v", p._value)
+}
+
+// Validate checks PresentNullPositionsReqBoundOnly against its JSON Schema constraints.
+func (p PresentNullPositionsReqBoundOnly) Validate() error {
+	if p._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if utf8.RuneCountInString(string(p._value)) < 2 {
+		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
+	}
+	return nil
+}
+
 // PresentNullPositions - Issue #110: the positions where the schema PERMITS a null, which is the other half of explicit_null_positions.json. A null there is not refused, so it survives the decode as the nil pointer, nil collection or untouched zero an ABSENT property also leaves -- and both halves of that are wrong. It was dropped on the way out, and any keyword the property states was then measured against a zero the document never supplied.
 type PresentNullPositions struct {
-	BoundOnly            *string                             `json:"boundOnly,omitempty"`
+	BoundOnly            *PresentNullPositionsBoundOnly      `json:"boundOnly,omitempty"`
 	NullableList         []string                            `json:"nullableList,omitzero"`
 	NullableObject       *PresentNullPositionsNullableObject `json:"nullableObject,omitempty"`
 	NullableScalar       *string                             `json:"nullableScalar,omitempty"`
 	RefList              Pair                                `json:"refList,omitzero"`
 	RefObject            *Obj                                `json:"refObject,omitempty"`
-	ReqBoundOnly         string                              `json:"reqBoundOnly"`
+	ReqBoundOnly         PresentNullPositionsReqBoundOnly    `json:"reqBoundOnly"`
 	TypedString          *string                             `json:"typedString,omitempty"`
 	Untyped              any                                 `json:"untyped,omitempty"`
 	AdditionalProperties map[string]json.RawMessage          `json:"-"`
@@ -316,7 +436,6 @@ func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
 			"nullableScalar",
 			"refList",
 			"refObject",
-			"reqBoundOnly",
 			"untyped",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
@@ -409,19 +528,14 @@ func (p PresentNullPositions) Validate() error {
 			}
 		}
 	}
-	if p._jsonKeys["boundOnly"] && !p._jsonNulls["boundOnly"] {
-		if p.BoundOnly != nil && utf8.RuneCountInString(*p.BoundOnly) < 2 {
-			return fmt.Errorf("boundOnly: length %d is less than minimum 2", utf8.RuneCountInString(*p.BoundOnly))
-		}
-	}
 	if p._jsonKeys["nullableScalar"] && !p._jsonNulls["nullableScalar"] {
 		if p.NullableScalar != nil && utf8.RuneCountInString(*p.NullableScalar) < 2 {
 			return fmt.Errorf("nullableScalar: length %d is less than minimum 2", utf8.RuneCountInString(*p.NullableScalar))
 		}
 	}
-	if !p._jsonNulls["reqBoundOnly"] {
-		if utf8.RuneCountInString(p.ReqBoundOnly) < 2 {
-			return fmt.Errorf("reqBoundOnly: length %d is less than minimum 2", utf8.RuneCountInString(p.ReqBoundOnly))
+	if p.BoundOnly != nil {
+		if err := p.BoundOnly.Validate(); err != nil {
+			return fmt.Errorf("boundOnly.%w", err)
 		}
 	}
 	if p.NullableObject != nil {
@@ -438,6 +552,9 @@ func (p PresentNullPositions) Validate() error {
 		if err := p.RefObject.Validate(); err != nil {
 			return fmt.Errorf("refObject.%w", err)
 		}
+	}
+	if err := p.ReqBoundOnly.Validate(); err != nil {
+		return fmt.Errorf("reqBoundOnly.%w", err)
 	}
 	return nil
 }
