@@ -2,6 +2,8 @@
 // representation (IR) of Go types for code generation.
 package generator
 
+import "github.com/mgilbir/schemagen/pkg/schema"
+
 // GoType represents a Go type in the IR.
 type GoType interface {
 	GoTypeName() string // e.g. "string", "*Person", "[]Item", "map[string]any"
@@ -882,6 +884,14 @@ type RuntimeBranchCheck struct {
 	// NodeLiteral is the Go composite literal for the _schemaNode holding that
 	// keyword and its branches.
 	NodeLiteral string
+	// owner is the schema object the keyword was read from -- the struct's own
+	// schema, or one of its allOf branches, both of which contribute to the same
+	// struct. It is what lets the static approximation of *this* variant slice be
+	// dropped while a sibling slice that got no exact check keeps its own. Keyed
+	// on the node rather than on the slice because a slice is not comparable and
+	// a schema object states at most one anyOf and one oneOf, so the pair
+	// (node, keyword) names the slice exactly.
+	owner *schema.Schema
 }
 
 // ContentCheck is the argument of a "content" validation rule: the decoding to

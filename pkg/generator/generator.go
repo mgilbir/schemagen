@@ -2380,7 +2380,10 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 			Forbidden: true,
 		}
 	} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
+		valueType, ok := g.overflowValueType(s.AdditionalProperties.Schema, name+"Value")
+		if !ok {
+			valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
+		}
 		additionalProps = &AdditionalPropertiesDef{ValueType: valueType}
 		overflowValidation = g.buildOverflowValidation(name, valueType, s.AdditionalProperties.Schema)
 	} else {
@@ -2926,7 +2929,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				needsUnmarshal = true
 			}
 		} else if s.AdditionalProperties.Schema != nil {
-			valueType := g.resolveType(s.AdditionalProperties.Schema, name+"Value")
+			valueType, ok := g.overflowValueType(s.AdditionalProperties.Schema, name+"Value")
+			if !ok {
+				valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
+			}
 			additionalProps = &AdditionalPropertiesDef{
 				ValueType: valueType,
 			}
@@ -3444,21 +3450,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	branchChecks := g.collectBranchOverflowChecks(s, name)
 	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
 
-	objectOneOfs := g.extractObjectOneOfDefs(s)
-	if len(objectOneOfs) > 0 {
-		needsUnmarshal = true
-	}
-
-	// anyOf that sits alongside direct properties is flattened into this struct;
-	// attach object-level anyOf checks so "at least one branch must match" is
-	// enforced. The properties-less anyOf path is handled in generateAnyOfDef.
-	objectAnyOfs := g.extractObjectAnyOfDefs(s)
-	if len(objectAnyOfs) > 0 {
-		needsUnmarshal = true
-	}
-
-	// Where the applicator is evaluated exactly, the flattened approximation of
-	// it is dropped rather than run beside it.
+	// Where an applicator is evaluated exactly, the flattened approximation of
+	// that same applicator is dropped rather than run beside it, which is what
+	// the two extractors take runtimeBranchChecks for.
 	//
 	// The two do not merely duplicate work: the approximation decides whether a
 	// branch matches from its required keys, its consts and its declared types,
@@ -3470,12 +3464,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	//           {"properties":{"a":{}},"required":["a"]}]}
 	// rejected {"a":1,"b":1}, which satisfies the second branch alone. That is
 	// the same false rejection as #111 reached by the other keyword, and the
-	// exact check below is what settles it.
-	if runtimeBranchCheckFor(runtimeBranchChecks, "oneOf") != nil {
-		objectOneOfs = nil
+	// exact check is what settles it.
+	//
+	// Which slice, not which struct: an allOf branch's applicator lands in this
+	// same struct, and dropping its approximation because the *schema's own*
+	// applicator was taken over would leave it checked by nothing (issue #135).
+	objectOneOfs := g.extractObjectOneOfDefs(s, runtimeBranchChecks)
+	if len(objectOneOfs) > 0 {
+		needsUnmarshal = true
 	}
-	if runtimeBranchCheckFor(runtimeBranchChecks, "anyOf") != nil {
-		objectAnyOfs = nil
+
+	// anyOf that sits alongside direct properties is flattened into this struct;
+	// attach object-level anyOf checks so "at least one branch must match" is
+	// enforced. The properties-less anyOf path is handled in generateAnyOfDef.
+	objectAnyOfs := g.extractObjectAnyOfDefs(s, runtimeBranchChecks)
+	if len(objectAnyOfs) > 0 {
+		needsUnmarshal = true
 	}
 
 	// An if/then/else beside the object's properties applies to the object as a
@@ -4406,16 +4410,32 @@ func (g *Generator) mergeConditionalBranchPropertiesInto(target *schema.Schema, 
 	g.mergeVariantObjectPropertiesInto(target, s.Else, onPath)
 }
 
-func (g *Generator) extractObjectOneOfDefs(s *schema.Schema) []ObjectOneOfDef {
+// extractObjectOneOfDefs collects the object-level oneOf groups that apply to a
+// flattened object: the one written beside its properties, and one from each
+// allOf branch, since those branches are merged into this same struct.
+//
+// taken names the variant slices collectRuntimeBranchChecks already compiled to
+// an exact check. Each is skipped here rather than approximated as well: the
+// approximation decides whether a branch matches from its required keys, its
+// consts and its declared types, and a branch stating unevaluatedProperties can
+// fail on a key none of those mention, so the two disagree about the match count
+// and `oneOf` turns that disagreement into a rejection. See #111 for the
+// schema's own slice and #135 for an allOf branch's.
+func (g *Generator) extractObjectOneOfDefs(s *schema.Schema, taken []RuntimeBranchCheck) []ObjectOneOfDef {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return nil
 	}
 	var defs []ObjectOneOfDef
-	if def := g.objectOneOfDefFromVariants(s.OneOf); def != nil {
-		defs = append(defs, *def)
+	if !runtimeBranchTaken(taken, s, "oneOf") {
+		if def := g.objectOneOfDefFromVariants(s.OneOf); def != nil {
+			defs = append(defs, *def)
+		}
 	}
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
+		if runtimeBranchTaken(taken, resolved, "oneOf") {
+			continue
+		}
 		if def := g.objectOneOfDefFromVariants(resolved.OneOf); def != nil {
 			defs = append(defs, *def)
 		}
@@ -4444,16 +4464,23 @@ func (g *Generator) extractObjectConditionalDefs(s *schema.Schema) []ObjectCondi
 	return defs
 }
 
-func (g *Generator) extractObjectAnyOfDefs(s *schema.Schema) []ObjectAnyOfDef {
+// extractObjectAnyOfDefs is extractObjectOneOfDefs for `anyOf`, and takes the
+// same per-slice suppression for the same reason.
+func (g *Generator) extractObjectAnyOfDefs(s *schema.Schema, taken []RuntimeBranchCheck) []ObjectAnyOfDef {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return nil
 	}
 	var defs []ObjectAnyOfDef
-	if def := g.objectAnyOfDefFromVariants(s.AnyOf); def != nil {
-		defs = append(defs, *def)
+	if !runtimeBranchTaken(taken, s, "anyOf") {
+		if def := g.objectAnyOfDefFromVariants(s.AnyOf); def != nil {
+			defs = append(defs, *def)
+		}
 	}
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
+		if runtimeBranchTaken(taken, resolved, "anyOf") {
+			continue
+		}
 		if def := g.objectAnyOfDefFromVariants(resolved.AnyOf); def != nil {
 			defs = append(defs, *def)
 		}
@@ -5317,7 +5344,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 				sd.RuntimeBranchChecks = append(sd.RuntimeBranchChecks, runtimeChecks...)
 				sd.NeedsUnmarshal = true
 			}
-			if runtimeBranchCheckFor(runtimeChecks, "anyOf") == nil {
+			if !runtimeBranchTaken(runtimeChecks, s, "anyOf") {
 				if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
 					sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
 					sd.NeedsUnmarshal = true
@@ -6830,7 +6857,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// once did, left `additionalProperties: {"type":"string","minLength":3}`
 	// typed map[string]any with minLength enforced nowhere.
 	if mapVals := mapValueSchema(s, primaryType); mapVals != nil {
-		valueType := g.resolveArrayItemType(mapVals, contextName+"Value")
+		valueType, ok := g.overflowValueType(mapVals, contextName+"Value")
+		if !ok {
+			valueType = g.resolveArrayItemType(mapVals, contextName+"Value")
+		}
 		return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
 	}
 
@@ -9682,6 +9712,97 @@ func mapValueSchema(s *schema.Schema, primaryType string) *schema.Schema {
 		return nil
 	}
 	return s.AdditionalProperties.Schema
+}
+
+// overflowValueType names the position the values of an overflow map occupy,
+// for the sub-schema that would otherwise be typed from a keyword rather than
+// from a "type" it states. The second result is false when the position keeps
+// the type it has today, which every caller answers by resolving as before.
+//
+// The typed overflow map asserts what the sub-schema did not say. `minimum`
+// constrains numbers and is vacuous for every other JSON kind, so
+// {"type":"object","additionalProperties":{"minimum":5}} admits {"x":"abc"},
+// {"x":{"a":1}} and {"x":null} -- and map[string]float64 refuses all three: the
+// first two die in the decoder, and the third decodes to the Go zero, which is
+// then measured against the bound. That is issue #137, and it is the same
+// narrowing for `minLength` (map[string]string refuses a number), `minItems`
+// (map[string][]any refuses a string) and `required` (map[string]map[string]any
+// refuses a scalar).
+//
+// The type the position should have already exists, and is what the identical
+// sub-schema gets the moment it is written as a $defs entry and referenced:
+// generateTypeDef's inferred arms build a wrapper that keeps the raw JSON when
+// the value is of another kind and applies the keywords only when it is not --
+// InferredAliasDef for a number, a string or an array, and for an inferred
+// object the propertyless struct, whose AcceptNonObject arm does the same job.
+// So {"additionalProperties":{"$ref":"#/$defs/M"}} with M of {"minimum":5} has
+// always accepted all three documents while the inline spelling refused them.
+// Naming the position is what routes the inline one to the same type, and the
+// two stop disagreeing about a schema neither of them changed.
+//
+// Only an *inferred* type is claimed. A sub-schema that states its type has
+// authorized the narrowing -- {"type":"number","minimum":5} really does forbid
+// a string, and a decode failure there is a correct rejection -- so it keeps
+// map[string]float64 and the convenient Go type that goes with it. The keywords
+// that fix a type through an arm of resolveType above the inference are
+// excluded for the same reason: an enum, a const and a $ref each already have a
+// path that answers better than this one.
+func (g *Generator) overflowValueType(sub *schema.Schema, name string) (GoType, bool) {
+	if !g.overflowValueNeedsName(sub, name) {
+		return nil, false
+	}
+	if n, cyclic := g.materializeNamed(sub, name); g.generated[n] {
+		return namedOrPointer(n, cyclic), true
+	}
+	return nil, false
+}
+
+// overflowValueNeedsName is overflowValueType's question, split out so the two
+// halves of the answer -- whether to name the position, and what the name
+// resolves to -- can be read apart.
+//
+// The guards are constraintOnlyNamedType's, with one relaxation: a name already
+// generated belongs to another schema and is refused, *unless* this very node
+// has a canonical name of its own, in which case materializeNamed hands that
+// back and declares nothing. A name being generated is the frame that called
+// us, and a node already in flight would have the wrapper stand in for the
+// definition being built above it; both are refused outright, and the caller
+// then resolves the position exactly as it did before.
+func (g *Generator) overflowValueNeedsName(sub *schema.Schema, name string) bool {
+	if sub == nil || name == "" || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if g.generating[name] || g.nodesInProgress[sub] {
+		return false
+	}
+	if _, named := g.nodeTypeNames[sub]; !named && g.generated[name] {
+		return false
+	}
+	return g.typeIsInferredFromConstraints(sub)
+}
+
+// typeIsInferredFromConstraints reports whether a schema states no "type" of its
+// own and yet resolveType would give it one, read off a validation keyword.
+//
+// The exclusions name the arms of resolveType that run before the inference and
+// answer from something the schema does state: a boolean schema, a type list, a
+// draft-3 type alternative, an enum, a const (which promoteConstToEnum turns
+// into one), and a reference of any spelling. None of those is inferred, so
+// none of them is this predicate's business.
+func (g *Generator) typeIsInferredFromConstraints(s *schema.Schema) bool {
+	if s == nil || s.IsBooleanSchema() {
+		return false
+	}
+	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
+		return false
+	}
+	if s.EffectiveRef() != "" || s.DynamicRef != "" || s.RecursiveRef != "" {
+		return false
+	}
+	return g.inferTypeFromConstraints(s) != ""
 }
 
 // containerElem returns what a slice or a map holds, and whether the container
@@ -14088,41 +14209,79 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 // which leaves the applicator judged by the static approximation alone. That is
 // the same answer this keyword got before #111 in every position but the
 // rejecting one.
+//
+// The allOf branches are read as well as the schema's own keywords, because they
+// are merged into this same struct and their applicators land here or nowhere.
+// extractObjectAnyOfDefs has always had that reach and this had not, so a branch
+// `unevaluatedProperties` inside an allOf got the static approximation and never
+// the exact check (issue #135). The two halves are not symmetric in what that
+// costs: through `anyOf` the approximation simply admits what it cannot see, and
+// {"allOf":[{"anyOf":[{"properties":{"b":{}},"unevaluatedProperties":false}]}]}
+// accepted {"b":1,"c":2}, which no branch admits; through `oneOf` it counts a
+// branch that does not hold, and an allOf branch whose oneOf reads
+// [{"properties":{"b":{}},"required":["b"],"unevaluatedProperties":false},
+// {"properties":{"a":{}},"required":["a"]}]
+// *rejected* {"a":1,"b":1}, which satisfies the second branch alone -- #111's
+// false rejection, surviving one level down. So this is not only a missing
+// check, and the suppression below is as much of the fix as the check is.
+//
+// A branch reached through a $ref is resolved, by the same route
+// extractObjectAnyOfDefs takes, so the two agree on which branches exist; and an
+// owner reached twice -- a schema whose allOf refers back to itself -- is
+// compiled once.
 func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranchCheck {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return nil
 	}
 	var checks []RuntimeBranchCheck
-	for _, group := range []struct {
-		keyword string
-		field   string
-		subs    []*schema.Schema
-	}{{"anyOf", "AnyOf", s.AnyOf}, {"oneOf", "OneOf", s.OneOf}} {
-		if !g.branchStatesUnevaluatedProperties(group.subs) {
-			continue
+	seen := make(map[*schema.Schema]bool, 1+len(s.AllOf))
+	collect := func(owner *schema.Schema) {
+		if owner == nil || seen[owner] {
+			return
 		}
-		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
-		list, ok := b.list(group.subs, 2)
-		if !ok {
-			continue
+		seen[owner] = true
+		for _, group := range []struct {
+			keyword string
+			field   string
+			subs    []*schema.Schema
+		}{{"anyOf", "AnyOf", owner.AnyOf}, {"oneOf", "OneOf", owner.OneOf}} {
+			if len(group.subs) == 0 || !g.branchStatesUnevaluatedProperties(group.subs) {
+				continue
+			}
+			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
+			list, ok := b.list(group.subs, 2)
+			if !ok {
+				continue
+			}
+			checks = append(checks, RuntimeBranchCheck{
+				Keyword:     group.keyword,
+				NodeLiteral: fmt.Sprintf("_schemaNode{\n\t%s: %s,\n}", group.field, list),
+				owner:       owner,
+			})
 		}
-		checks = append(checks, RuntimeBranchCheck{
-			Keyword:     group.keyword,
-			NodeLiteral: fmt.Sprintf("_schemaNode{\n\t%s: %s,\n}", group.field, list),
-		})
+	}
+	collect(s)
+	for _, sub := range s.AllOf {
+		collect(g.resolveSchemaForApplicator(sub))
 	}
 	return checks
 }
 
-// runtimeBranchCheckFor returns the compiled check for one applicator keyword,
-// or nil if that keyword was not taken over.
-func runtimeBranchCheckFor(checks []RuntimeBranchCheck, keyword string) *RuntimeBranchCheck {
+// runtimeBranchTaken reports whether one schema object's applicator keyword was
+// compiled to an exact check, so the static approximation of that same keyword
+// must be dropped rather than run beside it.
+//
+// The question is about a single variant slice, not about the struct: with the
+// allOf reach above, one struct can carry an `anyOf` the evaluator took over and
+// an allOf branch's `anyOf` it could not read. Answering per struct would drop
+// the second one's approximation too and leave it checked by nothing.
+func runtimeBranchTaken(checks []RuntimeBranchCheck, owner *schema.Schema, keyword string) bool {
 	for i := range checks {
-		if checks[i].Keyword == keyword {
-			return &checks[i]
+		if checks[i].Keyword == keyword && checks[i].owner == owner {
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 // branchStatesUnevaluatedProperties reports whether any direct branch of an

@@ -541,7 +541,34 @@ func needsRuntimeAnnotations(s *schema.Schema) bool {
 // hasCousinUnevaluatedItems reports whether any in-place applicator subschema
 // carries its own unevaluatedItems. Those are cousins of their siblings and see
 // no annotations from them, which static merging gets wrong.
-func hasCousinUnevaluatedItems(s *schema.Schema) bool {
+//
+// The allOf branches are searched as well as the schema's own applicators, which
+// is the reach collectRuntimeBranchChecks takes for unevaluatedProperties and
+// the reason #135 asked about this keyword too. Every allOf branch binds, so an
+// applicator inside one is an applicator of this schema by another spelling, and
+// {"type":"array","allOf":[{"anyOf":[{"prefixItems":[{"type":"integer"}],"unevaluatedItems":false}]}]}
+// accepted [1,2] while the identical anyOf written directly has rejected it
+// since the cousin case was recognised. A branch reached through a $ref is
+// resolved, so the two spellings of the same branch answer alike.
+func (g *Generator) hasCousinUnevaluatedItems(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if statesCousinUnevaluatedItems(s) {
+		return true
+	}
+	for _, sub := range s.AllOf {
+		if statesCousinUnevaluatedItems(g.resolveSchemaForApplicator(sub)) {
+			return true
+		}
+	}
+	return false
+}
+
+// statesCousinUnevaluatedItems is hasCousinUnevaluatedItems for one schema
+// object: does any direct branch of its own in-place applicators state the
+// keyword.
+func statesCousinUnevaluatedItems(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
@@ -571,7 +598,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !g.validationKeywordsEnabled() {
 		return nil
 	}
-	if !needsRuntimeAnnotations(s) && !hasCousinUnevaluatedItems(s) {
+	if !needsRuntimeAnnotations(s) && !g.hasCousinUnevaluatedItems(s) {
 		return nil
 	}
 	b := &nodeBuilder{g: g, allowed: annotationKeywords, stack: map[*schema.Schema]bool{}}

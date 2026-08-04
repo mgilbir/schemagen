@@ -4968,10 +4968,15 @@ func main() {
 		check(doc, false)
 	}
 
-	// The accept-control: the lone-branch spelling keeps the typed overflow map
-	// the merge already produced, and its bound still bites.
+	// The accept-control: the lone-branch spelling is the one the merge does
+	// express, so it keeps the overflow map the merge produced rather than being
+	// taken over by the evaluator, and its bound still bites. Its value type is
+	// no longer float64 -- issue #137 gave an untyped sub-schema the wrapper
+	// there too -- so the same narrowness control applies to it.
 	check(` + "`" + `{"soleBranch":{"x":7}}` + "`" + `, false)
 	check(` + "`" + `{"soleBranch":{"x":1}}` + "`" + `, true)
+	check(` + "`" + `{"soleBranch":{"x":"abc"}}` + "`" + `, false)
+	check(` + "`" + `{"soleBranch":{"x":null}}` + "`" + `, false)
 
 	// Round-trip: the wrapper keeps the bytes it was handed.
 	var v AllOfOverflowPositions
@@ -4991,4 +4996,164 @@ func main() {
 }
 `
 	runGeneratedMainProgram(t, "testdata/schemas/regression/allof_overflow_positions.json", "allof_overflow_test", mainGo)
+}
+
+// TestOverflowMapUntypedValueKeepsEveryKind is the behavioural half of issue
+// #137. An overflow map typed from a sub-schema that states no "type" asserted
+// what the schema never said: `minimum` constrains numbers and is vacuous for
+// every other JSON kind, so map[string]float64 refused {"x":"abc"} and
+// {"x":{"a":1}} in the decoder, and turned {"x":null} into the Go zero and
+// measured that against the bound.
+//
+// The valid list is the whole of the defect: every one of those documents is
+// admitted by the schema and was refused. It covers the three inferred kinds the
+// same narrowing reaches -- minLength typing the map as string, minItems as a
+// slice, required as a nested map -- and both spellings of the overflow map, the
+// Go map a property becomes and the struct field beside declared properties.
+//
+// The invalid list is what the fix must not cost. Each bound still bites on a
+// value of the kind it speaks about, and `typed` is the control that says the
+// narrowing is kept where the sub-schema authorized it: {"typed":{"x":"abc"}}
+// is a genuine rejection, at decode time, because that sub-schema does state
+// "type":"number".
+func TestOverflowMapUntypedValueKeepsEveryKind(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/overflow_map_untyped_value.json",
+		[]string{
+			// The reported rows, in the Go-map spelling.
+			`{"bare":{"x":"abc"}}`,
+			`{"bare":{"x":{"a":1}}}`,
+			`{"bare":{"x":null}}`,
+			`{"bare":{"x":[1,2]}}`,
+			`{"bare":{"x":true}}`,
+			`{"bare":{"x":7}}`,
+			// minLength says nothing about a number or a null.
+			`{"strLen":{"x":"abc"}}`,
+			`{"strLen":{"x":7}}`,
+			`{"strLen":{"x":null}}`,
+			// minItems says nothing about a string.
+			`{"arrLen":{"x":[1,2]}}`,
+			`{"arrLen":{"x":"abc"}}`,
+			// required says nothing about a scalar.
+			`{"objReq":{"x":{"a":1}}}`,
+			`{"objReq":{"x":"abc"}}`,
+			// The $defs spelling, which has always been right, still is.
+			`{"viaRef":{"x":"abc"}}`,
+			`{"viaRef":{"x":7}}`,
+			// The struct-field spelling: these keys land in the root's own
+			// overflow map, beside the declared properties.
+			`{"extra":"abc"}`,
+			`{"extra":null}`,
+			`{"extra":7}`,
+			`{"typed":{"x":7}}`,
+			`{}`,
+		},
+		[]string{
+			`{"bare":{"x":3}}`,
+			`{"strLen":{"x":"ab"}}`,
+			`{"arrLen":{"x":[1]}}`,
+			`{"objReq":{"x":{}}}`,
+			`{"viaRef":{"x":3}}`,
+			`{"extra":3}`,
+			// The sub-schema states its type, so the Go type may narrow and a
+			// string really is refused -- at decode, which counts as a rejection.
+			`{"typed":{"x":3}}`,
+			`{"typed":{"x":"abc"}}`,
+		},
+	)
+}
+
+// TestAllOfNestedAnyOfUnevaluatedIsPerDocument is issue #135 through `anyOf`:
+// #111's reproducer with the applicator one level down, inside an allOf branch.
+//
+// The invalid list is the missing check. {"b":2,"c":3} leaves c unevaluated for
+// the first branch and states no `a` for the second, so no branch holds -- and
+// the static approximation, which is all this shape had, admits it.
+//
+// The valid list is the accept-control beside it, and it is the same set #111
+// established for the direct spelling: {"a":1} satisfies the second branch,
+// which states no `unevaluatedProperties` at all, and a branch the document
+// fails contributes nothing. Adding the exact check must not turn any of these
+// into a rejection.
+func TestAllOfNestedAnyOfUnevaluatedIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_nested_anyof_unevaluated.json",
+		[]string{
+			`{"a":1}`,
+			`{"b":2}`,
+			`{"a":1,"b":2}`,
+			// No key is unevaluated, so the first branch holds vacuously.
+			`{}`,
+		},
+		[]string{
+			`{"b":2,"c":3}`,
+			`{"c":3}`,
+		},
+	)
+}
+
+// TestAllOfNestedOneOfUnevaluatedIsPerDocument is issue #135 through `oneOf`,
+// where the same gap is a false rejection rather than a missing check.
+//
+// {"a":1,"b":1,"m":1} satisfies PickOne's second branch alone: the first
+// declares b, m and n, so `a` is unevaluated and `unevaluatedProperties:false`
+// fails it. The static approximation reads required keys, consts and declared
+// types, none of which mention `a`, so it counted two matches and reported
+// "expected exactly 1" -- #111's rejection surviving one level down. It is the
+// first entry of the valid list.
+//
+// The last two invalid entries are the control for the suppression being per
+// variant slice. The second allOf branch states a oneOf of its own with no
+// `unevaluatedProperties`, so it gets no exact check and must keep the
+// approximation: {"a":1} matches neither of its branches and {"a":1,"m":1,"n":1}
+// matches both. Suppressing per struct -- "some oneOf here was taken over" --
+// drops that approximation with its sibling's and accepts both.
+//
+// PickOne sits behind a $ref, which the merge follows, so this is also the
+// control that the two collectors agree on which branch that is. Every verdict
+// below was confirmed against python-jsonschema.
+func TestAllOfNestedOneOfUnevaluatedIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_nested_oneof_unevaluated.json",
+		[]string{
+			`{"a":1,"b":1,"m":1}`,
+			`{"b":1,"m":1}`,
+			`{"a":1,"m":1}`,
+			`{"a":1,"b":1,"m":1,"z":"s"}`,
+		},
+		[]string{
+			// PickOne holds for neither branch: the first wants b, the second a.
+			`{"m":1}`,
+			`{"z":"s"}`,
+			`{}`,
+			// The sibling slice's own approximation, which must survive.
+			`{"a":1}`,
+			`{"a":1,"m":1,"n":1}`,
+		},
+	)
+}
+
+// TestAllOfNestedAnyOfUnevaluatedItems is the same nesting for the array
+// keyword, which issue #135 asked to be checked at the same time.
+//
+// hasCousinUnevaluatedItems read the direct branches of the schema's own
+// in-place applicators only, so an anyOf inside an allOf branch was invisible
+// and the keyword fell back to static handling. [1,2] leaves index 1
+// unevaluated for the first branch and is not a string array for the second, so
+// it satisfies neither; it was accepted. The valid list is the accept-control:
+// [1] is evaluated entirely by the prefix, ["a","b"] fails the first branch's
+// own prefixItems assertion and holds under the second, and [] holds vacuously.
+func TestAllOfNestedAnyOfUnevaluatedItems(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_nested_anyof_unevaluated_items.json",
+		[]string{
+			`[1]`,
+			`["a","b"]`,
+			`[]`,
+		},
+		[]string{
+			`[1,2]`,
+			`[1,"a"]`,
+		},
+	)
 }

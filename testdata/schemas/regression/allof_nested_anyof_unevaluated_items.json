@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfNestedAnyOfUnevaluatedItems",
+  "description": "Issue #135 asked whether unevaluatedItems has the same nesting gap, and it did. hasCousinUnevaluatedItems read the direct branches of the schema's own in-place applicators, so an anyOf one level down inside an allOf branch was invisible and the keyword fell back to static handling: [1,2] was accepted although the first branch leaves index 1 unevaluated and the second refuses a number. The identical anyOf written directly has always rejected it.",
+  "type": "array",
+  "allOf": [
+    {
+      "anyOf": [
+        { "prefixItems": [{ "type": "integer" }], "unevaluatedItems": false },
+        { "items": { "type": "string" } }
+      ]
+    }
+  ]
+}

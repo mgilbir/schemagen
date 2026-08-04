@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfNestedAnyOfUnevaluated",
+  "description": "Issue #135: #111's reproducer with the anyOf moved one level down, inside an allOf branch. The branch is merged into this same struct, so its applicator lands here or nowhere -- and extractObjectAnyOfDefs reached it while collectRuntimeBranchChecks did not, which left the keyword judged by the static approximation alone. Through anyOf the approximation admits what it cannot see.",
+  "type": "object",
+  "properties": {
+    "a": { "type": "integer" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        { "properties": { "b": { "type": "integer" } }, "unevaluatedProperties": false },
+        { "required": ["a"] }
+      ]
+    }
+  ]
+}

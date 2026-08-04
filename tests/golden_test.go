@@ -177,6 +177,10 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/anyof_branch_unevaluated_no_properties", "testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_no_properties.go"},
 		{"regression/oneof_branch_unevaluated_properties", "testdata/schemas/regression/oneof_branch_unevaluated_properties.json", "testdata/golden/regression/oneof_branch_unevaluated_properties.go"},
 		{"regression/constraint_only_positions", "testdata/schemas/regression/constraint_only_positions.json", "testdata/golden/regression/constraint_only_positions.go"},
+		{"regression/overflow_map_untyped_value", "testdata/schemas/regression/overflow_map_untyped_value.json", "testdata/golden/regression/overflow_map_untyped_value.go"},
+		{"regression/allof_nested_anyof_unevaluated", "testdata/schemas/regression/allof_nested_anyof_unevaluated.json", "testdata/golden/regression/allof_nested_anyof_unevaluated.go"},
+		{"regression/allof_nested_oneof_unevaluated", "testdata/schemas/regression/allof_nested_oneof_unevaluated.json", "testdata/golden/regression/allof_nested_oneof_unevaluated.go"},
+		{"regression/allof_nested_anyof_unevaluated_items", "testdata/schemas/regression/allof_nested_anyof_unevaluated_items.json", "testdata/golden/regression/allof_nested_anyof_unevaluated_items.go"},
 	}
 }
 
