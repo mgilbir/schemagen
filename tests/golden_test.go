@@ -105,6 +105,23 @@ func allGoldenTests() []goldenTestCase {
 		// Pins that an enum a branch stated over whole objects is carried by the
 		// merged struct, and that a branch stating none leaves it alone.
 		{"regression/allof_object_enum", "testdata/schemas/regression/allof_object_enum.json", "testdata/golden/regression/allof_object_enum.go"},
+		// Pins that a root composition whose branches the static evaluator
+		// refuses -- a boolean, a $ref, a nested composition, an enum -- is
+		// compiled to the runtime evaluator instead of becoming `type X any`,
+		// which carries no Validate at all.
+		{"regression/root_composition_branches", "testdata/schemas/regression/root_composition_branches.json", "testdata/golden/regression/root_composition_branches.go"},
+		// The same for a root "not" whose sub-schema states object structure.
+		{"regression/root_not_object_shape", "testdata/schemas/regression/root_not_object_shape.json", "testdata/golden/regression/root_not_object_shape.go"},
+		// The other side of it: a schema schemagen still cannot compile keeps
+		// `any`, and says so in the generated source instead of passing for a
+		// type that was never constrained.
+		{"regression/unenforced_any", "testdata/schemas/regression/unenforced_any.json", "testdata/golden/regression/unenforced_any.go"},
+		// Pins the two halves of naming a definition that compiles to the runtime
+		// evaluator: an alias over it delegates its JSON both ways, and a bare
+		// boolean definition beside it keeps the `any` its own paths are written
+		// for rather than gaining a wrapper.
+		{"regression/ref_to_runtime_wrapper", "testdata/schemas/regression/ref_to_runtime_wrapper.json", "testdata/golden/regression/ref_to_runtime_wrapper.go"},
+		{"regression/boolean_defs_keep_any", "testdata/schemas/regression/boolean_defs_keep_any.json", "testdata/golden/regression/boolean_defs_keep_any.go"},
 	}
 }
 

@@ -2,6 +2,15 @@
 {{- if .Description}}
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
+{{- if .Unenforced}}
+// {{.Name}} is NOT VALIDATED, and its schema does state constraints:
+//	{{.Unenforced}}
+//
+// schemagen could not compile those into a check it could carry here. The
+// underlying type is an interface, Go forbids methods on those, so this type has
+// no Validate method and json.Unmarshal into it cannot fail -- every document
+// reaches your code unexamined, including the ones the schema forbids.
+{{- end}}
 type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}

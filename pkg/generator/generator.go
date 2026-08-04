@@ -64,6 +64,12 @@ type Generator struct {
 	// generation to warn about configured overrides that matched no property.
 	appliedOverrides map[string]map[string]bool
 
+	// unenforced records the types that came out as `type X any` while their
+	// schema still stated a constraint, so the CLI can say so. The type has no
+	// Validate method and cannot fail to unmarshal, which makes this the one
+	// kind of dropped check a caller has no way to notice.
+	unenforced []UnenforcedSchema
+
 	// unresolvedRefs records $ref values that resolveRefInContext could not
 	// resolve anywhere (local defs, anchors, document roots, or the external
 	// resolver). Unless Config.LenientRefs is set, Generate fails when this
@@ -1630,17 +1636,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		// rejects "foo". A bare `type X any` cannot carry a Validate() method
 		// (Go forbids methods on interface-underlying types), so when the
 		// branches are expressible, wrap the raw JSON in a struct instead.
-		if def := g.dynamicSchemaDef(name, s); def != nil {
+		if def := g.rawWrapperDef(name, s); def != nil {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, def)
 			return nil
 		}
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:        name,
-			Underlying:  &PrimitiveType{Name: "any"},
-			Description: s.Description,
-		})
+		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -1949,28 +1951,24 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Fallback: alias to any. Before giving up on validation entirely, check
-	// whether the schema still constrains the value through applicators
-	// (oneOf/anyOf/if-then-else) with no type of its own. `type X any` cannot
-	// carry a Validate() method, so those constraints would be dropped silently;
-	// a raw-JSON wrapper keeps them enforceable.
-	if def := g.dynamicSchemaDef(name, s); def != nil {
+	// whether the schema still constrains the value -- through an applicator, a
+	// "not", a shape stated without a type of its own. `type X any` cannot carry
+	// a Validate() method, so every one of those would be dropped silently; a
+	// raw-JSON wrapper keeps them enforceable.
+	if def := g.rawWrapperDef(name, s); def != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, def)
 		return nil
 	}
 
-	goType := &PrimitiveType{Name: "any"}
-	var rules []ValidationRule
-	if g.validationKeywordsEnabled() {
-		rules = extractAliasValidationRules(s, goType)
-	}
+	// The rules extractAliasValidationRules would return are dropped here on
+	// purpose, and always have been: an alias whose underlying type is `any` is
+	// interface-underlying, Go forbids methods on it, and the emitter's
+	// CanHaveMethods gate never writes the Validate they would go in. Building
+	// them only to discard them said the opposite. unenforcedAliasDef reports
+	// what is being lost instead.
 	g.generated[name] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-		Name:        name,
-		Underlying:  goType,
-		Description: s.Description,
-		Validations: rules,
-	})
+	g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
 	return nil
 }
 
@@ -2209,6 +2207,40 @@ func (g *Generator) fieldNameFor(typeName, jsonProp string) (name string, overri
 // generation, keyed by type name → JSON property name.
 func (g *Generator) AppliedOverrides() map[string]map[string]bool {
 	return g.appliedOverrides
+}
+
+// UnenforcedSchema names a generated type whose schema stated a constraint that
+// the generated code does not check.
+type UnenforcedSchema struct {
+	TypeName string
+	Keywords []string
+}
+
+// UnenforcedSchemas returns the types that came out as `type X any` despite
+// their schema constraining something, in the order they were generated.
+//
+// This is the one dropped check that leaves no trace in the output a caller
+// could act on: `any` has no Validate method to be missing, and unmarshalling
+// into it always succeeds, so a schema schemagen could not compile looks exactly
+// like a schema that said nothing. Reporting it is what turns "this is
+// unconstrained" back into "I could not read this".
+//
+// A name that did not survive into the file is dropped from the report. Some
+// arms mint a type, discover it can carry nothing, and leave it undeclared;
+// naming one of those would send the reader looking for a declaration that is
+// not there, and a diagnostic nobody can act on is one they learn to skip.
+func (g *Generator) UnenforcedSchemas() []UnenforcedSchema {
+	declared := make(map[string]bool, len(g.output.TypeDefs))
+	for _, td := range g.output.TypeDefs {
+		declared[td.TypeName()] = true
+	}
+	kept := make([]UnenforcedSchema, 0, len(g.unenforced))
+	for _, u := range g.unenforced {
+		if declared[u.TypeName] {
+			kept = append(kept, u)
+		}
+	}
+	return kept
 }
 
 // generateStructDef produces a StructDef from an object schema.
@@ -3413,17 +3445,13 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// No type inferrable → alias to `any` (permissive fallback), unless the
 		// schema's applicators still constrain the value, in which case wrap the
 		// raw JSON so a Validate() can be attached.
-		if def := g.dynamicSchemaDef(name, s); def != nil {
+		if def := g.rawWrapperDef(name, s); def != nil {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, def)
 			return nil
 		}
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:        name,
-			Underlying:  &PrimitiveType{Name: "any"},
-			Description: s.Description,
-		})
+		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -4434,17 +4462,13 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 		// The variants still constrain the value even with no properties to
 		// merge, so prefer a wrapper carrying a Validate() over a bare
 		// `type X any` that drops them.
-		if def := g.dynamicSchemaDef(name, s); def != nil {
+		if def := g.rawWrapperDef(name, s); def != nil {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, def)
 			return nil
 		}
 		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-			Name:        name,
-			Underlying:  &PrimitiveType{Name: "any"},
-			Description: s.Description,
-		})
+		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -9084,10 +9108,28 @@ func (g *Generator) populateAliasDelegates() {
 			validatableTypes[d.Name] = true
 		case *BigIntAliasDef:
 			validatableTypes[d.Name] = true
+		// The raw-JSON wrappers. Each is a struct holding one unexported field
+		// and reaching JSON only through its own UnmarshalJSON and MarshalJSON,
+		// which `type Root Wrapper` does not inherit -- encoding/json then sees a
+		// struct with no exported field and refuses every document that is not an
+		// object, for a schema that accepts them. Naming them here is what makes
+		// the alias delegate both directions, exactly as it does for a raw enum.
 		case *TypeOnlySchemaDef:
 			validatableTypes[d.Name] = true
+			unmarshalTypes[d.Name] = true
+			marshalTypes[d.Name] = true
 		case *NotSchemaDef:
 			validatableTypes[d.Name] = true
+			unmarshalTypes[d.Name] = true
+			marshalTypes[d.Name] = true
+		case *DynamicSchemaDef:
+			validatableTypes[d.Name] = true
+			unmarshalTypes[d.Name] = true
+			marshalTypes[d.Name] = true
+		case *AnnotationSchemaDef:
+			validatableTypes[d.Name] = true
+			unmarshalTypes[d.Name] = true
+			marshalTypes[d.Name] = true
 		case *AliasDef:
 			if d.CanHaveMethods() {
 				validatableTypes[d.Name] = true

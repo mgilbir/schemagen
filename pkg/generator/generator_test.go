@@ -6519,16 +6519,18 @@ func TestAllOfBranchObjectKeywordsSurviveWithoutProperties(t *testing.T) {
 	}
 }
 
-// TestAllOfWithoutObjectChecksStaysAny is the over-reach guard for the arm
-// above. An allOf that merges to an object with nothing to enforce keeps the
-// permissive alias: materialising an empty struct for every property-less allOf
-// would change the generated API of schemas that gained no check from it.
+// TestAllOfWithoutObjectChecksStaysUnstructured is the over-reach guard for the
+// arm above. An allOf that merges to an object with nothing to enforce must not
+// materialise a struct: an empty struct changes how every instance decodes, for
+// a schema that gained no property from the merge.
 //
-// The type keyword alone is deliberately not enough. A struct built here would
-// start rejecting non-object instances of a schema that today accepts them --
-// correct per the spec, but a far wider change than the merge gap this arm
-// exists to close, and one no part of #83 asks for.
-func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
+// It does still get a Validate. The schema says "type":"object" and a string is
+// not one, so something has to be able to say so -- and the raw-JSON wrapper is
+// how, without a struct's field decoding. The alias to `any` this used to assert
+// could not: Go forbids methods on an interface-underlying type, so it had no
+// Validate at all and accepted every document, which is issue #113's complaint
+// in miniature.
+func TestAllOfWithoutObjectChecksStaysUnstructured(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
 		"allOf": [{"type": "object"}]
@@ -6538,16 +6540,19 @@ func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
 		if sd, ok := td.(*StructDef); ok && sd.Name == "Doc" {
 			t.Fatalf("Doc became a struct with nothing to validate: %+v", sd)
 		}
+		if ad, ok := td.(*AliasDef); ok && ad.Name == "Doc" {
+			t.Fatalf("Doc stayed an alias to %s, which carries no Validate", ad.Underlying.GoTypeName())
+		}
 	}
 	for _, td := range ir.TypeDefs {
-		if ad, ok := td.(*AliasDef); ok && ad.Name == "Doc" {
-			if ad.Underlying.GoTypeName() != "any" {
-				t.Fatalf("Doc underlying = %s, want any", ad.Underlying.GoTypeName())
+		if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "Doc" {
+			if !strings.Contains(d.NodeLiteral, `"object"`) {
+				t.Fatalf("Doc's compiled schema does not carry the object type: %s", d.NodeLiteral)
 			}
 			return
 		}
 	}
-	t.Fatalf("expected Doc to stay an alias to any; got %v", ir.TypeDefs)
+	t.Fatalf("expected Doc to become a raw-JSON wrapper; got %v", ir.TypeDefs)
 }
 
 // generateForDraft is generateForItemTest with a draft the caller states, so a

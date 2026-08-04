@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefToRuntimeWrapper",
+  "$comment": "The root is an alias over a definition that compiles to the runtime evaluator. A named type does not inherit its underlying type's methods, so without delegation the root decodes as a struct with no exported field and refuses every document that is not an object. The branch admits a non-null value on purpose: null decodes into such a struct without complaint, so a case that is valid and *not* null is what tells the two apart.",
+  "$defs": {
+    "wrapped": { "anyOf": [{ "anyOf": [{ "type": "string", "minLength": 2 }] }] }
+  },
+  "$ref": "#/$defs/wrapped"
+}

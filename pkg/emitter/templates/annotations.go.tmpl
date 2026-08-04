@@ -1,31 +1,61 @@
 {{define "annotation_helpers"}}
-// The types below evaluate the array-annotation subset of JSON Schema at
-// runtime. unevaluatedItems depends on which items sibling applicators actually
-// evaluated for the value in hand, which is not knowable at generation time:
-// {"anyOf":[A,B],"unevaluatedItems":false} evaluates whatever the branches that
-// *matched this value* evaluated.
+// The types below evaluate JSON Schema at runtime, against a value decoded into
+// `any`.
+//
+// Two callers reach it. One is unevaluatedItems next to in-place applicators:
+// which items count as evaluated depends on which branches matched the value in
+// hand, which is not knowable at generation time -- in
+// {"anyOf":[A,B],"unevaluatedItems":false} the evaluated set is whatever the
+// branches that matched *this value* evaluated. The other is a schema that
+// constrains a value without giving it a Go type of its own, typically a root
+// composition or a root "not": Go forbids methods on a type whose underlying
+// type is an interface, so such a schema has nowhere to put a Validate() unless
+// its raw JSON is wrapped and the schema kept as data.
 //
 // Only schemas whose whole subtree fits this model are compiled to it; anything
-// else keeps the static checks.
+// else keeps the static checks, or is refused outright rather than evaluated
+// with a keyword silently ignored.
 
 type _schemaNode struct {
 	Boolean *bool // a bare true/false schema
 
-	Type       string
-	Const      *string // JSON encoding of the const value
-	MultipleOf *float64
-	Minimum    *float64
-	Maximum    *float64
+	Type  []string // the JSON types the value may have; empty means any
+	Const *string  // JSON encoding of the const value
+	Enum  []string // JSON encodings of the permitted values
+
+	MultipleOf       *float64
+	Minimum          *float64
+	Maximum          *float64
+	ExclusiveMinimum *float64
+	ExclusiveMaximum *float64
+
+	MinLength *int
+	MaxLength *int
+	Pattern   *string
 
 	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
 	Items       *_schemaNode  // items as a single schema: applies past the tuple
 	Contains    *_schemaNode
 	MinContains *int
 	MaxContains *int
+	MinItems    *int
+	MaxItems    *int
+	UniqueItems bool
+
+	Properties           []_schemaMember // by property name
+	PatternProperties    []_schemaMember // by ECMA-262 pattern over the key
+	AdditionalProperties *_schemaNode
+	PropertyNames        *_schemaNode
+	Required             []string
+	MinProperties        *int
+	MaxProperties        *int
+	DependentRequired    []_schemaDependency
+	DependentSchemas     []_schemaMember
 
 	AllOf []_schemaNode
 	AnyOf []_schemaNode
 	OneOf []_schemaNode
+	Not   *_schemaNode
 
 	If   *_schemaNode
 	Then *_schemaNode
@@ -34,9 +64,27 @@ type _schemaNode struct {
 	UnevaluatedItems *_schemaNode
 }
 
-// _evalResult is one node's verdict plus the item indices it evaluated.
+// _schemaMember is one entry of a keyword whose argument is an object mapping a
+// name or a pattern to a schema. A slice rather than a map so the order the
+// generator emitted is the order they are checked, and a failure names the same
+// member every run.
+type _schemaMember struct {
+	Key  string
+	Node _schemaNode
+}
+
+// _schemaDependency is one entry of dependentRequired: when Key is present,
+// every name in Keys must be too.
+type _schemaDependency struct {
+	Key  string
+	Keys []string
+}
+
+// _evalResult is one node's verdict, the reason it failed, and the item indices
+// it evaluated.
 type _evalResult struct {
 	ok        bool
+	reason    string
 	evaluated map[int]bool
 }
 
@@ -48,6 +96,14 @@ func (r *_evalResult) absorb(other _evalResult) {
 	}
 }
 
+// fail marks the result as failed, recording the first reason given. Later
+// keywords cannot overwrite it because evaluation returns at the first failure.
+func (r *_evalResult) fail(reason string) _evalResult {
+	r.ok = false
+	r.reason = reason
+	return *r
+}
+
 // _evalNode reports whether v satisfies n, together with the item annotations
 // produced. Annotations from a subschema count only when that subschema
 // matched: a failed anyOf branch contributes nothing.
@@ -55,34 +111,74 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 	if n == nil {
 		return _newEval(true)
 	}
+	res := _newEval(true)
 	if n.Boolean != nil {
-		return _newEval(*n.Boolean)
+		if *n.Boolean {
+			return res
+		}
+		return res.fail("schema is false, which no value satisfies")
 	}
 
-	res := _newEval(true)
-
-	if n.Type != "" && !_dynTypeMatches(n.Type, v) {
-		res.ok = false
-		return res
+	if len(n.Type) > 0 && !_dynTypeMatchesAny(n.Type, v) {
+		return res.fail("value is not of type " + _dynJoin(n.Type))
 	}
 	if n.Const != nil && !_dynEqualsJSON(v, *n.Const) {
-		res.ok = false
-		return res
+		return res.fail("value is not the constant " + *n.Const)
 	}
-	if n.MultipleOf != nil && !_dynNumOK(v, func(f float64) bool { return _dynMultipleOf(f, *n.MultipleOf) }) {
-		res.ok = false
-		return res
-	}
-	if n.Minimum != nil && !_dynNumOK(v, func(f float64) bool { return f >= *n.Minimum }) {
-		res.ok = false
-		return res
-	}
-	if n.Maximum != nil && !_dynNumOK(v, func(f float64) bool { return f <= *n.Maximum }) {
-		res.ok = false
-		return res
+	if len(n.Enum) > 0 {
+		found := false
+		for _, want := range n.Enum {
+			if _dynEqualsJSON(v, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return res.fail("value is not one of the permitted values")
+		}
 	}
 
+	if n.MultipleOf != nil && !_dynNumOK(v, func(f float64) bool { return _dynMultipleOf(f, *n.MultipleOf) }) {
+		return res.fail("value is not a multiple of the required factor")
+	}
+	if n.Minimum != nil && !_dynNumOK(v, func(f float64) bool { return f >= *n.Minimum }) {
+		return res.fail("value is below the minimum")
+	}
+	if n.Maximum != nil && !_dynNumOK(v, func(f float64) bool { return f <= *n.Maximum }) {
+		return res.fail("value is above the maximum")
+	}
+	if n.ExclusiveMinimum != nil && !_dynNumOK(v, func(f float64) bool { return f > *n.ExclusiveMinimum }) {
+		return res.fail("value is not above the exclusive minimum")
+	}
+	if n.ExclusiveMaximum != nil && !_dynNumOK(v, func(f float64) bool { return f < *n.ExclusiveMaximum }) {
+		return res.fail("value is not below the exclusive maximum")
+	}
+
+	if n.MinLength != nil && !_dynStrOK(v, func(s string) bool { return _dynRuneLen(s) >= *n.MinLength }) {
+		return res.fail("string is shorter than the minimum length")
+	}
+	if n.MaxLength != nil && !_dynStrOK(v, func(s string) bool { return _dynRuneLen(s) <= *n.MaxLength }) {
+		return res.fail("string is longer than the maximum length")
+	}
+{{- if .AnnotationsPattern}}
+	if n.Pattern != nil && !_dynStrOK(v, func(s string) bool { return _dynPatternOK(*n.Pattern, s) }) {
+		return res.fail("string does not match the required pattern")
+	}
+{{- end}}
+
 	arr, isArray := v.([]any)
+
+	if isArray {
+		if n.MinItems != nil && len(arr) < *n.MinItems {
+			return res.fail("array has fewer items than the minimum")
+		}
+		if n.MaxItems != nil && len(arr) > *n.MaxItems {
+			return res.fail("array has more items than the maximum")
+		}
+		if n.UniqueItems && !_dynUnique(arr) {
+			return res.fail("array items are not unique")
+		}
+	}
 
 	// Tuple positions, then items for the remainder.
 	if isArray && len(n.PrefixItems) > 0 {
@@ -93,8 +189,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			sub := sub
 			r := _evalNode(&sub, arr[i])
 			if !r.ok {
-				res.ok = false
-				return res
+				return res.fail(r.reason)
 			}
 			res.evaluated[i] = true
 		}
@@ -103,8 +198,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		for i := len(n.PrefixItems); i < len(arr); i++ {
 			r := _evalNode(n.Items, arr[i])
 			if !r.ok {
-				res.ok = false
-				return res
+				return res.fail(r.reason)
 			}
 			res.evaluated[i] = true
 		}
@@ -123,9 +217,95 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		if n.MinContains != nil {
 			min = *n.MinContains
 		}
-		if count < min || (n.MaxContains != nil && count > *n.MaxContains) {
-			res.ok = false
-			return res
+		if count < min {
+			return res.fail("array does not contain enough matching items")
+		}
+		if n.MaxContains != nil && count > *n.MaxContains {
+			return res.fail("array contains too many matching items")
+		}
+	}
+
+	if obj, isObject := v.(map[string]any); isObject {
+		for _, key := range n.Required {
+			if _, present := obj[key]; !present {
+				return res.fail("object is missing required property " + key)
+			}
+		}
+		if n.MinProperties != nil && len(obj) < *n.MinProperties {
+			return res.fail("object has fewer properties than the minimum")
+		}
+		if n.MaxProperties != nil && len(obj) > *n.MaxProperties {
+			return res.fail("object has more properties than the maximum")
+		}
+		if n.PropertyNames != nil {
+			for _, key := range _dynSortedKeys(obj) {
+				r := _evalNode(n.PropertyNames, key)
+				if !r.ok {
+					return res.fail("property name " + key + ": " + r.reason)
+				}
+			}
+		}
+		for i := range n.Properties {
+			member := n.Properties[i]
+			value, present := obj[member.Key]
+			if !present {
+				continue
+			}
+			r := _evalNode(&member.Node, value)
+			if !r.ok {
+				return res.fail("property " + member.Key + ": " + r.reason)
+			}
+		}
+{{- if .AnnotationsPattern}}
+		for i := range n.PatternProperties {
+			member := n.PatternProperties[i]
+			for _, key := range _dynSortedKeys(obj) {
+				if !_dynPatternOK(member.Key, key) {
+					continue
+				}
+				r := _evalNode(&member.Node, obj[key])
+				if !r.ok {
+					return res.fail("property " + key + ": " + r.reason)
+				}
+			}
+		}
+{{- end}}
+		if n.AdditionalProperties != nil {
+			for _, key := range _dynSortedKeys(obj) {
+				if _dynMemberNamed(n.Properties, key) {
+					continue
+				}
+{{- if .AnnotationsPattern}}
+				if _dynMemberMatches(n.PatternProperties, key) {
+					continue
+				}
+{{- end}}
+				r := _evalNode(n.AdditionalProperties, obj[key])
+				if !r.ok {
+					return res.fail("property " + key + ": " + r.reason)
+				}
+			}
+		}
+		for _, dep := range n.DependentRequired {
+			if _, present := obj[dep.Key]; !present {
+				continue
+			}
+			for _, needed := range dep.Keys {
+				if _, ok := obj[needed]; !ok {
+					return res.fail("property " + dep.Key + " requires property " + needed)
+				}
+			}
+		}
+		for i := range n.DependentSchemas {
+			member := n.DependentSchemas[i]
+			if _, present := obj[member.Key]; !present {
+				continue
+			}
+			r := _evalNode(&member.Node, v)
+			if !r.ok {
+				return res.fail("dependent schema for " + member.Key + ": " + r.reason)
+			}
+			res.absorb(r)
 		}
 	}
 
@@ -134,8 +314,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		sub := n.AllOf[i]
 		r := _evalNode(&sub, v)
 		if !r.ok {
-			res.ok = false
-			return res
+			return res.fail(r.reason)
 		}
 		res.absorb(r)
 	}
@@ -150,8 +329,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			}
 		}
 		if !any {
-			res.ok = false
-			return res
+			return res.fail("value matches no anyOf branch")
 		}
 	}
 	if len(n.OneOf) > 0 {
@@ -166,10 +344,14 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			}
 		}
 		if matches != 1 {
-			res.ok = false
-			return res
+			return res.fail("value matches " + _dynItoa(matches) + " oneOf branches, expected exactly 1")
 		}
 		res.absorb(matched)
+	}
+	// "not" contributes no annotations: a subschema that must fail evaluates
+	// nothing, and one that succeeds is a failure of this node.
+	if n.Not != nil && _evalNode(n.Not, v).ok {
+		return res.fail("value matches a forbidden schema")
 	}
 	if n.If != nil {
 		r := _evalNode(n.If, v)
@@ -178,16 +360,14 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if n.Then != nil {
 				tr := _evalNode(n.Then, v)
 				if !tr.ok {
-					res.ok = false
-					return res
+					return res.fail(tr.reason)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
 			er := _evalNode(n.Else, v)
 			if !er.ok {
-				res.ok = false
-				return res
+				return res.fail(er.reason)
 			}
 			res.absorb(er)
 		}
@@ -205,8 +385,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			}
 			r := _evalNode(n.UnevaluatedItems, arr[i])
 			if !r.ok {
-				res.ok = false
-				return res
+				return res.fail(r.reason)
 			}
 			res.evaluated[i] = true
 		}
@@ -241,6 +420,17 @@ func _dynTypeMatches(t string, v any) bool {
 	return true
 }
 
+// _dynTypeMatchesAny reads a type union the way JSON Schema does: the value has
+// to match one of the listed types, not all of them.
+func _dynTypeMatchesAny(types []string, v any) bool {
+	for _, t := range types {
+		if _dynTypeMatches(t, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // _dynEqualsJSON compares a decoded value against a const by re-encoding it, so
 // equality follows JSON semantics rather than Go's.
 func _dynEqualsJSON(v any, want string) bool {
@@ -264,4 +454,84 @@ func _dynMultipleOf(f, by float64) bool {
 	q := f / by
 	return q == math.Trunc(q)
 }
+
+// _dynRuneLen counts characters rather than bytes, which is the unit minLength
+// and maxLength are defined in.
+func _dynRuneLen(s string) int { return len([]rune(s)) }
+
+// _dynUnique reports whether every element of an array is distinct under JSON
+// equality, which is what uniqueItems compares by: 1 and 1.0 are the same value
+// however they were written, and so are two objects with the same members in a
+// different order.
+//
+// Re-encoding each element settles both. encoding/json sorts object keys, and a
+// decoded number is a float64 whichever notation the document used, so two
+// elements produce the same bytes exactly when they are the same JSON value.
+func _dynUnique(arr []any) bool {
+	seen := make(map[string]bool, len(arr))
+	for _, elem := range arr {
+		raw, err := json.Marshal(elem)
+		if err != nil {
+			return false
+		}
+		if seen[string(raw)] {
+			return false
+		}
+		seen[string(raw)] = true
+	}
+	return true
+}
+
+// _dynSortedKeys returns an object's keys in a fixed order, so a document with
+// several offending properties fails on the same one every run.
+func _dynSortedKeys(obj map[string]any) []string {
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func _dynMemberNamed(members []_schemaMember, key string) bool {
+	for i := range members {
+		if members[i].Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func _dynJoin(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += " or "
+		}
+		out += p
+	}
+	return out
+}
+
+func _dynItoa(i int) string { return strconv.Itoa(i) }
+{{- if .AnnotationsPattern}}
+
+// _dynPatternOK applies an ECMA-262 regular expression the way JSON Schema
+// does, as a search rather than a full-string match. A pattern the engine
+// cannot compile matches nothing, which is the same answer the static checks
+// give.
+func _dynPatternOK(pattern, s string) bool {
+	matched, err := ecma262.MatchString(pattern, ecmaflags.Unicode, s)
+	return err == nil && matched
+}
+
+func _dynMemberMatches(members []_schemaMember, key string) bool {
+	for i := range members {
+		if _dynPatternOK(members[i].Key, key) {
+			return true
+		}
+	}
+	return false
+}
+{{- end}}
 {{- end}}

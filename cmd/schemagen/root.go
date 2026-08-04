@@ -211,6 +211,7 @@ func newGenerateCmd() *cobra.Command {
 					lenientRefs:      lenientRefs,
 					processedFiles:   processedFiles,
 					appliedByFile:    appliedByFile,
+					warnings:         cmd.ErrOrStderr(),
 				})
 			}
 
@@ -354,6 +355,8 @@ func newGenerateCmd() *cobra.Command {
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
 
+				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
+
 				// Record applied overrides for unused-entry reporting.
 				if applied := gen.AppliedOverrides(); len(applied) > 0 {
 					if appliedByFile[fileKey] == nil {
@@ -428,6 +431,25 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
+}
+
+// warnUnenforcedSchemas reports every type that came out as `type X any` while
+// its schema still said something.
+//
+// This is the one dropped check the generated code cannot show you. A missing
+// constraint elsewhere still leaves a Validate method that can be read and a
+// decode that can fail; `type X any` has neither, so a schema schemagen could
+// not compile is indistinguishable from a schema that asked for nothing. The
+// generated source carries the same statement as a comment above the
+// declaration; this puts it in front of whoever ran the command.
+func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generator.UnenforcedSchema) {
+	if w == nil {
+		return
+	}
+	for _, u := range unenforced {
+		fmt.Fprintf(w, "warning: %s: type %s is `any` and validates nothing, but the schema states %s\n",
+			schemaPath, u.TypeName, strings.Join(u.Keywords, ", "))
+	}
 }
 
 // warnUnusedFieldMap emits warnings for field-map config that never took effect:
@@ -541,6 +563,10 @@ type multiPackageParams struct {
 	// multi-package run.
 	processedFiles map[string]bool
 	appliedByFile  map[string]map[string]map[string]bool
+	// Where "warning:" lines go. Kept apart from the out writer runMultiPackage
+	// takes for progress: a warning belongs on stderr whether or not anyone
+	// asked for progress.
+	warnings io.Writer
 }
 
 // runMultiPackage generates several Go packages in one run. Every input schema
@@ -713,6 +739,8 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				}
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}
+
+			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
 
 			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
 				if p.appliedByFile[fileKey] == nil {

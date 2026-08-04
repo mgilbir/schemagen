@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNotObjectShape",
+  "$comment": "A root `not` whose sub-schema states object structure: outside extractNotSchemaDef, so this used to become `type RootNotObjectShape any`.",
+  "not": {
+    "type": "object",
+    "required": ["foo"],
+    "properties": { "foo": { "type": "string" } }
+  }
+}

@@ -971,6 +971,15 @@ type AliasDef struct {
 	// value itself — so it is only ever set for a container.
 	NullCheck         *NullCheckDef
 	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
+
+	// Unenforced names the schema keywords this alias silently drops, phrased
+	// for the comment that goes above the declaration. It is set only on the
+	// `any` fallback, where the underlying type is an interface: Go forbids
+	// methods on those, so there is no Validate to put the checks in and
+	// json.Unmarshal cannot fail either. Saying so in the generated source is
+	// the difference between a type that is unconstrained because the schema
+	// said so and one that is unconstrained because schemagen gave up.
+	Unenforced string
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }
@@ -1477,18 +1486,26 @@ type DynamicSchemaDef struct {
 	HasElse       bool
 }
 
-// AnnotationSchemaDef represents a schema whose unevaluatedItems depends on
-// which items its in-place applicators evaluated for the value being validated.
+// AnnotationSchemaDef represents a schema held as data and interpreted by the
+// runtime evaluator in the package's shared helper file, rather than compiled
+// into static checks.
 //
-// That set is a property of the instance, not of the schema, so it cannot be
-// computed at generation time: {"anyOf":[A,B],"unevaluatedItems":false} allows
-// whatever the branches that matched *this value* evaluated. The schema is
-// emitted as a data literal and interpreted by the runtime evaluator in the
-// package's shared helper file.
+// Two things land here. One is a schema whose unevaluatedItems depends on which
+// items its in-place applicators evaluated for the value being validated: that
+// set is a property of the instance, not of the schema, so it cannot be computed
+// at generation time -- {"anyOf":[A,B],"unevaluatedItems":false} allows whatever
+// the branches that matched *this value* evaluated. The other is a schema that
+// constrains a value without giving it a Go type of its own -- a root
+// composition, a root "not" -- which would otherwise become `type X any`, a type
+// Go forbids methods on and which therefore enforces nothing at all.
 type AnnotationSchemaDef struct {
 	Name        string
 	Description string
 	NodeLiteral string // Go composite literal for the root _schemaNode
+
+	// NeedsPattern reports whether the literal names an ECMA-262 pattern, which
+	// is what pulls the regexp engine into the package's helper file.
+	NeedsPattern bool
 }
 
 func (d *AnnotationSchemaDef) TypeName() string { return d.Name }

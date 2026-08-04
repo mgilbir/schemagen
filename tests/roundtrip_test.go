@@ -3112,3 +3112,167 @@ func main() {
 		mainGo,
 	)
 }
+
+// TestRootCompositionBranchesValidation exercises a root anyOf whose every
+// branch is one the static evaluator refuses: a $ref, a nested composition, an
+// enum, and a boolean false. The whole schema used to come out as
+// `type RootCompositionBranches any` -- a type Go forbids methods on, so there
+// was no Validate and json.Unmarshal into it could not fail. Every one of the
+// rejections below was an acceptance.
+//
+// The valid cases are the control that the branches are still *permissive*
+// where the schema says so: one per surviving branch, so a check that rejected
+// everything would fail here rather than look like a fix.
+func TestRootCompositionBranchesValidation(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/root_composition_branches.json",
+		[]string{
+			`1`,    // the $ref branch: integer >= 1
+			`42`,   // the same branch, further in
+			`"ab"`, // the nested-composition branch: string, minLength 2
+			`true`, // the enum branch
+			`null`, // the enum branch's other member
+		},
+		[]string{
+			`0`,     // integer, but below the $ref branch's minimum
+			`"a"`,   // string, but shorter than the nested branch's minLength
+			`false`, // not an enum member, and the `false` branch matches nothing
+			`{}`,    // no branch admits an object
+			`[1]`,   // nor an array
+		},
+	)
+}
+
+// TestRootNotObjectShapeValidation exercises a root "not" whose sub-schema
+// states object structure, which extractNotSchemaDef does not handle: the
+// schema used to come out as `type RootNotObjectShape any` and accept the one
+// document it forbids.
+//
+// The valid list is the accept-control, and it is the whole point of a "not":
+// everything that fails to match the negated sub-schema must still pass, which
+// here is every value of the wrong type, every object missing the required key,
+// and every object whose "foo" is not a string.
+func TestRootNotObjectShapeValidation(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/root_not_object_shape.json",
+		[]string{
+			`{"foo":1}`,   // an object, but "foo" is not a string
+			`{"bar":"x"}`, // an object without the required "foo"
+			`{}`,          // required "foo" absent
+			`"foo"`,       // not an object at all
+			`[1,2]`,
+			`null`,
+			`7`,
+		},
+		[]string{
+			`{"foo":"bar"}`,         // exactly the shape the "not" forbids
+			`{"foo":"bar","baz":1}`, // extra keys do not rescue it
+		},
+	)
+}
+
+// TestRuntimeSchemaAbsentValueValidates pins that a runtime-evaluated wrapper
+// holding no value validates rather than failing to decode one.
+//
+// The wrapper's Validate decodes its raw JSON, and a value that was never built
+// from a document has none: an optional property the source JSON did not carry,
+// or a value assembled in Go. Without the guard, json.Unmarshal is handed an
+// empty slice and reports "unexpected end of JSON input", so a schema that
+// forbids one shape rejected the absence of any shape at all.
+func TestRuntimeSchemaAbsentValueValidates(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Never decoded from a document: the raw JSON is empty.
+	var absent RootNotObjectShape
+	if err := absent.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "a value that holds nothing was rejected: %v\n", err)
+		os.Exit(1)
+	}
+	// The accept-control's other half: the skip above is about the absence of a
+	// document, not about the check being inert. A value that does carry the
+	// forbidden shape still has to fail.
+	var present RootNotObjectShape
+	if err := json.Unmarshal([]byte(` + "`" + `{"foo":"bar"}` + "`" + `), &present); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding: %v\n", err)
+		os.Exit(1)
+	}
+	if err := present.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "the shape the schema forbids was accepted")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/root_not_object_shape.json",
+		"root_not_absent_test",
+		mainGo,
+	)
+}
+
+// TestRefToRuntimeWrapperValidation pins that naming a definition which compiles
+// to the runtime evaluator leaves it usable.
+//
+// A Go named type inherits none of its underlying type's methods, so
+// "type RefToRuntimeWrapper Wrapped" over a struct whose only field is
+// unexported decodes as a struct with no exported field: encoding/json then
+// refuses "ab" outright, for a schema that says "ab" is exactly what it wants.
+//
+// The type is named here rather than left to the shared helper, which picks the
+// last struct in the file -- that is Wrapped itself, and validating it directly
+// tests the wrapper while stepping straight over the alias that was broken.
+func TestRefToRuntimeWrapperValidation(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Valid, and not null: a null decodes into a struct with no exported field
+	// without complaint, so it cannot tell a delegating alias from a broken one.
+	for _, ok := range []string{` + "`" + `"ab"` + "`" + `, ` + "`" + `"abcd"` + "`" + `} {
+		var v RefToRuntimeWrapper
+		if err := json.Unmarshal([]byte(ok), &v); err != nil {
+			fmt.Fprintf(os.Stderr, "valid document %s did not decode: %v\n", ok, err)
+			os.Exit(1)
+		}
+		if err := v.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "valid document %s was rejected: %v\n", ok, err)
+			os.Exit(1)
+		}
+		// Marshalling has to come back out through the wrapper too.
+		if out, err := json.Marshal(v); err != nil || string(out) != ok {
+			fmt.Fprintf(os.Stderr, "re-marshalling %s gave %s (%v)\n", ok, string(out), err)
+			os.Exit(1)
+		}
+	}
+	// The accept-control's other half: the schema still rejects what it forbids.
+	for _, bad := range []string{` + "`" + `"a"` + "`" + `, ` + "`" + `null` + "`" + `, ` + "`" + `1` + "`" + `, ` + "`" + `{}` + "`" + `} {
+		var v RefToRuntimeWrapper
+		if err := json.Unmarshal([]byte(bad), &v); err != nil {
+			continue // an unmarshal-time rejection is an acceptable failure mode
+		}
+		if err := v.Validate(); err == nil {
+			fmt.Fprintf(os.Stderr, "invalid document %s was accepted\n", bad)
+			os.Exit(1)
+		}
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/ref_to_runtime_wrapper.json",
+		"ref_to_runtime_wrapper_test",
+		mainGo,
+	)
+}

@@ -65,7 +65,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	var imports []generator.Import
 	// Each path is added at most once: the list goes straight into the file's
 	// import block, and naming the same package twice does not compile.
-	add := func(cond bool, path string) {
+	addAliased := func(cond bool, path, alias string) {
 		if !cond {
 			return
 		}
@@ -74,15 +74,24 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 				return
 			}
 		}
-		imports = append(imports, generator.Import{Path: path})
+		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
+	add := func(cond bool, path string) { addAliased(cond, path, "") }
 	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "fmt")
 	add(helpers.Dynamic || helpers.Integer, "math")
 	add(helpers.Annotations, "reflect")
+	add(helpers.Annotations, "strconv")
+	// The regexp engine only comes in when a compiled schema actually names a
+	// pattern: it is a third-party dependency, and a package that never asks for
+	// one should not acquire it.
+	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 	// The walker reports the first offending key in name order, so that a
-	// document with several of them fails the same way every time.
-	add(helpers.NullCheck, "sort")
+	// document with several of them fails the same way every time. The runtime
+	// evaluator visits an object's properties in the same fixed order, for the
+	// same reason.
+	add(helpers.NullCheck || helpers.Annotations, "sort")
 
 	data := helperFileData{
 		PackageName: packageName,

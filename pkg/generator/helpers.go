@@ -11,7 +11,8 @@ type HelperSet struct {
 	OneOfDiscriminator bool // oneofDiscriminatorValue
 	Dynamic            bool // _dyn* value predicates
 	DynamicConst       bool // _dynConstOK, only reached by object-level conditionals
-	Annotations        bool // _schemaNode and the runtime annotation evaluator
+	Annotations        bool // _schemaNode and the runtime schema evaluator
+	AnnotationsPattern bool // the evaluator's ECMA-262 arms, and the engine they need
 	Integer            bool // jsonInteger and the shape-preserving converters
 	NullCheck          bool // jsonNullRule and the recursive walker that applies one
 }
@@ -28,6 +29,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Dynamic = h.Dynamic || other.Dynamic
 	h.DynamicConst = h.DynamicConst || other.DynamicConst
 	h.Annotations = h.Annotations || other.Annotations
+	h.AnnotationsPattern = h.AnnotationsPattern || other.AnnotationsPattern
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
 }
@@ -43,6 +45,9 @@ func (f *File) Helpers() HelperSet {
 			// The evaluator calls the _dyn* predicates.
 			set.Annotations = true
 			set.Dynamic = true
+			if d.NeedsPattern {
+				set.AnnotationsPattern = true
+			}
 		case *AliasDef:
 			if d.IntegerDecode != nil {
 				set.Integer = true

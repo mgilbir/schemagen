@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BooleanDefsKeepAny",
+  "$comment": "A bare boolean definition, named from a property. `false` is enforced by the parent's forbidden-property rule, which compares the field to nil; giving the definition a wrapper struct instead of `any` makes that comparison stop compiling.",
+  "$defs": { "yes": true, "no": false },
+  "type": "object",
+  "properties": {
+    "a": { "$ref": "#/$defs/yes" },
+    "b": { "$ref": "#/$defs/no" }
+  }
+}

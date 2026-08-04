@@ -7,9 +7,10 @@ import (
 	"fmt"
 )
 
-// UnevaluatedItemsAnyOf accepts any JSON value. Its unevaluatedItems constraint depends on
-// which items the schema's applicators evaluate for the value being validated,
-// so the schema is held as data and interpreted at validation time.
+// UnevaluatedItemsAnyOf accepts any JSON value. Its schema is held as data and interpreted
+// at validation time, either because an unevaluatedItems constraint depends on
+// which items the applicators evaluate for the value in hand, or because the
+// schema gives the value no Go type of its own to hang a check on.
 type UnevaluatedItemsAnyOf struct {
 	_raw json.RawMessage
 }
@@ -65,12 +66,21 @@ var UnevaluatedItemsAnyOfSchema = _schemaNode{
 
 // Validate checks UnevaluatedItemsAnyOf against its JSON Schema constraints.
 func (u UnevaluatedItemsAnyOf) Validate() error {
+	// No value was present. A constraint applies to a value that is there; an
+	// absent optional property is the parent's business (required), not this
+	// type's.
+	if len(u._raw) == 0 {
+		return nil
+	}
 	var _v any
 	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
-	if !_evalNode(&UnevaluatedItemsAnyOfSchema, _v).ok {
-		return fmt.Errorf("value does not satisfy the schema")
+	if _res := _evalNode(&UnevaluatedItemsAnyOfSchema, _v); !_res.ok {
+		if _res.reason == "" {
+			return fmt.Errorf("value does not satisfy the schema")
+		}
+		return fmt.Errorf("%s", _res.reason)
 	}
 	return nil
 }
