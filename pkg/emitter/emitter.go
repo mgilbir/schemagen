@@ -65,7 +65,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	var imports []generator.Import
 	// Each path is added at most once: the list goes straight into the file's
 	// import block, and naming the same package twice does not compile.
-	add := func(cond bool, path string) {
+	addAliased := func(cond bool, path, alias string) {
 		if !cond {
 			return
 		}
@@ -74,12 +74,56 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 				return
 			}
 		}
-		imports = append(imports, generator.Import{Path: path})
+		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer, "fmt")
+	add := func(cond bool, path string) { addAliased(cond, path, "") }
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.Format, "fmt")
 	add(helpers.Dynamic || helpers.Integer, "math")
 	add(helpers.Annotations, "reflect")
+	add(helpers.Annotations, "strconv")
+	// The regexp engine only comes in when a compiled schema actually names a
+	// pattern: it is a third-party dependency, and a package that never asks for
+	// one should not acquire it. The format block needs the same engine for
+	// `format: regex`, so both routes go through addAliased rather than
+	// appending: a package that compiles a pattern to the runtime evaluator
+	// *and* asserts a format reaches this path from both sides, and the list
+	// goes straight into the import block. go/format happens to drop a
+	// duplicate spec on its way out, which is why appending twice was never
+	// seen to break anything -- but that is the formatter's tidying and not a
+	// property of the list, and this list is what the rest of this function is
+	// written to keep unique.
+	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
+	// The walker reports the first offending key in name order, so that a
+	// document with several of them fails the same way every time. The runtime
+	// evaluator visits an object's properties in the same fixed order, for the
+	// same reason.
+	add(helpers.NullCheck || helpers.Annotations, "sort")
+	// The format helpers are emitted as one block, so they name every package
+	// any of them needs whether or not the schema uses that particular format.
+	// Splitting the block per format is what would let a package end up with a
+	// helper it cannot compile; see HelperSet.Format.
+	add(helpers.Format, "net/netip")
+	add(helpers.Format, "net/url")
+	add(helpers.Format, "regexp")
+	add(helpers.Format, "strings")
+	add(helpers.Format, "time")
+	addAliased(helpers.Format, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(helpers.Format, "github.com/mgilbir/goecma262/flags", "ecmaflags")
+	// The hostname block is separate for one reason: x/net/idna. A package whose
+	// schemas name no hostname, email or idn-* format neither emits these
+	// functions nor imports the module, which is the whole point of the split --
+	// generated code putting a dependency on its caller is a real imposition, so
+	// it is confined to callers whose schemas ask for it. See
+	// HelperSet.FormatHostname.
+	add(helpers.FormatHostname, "net/mail")
+	add(helpers.FormatHostname, "net/netip")
+	add(helpers.FormatHostname, "strings")
+	add(helpers.FormatHostname, "unicode")
+	add(helpers.FormatHostname, "unicode/utf8")
+	add(helpers.FormatHostname, "fmt")
+	add(helpers.FormatHostname, "golang.org/x/net/idna")
 
 	data := helperFileData{
 		PackageName: packageName,

@@ -96,6 +96,59 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_single_branch_type", "testdata/schemas/regression/allof_single_branch_type.json", "testdata/golden/regression/allof_single_branch_type.go"},
 		{"regression/allof_inline_positions", "testdata/schemas/regression/allof_inline_positions.json", "testdata/golden/regression/allof_inline_positions.go"},
 		{"regression/allof_bound_only", "testdata/schemas/regression/allof_bound_only.json", "testdata/golden/regression/allof_bound_only.go"},
+		{"regression/explicit_null_positions", "testdata/schemas/regression/explicit_null_positions.json", "testdata/golden/regression/explicit_null_positions.go"},
+		// Pins which allOf branches get a per-branch overflow check and which do
+		// not: the parent's own additionalProperties and the narrow merge keep
+		// the overflow map they always had, and a branch stating no overflow
+		// keyword gains nothing.
+		{"regression/allof_branch_overflow", "testdata/schemas/regression/allof_branch_overflow.json", "testdata/golden/regression/allof_branch_overflow.go"},
+		// Pins that an enum a branch stated over whole objects is carried by the
+		// merged struct, and that a branch stating none leaves it alone.
+		{"regression/allof_object_enum", "testdata/schemas/regression/allof_object_enum.json", "testdata/golden/regression/allof_object_enum.go"},
+		// Pins that a root composition whose branches the static evaluator
+		// refuses -- a boolean, a $ref, a nested composition, an enum -- is
+		// compiled to the runtime evaluator instead of becoming `type X any`,
+		// which carries no Validate at all.
+		{"regression/root_composition_branches", "testdata/schemas/regression/root_composition_branches.json", "testdata/golden/regression/root_composition_branches.go"},
+		// The same for a root "not" whose sub-schema states object structure.
+		{"regression/root_not_object_shape", "testdata/schemas/regression/root_not_object_shape.json", "testdata/golden/regression/root_not_object_shape.go"},
+		// The other side of it: a schema schemagen still cannot compile keeps
+		// `any`, and says so in the generated source instead of passing for a
+		// type that was never constrained.
+		{"regression/unenforced_any", "testdata/schemas/regression/unenforced_any.json", "testdata/golden/regression/unenforced_any.go"},
+		// Pins the two halves of naming a definition that compiles to the runtime
+		// evaluator: an alias over it delegates its JSON both ways, and a bare
+		// boolean definition beside it keeps the `any` its own paths are written
+		// for rather than gaining a wrapper.
+		{"regression/ref_to_runtime_wrapper", "testdata/schemas/regression/ref_to_runtime_wrapper.json", "testdata/golden/regression/ref_to_runtime_wrapper.go"},
+		{"regression/boolean_defs_keep_any", "testdata/schemas/regression/boolean_defs_keep_any.json", "testdata/golden/regression/boolean_defs_keep_any.go"},
+		// Pins that a boolean `false` reached through a $ref gets the same
+		// forbidding wrapper the document root has always had, in every position
+		// -- and that a $ref to boolean `true` still aliases to `any`.
+		{"regression/ref_to_false_schema", "testdata/schemas/regression/ref_to_false_schema.json", "testdata/golden/regression/ref_to_false_schema.go"},
+		{"regression/ref_to_false_root", "testdata/schemas/regression/ref_to_false_root.json", "testdata/golden/regression/ref_to_false_root.go"},
+		// Pins the draft-3 spelling of a single dependency, a bare property name
+		// where later drafts write a one-element array.
+		{"regression/draft3_dependencies_string", "testdata/schemas/regression/draft3_dependencies_string.json", "testdata/golden/regression/draft3_dependencies_string.go"},
+		// Pins that a $ref beside a "type" merges the two from 2019-09 on, and
+		// the draft-07 half that still lets the $ref suppress its siblings.
+		{"regression/ref_sibling_type", "testdata/schemas/regression/ref_sibling_type.json", "testdata/golden/regression/ref_sibling_type.go"},
+		{"regression/ref_sibling_type_draft7", "testdata/schemas/regression/ref_sibling_type_draft7.json", "testdata/golden/regression/ref_sibling_type_draft7.go"},
+		// Pins which allOf branch array keywords the merge adopts: a lone
+		// branch's when nothing else describes the array's positions, and
+		// neither the parent's own nor two branches' competing ones.
+		{"regression/allof_branch_array_keywords", "testdata/schemas/regression/allof_branch_array_keywords.json", "testdata/golden/regression/allof_branch_array_keywords.go"},
+		// An alias whose underlying resolves to a pointer carries no methods, so
+		// its rules are emitted nowhere and must not pull in the packages they
+		// would have used. The golden pins the import block; TestCompile then
+		// proves the pinned file builds, which is what the emitted file did not
+		// do -- "fmt" and "unicode/utf8" imported and not used.
+		{"regression/nullable_scalar_bound", "testdata/schemas/regression/nullable_scalar_bound.json", "testdata/golden/regression/nullable_scalar_bound.go"},
+		{"regression/nullable_format_positions", "testdata/schemas/regression/nullable_format_positions.json", "testdata/golden/regression/nullable_format_positions.go"},
+		{"regression/untyped_format_positions", "testdata/schemas/regression/untyped_format_positions.json", "testdata/golden/regression/untyped_format_positions.go"},
+		{"regression/format_beside_length", "testdata/schemas/regression/format_beside_length.json", "testdata/golden/regression/format_beside_length.go"},
+		{"regression/typed_format_positions", "testdata/schemas/regression/typed_format_positions.json", "testdata/golden/regression/typed_format_positions.go"},
+		{"regression/format_helper_positions", "testdata/schemas/regression/format_helper_positions.json", "testdata/golden/regression/format_helper_positions.go"},
 	}
 }
 

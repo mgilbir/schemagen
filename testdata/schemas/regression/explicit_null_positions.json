@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplicitNullPositions",
+  "description": "Regression: an explicit JSON null was accepted, and silently erased, at every position whose schema does not admit one. Covers the positions a null can sit in -- an inline property, a $ref to a named alias or struct, an array element, a nested array, a map value, a tuple slot, a oneOf branch, an allOf, and the values a schema-valued additionalProperties governs -- beside the properties that DO admit null, which must go on accepting one.",
+  "type": "object",
+  "required": ["reqScalar", "reqAlias", "reqStruct", "reqArray"],
+  "properties": {
+    "scalar": { "type": "string" },
+    "count": { "type": "integer" },
+    "alias": { "$ref": "#/$defs/Short" },
+    "struct": { "$ref": "#/$defs/Leaf" },
+    "inline": { "type": "object", "properties": { "x": { "type": "string" } } },
+    "array": { "type": "array", "items": { "type": "string" } },
+    "nested": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
+    "mapOfString": { "type": "object", "additionalProperties": { "type": "string" } },
+    "mapOfArray": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+    "arrayOfMap": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "string" } } },
+    "tuple": { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "integer" }] },
+    "union": { "oneOf": [{ "$ref": "#/$defs/Tagged" }, { "$ref": "#/$defs/Numbered" }] },
+    "bounded": { "allOf": [{ "type": "string", "minLength": 2 }] },
+    "namedArray": { "$ref": "#/$defs/Names" },
+    "overflow": { "$ref": "#/$defs/Overflow" },
+
+    "reqScalar": { "type": "string" },
+    "reqAlias": { "$ref": "#/$defs/Short" },
+    "reqStruct": { "$ref": "#/$defs/Leaf" },
+    "reqArray": { "type": "array", "items": { "type": "string" } },
+
+    "nullableScalar": { "type": ["string", "null"] },
+    "nullableAlias": { "$ref": "#/$defs/MaybeShort" },
+    "nullableItems": { "type": "array", "items": { "type": ["string", "null"] } },
+    "nullableValues": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+    "nullableOuter": { "type": ["array", "null"], "items": { "type": "string" } },
+    "untyped": {},
+    "boundOnly": { "minLength": 2 }
+  },
+  "$defs": {
+    "Short": { "type": "string", "minLength": 2 },
+    "MaybeShort": { "type": ["string", "null"], "minLength": 2 },
+    "Leaf": { "type": "object", "properties": { "k": { "type": "string" } } },
+    "Tagged": { "type": "object", "properties": { "tag": { "type": "string" } }, "required": ["tag"] },
+    "Numbered": { "type": "object", "properties": { "num": { "type": "integer" } }, "required": ["num"] },
+    "Names": { "type": "array", "items": { "type": "string" } },
+    "Overflow": { "type": "object", "properties": { "a": { "type": "string" } }, "additionalProperties": { "type": "string" } }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UnenforcedAny",
+  "$comment": "contentEncoding and contentMediaType are outside the runtime evaluator, so this schema still becomes `type UnenforcedAny any` -- and the generated source has to say so, because a type with no Validate method looks exactly like a type that was never constrained.",
+  "contentEncoding": "base64",
+  "contentMediaType": "application/json"
+}

@@ -843,7 +843,32 @@ func main() {
 // input in invalid fails it. Used by focused validation regression tests.
 func runValidationCases(t *testing.T, schemaPath string, valid, invalid []string) {
 	t.Helper()
-	generated := generateFromSchema(t, schemaPath)
+	runValidationCasesWithConfig(t, schemaPath, generator.Config{
+		PackageName: "testpkg",
+		OmitEmpty:   true,
+	}, valid, invalid)
+}
+
+// formatAssertingConfig is the configuration a test uses when its subject is
+// the format assertion itself.
+//
+// Every fixture below declares draft 2020-12, whose default meta-schema makes
+// `format` an annotation -- so under the ordinary configuration these documents
+// are all valid and there is nothing for the test to see. The flag is what asks
+// the question each of these tests is about. TestFormatPostureFollowsTheDialect
+// is the one that asks whether the flag matters.
+func formatAssertingConfig() generator.Config {
+	return generator.Config{PackageName: "testpkg", OmitEmpty: true, FormatAssertion: true}
+}
+
+// runValidationCasesWithConfig is runValidationCases under a chosen generator
+// configuration. It exists for the format posture: the same fixture has to be
+// judged twice, once under the dialect's own answer and once under
+// --format-assertion, since a test that only ever ran one of them could not tell
+// a working flag from a flag that does nothing.
+func runValidationCasesWithConfig(t *testing.T, schemaPath string, cfg generator.Config, valid, invalid []string) {
+	t.Helper()
+	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
 	rootType := extractRootTypeName(t, string(generated))
 	tmpDir := t.TempDir()
 
@@ -1676,13 +1701,21 @@ func TestPatternValueSubschemaIsChecked(t *testing.T) {
 			`{"qq":{}}`,
 			`{"rr":1}`, `{"rr":1.0}`, // draft 2020-12: a zero fractional part is an integer
 			`{"ss":"abcde"}`,
-			// The two sub-schemas whose materialized type Go forbids methods on:
-			// a $ref to an empty schema, and a bare `format` with no type. Both
-			// assert nothing, so both must accept anything -- and both are here
+			// A $ref to an empty schema: its materialized type is one Go forbids
+			// methods on, so it asserts nothing and must accept anything. Here
 			// because the emitted dispatch would not compile if the pass that
 			// notices a type carries no Validate stopped noticing.
 			`{"tt":{"anything":1}}`, `{"tt":null}`,
-			`{"uu":"not-an-ip"}`, `{"uu":5}`,
+			// A bare `format` with no type. It has a type and a Validate now
+			// (issue #106), but this fixture declares 2020-12, whose default
+			// meta-schema makes `format` an annotation -- so the Validate
+			// asserts nothing here and every instance satisfies the bucket,
+			// malformed address included. The assertion side of the same
+			// schema is TestUntypedFormatIsAssertedOnStringsOnly, which asks
+			// for it; the draft gate itself is
+			// TestFormatPostureFollowsTheDialect.
+			`{"uu":"1.2.3.4"}`, `{"uu":"not-an-ip"}`,
+			`{"uu":5}`, `{"uu":{"a":1}}`, `{"uu":[1]}`, `{"uu":true}`, `{"uu":null}`,
 		},
 		[]string{
 			`{"aa":"ccc"}`,         // enum
@@ -2347,10 +2380,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_alias_positions.json",
 		"format_alias_positions_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2396,10 +2430,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_alias_root.json",
 		"format_alias_root_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2446,10 +2481,11 @@ func main() {
 	fmt.Println("PASS")
 }
 `
-	runGeneratedMainProgram(t,
+	runGeneratedMainProgramWithConfig(t,
 		"testdata/schemas/regression/format_map_values.json",
 		"format_map_values_test",
 		mainGo,
+		formatAssertingConfig(),
 	)
 }
 
@@ -2563,8 +2599,9 @@ func main() {
 // itself, an element of a slice of it and a value of a map of it, since the
 // element positions reach the same Validate by a different route.
 func TestFormatAliasAssertsItsFormat(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/format_alias_assertions.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			`{"v4":"192.0.2.7"}`,
@@ -2602,17 +2639,25 @@ func TestFormatAliasAssertsItsFormat(t *testing.T) {
 // `{"name":"x","primary_ip":"1.2.3.4"}` is here as the control: without the
 // required property present, Validate returns before it ever reaches the
 // address arm, and the panic hides.
+//
+// The null document moved to the invalid half with issue #103. `gateway_ip` is
+// {"type":"string","format":"ipv6"} and admits no null, so accepting one was
+// itself the defect -- the case was written when an explicit null was silently
+// erased everywhere, and it recorded that as the expected behaviour. What it
+// guards is unchanged either way: a panic is not a rejection, and the harness
+// reports one as a failure whichever list the document sits in.
 func TestNullIPAddressDoesNotPanic(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/formats/all_formats.json",
+		formatAssertingConfig(),
 		[]string{
 			`{"name":"x","primary_ip":"1.2.3.4"}`,
-			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
 			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"2001:db8::1"}`,
 		},
 		[]string{
 			`{"name":"x","primary_ip":"2001:db8::1"}`,
 			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":"1.2.3.4"}`,
+			`{"name":"x","primary_ip":"1.2.3.4","gateway_ip":null}`,
 		},
 	)
 }
@@ -2633,8 +2678,9 @@ func TestNullIPAddressDoesNotPanic(t *testing.T) {
 // The valid half matters as much as the invalid: a fix that merged the enum but
 // got the type wrong would reject the members themselves.
 func TestAllOfKeepsBranchType(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/allof_single_branch_type.json",
+		formatAssertingConfig(),
 		[]string{
 			`{"stamp":"2020-01-02T03:04:05Z","choice":"red","raw":"a"}`,
 			`{"stamp":"2020-01-02T03:04:05Z","choice":"green","raw":1}`,
@@ -2667,8 +2713,9 @@ func TestAllOfKeepsBranchType(t *testing.T) {
 // generateTypeDef, so it was already right, and a change that fixed the others
 // by breaking the shared path would show up here.
 func TestAllOfInlinePositionsKeepBranchType(t *testing.T) {
-	runValidationCases(t,
+	runValidationCasesWithConfig(t,
 		"testdata/schemas/regression/allof_inline_positions.json",
+		formatAssertingConfig(),
 		[]string{
 			`{}`,
 			`{"chain":"2020-01-02T03:04:05Z"}`,   // property
@@ -2816,5 +2863,1415 @@ func main() {
 		"allof_bigint_test",
 		mainGo,
 		generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true},
+	)
+}
+
+// TestExplicitNullIsRefusedWhereTheSchemaGivesAType is issue #103.
+//
+// An explicit null was accepted at every position whose schema states a type
+// that does not include "null", and it was not merely unchecked but erased:
+// {"s":null} against {"properties":{"s":{"type":"string"}}} came back {}.
+// python-jsonschema and js-ajv both call that document invalid.
+//
+// The cause is that nothing downstream can see the null. encoding/json decodes
+// one into a nil pointer, a nil slice or map, or a scalar left untouched at its
+// zero -- all of them exactly the state an *absent* property leaves -- so by the
+// time Validate runs "present and null" and "absent" are one state and the
+// optional-field guard passes over both. The verdict is taken from the raw
+// document instead, in UnmarshalJSON, which is why the invalid half here is
+// refused at decode time rather than by Validate.
+//
+// The invalid half enumerates the positions, because the recurring failure in
+// this generator is a fix that lands in one position and not its sibling: an
+// inline scalar, a $ref to an alias and to a struct, an array element, both
+// levels of a nested array, a map value, a map of arrays, an array of maps, a
+// tuple slot, a oneOf branch, an allOf, an element of a named array alias, and
+// an overflow value governed by a schema-valued additionalProperties -- each in
+// its optional spelling and, where the shape allows, its required one.
+//
+// The valid half is the more important of the two. Refusing a null the schema
+// *does* admit is a false rejection, worse than the acceptance it replaces, so
+// every spelling of "may be null" is here: the type list on a property, on a
+// definition behind a $ref, on an array's items and on a map's values, and the
+// array that admits a null of its own while its elements do not. So is a
+// property with no type at all and one carrying only a bound, where JSON Schema
+// says nothing about null and this check must therefore say nothing either. The
+// first entry is the control for the whole thing: an absent optional property is
+// not a present null, and must stay accepted.
+func TestExplicitNullIsRefusedWhereTheSchemaGivesAType(t *testing.T) {
+	const required = `"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":[]`
+	with := func(extra string) string {
+		if extra == "" {
+			return "{" + required + "}"
+		}
+		return "{" + required + "," + extra + "}"
+	}
+	runValidationCases(t,
+		"testdata/schemas/regression/explicit_null_positions.json",
+		[]string{
+			with(""),                                  // every optional property absent
+			with(`"scalar":"x","count":1`),            // present and well typed
+			with(`"alias":"ab","struct":{"k":"v"}`),   //
+			with(`"array":["a"],"nested":[["a"]]`),    //
+			with(`"mapOfString":{"a":"b"}`),           //
+			with(`"tuple":["a",1]`),                   //
+			with(`"union":{"tag":"t"}`),               //
+			with(`"bounded":"ab","namedArray":["a"]`), //
+			with(`"overflow":{"a":"b","zz":"c"}`),     //
+			with(`"nullableScalar":null`),             // the type list admits null
+			with(`"nullableAlias":null`),              // behind a $ref
+			with(`"nullableItems":["a",null]`),        // in an array's items
+			with(`"nullableValues":{"a":null}`),       // in a map's values
+			with(`"nullableOuter":null`),              // the array itself may be null
+			with(`"nullableOuter":["a"]`),             // and still holds strings
+			with(`"untyped":null`),                    // no type keyword: null is a value like any other
+			with(`"boundOnly":null`),                  // a bound alone says nothing about null
+		},
+		[]string{
+			with(`"scalar":null`),            // inline scalar
+			with(`"count":null`),             // inline integer
+			with(`"alias":null`),             // $ref to a named alias
+			with(`"struct":null`),            // $ref to a named struct
+			with(`"inline":null`),            // inline object
+			with(`"array":null`),             // the array itself
+			with(`"array":["a",null]`),       // an array element
+			with(`"nested":[["a"],null]`),    // a nested array's outer element
+			with(`"nested":[["a",null]]`),    // and its inner one
+			with(`"mapOfString":null`),       // the map itself
+			with(`"mapOfString":{"a":null}`), // a map value
+			with(`"mapOfArray":{"a":null}`),  // a map of arrays
+			with(`"mapOfArray":{"a":["x",null]}`),
+			with(`"arrayOfMap":[null]`), // an array of maps
+			with(`"arrayOfMap":[{"a":null}]`),
+			with(`"tuple":null`),               // the tuple itself
+			with(`"tuple":[null,1]`),           // a tuple slot
+			with(`"union":null`),               // a oneOf branch
+			with(`"bounded":null`),             // inside an allOf
+			with(`"namedArray":null`),          // a named array alias
+			with(`"namedArray":["a",null]`),    // and its elements
+			with(`"overflow":null`),            // a struct with an overflow map
+			with(`"overflow":{"zz":null}`),     // and one of its overflow values
+			with(`"inline":{"x":null}`),        // a property of an inline object
+			with(`"struct":{"k":null}`),        // a property of a definition
+			with(`"nullableOuter":["a",null]`), // the array admits null; its elements do not
+			`{"reqScalar":null,"reqAlias":"ab","reqStruct":{},"reqArray":[]}`, // required scalar
+			`{"reqScalar":"x","reqAlias":null,"reqStruct":{},"reqArray":[]}`,  // required alias
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":null,"reqArray":[]}`,
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":null}`,
+			`{"reqScalar":"x","reqAlias":"ab","reqStruct":{},"reqArray":["a",null]}`,
+			`null`, // the root object itself
+		},
+	)
+}
+
+// TestAllOfBranchOverflowIsEnforced covers the keyword an allOf merge cannot
+// express by folding it into the parent: a branch's own additionalProperties.
+//
+// The keyword is scoped to the schema object stating it, so a branch declaring
+// no property speaks about *every* key of the instance -- including the ones the
+// parent declares and gives fields to. Folding it into the parent's overflow
+// map, which holds only the keys the parent does not declare, would check it on
+// a smaller set than the schema names; that is why it was dropped instead, and
+// every unaccounted value went unchecked.
+//
+// Each verdict below was cross-checked against python-jsonschema and js-ajv
+// through Bowtie; the two agree with each other on all of them.
+//
+// The last three positions are the controls, and they are what makes "nothing
+// else moved" evidence rather than an absence of testing:
+//
+//   - ownAdditional states additionalProperties on the *parent*, where the
+//     overflow map is the right scope and always was. A per-branch check that
+//     claimed it too would report one violation twice, or check `a` -- which the
+//     parent declares and its own additionalProperties therefore does not see.
+//   - soleBranch is the narrow case the merge already handles exactly: nothing
+//     anywhere names a property, so the branch's key set and the parent's
+//     overflow map are provably the same set and the keyword is folded in. The
+//     per-branch notion must subsume that arm, not duplicate it.
+//   - plain has an allOf branch with no overflow keyword at all, so `z` is
+//     unconstrained. A change that gave every branch a check would refuse it.
+func TestAllOfBranchOverflowIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_branch_overflow.json",
+		[]string{
+			`{}`,
+			// The branch declares nothing, so its additionalProperties governs
+			// every key -- the parent's `a` as much as an undeclared `b`.
+			`{"bare":{}}`,
+			`{"bare":{"a":7}}`,
+			`{"bare":{"b":7}}`,
+			`{"forbid":{}}`,
+			// The branch's own properties and patterns are what it accounts for.
+			`{"adjacent":{"b":1,"xy":2}}`,
+			`{"adjacent":{}}`,
+			// Through a $ref: the accounted set is the target's own properties.
+			`{"viaRef":{"base":1}}`,
+			`{"viaRef":{}}`,
+			// Two branches each stating the keyword; both bind at once, which one
+			// overflow map could never say.
+			`{"twoBranches":{"a":7}}`,
+			`{"nestedAllOf":{"a":7}}`,
+			// A sub-schema past what an in-place scalar rule can express.
+			`{"objectValue":{"a":{"n":7}}}`,
+			// A schema-valued unevaluatedProperties in a branch: `b` is the only
+			// key that branch evaluates, so nothing else is unevaluated here.
+			// (Cousin isolation -- the branch cannot see the parent's `a`.)
+			`{"branchUnevaluated":{"b":1}}`,
+			`{"branchUnevaluatedFalse":{"b":1}}`,
+			`{"branchUnevaluatedFalse":{}}`,
+			// Controls: the parent's own keyword, the narrow merge, and a branch
+			// with no overflow keyword at all.
+			`{"ownAdditional":{"a":1,"z":7}}`,
+			`{"soleBranch":{"k":"ab"}}`,
+			`{"plain":{"a":1}}`,
+			`{"plain":{"a":1,"z":"anything"}}`,
+		},
+		[]string{
+			`{"bare":{"a":1}}`, // the parent's own property, judged by the branch
+			`{"bare":{"b":1}}`,
+			`{"forbid":{"a":1}}`, // additionalProperties: false forbids even `a`
+			`{"forbid":{"z":1}}`,
+			`{"adjacent":{"a":1}}`, // the branch does not declare `a`
+			`{"adjacent":{"z":1}}`,
+			`{"viaRef":{"other":1}}`,   // the $ref target does not declare it
+			`{"twoBranches":{"a":1}}`,  // below the first branch's minimum
+			`{"twoBranches":{"a":11}}`, // above the second branch's maximum
+			`{"nestedAllOf":{"a":1}}`,  // through the nested allOf
+			`{"objectValue":{"a":{}}}`, // the value sub-schema's `required`
+			`{"objectValue":{"a":{"n":1}}}`,
+			`{"branchUnevaluated":{"a":1}}`,      // unevaluated in the branch's scope
+			`{"branchUnevaluatedFalse":{"a":1}}`, // the parent's own property
+			`{"branchUnevaluatedFalse":{"c":1}}`,
+			`{"ownAdditional":{"a":1,"z":1}}`,
+			`{"soleBranch":{"k":"a"}}`,
+			`{"plain":{}}`,
+		},
+	)
+}
+
+// TestAllOfObjectEnumIsEnforced covers an enum an allOf branch states over whole
+// objects, beside properties the parent declares.
+//
+// The merge produces a struct, and the enum's members are whole documents, so
+// there is no field for the check to hang off: it is a comparison of the
+// document against each member. Dropped, every object satisfying `properties`
+// was accepted rather than only the ones the enum permits.
+//
+// Both sides of the comparison go through one JSON encoder, which is what makes
+// it sound: `reordered` pins that key order does not decide the answer and
+// `nested` that a member is compared as a whole document rather than key by key.
+// `plain` is the control -- an allOf branch stating no enum must leave the
+// object unconstrained.
+//
+// Every verdict was cross-checked against python-jsonschema and js-ajv through
+// Bowtie; the two agree with each other on all of them.
+func TestAllOfObjectEnumIsEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_object_enum.json",
+		[]string{
+			`{}`,
+			`{"inline":{"k":1}}`,
+			`{"inline":{"k":2}}`,
+			`{"viaRef":{"k":1}}`,
+			// The same document written with its keys in either order.
+			`{"reordered":{"a":1,"b":2}}`,
+			`{"reordered":{"b":2,"a":1}}`,
+			// A const is a one-member enum, and the merge carries it in the Const
+			// slot rather than the Enum one.
+			`{"constMember":{"k":1}}`,
+			`{"nested":{"k":{"n":[1,2]}}}`,
+			// The same document with a number written another way. Both sides go
+			// through one encoder, so 1.0 and 1 are the same member -- a
+			// comparison against the bytes as they arrived would refuse this.
+			`{"inline":{"k":1.0}}`,
+			`{"nested":{"k":{"n":[1.0,2]}}}`,
+			`{"standalone":{"k":1}}`,
+			// Control: a branch with no enum leaves the object to `properties`.
+			`{"plain":{"k":1}}`,
+			`{"plain":{"k":99}}`,
+		},
+		[]string{
+			`{"inline":{"k":3}}`,       // satisfies properties, outside the enum
+			`{"inline":{}}`,            // no member is the empty object
+			`{"inline":{"k":1,"z":9}}`, // a member plus an extra key is not a member
+			`{"viaRef":{"k":3}}`,
+			`{"reordered":{"a":1}}`,        // a subset of a member is not a member
+			`{"constMember":{"k":2}}`,      // outside the const
+			`{"nested":{"k":{"n":[2,1]}}}`, // array order does decide it
+			`{"standalone":{"k":3}}`,
+		},
+	)
+}
+
+// TestHandBuiltObjectEnumValidate pins the one thing a whole-document enum
+// cannot answer: a value that was never a document.
+//
+// The comparison is against the JSON the unmarshaler kept, because that is the
+// instance the enum speaks about. A hand-constructed struct has none, and its Go
+// zero values are not something the schema ever saw -- an optional field left
+// nil is indistinguishable from an absent property, so marshalling the struct
+// and comparing that would refuse values a caller built correctly. The check is
+// skipped there instead, the same way required-property presence is, and the
+// gate is what makes that a decision rather than an accident: without it the nil
+// map encodes as `null` and every hand-built value is rejected.
+func TestHandBuiltObjectEnumValidate(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Built by hand: no document, so the enum has nothing to compare against.
+	k := int64(3)
+	byHand := AllOfObjectEnumInline{K: &k}
+	if err := byHand.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "hand-built value rejected: %v\n", err)
+		os.Exit(1)
+	}
+	// The same value decoded from JSON does carry its document, and k=3 is not
+	// a member. This is the accept-control's other half: the skip above is
+	// about the absence of a document, not about the check being inert.
+	var fromJSON AllOfObjectEnumInline
+	if err := json.Unmarshal([]byte(` + "`" + `{"k":3}` + "`" + `), &fromJSON); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding: %v\n", err)
+		os.Exit(1)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "a decoded {\"k\":3} passed an enum permitting only {\"k\":1} and {\"k\":2}")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/allof_object_enum.json",
+		"allof_object_enum_handbuilt_test",
+		mainGo,
+	)
+}
+
+// TestRootCompositionBranchesValidation exercises a root anyOf whose every
+// branch is one the static evaluator refuses: a $ref, a nested composition, an
+// enum, and a boolean false. The whole schema used to come out as
+// `type RootCompositionBranches any` -- a type Go forbids methods on, so there
+// was no Validate and json.Unmarshal into it could not fail. Every one of the
+// rejections below was an acceptance.
+//
+// The valid cases are the control that the branches are still *permissive*
+// where the schema says so: one per surviving branch, so a check that rejected
+// everything would fail here rather than look like a fix.
+func TestRootCompositionBranchesValidation(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/root_composition_branches.json",
+		[]string{
+			`1`,    // the $ref branch: integer >= 1
+			`42`,   // the same branch, further in
+			`"ab"`, // the nested-composition branch: string, minLength 2
+			`true`, // the enum branch
+			`null`, // the enum branch's other member
+		},
+		[]string{
+			`0`,     // integer, but below the $ref branch's minimum
+			`"a"`,   // string, but shorter than the nested branch's minLength
+			`false`, // not an enum member, and the `false` branch matches nothing
+			`{}`,    // no branch admits an object
+			`[1]`,   // nor an array
+		},
+	)
+}
+
+// TestRuntimeEvaluatorAppliesItsPatterns is the runtime evaluator's ECMA-262
+// arms, which are the one part of a helper block that is compiled in
+// conditionally -- the engine is a third-party dependency, and a package whose
+// schemas name no pattern should not acquire it.
+//
+// It is also the one helper whose presence cannot be read off a call: the file
+// carries the _schemaNode literal and _dynPatternOK is reached from inside the
+// block, never from the file. So HelpersReferencedBy takes it from the literal
+// instead, and getting that wrong does not break the build -- it emits a node
+// with Pattern set and no arm that reads it, which is a check dropped in
+// silence. Nothing else in the tree asks the question: with the literal match
+// removed, `go test ./...` stays green and "zzz" below is accepted.
+//
+// Both spellings that set it are covered, in a fixture each. One file carrying
+// both would let either match stand in for the other, and the two are separately
+// removable. In each fixture the second branch is an integer bound, so a run
+// that dropped the pattern arms cannot pass by rejecting everything: the valid
+// cases are the control.
+func TestRuntimeEvaluatorAppliesItsPatterns(t *testing.T) {
+	// "pattern" on a node.
+	runValidationCases(t,
+		"testdata/schemas/regression/runtime_pattern_branches.json",
+		[]string{
+			`"abc"`, // matches ^a
+			`10`,    // the other branch, untouched by any pattern
+		},
+		[]string{
+			`"zzz"`, // a string the pattern excludes
+			`9`,     // below the other branch's minimum
+			`{}`,    // no branch admits an object
+		},
+	)
+	// A patternProperties member list, which the additionalProperties of false
+	// has to run to know which keys are left over.
+	runValidationCases(t,
+		"testdata/schemas/regression/runtime_patternprops_branches.json",
+		[]string{
+			`{"x1":5}`, // the key matches ^x, the value is an integer
+			`{}`,       // an object claiming nothing is still an object
+			`10`,       // the other branch
+		},
+		[]string{
+			`{"x1":"s"}`, // the member's own type
+			`{"y":1}`,    // additionalProperties false, and ^x does not claim "y"
+			`9`,          // below the other branch's minimum
+			`"abc"`,      // no branch admits a string
+		},
+	)
+}
+
+// TestRefToFalseSchemaForbidsEverything covers #116: the boolean `false` schema
+// reached through a $ref rather than written where it is used.
+//
+// A `false` schema rejects every instance. At the document root that has always
+// worked -- generateTypeDef emitted the forbidding wrapper -- but a $defs entry
+// holding `false` fell past every arm to the `any` fall-through, and `type B any`
+// cannot carry a Validate at all. {"$ref":"#/$defs/b"} then aliased that, so the
+// schema accepted "foo" and everything else.
+//
+// The accept-controls are the other half and matter more than the rejections: a
+// $ref to boolean `true` admits every instance, and a fix that answered "$ref to
+// a boolean" with a rejection rather than "$ref to `false`" would pass every
+// invalid case here and fail `always`, `alwaysAllOf` and `alwaysList`.
+func TestRefToFalseSchemaForbidsEverything(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_to_false_schema.json",
+		[]string{
+			// Nothing present: a `false` schema is about a value that is there,
+			// and an absent optional property is the parent's business.
+			`{}`,
+			// An empty array and an empty object have no position for the
+			// forbidding sub-schema to reject.
+			`{"list":[]}`,
+			`{"map":{}}`,
+			`{"tuple":[]}`,
+			// Accept-controls: $ref to boolean `true`, which admits everything.
+			`{"always":"foo"}`,
+			`{"always":5}`,
+			`{"always":null}`,
+			`{"alwaysAllOf":{"k":1}}`,
+			`{"alwaysList":[1,"two",false]}`,
+		},
+		[]string{
+			`{"prop":"foo"}`,      // the $ref itself
+			`{"prop":5}`,          //
+			`{"prop":{}}`,         //
+			`{"viaAllOf":"foo"}`,  // sole branch of an allOf
+			`{"viaAnyOf":"foo"}`,  // sole branch of an anyOf
+			`{"viaOneOf":"foo"}`,  // sole branch of a oneOf
+			`{"viaNested":"foo"}`, // an allOf inside an allOf
+			`{"beside":"foo"}`,    // a sibling "type" does not rescue it
+			`{"list":[1]}`,        // an array element
+			`{"map":{"k":1}}`,     // a map value
+			`{"tuple":[1]}`,       // a tuple slot
+		},
+	)
+}
+
+// TestRootNotObjectShapeValidation exercises a root "not" whose sub-schema
+// states object structure, which extractNotSchemaDef does not handle: the
+// schema used to come out as `type RootNotObjectShape any` and accept the one
+// document it forbids.
+//
+// The valid list is the accept-control, and it is the whole point of a "not":
+// everything that fails to match the negated sub-schema must still pass, which
+// here is every value of the wrong type, every object missing the required key,
+// and every object whose "foo" is not a string.
+func TestRootNotObjectShapeValidation(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/root_not_object_shape.json",
+		[]string{
+			`{"foo":1}`,   // an object, but "foo" is not a string
+			`{"bar":"x"}`, // an object without the required "foo"
+			`{}`,          // required "foo" absent
+			`"foo"`,       // not an object at all
+			`[1,2]`,
+			`null`,
+			`7`,
+		},
+		[]string{
+			`{"foo":"bar"}`,         // exactly the shape the "not" forbids
+			`{"foo":"bar","baz":1}`, // extra keys do not rescue it
+		},
+	)
+}
+
+// TestRefToFalseRootForbidsEverything is the shape #116 reproduces with, at the
+// position it reproduces at: a root that is nothing but a $ref to `false`.
+//
+// It carries no valid documents on purpose. A `false` schema admits none, and a
+// root that accepted even one would mean the wrapper was not reached.
+func TestRefToFalseRootForbidsEverything(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_to_false_root.json",
+		nil,
+		[]string{`"foo"`, `5`, `true`, `null`, `[]`, `{}`, `{"k":1}`},
+	)
+}
+
+// TestDraft3DependenciesStringForm covers #117: draft 3 spells a single
+// dependency as a bare property name, {"dependencies":{"bar":"foo"}}, where
+// every later draft writes the one-element array.
+//
+// Normalization recognised the array and the sub-schema forms and not the
+// string, so unmarshalling a JSON string into a Schema failed and the entry was
+// dropped in silence. Nothing was left for the type to be inferred from either,
+// so the whole schema came out `type Root any` with no Validate and {"bar":2}
+// was accepted.
+//
+// The array form in the same fixture is the control: it worked before and must
+// go on working, so a fix that rerouted the keyword rather than adding the
+// missing spelling would show up here. The non-objects are the other control --
+// dependencies says nothing about them and all three are valid, which is what
+// the suite's draft3/dependencies group asserts.
+func TestDraft3DependenciesStringForm(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_dependencies_string.json",
+		[]string{
+			`{}`,
+			`{"foo":1}`,
+			`{"foo":1,"bar":2}`,
+			`{"foo":1,"baz":1,"quux":3}`,
+			`["bar"]`,
+			`"foobar"`,
+			`12`,
+		},
+		[]string{
+			`{"bar":2}`,          // string form: bar present, foo missing
+			`{"quux":3}`,         // array form: both dependencies missing
+			`{"quux":3,"foo":1}`, // array form: baz still missing
+			`{"bar":2,"quux":3}`, // both triggers unsatisfied
+		},
+	)
+}
+
+// TestRuntimeSchemaAbsentValueValidates pins that a runtime-evaluated wrapper
+// holding no value validates rather than failing to decode one.
+//
+// The wrapper's Validate decodes its raw JSON, and a value that was never built
+// from a document has none: an optional property the source JSON did not carry,
+// or a value assembled in Go. Without the guard, json.Unmarshal is handed an
+// empty slice and reports "unexpected end of JSON input", so a schema that
+// forbids one shape rejected the absence of any shape at all.
+func TestRuntimeSchemaAbsentValueValidates(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Never decoded from a document: the raw JSON is empty.
+	var absent RootNotObjectShape
+	if err := absent.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "a value that holds nothing was rejected: %v\n", err)
+		os.Exit(1)
+	}
+	// The accept-control's other half: the skip above is about the absence of a
+	// document, not about the check being inert. A value that does carry the
+	// forbidden shape still has to fail.
+	var present RootNotObjectShape
+	if err := json.Unmarshal([]byte(` + "`" + `{"foo":"bar"}` + "`" + `), &present); err != nil {
+		fmt.Fprintf(os.Stderr, "decoding: %v\n", err)
+		os.Exit(1)
+	}
+	if err := present.Validate(); err == nil {
+		fmt.Fprintln(os.Stderr, "the shape the schema forbids was accepted")
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/root_not_object_shape.json",
+		"root_not_absent_test",
+		mainGo,
+	)
+}
+
+// TestRefToRuntimeWrapperValidation pins that naming a definition which compiles
+// to the runtime evaluator leaves it usable.
+//
+// A Go named type inherits none of its underlying type's methods, so
+// "type RefToRuntimeWrapper Wrapped" over a struct whose only field is
+// unexported decodes as a struct with no exported field: encoding/json then
+// refuses "ab" outright, for a schema that says "ab" is exactly what it wants.
+//
+// The type is named here rather than left to the shared helper, which picks the
+// last struct in the file -- that is Wrapped itself, and validating it directly
+// tests the wrapper while stepping straight over the alias that was broken.
+func TestRefToRuntimeWrapperValidation(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	// Valid, and not null: a null decodes into a struct with no exported field
+	// without complaint, so it cannot tell a delegating alias from a broken one.
+	for _, ok := range []string{` + "`" + `"ab"` + "`" + `, ` + "`" + `"abcd"` + "`" + `} {
+		var v RefToRuntimeWrapper
+		if err := json.Unmarshal([]byte(ok), &v); err != nil {
+			fmt.Fprintf(os.Stderr, "valid document %s did not decode: %v\n", ok, err)
+			os.Exit(1)
+		}
+		if err := v.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "valid document %s was rejected: %v\n", ok, err)
+			os.Exit(1)
+		}
+		// Marshalling has to come back out through the wrapper too.
+		if out, err := json.Marshal(v); err != nil || string(out) != ok {
+			fmt.Fprintf(os.Stderr, "re-marshalling %s gave %s (%v)\n", ok, string(out), err)
+			os.Exit(1)
+		}
+	}
+	// The accept-control's other half: the schema still rejects what it forbids.
+	for _, bad := range []string{` + "`" + `"a"` + "`" + `, ` + "`" + `null` + "`" + `, ` + "`" + `1` + "`" + `, ` + "`" + `{}` + "`" + `} {
+		var v RefToRuntimeWrapper
+		if err := json.Unmarshal([]byte(bad), &v); err != nil {
+			continue // an unmarshal-time rejection is an acceptable failure mode
+		}
+		if err := v.Validate(); err == nil {
+			fmt.Fprintf(os.Stderr, "invalid document %s was accepted\n", bad)
+			os.Exit(1)
+		}
+	}
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/ref_to_runtime_wrapper.json",
+		"ref_to_runtime_wrapper_test",
+		mainGo,
+	)
+}
+
+// TestRefSiblingTypeApplies covers #118 from 2019-09 on, where $ref became an
+// ordinary applicator and its siblings apply as if the two were an allOf.
+//
+// hasRefStructuralSiblings listed only the properties and items families, so a
+// $ref beside a "type" took the ref-only alias path in every draft and the
+// declared type was dropped: {"type":"array","$ref":"#/$defs/a"} generated
+// `type Root A` with no Validate, where the identical schema without the $ref
+// generates []any and refuses a string.
+//
+// `plain` is the accept-control for the widening itself -- a $ref with no
+// sibling at all still takes the ref-only path and still resolves to the
+// definition's own type.
+//
+// The bounded* positions are the other half, and the half that stops the
+// widening from trading one dropped keyword for another: each states a type
+// *and* references a definition carrying a bound, so a position that answered
+// from the sibling alone would lose the bound exactly as the old one lost the
+// type. The element, map-value and tuple positions are the ones that needed a
+// merge arm of their own -- they resolve through resolveType, which had none,
+// while a property has had one since $ref-beside-properties.
+func TestRefSiblingTypeApplies(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_type.json",
+		[]string{
+			`{}`,
+			`{"arr":[]}`,
+			`{"arr":[1,"two"]}`,
+			`{"str":"x"}`,
+			`{"num":1.5}`,
+			`{"bounded":"abc"}`,           // the $ref's minLength is satisfied
+			`{"elem":["a"]}`,              // array element: sibling type kept
+			`{"mapv":{"k":"v"}}`,          // map value
+			`{"slot":["a"]}`,              // tuple slot
+			`{"boundedElem":["abc"]}`,     // element: both halves satisfied
+			`{"boundedMapv":{"k":"abc"}}`, // map value
+			`{"boundedSlot":["abc"]}`,     // tuple slot
+			`{"plain":"abc"}`,             // control: $ref with no sibling
+			`{"plain":5}`,                 // minLength is vacuous for a number
+		},
+		[]string{
+			`{"arr":"x"}`,      // the declared array type
+			`{"arr":5}`,        //
+			`{"str":5}`,        // the declared string type
+			`{"num":"x"}`,      // the declared number type
+			`{"bounded":"ab"}`, // the $ref's own constraint through the merge
+			`{"elem":[5]}`,     // the sibling type at an element
+			`{"mapv":{"k":5}}`, //
+			`{"slot":[5]}`,     //
+			// The $ref's bound at the same three positions. These are what a
+			// widening that answered from the sibling alone would accept.
+			`{"boundedElem":["ab"]}`,
+			`{"boundedMapv":{"k":"ab"}}`,
+			`{"boundedSlot":["ab"]}`,
+			`{"plain":"ab"}`, // control: the definition still constrains
+		},
+	)
+}
+
+// TestAllOfBranchArrayKeywordsAreAdopted covers the array half of the merge:
+// which of an allOf branch's items/prefixItems/contains the merged type carries.
+//
+// The merge leaves them alone by design, because they are scoped to the schema
+// object stating them -- a parent's `items` governs what follows the parent's
+// own prefix, so folding a branch's prefix in beside it would move what the
+// parent's keyword reaches. When the parent states none of them there is no
+// such interaction, and leaving the branch's unread meant a $ref beside a
+// "type":"array" enforced the type and nothing else: the whole point of #118 is
+// that both halves bind.
+//
+// The controls are the two cases the adoption must decline. `ownPrefix` states
+// its own prefixItems, so the branch's must not displace it -- [9] is refused
+// by the parent's string prefix, which a fix that let the branch win would
+// accept. `twoBranches` has two branches stating prefixItems: satisfying both is
+// an allOf of the two, which one merged type cannot express, so neither is
+// adopted and both documents pass. That under-enforcement is deliberate and
+// pinned here rather than left to be discovered.
+func TestAllOfBranchArrayKeywordsAreAdopted(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/allof_branch_array_keywords.json",
+		[]string{
+			`{}`,
+			`{"contains":[1]}`,
+			`{"contains":["a",1]}`,
+			`{"prefix":["a",9]}`,
+			`{"prefix":[]}`, // no position 0, so the prefix says nothing
+			`{"viaRef":[1]}`,
+			`{"ownPrefix":["a",1]}`,
+			// Control: two branches state prefixItems, so neither is adopted.
+			`{"twoBranches":["a"]}`,
+			`{"twoBranches":[1]}`,
+		},
+		[]string{
+			`{"contains":["a"]}`, // the branch's contains
+			`{"contains":[]}`,    // an empty array contains no integer
+			`{"contains":"x"}`,   // and the declared array type still binds
+			`{"prefix":[9]}`,     // the branch's prefixItems
+			`{"viaRef":["a"]}`,   // the same through a $ref beside the type
+			// Control: the parent's own prefix decides, not the branch's.
+			`{"ownPrefix":[9]}`,
+		},
+	)
+}
+
+// TestRefSiblingTypeSuppressedBeforeDraft2019 is the narrowness control for
+// #118, and the half a fix that ignored the draft would break.
+//
+// Through draft-07 a $ref replaces every keyword beside it, so the reference
+// alone decides. `suppressed` declares "type":"array" and $refs the empty
+// schema, which admits everything: a string is valid there, and applying the
+// sibling would refuse it -- a false rejection, worse than the missing check it
+// would be replacing. `bounded` is the same control for a non-structural
+// sibling: minLength 5 is suppressed, so a four-character string satisfying the
+// target's own minLength 3 passes.
+//
+// Both are chosen so that suppressing and merging disagree. A sibling "type"
+// beside a $ref whose target *also* declares one does not discriminate: the
+// merge takes the branch's type over the parent's, so it lands on the same
+// answer suppression does and the control would pass under a fix that had the
+// draft split backwards.
+func TestRefSiblingTypeSuppressedBeforeDraft2019(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_type_draft7.json",
+		[]string{
+			`{}`,
+			// The $ref alone decides, and it is the empty schema.
+			`{"suppressed":"abc"}`,
+			`{"suppressed":5}`,
+			`{"suppressed":{"k":1}}`,
+			`{"suppressed":[1,2]}`,
+			// The sibling minLength 5 is suppressed; the target's own 3 is met.
+			`{"bounded":"abcd"}`,
+			`{"plain":"abc"}`,
+		},
+		[]string{
+			`{"bounded":"ab"}`, // the $ref's own minLength does bind
+			`{"plain":"ab"}`,
+			`{"plain":5}`, // and so does its type
+		},
+	)
+}
+
+// TestNullableFormatIsAssertedEverywhere covers the nullable spelling of a
+// formatted string -- {"type":["string","null"],"format":"ipv4"} -- in every
+// position it can be written.
+//
+// It resolved to *string wherever it appeared, losing the netip.Addr or
+// time.Time the non-nullable spelling gets, and the named form became `type
+// NullableV4 *string`. Go forbids methods on a pointer underlying type, so that
+// type carried no Validate at all: a nullable format asserted nothing, in the
+// one position where the non-nullable form asserts correctly. Inline it was
+// worse than unenforced -- the emitted family check read netip.Addr's methods
+// off a *string, and the generated file did not compile.
+//
+// The valid half is the larger one, and deliberately so. A null is permitted in
+// every one of these positions and must stay permitted: turning a missing
+// assertion into a rejection of what the schema allows would be the worse trade,
+// and a wrapper that rejected null would pass every case in the invalid list
+// while being wrong about all of them.
+func TestNullableFormatIsAssertedEverywhere(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/nullable_format_positions.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// The null the type list permits, position by position. These are
+			// the accept-controls: every rejection below is only correct if all
+			// of these still pass.
+			`{"inline":null}`,
+			`{"ref":null}`,
+			`{"chain":null}`,
+			`{"list":[null,"192.0.2.7"]}`,
+			`{"map":{"k":null}}`,
+			`{"tuple":[null,1]}`,
+			`{"wrapped":null}`,
+			`{"buckets":{"pp":null}}`,
+			// A key the pattern does not match is unconstrained.
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The two other formats, whose Go types differ from ipv4's.
+			`{"stamp":"2020-01-02T03:04:05Z"}`, `{"stamp":null}`,
+			`{"mail":"a@b.test"}`, `{"mail":null}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family: it parses, so only the
+			// format assertion can reject it.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// Not an address at all.
+			`{"inline":"not-an-ip"}`,
+			`{"ref":"not-an-ip"}`,
+			// A type the list does not carry. "null" widened the schema by
+			// exactly one instance type, not to everything.
+			`{"inline":5}`,
+			`{"ref":{"a":1}}`,
+			`{"list":[5]}`,
+			`{"map":{"k":true}}`,
+			// The other two formats.
+			`{"stamp":"not-a-timestamp"}`,
+			`{"mail":"not-an-email"}`,
+		},
+	)
+}
+
+// TestUntypedFormatIsAssertedOnStringsOnly covers a `format` written with no
+// "type" beside it, in every position it can be written.
+//
+// It resolved to `any`, and Go forbids methods on `any`, so the format was
+// asserted nowhere -- inline, behind a $ref, through an alias chain, as an
+// element, a map value, a tuple slot, a oneOf branch, an allOf branch and a
+// patternProperties bucket alike.
+//
+// The narrowness is the point, and it is what the second half of the valid list
+// pins. `format` is scoped to string instances: a number, an object, an array, a
+// boolean and a null satisfy {"format":"ipv4"} outright, so the fix cannot be
+// "give it a string type" -- that would reject documents the schema admits, in
+// every one of these positions at once. Each of those five is here beside the
+// rejection it must not become.
+func TestUntypedFormatIsAssertedOnStringsOnly(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/untyped_format_positions.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// The accept-controls: five instance types the format says nothing
+			// about, in the positions whose Go type the fix changed.
+			`{"inline":5}`, `{"inline":{"a":1}}`, `{"inline":[1]}`, `{"inline":true}`, `{"inline":null}`,
+			`{"ref":5}`, `{"ref":{"a":1}}`, `{"ref":null}`,
+			`{"chain":5}`, `{"chain":null}`,
+			`{"list":[5,{"a":1},null,true]}`,
+			`{"map":{"k":5}}`, `{"map":{"k":null}}`,
+			`{"tuple":[5,1]}`, `{"tuple":[null,1]}`, `{"tuple":[{"a":1},1]}`,
+			`{"wrapped":5}`, `{"wrapped":null}`,
+			`{"buckets":{"pp":5}}`, `{"buckets":{"pp":null}}`,
+			// A key the pattern does not match is unconstrained.
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The two other formats, and their non-string accept-controls.
+			`{"stamp":"2020-01-02T03:04:05Z"}`, `{"stamp":5}`, `{"stamp":null}`,
+			`{"mail":"a@b.test"}`, `{"mail":5}`, `{"mail":null}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family, which only the format
+			// assertion can reject.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// Not an address at all.
+			`{"inline":"not-an-ip"}`,
+			`{"ref":"not-an-ip"}`,
+			`{"chain":"not-an-ip"}`,
+			// The other two formats, on a string instance.
+			`{"stamp":"not-a-timestamp"}`,
+			`{"mail":"not-an-email"}`,
+		},
+	)
+}
+
+// TestFormatBesideLengthCompilesAndChecksBoth covers a format that maps to a Go
+// type written beside a keyword that reads the string's characters.
+//
+// The two are irreconcilable as they stood: minLength is measured with
+// utf8.RuneCountInString, which takes a string, and neither netip.Addr nor
+// time.Time converts to one. The generator emitted the length check anyway and
+// the result did not compile -- `cannot convert i (variable of struct type
+// IPWithLen) to type string` for the alias, and `cannot use *s.B (variable of
+// struct type netip.Addr) as string value` for the field. That is the harshest
+// failure a generator has, and every one of these six properties produced it.
+//
+// The fix gives up the Go type rather than the length check, so this test's
+// whole point is that *both* keywords still bind: the length half and the format
+// half each have a rejection here, and the compile is the third assertion, made
+// by runValidationCases building the program at all.
+func TestFormatBesideLengthCompilesAndChecksBoth(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/format_beside_length.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			`{"declaredV4":"192.0.2.77"}`,
+			`{"declaredStamp":"2020-01-02T03:04:05+01:00"}`,
+			`{"inferredV4":"192.0.2.77"}`,
+			`{"refV4":"192.0.2.77"}`,
+			`{"refStamp":"2020-01-02T03:04:05+01:00"}`,
+			`{"patternedV4":"192.0.2.7"}`,
+			// The type this schema is not about. Only the inferred property can
+			// hold one -- the others declare "type":"string" -- and there the
+			// length and format keywords are both vacuous.
+			`{"inferredV4":5}`, `{"inferredV4":null}`, `{"inferredV4":{"a":1}}`,
+		},
+		[]string{
+			`{"declaredV4":"1.2.3.4"}`,     // 7 characters, under minLength 9
+			`{"declaredV4":"2001:db8::1"}`, // long enough, wrong family
+			// A valid RFC 3339 date-time, 20 characters, under minLength 25.
+			// The length half of the pair, on the format whose Go type is
+			// time.Time rather than netip.Addr.
+			`{"declaredStamp":"2020-01-02T03:04:05Z"}`,
+			`{"declaredStamp":"not-a-timestamp-at-all-xx"}`, // 25 characters, not a date-time
+			`{"inferredV4":"1.2.3.4"}`,
+			`{"inferredV4":"2001:db8::999"}`,
+			`{"refV4":"1.2.3.4"}`,
+			`{"refV4":"2001:db8::1"}`,
+			`{"refStamp":"2020-01-02T03:04:05Z"}`,
+			`{"refStamp":"not-a-timestamp-at-all-xx"}`,
+			`{"patternedV4":"10.0.0.1"}`,    // an address the pattern excludes
+			`{"patternedV4":"192.0.2.999"}`, // matches the pattern, not an address
+		},
+	)
+}
+
+// TestFormatRootPositionsAssert is the position the two tests above cannot
+// reach: the schema as a whole document, where the wrapper is the root type
+// itself rather than something a field refers to. Both shapes are here because
+// they take different routes to a root type -- the nullable one through the
+// "type" union wrapper, the untyped one through the inferred-value wrapper --
+// and a fix that reached only the positions inside an object would leave the
+// document root asserting nothing, which is where a $defs entry lands when it is
+// split into a file of its own.
+func TestFormatRootPositionsAssert(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/nullable_format_root.json",
+		formatAssertingConfig(),
+		[]string{`"192.0.2.7"`, `null`},
+		[]string{`"2001:db8::1"`, `"not-an-ip"`, `5`, `{"a":1}`},
+	)
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/untyped_format_root.json",
+		formatAssertingConfig(),
+		// Every non-string instance satisfies a bare format, so all four are
+		// accept-controls for the two rejections.
+		[]string{`"192.0.2.7"`, `null`, `5`, `{"a":1}`, `[1]`, `true`},
+		[]string{`"2001:db8::1"`, `"not-an-ip"`},
+	)
+}
+
+// malformedByFormat is one document per spelling of a format, each carrying a
+// value that is well-formed JSON, is of the right instance type, and is not of
+// the named format. Whether these are rejected is the whole of the format
+// posture, so the same list is used for all three of its answers.
+var malformedByFormat = []string{
+	`{"typed":"2001:db8::1"}`,
+	`{"untyped":"not-an-ip"}`,
+	`{"nullable":"2001:db8::1"}`,
+	`{"stamp":"not-a-timestamp"}`,
+	`{"mail":"not-an-email"}`,
+}
+
+// conformingByFormat is the same set of properties carrying values that do
+// match. They are the control on every arm below: a posture that accepted
+// nothing would pass the annotation arm's expectations by accident.
+var conformingByFormat = []string{
+	`{}`,
+	`{"typed":"192.0.2.7"}`,
+	`{"untyped":"192.0.2.7"}`,
+	`{"nullable":"192.0.2.7"}`, `{"nullable":null}`,
+	`{"stamp":"2020-01-02T03:04:05Z"}`,
+	`{"mail":"a@b.test"}`,
+	// A format says nothing about an instance of another type, on any draft
+	// and under any posture. Only the untyped spelling can hold one.
+	`{"untyped":5}`, `{"untyped":null}`, `{"untyped":{"a":1}}`,
+}
+
+// TestFormatPostureFollowsTheDialect pins which drafts assert a format, and
+// what --format-assertion changes.
+//
+// The generator asserted `format` on every draft and could not be told not to.
+// That is a legitimate reading of draft 3 through 7, which say an implementation
+// SHOULD validate a format it recognises and MAY treat it as an annotation. It
+// is not a legitimate reading of 2019-09 or 2020-12: their default meta-schema
+// declares the format-annotation vocabulary, whose content is that format
+// produces an annotation and no assertion, and the official suite marks
+// {"format":"email"} satisfied by "2962" accordingly. Rejecting those documents
+// is rejecting what the schema permits.
+//
+// The three arms are the three answers, and each is needed. Without the first
+// the change is untested; without the second the older drafts could have been
+// broken silently, since nothing else in the tree still asserts by default;
+// without the third the flag could be doing nothing at all and every other
+// format test in this file -- all of which now pass it -- would still pass.
+func TestFormatPostureFollowsTheDialect(t *testing.T) {
+	t.Run("2020-12 annotates", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/format_posture_2020.json",
+			append(append([]string{}, conformingByFormat...), malformedByFormat...),
+			nil,
+		)
+	})
+	t.Run("draft-07 asserts", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/format_posture_draft7.json",
+			conformingByFormat,
+			malformedByFormat,
+		)
+	})
+	t.Run("2020-12 asserts under the flag", func(t *testing.T) {
+		runValidationCasesWithConfig(t,
+			"testdata/schemas/regression/format_posture_2020.json",
+			formatAssertingConfig(),
+			conformingByFormat,
+			malformedByFormat,
+		)
+	})
+}
+
+// TestFormatChecksMatchTheSuite pins the format checks against the cases where
+// they used to disagree with the official suite's optional/format corpus.
+//
+// Every document in the valid list was rejected by the released checks, and a
+// rejection of a conforming document is the worst thing this generator can do:
+// it is not a missing check that someone might notice, it is a build that
+// refuses to accept data the schema permits. They are grouped by what was wrong
+// rather than by format, because one cause usually produced several.
+//
+// The invalid list is the control. Loosening a check until nothing is rejected
+// would satisfy every line above and mean nothing, so each cause has a rejection
+// beside it -- and the leap-second cases in particular, where the rule is not
+// "second 60 is fine" but "second 60 at the last minute of the UTC day".
+func TestFormatChecksMatchTheSuite(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_accuracy.json",
+		[]string{
+			`{}`,
+			// RFC 3339 admits a leap second, and time.Parse does not.
+			//
+			// Through stampStr rather than stamp, and the difference is not
+			// incidental. A declared "type":"string" with format date-time is
+			// held as a time.Time, and a time.Time cannot represent 23:59:60 at
+			// all -- the value is refused by the decoder, before any check runs.
+			// That is a property of the representation rather than of the check,
+			// and it is why the untyped spelling, which keeps the JSON string,
+			// is the one that can accept a leap second.
+			`{"stampStr":"1998-12-31T23:59:60Z"}`,
+			`{"stampStr":"1998-12-31T15:59:60.123-08:00"}`,
+			`{"clock":"23:59:60Z"}`,
+			`{"clock":"23:59:60+00:00"}`,
+			`{"clock":"01:29:60+01:30"}`,
+			`{"clock":"23:29:60+23:30"}`,
+			`{"clock":"15:59:60-08:00"}`,
+			`{"clock":"00:29:60-23:30"}`,
+			// RFC 3339 says the T and the Z are case-insensitive.
+			`{"stampStr":"1963-06-19t08:30:06.283185z"}`,
+			`{"clock":"08:30:06z"}`,
+			// "format":"regex" is ECMA-262, not Go's RE2, which is a different
+			// language: [^] is an ordinary empty negated class there and a
+			// syntax error here.
+			//
+			// Lookbehind is deliberately not in this list. ES2018 added it and
+			// the ECMA-262 engine accepts it, while the suite -- which predates
+			// that edition -- marks (?<=foo)bar invalid for `format: regex`.
+			// Accepting it is an under-enforcement against the suite and a
+			// disagreement about which edition of ECMA-262 `format: regex`
+			// names, not something either side can call a defect.
+			`{"pattern":"[^]"}`,
+			// An address literal is a legal domain, and net/mail refuses it.
+			`{"mail":"joe.bloggs@[IPv6:::1]"}`,
+			`{"mail":"joe.bloggs@[127.0.0.1]"}`,
+			// A quoted local part may hold a space, two dots or an "@".
+			`{"mail":"\"joe bloggs\"@example.com"}`,
+			`{"mail":"\"joe..bloggs\"@example.com"}`,
+			`{"mail":"\"joe@bloggs\"@example.com"}`,
+			// An internationalized name is not ASCII, which is what the check
+			// used to require of it -- so every one of these was refused. They
+			// are also the accept-controls for the ContextO and IDNA rejections
+			// below: each carries the very character those rules constrain, in a
+			// position where the rule is satisfied.
+			`{"intlHost":"실례.테스트"}`,
+			`{"intlHost":"ßς་〇"}`,
+			`{"intlHost":"א״ב"}`, // GERSHAYIM preceded by Hebrew
+			`{"intlHost":"א׳ב"}`, // GERESH preceded by Hebrew
+			`{"intlHost":"l·l"}`, // MIDDLE DOT between two 'l'
+			`{"intlHost":"α͵β"}`, // KERAIA followed by Greek
+			`{"intlHost":"・ぁ"}`,  // KATAKANA MIDDLE DOT beside Hiragana
+			`{"intlHost":"・ァ"}`,  // ... beside Katakana
+			`{"intlHost":"・丈"}`,  // ... beside Han
+			`{"intlHost":"۽۾"}`,
+			`{"intlHost":"ب٠ب"}`,
+			`{"intlHost":"۰0"}`,
+			// The four UTS-46 label separators, and a name long enough that
+			// counting octets rather than characters would have refused it.
+			`{"intlHost":"a｡b"}`, `{"intlHost":"a。b"}`, `{"intlHost":"a．b"}`,
+			`{"intlHost":"παράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπα.com"}`,
+			`{"intlHost":"παράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπαράδειγμαπα｡com"}`,
+			`{"intlMail":"실례@실례.테스트"}`,
+			// A well-formed A-label. The ASCII check accepted every xn-- label on
+			// sight; this one has to survive being decoded and judged.
+			`{"host":"xn--bcher-kva.example"}`,
+			// The PVALID members of RFC 5892 section 2.6, through punycode: the
+			// accept-controls for the DISALLOWED members of the same section, which
+			// the invalid list refuses in exactly this spelling.
+			`{"host":"xn--zca29lwxobi7a"}`, // ßς་〇
+			`{"host":"xn--qmbc"}`,          // ۽۾
+			`{"host":"xn--9n2bp8q.xn--9t4b11yi5a"}`,
+			// The carriers the DISALLOWED exceptions below are embedded in, with
+			// the exception taken out. Each is accepted, so the ten rejections are
+			// about the code point and not about the script it sits in.
+			`{"intlHost":"بب"}`, `{"intlHost":"ߊߊ"}`,
+			`{"intlHost":"실례"}`, `{"intlHost":"ああ"}`,
+			// An IP-literal host is bracketed, and the brackets are what tell it
+			// from a bare IPv6 address with a port.
+			`{"link":"ldap://[2001:db8::7]/c=GB?objectClass?one"}`,
+			// "" is a URI reference (this document) and a JSON Pointer (the whole
+			// document), and each check says so on its own terms rather than by
+			// an exemption.
+			`{"linkRef":""}`,
+			`{"pointer":""}`,
+			`{"pattern":""}`,
+			// Ordinary conforming values, so a check that rejected everything
+			// could not pass this test by accident.
+			`{"stamp":"2020-01-02T03:04:05Z"}`,
+			`{"clock":"08:30:06Z"}`,
+			`{"day":"2020-02-29"}`,
+			`{"mail":"a@b.test"}`,
+			`{"host":"example.test"}`,
+			`{"span":"P4DT12H30M5S"}`,
+			`{"span":"P2W"}`,
+			`{"link":"https://example.test/x"}`,
+			`{"id":"123e4567-e89b-12d3-a456-426614174000"}`,
+			`{"relPointer":"0"}`, `{"relPointer":"1/a"}`, `{"relPointer":"2#"}`,
+		},
+		[]string{
+			// The leap second is only the last second of the UTC day, so the
+			// rule is arithmetic rather than "60 is allowed".
+			`{"clock":"22:59:60Z"}`,
+			`{"clock":"23:58:60Z"}`,
+			`{"clock":"23:59:60+01:00"}`,
+			`{"clock":"23:59:60-01:00"}`,
+			`{"stampStr":"1998-12-31T23:58:60Z"}`,
+			`{"stampStr":"1998-12-31T23:59:61Z"}`,
+			// An offset is not optional in an RFC 3339 full-time.
+			`{"clock":"12:00:00"}`,
+			`{"clock":"01:02:03Z+00:30"}`,
+			`{"clock":"01:02:03+24:00"}`,
+			// Non-ASCII digits are not digits here.
+			`{"stampStr":"1963-06-11T0৪:00:00Z"}`,
+			`{"day":"1963-06-1৪"}`,
+			// "" is not an email address, a hostname, a UUID, a duration or a
+			// relative JSON Pointer, and the exemption used to accept it as all
+			// five.
+			`{"mail":""}`,
+			`{"host":""}`,
+			`{"id":""}`,
+			`{"span":""}`,
+			`{"relPointer":""}`,
+			`{"intlHost":""}`,
+			// The duration grammar wants a value for every designator, a "T"
+			// followed by something, and a week count that stands alone.
+			`{"span":"P"}`,
+			`{"span":"PT"}`,
+			`{"span":"P1YT"}`,
+			`{"span":"P1Y2W"}`,
+			`{"span":"PT1D"}`,
+			`{"span":"P1"}`,
+			// A URI's character set excludes each of these, and url.Parse takes
+			// them all.
+			`{"link":"https://example.org/foo bar.txt"}`,
+			`{"link":"https://example.org/foobar\\.txt"}`,
+			`{"link":"https://example.org/foobar<>.txt"}`,
+			`{"link":"https://example.org/foobar{}.txt"}`,
+			`{"link":"https://example.org/foobar|.txt"}`,
+			`{"link":"https://example.org/foobar®.txt"}`,
+			`{"link":"/abc"}`,
+			`{"linkRef":"\\\\WINDOWS\\fileshare"}`,
+			// A bare IPv6 address is not a host; only the bracketed form is.
+			`{"link":"http://2001:0db8:85a3:0000:0000:8a2e:0370:7334"}`,
+			// ContextO, from RFC 5892 appendix A.3-A.9. x/net/idna implements
+			// ContextJ and not these, so they are the rules schemagenContextO
+			// adds -- and each has its satisfied twin in the valid list above.
+			`{"intlHost":"a·l"}`,     // MIDDLE DOT with no preceding 'l'
+			`{"intlHost":"·l"}`,      // ... with nothing preceding
+			`{"intlHost":"l·a"}`,     // ... with no following 'l'
+			`{"intlHost":"l·"}`,      // ... with nothing following
+			`{"intlHost":"α͵S"}`,     // KERAIA not followed by Greek
+			`{"intlHost":"α͵"}`,      // ... followed by nothing
+			`{"intlHost":"׳ב"}`,      // GERESH not preceded by anything
+			`{"intlHost":"״ב"}`,      // GERSHAYIM not preceded by anything
+			`{"intlHost":"def・abc"}`, // KATAKANA MIDDLE DOT with no Kana or Han
+			`{"intlHost":"・"}`,       // ... with nothing else at all
+			// The same rules reached through punycode: an A-label is decoded
+			// before it is judged, which the ASCII check could not do.
+			`{"host":"xn--al-0ea"}`, // MIDDLE DOT with no preceding 'l'
+			`{"host":"xn--wva3j"}`,  // KERAIA followed by nothing
+			`{"host":"xn--5db1e"}`,  // GERESH preceded by nothing
+			`{"host":"xn--vek"}`,    // KATAKANA MIDDLE DOT alone
+			`{"host":"xn--X"}`,      // not punycode at all
+			// The RFC 5892 section 2.6 exceptions whose derived property is
+			// DISALLOWED. UTS-46 lookup marks all ten valid and maps them
+			// through, so idna accepts every one of these; schemagenDisallowedException
+			// is what refuses them. The accept-controls are the PVALID members of
+			// the same section -- "ßς་〇" and "۽۾" in the valid list above -- which
+			// a check written over the section rather than over the property would
+			// have refused alongside them.
+			`{"intlHost":"실〮례.테스트"}`,  // U+302E inside a label
+			`{"intlHost":"ـߺ"}`,       // U+0640, U+07FA
+			`{"intlHost":"〱〲〳〴〵〮〯〻"}`, // U+3031..U+3035, U+302E, U+302F, U+303B
+			// And the same three reached through punycode.
+			`{"host":"xn--07jt112bpxg.xn--9t4b11yi5a"}`,
+			`{"host":"xn--chb89f"}`,
+			`{"host":"xn--07jceefgh4c"}`,
+			// The suite spends only three documents on ten code points, so eight of
+			// the ten rules could be deleted and all three would still be refused
+			// by the two that remained. One case per code point, in a carrier the
+			// valid list above shows is accepted on its own, is what makes each of
+			// them load-bearing.
+			`{"intlHost":"بـب"}`, // U+0640 ARABIC TATWEEL
+			`{"intlHost":"ߊߺߊ"}`, // U+07FA NKO LAJANYALAN
+			`{"intlHost":"실〮례"}`, // U+302E HANGUL SINGLE DOT TONE MARK
+			`{"intlHost":"실〯례"}`, // U+302F HANGUL DOUBLE DOT TONE MARK
+			`{"intlHost":"あ〱あ"}`, // U+3031 VERTICAL KANA REPEAT MARK
+			`{"intlHost":"あ〲あ"}`, // U+3032 ... WITH VOICED SOUND MARK
+			`{"intlHost":"あ〳あ"}`, // U+3033 ... UPPER HALF
+			`{"intlHost":"あ〴あ"}`, // U+3034 ... WITH VOICED SOUND MARK UPPER HALF
+			`{"intlHost":"あ〵あ"}`, // U+3035 ... LOWER HALF
+			`{"intlHost":"あ〻あ"}`, // U+303B VERTICAL IDEOGRAPHIC ITERATION MARK
+			// A trailing separator is the DNS root label, which a hostname does
+			// not carry. idna's lookup profile tolerates it.
+			`{"intlHost":"example."}`,
+			`{"intlHost":"example。"}`,
+			// Still the ordinary failures.
+			`{"mail":"2962"}`,
+			`{"host":"-leading-hyphen"}`,
+			`{"day":"2021-02-29"}`,
+			`{"id":"123e4567-e89b-12d3"}`,
+		},
+	)
+}
+
+// TestTypedFormatIsAssertedEverywhere covers a declared string with a format --
+// {"type":"string","format":"ipv4"} -- in every position it can be written.
+//
+// Four of the nine asserted nothing, and they are the four this test exists
+// for. An array element and a map value went through elementRules, whose switch
+// dropped every keyword it had not been taught, and `format` was one. A tuple
+// slot fell back to checking the position's JSON type, which answered "string":
+// true, and silent about the format. A oneOf branch fell back to a bare Go
+// string, which carries no Validate for the union's dispatch to call. In all
+// four an IPv6 address satisfied an ipv4 schema, while the identical subschema
+// written as a property, behind a $ref or under an allOf was checked -- the
+// ninth instance in this repository of a keyword bound in one position and
+// dropped in its sibling.
+//
+// Run under the asserting configuration because the fixture declares 2020-12,
+// where format is an annotation. TestFormatPostureFollowsTheDialect is what
+// holds the other side of that.
+func TestTypedFormatIsAssertedEverywhere(t *testing.T) {
+	runValidationCasesWithConfig(t,
+		"testdata/schemas/regression/typed_format_positions.json",
+		formatAssertingConfig(),
+		[]string{
+			`{}`,
+			// A conforming address, position by position.
+			`{"inline":"192.0.2.7"}`,
+			`{"ref":"192.0.2.7"}`,
+			`{"chain":"192.0.2.7"}`,
+			`{"list":["192.0.2.7","192.0.2.8"]}`,
+			`{"map":{"k":"192.0.2.7"}}`,
+			`{"tuple":["192.0.2.7",1]}`,
+			`{"branch":"192.0.2.7"}`,
+			`{"wrapped":"192.0.2.7"}`,
+			`{"buckets":{"pp":"192.0.2.7"}}`,
+			// Empty containers, and a key no pattern claims: adding a check to a
+			// position must not make the position itself mandatory.
+			`{"list":[]}`, `{"map":{}}`, `{"buckets":{}}`,
+			`{"buckets":{"zz":"not-an-ip"}}`,
+			// The other branch of the oneOf still selects.
+			`{"branch":7}`,
+			// The two formats whose Go type is not netip.Addr, through the
+			// element position that dropped them.
+			`{"mailList":["a@b.test"]}`,
+			`{"stampList":["2020-01-02T03:04:05Z"]}`,
+		},
+		[]string{
+			// A well-formed address of the wrong family: it parses, so only the
+			// format assertion can reject it. The four positions this test is
+			// about come first.
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			// And the five that already worked, so a change that moved the check
+			// rather than adding one is still caught.
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"chain":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			// The other two formats, in the element position.
+			`{"mailList":["not-an-email"]}`,
+			`{"stampList":["not-a-timestamp"]}`,
+		},
+	)
+}
+
+// TestTypedFormatAnnotatesOnNewerDrafts is the accept-control for the test
+// above, at the same fixture and the ordinary configuration.
+//
+// Every document the assertion run rejects is valid here, because 2020-12 makes
+// format an annotation -- so this is what catches a change that reaches the four
+// new positions but forgets the posture, which would be a false rejection in
+// four more places rather than a fix.
+func TestTypedFormatAnnotatesOnNewerDrafts(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/typed_format_positions.json",
+		[]string{
+			`{"list":["192.0.2.7","2001:db8::1"]}`,
+			`{"map":{"k":"2001:db8::1"}}`,
+			`{"tuple":["2001:db8::1",1]}`,
+			`{"branch":"2001:db8::1"}`,
+			`{"inline":"2001:db8::1"}`,
+			`{"ref":"2001:db8::1"}`,
+			`{"wrapped":"2001:db8::1"}`,
+			`{"buckets":{"pp":"2001:db8::1"}}`,
+			`{"mailList":["not-an-email"]}`,
+			`{"stampList":["not-a-timestamp"]}`,
+		},
+		nil,
+	)
+}
+
+// TestFormatHelperPositionsCompileAndCheck covers the formats whose check is a
+// shared helper rather than a decode, in the container positions.
+//
+// The compile is the first assertion and the one this exists for. A format on an
+// array element or a map value emitted a call to schemagenFormatIPv4Addr,
+// schemagenFormatEmail and the rest while the helper file declared none of them,
+// because which helpers a package needs was decided by walking the IR and the
+// walk did not look at ItemValidations. Generated code that does not build is
+// the worst thing this generator can produce, and nothing caught it: every
+// harness derived the helper set from the emitted source instead of asking the
+// generator, so every harness wrote the file the generator should have written.
+//
+// The fixture holds container positions only. A property, a tuple slot or a
+// oneOf branch materializes a named type whose own check pulls the helper block
+// in, which would mask the omission -- an earlier draft of this fixture had a
+// tuple in it and the planted fault walked straight past.
+//
+// runValidationCases builds and runs the program, so the rejections below are
+// the second assertion: the helpers are not merely declared, they are reached.
+func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_helper_positions.json",
+		[]string{
+			`{}`,
+			`{"v4List":["192.0.2.7"]}`,
+			`{"v6List":["2001:db8::1"]}`,
+			`{"mailList":["a@b.test"]}`,
+			`{"hostList":["example.test"]}`,
+			`{"idnHostList":["실례.테스트"]}`,
+			`{"idnMailList":["실례@실례.테스트"]}`,
+			`{"uuidList":["123e4567-e89b-12d3-a456-426614174000"]}`,
+			`{"durationList":["P4DT12H30M5S"]}`,
+			`{"dateList":["2020-02-29"]}`,
+			`{"timeList":["08:30:06Z"]}`,
+			`{"uriList":["https://example.test/x"]}`,
+			`{"regexList":["[^]"]}`,
+			`{"v4Map":{"k":"192.0.2.7"}}`,
+			`{"mailMap":{"k":"a@b.test"}}`,
+			`{"hostMap":{"k":"example.test"}}`,
+			`{"nested":[["192.0.2.7"]]}`,
+			// Empty containers: a check on a position must not make the position
+			// mandatory.
+			`{"v4List":[],"v4Map":{},"nested":[]}`,
+		},
+		[]string{
+			`{"v4List":["2001:db8::1"]}`,
+			`{"v6List":["192.0.2.7"]}`,
+			`{"mailList":["not-an-email"]}`,
+			`{"hostList":["-leading-hyphen"]}`,
+			`{"idnHostList":["example."]}`,
+			`{"idnMailList":["not-an-email"]}`,
+			`{"uuidList":["123e4567-e89b-12d3"]}`,
+			`{"durationList":["P1Y2W"]}`,
+			`{"dateList":["2021-02-29"]}`,
+			`{"timeList":["12:00:00"]}`,
+			`{"uriList":["/abc"]}`,
+			`{"v4Map":{"k":"2001:db8::1"}}`,
+			`{"mailMap":{"k":"not-an-email"}}`,
+			`{"hostMap":{"k":"-leading-hyphen"}}`,
+			`{"nested":[["2001:db8::1"]]}`,
+		},
 	)
 }

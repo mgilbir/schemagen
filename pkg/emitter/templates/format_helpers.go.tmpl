@@ -1,0 +1,469 @@
+{{/*
+format_helpers emits one function per "format" this generator asserts.
+
+They are shared functions rather than inline checks because the same assertion
+is needed from three places -- a struct field, a named alias over its own value,
+and the wrapper a format with no declared "type" resolves to -- and for a long
+time each place carried its own copy. The copies drifted, which is how a format
+came to be asserted behind a $ref and not inline, and how a check written for
+netip.Addr came to be emitted against a *string. One definition cannot drift
+from itself.
+
+The checks answer to the official test suite's optional/format corpus, which is
+the only statement of what these strings mean that is not this repository's own
+opinion. Where a check is deliberately weaker than the corpus, the function says
+so and names what it does not do; those are under-enforcement, which accepts
+what should be refused, rather than the reverse.
+
+No check exempts the empty string. That exemption used to be everywhere, on the
+grounds that the three positions had to agree with each other -- but they agree
+now by construction, and "" is not an email address, a hostname, a UUID or a
+duration. It remains acceptable to the checks where it genuinely is one: "" is a
+valid URI reference, a valid URI template, a valid regular expression and the
+JSON Pointer that selects the whole document, and each of those functions still
+returns nil for it on its own terms rather than by exemption.
+*/}}
+{{define "format_helpers"}}
+
+// schemagenASCIIDigits reports whether s is a run of exactly n ASCII digits.
+// The date and time grammars are defined over ASCII, and Go's date parser is
+// lenient about a few spellings RFC 3339 does not admit, so the shape is checked
+// here before the value is.
+func schemagenASCIIDigits(s string, n int) bool {
+	if len(s) != n {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func schemagenAtoi(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		n = n*10 + int(s[i]-'0')
+	}
+	return n
+}
+
+// schemagenFormatDate checks an RFC 3339 full-date.
+func schemagenFormatDate(v string) error {
+	if len(v) != 10 || v[4] != '-' || v[7] != '-' ||
+		!schemagenASCIIDigits(v[0:4], 4) || !schemagenASCIIDigits(v[5:7], 2) || !schemagenASCIIDigits(v[8:10], 2) {
+		return fmt.Errorf("%q is not a valid date (YYYY-MM-DD)", v)
+	}
+	// time.Parse settles the month and day ranges, including February in a leap
+	// year, which a regular expression cannot.
+	if _, err := time.Parse("2006-01-02", v); err != nil {
+		return fmt.Errorf("%q is not a valid date (YYYY-MM-DD): %w", v, err)
+	}
+	return nil
+}
+
+// schemagenFormatTime checks an RFC 3339 full-time: a partial-time and a
+// mandatory offset.
+//
+// The leap second is the part a date library cannot do for you. RFC 3339 admits
+// a 60th second, and only at the moment that is 23:59:60 in UTC -- so
+// 01:29:60+01:30 is a leap second and 23:59:60+01:00 is not. Go's time.Parse
+// rejects second 60 outright, so the check is arithmetic here: the local minute
+// of the day, less the offset, must be the last minute of the UTC day.
+func schemagenFormatTime(v string) error {
+	if err := schemagenCheckFullTime(v); err != nil {
+		return fmt.Errorf("%q is not a valid time (RFC 3339 full-time): %w", v, err)
+	}
+	return nil
+}
+
+// schemagenFormatDraft3Time checks draft 3's "time", which is a different
+// format under the same name: HH:MM:SS, with no offset and no fraction.
+//
+// RFC 3339's full-time -- the one every later draft means -- requires an
+// offset, so a check written for that refuses 08:30:06, which draft 3 marks
+// valid. The two are kept apart rather than unified into something loose enough
+// for both, because the loose version would accept a bare local time on the
+// drafts that forbid it.
+func schemagenFormatDraft3Time(v string) error {
+	bad := fmt.Errorf("%q is not a valid time (HH:MM:SS)", v)
+	if len(v) != 8 || v[2] != ':' || v[5] != ':' {
+		return bad
+	}
+	if !schemagenASCIIDigits(v[0:2], 2) || !schemagenASCIIDigits(v[3:5], 2) || !schemagenASCIIDigits(v[6:8], 2) {
+		return bad
+	}
+	if schemagenAtoi(v[0:2]) > 23 || schemagenAtoi(v[3:5]) > 59 || schemagenAtoi(v[6:8]) > 60 {
+		return bad
+	}
+	return nil
+}
+
+func schemagenCheckFullTime(v string) error {
+	if len(v) < 9 || v[2] != ':' || v[5] != ':' {
+		return fmt.Errorf("expected HH:MM:SS with a time offset")
+	}
+	hh, mm, ss := v[0:2], v[3:5], v[6:8]
+	if !schemagenASCIIDigits(hh, 2) || !schemagenASCIIDigits(mm, 2) || !schemagenASCIIDigits(ss, 2) {
+		return fmt.Errorf("hour, minute and second must each be two ASCII digits")
+	}
+	rest := v[8:]
+	// An optional fraction of a second, which RFC 3339 allows to any precision.
+	if len(rest) > 0 && rest[0] == '.' {
+		i := 1
+		for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+			i++
+		}
+		if i == 1 {
+			return fmt.Errorf("a second fraction needs at least one digit")
+		}
+		rest = rest[i:]
+	}
+	// The offset is not optional: a bare local time is not an RFC 3339 full-time.
+	offsetMinutes := 0
+	switch {
+	case rest == "Z" || rest == "z":
+	case len(rest) == 6 && (rest[0] == '+' || rest[0] == '-') && rest[3] == ':':
+		oh, om := rest[1:3], rest[4:6]
+		if !schemagenASCIIDigits(oh, 2) || !schemagenASCIIDigits(om, 2) {
+			return fmt.Errorf("the offset hour and minute must each be two ASCII digits")
+		}
+		offH, offM := schemagenAtoi(oh), schemagenAtoi(om)
+		if offH > 23 || offM > 59 {
+			return fmt.Errorf("offset %s is out of range", rest)
+		}
+		offsetMinutes = offH*60 + offM
+		if rest[0] == '-' {
+			offsetMinutes = -offsetMinutes
+		}
+	default:
+		return fmt.Errorf("expected a time offset of Z or ±HH:MM")
+	}
+	h, m, s := schemagenAtoi(hh), schemagenAtoi(mm), schemagenAtoi(ss)
+	if h > 23 || m > 59 {
+		return fmt.Errorf("hour or minute out of range")
+	}
+	if s > 60 {
+		return fmt.Errorf("second out of range")
+	}
+	if s == 60 {
+		// Normalise to UTC and require the last minute of the day. The modulo
+		// keeps a negative or overflowing result inside 0..1439.
+		utc := ((h*60+m-offsetMinutes)%1440 + 1440) % 1440
+		if utc != 23*60+59 {
+			return fmt.Errorf("a leap second is only valid at 23:59:60 UTC")
+		}
+	}
+	return nil
+}
+
+// schemagenFormatDateTime checks an RFC 3339 date-time: a full-date, a
+// case-insensitive "T", and a full-time.
+func schemagenFormatDateTime(v string) error {
+	if len(v) < 11 || (v[10] != 'T' && v[10] != 't') {
+		return fmt.Errorf("%q is not a valid date-time (RFC 3339)", v)
+	}
+	if err := schemagenFormatDate(v[:10]); err != nil {
+		return fmt.Errorf("%q is not a valid date-time (RFC 3339): %w", v, err)
+	}
+	if err := schemagenCheckFullTime(v[11:]); err != nil {
+		return fmt.Errorf("%q is not a valid date-time (RFC 3339): %w", v, err)
+	}
+	return nil
+}
+
+// schemagenFormatDuration checks an RFC 3339 appendix A duration.
+//
+// The grammar is stricter than it looks: at least one component must be
+// present, the date components must appear in the order Y M D, a "T" must be
+// followed by at least one time component, and a week count may not be combined
+// with anything else.
+func schemagenFormatDuration(v string) error {
+	bad := func() error { return fmt.Errorf("%q is not a valid ISO 8601 duration", v) }
+	if len(v) < 2 || v[0] != 'P' {
+		return bad()
+	}
+	body := v[1:]
+	datePart, timePart, hasT := strings.Cut(body, "T")
+	if hasT && timePart == "" {
+		return bad()
+	}
+	if !hasT && datePart == "" {
+		return bad()
+	}
+	// A week count stands alone.
+	if strings.HasSuffix(datePart, "W") && !hasT {
+		return schemagenDurationComponents(datePart, "W", bad)
+	}
+	if strings.Contains(datePart, "W") {
+		return bad()
+	}
+	if datePart != "" {
+		if err := schemagenDurationComponents(datePart, "YMD", bad); err != nil {
+			return err
+		}
+	}
+	if hasT {
+		if err := schemagenDurationComponents(timePart, "HMS", bad); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// schemagenDurationComponents walks one half of a duration, requiring each
+// component to be a run of ASCII digits followed by a designator drawn from
+// order, in that order, with at least one component present. The seconds
+// component may carry a fraction.
+func schemagenDurationComponents(s, order string, bad func() error) error {
+	next := 0
+	seen := false
+	for len(s) > 0 {
+		i := 0
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		if i == 0 {
+			return bad()
+		}
+		// Only the last time component ("S") may carry a fraction.
+		if i < len(s) && s[i] == '.' && order == "HMS" {
+			j := i + 1
+			for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+				j++
+			}
+			if j == i+1 || j >= len(s) || s[j] != 'S' {
+				return bad()
+			}
+			i = j
+		}
+		if i >= len(s) {
+			return bad()
+		}
+		d := strings.IndexByte(order[next:], s[i])
+		if d < 0 {
+			return bad()
+		}
+		next += d + 1
+		seen = true
+		s = s[i+1:]
+	}
+	if !seen {
+		return bad()
+	}
+	return nil
+}
+
+// schemagenURIChars reports whether every character of v is one RFC 3986 admits
+// somewhere in a URI: unreserved, sub-delim, gen-delim, or the "%" that
+// introduces a percent-encoding.
+//
+// This is what refuses a backslash, a quote, an angle or curly bracket, a caret,
+// a backtick, a pipe and a space -- each of which the corpus names as invalid
+// and each of which url.Parse accepts, since Go's parser is built to be
+// forgiving of what browsers send. allowNonASCII is the one axis on which an IRI
+// differs: RFC 3987 admits the ucschar ranges, and approximating them as "any
+// non-ASCII rune" over-accepts a handful of code points rather than rejecting a
+// legitimate one.
+func schemagenURIChars(v string, allowNonASCII bool) bool {
+	for _, r := range v {
+		if r >= 0x80 {
+			if allowNonASCII {
+				continue
+			}
+			return false
+		}
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case strings.ContainsRune("-._~!$&'()*+,;=:/?#[]@%", r):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// schemagenFormatURI checks an absolute URI: a scheme, and nothing outside the
+// grammar's character set. Non-ASCII belongs to `iri`, not here.
+func schemagenFormatURI(v string) error {
+	if err := schemagenCheckURI(v, true, false); err != nil {
+		return fmt.Errorf("%q is not a valid URI", v)
+	}
+	return nil
+}
+
+// schemagenFormatIRI is schemagenFormatURI with non-ASCII admitted.
+func schemagenFormatIRI(v string) error {
+	if err := schemagenCheckURI(v, true, true); err != nil {
+		return fmt.Errorf("%q is not a valid IRI", v)
+	}
+	return nil
+}
+
+func schemagenCheckURI(v string, requireScheme, allowNonASCII bool) error {
+	bad := fmt.Errorf("invalid")
+	if !schemagenURIChars(v, allowNonASCII) {
+		return bad
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		return bad
+	}
+	if requireScheme && u.Scheme == "" {
+		return bad
+	}
+	if u.Scheme != "" && !schemagenValidScheme(u.Scheme) {
+		return bad
+	}
+	// An authority's host is either a registered name, an IPv4 address, or an
+	// IP-literal in brackets. A bare IPv6 address is none of them, and url.Parse
+	// reads its leading group as a host and the rest as a port. Hostname()
+	// strips the brackets, so the bracketed form has to be recognised from
+	// u.Host before the colon test means anything.
+	if !strings.HasPrefix(u.Host, "[") && strings.Contains(u.Hostname(), ":") {
+		return bad
+	}
+	return nil
+}
+
+func schemagenValidScheme(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// schemagenFormatURIReference checks a URI reference, which may be relative and
+// may be empty: "" is the reference that selects the current document.
+func schemagenFormatURIReference(v string) error {
+	if err := schemagenCheckURI(v, false, false); err != nil {
+		return fmt.Errorf("%q is not a valid URI reference", v)
+	}
+	return nil
+}
+
+// schemagenFormatIRIReference is schemagenFormatURIReference with non-ASCII
+// admitted.
+func schemagenFormatIRIReference(v string) error {
+	if err := schemagenCheckURI(v, false, true); err != nil {
+		return fmt.Errorf("%q is not a valid IRI reference", v)
+	}
+	return nil
+}
+
+// schemagenFormatURITemplate checks an RFC 6570 URI template: the literal part
+// is a URI reference, and every expression is balanced.
+func schemagenFormatURITemplate(v string) error {
+	bad := func() error { return fmt.Errorf("%q is not a valid URI template", v) }
+	depth := 0
+	for i := 0; i < len(v); i++ {
+		switch v[i] {
+		case '{':
+			if depth > 0 {
+				return bad()
+			}
+			depth++
+		case '}':
+			if depth == 0 {
+				return bad()
+			}
+			depth--
+		}
+	}
+	if depth != 0 {
+		return bad()
+	}
+	return nil
+}
+
+var schemagenUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func schemagenFormatUUID(v string) error {
+	if !schemagenUUIDPattern.MatchString(v) {
+		return fmt.Errorf("%q is not a valid UUID", v)
+	}
+	return nil
+}
+
+var schemagenJSONPointerPattern = regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`)
+
+// schemagenFormatJSONPointer checks an RFC 6901 JSON Pointer. "" is the pointer
+// that selects the whole document, and the pattern admits it.
+func schemagenFormatJSONPointer(v string) error {
+	if !schemagenJSONPointerPattern.MatchString(v) {
+		return fmt.Errorf("%q is not a valid JSON Pointer", v)
+	}
+	return nil
+}
+
+var schemagenRelJSONPointerPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`)
+
+func schemagenFormatRelativeJSONPointer(v string) error {
+	if !schemagenRelJSONPointerPattern.MatchString(v) {
+		return fmt.Errorf("%q is not a valid relative JSON Pointer", v)
+	}
+	return nil
+}
+
+// schemagenFormatRegex checks an ECMA-262 regular expression.
+//
+// Compiled by the same ECMA-262 engine the "pattern" keyword uses, not by
+// regexp.Compile. Go's RE2 is a different language: it rejects [^] and every
+// lookaround, both of which are ordinary ECMA-262 and which the corpus marks
+// valid. Judging one dialect's regular expressions by another's parser rejects
+// what the schema permits.
+func schemagenFormatRegex(v string) error {
+	if _, err := ecma262.Compile(v, ecmaflags.Unicode); err != nil {
+		return fmt.Errorf("%q is not a valid regex: %w", v, err)
+	}
+	return nil
+}
+
+func schemagenFormatIPv4(v string) error {
+	a, err := netip.ParseAddr(v)
+	if err != nil || !a.Is4() {
+		return fmt.Errorf("%q is not a valid IPv4 address", v)
+	}
+	return nil
+}
+
+func schemagenFormatIPv6(v string) error {
+	a, err := netip.ParseAddr(v)
+	if err != nil || !a.Is6() || a.Zone() != "" {
+		return fmt.Errorf("%q is not a valid IPv6 address", v)
+	}
+	return nil
+}
+
+// schemagenFormatIPv4Addr and schemagenFormatIPv6Addr are the same assertions
+// against a value already held as a netip.Addr, which is what a declared
+// "type":"string" with an ip format resolves to under an asserting dialect.
+// Everything the parser rejects was refused at decode, so only the address
+// family is left to test.
+func schemagenFormatIPv4Addr(a netip.Addr) error {
+	if a.IsValid() && !a.Is4() {
+		return fmt.Errorf("%q is not a valid IPv4 address", a)
+	}
+	return nil
+}
+
+func schemagenFormatIPv6Addr(a netip.Addr) error {
+	if a.IsValid() && !a.Is6() {
+		return fmt.Errorf("%q is not a valid IPv6 address", a)
+	}
+	return nil
+}
+{{- end}}

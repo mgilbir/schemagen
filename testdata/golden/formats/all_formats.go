@@ -5,11 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/mail"
-	"net/netip"
-	"net/url"
-	"regexp"
-	"time"
 )
 
 type NetworkConfig struct {
@@ -18,12 +13,12 @@ type NetworkConfig struct {
 	CreatedDate          *string                    `json:"created_date,omitempty"`
 	DeviceID             *string                    `json:"device_id,omitempty"`
 	DocsRef              *string                    `json:"docs_ref,omitempty"`
-	GatewayIP            *netip.Addr                `json:"gateway_ip,omitempty"`
+	GatewayIP            *string                    `json:"gateway_ip,omitempty"`
 	Homepage             *string                    `json:"homepage,omitempty"`
 	Host                 *string                    `json:"host,omitempty"`
 	Name                 string                     `json:"name"`
 	PatternRule          *string                    `json:"pattern_rule,omitempty"`
-	PrimaryIP            netip.Addr                 `json:"primary_ip"`
+	PrimaryIP            string                     `json:"primary_ip"`
 	StartTime            *string                    `json:"start_time,omitempty"`
 	TTL                  *string                    `json:"ttl,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -50,6 +45,31 @@ func (n *NetworkConfig) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"admin_email",
+			"config_path",
+			"created_date",
+			"device_id",
+			"docs_ref",
+			"gateway_ip",
+			"homepage",
+			"host",
+			"name",
+			"pattern_rule",
+			"primary_ip",
+			"start_time",
+			"ttl",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
@@ -114,91 +134,6 @@ func (n NetworkConfig) Validate() error {
 		for _, _req := range []string{"name", "primary_ip"} {
 			if !n._jsonKeys[_req] {
 				return fmt.Errorf("%s: required property is missing", _req)
-			}
-		}
-	}
-	if n._jsonKeys["admin_email"] {
-		if n.AdminEmail != nil && *n.AdminEmail != "" {
-			if _, err := mail.ParseAddress(*n.AdminEmail); err != nil {
-				return fmt.Errorf("admin_email: value %q is not a valid email address: %w", *n.AdminEmail, err)
-			}
-		}
-	}
-	if n._jsonKeys["config_path"] {
-		if n.ConfigPath != nil && *n.ConfigPath != "" {
-			if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString(*n.ConfigPath) {
-				return fmt.Errorf("config_path: value %q is not a valid JSON Pointer", *n.ConfigPath)
-			}
-		}
-	}
-	if n._jsonKeys["created_date"] {
-		if n.CreatedDate != nil && *n.CreatedDate != "" {
-			if _, _err := time.Parse("2006-01-02", *n.CreatedDate); _err != nil {
-				return fmt.Errorf("created_date: value %q is not a valid date (YYYY-MM-DD): %w", *n.CreatedDate, _err)
-			}
-		}
-	}
-	if n._jsonKeys["device_id"] {
-		if n.DeviceID != nil && *n.DeviceID != "" {
-			if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(*n.DeviceID) {
-				return fmt.Errorf("device_id: value %q is not a valid UUID", *n.DeviceID)
-			}
-		}
-	}
-	if n._jsonKeys["docs_ref"] {
-		if n.DocsRef != nil && *n.DocsRef != "" {
-			if _, _err := url.Parse(*n.DocsRef); _err != nil {
-				return fmt.Errorf("docs_ref: value %q is not a valid URI reference", *n.DocsRef)
-			}
-		}
-	}
-	if n._jsonKeys["gateway_ip"] {
-		if _a := n.GatewayIP; _a != nil && _a.IsValid() && !_a.Is6() {
-			return fmt.Errorf("gateway_ip: value %q is not a valid IPv6 address", *_a)
-		}
-	}
-	if n._jsonKeys["homepage"] {
-		if n.Homepage != nil && *n.Homepage != "" {
-			if _u, _err := url.Parse(*n.Homepage); _err != nil || _u.Scheme == "" {
-				return fmt.Errorf("homepage: value %q is not a valid URI", *n.Homepage)
-			}
-		}
-	}
-	if n._jsonKeys["host"] {
-		if n.Host != nil && *n.Host != "" {
-			if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString(*n.Host) {
-				return fmt.Errorf("host: value %q is not a valid hostname", *n.Host)
-			}
-		}
-	}
-	if n._jsonKeys["pattern_rule"] {
-		if n.PatternRule != nil && *n.PatternRule != "" {
-			if _, _err := regexp.Compile(*n.PatternRule); _err != nil {
-				return fmt.Errorf("pattern_rule: value %q is not a valid regex: %w", *n.PatternRule, _err)
-			}
-		}
-	}
-	if _a := n.PrimaryIP; _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("primary_ip: value %q is not a valid IPv4 address", _a)
-	}
-	if n._jsonKeys["start_time"] {
-		if n.StartTime != nil && *n.StartTime != "" {
-			_valid := false
-			for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
-				if _, _err := time.Parse(_layout, *n.StartTime); _err == nil {
-					_valid = true
-					break
-				}
-			}
-			if !_valid {
-				return fmt.Errorf("start_time: value %q is not a valid time (HH:MM:SS or with offset)", *n.StartTime)
-			}
-		}
-	}
-	if n._jsonKeys["ttl"] {
-		if n.TTL != nil && *n.TTL != "" {
-			if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString(*n.TTL) {
-				return fmt.Errorf("ttl: value %q is not a valid ISO 8601 duration", *n.TTL)
 			}
 		}
 	}

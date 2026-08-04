@@ -53,6 +53,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
+| `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
 | `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
 | `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
@@ -65,6 +66,44 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--schema-output` | | | Output file for a document: `<document $id>=<file path>`. Requires `--schema-package` |
 | `--config` | | | Path to a JSON generation config (see below). Flags override it |
 | `--verbose` | `-v` | `false` | Print progress information |
+
+### Format: assertion or annotation
+
+`format` means different things in different drafts, and the generated code
+follows the document's own dialect rather than a single house rule.
+
+| Dialect | Default | Why |
+| --- | --- | --- |
+| draft 3, 4, 6, 7 | **asserts** | The spec says an implementation SHOULD validate a format it recognises, and MAY treat it as an annotation. Asserting is the reading this generator takes. |
+| 2019-09, 2020-12 | **annotates** | The default meta-schema declares the `format-annotation` vocabulary, whose content is that `format` produces an annotation and no assertion. `{"format":"email"}` is satisfied by `"2962"`, and the official test suite marks that document valid. |
+| no `$schema` | **annotates** | An unknown dialect is read as a modern one everywhere else in the generator, and withholding a rejection is the safe direction. |
+
+`--format-assertion` asserts on every draft, for callers who want the older
+behaviour on a newer document.
+
+The flag reaches the Go type as well as the check. `date-time` maps to
+`time.Time` and `ipv4`/`ipv6` to `netip.Addr`, and those types assert the format
+by decoding it — an unparseable value simply fails `json.Unmarshal`, whatever
+`Validate` does. Under an annotating dialect the mapping is therefore withheld
+too and the value stays a `string`; pass `--format-assertion` to get the typed
+representation back. One consequence is worth stating: `time.Time` cannot
+represent a leap second, so `1998-12-31T23:59:60Z` — which RFC 3339 admits — is
+refused by a `date-time` field held as one. A `format` written without a `type`
+keeps the JSON string and accepts it.
+
+`hostname`, `idn-hostname`, `email` and `idn-email` are checked with
+[`golang.org/x/net/idna`](https://pkg.go.dev/golang.org/x/net/idna), which is the
+only dependency generated code takes beyond the ECMA-262 engine `pattern`
+already needs. It is imported **only** into packages whose schemas name one of
+those four formats; a package with, say, a `date-time` in it takes neither.
+
+Two parts of IDNA2008 the library does not answer are added on top of it, and
+both are applied to the decoded form so an `xn--` A-label is judged by what it
+encodes: the ContextO rules of RFC 5892 appendix A.3–A.9, which `idna` has no
+equivalent of, and the ten RFC 5892 section 2.6 exceptions whose derived
+property is DISALLOWED, which UTS-46 lookup processing marks valid and maps
+rather than refuses. The PVALID and CONTEXTO members of that same section stay
+accepted, since refusing them would reject names IDNA2008 permits.
 
 ### Unresolvable References
 
@@ -240,6 +279,12 @@ Generated files expose `SchemagenValidationCapability()` and `SchemagenValidatio
 `Validate()` is authoritative for values produced by `json.Unmarshal`: the generated `UnmarshalJSON` records which JSON keys were present, and that presence information drives the presence-dependent checks.
 
 For **hand-constructed** values (built directly in Go rather than decoded from JSON), JSON key presence is unknown, so presence-dependent checks are skipped: required properties, optional-field constraints, object-level `oneOf`/`anyOf` branch matching, and `dependent*`/`unevaluated*` checks. Type-level and value-range constraints on fields that are set still apply. If you need full validation of a programmatically built value, marshal it to JSON and unmarshal it back before calling `Validate()`.
+
+#### Schemas with no type of their own
+
+A schema that constrains a value without giving it a Go type -- a root `anyOf`/`oneOf`/`allOf`, an `if`/`then`/`else`, a `not` -- is generated as a small struct wrapping the raw JSON, with `UnmarshalJSON`, `MarshalJSON`, `Raw()`, `String()` and a `Validate()` that checks the schema. It is not `any`: Go forbids methods on a type whose underlying type is an interface, so `type X any` could carry no `Validate()` at all and `json.Unmarshal` into it could never fail.
+
+`type X any` is still what a schema that genuinely constrains nothing produces (`{}`, or a bare `title`). It is also what a schema schemagen cannot compile produces -- and when that happens the generated source says so, in a comment above the declaration naming the keywords being dropped, and `schemagen generate` prints a `warning:` line for it. Treat both as "this value is not validated": there is no `Validate()` to call and no decode that can fail.
 
 ### Field Name Overrides
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UntypedFormatPositions",
+  "description": "A format stated without a type, in every position it can be written. Each resolved to `any`, which Go forbids methods on, so the format was asserted nowhere. The type it deserves is not a string: format is scoped to string instances, so a number, an object, an array, a boolean and a null all satisfy the schema outright.",
+  "type": "object",
+  "properties": {
+    "inline": {"format": "ipv4"},
+    "ref": {"$ref": "#/$defs/BareV4"},
+    "chain": {"$ref": "#/$defs/UntypedChainOuter"},
+    "list": {"type": "array", "items": {"format": "ipv4"}},
+    "map": {"type": "object", "additionalProperties": {"format": "ipv4"}},
+    "tuple": {"type": "array", "prefixItems": [{"format": "ipv4"}, {"type": "integer"}]},
+    "branch": {"oneOf": [{"format": "ipv4"}, {"type": "boolean"}]},
+    "wrapped": {"allOf": [{"format": "ipv4"}]},
+    "buckets": {"type": "object", "patternProperties": {"^p": {"format": "ipv4"}}},
+    "stamp": {"format": "date-time"},
+    "mail": {"format": "email"}
+  },
+  "$defs": {
+    "BareV4": {"format": "ipv4"},
+    "UntypedChainInner": {"$ref": "#/$defs/BareV4"},
+    "UntypedChainOuter": {"$ref": "#/$defs/UntypedChainInner"}
+  }
+}

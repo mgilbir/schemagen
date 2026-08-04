@@ -101,15 +101,88 @@ type StructDef struct {
 	RequiredJSON           []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
-	CousinUnevalChecks     []CousinUnevalCheck       // unevaluatedProperties checks from allOf/anyOf sub-schemas (cousin isolation)
+	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf/anyOf sub-schemas
+	ObjectEnum             []string                  // canonical JSON of the whole documents an enum permits, when one was merged in beside the declared properties
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
 	OwnPropertyNames       []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
+	NullChecks             []NullCheckDef            // per-property positions where an explicit JSON null is a type error
+	OverflowNullCheck      *NullCheckDef             // the same, for the values a schema-valued additionalProperties governs
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
 	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
 	AcceptNonObject        bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+}
+
+// NullCheckDef says where a JSON null is forbidden beneath one value, so that
+// the generated UnmarshalJSON can refuse it while it still has the document's
+// bytes in hand.
+//
+// It has to be decided from the raw JSON because the decoded Go value cannot
+// answer the question. encoding/json turns an explicit null into the same state
+// an absent property leaves -- a nil pointer, a nil slice, or, for a scalar
+// field, the value untouched at its zero -- so by the time Validate runs
+// "present and null" and "absent" are one state, and the optional-field guard
+// passes over both. That is issue #103: {"s":null} against
+// {"properties":{"s":{"type":"string"}}} was accepted and re-marshalled as {}.
+//
+// The descent below the outermost level exists for the positions no generated
+// type answers for. A named type refuses a null of its own accord (see the
+// NeedsNullCheck arms of the alias and struct templates), so a property typed as
+// one needs nothing here in principle -- but a *pointer* to one does, because
+// encoding/json never consults an Unmarshaler when it is filling a settable
+// pointer with null. Rather than track which of the two a position is, every
+// position the schema forbids null at is listed; where the type would also have
+// caught it, the type's own error is the one reported, since the decode into the
+// aux struct runs first.
+//
+// Elem is the anonymous nesting a Go type spells out but no generated name
+// covers: []string, map[string]string, [][]string and their mixtures. A level
+// whose Elem is nil ends the walk.
+type NullCheckDef struct {
+	// JSONName is the property this rule judges. Empty for a level below the
+	// first, and for a rule that judges a value rather than a named property
+	// (an alias's own value, or an entry in the overflow map).
+	JSONName string
+	// Reject is set when the schema at this level positively excludes null.
+	// A level that only carries a nested Elem has it clear -- {"type":
+	// ["array","null"],"items":{"type":"string"}} admits a null array and
+	// forbids a null element.
+	Reject bool
+	// IsMap says how to descend into this level: by key rather than by index.
+	IsMap bool
+	// Elem describes what this level holds. Nil ends the walk.
+	Elem *NullCheckDef
+}
+
+// Nested reports whether this rule has to walk into the value, rather than
+// merely test whether the value itself is null. The flat case is much the more
+// common one and is emitted as a name in a shared list; only this one needs the
+// recursive helper.
+func (d *NullCheckDef) Nested() bool { return d != nil && d.Elem != nil }
+
+// carries reports whether anything below and including this level forbids a
+// null. A rule that carries nothing is dropped: emitting it would walk the
+// document to reach no verdict.
+func (d *NullCheckDef) carries() bool {
+	for l := d; l != nil; l = l.Elem {
+		if l.Reject {
+			return true
+		}
+	}
+	return false
+}
+
+// prune drops the trailing levels that forbid nothing, so a rule's Elem chain
+// ends at the deepest level that has something to say. Returns nil when the
+// whole rule is vacuous.
+func (d *NullCheckDef) prune() *NullCheckDef {
+	if d == nil || !d.carries() {
+		return nil
+	}
+	d.Elem = d.Elem.prune()
+	return d
 }
 
 // DependentRequiredDef describes a dependentRequired constraint: when the
@@ -192,6 +265,45 @@ func (d *StructDef) HasRequiredFields() bool {
 	return len(d.RequiredJSON) > 0
 }
 
+// HasNullChecks reports whether UnmarshalJSON has to refuse an explicit null
+// anywhere -- in a declared property, or in the overflow map's values.
+func (d *StructDef) HasNullChecks() bool {
+	return len(d.NullChecks) > 0 || d.OverflowNullCheck != nil
+}
+
+// FlatNullNames lists the properties whose whole rule is "this may not be
+// null", which is the overwhelmingly common shape. They are emitted as one
+// slice literal walked by a single loop rather than as a test each, so a struct
+// with fifty properties costs five lines instead of a hundred and fifty.
+func (d *StructDef) FlatNullNames() []string {
+	var names []string
+	for i := range d.NullChecks {
+		if !d.NullChecks[i].Nested() {
+			names = append(names, d.NullChecks[i].JSONName)
+		}
+	}
+	return names
+}
+
+// NestedNullChecks lists the properties whose rule reaches below the property
+// itself -- an array, a map, or a nest of them, whose elements the schema
+// forbids a null at. Each is walked by the shared helper.
+func (d *StructDef) NestedNullChecks() []NullCheckDef {
+	var nested []NullCheckDef
+	for i := range d.NullChecks {
+		if d.NullChecks[i].Nested() {
+			nested = append(nested, d.NullChecks[i])
+		}
+	}
+	return nested
+}
+
+// NeedsNullCheckHelper reports whether this struct calls the recursive walker,
+// as opposed to only testing values for being null outright.
+func (d *StructDef) NeedsNullCheckHelper() bool {
+	return len(d.NestedNullChecks()) > 0 || d.OverflowNullCheck.Nested()
+}
+
 // HasDefaults returns true if any field has a default value.
 func (d *StructDef) HasDefaults() bool {
 	for _, f := range d.Fields {
@@ -246,9 +358,16 @@ func (d *StructDef) HasUnevaluatedProperties() bool {
 	return d.UnevaluatedProperties != nil
 }
 
-// HasCousinUnevalChecks returns true if the struct has cousin isolation checks.
-func (d *StructDef) HasCousinUnevalChecks() bool {
-	return len(d.CousinUnevalChecks) > 0
+// HasBranchOverflowChecks returns true if the struct carries per-branch
+// additionalProperties/unevaluatedProperties checks.
+func (d *StructDef) HasBranchOverflowChecks() bool {
+	return len(d.BranchOverflowChecks) > 0
+}
+
+// HasObjectEnum returns true if an enum over whole documents applies to the
+// struct.
+func (d *StructDef) HasObjectEnum() bool {
+	return len(d.ObjectEnum) > 0
 }
 
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
@@ -269,6 +388,18 @@ func (d *StructDef) NeedsRawProps() bool {
 		if ds.Branch != nil {
 			return true
 		}
+	}
+	// A per-branch overflow check reads every key of the instance, including the
+	// ones the struct declares fields for, and a schema-valued one reads their
+	// values too. Only the raw map has both; the declared fields have been
+	// decoded into Go types by then and the overflow map never held them.
+	if len(d.BranchOverflowChecks) > 0 {
+		return true
+	}
+	// An enum over whole documents is compared against the document, which is
+	// what the raw map is.
+	if len(d.ObjectEnum) > 0 {
+		return true
 	}
 	if d.UnevaluatedProperties == nil {
 		return false
@@ -292,7 +423,8 @@ func (d *StructDef) NeedsRawProps() bool {
 
 // NeedsJSONKeys returns true if the struct needs _jsonKeys for optional field
 // validation, dependent schema/required validation, propertyNames validation,
-// or unevaluatedProperties with conditional evaluation or cousin isolation.
+// or unevaluatedProperties with conditional evaluation or a per-branch overflow
+// check.
 func (d *StructDef) NeedsJSONKeys() bool {
 	if d.HasRequiredFields() {
 		// Required-property presence is checked in Validate() via _jsonKeys so the
@@ -312,7 +444,7 @@ func (d *StructDef) NeedsJSONKeys() bool {
 	if d.PropertyNames != nil {
 		return true
 	}
-	if len(d.CousinUnevalChecks) > 0 {
+	if len(d.BranchOverflowChecks) > 0 {
 		return true
 	}
 	if d.UnevaluatedProperties != nil && d.UnevaluatedProperties.HasConditionalEvals() {
@@ -614,14 +746,44 @@ type ConstCheck struct {
 	JSONValue    string // expected JSON-encoded value (e.g., `"bar"`, `42`)
 }
 
-// CousinUnevalCheck describes an unevaluatedProperties check from an allOf/anyOf
-// sub-schema ("cousin"). Per JSON Schema spec, unevaluatedProperties inside an
-// applicator branch can only see annotations from its own branch, not siblings.
-type CousinUnevalCheck struct {
-	IsForbidden    bool     // true when the cousin's unevaluatedProperties: false
-	EvaluatedNames []string // property names evaluated in the cousin's own scope
-	EvalPatterns   []string // regex patterns evaluated in the cousin's own scope
-	AllEvaluated   bool     // true when the cousin's branch has additionalProperties
+// BranchOverflowCheck is one applicator branch's own view of which instance keys
+// it leaves unaccounted for, and what its overflow keyword demands of them.
+//
+// `additionalProperties` and `unevaluatedProperties` are both scoped to the
+// schema object stating them, not to the merged key set an allOf flattens into a
+// struct. A branch that declares no property of its own therefore speaks about
+// *every* key of the instance, including the ones the parent declares -- which
+// is why neither keyword can be folded into the parent's overflow map, whose
+// whole content is the keys the parent does not declare. Each check carries its
+// own accounted set instead and is run over the raw JSON the unmarshaler kept.
+//
+// The two keywords differ only in how that set is computed, and AccountedNames /
+// AccountedPatterns are filled accordingly: `additionalProperties` sees the
+// `properties` and `patternProperties` adjacent to it in the same schema object
+// and nothing else, while `unevaluatedProperties` also sees what the branch's own
+// $ref and nested allOf evaluated.
+type BranchOverflowCheck struct {
+	// Keyword names the failure in the error message: "additionalProperties" or
+	// "unevaluatedProperties".
+	Keyword string
+	// AccountedNames are the property names the branch accounts for in its own
+	// scope; a key outside this set (and the patterns below) is what the keyword
+	// speaks about.
+	AccountedNames []string
+	// AccountedPatterns are the regexes the branch accounts for in its own scope.
+	AccountedPatterns []string
+	// AllAccounted is set when the branch accounts for every key it could see, so
+	// the keyword can never fire and the check is dropped.
+	AllAccounted bool
+	// IsForbidden is set when the keyword's value is the boolean false: no
+	// unaccounted key is permitted at all.
+	IsForbidden bool
+	// TypeName is the generated type an unaccounted value is decoded into and
+	// validated through, for a schema-valued keyword. It is the same route a
+	// patternProperties bucket takes, and settled by the same later pass
+	// (resolvePatternPropertyTypes): a sub-schema whose type turns out not to
+	// carry a Validate leaves this empty and the value goes unchecked.
+	TypeName string
 }
 
 // ValidationRule describes a validation constraint on a struct field.
@@ -641,6 +803,18 @@ type ValidationRule struct {
 	// does not convert a named type implicitly, so the emitter wraps the value
 	// in an explicit conversion.
 	StringConvert bool
+
+	// StringBacked is set on a "format" rule whose value is held as the JSON
+	// string itself rather than as the Go type the format otherwise maps to.
+	// ipv4, ipv6 and date-time are the formats that have such a mapping, and
+	// their checks are written two ways: against a netip.Addr or a time.Time,
+	// where decoding already refused anything unparseable and only the address
+	// family or nothing at all is left to test; and against a string, where the
+	// parse itself is the assertion. A schema reaches the second form whenever
+	// the mapping was given up -- a format stated without a "type", or beside a
+	// keyword that reads the string's characters -- and emitting the first there
+	// does not compile.
+	StringBacked bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }
@@ -797,12 +971,27 @@ type AliasDef struct {
 	// IntegerDecode is set when the underlying is a container holding int64
 	// that the draft lets be written in float notation. A bare int64 underlying
 	// is not here: it takes the IsIntegerType arm, which already does this.
-	IntegerDecode     *IntegerDecodeDef
-	MarshalAs         string // named underlying type whose MarshalJSON behavior should be delegated to
-	StrictInteger     bool   // true when integer JSON must use an integer token, not 1.0/1e0
-	NoMethods         bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
-	NeedsNullCheck    bool   // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonMatching bool   // true when schema has no explicit type — silently accept non-matching JSON data
+	IntegerDecode  *IntegerDecodeDef
+	MarshalAs      string // named underlying type whose MarshalJSON behavior should be delegated to
+	StrictInteger  bool   // true when integer JSON must use an integer token, not 1.0/1e0
+	NoMethods      bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
+	NeedsNullCheck bool   // true when the schema's type does not include "null" — reject null JSON data
+	// NullCheck covers the positions *inside* an alias over a container that
+	// NeedsNullCheck cannot reach: `type SArr []string` refuses a null of its
+	// own, and until this existed accepted ["a",null] and erased the null to "".
+	// Its outermost level never rejects — NeedsNullCheck already answers for the
+	// value itself — so it is only ever set for a container.
+	NullCheck         *NullCheckDef
+	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
+
+	// Unenforced names the schema keywords this alias silently drops, phrased
+	// for the comment that goes above the declaration. It is set only on the
+	// `any` fallback, where the underlying type is an interface: Go forbids
+	// methods on those, so there is no Validate to put the checks in and
+	// json.Unmarshal cannot fail either. Saying so in the generated source is
+	// the difference between a type that is unconstrained because the schema
+	// said so and one that is unconstrained because schemagen gave up.
+	Unenforced string
 }
 
 func (d *AliasDef) TypeName() string { return d.Name }
@@ -1309,18 +1498,26 @@ type DynamicSchemaDef struct {
 	HasElse       bool
 }
 
-// AnnotationSchemaDef represents a schema whose unevaluatedItems depends on
-// which items its in-place applicators evaluated for the value being validated.
+// AnnotationSchemaDef represents a schema held as data and interpreted by the
+// runtime evaluator in the package's shared helper file, rather than compiled
+// into static checks.
 //
-// That set is a property of the instance, not of the schema, so it cannot be
-// computed at generation time: {"anyOf":[A,B],"unevaluatedItems":false} allows
-// whatever the branches that matched *this value* evaluated. The schema is
-// emitted as a data literal and interpreted by the runtime evaluator in the
-// package's shared helper file.
+// Two things land here. One is a schema whose unevaluatedItems depends on which
+// items its in-place applicators evaluated for the value being validated: that
+// set is a property of the instance, not of the schema, so it cannot be computed
+// at generation time -- {"anyOf":[A,B],"unevaluatedItems":false} allows whatever
+// the branches that matched *this value* evaluated. The other is a schema that
+// constrains a value without giving it a Go type of its own -- a root
+// composition, a root "not" -- which would otherwise become `type X any`, a type
+// Go forbids methods on and which therefore enforces nothing at all.
 type AnnotationSchemaDef struct {
 	Name        string
 	Description string
 	NodeLiteral string // Go composite literal for the root _schemaNode
+
+	// NeedsPattern reports whether the literal names an ECMA-262 pattern, which
+	// is what pulls the regexp engine into the package's helper file.
+	NeedsPattern bool
 }
 
 func (d *AnnotationSchemaDef) TypeName() string { return d.Name }

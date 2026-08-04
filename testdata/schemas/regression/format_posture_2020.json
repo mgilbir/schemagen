@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatPosture2020",
+  "description": "Every spelling of a format, in a dialect whose default meta-schema declares the format-annotation vocabulary. None of these assert anything unless assertion is asked for.",
+  "type": "object",
+  "properties": {
+    "typed": {"type": "string", "format": "ipv4"},
+    "untyped": {"format": "ipv4"},
+    "nullable": {"type": ["string", "null"], "format": "ipv4"},
+    "stamp": {"type": "string", "format": "date-time"},
+    "mail": {"type": "string", "format": "email"}
+  }
+}

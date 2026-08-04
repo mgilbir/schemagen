@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 )
 
@@ -38,6 +37,22 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"ends_at",
+			"name",
+			"starts_at",
+			"url",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
@@ -97,9 +112,9 @@ func (e Event) Validate() error {
 		}
 	}
 	if e._jsonKeys["url"] {
-		if e.URL != nil && *e.URL != "" {
-			if _u, _err := url.Parse(*e.URL); _err != nil || _u.Scheme == "" {
-				return fmt.Errorf("url: value %q is not a valid URI", *e.URL)
+		if e.URL != nil {
+			if _err := schemagenFormatURI(*e.URL); _err != nil {
+				return fmt.Errorf("url: %w", _err)
 			}
 		}
 	}

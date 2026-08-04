@@ -1111,3 +1111,155 @@ func TestEmitFieldContainsFalseIsVetClean(t *testing.T) {
 		t.Fatalf("contains: false emitted an unconditional return; the rest of Validate is unreachable:\n%s", src)
 	}
 }
+
+// allFormatKeywords is every "format" this repository has an opinion about,
+// listed once so the two halves of that opinion can be checked against each
+// other. The list is what a schema may write; which of them are asserted is
+// generator.FormatCheckableOnString's answer, and which have code to assert
+// them is formatHelperNameFunc's.
+var allFormatKeywords = []string{
+	"date", "date-time", "time", "duration",
+	"email", "idn-email",
+	"hostname", "idn-hostname",
+	"ipv4", "ipv6",
+	"uri", "uri-reference", "uri-template",
+	"iri", "iri-reference",
+	"uuid", "json-pointer", "relative-json-pointer", "regex",
+	// Not asserted, and here to prove the pair agree about that too.
+	"unknown-format", "byte", "int32",
+}
+
+// TestFormatHelperNamesCoverCheckableFormats holds the generator's list of
+// assertable formats and the emitter's list of helper functions together.
+//
+// They are two halves of one decision and they live in different packages. A
+// format the generator admits but the emitter cannot name builds a rule that
+// renders nothing -- the schema looks checked and is not, which is the exact
+// shape of the defect this area keeps producing. A format the emitter can name
+// but the generator does not admit is dead code, which is cheaper but still a
+// lie about what is enforced.
+func TestFormatHelperNamesCoverCheckableFormats(t *testing.T) {
+	for _, format := range allFormatKeywords {
+		checkable := generator.FormatCheckableOnString(format)
+		named := formatHelperNameFunc(format, true) != ""
+		if checkable != named {
+			t.Errorf("format %q: generator says checkable=%v, emitter says it has a helper=%v", format, checkable, named)
+		}
+	}
+}
+
+// TestFormatHelpersAreDefinedForEveryName renders the helper block once and
+// checks that every function formatHelperNameFunc can emit a call to is
+// actually declared in it.
+//
+// The call and the declaration are in different templates, and nothing else
+// connects them: a renamed helper would emit a call to a function that does not
+// exist, and the failure would surface as a compile error in whatever someone
+// generated next rather than here.
+func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	// Both blocks: the hostname checks live in their own, so that a package
+	// naming no hostname does not import x/net/idna.
+	src, ok, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
+	if err != nil || !ok {
+		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
+	}
+	body := string(src)
+	for _, format := range allFormatKeywords {
+		for _, stringBacked := range []bool{true, false} {
+			name := formatHelperNameFunc(format, stringBacked)
+			if name == "" {
+				continue
+			}
+			if !strings.Contains(body, "func "+name+"(") {
+				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
+			}
+		}
+	}
+}
+
+// TestHostnameHelpersAreConfinedToSchemasThatNeedThem pins the one thing the
+// helper-set split exists for: a package whose schemas name no hostname does not
+// import golang.org/x/net/idna.
+//
+// Generated code putting a dependency on its caller is a real imposition, and
+// the two hostname checks are the only ones that need one. Nothing else would
+// notice if the split collapsed -- the code would compile and the tests would
+// pass -- so this is the only thing standing between "a schema with a date-time
+// in it" and "every consumer of that schema now depends on x/net and x/text".
+func TestHostnameHelpersAreConfinedToSchemasThatNeedThem(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	general, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true})
+	if err != nil {
+		t.Fatalf("EmitHelpers(Format) error: %v", err)
+	}
+	if strings.Contains(string(general), "golang.org/x/net/idna") {
+		t.Errorf("the general format block imports x/net/idna:\n%s", general)
+	}
+	if strings.Contains(string(general), "func schemagenFormatHostname(") {
+		t.Errorf("the general format block declares the hostname check")
+	}
+
+	withHostname, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
+	if err != nil {
+		t.Fatalf("EmitHelpers(Format+FormatHostname) error: %v", err)
+	}
+	if !strings.Contains(string(withHostname), "golang.org/x/net/idna") {
+		t.Errorf("the hostname block does not import x/net/idna:\n%s", withHostname)
+	}
+	if !strings.Contains(string(withHostname), "func schemagenFormatHostname(") {
+		t.Errorf("the hostname block does not declare the hostname check")
+	}
+}
+
+// TestFormatHelperSetTracksTheFormatsUsed checks the other half of the split:
+// which block a file needs is read from what the file calls, and `email` counts
+// as a hostname because an address's domain is judged by that check.
+//
+// It emits the file first and asks HelpersReferencedBy about the result, which
+// is what the CLI does. Asking an IR walk instead is what shipped a call to a
+// function nothing declared.
+func TestFormatHelperSetTracksTheFormatsUsed(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	for _, tc := range []struct {
+		format            string
+		wantFmt, wantHost bool
+	}{
+		{"uuid", true, false},
+		{"date", true, false},
+		{"ipv4", true, false},
+		{"hostname", true, true},
+		{"idn-hostname", true, true},
+		{"email", true, true},
+		{"idn-email", true, true},
+	} {
+		f := &generator.File{PackageName: "testpkg", TypeDefs: []generator.TypeDef{
+			&generator.AliasDef{
+				Name:       "X",
+				Underlying: &generator.PrimitiveType{Name: "string"},
+				Validations: []generator.ValidationRule{
+					{RuleType: "format", Value: tc.format, StringBacked: true},
+				},
+			},
+		}}
+		src, err := e.Emit(f)
+		if err != nil {
+			t.Fatalf("format %q: Emit() error: %v", tc.format, err)
+		}
+		set := generator.HelpersReferencedBy(string(src))
+		if set.Format != tc.wantFmt || set.FormatHostname != tc.wantHost {
+			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v\n%s",
+				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost, src)
+		}
+	}
+}

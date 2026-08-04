@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootCompositionBranches",
+  "$comment": "Every branch here is one the static dynamic evaluator refuses, so the whole schema used to become `type RootCompositionBranches any` -- an interface-underlying type Go forbids methods on, with no Validate at all.",
+  "$defs": {
+    "positive": { "type": "integer", "minimum": 1 }
+  },
+  "anyOf": [
+    { "$ref": "#/$defs/positive" },
+    { "anyOf": [{ "type": "string", "minLength": 2 }] },
+    { "enum": [true, null] },
+    false
+  ]
+}

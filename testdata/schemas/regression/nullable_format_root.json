@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NullableFormatRoot",
+  "description": "The nullable spelling of a formatted string as the whole document, so the wrapper is the root type itself",
+  "type": ["string", "null"],
+  "format": "ipv4"
+}

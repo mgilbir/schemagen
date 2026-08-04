@@ -40,6 +40,7 @@ func newGenerateCmd() *cobra.Command {
 		omitEmpty        bool
 		strictProperties bool
 		bigInt           bool
+		formatAssertion  bool
 		verbose          bool
 		allowRemoteRefs  bool
 		draftStr         string
@@ -82,6 +83,7 @@ func newGenerateCmd() *cobra.Command {
 				applyBool(cmd, "omit-empty", cfg.OmitEmpty, &omitEmpty)
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
+				applyBool(cmd, "format-assertion", cfg.FormatAssertion, &formatAssertion)
 				applyBool(cmd, "allow-remote-refs", cfg.AllowRemoteRefs, &allowRemoteRefs)
 				applyBool(cmd, "lenient-refs", cfg.LenientRefs, &lenientRefs)
 				applyBool(cmd, "shared-types", cfg.SharedTypes, &sharedTypes)
@@ -203,6 +205,7 @@ func newGenerateCmd() *cobra.Command {
 					omitEmpty:        omitEmpty,
 					strictProperties: strictProperties,
 					bigInt:           bigInt,
+					formatAssertion:  formatAssertion,
 					allowRemoteRefs:  allowRemoteRefs,
 					verbose:          verbose,
 					draft:            draft,
@@ -211,6 +214,7 @@ func newGenerateCmd() *cobra.Command {
 					lenientRefs:      lenientRefs,
 					processedFiles:   processedFiles,
 					appliedByFile:    appliedByFile,
+					warnings:         cmd.ErrOrStderr(),
 				})
 			}
 
@@ -270,6 +274,7 @@ func newGenerateCmd() *cobra.Command {
 					OmitEmpty:        omitEmpty,
 					StrictProperties: strictProperties,
 					BigIntSupport:    bigInt,
+					FormatAssertion:  formatAssertion,
 					Resolver:         schema.NewCompositeResolver(resolvers...),
 					Draft:            draft,
 					Validation:       validationMode,
@@ -323,6 +328,7 @@ func newGenerateCmd() *cobra.Command {
 						OmitEmpty:        omitEmpty,
 						StrictProperties: strictProperties,
 						BigIntSupport:    bigInt,
+						FormatAssertion:  formatAssertion,
 						Resolver:         resolver,
 						Draft:            draft,
 						Validation:       validationMode,
@@ -354,6 +360,8 @@ func newGenerateCmd() *cobra.Command {
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
 
+				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
+
 				// Record applied overrides for unused-entry reporting.
 				if applied := gen.AppliedOverrides(); len(applied) > 0 {
 					if appliedByFile[fileKey] == nil {
@@ -369,13 +377,18 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 
-				helpers.Merge(ir.Helpers())
-
 				// 5. Emit Go code (emitter created once, above the loop)
 				src, err := em.Emit(ir)
 				if err != nil {
 					return fmt.Errorf("emitting code for %s: %w", schemaPath, err)
 				}
+
+				// Which shared helpers this file needs is read from what it
+				// actually calls. Asking the IR meant naming every field a
+				// helper-backed rule can live in, and a field that was missed
+				// emitted the call without the declaration -- generated code
+				// that did not compile. See HelpersReferencedBy.
+				helpers.Merge(generator.HelpersReferencedBy(string(src)))
 
 				// 6. Write output file
 				outFile := deriveOutputFilename(schemaPath)
@@ -414,6 +427,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
+	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows the newer drafts. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().BoolVar(&lenientRefs, "lenient-refs", false, "Degrade $refs that no resolver can serve to any instead of failing generation")
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
@@ -428,6 +442,25 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Print progress information")
 
 	return cmd
+}
+
+// warnUnenforcedSchemas reports every type that came out as `type X any` while
+// its schema still said something.
+//
+// This is the one dropped check the generated code cannot show you. A missing
+// constraint elsewhere still leaves a Validate method that can be read and a
+// decode that can fail; `type X any` has neither, so a schema schemagen could
+// not compile is indistinguishable from a schema that asked for nothing. The
+// generated source carries the same statement as a comment above the
+// declaration; this puts it in front of whoever ran the command.
+func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generator.UnenforcedSchema) {
+	if w == nil {
+		return
+	}
+	for _, u := range unenforced {
+		fmt.Fprintf(w, "warning: %s: type %s is `any` and validates nothing, but the schema states %s\n",
+			schemaPath, u.TypeName, strings.Join(u.Keywords, ", "))
+	}
 }
 
 // warnUnusedFieldMap emits warnings for field-map config that never took effect:
@@ -530,6 +563,7 @@ type multiPackageParams struct {
 	omitEmpty        bool
 	strictProperties bool
 	bigInt           bool
+	formatAssertion  bool
 	allowRemoteRefs  bool
 	verbose          bool
 	draft            schema.Draft
@@ -541,6 +575,10 @@ type multiPackageParams struct {
 	// multi-package run.
 	processedFiles map[string]bool
 	appliedByFile  map[string]map[string]map[string]bool
+	// Where "warning:" lines go. Kept apart from the out writer runMultiPackage
+	// takes for progress: a warning belongs on stderr whether or not anyone
+	// asked for progress.
+	warnings io.Writer
 }
 
 // runMultiPackage generates several Go packages in one run. Every input schema
@@ -674,6 +712,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			OmitEmpty:        p.omitEmpty,
 			StrictProperties: p.strictProperties,
 			BigIntSupport:    p.bigInt,
+			FormatAssertion:  p.formatAssertion,
 			Resolver:         resolver,
 			Draft:            p.draft,
 			Validation:       p.validationMode,
@@ -714,6 +753,8 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}
 
+			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
+
 			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
 				if p.appliedByFile[fileKey] == nil {
 					p.appliedByFile[fileKey] = make(map[string]map[string]bool)
@@ -728,12 +769,11 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				}
 			}
 
-			helpers.Merge(ir.Helpers())
-
 			src, err := em.Emit(ir)
 			if err != nil {
 				return fmt.Errorf("emitting code for %s: %w", in.path, err)
 			}
+			helpers.Merge(generator.HelpersReferencedBy(string(src)))
 
 			outPath := p.schemaOutputs[in.id]
 			if outPath == "" {

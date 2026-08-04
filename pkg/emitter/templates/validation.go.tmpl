@@ -352,139 +352,24 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
-	{{- if eq .Value "date"}}
-	if {{validationStringSet $recv .}} {
-		if _, _err := time.Parse("2006-01-02", {{$value}}); _err != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid date (YYYY-MM-DD): %w", {{$value}}, _err)
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "time"}}
-	if {{validationStringSet $recv .}} {
-		_valid := false
-		for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
-			if _, _err := time.Parse(_layout, {{$value}}); _err == nil {
-				_valid = true
-				break
-			}
-		}
-		if !_valid {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid time (HH:MM:SS or with offset)", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "email"}}
-	if {{validationStringSet $recv .}} {
-		if _, err := mail.ParseAddress({{$value}}); err != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "idn-email"}}
-	if {{validationStringSet $recv .}} {
-		if _, err := mail.ParseAddress({{$value}}); err != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid email address: %w", {{$value}}, err)
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "uri"}}
-	if {{validationStringSet $recv .}} {
-		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid URI", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
-	if {{validationStringSet $recv .}} {
-		if _, _err := url.Parse({{$value}}); _err != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid URI reference", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "iri"}}
-	if {{validationStringSet $recv .}} {
-		if _u, _err := url.Parse({{$value}}); _err != nil || _u.Scheme == "" {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IRI", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "uuid"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid UUID", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "hostname"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid hostname", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "idn-hostname"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid hostname", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "json-pointer"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid JSON Pointer", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "relative-json-pointer"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid relative JSON Pointer", {{$value}})
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "regex"}}
-	if {{validationStringSet $recv .}} {
-		if _, _err := regexp.Compile({{$value}}); _err != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid regex: %w", {{$value}}, _err)
-		}
-	}
-	{{- end}}
-	{{- if eq .Value "duration"}}
-	if {{validationStringSet $recv .}} {
-		if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$value}}) {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid ISO 8601 duration", {{$value}})
-		}
-	}
-	{{- end}}
 	{{- /*
-	The nil arms are not decoration. An optional ipv4/ipv6 property is a
-	*netip.Addr, so that an absent one is nil rather than the zero Addr that
-	netip.Addr's MarshalText writes back out as "". A JSON null leaves the
-	pointer nil while _jsonKeys still records the key as present, so the guard
-	above lets this run and the family test must dereference nothing.
+	One arm, dispatching to the shared helper for the format. The check used to
+	be written out here, again in the alias template and again in the wrapper's,
+	and the three drifted: an ipv4 check written for netip.Addr was emitted
+	against a *string and did not compile, and a format behind a $ref asserted
+	nothing while the same subschema inline was checked. See format_helpers.
+
+	The netip.Addr and time.Time arms are gone with them. A field of one of those
+	types was already refused at decode by anything the parser rejects, and
+	formatRuleShape drops the rule there rather than emit a check that cannot
+	fail -- so every rule reaching this line holds the JSON string itself.
 	*/ -}}
-	{{- if eq .Value "ipv4"}}
 	{{- if .IsPointer}}
-	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", *_a)
+	if {{validationNonNil $recv .}} {
+	{{- template "string_format_check" (mkStringFormatCtx $value (jsonErrorName .JSONName) .Value .StringBacked)}}
 	}
 	{{- else}}
-	if _a := {{$recv}}.{{.FieldName}}; _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv4 address", _a)
-	}
-	{{- end}}
-	{{- end}}
-	{{- if eq .Value "ipv6"}}
-	{{- if .IsPointer}}
-	if _a := {{$recv}}.{{.FieldName}}; _a != nil && _a.IsValid() && !_a.Is6() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", *_a)
-	}
-	{{- else}}
-	if _a := {{$recv}}.{{.FieldName}}; _a.IsValid() && !_a.Is6() {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q is not a valid IPv6 address", _a)
-	}
-	{{- end}}
+	{{- template "string_format_check" (mkStringFormatCtx $value (jsonErrorName .JSONName) .Value .StringBacked)}}
 	{{- end}}
 	{{- end}}
 	{{- if .Optional}}
@@ -1161,47 +1046,104 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
-	{{- if $struct.HasCousinUnevalChecks}}
-	// Cousin isolation: allOf/anyOf sub-schemas with their own unevaluatedProperties
-	// can only see properties evaluated in their own branch scope.
-	{{- range $ci, $cousin := $struct.CousinUnevalChecks}}
-	{{- if not $cousin.AllEvaluated}}
+	{{- if $struct.HasBranchOverflowChecks}}
+	{{- /* An allOf/anyOf branch's own additionalProperties or
+	       unevaluatedProperties. Both are scoped to the schema object stating
+	       them, so each carries the set of keys it accounts for and is run over
+	       the raw JSON -- every key of the instance, including the ones this
+	       struct declares fields for, which no overflow map ever held. */}}
+	// Per-branch overflow: an allOf/anyOf branch's own additionalProperties or
+	// unevaluatedProperties sees every key of the instance except the ones that
+	// branch itself accounts for.
+	{{- range $ci, $branch := $struct.BranchOverflowChecks}}
+	{{- if not $branch.AllAccounted}}
 	{
-		{{- if gt (len $cousin.EvaluatedNames) 0}}
-		_cousinEval{{$ci}} := map[string]bool{
-			{{- range $cousin.EvaluatedNames}}
+		{{- if gt (len $branch.AccountedNames) 0}}
+		_branchAcct{{$ci}} := map[string]bool{
+			{{- range $branch.AccountedNames}}
 			{{printf "%q" .}}: true,
 			{{- end}}
 		}
 		{{- end}}
-		{{- if gt (len $cousin.EvalPatterns) 0}}
-		_cousinPat{{$ci}} := []*ecma262.Regexp{
-			{{- range $cousin.EvalPatterns}}
+		{{- if gt (len $branch.AccountedPatterns) 0}}
+		_branchPat{{$ci}} := []*ecma262.Regexp{
+			{{- range $branch.AccountedPatterns}}
 			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
 			{{- end}}
 		}
 		{{- end}}
-		for k := range {{$recv}}._jsonKeys {
-			_cEval := false
-			{{- if gt (len $cousin.EvaluatedNames) 0}}
-			if _cousinEval{{$ci}}[k] { _cEval = true }
+		for k, _bv := range {{$recv}}._jsonRawProps {
+			_ = _bv
+			_bAcct := false
+			{{- if gt (len $branch.AccountedNames) 0}}
+			if _branchAcct{{$ci}}[k] { _bAcct = true }
 			{{- end}}
-			{{- if gt (len $cousin.EvalPatterns) 0}}
-			if !_cEval {
-				for _, _re := range _cousinPat{{$ci}} {
-					if _re.MatchString(k) { _cEval = true; break }
+			{{- if gt (len $branch.AccountedPatterns) 0}}
+			if !_bAcct {
+				for _, _re := range _branchPat{{$ci}} {
+					if _re.MatchString(k) { _bAcct = true; break }
 				}
 			}
 			{{- end}}
-			if !_cEval {
-				{{- if $cousin.IsForbidden}}
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+			if !_bAcct {
+				{{- if $branch.IsForbidden}}
+				return fmt.Errorf("{{$branch.Keyword}}: property %q is not allowed", k)
+				{{- else if $branch.TypeName}}
+				{
+					// The sub-schema's own type answers for the value: the decode
+					// enforces its shape and the Validate enforces the rest.
+					var _bVal {{$branch.TypeName}}
+					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+					}
+					if _bErr := _bVal.Validate(); _bErr != nil {
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+					}
+				}
 				{{- end}}
 			}
 		}
 	}
 	{{- end}}
 	{{- end}}
+	{{- end}}
+	{{- if $struct.HasObjectEnum}}
+	{{- /* An enum an allOf branch stated about the whole object. Its members are
+	       documents, so the comparison is against the document -- read off the
+	       raw JSON the unmarshaler kept and put through the same encoder the
+	       members were, which settles key order and number format. A value that
+	       was not built from JSON has no document to compare, and is passed over
+	       the way a required-property check is. */}}
+	// enum: the object as a whole must be one of the permitted documents.
+	if {{$recv}}._jsonRawProps != nil {
+		_enumAllowed := []string{
+			{{- range $struct.ObjectEnum}}
+			{{goStringQuote .}},
+			{{- end}}
+		}
+		_enumRaw, _enumErr := json.Marshal({{$recv}}._jsonRawProps)
+		if _enumErr != nil {
+			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+		}
+		var _enumAny any
+		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
+		}
+		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		if _enumErr != nil {
+			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+		}
+		_enumOK := false
+		for _, _allowed := range _enumAllowed {
+			if string(_enumCanon) == _allowed {
+				_enumOK = true
+				break
+			}
+		}
+		if !_enumOK {
+			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+		}
+	}
 	{{- end}}
 	{{- if $struct.HasUnevaluatedProperties}}
 	{{- $uneval := $struct.UnevaluatedProperties}}
@@ -1523,6 +1465,18 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	if len({{$elem}}) > {{.Value}} {
 		return fmt.Errorf("{{$path}}: has %d items, maximum is {{.Value}}", {{$args}}, len({{$elem}}))
 	}
+	{{- end}}
+	{{- if eq .RuleType "format"}}
+	{{- /*
+	An element's format, which reached nothing at all until now: elementRules
+	dropped the keyword through its default arm, so
+	{"items":{"type":"string","format":"ipv4"}} accepted an IPv6 address in
+	every element while the identical subschema written as a property was
+	checked. Same helper as every other position, chosen by StringBacked as
+	usual -- the element is a netip.Addr where the format maps to one, and the
+	JSON string where it does not.
+	*/ -}}
+	{{- template "string_format_check" (mkStringFormatCtxArgs (formatElemExpr $elem .StringBacked) $path $args .Value .StringBacked)}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
 	{

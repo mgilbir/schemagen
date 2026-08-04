@@ -62,9 +62,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Generated code imports the ECMA-262 regexp package, which is reachable
-      # only from generated code -- `go build ./...` never fetches it, so the
-      # first compiled iteration would do the download itself. Pull it up front
+      # Generated code imports the ECMA-262 regexp package, and x/net/idna for
+      # the two hostname formats. Both are reachable only from generated code --
+      # `go build ./...` never fetches them, so the first compiled iteration
+      # would do the download itself. Pull them up front
       # so a network problem fails here, plainly, instead of inside the harness
       # and looking like a generator fault.
       - name: download dependencies

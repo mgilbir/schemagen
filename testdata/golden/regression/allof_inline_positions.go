@@ -5,32 +5,20 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
-	"time"
 )
 
-type Addr netip.Addr
+type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Addr")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = Addr(_target)
-	return nil
-}
-func (a Addr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(a))
+	type Alias Addr
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
 func (a Addr) Validate() error {
-	if _a := netip.Addr(a); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
@@ -91,21 +79,14 @@ func (r RawEnum) Validate() error {
 	return fmt.Errorf("invalid RawEnum value: %s", s)
 }
 
-type Stamp time.Time
+type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Stamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*s = Stamp(_target)
-	return nil
-}
-func (s Stamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(s))
+	type Alias Stamp
+	return json.Unmarshal(data, (*Alias)(s))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -113,21 +94,14 @@ func (s Stamp) Validate() error {
 	return nil
 }
 
-type AllOfInlinePositionsChain time.Time
+type AllOfInlinePositionsChain string
 
 func (a *AllOfInlinePositionsChain) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsChain")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = AllOfInlinePositionsChain(_target)
-	return nil
-}
-func (a AllOfInlinePositionsChain) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(a))
+	type Alias AllOfInlinePositionsChain
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks AllOfInlinePositionsChain against its JSON Schema constraints.
@@ -135,46 +109,29 @@ func (a AllOfInlinePositionsChain) Validate() error {
 	return nil
 }
 
-type AllOfInlinePositionsIP netip.Addr
+type AllOfInlinePositionsIP string
 
 func (a *AllOfInlinePositionsIP) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsIP")
 	}
-	var _target netip.Addr
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = AllOfInlinePositionsIP(_target)
-	return nil
-}
-func (a AllOfInlinePositionsIP) MarshalJSON() ([]byte, error) {
-	return json.Marshal(netip.Addr(a))
+	type Alias AllOfInlinePositionsIP
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks AllOfInlinePositionsIP against its JSON Schema constraints.
 func (a AllOfInlinePositionsIP) Validate() error {
-	if _a := netip.Addr(a); _a.IsValid() && !_a.Is4() {
-		return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-	}
 	return nil
 }
 
-type AllOfInlinePositionsListItem time.Time
+type AllOfInlinePositionsListItem string
 
 func (a *AllOfInlinePositionsListItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsListItem")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = AllOfInlinePositionsListItem(_target)
-	return nil
-}
-func (a AllOfInlinePositionsListItem) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(a))
+	type Alias AllOfInlinePositionsListItem
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks AllOfInlinePositionsListItem against its JSON Schema constraints.
@@ -215,21 +172,14 @@ func (a AllOfInlinePositionsMapValue) Validate() error {
 	}
 }
 
-type AllOfInlinePositionsNested time.Time
+type AllOfInlinePositionsNested string
 
 func (a *AllOfInlinePositionsNested) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsNested")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = AllOfInlinePositionsNested(_target)
-	return nil
-}
-func (a AllOfInlinePositionsNested) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(a))
+	type Alias AllOfInlinePositionsNested
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks AllOfInlinePositionsNested against its JSON Schema constraints.
@@ -311,21 +261,14 @@ func (a AllOfInlinePositionsUnionOption0) Validate() error {
 	}
 }
 
-type AllOfInlinePositionsTupleItem0 time.Time
+type AllOfInlinePositionsTupleItem0 string
 
 func (a *AllOfInlinePositionsTupleItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsTupleItem0")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*a = AllOfInlinePositionsTupleItem0(_target)
-	return nil
-}
-func (a AllOfInlinePositionsTupleItem0) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(a))
+	type Alias AllOfInlinePositionsTupleItem0
+	return json.Unmarshal(data, (*Alias)(a))
 }
 
 // Validate checks AllOfInlinePositionsTupleItem0 against its JSON Schema constraints.
@@ -495,6 +438,35 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"chain",
+			"ip",
+			"lvl",
+			"nested",
+			"pick",
+			"tuple",
+			"union",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["list"]; ok {
+			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["map"]; ok {
+			if err := checkJSONNulls(_v, "map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {

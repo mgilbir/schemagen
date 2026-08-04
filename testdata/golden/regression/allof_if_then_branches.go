@@ -33,6 +33,20 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"condition",
+			"delay",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
 		knownFields := map[string]bool{
 			"condition": true,
 			"delay":     true,
@@ -102,6 +116,19 @@ func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"id",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
@@ -210,6 +237,33 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"condition",
+			"delay",
+			"message",
+			"title",
+			"type",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["notify"]; ok {
+			if err := checkJSONNulls(_v, "notify", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["tool"]; ok {
+			if err := checkJSONNulls(_v, "tool", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
 		}
 		t._jsonRawProps = raw
 		knownFields := map[string]bool{

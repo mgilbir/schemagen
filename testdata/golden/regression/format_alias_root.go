@@ -5,25 +5,17 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // FormatAliasRoot - A date-time whole document, so the alias over time.Time is the root type itself
-type FormatAliasRoot time.Time
+type FormatAliasRoot string
 
 func (f *FormatAliasRoot) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type FormatAliasRoot")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*f = FormatAliasRoot(_target)
-	return nil
-}
-func (f FormatAliasRoot) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(f))
+	type Alias FormatAliasRoot
+	return json.Unmarshal(data, (*Alias)(f))
 }
 
 // Validate checks FormatAliasRoot against its JSON Schema constraints.

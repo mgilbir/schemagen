@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuntimePatternPropsBranches",
+  "$comment": "The other spelling that makes the runtime evaluator need an ECMA-262 engine: a patternProperties member list, which an additionalProperties of false has to run to know which keys are left over. Kept apart from runtime_pattern_branches.json so a file carrying one of the two cannot stand in for the other.",
+  "anyOf": [
+    {
+      "anyOf": [
+        {
+          "type": "object",
+          "patternProperties": { "^x": { "type": "integer" } },
+          "additionalProperties": false
+        }
+      ]
+    },
+    {
+      "anyOf": [{ "type": "integer", "minimum": 10 }]
+    }
+  ]
+}

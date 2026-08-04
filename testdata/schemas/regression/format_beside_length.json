@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatBesideLength",
+  "description": "A format that maps to a Go type, stated beside a keyword that reads the string's characters. netip.Addr and time.Time do not carry those characters, so the emitted length check did not compile at all -- as a $defs alias and as a struct field alike. The mapping is given up here and the value kept as the string, so both keywords are checked.",
+  "type": "object",
+  "properties": {
+    "declaredV4": {"type": "string", "format": "ipv4", "minLength": 9},
+    "declaredStamp": {"type": "string", "format": "date-time", "minLength": 25},
+    "inferredV4": {"format": "ipv4", "minLength": 9},
+    "refV4": {"$ref": "#/$defs/BoundedV4"},
+    "refStamp": {"$ref": "#/$defs/BoundedStamp"},
+    "patternedV4": {"type": "string", "format": "ipv4", "pattern": "^192\\."}
+  },
+  "$defs": {
+    "BoundedV4": {"type": "string", "format": "ipv4", "minLength": 9},
+    "BoundedStamp": {"type": "string", "format": "date-time", "minLength": 25}
+  }
+}

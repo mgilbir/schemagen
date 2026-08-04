@@ -16,7 +16,7 @@ import (
 {{template "dyn_const_helper"}}
 {{- end}}
 {{- if .Helpers.Annotations}}
-{{template "annotation_helpers"}}
+{{template "annotation_helpers" .Helpers}}
 {{- end}}
 {{- if .Helpers.OneOf}}
 {{template "oneof_helpers"}}
@@ -26,4 +26,13 @@ import (
 {{- end}}
 {{- if .Helpers.Integer}}
 {{template "integer_helpers"}}
+{{- end}}
+{{- if .Helpers.NullCheck}}
+{{template "nullcheck_helpers"}}
+{{- end}}
+{{- if .Helpers.Format}}
+{{template "format_helpers"}}
+{{- end}}
+{{- if .Helpers.FormatHostname}}
+{{template "format_hostname_helpers"}}
 {{- end}}

@@ -222,3 +222,78 @@ func jsonIntegerPtr[E any, T any](p *E, f func(E) T) *T {
 	return &v
 }
 {{- end}}
+
+{{define "nullcheck_helpers"}}
+// jsonNullRule says where a JSON null is forbidden beneath one value: at the
+// value itself when Reject is set, and beneath it at the level Elem names. A
+// rule whose Elem is nil ends the walk.
+type jsonNullRule struct {
+	Reject bool
+	IsMap  bool
+	Elem   *jsonNullRule
+}
+
+// checkJSONNulls reports the first position beneath data at which the document
+// carries a null the schema does not admit. path names that position.
+//
+// It reads the raw JSON rather than the decoded value because the decoded value
+// no longer holds the answer. encoding/json turns an explicit null into a nil
+// pointer, a nil slice or map, or a scalar left untouched at its zero -- all of
+// them exactly what an absent property leaves behind -- so once the document has
+// been decoded, "present and null" and "absent" are one state.
+//
+// A value whose shape does not match the rule is passed over rather than
+// reported. The decoder has already had its say about the type, and a second
+// complaint from here would be a worse-worded version of the same one.
+func checkJSONNulls(data []byte, path string, rule *jsonNullRule) error {
+	if rule == nil {
+		return nil
+	}
+	if string(data) == "null" {
+		if rule.Reject {
+			return fmt.Errorf("%s: null is not allowed", path)
+		}
+		return nil
+	}
+	if rule.Elem == nil {
+		return nil
+	}
+	if rule.IsMap {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(data, &obj); err != nil {
+			return nil
+		}
+		keys := make([]string, 0, len(obj))
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		// Range order over a map is deliberately unspecified, and the first
+		// offending key is what the error names, so an object carrying two of
+		// them would otherwise fail differently from one run to the next.
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := checkJSONNulls(obj[k], fmt.Sprintf("%s[%q]", path, k), rule.Elem); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return nil
+	}
+	for i, v := range arr {
+		if err := checkJSONNulls(v, fmt.Sprintf("%s[%d]", path, i), rule.Elem); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+{{- end}}
+
+{{/*
+nullrule renders a NullCheckDef as the jsonNullRule literal checkJSONNulls
+takes. It recurses through Elem, which is what lets a single call cover a nest
+of arrays and maps.
+*/}}
+{{define "nullrule"}}&jsonNullRule{{"{"}}{{if .Reject}}Reject: true{{if .Elem}}, {{end}}{{end}}{{if .Elem}}{{if .IsMap}}IsMap: true, {{end}}Elem: {{template "nullrule" .Elem}}{{end}}}{{end}}

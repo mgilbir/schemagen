@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FormatAccuracy",
+  "description": "One property per format whose check disagreed with the official suite. Draft 7 so the formats assert without a flag, which is also the draft on which these false rejections were reachable in released output.",
+  "type": "object",
+  "properties": {
+    "stamp": {"type": "string", "format": "date-time"},
+    "stampStr": {"format": "date-time"},
+    "clock": {"type": "string", "format": "time"},
+    "day": {"type": "string", "format": "date"},
+    "pattern": {"type": "string", "format": "regex"},
+    "mail": {"type": "string", "format": "email"},
+    "intlMail": {"type": "string", "format": "idn-email"},
+    "host": {"type": "string", "format": "hostname"},
+    "intlHost": {"type": "string", "format": "idn-hostname"},
+    "span": {"type": "string", "format": "duration"},
+    "link": {"type": "string", "format": "uri"},
+    "linkRef": {"type": "string", "format": "uri-reference"},
+    "pointer": {"type": "string", "format": "json-pointer"},
+    "relPointer": {"type": "string", "format": "relative-json-pointer"},
+    "id": {"type": "string", "format": "uuid"}
+  }
+}

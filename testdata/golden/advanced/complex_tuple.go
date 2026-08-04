@@ -6,25 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"time"
 	"unicode/utf8"
 )
 
-type Timestamp time.Time
+type Timestamp string
 
 func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Timestamp")
 	}
-	var _target time.Time
-	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
-	}
-	*t = Timestamp(_target)
-	return nil
-}
-func (t Timestamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t))
+	type Alias Timestamp
+	return json.Unmarshal(data, (*Alias)(t))
 }
 
 // Validate checks Timestamp against its JSON Schema constraints.
@@ -108,6 +100,20 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"code",
+			"level",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {

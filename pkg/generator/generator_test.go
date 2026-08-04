@@ -6519,16 +6519,18 @@ func TestAllOfBranchObjectKeywordsSurviveWithoutProperties(t *testing.T) {
 	}
 }
 
-// TestAllOfWithoutObjectChecksStaysAny is the over-reach guard for the arm
-// above. An allOf that merges to an object with nothing to enforce keeps the
-// permissive alias: materialising an empty struct for every property-less allOf
-// would change the generated API of schemas that gained no check from it.
+// TestAllOfWithoutObjectChecksStaysUnstructured is the over-reach guard for the
+// arm above. An allOf that merges to an object with nothing to enforce must not
+// materialise a struct: an empty struct changes how every instance decodes, for
+// a schema that gained no property from the merge.
 //
-// The type keyword alone is deliberately not enough. A struct built here would
-// start rejecting non-object instances of a schema that today accepts them --
-// correct per the spec, but a far wider change than the merge gap this arm
-// exists to close, and one no part of #83 asks for.
-func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
+// It does still get a Validate. The schema says "type":"object" and a string is
+// not one, so something has to be able to say so -- and the raw-JSON wrapper is
+// how, without a struct's field decoding. The alias to `any` this used to assert
+// could not: Go forbids methods on an interface-underlying type, so it had no
+// Validate at all and accepted every document, which is issue #113's complaint
+// in miniature.
+func TestAllOfWithoutObjectChecksStaysUnstructured(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
 		"allOf": [{"type": "object"}]
@@ -6538,16 +6540,19 @@ func TestAllOfWithoutObjectChecksStaysAny(t *testing.T) {
 		if sd, ok := td.(*StructDef); ok && sd.Name == "Doc" {
 			t.Fatalf("Doc became a struct with nothing to validate: %+v", sd)
 		}
+		if ad, ok := td.(*AliasDef); ok && ad.Name == "Doc" {
+			t.Fatalf("Doc stayed an alias to %s, which carries no Validate", ad.Underlying.GoTypeName())
+		}
 	}
 	for _, td := range ir.TypeDefs {
-		if ad, ok := td.(*AliasDef); ok && ad.Name == "Doc" {
-			if ad.Underlying.GoTypeName() != "any" {
-				t.Fatalf("Doc underlying = %s, want any", ad.Underlying.GoTypeName())
+		if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "Doc" {
+			if !strings.Contains(d.NodeLiteral, `"object"`) {
+				t.Fatalf("Doc's compiled schema does not carry the object type: %s", d.NodeLiteral)
 			}
 			return
 		}
 	}
-	t.Fatalf("expected Doc to stay an alias to any; got %v", ir.TypeDefs)
+	t.Fatalf("expected Doc to become a raw-JSON wrapper; got %v", ir.TypeDefs)
 }
 
 // generateForDraft is generateForItemTest with a draft the caller states, so a
@@ -6760,21 +6765,6 @@ func TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation(t *testing.T)
 	}
 	if got := doc.AdditionalProperties.IntegerDecode.ShadowType.GoTypeName(); got != "jsonInteger" {
 		t.Fatalf("overflow shadow = %q, want jsonInteger", got)
-	}
-}
-
-// TestIntegerDecodeNeedsTheSharedHelpers pins the dependency the emitted code
-// has on the helper file. jsonInteger and its rebuilders are package-level, so
-// a file that names them without the package declaring them does not compile --
-// and the helper file is written only for the set a File reports.
-func TestIntegerDecodeNeedsTheSharedHelpers(t *testing.T) {
-	ir := generateForDraft(t, integerPositionsSchema, schema.DraftUnknown)
-	if !ir.Helpers().Integer {
-		t.Fatalf("the file decodes integers through jsonInteger but does not ask for it: %+v", ir.Helpers())
-	}
-	plain := generateForItemTest(t, `{"title":"Doc","type":"object","properties":{"s":{"type":"string"}}}`)
-	if plain.Helpers().Integer {
-		t.Fatalf("a file with no integer in it asks for the integer helpers")
 	}
 }
 
@@ -7725,5 +7715,174 @@ func TestOverflowMapOfTuplesChecksItsPositions(t *testing.T) {
 	}
 	if !strings.HasPrefix(pos1.TypeName, "Doc") {
 		t.Fatalf("overflow position 1 type %q is not named under the owning struct; a name minted outside it can collide with another container's", pos1.TypeName)
+	}
+}
+
+// TestSchemaForbidsNullReadsComposition covers the arms of schemaForbidsNull the
+// end-to-end fixture cannot reach cheaply, and it is the narrowness half of
+// issue #103: the check must refuse a null only where the schema demonstrably
+// excludes one, because refusing one the schema allows is a false rejection and
+// a worse defect than the acceptance it replaces.
+//
+// The disjunctions are the sharp cases. anyOf and oneOf exclude null only when
+// *every* branch does, so a union with one nullable branch has to stay silent
+// even though its siblings all name a type. allOf is the opposite -- a
+// conjunction, where one branch is enough. And a keyword that constrains
+// something other than the type (a lone bound, a $ref to a definition that
+// states none) settles nothing at all.
+func TestSchemaForbidsNullReadsComposition(t *testing.T) {
+	cases := []struct {
+		name string
+		// lenient admits the one case whose $ref nothing can serve: strict
+		// generation refuses that document outright, so the question only
+		// arises under --lenient-refs, where the position degrades to `any`.
+		lenient bool
+		schema  string
+		want    bool
+	}{
+		{name: "explicit type", schema: `{"type":"string"}`, want: true},
+		{name: "type list with null", schema: `{"type":["string","null"]}`, want: false},
+		{name: "no type at all", schema: `{}`, want: false},
+		{name: "bound without a type", schema: `{"minLength":2}`, want: false},
+		{name: "allOf one typed branch", schema: `{"allOf":[{"type":"string"},{"minLength":2}]}`, want: true},
+		{name: "allOf no typed branch", schema: `{"allOf":[{"minLength":2}]}`, want: false},
+		{name: "allOf branch admits null", schema: `{"allOf":[{"type":["string","null"]}]}`, want: false},
+		{name: "anyOf every branch typed", schema: `{"anyOf":[{"type":"string"},{"type":"integer"}]}`, want: true},
+		{name: "anyOf one branch nullable", schema: `{"anyOf":[{"type":"string"},{"type":"null"}]}`, want: false},
+		{name: "anyOf one branch untyped", schema: `{"anyOf":[{"type":"string"},{"minLength":2}]}`, want: false},
+		{name: "oneOf every branch typed", schema: `{"oneOf":[{"type":"string"},{"type":"integer"}]}`, want: true},
+		{name: "oneOf one branch nullable", schema: `{"oneOf":[{"type":"string"},{"type":"null"}]}`, want: false},
+		{name: "enum without null", schema: `{"enum":["a","b"]}`, want: true},
+		{name: "enum with null", schema: `{"enum":["a",null]}`, want: false},
+		{name: "const", schema: `{"const":"a"}`, want: true},
+		{name: "const null", schema: `{"const":null}`, want: false},
+		{name: "ref to a typed definition", schema: `{"$ref":"#/$defs/S"}`, want: true},
+		{name: "ref to a nullable definition", schema: `{"$ref":"#/$defs/N"}`, want: false},
+		{name: "ref to an untyped definition", schema: `{"$ref":"#/$defs/U"}`, want: false},
+		{name: "ref chain", schema: `{"$ref":"#/$defs/Chain"}`, want: true},
+		{name: "unresolvable ref", lenient: true, schema: `{"$ref":"#/$defs/Missing"}`, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := `{
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"type": "object",
+				"properties": {"p": ` + tc.schema + `},
+				"$defs": {
+					"S":     {"type":"string"},
+					"N":     {"type":["string","null"]},
+					"U":     {"minLength":2},
+					"Chain": {"$ref":"#/$defs/S"}
+				}
+			}`
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			g := New(Config{PackageName: "testpkg", OmitEmpty: true, LenientRefs: tc.lenient})
+			// Generate populates the ref tables schemaForbidsNull resolves
+			// through; asking before it has run answers about a different
+			// generator than the one that emits the check.
+			if _, err := g.Generate(&s); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			if got := g.schemaForbidsNull(s.Properties["p"]); got != tc.want {
+				t.Fatalf("schemaForbidsNull(%s) = %v, want %v", tc.schema, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRefOverridingSiblingsDecidesNullAlone pins the draft-dependent half of the
+// same question. Before 2019-09 a $ref replaces every keyword beside it, so
+// {"$ref":"#/definitions/N","type":"string"} is the definition and nothing else
+// -- reading the sibling "type" would refuse a null the definition admits.
+func TestRefOverridingSiblingsDecidesNullAlone(t *testing.T) {
+	const doc = `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {
+			"shadowed": {"$ref":"#/definitions/N", "type":"string"},
+			"plain":    {"$ref":"#/definitions/S"}
+		},
+		"definitions": {
+			"S": {"type":"string"},
+			"N": {"type":["string","null"]}
+		}
+	}`
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(doc), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	g := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	if _, err := g.Generate(&s); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if g.schemaForbidsNull(s.Properties["shadowed"]) {
+		t.Fatalf("the sibling \"type\" decided the verdict; under draft-07 the $ref is the whole schema and it admits null")
+	}
+	if !g.schemaForbidsNull(s.Properties["plain"]) {
+		t.Fatalf("a $ref to a bare string definition has to exclude null; nothing else says so for the property")
+	}
+}
+
+// TestNullChecksSkipTheNullablePositions is the IR-level narrowness pin: the
+// rule a property carries has to have Reject clear wherever the schema admits a
+// null, at every level of the nesting independently. A nullable array of
+// non-nullable strings is the case that pins both directions at once.
+func TestNullChecksSkipTheNullablePositions(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"strict":   {"type":"array", "items":{"type":"string"}},
+			"outerNul": {"type":["array","null"], "items":{"type":"string"}},
+			"innerNul": {"type":"array", "items":{"type":["string","null"]}},
+			"bothNul":  {"type":["array","null"], "items":{"type":["string","null"]}},
+			"untyped":  {}
+		}
+	}`)
+	sd := structNamed(t, ir, "Doc")
+	rules := make(map[string]NullCheckDef, len(sd.NullChecks))
+	for _, nc := range sd.NullChecks {
+		rules[nc.JSONName] = nc
+	}
+
+	strict, ok := rules["strict"]
+	if !ok {
+		t.Fatalf("no rule for a non-nullable array of non-nullable strings: %+v", sd.NullChecks)
+	}
+	if !strict.Reject || strict.Elem == nil || !strict.Elem.Reject {
+		t.Fatalf("strict rule = %+v; both the array and its elements exclude null", strict)
+	}
+
+	outer, ok := rules["outerNul"]
+	if !ok {
+		t.Fatalf("a nullable array of non-nullable strings still has to judge its elements: %+v", sd.NullChecks)
+	}
+	if outer.Reject {
+		t.Fatalf("outerNul rejects a null array its type list admits: %+v", outer)
+	}
+	if outer.Elem == nil || !outer.Elem.Reject {
+		t.Fatalf("outerNul does not judge its elements: %+v", outer)
+	}
+
+	inner, ok := rules["innerNul"]
+	if !ok {
+		t.Fatalf("a non-nullable array still excludes a null of its own: %+v", sd.NullChecks)
+	}
+	if !inner.Reject {
+		t.Fatalf("innerNul does not reject a null array: %+v", inner)
+	}
+	if inner.Elem != nil {
+		t.Fatalf("innerNul judges elements its items admit a null at: %+v", inner)
+	}
+
+	for _, name := range []string{"bothNul", "untyped"} {
+		if r, ok := rules[name]; ok {
+			t.Fatalf("%s carries a rule but forbids a null nowhere: %+v", name, r)
+		}
 	}
 }

@@ -200,7 +200,7 @@ func (s *Schema) normalizeExtends() {
 	s.Extends = nil
 }
 
-// normalizeDependencies converts Draft 4-7's "dependencies" to
+// normalizeDependencies converts Draft 3-7's "dependencies" to
 // dependentSchemas and dependentRequired (Draft 2019-09+ split).
 func (s *Schema) normalizeDependencies() {
 	var raw map[string]json.RawMessage
@@ -212,6 +212,30 @@ func (s *Schema) normalizeDependencies() {
 		trimmed := trimJSONWhitespace(val)
 		if len(trimmed) == 0 {
 			continue
+		}
+
+		// Draft 3 spells a single dependency as a bare property name --
+		// {"dependencies":{"bar":"foo"}} -- where every later draft would write
+		// the one-element array below. It is the same keyword and the same
+		// meaning, so it normalizes to the same place.
+		//
+		// Without this arm the value fell through to the schema attempt, where
+		// unmarshalling a JSON string into a Schema fails and the entry was
+		// dropped in silence: the keyword was left enforcing nothing at all and
+		// a schema stating only this one inferred no type either, so it came out
+		// `type Root any` with no Validate. Recognising the shape here rather
+		// than at inference is what keeps the three spellings of one keyword on
+		// one path -- the array and object forms already worked, and only the
+		// string form did not.
+		if trimmed[0] == '"' {
+			var dep string
+			if json.Unmarshal(val, &dep) == nil {
+				if s.DependentRequired == nil {
+					s.DependentRequired = make(map[string][]string)
+				}
+				s.DependentRequired[key] = []string{dep}
+				continue
+			}
 		}
 
 		// Try as array of strings (dependentRequired).

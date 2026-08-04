@@ -5,12 +5,11 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // FormatMapValues - An object whose entire shape is additionalProperties of a format that maps to a distinct Go type, so the overflow map is the file's only mention of it
 type FormatMapValues struct {
-	AdditionalProperties map[string]time.Time `json:"-"`
+	AdditionalProperties map[string]string `json:"-"`
 }
 
 func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
@@ -38,10 +37,13 @@ func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 			if knownFields[rawKey] {
 				continue
 			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]time.Time)
+			if string(rawVal) == "null" {
+				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
 			}
-			var val time.Time
+			if f.AdditionalProperties == nil {
+				f.AdditionalProperties = make(map[string]string)
+			}
+			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
 				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}

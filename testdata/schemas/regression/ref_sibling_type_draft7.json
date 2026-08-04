@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RefSiblingTypeDraft7",
+  "type": "object",
+  "properties": {
+    "suppressed": {"type": "array", "$ref": "#/definitions/anything"},
+    "bounded": {"minLength": 5, "$ref": "#/definitions/str"},
+    "plain": {"$ref": "#/definitions/str"}
+  },
+  "definitions": {
+    "anything": {},
+    "str": {"type": "string", "minLength": 3}
+  }
+}

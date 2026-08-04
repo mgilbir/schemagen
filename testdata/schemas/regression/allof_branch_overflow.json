@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfBranchOverflow",
+  "$defs": {
+    "StrictBase": {
+      "type": "object",
+      "properties": {"base": {"type": "integer"}},
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "bare": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [{"additionalProperties": {"type": "integer", "minimum": 5}}]
+    },
+    "forbid": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [{"additionalProperties": false}]
+    },
+    "adjacent": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [
+        {
+          "properties": {"b": {"type": "integer"}},
+          "patternProperties": {"^x": {"type": "integer"}},
+          "additionalProperties": false
+        }
+      ]
+    },
+    "viaRef": {
+      "type": "object",
+      "properties": {"other": {"type": "integer"}},
+      "allOf": [{"$ref": "#/$defs/StrictBase"}]
+    },
+    "twoBranches": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [
+        {"additionalProperties": {"type": "integer", "minimum": 5}},
+        {"additionalProperties": {"type": "integer", "maximum": 9}}
+      ]
+    },
+    "nestedAllOf": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [{"allOf": [{"additionalProperties": {"type": "integer", "minimum": 5}}]}]
+    },
+    "objectValue": {
+      "type": "object",
+      "properties": {"a": {"type": "object", "properties": {"n": {"type": "integer"}}}},
+      "allOf": [
+        {"additionalProperties": {"type": "object", "required": ["n"], "properties": {"n": {"type": "integer", "minimum": 5}}}}
+      ]
+    },
+    "branchUnevaluated": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [
+        {"properties": {"b": {"type": "integer"}}, "unevaluatedProperties": {"type": "string", "minLength": 3}}
+      ]
+    },
+    "branchUnevaluatedFalse": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [
+        {"properties": {"b": {"type": "integer"}}, "unevaluatedProperties": false}
+      ]
+    },
+    "ownAdditional": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "additionalProperties": {"type": "integer", "minimum": 5},
+      "allOf": [{"required": ["a"]}]
+    },
+    "soleBranch": {
+      "type": "object",
+      "allOf": [{"type": "object", "additionalProperties": {"type": "string", "minLength": 2}}]
+    },
+    "plain": {
+      "type": "object",
+      "properties": {"a": {"type": "integer"}},
+      "allOf": [{"required": ["a"]}]
+    }
+  }
+}

@@ -40,6 +40,15 @@ var knownParseFailures = map[string]string{}
 //   - (unevaluatedProperties anyOf: FIXED via runtime branch matching) (4)
 //   - (unevaluatedProperties oneOf: FIXED via runtime branch matching + flattening) (10)
 var knownValidationFailures = map[string]string{
+	// Not a defect: the pinned corpus is stale here and we are right. ES2018
+	// added lookbehind and the ECMA-262 engine accepts it, so `(?<=foo)bar` is a
+	// valid pattern; the suite at bce6a47 still marks it invalid. Upstream has
+	// since flipped the case to valid and added Python-specific syntax as the
+	// invalid one instead, so bumping the pin (#121) both removes this failure
+	// and makes this entry fail as "passed but is in known-failures list",
+	// which is the prompt to delete it.
+	"draft3/optional/format/ecmascript-regex/ECMA 262 regex dialect recognition/ECMA 262 has no support for lookbehind": "pinned suite predates ES2018 lookbehind; fixed upstream, resolves on the pin bump (#121)",
+
 	// (default keyword — FIXED via optional field presence tracking)
 
 	// (float-overflow: FIXED via BigIntSupport for optional/float-overflow test files)
@@ -167,3 +176,83 @@ var knownValidationFailures = map[string]string{
 // (FIXED: all 6 entries removed — deterministic sorted-key iteration in allSubSchemas
 // and scope-aware $anchor indexing in the generator now produce consistent results.)
 var knownFlakyTests = map[string]bool{}
+
+// Reasons for knownUnvalidatedRejections. Each names a root-schema shape that
+// resolves to `any` — a bare interface carries no Validate, so nothing about
+// the group is ever checked. They are constants rather than repeated literals
+// so that fixing a shape is one grep and one delete, not 90.
+//
+// Two are gone rather than left empty: gapRootRefToFalse, which #116 answered
+// by giving a $ref to a boolean false the forbidding wrapper the root already
+// had, and gapRootDependenciesOnly, which #117 answered by reading draft 3's
+// bare-string dependency. A reason nothing cites is a shape that is no longer a
+// gap, and keeping the constant would invite the next entry to be filed under
+// something already fixed.
+const (
+	gapRootFormatOnly      = `root states only "format", which names no Go type, so the root resolves to any and carries no Validate`
+	gapRootCompositionOnly = `root is composition alone (allOf/anyOf/oneOf/not) and states no type of its own, so the root resolves to any and carries no Validate`
+	gapRootConditionalOnly = `root is if/then/else alone and states no type of its own, so the root resolves to any and carries no Validate`
+	gapRootContentOnly     = `root states only contentEncoding/contentMediaType, which name no Go type, so the root resolves to any and carries no Validate`
+)
+
+// knownUnvalidatedRejections allow-lists groups that produce no Validate()
+// method while the suite marks at least one of their documents invalid.
+//
+// That combination is a provable defect, not a neutral skip: the generated code
+// accepts a document the suite says must be rejected, and before this list
+// existed it produced no subtest at all — it reached the reader only as a count
+// in the closing t.Logf of a -v run. TestExternalValidation now fails on every
+// such group whose key is absent here.
+//
+// The list is a ratchet, and it is bidirectional in the same way
+// checkKnownFailure is. An entry whose group has started producing a Validate(),
+// has stopped carrying a rejecting case, or has vanished from the corpus is
+// reported as stale and must be removed: an allow-list entry that no longer
+// allows anything is the same silence this test was written to end.
+//
+// The key is failureKey(draft, file-without-extension, group description) — the
+// shape knownValidationFailures uses, minus the per-case suffix, because the
+// skip happens once for the whole group, before any case runs.
+//
+// Re-measured 2026-08-04 against suite commit bce6a47: 23 of the 47 skipped
+// groups, down from 111 of 213. Sections are ordered by size; fixing a root
+// shape prunes a whole section at once, which is what happened here — a format
+// with no "type" is now the wrapper issue #106 asks for rather than `any`, so
+// 88 of the 90 entries filed under gapRootFormatOnly went with it, along with
+// the last of gapRootRefToFalse and gapRootDependenciesOnly.
+//
+// The section counts below were re-derived from the entries rather than carried
+// forward: gapRootCompositionOnly and gapRootConditionalOnly said 37 and 21
+// while holding 11 and 4, left behind when #113/#114 pruned them.
+var knownUnvalidatedRejections = map[string]string{
+	// gapRootFormatOnly (5 entries)
+	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: false": gapRootFormatOnly,
+	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: true":  gapRootFormatOnly,
+	"draft3/optional/format/color/validation of CSS colors":                                                  gapRootFormatOnly,
+	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
+	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
+
+	// gapRootCompositionOnly (11 entries)
+	"draft2019-09/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
+	"draft2019-09/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapRootCompositionOnly,
+	"draft2020-12/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
+	"draft2020-12/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
+	"draft6/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
+	"draft7/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
+
+	// gapRootConditionalOnly (4 entries)
+	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)": gapRootConditionalOnly,
+	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
+	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
+
+	// gapRootContentOnly (3 entries)
+	"draft7/optional/content/validation of binary string-encoding":                     gapRootContentOnly,
+	"draft7/optional/content/validation of binary-encoded media type documents":        gapRootContentOnly,
+	"draft7/optional/content/validation of string-encoded content based on media type": gapRootContentOnly,
+}

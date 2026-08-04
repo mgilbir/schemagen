@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfObjectEnum",
+  "$defs": {
+    "Pair": {"enum": [{"k": 1}, {"k": 2}]}
+  },
+  "type": "object",
+  "properties": {
+    "inline": {
+      "type": "object",
+      "allOf": [{"enum": [{"k": 1}, {"k": 2}]}],
+      "properties": {"k": {"type": "integer"}}
+    },
+    "viaRef": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/Pair"}],
+      "properties": {"k": {"type": "integer"}}
+    },
+    "reordered": {
+      "type": "object",
+      "allOf": [{"enum": [{"b": 2, "a": 1}]}],
+      "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}}
+    },
+    "constMember": {
+      "type": "object",
+      "allOf": [{"const": {"k": 1}}],
+      "properties": {"k": {"type": "integer"}}
+    },
+    "nested": {
+      "type": "object",
+      "allOf": [{"enum": [{"k": {"n": [1, 2]}}]}],
+      "properties": {"k": {"type": "object"}}
+    },
+    "plain": {
+      "type": "object",
+      "allOf": [{"required": ["k"]}],
+      "properties": {"k": {"type": "integer"}}
+    },
+    "standalone": {"enum": [{"k": 1}, {"k": 2}]}
+  }
+}

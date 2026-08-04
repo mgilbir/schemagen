@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefToFalseSchema",
+  "type": "object",
+  "properties": {
+    "prop": {"$ref": "#/$defs/never"},
+    "viaAllOf": {"allOf": [{"$ref": "#/$defs/never"}]},
+    "viaAnyOf": {"anyOf": [{"$ref": "#/$defs/never"}]},
+    "viaOneOf": {"oneOf": [{"$ref": "#/$defs/never"}]},
+    "viaNested": {"allOf": [{"allOf": [{"$ref": "#/$defs/never"}]}]},
+    "beside": {"type": "string", "$ref": "#/$defs/never"},
+    "list": {"type": "array", "items": {"$ref": "#/$defs/never"}},
+    "map": {"type": "object", "additionalProperties": {"$ref": "#/$defs/never"}},
+    "tuple": {"type": "array", "prefixItems": [{"$ref": "#/$defs/never"}]},
+    "always": {"$ref": "#/$defs/always"},
+    "alwaysAllOf": {"allOf": [{"$ref": "#/$defs/always"}]},
+    "alwaysList": {"type": "array", "items": {"$ref": "#/$defs/always"}}
+  },
+  "$defs": {
+    "never": false,
+    "always": true
+  }
+}

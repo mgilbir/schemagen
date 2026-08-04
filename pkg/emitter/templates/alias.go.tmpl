@@ -2,8 +2,17 @@
 {{- if .Description}}
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
+{{- if .Unenforced}}
+// {{.Name}} is NOT VALIDATED, and its schema does state constraints:
+//	{{.Unenforced}}
+//
+// schemagen could not compile those into a check it could carry here. The
+// underlying type is an interface, Go forbids methods on those, so this type has
+// no Validate method and json.Unmarshal into it cannot fail -- every document
+// reaches your code unexamined, including the ones the schema forbids.
+{{- end}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
@@ -21,6 +30,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type {{.Name}}")
+	}
+	{{- end}}
+	{{- with .NullCheck}}
+	{{- /* The elements this container holds. The check above answers for the
+	       container itself; a null *inside* one is erased by the decode below --
+	       []string turns [null] into [""] and reports nothing. */}}
+	if _err := checkJSONNulls(data, "value", {{template "nullrule" .}}); _err != nil {
+		return _err
 	}
 	{{- end}}
 	{{- if .UnmarshalAs}}
@@ -83,120 +100,21 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 {{/*
 alias_format_check emits a "format" assertion against the alias's own value.
 
-It is the same set of checks the struct-field arm of the validation template
-applies, written over the receiver instead of over a field, and it exists because
-a format behind a $ref used to be enforced nowhere: the rule reached the alias's
-Validations and the template had no arm to emit it, so `type V4 netip.Addr` and
-`type Email string` both validated to `return nil` while the identical schema
-inlined as a property was checked.
+It dispatches to the same shared helper the struct-field arm and the untyped
+wrapper use, so the three positions cannot disagree about what a format means.
+They did once: the rule reached this template's Validations and there was no arm
+to emit it, so `type V4 netip.Addr` and `type Email string` both validated to
+`return nil` while the identical schema inlined as a property was checked.
 
-The string arms keep the field arm's `!= ""` guard deliberately. It is a
-looseness -- "" is not a valid email -- but it is the same looseness the sibling
-position has, and the two must agree: an alias that rejected "" where an inline
-property accepted it would be a false rejection reachable by moving a subschema
-behind a $ref. Changing the convention is a decision for both arms at once.
-
-Which conversion is legal here is settled before emission by
-aliasFormatCheckable, which keeps a format rule only when the alias's underlying
-type is the one the check reads.
+Which conversion is legal is settled before emission by aliasFormatCheckable:
+the rule survives only for an alias whose underlying type is a string, since
+that is the only shape the helpers take. An alias over netip.Addr or time.Time
+was already refused at decode by anything the parser rejects, and the rule is
+dropped there rather than emitted as a check that cannot fail.
 */}}
 {{define "alias_format_check"}}
 {{- $recv := .Recv}}
-{{- $v := printf "string(%s)" $recv}}
-{{- if eq .Value "date"}}
-if {{$v}} != "" {
-	if _, _err := time.Parse("2006-01-02", {{$v}}); _err != nil {
-		return fmt.Errorf("value: %q is not a valid date (YYYY-MM-DD): %w", {{$v}}, _err)
-	}
-}
-{{- end}}
-{{- if eq .Value "time"}}
-if {{$v}} != "" {
-	_valid := false
-	for _, _layout := range []string{"15:04:05Z07:00", "15:04:05"} {
-		if _, _err := time.Parse(_layout, {{$v}}); _err == nil {
-			_valid = true
-			break
-		}
-	}
-	if !_valid {
-		return fmt.Errorf("value: %q is not a valid time (HH:MM:SS or with offset)", {{$v}})
-	}
-}
-{{- end}}
-{{- if or (eq .Value "email") (eq .Value "idn-email")}}
-if {{$v}} != "" {
-	if _, _err := mail.ParseAddress({{$v}}); _err != nil {
-		return fmt.Errorf("value: %q is not a valid email address: %w", {{$v}}, _err)
-	}
-}
-{{- end}}
-{{- if or (eq .Value "uri") (eq .Value "iri")}}
-if {{$v}} != "" {
-	if _u, _err := url.Parse({{$v}}); _err != nil || _u.Scheme == "" {
-		return fmt.Errorf("value: %q is not a valid URI", {{$v}})
-	}
-}
-{{- end}}
-{{- if or (eq .Value "uri-reference") (eq .Value "iri-reference") (eq .Value "uri-template")}}
-if {{$v}} != "" {
-	if _, _err := url.Parse({{$v}}); _err != nil {
-		return fmt.Errorf("value: %q is not a valid URI reference", {{$v}})
-	}
-}
-{{- end}}
-{{- if eq .Value "uuid"}}
-if {{$v}} != "" {
-	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString({{$v}}) {
-		return fmt.Errorf("value: %q is not a valid UUID", {{$v}})
-	}
-}
-{{- end}}
-{{- if or (eq .Value "hostname") (eq .Value "idn-hostname")}}
-if {{$v}} != "" {
-	if !regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`).MatchString({{$v}}) {
-		return fmt.Errorf("value: %q is not a valid hostname", {{$v}})
-	}
-}
-{{- end}}
-{{- if eq .Value "json-pointer"}}
-if {{$v}} != "" {
-	if !regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`).MatchString({{$v}}) {
-		return fmt.Errorf("value: %q is not a valid JSON Pointer", {{$v}})
-	}
-}
-{{- end}}
-{{- if eq .Value "relative-json-pointer"}}
-if {{$v}} != "" {
-	if !regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`).MatchString({{$v}}) {
-		return fmt.Errorf("value: %q is not a valid relative JSON Pointer", {{$v}})
-	}
-}
-{{- end}}
-{{- if eq .Value "regex"}}
-if {{$v}} != "" {
-	if _, _err := regexp.Compile({{$v}}); _err != nil {
-		return fmt.Errorf("value: %q is not a valid regex: %w", {{$v}}, _err)
-	}
-}
-{{- end}}
-{{- if eq .Value "duration"}}
-if {{$v}} != "" {
-	if !regexp.MustCompile(`^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$`).MatchString({{$v}}) {
-		return fmt.Errorf("value: %q is not a valid ISO 8601 duration", {{$v}})
-	}
-}
-{{- end}}
-{{- if eq .Value "ipv4"}}
-if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is4() {
-	return fmt.Errorf("value: %q is not a valid IPv4 address", _a)
-}
-{{- end}}
-{{- if eq .Value "ipv6"}}
-if _a := netip.Addr({{$recv}}); _a.IsValid() && !_a.Is6() {
-	return fmt.Errorf("value: %q is not a valid IPv6 address", _a)
-}
-{{- end}}
+{{- template "string_format_check" (mkStringFormatCtx (formatValueExpr $recv .StringBacked) "value" .Value .StringBacked)}}
 {{- end}}
 
 {{define "alias_validate"}}

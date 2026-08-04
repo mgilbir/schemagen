@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FormatHelperPositions",
+  "description": "Formats whose check is a schemagenFormat* helper rather than a decode, in container positions ONLY. Draft 7 so they assert without a flag. A format on an array element or a map value used to emit the call and never declare the function, and the generated package did not compile. Container positions only is the point: a property, a tuple slot or a oneOf branch materializes a named type whose own check would pull the helper block in and mask the omission, so this fixture must contain none of them.",
+  "type": "object",
+  "properties": {
+    "v4List": {"type": "array", "items": {"type": "string", "format": "ipv4"}},
+    "v6List": {"type": "array", "items": {"type": "string", "format": "ipv6"}},
+    "mailList": {"type": "array", "items": {"type": "string", "format": "email"}},
+    "hostList": {"type": "array", "items": {"type": "string", "format": "hostname"}},
+    "idnHostList": {"type": "array", "items": {"type": "string", "format": "idn-hostname"}},
+    "idnMailList": {"type": "array", "items": {"type": "string", "format": "idn-email"}},
+    "uuidList": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+    "durationList": {"type": "array", "items": {"type": "string", "format": "duration"}},
+    "dateList": {"type": "array", "items": {"type": "string", "format": "date"}},
+    "timeList": {"type": "array", "items": {"type": "string", "format": "time"}},
+    "uriList": {"type": "array", "items": {"type": "string", "format": "uri"}},
+    "regexList": {"type": "array", "items": {"type": "string", "format": "regex"}},
+    "v4Map": {"type": "object", "additionalProperties": {"type": "string", "format": "ipv4"}},
+    "mailMap": {"type": "object", "additionalProperties": {"type": "string", "format": "email"}},
+    "hostMap": {"type": "object", "additionalProperties": {"type": "string", "format": "hostname"}},
+    "nested": {"type": "array", "items": {"type": "array", "items": {"type": "string", "format": "ipv4"}}}
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuntimePatternBranches",
+  "$comment": "A nested composition, so the static evaluator refuses it and the schema is compiled to the runtime one. The only keyword here that needs an ECMA-262 engine is `pattern` on a node -- patternProperties is in runtime_patternprops_branches.json, so that each of the two spellings is guarded on its own rather than by whichever of them the file happens to carry.",
+  "anyOf": [
+    {
+      "anyOf": [{ "type": "string", "pattern": "^a" }]
+    },
+    {
+      "anyOf": [{ "type": "integer", "minimum": 10 }]
+    }
+  ]
+}

@@ -5,12 +5,10 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"net/mail"
-	"time"
 )
 
 type Metadata struct {
-	Created              time.Time                  `json:"created"`
+	Created              string                     `json:"created"`
 	Tags                 []string                   `json:"tags,omitzero"`
 	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
@@ -37,6 +35,25 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"created",
+			"title",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["tags"]; ok {
+			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
@@ -125,6 +142,20 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"email",
+			"name",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
 		p._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
 			p._jsonKeys[_k] = true
@@ -180,13 +211,6 @@ func (p Person) Validate() error {
 			}
 		}
 	}
-	if p._jsonKeys["email"] {
-		if p.Email != nil && *p.Email != "" {
-			if _, err := mail.ParseAddress(*p.Email); err != nil {
-				return fmt.Errorf("email: value %q is not a valid email address: %w", *p.Email, err)
-			}
-		}
-	}
 	return nil
 }
 
@@ -218,6 +242,25 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"body",
+			"heading",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["subsections"]; ok {
+			if err := checkJSONNulls(_v, "subsections", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
@@ -312,6 +355,25 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"author",
+			"metadata",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["sections"]; ok {
+			if err := checkJSONNulls(_v, "sections", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))
 		for _k := range raw {
