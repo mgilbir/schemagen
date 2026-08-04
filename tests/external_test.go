@@ -574,7 +574,56 @@ func extractRootTypeNameFromCode(code string) string {
 // from bloating the build cache by hundreds of gigabytes.
 var ephemeralCacheDir string
 
+// staleCacheAge is how old an abandoned cache must be before this process will
+// delete it. It has to exceed the longest a live run can go without touching
+// its own directory -- the suite compiles continuously, so minutes would do --
+// and stay far below the gap between one developer's runs. An hour is well
+// clear on both sides.
+const staleCacheAge = time.Hour
+
+// sweepStaleCaches deletes ephemeral cache directories left behind by earlier
+// runs.
+//
+// TestMain removes this process's directory on the way out, which handles the
+// common path. It cannot handle any other: a -timeout kill, a SIGTERM from a
+// harness, an interrupt, or a crash on a full disk all skip it, and each one
+// strands roughly 2G. That compounds -- a full disk kills runs, and each kill
+// strands another cache -- and it has already exhausted a 394G volume, at which
+// point the suite fails with "no space left on device" reported against
+// individual test keys, so a dead run reads like a set of real validation
+// failures.
+//
+// So the sweep happens on the way in, where it works no matter how the previous
+// process died. Errors are ignored throughout: reclaiming space is best-effort,
+// and a directory another user owns is not this process's to worry about.
+func sweepStaleCaches() { sweepStaleCachesIn(os.TempDir(), time.Now().Add(-staleCacheAge)) }
+
+// sweepStaleCachesIn is sweepStaleCaches with the directory and cutoff supplied,
+// so a test can drive it without touching the real temp directory or waiting an
+// hour for something to age.
+func sweepStaleCachesIn(tmp string, cutoff time.Time) {
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, "schemagen-gocache-") && !strings.HasPrefix(name, "schemagen-cogen-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		os.RemoveAll(filepath.Join(tmp, name))
+	}
+}
+
 func init() {
+	sweepStaleCaches()
 	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
 	if err != nil {
 		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
