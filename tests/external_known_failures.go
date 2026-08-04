@@ -215,12 +215,19 @@ const (
 // shape knownValidationFailures uses, minus the per-case suffix, because the
 // skip happens once for the whole group, before any case runs.
 //
-// Re-measured 2026-08-04 against suite commit bce6a47: 20 of the skipped
+// Re-measured 2026-08-04 against suite commit bce6a47: 18 of the 34 skipped
 // groups, down from 111 of 213. Sections are ordered by size; fixing a root
 // shape prunes a whole section at once, which is what happened here — a format
 // with no "type" is now the wrapper issue #106 asks for rather than `any`, so
 // 88 of the 90 entries filed under gapRootFormatOnly went with it, along with
 // the last of gapRootRefToFalse and gapRootDependenciesOnly.
+//
+// The last two to go were the draft2019-09 and draft2020-12 spellings of "not/
+// collect annotations inside a 'not', even if collection is disabled". Issue
+// #111 taught the runtime evaluator unevaluatedProperties, which is the keyword
+// those two roots are built from, so a schema that was composition-and-nothing-
+// else now compiles to the evaluator and carries a Validate. Both failed by
+// name on the run that measured this file, which is the mechanism working.
 //
 // The section counts below were re-derived from the entries rather than carried
 // forward: gapRootCompositionOnly and gapRootConditionalOnly said 37 and 21
@@ -233,15 +240,13 @@ var knownUnvalidatedRejections = map[string]string{
 	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
 	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
 
-	// gapRootCompositionOnly (11 entries)
-	"draft2019-09/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
+	// gapRootCompositionOnly (9 entries)
 	"draft2019-09/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapRootCompositionOnly,
-	"draft2020-12/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
 	"draft2020-12/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
 	"draft6/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
 	"draft7/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,

@@ -1171,7 +1171,7 @@ func TestExternalRoundTrip(t *testing.T) {
 }
 
 // minValidatedGroups is the number of test groups this test reached a generated
-// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1752 of
+// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1765 of
 // the 1799 code-gen-suitable groups (1803 groups in the corpus, less the 4 whose
 // schema is boolean `true`, which asserts nothing and so has nothing to test).
 //
@@ -1184,6 +1184,15 @@ func TestExternalRoundTrip(t *testing.T) {
 // with 23. Each one failed by name, saying it now produces a Validate(), rather
 // than sitting in the list unread; that is the mechanism working.
 //
+// 1765 is the same three issues arriving together. #111 taught the evaluator
+// unevaluatedProperties and #115 gave the content vocabulary the string wrapper
+// #106 gave a format, so 13 more groups have something to call, the skips fall
+// from 47 to 34, and none of them is a code-generation failure. Two more
+// knownUnvalidatedRejections entries went stale with them. This number is the
+// one the combined run printed, not an estimate: the branches were each measured
+// separately or not at all, and no single-branch figure would have been true of
+// the merge.
+//
 // It is a floor, not a target. A group that produces no Validate() produces no
 // subtest either, so a change that stopped generating one would remove tests
 // from the run rather than fail any — the run would get greener as it measured
@@ -1194,7 +1203,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 1752
+const minValidatedGroups = 1765
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.
