@@ -3980,6 +3980,17 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			// A well-formed A-label. The ASCII check accepted every xn-- label on
 			// sight; this one has to survive being decoded and judged.
 			`{"host":"xn--bcher-kva.example"}`,
+			// The PVALID members of RFC 5892 section 2.6, through punycode: the
+			// accept-controls for the DISALLOWED members of the same section, which
+			// the invalid list refuses in exactly this spelling.
+			`{"host":"xn--zca29lwxobi7a"}`, // ßς་〇
+			`{"host":"xn--qmbc"}`,          // ۽۾
+			`{"host":"xn--9n2bp8q.xn--9t4b11yi5a"}`,
+			// The carriers the DISALLOWED exceptions below are embedded in, with
+			// the exception taken out. Each is accepted, so the ten rejections are
+			// about the code point and not about the script it sits in.
+			`{"intlHost":"بب"}`, `{"intlHost":"ߊߊ"}`,
+			`{"intlHost":"실례"}`, `{"intlHost":"ああ"}`,
 			// An IP-literal host is bracketed, and the brackets are what tell it
 			// from a bare IPv6 address with a port.
 			`{"link":"ldap://[2001:db8::7]/c=GB?objectClass?one"}`,
@@ -4067,6 +4078,35 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"host":"xn--5db1e"}`,  // GERESH preceded by nothing
 			`{"host":"xn--vek"}`,    // KATAKANA MIDDLE DOT alone
 			`{"host":"xn--X"}`,      // not punycode at all
+			// The RFC 5892 section 2.6 exceptions whose derived property is
+			// DISALLOWED. UTS-46 lookup marks all ten valid and maps them
+			// through, so idna accepts every one of these; schemagenDisallowedException
+			// is what refuses them. The accept-controls are the PVALID members of
+			// the same section -- "ßς་〇" and "۽۾" in the valid list above -- which
+			// a check written over the section rather than over the property would
+			// have refused alongside them.
+			`{"intlHost":"실〮례.테스트"}`,  // U+302E inside a label
+			`{"intlHost":"ـߺ"}`,       // U+0640, U+07FA
+			`{"intlHost":"〱〲〳〴〵〮〯〻"}`, // U+3031..U+3035, U+302E, U+302F, U+303B
+			// And the same three reached through punycode.
+			`{"host":"xn--07jt112bpxg.xn--9t4b11yi5a"}`,
+			`{"host":"xn--chb89f"}`,
+			`{"host":"xn--07jceefgh4c"}`,
+			// The suite spends only three documents on ten code points, so eight of
+			// the ten rules could be deleted and all three would still be refused
+			// by the two that remained. One case per code point, in a carrier the
+			// valid list above shows is accepted on its own, is what makes each of
+			// them load-bearing.
+			`{"intlHost":"بـب"}`, // U+0640 ARABIC TATWEEL
+			`{"intlHost":"ߊߺߊ"}`, // U+07FA NKO LAJANYALAN
+			`{"intlHost":"실〮례"}`, // U+302E HANGUL SINGLE DOT TONE MARK
+			`{"intlHost":"실〯례"}`, // U+302F HANGUL DOUBLE DOT TONE MARK
+			`{"intlHost":"あ〱あ"}`, // U+3031 VERTICAL KANA REPEAT MARK
+			`{"intlHost":"あ〲あ"}`, // U+3032 ... WITH VOICED SOUND MARK
+			`{"intlHost":"あ〳あ"}`, // U+3033 ... UPPER HALF
+			`{"intlHost":"あ〴あ"}`, // U+3034 ... WITH VOICED SOUND MARK UPPER HALF
+			`{"intlHost":"あ〵あ"}`, // U+3035 ... LOWER HALF
+			`{"intlHost":"あ〻あ"}`, // U+303B VERTICAL IDEOGRAPHIC ITERATION MARK
 			// A trailing separator is the DNS root label, which a hostname does
 			// not carry. idna's lookup profile tolerates it.
 			`{"intlHost":"example."}`,

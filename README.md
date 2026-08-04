@@ -97,11 +97,13 @@ only dependency generated code takes beyond the ECMA-262 engine `pattern`
 already needs. It is imported **only** into packages whose schemas name one of
 those four formats; a package with, say, a `date-time` in it takes neither.
 
-One gap remains there, and it is recorded in the generated helpers rather than
-left implicit: IDNA2008's "exceptions that are DISALLOWED" table, which UTS-46
-lookup processing maps rather than refuses. Three documents per hostname format
-are accepted that the official suite rejects. That is under-enforcement; nothing
-is rejected that the spec permits.
+Two parts of IDNA2008 the library does not answer are added on top of it, and
+both are applied to the decoded form so an `xn--` A-label is judged by what it
+encodes: the ContextO rules of RFC 5892 appendix A.3–A.9, which `idna` has no
+equivalent of, and the ten RFC 5892 section 2.6 exceptions whose derived
+property is DISALLOWED, which UTS-46 lookup processing marks valid and maps
+rather than refuses. The PVALID and CONTEXTO members of that same section stay
+accepted, since refusing them would reject names IDNA2008 permits.
 
 ### Unresolvable References
 

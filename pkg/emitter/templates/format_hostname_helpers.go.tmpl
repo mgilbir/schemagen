@@ -22,11 +22,11 @@ GERESH/GERSHAYIM, KATAKANA MIDDLE DOT and the ARABIC-INDIC digit rule are
 applied here. They are rules over Unicode scripts rather than a table, so the
 standard library's script ranges express them exactly.
 
-What neither answers: the three "exceptions that are DISALLOWED" cases the suite
-carries per file -- U+302E and the two runs of left-to-right and right-to-left
-exception characters. Those need IDNA2008's derived-property table, which UTS-46
-lookup processing deliberately diverges from by mapping rather than refusing.
-They are accepted. That is under-enforcement, recorded rather than papered over.
+What neither answers, and what schemagenDisallowedException adds: the RFC 5892
+section 2.6 exceptions whose derived property is DISALLOWED. UTS-46 lookup
+processing deliberately diverges from IDNA2008 there, marking all ten of them
+valid in its mapping table, so idna passes them through untouched. The list is
+closed and short, so it is written out rather than derived from a table.
 */}}
 {{define "format_hostname_helpers"}}
 
@@ -97,8 +97,43 @@ func schemagenContextO(label string) error {
 	return nil
 }
 
+// schemagenDisallowedException refuses the RFC 5892 section 2.6 exceptions whose
+// derived property is DISALLOWED.
+//
+// They are exceptions precisely because no derived property computes them: RFC
+// 5892 enumerates all ten by hand, so there is nothing to generate and the list
+// cannot grow without a new RFC. UTS-46 lookup processing marks every one of
+// them valid in its mapping table, which is a documented divergence from
+// IDNA2008 rather than a gap in idna, so a name built from them survives
+// ToASCII unchanged and has to be refused here.
+//
+// Only the DISALLOWED members belong here. The same section also lists six
+// PVALID exceptions -- U+00DF, U+03C2, U+06FD, U+06FE, U+0F0B, U+3007 -- and the
+// CONTEXTO ones schemagenContextO judges by their surroundings. Refusing either
+// group would turn a missing check into a false rejection of a name IDNA2008
+// allows.
+func schemagenDisallowedException(label string) error {
+	for _, c := range label {
+		switch c {
+		case 0x0640, // ARABIC TATWEEL
+			0x07FA, // NKO LAJANYALAN
+			0x302E, // HANGUL SINGLE DOT TONE MARK
+			0x302F, // HANGUL DOUBLE DOT TONE MARK
+			0x3031, // VERTICAL KANA REPEAT MARK
+			0x3032, // VERTICAL KANA REPEAT WITH VOICED SOUND MARK
+			0x3033, // VERTICAL KANA REPEAT MARK UPPER HALF
+			0x3034, // VERTICAL KANA REPEAT WITH VOICED SOUND MARK UPPER HALF
+			0x3035, // VERTICAL KANA REPEAT MARK LOWER HALF
+			0x303B: // VERTICAL IDEOGRAPHIC ITERATION MARK
+			return fmt.Errorf("U+%04X is DISALLOWED by RFC 5892", c)
+		}
+	}
+	return nil
+}
+
 // schemagenCheckIDNA is the shared body of both hostname checks: the IDNA
-// processing, then ContextO over each decoded label.
+// processing, then the IDNA2008 rules idna does not apply over each decoded
+// label.
 func schemagenCheckIDNA(v string) error {
 	if v == "" {
 		return fmt.Errorf("empty")
@@ -111,13 +146,16 @@ func schemagenCheckIDNA(v string) error {
 	if _, err := schemagenIDNAProfile.ToASCII(v); err != nil {
 		return err
 	}
-	// ContextO is applied to the decoded form, so an "xn--" A-label is judged by
+	// Both are applied to the decoded form, so an "xn--" A-label is judged by
 	// what it encodes rather than by its ASCII spelling.
 	u, err := schemagenIDNAProfile.ToUnicode(v)
 	if err != nil {
 		return err
 	}
 	for _, label := range strings.FieldsFunc(u, schemagenLabelSeparator) {
+		if err := schemagenDisallowedException(label); err != nil {
+			return err
+		}
 		if err := schemagenContextO(label); err != nil {
 			return err
 		}
