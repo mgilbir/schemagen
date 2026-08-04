@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContentPostureDraft7",
+  "description": "Issue #115: the content vocabulary under the one dialect that asserts it. Each position must carry the check, and none of them may narrow the Go type -- a number satisfies a content keyword trivially, so the wrapper keeps a non-string value verbatim and its Validate returns early.",
+  "type": "object",
+  "properties": {
+    "blob": {
+      "$comment": "No declared type. This is the shape that resolved to `any`, which Go forbids methods on, so nothing was checked anywhere.",
+      "contentEncoding": "base64"
+    },
+    "doc": {
+      "$comment": "A declared string. The check has to be the same one the typeless spelling gets, written by the same code.",
+      "type": "string",
+      "contentMediaType": "application/json"
+    },
+    "encodedDoc": {
+      "$comment": "Both keywords: contentMediaType judges the bytes contentEncoding produced, so the two are one check and not two.",
+      "contentEncoding": "base64",
+      "contentMediaType": "application/json"
+    },
+    "unknownEncoding": {
+      "$comment": "An encoding nothing here decides. Carried as an annotation rather than guessed at, so every string satisfies it -- but the property still gets a type with a Validate.",
+      "contentEncoding": "quoted-printable"
+    },
+    "boundedBlob": {
+      "$comment": "A length bound beside the content keywords, which is about the same string: one wrapper carries both.",
+      "contentEncoding": "base64",
+      "minLength": 4
+    },
+    "list": {
+      "$comment": "An element position. The element's Go type is a plain string, so there is no named type to hang the check on and it rides the per-element rules -- which is where the identical subschema written as a property was checked and this one was not.",
+      "type": "array",
+      "items": { "type": "string", "contentEncoding": "base64" }
+    },
+    "viaAllOf": {
+      "$comment": "A branch stating only a content keyword. The merge has to carry it, or the merged schema has nothing left to name a type from and falls through to `any`.",
+      "allOf": [{ "contentEncoding": "base64" }]
+    }
+  }
+}

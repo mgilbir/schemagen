@@ -97,6 +97,17 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/allof_inline_positions", "testdata/schemas/regression/allof_inline_positions.json", "testdata/golden/regression/allof_inline_positions.go"},
 		{"regression/allof_bound_only", "testdata/schemas/regression/allof_bound_only.json", "testdata/golden/regression/allof_bound_only.go"},
 		{"regression/explicit_null_positions", "testdata/schemas/regression/explicit_null_positions.json", "testdata/golden/regression/explicit_null_positions.go"},
+		// The other half of the same distinction: where the schema permits the
+		// null there is nothing to refuse, so it is recorded instead -- and the
+		// tag is then free to say what it should about an absent property.
+		{"regression/present_null_positions", "testdata/schemas/regression/present_null_positions.json", "testdata/golden/regression/present_null_positions.go"},
+		// The content vocabulary in both postures. Draft 7 asserts it, 2019-09
+		// and later annotate it, and the generated type is the same either way.
+		{"regression/content_posture_draft7", "testdata/schemas/regression/content_posture_draft7.json", "testdata/golden/regression/content_posture_draft7.go"},
+		{"regression/content_posture_2020", "testdata/schemas/regression/content_posture_2020.json", "testdata/golden/regression/content_posture_2020.go"},
+		// Pins which allOf-of-overflow positions get the runtime evaluator and
+		// which keep the typed overflow map the merge already produced.
+		{"regression/allof_overflow_positions", "testdata/schemas/regression/allof_overflow_positions.json", "testdata/golden/regression/allof_overflow_positions.go"},
 		// Pins which allOf branches get a per-branch overflow check and which do
 		// not: the parent's own additionalProperties and the narrow merge keep
 		// the overflow map they always had, and a branch stating no overflow

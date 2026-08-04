@@ -1,0 +1,24 @@
+{{/*
+string_content_check emits the content vocabulary's assertion against a value
+already known to be a Go string.
+
+There is one arm, dispatching to the one shared helper, for the same reason
+string_format_check has one: every position that asserts contentEncoding or
+contentMediaType comes through here -- a struct field, an alias over its own
+value, and the wrapper a content keyword with no declared "type" resolves to --
+so the three cannot disagree about what the keywords mean.
+
+.Expr      a Go expression of type string
+.Path      what to name the value in the error message ("value", a JSON pointer, ...)
+.Args      the argument list a Path carrying format verbs needs, or empty
+.Encoding  the contentEncoding to decode by, or empty
+.MediaType the contentMediaType to parse the decoded bytes as, or empty
+
+A rule with neither keyword is never built, so there is no empty-call case to
+guard: contentCheckFor refuses to produce one.
+*/}}
+{{define "string_content_check"}}
+if _err := schemagenContentString({{.Expr}}, {{printf "%q" .Encoding}}, {{printf "%q" .MediaType}}); _err != nil {
+	return fmt.Errorf("{{.Path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
+}
+{{- end}}

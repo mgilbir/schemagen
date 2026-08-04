@@ -4,7 +4,7 @@ package testpkg
 
 // UnenforcedAny is NOT VALIDATED, and its schema does state constraints:
 //
-//	contentEncoding, contentMediaType
+//	not
 //
 // schemagen could not compile those into a check it could carry here. The
 // underlying type is an interface, Go forbids methods on those, so this type has

@@ -32,6 +32,9 @@ type {{.Name}} struct {
 {{- if .NeedsRawProps}}
 	_jsonRawProps map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 {{- end}}
+{{- if .NeedsJSONNulls}}
+	_jsonNulls map[string]bool // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+{{- end}}
 }
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}

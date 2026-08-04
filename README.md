@@ -12,6 +12,8 @@ A CLI tool that generates idiomatic Go type definitions from JSON Schema files.
 - Discriminated unions with automatic or heuristic-based discriminator detection
 - Validation-aware: string constraints (`minLength`, `maxLength`, `pattern`), numeric constraints
 - Format handling (e.g., `date-time`, `email`, `uri`, `uuid`)
+- Content handling (`contentEncoding`, `contentMediaType`), asserted under the one dialect that asks for it
+- Lossless nulls: an absent optional property, a present `null` and a present empty collection all round-trip as themselves
 - Default values for struct fields
 - `additionalProperties` and `patternProperties` support with overflow maps
 - Optional `*big.Int` wrapper for arbitrary-precision integers
@@ -104,6 +106,46 @@ equivalent of, and the ten RFC 5892 section 2.6 exceptions whose derived
 property is DISALLOWED, which UTS-46 lookup processing marks valid and maps
 rather than refuses. The PVALID and CONTEXTO members of that same section stay
 accepted, since refusing them would reject names IDNA2008 permits.
+
+### Content: assertion or annotation
+
+`contentEncoding` and `contentMediaType` are the same question one vocabulary
+over, and the dialect decides in the same way.
+
+| Dialect | Default | Why |
+| --- | --- | --- |
+| draft 7 | **asserts** | The draft that introduced the keywords says an implementation SHOULD decode the string and MAY refuse one it cannot — the same permission `format` is read under. |
+| 2019-09, 2020-12 | **annotates** | The content vocabulary is annotation-only by definition. `{"contentEncoding":"base64"}` is satisfied by `"eyJmb28iOi%iYmFyIn0K"`, which is not base64 at all, and the official test suite marks that document valid. |
+| draft 3, 4, 6 | **annotates** | The keywords are not defined there, so a document carrying one is carrying an unknown keyword, which every draft says to ignore. |
+| no `$schema` | **annotates** | As for `format`: withholding a rejection is the safe direction. |
+
+`base64` is the only `contentEncoding` and `application/json` the only
+`contentMediaType` the generated code decides; anything else is carried as an
+annotation rather than guessed at. `contentSchema` never asserts — it is an
+annotation in every draft that defines it.
+
+The keywords apply to strings and to nothing else, so a number, an object or a
+null satisfies them trivially. A schema stating one with no `"type"` therefore
+does **not** become a Go `string`: it becomes the same wrapper a `format` with no
+`"type"` gets, which holds a Go string when the instance is one, keeps any other
+value verbatim, and returns early from `Validate()` for it.
+
+### Null: present, absent, and the round trip
+
+A JSON null and an absent property leave the same thing behind in Go — a nil
+pointer, a nil slice or map, or a scalar at its zero — so the two have to be told
+apart from the document's own bytes, and the generated `UnmarshalJSON` is where
+that happens.
+
+- Where the schema **forbids** a null, the decode refuses it, naming the property.
+- Where the schema **permits** one, the key is recorded. `Validate()` then passes
+  over the keywords a null satisfies vacuously (a `minLength` says nothing about
+  a null), and `MarshalJSON()` writes the null back.
+
+So an absent optional property stays absent, a present null comes back as a
+null, and a present empty collection comes back as `[]` or `{}`. All three are
+distinguishable. A value built in Go rather than decoded carries no such record,
+and its nil fields are simply omitted.
 
 ### Unresolvable References
 
@@ -279,6 +321,8 @@ Generated files expose `SchemagenValidationCapability()` and `SchemagenValidatio
 `Validate()` is authoritative for values produced by `json.Unmarshal`: the generated `UnmarshalJSON` records which JSON keys were present, and that presence information drives the presence-dependent checks.
 
 For **hand-constructed** values (built directly in Go rather than decoded from JSON), JSON key presence is unknown, so presence-dependent checks are skipped: required properties, optional-field constraints, object-level `oneOf`/`anyOf` branch matching, and `dependent*`/`unevaluated*` checks. Type-level and value-range constraints on fields that are set still apply. If you need full validation of a programmatically built value, marshal it to JSON and unmarshal it back before calling `Validate()`.
+
+The same applies to a value **assigned after decoding**. The record of which keys arrived as `null` is about the document, so a field that carried a null and has since been assigned keeps that record: `MarshalJSON()` leaves the new value alone, but `Validate()` still passes over the keywords the null made vacuous. Round-trip through JSON if you need the assignment judged.
 
 #### Schemas with no type of their own
 

@@ -179,7 +179,17 @@ func TestUnmodelledKeywordsFailClosedAndAreReported(t *testing.T) {
 		input   string
 		keyword string
 	}{
-		{"content keywords", `{"contentEncoding":"base64"}`, "contentEncoding"},
+		// The content keywords used to sit here. They are modelled now -- not by
+		// the evaluator, which still has no arm for them, but by the string
+		// wrapper issue #115 routes them to, which is why
+		// TestContentOnlySchemaBecomesAStringWrapper is the test that owns them.
+		//
+		// unevaluatedProperties used to sit here too, and is modelled now as
+		// well: issue #111 gave the evaluator an arm for it, so a schema whose
+		// only content is that keyword no longer fails closed. Its case moved to
+		// TestRefusedBranchesCompileToTheRuntimeEvaluator, in the other
+		// direction.
+		//
 		// "format" stays out of the evaluator's model on purpose: schemagen
 		// asserts a format only where the schema gives the position a string
 		// type, and a node evaluator that quietly ignored it would enforce a
@@ -260,7 +270,7 @@ func TestUnenforcedReportNamesOnlyDeclaredTypes(t *testing.T) {
 		t.Fatalf("reported %v, but none of those types is declared in the file", got)
 	}
 
-	declared := generatorFor(t, `{"title":"Doc","contentEncoding":"base64"}`)
+	declared := generatorFor(t, `{"title":"Doc","x-vendor-rule":{"a":1}}`)
 	got := declared.UnenforcedSchemas()
 	if len(got) != 1 || got[0].TypeName != "Doc" {
 		t.Fatalf("UnenforcedSchemas() = %v, want one entry naming Doc", got)
@@ -330,5 +340,125 @@ func TestAliasOverRuntimeWrapperDelegatesJSON(t *testing.T) {
 		if got.name != "Wrapped" {
 			t.Errorf("%s = %q, want %q: without it the alias decodes as a struct with no exported field", got.what, got.name, "Wrapped")
 		}
+	}
+}
+
+// TestContentOnlySchemaBecomesAStringWrapper covers issue #115. A schema whose
+// only keyword is from the content vocabulary named no Go type, so it resolved
+// to `any` -- and Go forbids methods on an interface, so the type had no
+// Validate at all and json.Unmarshal into it could not fail.
+//
+// The narrowness is the point, and is why this is not "give it a string type":
+// contentEncoding applies to strings and to nothing else, so a number satisfies
+// it trivially. The wrapper's InferredGoType is a plain string and its Validate
+// returns early for anything that did not decode into one, which is the same
+// answer #106 gave a bare "format".
+func TestContentOnlySchemaBecomesAStringWrapper(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{"contentEncoding", `{"$schema":"http://json-schema.org/draft-07/schema#","contentEncoding":"base64"}`},
+		{"contentMediaType", `{"$schema":"http://json-schema.org/draft-07/schema#","contentMediaType":"application/json"}`},
+		{"both", `{"$schema":"http://json-schema.org/draft-07/schema#","contentEncoding":"base64","contentMediaType":"application/json"}`},
+		{"contentSchema", `{"$schema":"https://json-schema.org/draft/2019-09/schema","contentMediaType":"application/json","contentSchema":{"type":"object"}}`},
+		{"an encoding nothing decides", `{"$schema":"http://json-schema.org/draft-07/schema#","contentEncoding":"quoted-printable"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := findDef(generateOne(t, tt.input), "Root")
+			def, ok := root.(*InferredAliasDef)
+			if !ok {
+				t.Fatalf("Root is %T for %s, want the string wrapper", root, tt.input)
+			}
+			if p, ok := def.InferredGoType.(*PrimitiveType); !ok || p.Name != "string" {
+				t.Fatalf("Root holds %v, want a plain string: a content keyword says what a string must look like, not that the value is one", def.InferredGoType)
+			}
+		})
+	}
+}
+
+// The dialect decides whether the wrapper carries a check, and only draft 7
+// does. From 2019-09 the content vocabulary is annotation-only by definition --
+// the official suite marks {"contentEncoding":"base64"} satisfied by a string
+// that is not base64 -- so a rule there would reject what the schema permits.
+//
+// Drafts before 7 do not define the keywords at all, which every draft says to
+// treat as an unknown keyword and ignore.
+func TestContentAssertionFollowsTheDialect(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		schema  string
+		asserts bool
+	}{
+		{"draft 7", `"http://json-schema.org/draft-07/schema#"`, true},
+		{"draft 6", `"http://json-schema.org/draft-06/schema#"`, false},
+		{"draft 4", `"http://json-schema.org/draft-04/schema#"`, false},
+		{"2019-09", `"https://json-schema.org/draft/2019-09/schema"`, false},
+		{"2020-12", `"https://json-schema.org/draft/2020-12/schema"`, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			input := `{"$schema":` + tt.schema + `,"contentEncoding":"base64"}`
+			root := findDef(generateOne(t, input), "Root")
+			def, ok := root.(*InferredAliasDef)
+			if !ok {
+				t.Fatalf("Root is %T, want the string wrapper in every dialect", root)
+			}
+			var hasContent bool
+			for _, r := range def.Validations {
+				if r.RuleType == "content" {
+					hasContent = true
+				}
+			}
+			if hasContent != tt.asserts {
+				t.Fatalf("content rule emitted = %v, want %v: %s", hasContent, tt.asserts, input)
+			}
+		})
+	}
+}
+
+// TestAllOfOverflowPositionGetsTheEvaluator covers issue #112. Two allOf
+// branches each stating additionalProperties cannot be merged into one overflow
+// value type -- satisfying both is an allOf of the two sub-schemas -- so the
+// merge declines, and a position holding such a schema was typed map[string]any
+// with no check anywhere.
+//
+// The evaluator rather than a widened merge: the typed overflow map reads
+// {"additionalProperties":{"minimum":5}} as map[string]float64, and a string
+// value then fails to decode though the schema admits it. The accept-controls
+// are the shapes the merge does express, which must keep the types they had.
+func TestAllOfOverflowPositionGetsTheEvaluator(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"two":  {"type":"object","allOf":[{"additionalProperties":{"minimum":5}},{"additionalProperties":{"maximum":9}}]},
+			"sole": {"type":"object","allOf":[{"additionalProperties":{"minimum":5}}]},
+			"keyed":{"type":"object","allOf":[{"properties":{"a":{"type":"string"}}},{"additionalProperties":{"minimum":5}},{"additionalProperties":{"maximum":9}}]}
+		}
+	}`)
+
+	two := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "two")
+	name := two.Type.GoTypeName()
+	if _, ok := findDef(ir.TypeDefs, name).(*AnnotationSchemaDef); !ok {
+		t.Fatalf("two is %q, want the runtime-evaluator wrapper: map[string]any carries neither branch's bound", name)
+	}
+
+	// The merge expresses a lone branch exactly, and its typed overflow map is
+	// a better Go type than a raw wrapper. Taking it over would be a loss.
+	sole := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "sole")
+	soleDef, ok := findDef(ir.TypeDefs, namedTypeName(sole.Type)).(*StructDef)
+	if !ok || soleDef.AdditionalProperties == nil {
+		t.Fatalf("sole is %q, want the struct with a typed overflow map the merge already produced", sole.Type.GoTypeName())
+	}
+
+	// A branch naming a key produces a struct for some other reason, and the
+	// per-branch overflow checks (#101) are what carry the keyword there.
+	keyed := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "keyed")
+	keyedDef, ok := findDef(ir.TypeDefs, namedTypeName(keyed.Type)).(*StructDef)
+	if !ok {
+		t.Fatalf("keyed is %q, want the merged struct", keyed.Type.GoTypeName())
+	}
+	if len(keyedDef.BranchOverflowChecks) == 0 {
+		t.Fatal("keyed lost its per-branch overflow checks")
 	}
 }

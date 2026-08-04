@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfOverflowPositions",
+  "description": "Issue #112: an allOf whose branches each state an additionalProperties. Satisfying both is an allOf of the two sub-schemas, which one overflow value type cannot express, so the merge declines -- and the position was then typed map[string]any with no check at all. The runtime evaluator reads the allOf whole and is what these positions get instead.",
+  "type": "object",
+  "properties": {
+    "twoBranches": {
+      "$comment": "The reported shape, one level down from the root the issue reports it at.",
+      "type": "object",
+      "allOf": [
+        { "additionalProperties": { "minimum": 5 } },
+        { "additionalProperties": { "maximum": 9 } }
+      ]
+    },
+    "viaRef": {
+      "$comment": "The same through a $ref, which soleBranchAdditionalProperties follows, so the widened predicate has to follow it too.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/Lower" },
+        { "additionalProperties": { "maximum": 9 } }
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "allOf": [
+          { "additionalProperties": { "minimum": 5 } },
+          { "additionalProperties": { "maximum": 9 } }
+        ]
+      }
+    },
+    "soleBranch": {
+      "$comment": "The accept-control: one branch only, which the merge does express, and which must keep the typed overflow map it already had rather than being taken over.",
+      "type": "object",
+      "allOf": [{ "additionalProperties": { "minimum": 5 } }]
+    },
+    "namedKey": {
+      "$comment": "The other accept-control: a branch that names a property is a struct, and the per-branch overflow checks #101 added are what carry the keyword there.",
+      "type": "object",
+      "allOf": [
+        { "properties": { "a": { "type": "string" } } },
+        { "additionalProperties": { "minimum": 5 } },
+        { "additionalProperties": { "maximum": 9 } }
+      ]
+    }
+  },
+  "$defs": {
+    "Lower": { "additionalProperties": { "minimum": 5 } }
+  }
+}

@@ -110,6 +110,7 @@ type StructDef struct {
 	OwnPropertyNames       []string                  // JSON names of properties declared directly on this schema (not merged from allOf/anyOf). When set, only these are "known" for additionalProperties routing.
 	NullChecks             []NullCheckDef            // per-property positions where an explicit JSON null is a type error
 	OverflowNullCheck      *NullCheckDef             // the same, for the values a schema-valued additionalProperties governs
+	NullPresenceKeys       []string                  // JSON names whose present null the decoded value cannot hold, recorded in _jsonNulls
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
 	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
@@ -259,6 +260,14 @@ type ValidatableFieldDef struct {
 	// all, and there the call still runs: presence is unknowable, and skipping
 	// would stop checking hand-constructed values.
 	PresenceGuard bool
+
+	// NullGuard is set for a field whose property is one of the struct's
+	// NullPresenceKeys: the schema permits a null there, and the Go value keeps
+	// no trace of one. Handing the zero the null left behind to the field type's
+	// Validate judges a value the document did not supply. Unlike PresenceGuard
+	// this is not conditioned on the field being optional -- a required property
+	// written as null leaves the same zero.
+	NullGuard bool
 }
 
 // HasRequiredFields returns true if the struct has required field validation.
@@ -303,6 +312,14 @@ func (d *StructDef) NestedNullChecks() []NullCheckDef {
 // as opposed to only testing values for being null outright.
 func (d *StructDef) NeedsNullCheckHelper() bool {
 	return len(d.NestedNullChecks()) > 0 || d.OverflowNullCheck.Nested()
+}
+
+// NeedsJSONNulls reports whether UnmarshalJSON has to record which keys the
+// document wrote as null, so that Validate can pass over the keywords a null
+// satisfies vacuously and MarshalJSON can write it back. See
+// nullPresenceTracked and issue #110.
+func (d *StructDef) NeedsJSONNulls() bool {
+	return len(d.NullPresenceKeys) > 0
 }
 
 // HasDefaults returns true if any field has a default value.
@@ -867,6 +884,21 @@ type RuntimeBranchCheck struct {
 	NodeLiteral string
 }
 
+// ContentCheck is the argument of a "content" validation rule: the decoding to
+// apply to a string instance and the media type to parse the result as.
+//
+// The two keywords are one rule rather than two because they compose --
+// contentMediaType judges the bytes contentEncoding produced, so a base64
+// encoding of an invalid JSON document has to fail on the media type and an
+// invalid base64 string has to fail before the media type is consulted at all.
+// Either field may be empty, meaning the schema stated no such keyword or
+// stated one the generated code cannot judge; a rule with both empty is never
+// built.
+type ContentCheck struct {
+	Encoding  string
+	MediaType string
+}
+
 // ValidationRule describes a validation constraint on a struct field.
 type ValidationRule struct {
 	FieldName string // Go field name (PascalCase)
@@ -884,6 +916,14 @@ type ValidationRule struct {
 	// does not convert a named type implicitly, so the emitter wraps the value
 	// in an explicit conversion.
 	StringConvert bool
+
+	// NullKey names the JSON property whose recorded null makes this rule
+	// vacuous. It is set only where the schema permits a null the Go value
+	// cannot hold (see nullPresenceTracked) and the keyword is one a null
+	// satisfies whatever its argument (see ruleVacuousForNull), so the emitted
+	// check is skipped for exactly the documents JSON Schema says it does not
+	// judge. Empty everywhere else.
+	NullKey string
 
 	// StringBacked is set on a "format" rule whose value is held as the JSON
 	// string itself rather than as the Go type the format otherwise maps to.

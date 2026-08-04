@@ -3380,8 +3380,13 @@ func TestOptionalNullTypedPropertyIsOmittedWhenAbsent(t *testing.T) {
 // A oneOf (or a type list) naming null beside one other alternative is the
 // idiomatic spelling of "nullable", and it resolves to a pointer to that
 // alternative — not to the raw-value wrapper a bare {"type":"null"} now gets.
-// omitempty stays suppressed there, because nil is the only thing such a field
-// has to say both "absent" and "null" with.
+//
+// The tag used to be the trade: omitempty was suppressed, so a nil pointer was
+// written as null, which kept a present null at the cost of inventing one for a
+// property the document never carried. Issue #110 removed the need for it —
+// UnmarshalJSON records which keys arrived as null, so the tag can drop the
+// absent property and MarshalJSON puts the null back. Both directions now hold,
+// and the property has to be in NullPresenceKeys for that to be true.
 func TestNullVariantOfAOneOfStaysAPointer(t *testing.T) {
 	input := `{
 		"title": "Banner",
@@ -3425,8 +3430,12 @@ func TestNullVariantOfAOneOfStaysAPointer(t *testing.T) {
 		if got := f.Type.GoTypeName(); got != "*string" {
 			t.Fatalf("%s type = %q, want *string", name, got)
 		}
-		if f.OmitEmpty || f.OmitZero {
-			t.Fatalf("%s is dropped when nil, which loses a present null", name)
+		if !f.OmitEmpty {
+			t.Fatalf("%s is written as null when the document omitted it", name)
+		}
+		if !containsString(banner.NullPresenceKeys, name) {
+			t.Fatalf("%s is not in NullPresenceKeys %v, so the null omitempty drops is never written back",
+				name, banner.NullPresenceKeys)
 		}
 	}
 }
@@ -4207,16 +4216,19 @@ func TestNullableTypedAdditionalPropertiesKeepsItsValueType(t *testing.T) {
 // The map is bare -- no outer pointer -- on the precedent the nullable *array*
 // branch beside it already set. That is not a loss of state: a nil pointer to a
 // map and a pointer to a nil map both marshal to `null`, so *map[string]T never
-// distinguished a null from an absent property either. What decides whether
-// `null` survives is the tag, and the tag is chosen from the schema (omitempty
-// is suppressed for any property whose type list admits null), not from the Go
-// type -- so it must stay suppressed now that the type is a map, which is
-// exactly what omitzero would undo by dropping a nil map on the way out.
+// distinguished a null from an absent property either.
 //
-// So the contract is: a nil map is a JSON null and is written back as one; a
+// What decides whether `null` survives is no longer the tag. It used to be:
+// omitempty was suppressed for any property whose type list admits null, so a
+// nil map was written as null -- and so was an absent property, which is the
+// same erasure in the other direction. Since issue #110 the null is recorded
+// from the document's own bytes, so the tag is free to say what it should say
+// about absence, and ",omitzero" is what an optional collection gets.
+//
+// So the contract is: an explicit null is recorded and written back as null; a
 // present {} decodes to a non-nil empty map and is written back as {}; and an
-// absent property is written back as null, which is what the property did
-// before this change and what every other nullable property does.
+// absent property stays absent. All three are now distinguishable, which is one
+// more than the suppressed tag could manage.
 func TestNullableTypedMapKeepsTheNullContract(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
@@ -4226,12 +4238,16 @@ func TestNullableTypedMapKeepsTheNullContract(t *testing.T) {
 		}
 	}`)
 
-	field := fieldNamedJSON(t, structNamed(t, ir, "Doc"), "m")
+	doc := structNamed(t, ir, "Doc")
+	field := fieldNamedJSON(t, doc, "m")
 	if field.Type.IsPointer() {
 		t.Fatalf("m type = %q, want an unwrapped map -- a pointer to a map carries no state a nil map does not", field.Type.GoTypeName())
 	}
-	if field.OmitEmpty || field.OmitZero {
-		t.Fatalf("m has omitempty=%v omitzero=%v; either one drops a nil map, turning an explicit null into an absent property", field.OmitEmpty, field.OmitZero)
+	if !field.OmitZero {
+		t.Fatalf("m has omitzero=%v; without it an absent property is written back as null", field.OmitZero)
+	}
+	if !containsString(doc.NullPresenceKeys, "m") {
+		t.Fatalf("m is not in NullPresenceKeys %v, so the null omitzero drops is never written back", doc.NullPresenceKeys)
 	}
 }
 
@@ -7993,6 +8009,104 @@ func TestNullChecksSkipTheNullablePositions(t *testing.T) {
 	for _, name := range []string{"bothNul", "untyped"} {
 		if r, ok := rules[name]; ok {
 			t.Fatalf("%s carries a rule but forbids a null nowhere: %+v", name, r)
+		}
+	}
+}
+
+// TestPresentNullIsRecordedWhereTheSchemaPermitsIt covers issue #110, the other
+// side of #103. Where the schema forbids a null, UnmarshalJSON refuses it from
+// the document's own bytes. Where it permits one there is nothing to refuse, and
+// the decoded value keeps no trace: a nil pointer, a nil collection and an
+// untouched scalar zero are all exactly what an absent property leaves.
+//
+// So the key is recorded instead, and two things follow from the record -- the
+// rule a null satisfies vacuously is skipped, and MarshalJSON writes the null
+// back. The accept-control is the property whose schema forbids a null, which
+// #103 already answers and which must not be claimed here as well.
+func TestPresentNullIsRecordedWhereTheSchemaPermitsIt(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"untyped":   {},
+			"boundOnly": {"minLength": 2},
+			"reqBound":  {"minLength": 2},
+			"nullable":  {"type": ["string","null"]},
+			"typed":     {"type": "string"},
+			"enumNoNull": {"enum": ["a","b"]}
+		},
+		"required": ["reqBound"]
+	}`)
+	doc := structNamed(t, ir, "Doc")
+
+	for _, want := range []string{"untyped", "boundOnly", "reqBound", "nullable"} {
+		if !containsString(doc.NullPresenceKeys, want) {
+			t.Errorf("%q is not in NullPresenceKeys %v: the schema permits a null there and nothing else can say it was present",
+				want, doc.NullPresenceKeys)
+		}
+	}
+	for _, notWanted := range []string{"typed", "enumNoNull"} {
+		if containsString(doc.NullPresenceKeys, notWanted) {
+			t.Errorf("%q is in NullPresenceKeys %v, but its schema forbids a null -- that is issue #103's rejection, not this record",
+				notWanted, doc.NullPresenceKeys)
+		}
+	}
+
+	// The rule guard. A bound is vacuous for a null whether the property is
+	// optional or required, so both carry the key; the property that forbids a
+	// null must not, or the rejection would be skipped for the value it judges.
+	for _, tc := range []struct {
+		jsonName string
+		wantKey  string
+	}{
+		{"boundOnly", "boundOnly"},
+		{"reqBound", "reqBound"},
+		{"nullable", ""},
+	} {
+		for _, r := range doc.Validations {
+			if r.JSONName != tc.jsonName || !ruleVacuousForNull(r.RuleType) {
+				continue
+			}
+			if r.NullKey != tc.wantKey && tc.wantKey != "" {
+				t.Errorf("%s rule %q has NullKey %q, want %q", tc.jsonName, r.RuleType, r.NullKey, tc.wantKey)
+			}
+		}
+	}
+}
+
+// The tag half of the same fix. A property the schema permits a null in used to
+// have omitempty suppressed so that nil marshalled as null -- which kept the
+// present null and invented one for an absent property. With the null recorded,
+// the tag says what it should about absence and nothing is lost either way.
+func TestNullPermittingPropertyKeepsItsOmitTag(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"scalar": {"type": ["string","null"]},
+			"list":   {"type": ["array","null"], "items": {"type":"string"}},
+			"blank":  {}
+		}
+	}`)
+	doc := structNamed(t, ir, "Doc")
+
+	for _, tc := range []struct {
+		jsonName string
+		omitZero bool
+	}{
+		{"scalar", false},
+		{"list", true},
+		{"blank", false},
+	} {
+		f := fieldNamedJSON(t, doc, tc.jsonName)
+		if !f.OmitEmpty {
+			t.Errorf("%s has no omit tag, so an absent property is written back as null", tc.jsonName)
+		}
+		if f.OmitZero != tc.omitZero {
+			t.Errorf("%s OmitZero = %v, want %v", tc.jsonName, f.OmitZero, tc.omitZero)
+		}
+		if !containsString(doc.NullPresenceKeys, tc.jsonName) {
+			t.Errorf("%s is dropped by its tag but not recorded, so a present null is lost", tc.jsonName)
 		}
 	}
 }

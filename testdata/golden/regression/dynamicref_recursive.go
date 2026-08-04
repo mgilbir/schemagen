@@ -95,10 +95,12 @@ func (e Extended) Validate() error {
 type Bar struct {
 	Baz                  *Extended                  `json:"baz,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (b *Bar) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
+	b._jsonNulls = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Bar")
 	}
@@ -116,6 +118,22 @@ func (b *Bar) UnmarshalJSON(data []byte) error {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
+		}
+		// The properties whose schema permits a null. The decode above has
+		// already turned one into a nil pointer, a nil collection or an
+		// untouched zero -- the same state an absent property leaves -- so the
+		// document's own bytes are the only place the difference still exists.
+		// Validate reads this to pass over the keywords a null satisfies
+		// vacuously, and MarshalJSON to write the null back. See issue #110.
+		for _, _nullKey := range []string{
+			"baz",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				if b._jsonNulls == nil {
+					b._jsonNulls = make(map[string]bool, 1)
+				}
+				b._jsonNulls[_nullKey] = true
+			}
 		}
 		knownFields := map[string]bool{
 			"baz": true,
@@ -147,6 +165,31 @@ func (b Bar) MarshalJSON() ([]byte, error) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
+	}
+	// The properties the source document wrote as null. Nothing left in the
+	// decoded value says they were there -- a null leaves the nil pointer or the
+	// untouched zero an absent property leaves -- so writing them back has to
+	// come from the record UnmarshalJSON kept. See issue #110.
+	//
+	// Only where the field still holds what the null left it holding. A caller
+	// who decoded a null and then assigned a value has said something newer than
+	// the document did, and writing the null over it would discard the
+	// assignment; the record is about a value nobody has touched. What the
+	// untouched state looks like is read off a zero of this very struct rather
+	// than from a per-field literal, so a field type's own MarshalJSON decides
+	// for itself and nothing here has to know how it spells "empty".
+	if len(b._jsonNulls) > 0 {
+		var _zero Alias
+		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
+			var _zeroObj map[string]json.RawMessage
+			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
+				for _k := range b._jsonNulls {
+					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
+						obj[_k] = json.RawMessage("null")
+					}
+				}
+			}
+		}
 	}
 	for k, v := range b.AdditionalProperties {
 		obj[k] = v

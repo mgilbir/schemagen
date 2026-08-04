@@ -182,17 +182,18 @@ var knownFlakyTests = map[string]bool{}
 // the group is ever checked. They are constants rather than repeated literals
 // so that fixing a shape is one grep and one delete, not 90.
 //
-// Two are gone rather than left empty: gapRootRefToFalse, which #116 answered
+// Three are gone rather than left empty: gapRootRefToFalse, which #116 answered
 // by giving a $ref to a boolean false the forbidding wrapper the root already
-// had, and gapRootDependenciesOnly, which #117 answered by reading draft 3's
-// bare-string dependency. A reason nothing cites is a shape that is no longer a
-// gap, and keeping the constant would invite the next entry to be filed under
-// something already fixed.
+// had, gapRootDependenciesOnly, which #117 answered by reading draft 3's
+// bare-string dependency, and gapRootContentOnly, which #115 answered by giving
+// a content keyword with no declared type the same string wrapper #106 gave a
+// format. A reason nothing cites is a shape that is no longer a gap, and keeping
+// the constant would invite the next entry to be filed under something already
+// fixed.
 const (
 	gapRootFormatOnly      = `root states only "format", which names no Go type, so the root resolves to any and carries no Validate`
 	gapRootCompositionOnly = `root is composition alone (allOf/anyOf/oneOf/not) and states no type of its own, so the root resolves to any and carries no Validate`
 	gapRootConditionalOnly = `root is if/then/else alone and states no type of its own, so the root resolves to any and carries no Validate`
-	gapRootContentOnly     = `root states only contentEncoding/contentMediaType, which name no Go type, so the root resolves to any and carries no Validate`
 )
 
 // knownUnvalidatedRejections allow-lists groups that produce no Validate()
@@ -214,7 +215,7 @@ const (
 // shape knownValidationFailures uses, minus the per-case suffix, because the
 // skip happens once for the whole group, before any case runs.
 //
-// Re-measured 2026-08-04 against suite commit bce6a47: 23 of the 47 skipped
+// Re-measured 2026-08-04 against suite commit bce6a47: 20 of the skipped
 // groups, down from 111 of 213. Sections are ordered by size; fixing a root
 // shape prunes a whole section at once, which is what happened here — a format
 // with no "type" is now the wrapper issue #106 asks for rather than `any`, so
@@ -250,9 +251,4 @@ var knownUnvalidatedRejections = map[string]string{
 	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
 	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
-
-	// gapRootContentOnly (3 entries)
-	"draft7/optional/content/validation of binary string-encoding":                     gapRootContentOnly,
-	"draft7/optional/content/validation of binary-encoded media type documents":        gapRootContentOnly,
-	"draft7/optional/content/validation of string-encoded content based on media type": gapRootContentOnly,
 }

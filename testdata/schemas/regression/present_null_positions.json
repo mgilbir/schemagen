@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PresentNullPositions",
+  "description": "Issue #110: the positions where the schema PERMITS a null, which is the other half of explicit_null_positions.json. A null there is not refused, so it survives the decode as the nil pointer, nil collection or untouched zero an ABSENT property also leaves -- and both halves of that are wrong. It was dropped on the way out, and any keyword the property states was then measured against a zero the document never supplied.",
+  "type": "object",
+  "properties": {
+    "untyped": {
+      "$comment": "The empty schema. Permits every value including null, and states nothing, so nothing rejects the null and nothing but the record says it was there."
+    },
+    "boundOnly": {
+      "$comment": "A constraint and no type. minLength is vacuous for a null, but the optional rule is gated on key presence -- which a present null satisfies -- so it used to read the Go zero and reject the document for a length of 0. That is the false rejection, and it is the whole document under --omit-empty=false.",
+      "minLength": 2
+    },
+    "reqBoundOnly": {
+      "$comment": "The same, required. There is no presence guard at all on a required property's rules, so the zero was read whatever the flags said.",
+      "minLength": 2
+    },
+    "nullableScalar": {
+      "$comment": "The idiomatic nullable spelling. omitempty used to be suppressed here so that nil marshalled as null -- which kept a present null and invented one for an absent property. Now the null is recorded and the tag says what it should about absence.",
+      "type": ["string", "null"],
+      "minLength": 2
+    },
+    "nullableList": {
+      "$comment": "The same for a collection: a nil slice is a null, a present [] is an empty array, and an absent property is neither.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "nullableObject": {
+      "$comment": "A property whose type carries its own Validate. Under --omit-empty=false the field is a struct value rather than a pointer, so encoding/json hands the null to its UnmarshalJSON and the zero struct then reaches Validate -- where the required key it does not have is a rejection of a document the schema permits. The required key is what makes that visible.",
+      "type": ["object", "null"],
+      "properties": { "a": { "type": "string" } },
+      "required": ["a"]
+    },
+    "refObject": {
+      "$comment": "A property whose type carries its own Validate and, under --omit-empty=false, is held by value rather than behind a pointer.",
+      "$ref": "#/$defs/Obj"
+    },
+    "refList": {
+      "$comment": "The case the field-type Validate has to be kept away from. A null leaves a nil slice, which is also what an absent property leaves and what an empty array is not -- and the named type's own Validate reads that nil as an array of length 0 and reports it short of minItems. The schema permits the null, so that is a rejection of a conforming document, and NullGuard is what stops the call being made.",
+      "$ref": "#/$defs/Pair"
+    },
+    "typedString": {
+      "$comment": "The accept-control: a property whose schema FORBIDS null keeps issue #103's refusal and must not be tracked here. Exactly one of the two paths claims each property.",
+      "type": "string"
+    }
+  },
+  "required": ["reqBoundOnly"],
+  "$defs": {
+    "Obj": {
+      "properties": { "a": { "type": "string" } },
+      "required": ["a"]
+    },
+    "Pair": {
+      "type": ["array", "null"],
+      "items": { "type": "integer" },
+      "minItems": 2
+    }
+  }
+}

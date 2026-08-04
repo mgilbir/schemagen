@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContentPosture2020",
+  "description": "Issue #115, the other posture. From 2019-09 the content vocabulary is annotation-only by definition -- the official suite marks {\"contentEncoding\":\"base64\"} satisfied by a string that is not base64 at all -- so the same schemas must produce the same types with no check in them. The type is built either way on purpose: the dialect decides what Validate does, not what the generated API is.",
+  "type": "object",
+  "properties": {
+    "blob": { "contentEncoding": "base64" },
+    "doc": { "type": "string", "contentMediaType": "application/json" },
+    "encodedDoc": {
+      "contentEncoding": "base64",
+      "contentMediaType": "application/json"
+    },
+    "list": {
+      "type": "array",
+      "items": { "type": "string", "contentEncoding": "base64" }
+    },
+    "viaAllOf": { "allOf": [{ "contentEncoding": "base64" }] },
+    "withSchema": {
+      "$comment": "contentSchema is an annotation in every draft that defines it, and never asserts. It still says the property is about a string, which is why it gets the wrapper rather than `any`.",
+      "contentMediaType": "application/json",
+      "contentSchema": { "type": "object", "required": ["foo"] }
+    }
+  }
+}

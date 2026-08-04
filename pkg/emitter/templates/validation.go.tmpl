@@ -167,8 +167,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- range $struct.Validations}}
-	{{- if .Optional}}
-	if {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
+	{{- if or .Optional .NullKey}}
+	{{- /* A present null satisfies this keyword whatever its argument, and the
+	       decoded value no longer says the null was there -- it left the same
+	       zero an absent property does. _jsonNulls records it. See issue #110. */}}
+	if {{if .Optional}}{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]{{end}}{{if and .Optional .NullKey}} && {{end}}{{if .NullKey}}!{{$recv}}._jsonNulls[{{printf "%q" .NullKey}}]{{end}} {
 	{{- end}}
 	{{- $value := validationValue $recv .}}
 	{{- if eq .RuleType "minLength"}}
@@ -378,7 +381,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- template "string_format_check" (mkStringFormatCtx $value (jsonErrorName .JSONName) .Value .StringBacked)}}
 	{{- end}}
 	{{- end}}
-	{{- if .Optional}}
+	{{- if eq .RuleType "content"}}
+	{{- if .IsPointer}}
+	if {{validationNonNil $recv .}} {
+	{{- template "string_content_check" (mkStringContentCtx $value (jsonErrorName .JSONName) .)}}
+	}
+	{{- else}}
+	{{- template "string_content_check" (mkStringContentCtx $value (jsonErrorName .JSONName) .)}}
+	{{- end}}
+	{{- end}}
+	{{- if or .Optional .NullKey}}
 	}
 	{{- end}}
 	{{- end}}
@@ -855,12 +867,32 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 		}
 	}
+	{{- else if and .PresenceGuard .NullGuard}}
+	// An optional property the source JSON did not carry left its Go zero
+	// behind, which is not a value the schema ever saw. _jsonKeys records the
+	// keys the JSON had; when nil the value was not built from JSON and
+	// presence is unknowable, so the check still runs. A property written as
+	// null leaves the same zero and is recorded in _jsonNulls; the schema
+	// permits the null, so there is nothing here to judge either.
+	if ({{$recv}}._jsonKeys == nil || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]) && !{{$recv}}._jsonNulls[{{printf "%q" .JSONName}}] {
+		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
+		}
+	}
 	{{- else if .PresenceGuard}}
 	// An optional property the source JSON did not carry left its Go zero
 	// behind, which is not a value the schema ever saw. _jsonKeys records the
 	// keys the JSON had; when nil the value was not built from JSON and
 	// presence is unknowable, so the check still runs.
 	if {{$recv}}._jsonKeys == nil || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
+		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
+		}
+	}
+	{{- else if .NullGuard}}
+	// A property written as null leaves the same Go zero an absent one does,
+	// and the schema permits the null, so the zero is not a value to judge.
+	if !{{$recv}}._jsonNulls[{{printf "%q" .JSONName}}] {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}.%w", err)
 		}
@@ -1520,6 +1552,16 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	JSON string where it does not.
 	*/ -}}
 	{{- template "string_format_check" (mkStringFormatCtxArgs (formatElemExpr $elem .StringBacked) $path $args .Value .StringBacked)}}
+	{{- end}}
+	{{- if eq .RuleType "content"}}
+	{{- /*
+	An element's content keywords, for the same reason and on the same terms:
+	{"items":{"type":"string","contentEncoding":"base64"}} would otherwise be
+	checked as a property and not as an element. The element is always the JSON
+	string here -- elementRules keeps the rule only where the element's Go kind
+	is "string" -- so there is no StringBacked question to ask.
+	*/ -}}
+	{{- template "string_content_check" (mkStringContentCtxArgs $elem $path $args .)}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
 	{
