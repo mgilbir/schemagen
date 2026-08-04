@@ -1,5 +1,7 @@
 package generator
 
+import "strings"
+
 // HelperSet records which shared helper functions a generated file depends on.
 //
 // Helpers are package-level functions, so emitting them into every file that
@@ -47,126 +49,97 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.FormatHostname = h.FormatHostname || other.FormatHostname
 }
 
-// Helpers reports which shared helpers this file's generated code calls.
-func (f *File) Helpers() HelperSet {
+// HelpersReferencedBy reports which shared helpers a generated file calls, read
+// from the emitted source rather than from the IR it came out of.
+//
+// The IR walk this replaces asked each definition what rules it carried, which
+// meant naming every field a rule can live in. It named the ones a format check
+// was known to sit in and not ItemValidations, so a schema whose only format was
+// on an array element or a map value emitted the call and never declared the
+// function: generated code that did not compile. The two hostname formats in an
+// element position did the same. That is the same failure the _dyn* family had
+// on PR #59, from the same cause -- a hand-maintained list of places to look.
+//
+// Reading the source cannot drift, because the thing being asked is exactly the
+// thing that matters: does this file contain a call to that function. It is also
+// what every harness in this repository has always done, which is why they all
+// compiled while the generator's own answer was wrong -- they were not testing
+// the generator's answer at all. There is one implementation now, and the
+// compile tests exercise it.
+//
+// The asymmetry makes over-matching safe: a name appearing in a comment pulls in
+// a function that nothing calls, which Go permits and which costs a few lines in
+// a file that is written once. Under-matching breaks the build.
+func HelpersReferencedBy(src string) HelperSet {
 	var set HelperSet
-	// The format checks are one block: every asserted format calls a
-	// schemagenFormat* function, and a rule of that type anywhere in the file
-	// pulls the block in. Splitting it per format would let two schemas in one
-	// package each claim a different subset and neither claim what the other
-	// needs, which is the bug the per-package helper file exists to prevent.
-	for _, td := range f.TypeDefs {
-		general, hostname := defFormatRuleKinds(td)
-		set.Format = set.Format || general || hostname
-		set.FormatHostname = set.FormatHostname || hostname
+	if strings.Contains(src, "oneofHasRequiredFields(") {
+		set.OneOf = true
 	}
-	for _, td := range f.TypeDefs {
-		switch d := td.(type) {
-		case *DynamicSchemaDef:
-			set.Dynamic = true
-		case *AnnotationSchemaDef:
-			// The evaluator calls the _dyn* predicates.
-			set.Annotations = true
-			set.Dynamic = true
-			if d.NeedsPattern {
-				set.AnnotationsPattern = true
-			}
-		case *AliasDef:
-			if d.IntegerDecode != nil {
-				set.Integer = true
-			}
-			// Only the nested form calls the walker; a flat rule is a string
-			// comparison written inline, and an alias's own value is refused by
-			// its NeedsNullCheck arm rather than by a rule at all.
-			if d.NullCheck != nil && d.CanHaveMethods() {
-				set.NullCheck = true
-			}
-		case *EnumDef:
-			if d.IntegerToken {
-				set.Integer = true
-			}
-		case *StructDef:
-			for i := range d.Fields {
-				if d.Fields[i].IntegerDecode != nil {
-					set.Integer = true
-				}
-			}
-			if d.NeedsNullCheckHelper() {
-				set.NullCheck = true
-			}
-			if d.AdditionalProperties != nil && d.AdditionalProperties.IntegerDecode != nil {
-				set.Integer = true
-			}
-			for _, o := range d.OneOfs {
-				for _, v := range o.Variants {
-					if v.IntegerDecode != nil {
-						set.Integer = true
-					}
-				}
-			}
-			// Object-level if/then/else checks call the _dyn* predicates against
-			// each property's decoded value, and so does a dependentSchemas
-			// branch: it is the same branch definition, gated on a key's
-			// presence rather than on an `if`.
-			if d.HasObjectConditionals() || d.HasDependentSchemaBranches() {
-				set.Dynamic = true
-				if d.anyConditionalCheck(func(c DynamicCheck) bool { return c.Kind == "const" }) {
-					set.DynamicConst = true
-				}
-			}
-			if len(d.OneOfs) > 0 {
-				set.OneOf = true
-			}
-			for _, o := range d.OneOfs {
-				if o.HasDiscriminator() {
-					set.OneOfDiscriminator = true
-				}
-			}
+	if strings.Contains(src, "oneofDiscriminatorValue(") {
+		set.OneOfDiscriminator = true
+	}
+	// The _dyn* family is matched by its prefix and pulled in whole, rather than
+	// by a list of names that has to be kept in step with the templates by hand.
+	if strings.Contains(src, "_dyn") {
+		set.Dynamic = true
+		set.DynamicConst = true
+	}
+	// The annotation evaluator calls the _dyn* predicates, so it pulls both in.
+	if strings.Contains(src, "_schemaNode") || strings.Contains(src, "_evalNode(") {
+		set.Annotations = true
+		set.Dynamic = true
+		// The evaluator's ECMA-262 arms are the one part of a helper block that
+		// is compiled in conditionally, because the engine is a third-party
+		// dependency and a package that never names a pattern should not
+		// acquire it. It is also the one signal here that is not a call:
+		// _dynPatternOK is reached from inside the block and never from the
+		// file, so what the file carries is the literal the arms exist to
+		// interpret. Both spellings that set it are matched -- "pattern" on a
+		// node, and a patternProperties member list, which is also what makes
+		// an additionalProperties node have to run the patterns to know what is
+		// left over. Missing one would leave the field set with nothing reading
+		// it, which is a check dropped in silence rather than a build failure,
+		// so this errs towards matching; naming the arms where they are not
+		// needed costs an import and compiles.
+		if strings.Contains(src, "Pattern: _strPtr(") || strings.Contains(src, "PatternProperties:") {
+			set.AnnotationsPattern = true
+		}
+	}
+	// jsonInteger and its three container rebuilders come as one block, and the
+	// name appears in every use of any of them.
+	if strings.Contains(src, "jsonInteger") {
+		set.Integer = true
+	}
+	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
+	// appears at every call site, so one substring pulls both in. The rule type
+	// alone never appears without a call: it exists only as that call's
+	// argument. A struct rejecting a null at its own top level writes the check
+	// inline and needs neither.
+	if strings.Contains(src, "checkJSONNulls(") {
+		set.NullCheck = true
+	}
+	// Every format check calls a schemagenFormat* function, and the general
+	// block is emitted whole, so the prefix pulls all of it in.
+	if strings.Contains(src, "schemagenFormat") {
+		set.Format = true
+	}
+	// The hostname block is separate because it is the only one needing
+	// x/net/idna, so it is matched by the four calls that reach it rather than
+	// by the prefix. A package whose schemas name no hostname must not take that
+	// dependency, which is the whole reason the split exists.
+	for _, call := range hostnameHelperCalls {
+		if strings.Contains(src, call) {
+			set.FormatHostname = true
 		}
 	}
 	return set
 }
 
-// defFormatRuleKinds reports whether a generated type emits a format check, and
-// whether any of them is one of the hostname checks, which need a dependency of
-// their own.
-//
-// Only the three definitions that can hold a format rule are asked, which are
-// the three the format posture and formatRuleShape already agree on: a struct's
-// field rules, an alias over its own value, and the wrapper an inferred or
-// untyped string resolves to.
-func defFormatRuleKinds(td TypeDef) (general, hostname bool) {
-	scan := func(rules []ValidationRule) {
-		for _, r := range rules {
-			if r.RuleType != "format" {
-				continue
-			}
-			if formatNeedsHostnameHelpers(r.Value) {
-				hostname = true
-			} else {
-				general = true
-			}
-		}
-	}
-	switch d := td.(type) {
-	case *StructDef:
-		scan(d.Validations)
-	case *AliasDef:
-		scan(d.Validations)
-	case *InferredAliasDef:
-		scan(d.Validations)
-	}
-	return general, hostname
-}
-
-// formatNeedsHostnameHelpers reports whether a format's check is one of the two
-// that go through x/net/idna. The email formats are here because an address's
-// domain is judged by the hostname check, so a schema naming only `email` still
-// needs the block.
-func formatNeedsHostnameHelpers(value any) bool {
-	switch value {
-	case "hostname", "idn-hostname", "email", "idn-email":
-		return true
-	}
-	return false
+// hostnameHelperCalls names every function the hostname helper block declares
+// that generated code calls directly.
+var hostnameHelperCalls = []string{
+	"schemagenFormatHostname(",
+	"schemagenFormatIDNHostname(",
+	"schemagenFormatEmail(",
+	"schemagenFormatIDNEmail(",
 }

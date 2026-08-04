@@ -177,8 +177,10 @@ func FuzzGenerate(f *testing.F) {
 
 		// Both emit paths run regardless of each other's outcome: an emission
 		// error is acceptable, and skipping the helper path on it would leave
-		// that code unexercised for every input the file template rejects.
-		_, _ = em.Emit(ir)
-		_, _, _ = em.EmitHelpers(cfg.PackageName, ir.Helpers())
+		// that code unexercised for every input the file template rejects. The
+		// helper set is read from whatever the file emitted, which is nothing
+		// when it failed -- an empty set is a legitimate input to EmitHelpers.
+		src, _ := em.Emit(ir)
+		_, _, _ = em.EmitHelpers(cfg.PackageName, generator.HelpersReferencedBy(string(src)))
 	})
 }

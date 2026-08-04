@@ -4,74 +4,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
+	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
 // sharedHelpersFor derives which shared helpers a generated file references.
-// Deriving it from the source keeps every call site free of extra plumbing --
-// and several call sites have only the text, having read a golden file rather
-// than generated it, so there is no IR to ask.
 //
-// The _dyn* family is matched by its prefix and pulled in whole. It used to be
-// a list of individual helper names, which had to be kept in step with the
-// templates by hand and silently was not: when _dynConstOK joined the family
-// and the list did not learn about it, every generated file that called it
-// failed to compile here -- 121 subtests of the external suite, reported as a
-// generator defect rather than as the harness gap it was. The asymmetry is the
-// whole argument. Over-including leaves an unused function in a throwaway file
-// that is compiled once and deleted; under-including breaks the build, and
-// does it in the one place set up to look like the code generator is at fault.
+// It is the generator's own function, and calling it rather than reimplementing
+// it is the point. This harness used to carry a copy, which meant every compile
+// test in the repository proved the *copy* right and never asked what the
+// generator would have decided. The generator decided by walking the IR and
+// naming the fields a rule can live in; it did not name ItemValidations, so a
+// format on an array element or a map value emitted a call to a function the
+// helper file never declared -- and no test could see it, because this harness
+// wrote the helper file the generator should have written. There is one
+// implementation now, so a compile test proves the shipped answer.
 func sharedHelpersFor(content string) generator.HelperSet {
-	var set generator.HelperSet
-	if strings.Contains(content, "oneofHasRequiredFields(") {
-		set.OneOf = true
-	}
-	if strings.Contains(content, "oneofDiscriminatorValue(") {
-		set.OneOfDiscriminator = true
-	}
-	if strings.Contains(content, "_dyn") {
-		set.Dynamic = true
-		set.DynamicConst = true
-	}
-	// The annotation evaluator calls the _dyn* predicates, so it pulls both in.
-	if strings.Contains(content, "_schemaNode") || strings.Contains(content, "_evalNode(") {
-		set.Annotations = true
-		set.Dynamic = true
-	}
-	// Every format check calls a schemagenFormat* function, and the block is
-	// emitted whole, so one substring pulls all of them in.
-	if strings.Contains(content, "schemagenFormat") {
-		set.Format = true
-	}
-	// The hostname block is separate because it is the only one that needs
-	// x/net/idna, so it is detected by the four calls that reach it rather than
-	// by the general prefix.
-	for _, call := range []string{
-		"schemagenFormatHostname(", "schemagenFormatIDNHostname(",
-		"schemagenFormatEmail(", "schemagenFormatIDNEmail(",
-	} {
-		if strings.Contains(content, call) {
-			set.FormatHostname = true
-		}
-	}
-	// jsonInteger and its three container rebuilders come as one block, and the
-	// name appears in every use of any of them -- the shadow field's type, the
-	// closure parameter of a rebuilder, the conversion at the leaf -- so one
-	// substring pulls the whole family in.
-	if strings.Contains(content, "jsonInteger") {
-		set.Integer = true
-	}
-	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
-	// appears at every call site, so one substring pulls both in. The rule type
-	// alone never appears without a call: it exists only as that call's argument.
-	if strings.Contains(content, "checkJSONNulls(") {
-		set.NullCheck = true
-	}
-	return set
+	return generator.HelpersReferencedBy(content)
 }
 
 // packageNameOf reads the package clause from generated source, so the helper
@@ -117,4 +71,118 @@ func writeSharedHelpers(t *testing.T, dir, content string) {
 	if err := writeSharedHelpersErr(dir, content); err != nil {
 		t.Fatalf("writing shared helper file: %v", err)
 	}
+}
+
+// helperCallPattern matches a call to any shared helper the generated code can
+// make. The families are matched by prefix rather than by name so that a helper
+// added to a block is covered the day it is written -- a list of names is what
+// failed on PR #59 and again on the format block.
+var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|_dyn\w*|_schemaNode|_evalNode)\(`)
+
+// TestHelperFileDeclaresEveryHelperCalled compiles the one claim the helper file
+// has to satisfy: everything the generated code calls, it declares.
+//
+// This is the guard that was missing. Which helpers a package needs used to be
+// decided by walking the IR and naming the fields a helper-backed rule can live
+// in; ItemValidations was not named, so a `format` on an array element or a map
+// value emitted the call and never the function, and the generated package did
+// not compile. Every harness in this repository derived the set from the emitted
+// source instead, so every harness wrote the right helper file and none of them
+// asked what the generator would have written. The two answers have been one
+// function since, and this walks every fixture in the tree through it.
+//
+// It reads the emitted source rather than a golden, so a fixture that is not
+// pinned as a golden is covered too, and both format postures are exercised:
+// which checks are emitted depends on the draft, so a fixture that annotates on
+// its own dialect is generated a second time with assertion forced.
+func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
+	schemaFiles := allRegressionSchemas(t)
+	if len(schemaFiles) == 0 {
+		t.Fatal("no schemas found to check")
+	}
+
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatalf("creating emitter: %v", err)
+	}
+
+	for _, path := range schemaFiles {
+		for _, cfg := range []struct {
+			name    string
+			asserts bool
+		}{{"dialect", false}, {"format-assertion", true}} {
+			t.Run(filepath.Base(path)+"/"+cfg.name, func(t *testing.T) {
+				s, err := schema.LoadFromFile(path)
+				if err != nil {
+					t.Skipf("not loadable: %v", err)
+				}
+				s.Normalize()
+				gen := generator.New(generator.Config{
+					PackageName:     "testpkg",
+					OmitEmpty:       true,
+					FormatAssertion: cfg.asserts,
+				})
+				ir, err := gen.Generate(s)
+				if err != nil {
+					t.Skipf("not generatable: %v", err)
+				}
+				src, err := em.Emit(ir)
+				if err != nil {
+					t.Skipf("not emittable: %v", err)
+				}
+
+				helperSrc, needed, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
+				if err != nil {
+					t.Fatalf("emitting helpers: %v", err)
+				}
+				declared := ""
+				if needed {
+					declared = string(helperSrc)
+				}
+
+				for _, m := range helperCallPattern.FindAllStringSubmatch(string(src), -1) {
+					name := m[1]
+					if !declaresFunc(declared, name) {
+						t.Errorf("%s calls %s, which the helper file does not declare", filepath.Base(path), name)
+					}
+				}
+			})
+		}
+	}
+}
+
+// declaresFunc reports whether src declares a function of this name. The type
+// parameter list is optional: three of the integer rebuilders are generic, and
+// matching only "func name(" reported them as undeclared when they were right
+// there.
+func declaresFunc(src, name string) bool {
+	return regexp.MustCompile(`func\s+` + regexp.QuoteMeta(name) + `\s*[\[(]`).MatchString(src)
+}
+
+// allRegressionSchemas lists every schema fixture in the tree, which is the
+// population this guard has to cover: a fixture that is not a golden is still a
+// schema someone can hand the CLI.
+func allRegressionSchemas(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	root := filepath.Join("..", "testdata", "schemas")
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+			return nil
+		}
+		// The adversarial corpus is deliberately malformed; whether it generates
+		// at all is FuzzGenerate's business, not this test's.
+		if strings.Contains(filepath.ToSlash(path), "/adversarial/") {
+			return nil
+		}
+		out = append(out, path)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking schemas: %v", err)
+	}
+	return out
 }

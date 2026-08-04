@@ -4121,3 +4121,67 @@ func TestTypedFormatAnnotatesOnNewerDrafts(t *testing.T) {
 		nil,
 	)
 }
+
+// TestFormatHelperPositionsCompileAndCheck covers the formats whose check is a
+// shared helper rather than a decode, in the container positions.
+//
+// The compile is the first assertion and the one this exists for. A format on an
+// array element or a map value emitted a call to schemagenFormatIPv4Addr,
+// schemagenFormatEmail and the rest while the helper file declared none of them,
+// because which helpers a package needs was decided by walking the IR and the
+// walk did not look at ItemValidations. Generated code that does not build is
+// the worst thing this generator can produce, and nothing caught it: every
+// harness derived the helper set from the emitted source instead of asking the
+// generator, so every harness wrote the file the generator should have written.
+//
+// The fixture holds container positions only. A property, a tuple slot or a
+// oneOf branch materializes a named type whose own check pulls the helper block
+// in, which would mask the omission -- an earlier draft of this fixture had a
+// tuple in it and the planted fault walked straight past.
+//
+// runValidationCases builds and runs the program, so the rejections below are
+// the second assertion: the helpers are not merely declared, they are reached.
+func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/format_helper_positions.json",
+		[]string{
+			`{}`,
+			`{"v4List":["192.0.2.7"]}`,
+			`{"v6List":["2001:db8::1"]}`,
+			`{"mailList":["a@b.test"]}`,
+			`{"hostList":["example.test"]}`,
+			`{"idnHostList":["실례.테스트"]}`,
+			`{"idnMailList":["실례@실례.테스트"]}`,
+			`{"uuidList":["123e4567-e89b-12d3-a456-426614174000"]}`,
+			`{"durationList":["P4DT12H30M5S"]}`,
+			`{"dateList":["2020-02-29"]}`,
+			`{"timeList":["08:30:06Z"]}`,
+			`{"uriList":["https://example.test/x"]}`,
+			`{"regexList":["[^]"]}`,
+			`{"v4Map":{"k":"192.0.2.7"}}`,
+			`{"mailMap":{"k":"a@b.test"}}`,
+			`{"hostMap":{"k":"example.test"}}`,
+			`{"nested":[["192.0.2.7"]]}`,
+			// Empty containers: a check on a position must not make the position
+			// mandatory.
+			`{"v4List":[],"v4Map":{},"nested":[]}`,
+		},
+		[]string{
+			`{"v4List":["2001:db8::1"]}`,
+			`{"v6List":["192.0.2.7"]}`,
+			`{"mailList":["not-an-email"]}`,
+			`{"hostList":["-leading-hyphen"]}`,
+			`{"idnHostList":["example."]}`,
+			`{"idnMailList":["not-an-email"]}`,
+			`{"uuidList":["123e4567-e89b-12d3"]}`,
+			`{"durationList":["P1Y2W"]}`,
+			`{"dateList":["2021-02-29"]}`,
+			`{"timeList":["12:00:00"]}`,
+			`{"uriList":["/abc"]}`,
+			`{"v4Map":{"k":"2001:db8::1"}}`,
+			`{"mailMap":{"k":"not-an-email"}}`,
+			`{"hostMap":{"k":"-leading-hyphen"}}`,
+			`{"nested":[["2001:db8::1"]]}`,
+		},
+	)
+}

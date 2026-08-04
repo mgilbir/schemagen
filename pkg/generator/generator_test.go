@@ -6768,21 +6768,6 @@ func TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation(t *testing.T)
 	}
 }
 
-// TestIntegerDecodeNeedsTheSharedHelpers pins the dependency the emitted code
-// has on the helper file. jsonInteger and its rebuilders are package-level, so
-// a file that names them without the package declaring them does not compile --
-// and the helper file is written only for the set a File reports.
-func TestIntegerDecodeNeedsTheSharedHelpers(t *testing.T) {
-	ir := generateForDraft(t, integerPositionsSchema, schema.DraftUnknown)
-	if !ir.Helpers().Integer {
-		t.Fatalf("the file decodes integers through jsonInteger but does not ask for it: %+v", ir.Helpers())
-	}
-	plain := generateForItemTest(t, `{"title":"Doc","type":"object","properties":{"s":{"type":"string"}}}`)
-	if plain.Helpers().Integer {
-		t.Fatalf("a file with no integer in it asks for the integer helpers")
-	}
-}
-
 // enumNamed returns the EnumDef with the given name.
 func enumNamed(t *testing.T, ir *File, name string) *EnumDef {
 	t.Helper()

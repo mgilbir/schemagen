@@ -377,13 +377,18 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 
-				helpers.Merge(ir.Helpers())
-
 				// 5. Emit Go code (emitter created once, above the loop)
 				src, err := em.Emit(ir)
 				if err != nil {
 					return fmt.Errorf("emitting code for %s: %w", schemaPath, err)
 				}
+
+				// Which shared helpers this file needs is read from what it
+				// actually calls. Asking the IR meant naming every field a
+				// helper-backed rule can live in, and a field that was missed
+				// emitted the call without the declaration -- generated code
+				// that did not compile. See HelpersReferencedBy.
+				helpers.Merge(generator.HelpersReferencedBy(string(src)))
 
 				// 6. Write output file
 				outFile := deriveOutputFilename(schemaPath)
@@ -764,12 +769,11 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				}
 			}
 
-			helpers.Merge(ir.Helpers())
-
 			src, err := em.Emit(ir)
 			if err != nil {
 				return fmt.Errorf("emitting code for %s: %w", in.path, err)
 			}
+			helpers.Merge(generator.HelpersReferencedBy(string(src)))
 
 			outPath := p.schemaOutputs[in.id]
 			if outPath == "" {

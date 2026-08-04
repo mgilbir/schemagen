@@ -1219,35 +1219,47 @@ func TestHostnameHelpersAreConfinedToSchemasThatNeedThem(t *testing.T) {
 	}
 }
 
-// TestFormatHelperSetTracksTheFormatsUsed checks the generator half of the same
-// split: which block a file needs is read off the rules it carries, and `email`
-// counts as a hostname because an address's domain is judged by that check.
+// TestFormatHelperSetTracksTheFormatsUsed checks the other half of the split:
+// which block a file needs is read from what the file calls, and `email` counts
+// as a hostname because an address's domain is judged by that check.
+//
+// It emits the file first and asks HelpersReferencedBy about the result, which
+// is what the CLI does. Asking an IR walk instead is what shipped a call to a
+// function nothing declared.
 func TestFormatHelperSetTracksTheFormatsUsed(t *testing.T) {
-	fileWith := func(format string) *generator.File {
-		return &generator.File{TypeDefs: []generator.TypeDef{
-			&generator.AliasDef{
-				Name:        "X",
-				Underlying:  &generator.PrimitiveType{Name: "string"},
-				Validations: []generator.ValidationRule{{RuleType: "format", Value: format}},
-			},
-		}}
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
 	}
 	for _, tc := range []struct {
 		format            string
 		wantFmt, wantHost bool
 	}{
 		{"uuid", true, false},
-		{"date-time", true, false},
+		{"date", true, false},
 		{"ipv4", true, false},
 		{"hostname", true, true},
 		{"idn-hostname", true, true},
 		{"email", true, true},
 		{"idn-email", true, true},
 	} {
-		set := fileWith(tc.format).Helpers()
+		f := &generator.File{PackageName: "testpkg", TypeDefs: []generator.TypeDef{
+			&generator.AliasDef{
+				Name:       "X",
+				Underlying: &generator.PrimitiveType{Name: "string"},
+				Validations: []generator.ValidationRule{
+					{RuleType: "format", Value: tc.format, StringBacked: true},
+				},
+			},
+		}}
+		src, err := e.Emit(f)
+		if err != nil {
+			t.Fatalf("format %q: Emit() error: %v", tc.format, err)
+		}
+		set := generator.HelpersReferencedBy(string(src))
 		if set.Format != tc.wantFmt || set.FormatHostname != tc.wantHost {
-			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v",
-				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost)
+			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v\n%s",
+				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost, src)
 		}
 	}
 }

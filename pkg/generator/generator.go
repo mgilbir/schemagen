@@ -9871,6 +9871,16 @@ func (g *Generator) populateAliasDelegates() {
 	// resolves its $ref to C1, which resolves to D, and each is appended when it
 	// completes. The loop below therefore meets a delegate before whatever
 	// borrows from it.
+	//
+	// That is an assumption about g.output.TypeDefs being in generation order,
+	// and it is the thing to check first if a long alias chain ever loses its
+	// UnmarshalJSON again. Anything that appends a definition before the one it
+	// is defined over -- a reordering pass, a definition materialized eagerly
+	// from a table rather than on the way down a $ref -- breaks it silently, and
+	// the symptom is the decode failure described above rather than anything
+	// this loop reports. A fixed-point loop was written for it and removed: no
+	// schema produces that ordering today, so nothing could make the loop fail,
+	// and unguarded machinery is worse than none.
 	for _, td := range g.output.TypeDefs {
 		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
 			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
