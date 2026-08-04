@@ -1251,6 +1251,76 @@ func TestExplicitDraftOverridesDocumentSchemaKeyword(t *testing.T) {
 	}
 }
 
+// TestV1ReadsThe2020KeywordSet pins the keywords whose draft gate names
+// dialects one at a time rather than "modern".
+//
+// v1's keyword set is 2020-12's, but supportsPrefixItems and
+// supportsDependentRequired were written as explicit lists, so a dialect added
+// later falls outside them by default and the keyword is silently dropped: a v1
+// tuple would type as a homogeneous slice and a v1 dependentRequired would
+// enforce nothing. Neither failure shows in the emitted code -- it compiles and
+// accepts more -- which is why the draft-07 controls are here. They are the
+// reading v1 must *not* get, and without them a gate that answered "yes" to
+// every draft would pass this test.
+func TestV1ReadsThe2020KeywordSet(t *testing.T) {
+	t.Run("dialect is recognised", func(t *testing.T) {
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(`{"$schema":"https://json-schema.org/v1"}`), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+		if got := New(Config{PackageName: "testpkg"}).draftForSchema(&s); got != schema.DraftV1 {
+			t.Errorf("draftForSchema = %v, want %v", got, schema.DraftV1)
+		}
+	})
+
+	t.Run("prefixItems", func(t *testing.T) {
+		const input = `{
+			"$schema": "https://json-schema.org/v1",
+			"type": "array",
+			"prefixItems": [{"type":"string"}, {"type":"string"}]
+		}`
+		tupleLen := func(t *testing.T, draft schema.Draft) int {
+			t.Helper()
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(input), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			ir, err := New(Config{PackageName: "testpkg", Draft: draft}).Generate(&s)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			for _, td := range ir.TypeDefs {
+				if d, ok := td.(*AliasDef); ok {
+					return len(d.TupleItems)
+				}
+			}
+			t.Fatalf("expected an AliasDef among %d type defs", len(ir.TypeDefs))
+			return 0
+		}
+		// DraftUnknown leaves the document's own $schema to decide.
+		if got := tupleLen(t, schema.DraftUnknown); got != 2 {
+			t.Errorf("under the document's own v1 dialect: TupleItems = %d, want 2", got)
+		}
+		if got := tupleLen(t, schema.Draft07); got != 0 {
+			t.Errorf("with --draft 7, a dialect that has no prefixItems: TupleItems = %d, want 0", got)
+		}
+	})
+
+	// dependentRequired is draft-gated where a $ref merge carries it across,
+	// which is what mergeAllOfInto reads supportsDependentRequired for. The
+	// suite's v1/dependentRequired.json exercises the keyword itself.
+	t.Run("dependentRequired", func(t *testing.T) {
+		if !supportsDependentRequired(schema.DraftV1) {
+			t.Error("supportsDependentRequired(DraftV1) = false, want true: v1 has 2020-12's keyword set")
+		}
+		if supportsDependentRequired(schema.Draft07) {
+			t.Error("supportsDependentRequired(Draft07) = true, want false")
+		}
+	})
+}
+
 // The one exception to Config.Draft precedence: an embedded resource that
 // establishes its own $id-scoped document root with an explicit $schema keeps
 // its own dialect, so cross-draft $ref semantics survive the override.

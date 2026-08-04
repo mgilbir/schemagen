@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/v1",
+  "title": "FormatPostureV1",
+  "description": "The same shapes as format_posture_2020, written in the dialect that reverses its decision. v1 drops vocabularies and the official suite states format assertion at the required level, so these assert by default and --format-annotation is what turns them back off.",
+  "type": "object",
+  "properties": {
+    "typed": {"type": "string", "format": "ipv4"},
+    "untyped": {"format": "ipv4"},
+    "nullable": {"type": ["string", "null"], "format": "ipv4"},
+    "stamp": {"type": "string", "format": "date-time"},
+    "mail": {"type": "string", "format": "email"}
+  }
+}

@@ -32,11 +32,28 @@ type Config struct {
 	// sixteen formats assertive and call the posture annotation-only anyway.
 	// Under assertion the mapping returns, and with it the typed accessor.
 	FormatAssertion bool
-	Validation      ValidationMode // Controls static vs hybrid/runtime validation planning.
-	FieldNames      FieldNameMap   // Optional per-type overrides pinning JSON properties to specific Go field names.
-	LenientRefs     bool           // When true, $refs that no resolver can serve degrade to any instead of failing generation.
-	RootTypeName    string         // Overrides the root type name (default: the schema title, or "Root" when there is none).
-	SharedTypes     bool           // Preserve generated-type state across Generate calls so several schemas emit into one Go package without duplicating shared types.
+
+	// FormatAnnotation is FormatAssertion's opposite: it makes "format" an
+	// annotation on every draft, including the ones whose dialect asserts.
+	//
+	// It exists because v1 asserts by default and states the annotation reading
+	// as a legitimate alternative configuration -- the official suite files it
+	// under optional/format-annotation.json, the mirror image of the
+	// optional/format/ directory that states assertion for 2019-09 and 2020-12.
+	// Without a downward override that configuration is unreachable, and a v1
+	// schema naming a format this generator checks imperfectly would have no way
+	// to stop it rejecting a document the author considers fine.
+	//
+	// Mutually exclusive with FormatAssertion; the CLI refuses both at once. If
+	// both are set programmatically this one wins, because it withholds a
+	// rejection rather than inventing one.
+	FormatAnnotation bool
+
+	Validation   ValidationMode // Controls static vs hybrid/runtime validation planning.
+	FieldNames   FieldNameMap   // Optional per-type overrides pinning JSON properties to specific Go field names.
+	LenientRefs  bool           // When true, $refs that no resolver can serve degrade to any instead of failing generation.
+	RootTypeName string         // Overrides the root type name (default: the schema title, or "Root" when there is none).
+	SharedTypes  bool           // Preserve generated-type state across Generate calls so several schemas emit into one Go package without duplicating shared types.
 
 	// ImportPath is the Go import path of the package being generated, and
 	// CrossPackage the registry shared by every generator of a multi-package

@@ -17,7 +17,7 @@ A CLI tool that generates idiomatic Go type definitions from JSON Schema files.
 - Default values for struct fields
 - `additionalProperties` and `patternProperties` support with overflow maps
 - Optional `*big.Int` wrapper for arbitrary-precision integers
-- Supports JSON Schema drafts 3, 4, 6, 7, 2019-09, and 2020-12 (auto-detected or overridden via `--draft`)
+- Supports JSON Schema drafts 3, 4, 6, 7, 2019-09, 2020-12 and v1 (auto-detected or overridden via `--draft`)
 
 ## Installation
 
@@ -56,8 +56,9 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
 | `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
+| `--format-annotation` | | `false` | Treat `format` as an annotation on every draft. The opposite of `--format-assertion`, and mutually exclusive with it |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
-| `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`) |
+| `--draft` | | *(auto)* | Override JSON Schema draft version (values: `3`, `4`, `6`, `7`, `2019-09`, `2020-12`, `v1`) |
 | `--validation` | | `static` | Validation strategy: `static`, `hybrid`, or `runtime` |
 | `--field-map` | | | Path to a JSON file pinning JSON properties to specific Go field names (see below) |
 | `--lenient-refs` | | `false` | Degrade `$ref`s that no resolver can serve to `any` instead of failing generation |
@@ -78,10 +79,16 @@ follows the document's own dialect rather than a single house rule.
 | --- | --- | --- |
 | draft 3, 4, 6, 7 | **asserts** | The spec says an implementation SHOULD validate a format it recognises, and MAY treat it as an annotation. Asserting is the reading this generator takes. |
 | 2019-09, 2020-12 | **annotates** | The default meta-schema declares the `format-annotation` vocabulary, whose content is that `format` produces an annotation and no assertion. `{"format":"email"}` is satisfied by `"2962"`, and the official test suite marks that document valid. |
+| v1 | **asserts** | v1 drops vocabularies, and the official test suite states format assertion at the required level — its `format/` directory is top-level rather than under `optional/`, and there `{"format":"email"}` is *not* satisfied by `"2962"`. The annotation reading is what moves to `optional/` instead. |
 | no `$schema` | **annotates** | An unknown dialect is read as a modern one everywhere else in the generator, and withholding a rejection is the safe direction. |
 
+So the history runs: asserted in the older drafts, demoted to an annotation in
+2019-09 and 2020-12, and promoted back to an assertion in v1.
+
 `--format-assertion` asserts on every draft, for callers who want the older
-behaviour on a newer document.
+behaviour on a newer document. `--format-annotation` is its opposite and
+annotates on every draft, for callers on a dialect that asserts. Passing both is
+an error rather than a silent tie-break.
 
 The flag reaches the Go type as well as the check. `date-time` maps to
 `time.Time` and `ipv4`/`ipv6` to `netip.Addr`, and those types assert the format
@@ -117,6 +124,7 @@ over, and the dialect decides in the same way.
 | draft 7 | **asserts** | The draft that introduced the keywords says an implementation SHOULD decode the string and MAY refuse one it cannot — the same permission `format` is read under. |
 | 2019-09, 2020-12 | **annotates** | The content vocabulary is annotation-only by definition. `{"contentEncoding":"base64"}` is satisfied by `"eyJmb28iOi%iYmFyIn0K"`, which is not base64 at all, and the official test suite marks that document valid. |
 | draft 3, 4, 6 | **annotates** | The keywords are not defined there, so a document carrying one is carrying an unknown keyword, which every draft says to ignore. |
+| v1 | **annotates** | The suite's `content.json` marks every malformed payload valid, as 2019-09 and 2020-12 do. v1 reverses the `format` decision, not this one. |
 | no `$schema` | **annotates** | As for `format`: withholding a rejection is the safe direction. |
 
 `base64` is the only `contentEncoding` and `application/json` the only
@@ -300,9 +308,12 @@ This enables the HTTP resolver, which fetches and caches remote schemas at gener
 ```bash
 schemagen generate legacy.json --draft 4
 schemagen generate modern.json --draft 2020-12
+schemagen generate current.json --draft v1
 ```
 
-This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics).
+This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tuple array syntax, exclusive min/max semantics, and whether `format` asserts).
+
+`v1` is the undated stable release that succeeds the dated drafts, dialect URI `https://json-schema.org/v1`. Its keyword set is 2020-12's without the vocabulary machinery, and it is not an alias for 2020-12: `format` asserts under v1 and annotates under 2020-12.
 
 `--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
 

@@ -337,6 +337,37 @@ func TestDetectDraftUnknown(t *testing.T) {
 	}
 }
 
+// TestDetectDraftV1 pins the undated dialect that succeeds the dated drafts.
+//
+// It matters more than the other five because getting it wrong is silent: v1's
+// URI matches none of the "draft-NN" or "draft/YYYY-MM" patterns, so a missing
+// case answers DraftUnknown, and DraftUnknown is read as a modern draft nearly
+// everywhere -- prefixItems, $ref siblings and integer tokens would all come out
+// right, and only the format posture would be wrong. A v1 schema would then stop
+// enforcing every format it names and nothing would fail.
+//
+// The trailing "#" is the spelling MappingResolver strips elsewhere and several
+// drafts carry, so both forms are checked. The last two are the near misses:
+// neither is the v1 dialect and neither may answer DraftV1.
+func TestDetectDraftV1(t *testing.T) {
+	for _, tt := range []struct {
+		uri  string
+		want Draft
+	}{
+		{"https://json-schema.org/v1", DraftV1},
+		{"https://json-schema.org/v1#", DraftV1},
+		{"http://json-schema.org/v1", DraftV1},
+		{"https://json-schema.org/draft/2020-12/schema", Draft202012},
+		{"https://example.test/v1", DraftUnknown},
+	} {
+		t.Run(tt.uri, func(t *testing.T) {
+			if got := DetectDraft(&Schema{Schema: tt.uri}); got != tt.want {
+				t.Errorf("DetectDraft(%q) = %v, want %v", tt.uri, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveRoot(t *testing.T) {
 	s := &Schema{Type: TypeList{"object"}}
 	r := NewResolver(s)
@@ -740,6 +771,7 @@ func TestDraftString(t *testing.T) {
 		{Draft07, "Draft-07"},
 		{Draft201909, "Draft 2019-09"},
 		{Draft202012, "Draft 2020-12"},
+		{DraftV1, "v1"},
 		{DraftUnknown, "Unknown"},
 	}
 	for _, tt := range tests {

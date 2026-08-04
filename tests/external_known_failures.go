@@ -40,14 +40,14 @@ var knownParseFailures = map[string]string{}
 //   - (unevaluatedProperties anyOf: FIXED via runtime branch matching) (4)
 //   - (unevaluatedProperties oneOf: FIXED via runtime branch matching + flattening) (10)
 var knownValidationFailures = map[string]string{
-	// Not a defect: the pinned corpus is stale here and we are right. ES2018
-	// added lookbehind and the ECMA-262 engine accepts it, so `(?<=foo)bar` is a
-	// valid pattern; the suite at bce6a47 still marks it invalid. Upstream has
-	// since flipped the case to valid and added Python-specific syntax as the
-	// invalid one instead, so bumping the pin (#121) both removes this failure
-	// and makes this entry fail as "passed but is in known-failures list",
-	// which is the prompt to delete it.
-	"draft3/optional/format/ecmascript-regex/ECMA 262 regex dialect recognition/ECMA 262 has no support for lookbehind": "pinned suite predates ES2018 lookbehind; fixed upstream, resolves on the pin bump (#121)",
+	// (draft3 ECMA 262 lookbehind — REMOVED by the #121 corpus bump. The pinned
+	// suite was stale and we were right: ES2018 added lookbehind and the ECMA-262
+	// engine accepts `(?<=foo)bar`, while bce6a47 still marked it invalid.
+	// Upstream flipped that case to valid and made Python-style named groups the
+	// invalid one instead. Note how it went, because it is why keyLedger exists:
+	// the case was *renamed* as well as flipped, so the key stopped matching
+	// anything and the bidirectional check never fired. Nothing would have said
+	// this entry had become a lie.)
 
 	// (default keyword — FIXED via optional field presence tracking)
 
@@ -215,19 +215,20 @@ const (
 // shape knownValidationFailures uses, minus the per-case suffix, because the
 // skip happens once for the whole group, before any case runs.
 //
-// Re-measured 2026-08-04 against suite commit bce6a47: 18 of the 34 skipped
+// Re-measured 2026-08-04 against suite commit cf2e5e0: 20 of the 39 skipped
 // groups, down from 111 of 213. Sections are ordered by size; fixing a root
-// shape prunes a whole section at once, which is what happened here — a format
-// with no "type" is now the wrapper issue #106 asks for rather than `any`, so
-// 88 of the 90 entries filed under gapRootFormatOnly went with it, along with
-// the last of gapRootRefToFalse and gapRootDependenciesOnly.
+// shape prunes a whole section at once, which is what happened earlier — a
+// format with no "type" is now the wrapper issue #106 asks for rather than
+// `any`, so 88 of the 90 entries filed under gapRootFormatOnly went with it,
+// along with the last of gapRootRefToFalse and gapRootDependenciesOnly.
 //
-// The last two to go were the draft2019-09 and draft2020-12 spellings of "not/
-// collect annotations inside a 'not', even if collection is disabled". Issue
-// #111 taught the runtime evaluator unevaluatedProperties, which is the keyword
-// those two roots are built from, so a schema that was composition-and-nothing-
-// else now compiles to the evaluator and carries a Validate. Both failed by
-// name on the run that measured this file, which is the mechanism working.
+// The #121 corpus bump left every one of the 18 entries measured at bce6a47
+// standing — the staleness sweep named none of them — and added exactly two,
+// both from the v1 draft this repository had never run. Each is the v1 spelling
+// of a root shape already listed for 2020-12, which is the expected shape of the
+// delta: v1's keyword set is 2020-12's, so it inherits 2020-12's gaps and no
+// others. Both failed by name on the first run that walked v1, rather than
+// arriving as a silent skip.
 //
 // The section counts below were re-derived from the entries rather than carried
 // forward: gapRootCompositionOnly and gapRootConditionalOnly said 37 and 21
@@ -240,7 +241,7 @@ var knownUnvalidatedRejections = map[string]string{
 	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
 	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
 
-	// gapRootCompositionOnly (9 entries)
+	// gapRootCompositionOnly (10 entries)
 	"draft2019-09/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
 	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
@@ -250,10 +251,15 @@ var knownUnvalidatedRejections = map[string]string{
 	"draft2020-12/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
 	"draft6/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
 	"draft7/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
+	"v1/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                      gapRootCompositionOnly,
 
-	// gapRootConditionalOnly (4 entries)
+	// gapRootConditionalOnly (5 entries)
 	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)": gapRootConditionalOnly,
 	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
 	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
 	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
+	// v1 has no counterpart to "multiple dynamic paths": its dynamicRef.json is
+	// 2020-12's minus that group, so only one of the pair is listed here. An
+	// entry for it would be reported stale rather than quietly ignored.
+	"v1/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef": gapRootConditionalOnly,
 }

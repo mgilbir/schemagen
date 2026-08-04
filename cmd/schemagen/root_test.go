@@ -581,6 +581,11 @@ func TestParseDraft(t *testing.T) {
 		{"2020-12", schema.Draft202012, false},
 		{"draft-2020-12", schema.Draft202012, false},
 		{"2020", schema.Draft202012, false},
+		// v1 is the undated stable release, so it has no "draft-" spelling.
+		{"v1", schema.DraftV1, false},
+		{"V1", schema.DraftV1, false},
+		{"1", schema.DraftV1, false},
+		{"draft-v1", schema.DraftUnknown, true},
 		{"invalid", schema.DraftUnknown, true},
 		{"5", schema.DraftUnknown, true},
 		{"", schema.DraftUnknown, true},
@@ -644,6 +649,32 @@ func TestGenerateDraftFlagInvalid(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown draft version") {
 		t.Errorf("expected 'unknown draft version' error, got: %v", err)
+	}
+}
+
+// TestGenerateFormatFlagsAreExclusive checks that the two format postures
+// cannot be asked for at once.
+//
+// They are opposites, so a command line naming both says nothing, and the
+// generator's documented tie-break -- annotation wins -- would silently discard
+// half of what was typed. Refusing is the only answer that tells the caller
+// which half would have been ignored.
+func TestGenerateFormatFlagsAreExclusive(t *testing.T) {
+	schemaPath := findTestdataSchema(t, "basic/simple_object.json")
+
+	tmpDir := t.TempDir()
+	cmd := NewRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"generate", "--output-dir", tmpDir, "--format-assertion", "--format-annotation", schemaPath})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error when both format flags are given")
+	}
+	if !strings.Contains(err.Error(), "opposites") {
+		t.Errorf("expected the error to say the flags are opposites, got: %v", err)
 	}
 }
 

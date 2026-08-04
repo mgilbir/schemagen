@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmptyEnumPositions",
+  "description": "The same empty enum in the positions a property can reach it from, with a non-empty enum beside them as the control: a fix that forbade every enum would satisfy the invalid half and mean nothing.",
+  "type": "object",
+  "properties": {
+    "inline": {"enum": []},
+    "typed": {"type": "string", "enum": []},
+    "viaRef": {"$ref": "#/$defs/never"},
+    "populated": {"enum": ["a", "b"]}
+  },
+  "$defs": {
+    "never": {"enum": []}
+  }
+}

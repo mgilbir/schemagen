@@ -131,6 +131,72 @@ func schemagenDisallowedException(label string) error {
 	return nil
 }
 
+// schemagenPVALIDException reports whether c is one of the RFC 5892 section 2.6
+// exceptions the derivation gives a value other than DISALLOWED.
+//
+// Six are PVALID outright and five are CONTEXTO, which schemagenContextO judges
+// by their surroundings. Both groups have to be named here because none of them
+// is a letter, a mark or a digit, so the LetterDigits rule below would refuse
+// them -- and every one appears in a name the official suite marks valid:
+// "ßς་〇", "l·l", "α͵β", "א׳ב", "א״ב", "・ぁ".
+func schemagenPVALIDException(c rune) bool {
+	switch c {
+	case 0x00DF, 0x03C2, 0x06FD, 0x06FE, 0x0F0B, 0x3007: // PVALID
+		return true
+	case 0x00B7, 0x0375, 0x05F3, 0x05F4, 0x30FB: // CONTEXTO
+		return true
+	}
+	return false
+}
+
+// schemagenDisallowedCodePoint applies RFC 5892's LetterDigits rule to one
+// U-label: a code point that is not a letter, a mark or a decimal digit falls
+// through the derivation to DISALLOWED.
+//
+// It is the half of the derivation that decides the general case, where
+// schemagenDisallowedException handles only the ten hand-written exceptions. It
+// matters because an A-label is ASCII and LDH-valid whatever it encodes, so
+// nothing upstream looks at what comes out: "xn--7a" decodes to "¡", which is
+// punctuation and DISALLOWED, and idna passes both the A-label and the decoded
+// form without complaint. UTS-46 is a mapping-and-compatibility layer, not the
+// IDNA2008 derivation, and this is where the two differ.
+//
+// Only the two clear-cut arms of the derivation are implemented -- the ASCII
+// hyphen, which is PVALID by the LDH rule, and the join controls, which are
+// CONTEXTJ and are idna's CheckJoiners to judge. The rest of RFC 5892 (Unstable,
+// IgnorableProperties, IgnorableBlocks, OldHangulJamo) only ever narrows this
+// set further, so leaving it out under-rejects rather than refusing a name
+// IDNA2008 allows.
+func schemagenDisallowedCodePoint(label string) error {
+	for _, c := range label {
+		switch {
+		case unicode.In(c, unicode.Ll, unicode.Lu, unicode.Lo, unicode.Lm, unicode.Lt, unicode.Mn, unicode.Mc, unicode.Nd):
+		case c == '-': // RFC 5892's LDH rule
+		case c == 0x200C || c == 0x200D: // ZERO WIDTH NON-JOINER and JOINER: CONTEXTJ
+		case schemagenPVALIDException(c):
+		default:
+			return fmt.Errorf("U+%04X is DISALLOWED by RFC 5892", c)
+		}
+	}
+	return nil
+}
+
+// schemagenIsALabel reports whether a label carries the ACE prefix, which RFC
+// 5890 section 2.3.2.1 matches case-insensitively.
+func schemagenIsALabel(label string) bool {
+	return len(label) >= 4 && (label[0]|0x20) == 'x' && (label[1]|0x20) == 'n' && label[2] == '-' && label[3] == '-'
+}
+
+// schemagenAllASCII reports whether every rune of s is ASCII.
+func schemagenAllASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
 // schemagenCheckIDNA is the shared body of both hostname checks: the IDNA
 // processing, then the IDNA2008 rules idna does not apply over each decoded
 // label.
@@ -146,14 +212,31 @@ func schemagenCheckIDNA(v string) error {
 	if _, err := schemagenIDNAProfile.ToASCII(v); err != nil {
 		return err
 	}
-	// Both are applied to the decoded form, so an "xn--" A-label is judged by
-	// what it encodes rather than by its ASCII spelling.
+	// Every rule below is applied to the decoded form, so an "xn--" A-label is
+	// judged by what it encodes rather than by its ASCII spelling.
 	u, err := schemagenIDNAProfile.ToUnicode(v)
 	if err != nil {
 		return err
 	}
-	for _, label := range strings.FieldsFunc(u, schemagenLabelSeparator) {
+	labels := strings.FieldsFunc(u, schemagenLabelSeparator)
+	// RFC 5890 section 2.3.2.1: an A-label is the ACE form of a U-label, and a
+	// U-label has at least one non-ASCII character. "xn--example-" decodes to
+	// "example", which is a perfectly good LDH label and no U-label at all -- so
+	// the string is not an A-label and its "xn--" prefix is a lie. idna answers
+	// only that the decoding worked, and re-encodes it as plain "example",
+	// silently accepting a name it did not receive.
+	if orig := strings.FieldsFunc(v, schemagenLabelSeparator); len(orig) == len(labels) {
+		for i, label := range orig {
+			if schemagenIsALabel(label) && schemagenAllASCII(labels[i]) {
+				return fmt.Errorf("A-label %q decodes to %q, which has no non-ASCII character", label, labels[i])
+			}
+		}
+	}
+	for _, label := range labels {
 		if err := schemagenDisallowedException(label); err != nil {
+			return err
+		}
+		if err := schemagenDisallowedCodePoint(label); err != nil {
 			return err
 		}
 		if err := schemagenContextO(label); err != nil {
@@ -163,14 +246,25 @@ func schemagenCheckIDNA(v string) error {
 	return nil
 }
 
-// schemagenFormatHostname checks an RFC 1123 hostname: ASCII, and then
-// everything IDNA has to say about it, since an "xn--" label is an IDN in
-// disguise and is the half a character class cannot judge.
+// schemagenFormatHostname checks an RFC 1123 hostname: ASCII, and then --
+// for an "xn--" label only -- everything IDNA has to say about it, since an
+// A-label is an IDN in disguise and is the half a character class cannot judge.
+//
+// The gate on the ACE prefix is what keeps the two grammars apart. RFC 1123
+// permits a hyphen anywhere but the first and last character of a label, while
+// RFC 5891 section 4.2.3.1 additionally forbids one in the 3rd and 4th position
+// -- and that is an IDNA rule about A-labels, not a hostname rule. Running the
+// IDNA pass over every label applied it to plain names too, so "ab--cd.example"
+// and "a--b.com" were refused; the official suite marks both valid and marks
+// "XN--aa---o47jg78q", whose decoded U-label "aa--點看" breaks the same rule,
+// invalid. Rejecting a conforming name is the one failure this generator treats
+// as worse than a missing check, and this was one.
 func schemagenFormatHostname(v string) error {
 	bad := func() error { return fmt.Errorf("%q is not a valid hostname", v) }
 	if v == "" || len(v) > 253 {
 		return bad()
 	}
+	aLabel := false
 	for _, label := range strings.Split(v, ".") {
 		if label == "" || len(label) > 63 {
 			return bad()
@@ -186,6 +280,16 @@ func schemagenFormatHostname(v string) error {
 				return bad()
 			}
 		}
+		if schemagenIsALabel(label) {
+			aLabel = true
+		}
+	}
+	if !aLabel {
+		// Pure LDH and no ACE prefix: the loop above is the whole of RFC 1123,
+		// and everything the IDNA pass would add is either the same rule again
+		// (the character set, the two length limits) or a rule about labels this
+		// name does not have (bidi, joiners, hyphen position).
+		return nil
 	}
 	if err := schemagenCheckIDNA(v); err != nil {
 		return fmt.Errorf("%q is not a valid hostname: %w", v, err)

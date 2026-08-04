@@ -41,6 +41,7 @@ func newGenerateCmd() *cobra.Command {
 		strictProperties bool
 		bigInt           bool
 		formatAssertion  bool
+		formatAnnotation bool
 		verbose          bool
 		allowRemoteRefs  bool
 		draftStr         string
@@ -84,6 +85,7 @@ func newGenerateCmd() *cobra.Command {
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
 				applyBool(cmd, "format-assertion", cfg.FormatAssertion, &formatAssertion)
+				applyBool(cmd, "format-annotation", cfg.FormatAnnotation, &formatAnnotation)
 				applyBool(cmd, "allow-remote-refs", cfg.AllowRemoteRefs, &allowRemoteRefs)
 				applyBool(cmd, "lenient-refs", cfg.LenientRefs, &lenientRefs)
 				applyBool(cmd, "shared-types", cfg.SharedTypes, &sharedTypes)
@@ -96,6 +98,14 @@ func newGenerateCmd() *cobra.Command {
 						return fmt.Errorf("no input schemas: pass them as arguments, or give config %s documents with a \"path\"", configPath)
 					}
 				}
+			}
+
+			// The two format flags name opposite postures, so asking for both
+			// says nothing. Refusing is better than picking one silently: the
+			// generator's tie-break is documented but nobody reading the command
+			// line would know which half of it was ignored.
+			if formatAssertion && formatAnnotation {
+				return fmt.Errorf("--format-assertion and --format-annotation are opposites: pass one, or neither to let the dialect decide")
 			}
 
 			// Parse draft override if specified.
@@ -206,6 +216,7 @@ func newGenerateCmd() *cobra.Command {
 					strictProperties: strictProperties,
 					bigInt:           bigInt,
 					formatAssertion:  formatAssertion,
+					formatAnnotation: formatAnnotation,
 					allowRemoteRefs:  allowRemoteRefs,
 					verbose:          verbose,
 					draft:            draft,
@@ -275,6 +286,7 @@ func newGenerateCmd() *cobra.Command {
 					StrictProperties: strictProperties,
 					BigIntSupport:    bigInt,
 					FormatAssertion:  formatAssertion,
+					FormatAnnotation: formatAnnotation,
 					Resolver:         schema.NewCompositeResolver(resolvers...),
 					Draft:            draft,
 					Validation:       validationMode,
@@ -329,6 +341,7 @@ func newGenerateCmd() *cobra.Command {
 						StrictProperties: strictProperties,
 						BigIntSupport:    bigInt,
 						FormatAssertion:  formatAssertion,
+						FormatAnnotation: formatAnnotation,
 						Resolver:         resolver,
 						Draft:            draft,
 						Validation:       validationMode,
@@ -427,10 +440,11 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
-	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows the newer drafts. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
+	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 and v1 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows 2020-12. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
+	cmd.Flags().BoolVar(&formatAnnotation, "format-annotation", false, "Treat \"format\" as an annotation on every draft, including the ones whose dialect asserts (draft 3-7 and v1). The opposite of --format-assertion, and mutually exclusive with it")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
 	cmd.Flags().BoolVar(&lenientRefs, "lenient-refs", false, "Degrade $refs that no resolver can serve to any instead of failing generation")
-	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12")
+	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12, v1")
 	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
 	cmd.Flags().StringArrayVar(&rootNameFlags, "root-name", nil, "Exact Go type name for a root schema, used verbatim. A bare name (single input only), or a repeatable \"<key>=<Name>\" pair where <key> is the schema file base name, \"id:<document $id>\" or \"file:<schema path>\" — most specific wins (default: schema title, or Root)")
@@ -523,8 +537,12 @@ func parseDraft(s string) (schema.Draft, error) {
 		return schema.Draft201909, nil
 	case "2020-12", "draft-2020-12", "2020":
 		return schema.Draft202012, nil
+	// v1 is the undated stable release that succeeds the dated drafts. It has no
+	// "draft-" spelling on purpose.
+	case "v1", "1":
+		return schema.DraftV1, nil
 	default:
-		return schema.DraftUnknown, fmt.Errorf("unknown draft version %q: valid values are 3, 4, 6, 7, 2019-09, 2020-12", s)
+		return schema.DraftUnknown, fmt.Errorf("unknown draft version %q: valid values are 3, 4, 6, 7, 2019-09, 2020-12, v1", s)
 	}
 }
 
@@ -564,6 +582,7 @@ type multiPackageParams struct {
 	strictProperties bool
 	bigInt           bool
 	formatAssertion  bool
+	formatAnnotation bool
 	allowRemoteRefs  bool
 	verbose          bool
 	draft            schema.Draft
@@ -713,6 +732,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			StrictProperties: p.strictProperties,
 			BigIntSupport:    p.bigInt,
 			FormatAssertion:  p.formatAssertion,
+			FormatAnnotation: p.formatAnnotation,
 			Resolver:         resolver,
 			Draft:            p.draft,
 			Validation:       p.validationMode,

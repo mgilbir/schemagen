@@ -321,7 +321,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       the nil test is all there is -- the same reading the required-property
 	       check gives untracked presence. */}}
 	if {{$recv}}.{{.FieldName}} != nil{{if .PresenceTracked}} || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]{{end}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (not: {})")
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (no value satisfies its schema)")
 	}
 	{{- end}}
 	{{- if eq .RuleType "const"}}

@@ -157,7 +157,7 @@ func (f FalsePropertyExplicitNullListItem) MarshalJSON() ([]byte, error) {
 // Validate checks FalsePropertyExplicitNullListItem against its JSON Schema constraints.
 func (f FalsePropertyExplicitNullListItem) Validate() error {
 	if f.Inner != nil || f._jsonKeys["inner"] {
-		return fmt.Errorf("inner: property is forbidden (not: {})")
+		return fmt.Errorf("inner: property is forbidden (no value satisfies its schema)")
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func (f FalsePropertyExplicitNullNested) MarshalJSON() ([]byte, error) {
 // Validate checks FalsePropertyExplicitNullNested against its JSON Schema constraints.
 func (f FalsePropertyExplicitNullNested) Validate() error {
 	if f.Inner != nil || f._jsonKeys["inner"] {
-		return fmt.Errorf("inner: property is forbidden (not: {})")
+		return fmt.Errorf("inner: property is forbidden (no value satisfies its schema)")
 	}
 	return nil
 }
@@ -438,7 +438,7 @@ func (f FalsePropertyExplicitNull) MarshalJSON() ([]byte, error) {
 // Validate checks FalsePropertyExplicitNull against its JSON Schema constraints.
 func (f FalsePropertyExplicitNull) Validate() error {
 	if f.Inline != nil || f._jsonKeys["inline"] {
-		return fmt.Errorf("inline: property is forbidden (not: {})")
+		return fmt.Errorf("inline: property is forbidden (no value satisfies its schema)")
 	}
 	for _i, _item := range f.List {
 		if err := _item.Validate(); err != nil {
