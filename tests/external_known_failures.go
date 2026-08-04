@@ -40,6 +40,15 @@ var knownParseFailures = map[string]string{}
 //   - (unevaluatedProperties anyOf: FIXED via runtime branch matching) (4)
 //   - (unevaluatedProperties oneOf: FIXED via runtime branch matching + flattening) (10)
 var knownValidationFailures = map[string]string{
+	// Not a defect: the pinned corpus is stale here and we are right. ES2018
+	// added lookbehind and the ECMA-262 engine accepts it, so `(?<=foo)bar` is a
+	// valid pattern; the suite at bce6a47 still marks it invalid. Upstream has
+	// since flipped the case to valid and added Python-specific syntax as the
+	// invalid one instead, so bumping the pin (#121) both removes this failure
+	// and makes this entry fail as "passed but is in known-failures list",
+	// which is the prompt to delete it.
+	"draft3/optional/format/ecmascript-regex/ECMA 262 regex dialect recognition/ECMA 262 has no support for lookbehind": "pinned suite predates ES2018 lookbehind; fixed upstream, resolves on the pin bump (#121)",
+
 	// (default keyword — FIXED via optional field presence tracking)
 
 	// (float-overflow: FIXED via BigIntSupport for optional/float-overflow test files)
