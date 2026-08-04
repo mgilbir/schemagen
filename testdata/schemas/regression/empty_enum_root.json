@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmptyEnumRoot",
+  "description": "enum with no values admits nothing, which is what a `false` schema says. The official suite's \"empty enum\" group marks a string, a number, a null, an object, an array and a boolean all invalid.",
+  "enum": []
+}

@@ -16,6 +16,20 @@ const (
 	Draft07
 	Draft201909
 	Draft202012
+
+	// DraftV1 is the undated stable release that succeeds the dated drafts,
+	// dialect URI https://json-schema.org/v1.
+	//
+	// It is not an alias for Draft202012 even though the keyword set is nearly
+	// the same, because the two disagree about the one keyword whose posture
+	// this generator reads from the dialect. 2020-12 declares the
+	// format-annotation vocabulary and the suite marks {"format":"email"}
+	// satisfied by "2962"; v1 drops vocabularies and moves its format tests out
+	// of optional/ into a required top-level format/ directory, where the same
+	// document is marked invalid. Mapping v1 onto Draft202012 would silently
+	// take the annotation reading and stop enforcing every format a v1 schema
+	// names. See formatAssertsFor.
+	DraftV1
 )
 
 // String returns a human-readable name for the draft.
@@ -33,6 +47,8 @@ func (d Draft) String() string {
 		return "Draft 2019-09"
 	case Draft202012:
 		return "Draft 2020-12"
+	case DraftV1:
+		return "v1"
 	default:
 		return "Unknown"
 	}
@@ -55,6 +71,12 @@ func DetectDraft(s *Schema) Draft {
 		return Draft201909
 	case strings.Contains(uri, "draft/2020-12"):
 		return Draft202012
+	// v1 names no draft at all -- "https://json-schema.org/v1" -- so it is
+	// matched on the host-and-path pair rather than on "v1" alone, which would
+	// also fire on a "draft/v1" that means something else and on any unrelated
+	// dialect whose URI happens to contain those two characters.
+	case strings.Contains(uri, "json-schema.org/v1"):
+		return DraftV1
 	default:
 		return DraftUnknown
 	}

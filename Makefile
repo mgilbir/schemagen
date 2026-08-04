@@ -1,8 +1,9 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite download-metaschemas test-external fuzz cogen validate-seeds
+.PHONY: build test lint clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
 JSTS_DIR := testdata/external/JSON-Schema-Test-Suite
+JSTS_REPO := https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
 METASCHEMA_DIR := testdata/external/metaschemas
 
 build:
@@ -28,13 +29,84 @@ vet:
 
 lint: fmt vet
 
+# The one commit of the JSON Schema Test Suite every run measures against.
+#
+# It has to be pinned because the compliance gate reports absolute numbers -- a
+# coverage floor, a rejection count, an allow-list that must describe exactly
+# the groups it names -- and every one of those is a statement about a specific
+# corpus. Before this pin existed the target cloned the default branch and then
+# never touched the checkout again, so what a machine measured was whatever
+# upstream HEAD happened to be on the day it first cloned, and nothing ever said
+# so. Two developers then compare figures that were never comparable: that cost
+# a session two hours, including a "coverage regression" that was a newer corpus
+# arriving on one machine and not the other.
+#
+# So the pin is enforced rather than merely recorded. The recipe below moves an
+# existing checkout onto JSTS_COMMIT, fetching if it has to, and refuses to run
+# against a modified one -- a suite checkout with local edits is a corpus nobody
+# else has.
+#
+# To bump it: `make test-suite-drift` prints how far behind upstream this is and
+# the exact line to paste back here. Then re-run `make test-external` and triage
+# the delta before committing, because bumping the corpus is what makes every
+# figure in tests/external_known_failures.go and minValidatedGroups stale.
+JSTS_COMMIT := cf2e5e0ff2e3d90239c3b59e68ac4c080bd4ac92
+
 download-test-suite:
-	@if [ ! -d "$(JSTS_DIR)" ]; then \
+	@if [ ! -d "$(JSTS_DIR)/.git" ]; then \
+		if [ -e "$(JSTS_DIR)" ]; then \
+			echo "$(JSTS_DIR) exists but is not a git checkout, so its contents cannot be pinned."; \
+			echo "Remove it and re-run: rm -rf $(JSTS_DIR)"; \
+			exit 1; \
+		fi; \
 		echo "Cloning JSON Schema Test Suite..."; \
 		mkdir -p testdata/external; \
-		git clone https://github.com/json-schema-org/JSON-Schema-Test-Suite.git $(JSTS_DIR); \
+		git clone $(JSTS_REPO) "$(JSTS_DIR)" || exit 1; \
+	fi
+	@if [ -n "$$(git -C "$(JSTS_DIR)" status --porcelain)" ]; then \
+		echo "$(JSTS_DIR) has local modifications, so it is not the corpus JSTS_COMMIT names."; \
+		echo "Discard them and re-run: git -C $(JSTS_DIR) reset --hard && git -C $(JSTS_DIR) clean -fd"; \
+		exit 1; \
+	fi
+	@if [ "$$(git -C "$(JSTS_DIR)" rev-parse HEAD)" != "$(JSTS_COMMIT)" ]; then \
+		echo "Moving JSON Schema Test Suite to $(JSTS_COMMIT)..."; \
+		if ! git -C "$(JSTS_DIR)" cat-file -e "$(JSTS_COMMIT)^{commit}" 2>/dev/null; then \
+			unshallow=; \
+			if [ -f "$(JSTS_DIR)/$$(git -C "$(JSTS_DIR)" rev-parse --git-dir)/shallow" ] || \
+			   [ -f "$$(git -C "$(JSTS_DIR)" rev-parse --git-dir)/shallow" ]; then \
+				unshallow=--unshallow; \
+			fi; \
+			git -C "$(JSTS_DIR)" fetch $$unshallow $(JSTS_REPO) || \
+				{ echo "could not fetch $(JSTS_REPO)"; exit 1; }; \
+		fi; \
+		git -C "$(JSTS_DIR)" checkout --quiet --detach "$(JSTS_COMMIT)" || \
+			{ echo "commit $(JSTS_COMMIT) is not in $(JSTS_REPO)"; exit 1; }; \
+	fi
+	@echo "JSON Schema Test Suite pinned at $(JSTS_COMMIT)"
+
+# Reports how far JSTS_COMMIT has fallen behind upstream, and prints the line to
+# paste into this file to bump it.
+#
+# Informational on purpose: it exits 0 whatever it finds. Upstream lands commits
+# most weeks, so a target that failed on any drift at all would be red almost
+# always, and a check that is always red is a check nobody reads -- which is the
+# state that let the pin go six months and 87 commits stale in the first place.
+# A nightly CI job that runs this and surfaces the count is the intended use; the
+# decision to bump stays a person's, because bumping re-baselines the gate.
+test-suite-drift: download-test-suite
+	@git -C "$(JSTS_DIR)" fetch --quiet $(JSTS_REPO) main || { echo "could not fetch $(JSTS_REPO)"; exit 1; }
+	@upstream=$$(git -C "$(JSTS_DIR)" rev-parse FETCH_HEAD); \
+	if [ "$$upstream" = "$(JSTS_COMMIT)" ]; then \
+		echo "JSTS_COMMIT is upstream main; nothing to bump."; \
 	else \
-		echo "JSON Schema Test Suite already present at $(JSTS_DIR)"; \
+		behind=$$(git -C "$(JSTS_DIR)" rev-list --count "$(JSTS_COMMIT)..$$upstream"); \
+		when=$$(git -C "$(JSTS_DIR)" log -1 --format=%cs "$$upstream"); \
+		echo "JSTS_COMMIT is $$behind commit(s) behind upstream main ($$when)."; \
+		echo "To bump, replace the line in the Makefile with:"; \
+		echo ""; \
+		echo "JSTS_COMMIT := $$upstream"; \
+		echo ""; \
+		echo "then re-run 'make test-external' and triage the delta before committing."; \
 	fi
 
 # Meta-schemas the suite refers to but does not ship. They are fetched rather

@@ -91,7 +91,14 @@ func testGoSum() string {
 }
 
 // allDrafts lists all draft directories in the test suite.
-var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12"}
+//
+// Every directory under tests/ is here, and it has to stay that way: "v1"
+// shipped in the corpus for months while this list named six drafts, so 438
+// groups and 1988 cases were never run and nothing said so. A list named
+// allDrafts that is not all of them is the quietest way to stop measuring
+// something. If a directory ever has to be left out, leave it in this list and
+// skip it where the skip can carry a reason -- an absent name carries none.
+var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12", "v1"}
 
 // draftFromDir maps a test-suite directory name to a schema.Draft constant.
 func draftFromDir(dir string) schema.Draft {
@@ -108,6 +115,8 @@ func draftFromDir(dir string) schema.Draft {
 		return schema.Draft201909
 	case "draft2020-12":
 		return schema.Draft202012
+	case "v1":
+		return schema.DraftV1
 	default:
 		return schema.DraftUnknown
 	}
@@ -289,6 +298,80 @@ func checkKnownFailure(t *testing.T, key string, err error, knownFailures map[st
 	}
 }
 
+// keyLedger records which known-failure keys a run offered and which it
+// actually reached.
+//
+// checkKnownFailure is bidirectional per case -- an entry whose case fails is a
+// skip, one whose case passes is an error -- but it can only judge a key some
+// case still carries. About an entry naming a case the corpus no longer has it
+// says nothing at all, and that is the state a suite bump produces routinely:
+// upstream renamed draft 3's "ECMA 262 has no support for lookbehind" to
+// "ECMA 262 supports lookbehind since ES2018" and flipped it to valid, and the
+// entry covering it stopped being consulted without a word. It would have gone
+// on reading as an outstanding defect while suppressing nothing -- the same
+// class of lie reportStaleUnvalidated was written to end for the other list.
+//
+// The offered set is what makes the sweep safe under a -run filter. A filtered
+// run reaches fewer keys than it offers, and a sweep over part of the corpus
+// cannot tell a case that vanished upstream from one that was simply not
+// selected. Keys are offered outside the subtests they are handed to, so a
+// filter shows up as the difference between the two sets.
+type keyLedger struct {
+	offered map[string]bool
+	visited map[string]bool
+}
+
+func newKeyLedger() *keyLedger {
+	return &keyLedger{offered: make(map[string]bool, 8192), visited: make(map[string]bool, 8192)}
+}
+
+// offer records a key the run is about to hand to a subtest, and returns it so
+// it can be used in the same expression.
+func (l *keyLedger) offer(key string) string {
+	l.offered[key] = true
+	return key
+}
+
+// visit records that a subtest reached the key. Call it before
+// checkKnownFailure, which can end the subtest through t.Skipf.
+func (l *keyLedger) visit(key string) { l.visited[key] = true }
+
+// complete reports whether every offered key was reached.
+func (l *keyLedger) complete() bool { return len(l.offered) == len(l.visited) }
+
+// staleKnownFailureKeys returns the entries of known that no case in this run
+// carried, sorted. See keyLedger for why that is not simply "unused".
+//
+// It is separated from the reporting so it can be tested in milliseconds against
+// planted ledgers. The alternative is a guard whose only exercise is a 50-minute
+// corpus run that has to be sabotaged to see it fire once.
+func staleKnownFailureKeys(known map[string]string, l *keyLedger) []string {
+	var stale []string
+	for key := range known {
+		if !l.visited[key] {
+			stale = append(stale, key)
+		}
+	}
+	sort.Strings(stale)
+	return stale
+}
+
+// reportStaleKnownFailures errors on every entry of a known-failure map that no
+// case in this run carried.
+func reportStaleKnownFailures(t *testing.T, mapName string, known map[string]string, l *keyLedger) {
+	t.Helper()
+	if !l.complete() {
+		t.Logf("partial run: reached %d of the %d %s keys the corpus offers (a -run filter on the subtests?). "+
+			"The staleness sweep judges the whole corpus and is skipped; run without a subtest filter, "+
+			"or via 'make test-external', to exercise it", len(l.visited), len(l.offered), mapName)
+		return
+	}
+	for _, key := range staleKnownFailureKeys(known, l) {
+		t.Errorf("stale %s entry: %q matches no case this run tested — the case was renamed or removed "+
+			"upstream, or its group stopped being tested at all; delete the key, or find out which", mapName, key)
+	}
+}
+
 // checkUnvalidatedRejection is checkKnownFailure's counterpart for a group that
 // produced no Validate() method while the suite marks one of its documents
 // invalid. There is no per-case outcome to judge here — the defect is the
@@ -401,12 +484,28 @@ func groupHasRejectingCase(group jstsTestGroup) bool {
 
 // listJSONFiles returns the relative paths of all .json files in a directory, recursively.
 // Paths are relative to dir (e.g., "minLength.json", "optional/bignum.json").
+//
+// tests/v1/proposals/ is the one thing left out, and it is left out here rather
+// than by omitting a draft from allDrafts so that the reason travels with the
+// decision. The suite's own README calls that directory tests for keywords that
+// are still proposals to the specification, "volatile while the proposal is in
+// development", and says implementations are expected to pass them only if they
+// claim to support the proposal. Its whole content today is propertyDependencies
+// (8 groups, 38 cases), which is not a keyword of any dialect this generator
+// reads; every draft says to ignore a keyword it does not know, so the schemas
+// would generate correct-but-permissive types and the 20-odd must-reject
+// documents would be reported as defects against a keyword nobody has agreed on.
+// Supporting a proposal is a decision to take deliberately, not one to be forced
+// into by a directory appearing upstream.
 func listJSONFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if info.IsDir() && info.Name() == "proposals" {
+			return filepath.SkipDir
 		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
 			rel, err := filepath.Rel(dir, path)
@@ -438,27 +537,49 @@ func isBignumFile(file string) bool {
 	return strings.Contains(file, "optional/bignum") || strings.Contains(file, "optional/float-overflow")
 }
 
-// isFormatAssertionFile reports whether a file describes the behaviour of an
-// implementation that asserts "format", and so has to be generated with
-// FormatAssertion set.
+// formatPostureFor reports which of the two "format" postures a suite file is
+// asking about, as the pair of generator switches that select it. Both false
+// means the file is asking about the default, which is whatever the dialect
+// named in its schemas says.
 //
-// The suite states both postures and keeps them apart by directory. The
-// non-optional format.json says what a format means by default: from 2019-09
-// the format-annotation vocabulary makes it an annotation, so "2962" satisfies
-// {"format":"email"} and every one of those cases is marked valid.
-// optional/format/*.json says what the assertion means for an implementation
-// that opts in, and marks the same document invalid. Neither is wrong; they
-// describe different configurations, which is what "optional" means here.
+// The suite states both postures and keeps them apart by directory, and which
+// one is the default flipped with v1. For 2019-09 and 2020-12 the non-optional
+// format.json says what a format means by default: the format-annotation
+// vocabulary makes it an annotation, so "2962" satisfies {"format":"email"} and
+// every one of those cases is marked valid. optional/format/*.json says what
+// the assertion means for an implementation that opts in, and marks the same
+// document invalid. v1 drops vocabularies, moves format/*.json up to the
+// required level where "2962" is invalid, and files the annotation reading under
+// optional/format-annotation.json instead. Neither posture is wrong in either
+// place; they describe different configurations, which is what "optional" means
+// here.
 //
-// Running the second set under the default configuration would therefore ask
-// this generator to fail: it would have to reject a document its own dialect
-// permits in order to pass, and rejecting what the schema permits is the one
-// thing this repository does not trade away. Running it under the flag asks the
-// question the file is actually about -- how accurate the checks are -- which is
-// what the file can answer. This is the same per-file configuration switch
-// isBignumFile already makes, for the same reason.
-func isFormatAssertionFile(file string) bool {
-	return strings.Contains(filepath.ToSlash(file), "optional/format")
+// Running either set under the wrong configuration would ask this generator to
+// fail. In the assertion direction it would have to accept a document the file
+// says must be refused, which understates the checks; in the annotation
+// direction it would have to reject a document its own dialect permits, and
+// rejecting what the schema permits is the one thing this repository does not
+// trade away. Selecting the configuration per file asks the question the file is
+// actually about. This is the same per-file switch isBignumFile already makes,
+// for the same reason.
+//
+// The order of the two arms is load-bearing, and it is the reason this is a
+// switch rather than two independent tests: "optional/format-annotation.json"
+// begins with "optional/format" and means the opposite of it, so the narrower
+// name has to be tried first. draft2020-12/optional/format-assertion.json does
+// belong in the assertion arm: its schemas name a custom metaschema declaring
+// the format-assertion vocabulary, which this generator does not read, so the
+// flag stands in for the vocabulary the file is about.
+func formatPostureFor(file string) (assertion, annotation bool) {
+	p := filepath.ToSlash(file)
+	switch {
+	case strings.Contains(p, "optional/format-annotation"):
+		return false, true
+	case strings.Contains(p, "optional/format"):
+		return true, false
+	default:
+		return false, false
+	}
 }
 
 // loadTestGroups reads and parses a JSTS test file.
@@ -948,7 +1069,7 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt, formatAssertion bool) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt, formatAssertion, formatAnnotation bool) (string, error) {
 	var s schema.Schema
 	// Handle boolean false schema: "false" is not a JSON object, so we construct
 	// the Schema struct manually with BooleanSchema set to false.
@@ -965,7 +1086,7 @@ func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.Schem
 	// serve fails generation rather than degrading to any. Leniency let a
 	// schema the harness had silently emptied out still count as a pass, so
 	// the suite measured a validator built from a schema nobody wrote.
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt, FormatAssertion: formatAssertion}
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt, FormatAssertion: formatAssertion, FormatAnnotation: formatAnnotation}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -1057,6 +1178,44 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) (val
 		}
 	}
 	return verdict, nil
+}
+
+// TestUnsweptKnownFailureMapsAreEmpty keeps the four known-failure maps that
+// have no staleness sweep from acquiring entries that could go stale unnoticed.
+//
+// knownValidationFailures is swept: TestExternalValidation offers every case key
+// the corpus carries and errors on an entry no case matched. These four are not,
+// because each would need its own ledger threaded through a different test with
+// a different notion of which groups it visits, and all four are empty --
+// writing four sweeps that can never fire, and cannot be watched failing against
+// anything real, would be four decorative guards.
+//
+// Empty is therefore the property to hold, and this is where it is held. The
+// moment one of them gains an entry, the entry needs the sweep, because an entry
+// naming a case upstream has since renamed reads as an outstanding defect while
+// suppressing nothing -- which is exactly what the draft 3 lookbehind entry did
+// across the #121 corpus bump.
+//
+// It deliberately does not need the corpus on disk, so it runs under plain
+// `go test ./...` rather than only under the external gate.
+func TestUnsweptKnownFailureMapsAreEmpty(t *testing.T) {
+	unswept := []struct {
+		name string
+		size int
+	}{
+		{"knownParseFailures", len(knownParseFailures)},
+		{"knownCodeGenFailures", len(knownCodeGenFailures)},
+		{"knownRoundTripFailures", len(knownRoundTripFailures)},
+		{"knownFlakyTests", len(knownFlakyTests)},
+	}
+	for _, m := range unswept {
+		if m.size != 0 {
+			t.Errorf("%s has %d entr(ies) but no staleness sweep, so an entry whose case upstream renames "+
+				"would stop being consulted in silence. Give it a keyLedger and a reportStaleKnownFailures "+
+				"call in the test that reads it (TestExternalValidation is the worked example), then delete "+
+				"it from this list", m.name, m.size)
+		}
+	}
 }
 
 // TestExternalParsing tests that we can parse every schema in the external test suite.
@@ -1171,9 +1330,19 @@ func TestExternalRoundTrip(t *testing.T) {
 }
 
 // minValidatedGroups is the number of test groups this test reached a generated
-// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1765 of
-// the 1799 code-gen-suitable groups (1803 groups in the corpus, less the 4 whose
+// Validate() for, measured on 2026-08-04 against suite commit cf2e5e0: 2213 of
+// the 2252 code-gen-suitable groups (2257 groups in the corpus, less the 5 whose
 // schema is boolean `true`, which asserts nothing and so has nothing to test).
+//
+// It was 1765 of 1799 an hour earlier, and the whole of that jump is corpus
+// rather than capability -- which is the one thing this number cannot show on
+// its own, so it is recorded here. Adding the v1 draft to allDrafts brought 438
+// suitable groups that had shipped in the corpus for months and had never been
+// run (#121), and the suite bump from bce6a47 added 15 more across the six
+// drafts already walked. 1799 + 438 + 15 = 2252, and 2213 of them produce a
+// Validate. The skips went 34 → 39 for the same reason: v1 inherits 2020-12's
+// root shapes, so it inherits its two allow-listed gaps and three more that
+// carry no rejecting case.
 //
 // It was 1494 when this gate was written. Compiling the schemas that used to
 // become `type X any` to the runtime evaluator raised it to 1586, and the 43
@@ -1203,7 +1372,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 1765
+const minValidatedGroups = 2213
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.
@@ -1233,6 +1402,9 @@ func TestExternalValidation(t *testing.T) {
 	// fates records what became of every group, so a knownUnvalidatedRejections
 	// entry that describes none of them can say why it went stale.
 	fates := make(map[string]groupFate, 2048)
+	// ledger does the same job for knownValidationFailures, whose keys name a
+	// single case rather than a whole group.
+	ledger := newKeyLedger()
 
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
@@ -1254,7 +1426,8 @@ func TestExternalValidation(t *testing.T) {
 						groupKey := failureKey(draft, filenameWithoutExt(file), group.Description)
 
 						// Generate code once per group.
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file), isFormatAssertionFile(file))
+						formatAssertion, formatAnnotation := formatPostureFor(file)
+						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file), formatAssertion, formatAnnotation)
 
 						if cgErr != nil {
 							skippedCG++
@@ -1285,10 +1458,19 @@ func TestExternalValidation(t *testing.T) {
 								noChecksWithRejection++
 							}
 						}
+						// Keys are offered here, outside the group's subtest,
+						// so that a -run filter selecting some groups or some
+						// cases shows up as offered-but-unvisited rather than as
+						// a corpus that appears to have lost them.
+						caseKeys := make([]string, len(group.Tests))
+						for i, tc := range group.Tests {
+							caseKeys[i] = ledger.offer(failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description))
+						}
 						t.Run(group.Description, func(t *testing.T) {
-							for _, tc := range group.Tests {
+							for i, tc := range group.Tests {
+								key := caseKeys[i]
 								t.Run(tc.Description, func(t *testing.T) {
-									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
+									ledger.visit(key)
 									verdict, err := tryValidation(code, tc.Data, tc.Valid)
 									if !tc.Valid {
 										switch verdict {
@@ -1324,15 +1506,21 @@ func TestExternalValidation(t *testing.T) {
 	t.Logf("Of the %d tested groups, %d have a root Validate() whose body is exactly `return nil`, %d of those with a document the suite marks invalid",
 		testedGroups, noChecksGroups, noChecksWithRejection)
 
-	// The two gates below judge the whole corpus, so they are meaningless on a
-	// run that only walked part of it.
+	// The three gates below judge the whole corpus, so they are meaningless on a
+	// run that only walked part of it. This check catches a -run filter that
+	// selected some drafts or some files, which stops their groups being walked
+	// at all; the ledger's own completeness check catches one that selected some
+	// groups or some cases, which walks them and then tests a subset. Both are
+	// needed, and neither sees the other's case.
 	if corpusGroups := countCodeGenSuitableGroups(t); totalGroups != corpusGroups {
 		t.Logf("partial run: walked %d of the corpus's %d code-gen-suitable groups (a -run filter on the subtests?). "+
-			"The coverage floor and the knownUnvalidatedRejections staleness sweep judge the whole corpus and are skipped; "+
+			"The coverage floor and the two staleness sweeps judge the whole corpus and are skipped; "+
 			"run without a subtest filter, or via 'make test-external', to exercise them",
 			totalGroups, corpusGroups)
 		return
 	}
+
+	reportStaleKnownFailures(t, "knownValidationFailures", knownValidationFailures, ledger)
 
 	if testedGroups < minValidatedGroups {
 		t.Errorf("validation coverage regressed from %d to %d groups (of %d code-gen-suitable groups): "+

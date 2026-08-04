@@ -214,8 +214,23 @@ func schemagenFormatDuration(v string) error {
 
 // schemagenDurationComponents walks one half of a duration, requiring each
 // component to be a run of ASCII digits followed by a designator drawn from
-// order, in that order, with at least one component present. The seconds
-// component may carry a fraction.
+// order, with at least one component present.
+//
+// The designators are not merely in order, they are *adjacent*, and that is the
+// part the RFC 3339 appendix A grammar states and a reading of "in order" misses.
+// The productions nest rather than list:
+//
+//	dur-year = 1*DIGIT "Y" [dur-month]      dur-hour   = 1*DIGIT "H" [dur-minute]
+//	dur-month = 1*DIGIT "M" [dur-day]       dur-minute = 1*DIGIT "M" [dur-second]
+//	dur-day = 1*DIGIT "D"                   dur-second = 1*DIGIT "S"
+//
+// so a component may only be followed by the one immediately after it. Any
+// component may open the half -- "P1M2D" and "PT1M2S" are valid -- but once one
+// has, the next may not skip. That is why "P1Y2D" and "PT1H2S" are invalid, and
+// the official suite marks both so.
+//
+// No component carries a fraction, on either half: dur-second is 1*DIGIT "S"
+// and nothing else, so "PT0.5S" is invalid too.
 func schemagenDurationComponents(s, order string, bad func() error) error {
 	next := 0
 	seen := false
@@ -224,25 +239,16 @@ func schemagenDurationComponents(s, order string, bad func() error) error {
 		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 			i++
 		}
-		if i == 0 {
-			return bad()
-		}
-		// Only the last time component ("S") may carry a fraction.
-		if i < len(s) && s[i] == '.' && order == "HMS" {
-			j := i + 1
-			for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-				j++
-			}
-			if j == i+1 || j >= len(s) || s[j] != 'S' {
-				return bad()
-			}
-			i = j
-		}
-		if i >= len(s) {
+		if i == 0 || i >= len(s) {
 			return bad()
 		}
 		d := strings.IndexByte(order[next:], s[i])
 		if d < 0 {
+			return bad()
+		}
+		// After the first component the grammar admits only the very next
+		// designator, never a later one.
+		if seen && d != 0 {
 			return bad()
 		}
 		next += d + 1

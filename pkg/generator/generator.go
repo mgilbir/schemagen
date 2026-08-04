@@ -1558,21 +1558,34 @@ func (g *Generator) formatGoTypeForSchema(s *schema.Schema) GoType {
 // permits, which is the one failure mode this generator treats as worse than a
 // missing check.
 //
-// So the dialect decides, and Config.FormatAssertion overrides it upwards for
-// callers who want the older behaviour on a newer draft. There is no override
-// downwards: a draft-07 document that does not want its formats asserted can say
-// so by naming a dialect that does not assert them.
+// v1 reverses 2019-09's decision and asserts again. It drops vocabularies
+// altogether, and the official suite moves its format tests out of optional/
+// into a required top-level format/ directory, where {"format":"email"} is
+// marked *not* satisfied by "2962" -- the exact document 2020-12 marks valid.
+// Required in that suite means default behaviour, so a v1 schema that names a
+// format is asking for it to be enforced.
+//
+// So the dialect decides, and the two Config fields override it in either
+// direction: FormatAssertion for a caller who wants the older behaviour on a
+// newer draft, FormatAnnotation for one who wants the 2019-09 reading on a
+// draft that asserts. They are documented as mutually exclusive and the CLI
+// refuses both at once; if they arrive together anyway, annotation wins,
+// because withholding a rejection is the safe direction and inventing one is
+// the failure this generator treats as worst.
 //
 // A document that declares no $schema at all answers "annotation", which is the
 // same conservative choice refOverridesSiblingsForDraft already makes for an
 // unknown dialect -- and it is the safe direction here, since it withholds a
 // rejection rather than inventing one.
 func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
+	if g.config.FormatAnnotation {
+		return false
+	}
 	if g.config.FormatAssertion {
 		return true
 	}
 	switch g.draftForSchema(s) {
-	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
+	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07, schema.DraftV1:
 		return true
 	default:
 		return false
@@ -1845,6 +1858,33 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// instance, `type B any` is an exact description of that, and giving it a
 	// Validate would be inventing a check the schema does not state.
 	if s.IsFalseSchema() {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			IsForbidden: true,
+		})
+		return nil
+	}
+
+	// `"enum": []` is the same schema written a third way. enum asserts that the
+	// instance equals one of the listed values, and there are none, so nothing
+	// satisfies it -- which is what `false` says and what the official suite's
+	// "empty enum" group states: string, number, null, object, array and boolean
+	// are all marked invalid.
+	//
+	// It has to be caught before the arm below, which asks len(s.Enum) > 0 and so
+	// declines the empty list, and before every arm after that, which read the
+	// other keywords and answer as if the enum were not there. `{"enum":[]}` came
+	// out `type Root any` and accepted all six documents; `{"type":"string",
+	// "enum":[]}` came out `type Root string` and accepted every string. Both are
+	// this generator accepting a document the schema forbids.
+	//
+	// The distinction between an absent enum and an empty one is the nil check:
+	// encoding/json leaves the field nil when the keyword is absent and allocates
+	// an empty slice for `[]`, so len() alone cannot tell them apart and would
+	// forbid every schema in the corpus.
+	if g.validationKeywordsEnabled() && s.Enum != nil && len(s.Enum) == 0 {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
@@ -11137,7 +11177,7 @@ func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 // pins.
 func (g *Generator) supportsPrefixItems(s *schema.Schema) bool {
 	switch g.draftForSchema(s) {
-	case schema.Draft202012, schema.DraftUnknown:
+	case schema.Draft202012, schema.DraftV1, schema.DraftUnknown:
 		return true
 	default:
 		return false
@@ -11160,7 +11200,7 @@ func (g *Generator) isTupleArray(s *schema.Schema) bool {
 }
 
 func supportsDependentRequired(draft schema.Draft) bool {
-	return draft == schema.Draft201909 || draft == schema.Draft202012
+	return draft == schema.Draft201909 || draft == schema.Draft202012 || draft == schema.DraftV1
 }
 
 // extractValidationRules extracts validation rules from a property schema.
@@ -11280,7 +11320,14 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		})
 	}
 	// not: {} (empty schema) means "forbidden property" — no value can match.
-	if s.Not != nil && isAcceptAllSchema(s.Not) {
+	//
+	// `"enum": []` says the same thing and reaches this position by a different
+	// route: generateTypeDef gives an unsatisfiable schema the forbidding type,
+	// which a property picks up through a $ref, but an inline property schema is
+	// read here instead and came out `any` with no check at all. Both spellings
+	// are the empty set, so both are the same rule. The nil test is what
+	// separates an absent enum from an empty one; see generateTypeDef.
+	if (s.Not != nil && isAcceptAllSchema(s.Not)) || (s.Enum != nil && len(s.Enum) == 0) {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "forbidden", Value: true,

@@ -875,6 +875,14 @@ func formatAssertingConfig() generator.Config {
 	return generator.Config{PackageName: "testpkg", OmitEmpty: true, FormatAssertion: true}
 }
 
+// formatAnnotatingConfig is formatAssertingConfig's mirror: the opt-out a caller
+// reaches for on a dialect that asserts. Only TestFormatPostureFollowsTheDialect
+// uses it, because it is the only test whose subject is the posture rather than
+// the accuracy of a check.
+func formatAnnotatingConfig() generator.Config {
+	return generator.Config{PackageName: "testpkg", OmitEmpty: true, FormatAnnotation: true}
+}
+
 // runValidationCasesWithConfig is runValidationCases under a chosen generator
 // configuration. It exists for the format posture: the same fixture has to be
 // judged twice, once under the dialect's own answer and once under
@@ -3882,11 +3890,74 @@ var conformingByFormat = []string{
 // {"format":"email"} satisfied by "2962" accordingly. Rejecting those documents
 // is rejecting what the schema permits.
 //
-// The three arms are the three answers, and each is needed. Without the first
-// the change is untested; without the second the older drafts could have been
-// broken silently, since nothing else in the tree still asserts by default;
-// without the third the flag could be doing nothing at all and every other
-// format test in this file -- all of which now pass it -- would still pass.
+// TestEmptyEnumAdmitsNothing pins the third spelling of the empty set.
+//
+// `enum` asserts that the instance equals one of the listed values. With no
+// values listed nothing can, so `{"enum":[]}` says exactly what `false` says --
+// and the official suite states it that way: its "empty enum" group marks a
+// string, a number, a null, an object, an array and a boolean all invalid. That
+// group arrived with the #121 corpus bump, on 2019-09, 2020-12 and v1 alike.
+//
+// Every arm of generateTypeDef asked len(s.Enum) > 0 and so declined the empty
+// list, then read the rest of the schema as if the keyword were absent:
+// `{"enum":[]}` came out `type Root any` and accepted all six documents, and
+// `{"type":"string","enum":[]}` came out `type Root string` and accepted every
+// string. An inline property spelling it went the same way through
+// extractValidationRules.
+//
+// The populated enum beside them is the control. Forbidding every enum would
+// satisfy the invalid half of both arms and mean nothing at all.
+func TestEmptyEnumAdmitsNothing(t *testing.T) {
+	t.Run("root", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/empty_enum_root.json",
+			nil,
+			[]string{`"foo"`, `42`, `null`, `{}`, `[]`, `false`},
+		)
+	})
+	t.Run("properties", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/empty_enum_positions.json",
+			[]string{
+				`{}`,
+				`{"populated":"a"}`,
+				`{"populated":"b"}`,
+			},
+			[]string{
+				// Present at all is the violation, whatever the value and
+				// whichever way the sub-schema is written.
+				`{"inline":"foo"}`,
+				`{"inline":null}`,
+				`{"inline":{}}`,
+				`{"typed":"foo"}`,
+				`{"viaRef":"foo"}`,
+				`{"viaRef":42}`,
+				// The control still rejects a value outside its list, which is
+				// the check a blanket "every enum forbids everything" would have
+				// broken in the other direction.
+				`{"populated":"c"}`,
+			},
+		)
+	})
+}
+
+// v1 is the fourth answer and it is not a repeat of draft 7's. It is *newer*
+// than the two drafts that annotate: it drops vocabularies, and the official
+// suite moves its format cases out of optional/ into a required top-level
+// format/ directory where {"format":"email"} is marked not satisfied by "2962"
+// -- the exact document 2020-12 marks valid. Required there means default, so
+// the history runs assert, annotate, assert again, and mapping v1 onto 2020-12
+// because their keyword sets nearly match would silently stop enforcing every
+// format a v1 schema names.
+//
+// The five arms are the five answers, and each is needed. Without the first the
+// change is untested; without the second the older drafts could have been broken
+// silently, since nothing else in the tree still asserts by default; without the
+// third the assertion flag could be doing nothing at all and every other format
+// test in this file -- all of which now pass it -- would still pass; without the
+// fourth v1 could be inheriting 2020-12's annotation posture unnoticed; without
+// the fifth the annotation flag could be doing nothing, since v1's own answer
+// and the flag's would agree on every other arm.
 func TestFormatPostureFollowsTheDialect(t *testing.T) {
 	t.Run("2020-12 annotates", func(t *testing.T) {
 		runValidationCases(t,
@@ -3908,6 +3979,21 @@ func TestFormatPostureFollowsTheDialect(t *testing.T) {
 			formatAssertingConfig(),
 			conformingByFormat,
 			malformedByFormat,
+		)
+	})
+	t.Run("v1 asserts", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/format_posture_v1.json",
+			conformingByFormat,
+			malformedByFormat,
+		)
+	})
+	t.Run("v1 annotates under the flag", func(t *testing.T) {
+		runValidationCasesWithConfig(t,
+			"testdata/schemas/regression/format_posture_v1.json",
+			formatAnnotatingConfig(),
+			append(append([]string{}, conformingByFormat...), malformedByFormat...),
+			nil,
 		)
 	})
 }
@@ -4023,6 +4109,24 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"host":"example.test"}`,
 			`{"span":"P4DT12H30M5S"}`,
 			`{"span":"P2W"}`,
+			// RFC 1123 permits a hyphen anywhere but the first and last
+			// character of a label, including two in a row and including the
+			// 3rd and 4th position. The 3rd-and-4th restriction is RFC 5891
+			// section 4.2.3.1, an IDNA rule about A-labels, and applying it to
+			// every label refused these two conforming names. Their control is
+			// "XN--aa---o47jg78q" in the invalid list, whose decoded U-label
+			// "aa--點看" does break that rule.
+			`{"host":"ab--cd.example"}`,
+			`{"host":"a--b.com"}`,
+			// The duration grammar of RFC 3339 appendix A nests rather than
+			// lists, so each designator may be followed only by the one
+			// immediately after it -- but any of them may open the half. These
+			// are the openings and the legal adjacencies, and they are the
+			// control for the three rejections below: a rule that demanded the
+			// full YMD or HMS run would refuse every one of them.
+			`{"span":"P1Y2M"}`, `{"span":"P1M2D"}`, `{"span":"P1Y2M3D"}`,
+			`{"span":"PT1H2M"}`, `{"span":"PT1M2S"}`, `{"span":"PT1H2M3S"}`,
+			`{"span":"P1Y2M3DT4H5M6S"}`, `{"span":"P0D"}`, `{"span":"PT0S"}`,
 			`{"link":"https://example.test/x"}`,
 			`{"id":"123e4567-e89b-12d3-a456-426614174000"}`,
 			`{"relPointer":"0"}`, `{"relPointer":"1/a"}`, `{"relPointer":"2#"}`,
@@ -4060,6 +4164,13 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"span":"P1Y2W"}`,
 			`{"span":"PT1D"}`,
 			`{"span":"P1"}`,
+			// ... and it nests, so a designator may not skip the one after it,
+			// and no component carries a fraction. Reading the grammar as "in
+			// order" rather than "adjacent" accepted the first two, and dur-second
+			// is 1*DIGIT "S" with no fraction at all.
+			`{"span":"P1Y2D"}`,
+			`{"span":"PT1H2S"}`,
+			`{"span":"PT0.5S"}`,
 			// A URI's character set excludes each of these, and url.Parse takes
 			// them all.
 			`{"link":"https://example.org/foo bar.txt"}`,
@@ -4125,6 +4236,23 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			// not carry. idna's lookup profile tolerates it.
 			`{"intlHost":"example."}`,
 			`{"intlHost":"example。"}`,
+			// The A-label rules of RFC 5890 section 2.3.2.1, which are about what
+			// the label decodes to and so are invisible to anything that reads
+			// its ASCII spelling. idna accepts all three: the first two are
+			// LDH-valid whatever they encode, and the third it re-encodes as
+			// plain "example" and hands back without a word.
+			//
+			// "aa--點看" breaks the 3rd-and-4th hyphen rule; "¡" is punctuation
+			// and DISALLOWED by RFC 5892, which UTS-46 does not implement; and
+			// "example" is no U-label at all, since a U-label has at least one
+			// non-ASCII character. Written against both hostname formats,
+			// because the gate that stopped hostname applying the IDNA pass to a
+			// plain label must not stop it applying to an A-label.
+			`{"host":"XN--aa---o47jg78q"}`,
+			`{"host":"xn--7a"}`,
+			`{"intlHost":"xn--7a"}`,
+			`{"host":"xn--example-"}`,
+			`{"intlHost":"xn--example-"}`,
 			// Still the ordinary failures.
 			`{"mail":"2962"}`,
 			`{"host":"-leading-hyphen"}`,
