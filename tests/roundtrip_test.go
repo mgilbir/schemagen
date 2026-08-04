@@ -3183,6 +3183,56 @@ func TestRootCompositionBranchesValidation(t *testing.T) {
 	)
 }
 
+// TestRuntimeEvaluatorAppliesItsPatterns is the runtime evaluator's ECMA-262
+// arms, which are the one part of a helper block that is compiled in
+// conditionally -- the engine is a third-party dependency, and a package whose
+// schemas name no pattern should not acquire it.
+//
+// It is also the one helper whose presence cannot be read off a call: the file
+// carries the _schemaNode literal and _dynPatternOK is reached from inside the
+// block, never from the file. So HelpersReferencedBy takes it from the literal
+// instead, and getting that wrong does not break the build -- it emits a node
+// with Pattern set and no arm that reads it, which is a check dropped in
+// silence. Nothing else in the tree asks the question: with the literal match
+// removed, `go test ./...` stays green and "zzz" below is accepted.
+//
+// Both spellings that set it are covered, in a fixture each. One file carrying
+// both would let either match stand in for the other, and the two are separately
+// removable. In each fixture the second branch is an integer bound, so a run
+// that dropped the pattern arms cannot pass by rejecting everything: the valid
+// cases are the control.
+func TestRuntimeEvaluatorAppliesItsPatterns(t *testing.T) {
+	// "pattern" on a node.
+	runValidationCases(t,
+		"testdata/schemas/regression/runtime_pattern_branches.json",
+		[]string{
+			`"abc"`, // matches ^a
+			`10`,    // the other branch, untouched by any pattern
+		},
+		[]string{
+			`"zzz"`, // a string the pattern excludes
+			`9`,     // below the other branch's minimum
+			`{}`,    // no branch admits an object
+		},
+	)
+	// A patternProperties member list, which the additionalProperties of false
+	// has to run to know which keys are left over.
+	runValidationCases(t,
+		"testdata/schemas/regression/runtime_patternprops_branches.json",
+		[]string{
+			`{"x1":5}`, // the key matches ^x, the value is an integer
+			`{}`,       // an object claiming nothing is still an object
+			`10`,       // the other branch
+		},
+		[]string{
+			`{"x1":"s"}`, // the member's own type
+			`{"y":1}`,    // additionalProperties false, and ^x does not claim "y"
+			`9`,          // below the other branch's minimum
+			`"abc"`,      // no branch admits a string
+		},
+	)
+}
+
 // TestRefToFalseSchemaForbidsEverything covers #116: the boolean `false` schema
 // reached through a $ref rather than written where it is used.
 //
