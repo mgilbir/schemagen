@@ -85,10 +85,14 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// The regexp engine only comes in when a compiled schema actually names a
 	// pattern: it is a third-party dependency, and a package that never asks for
 	// one should not acquire it. The format block needs the same engine for
-	// `format: regex`, so both routes go through addAliased -- naming a path
-	// twice in one import block does not compile, and a package that compiles a
-	// pattern to the runtime evaluator *and* asserts a format reaches it from
-	// both sides.
+	// `format: regex`, so both routes go through addAliased rather than
+	// appending: a package that compiles a pattern to the runtime evaluator
+	// *and* asserts a format reaches this path from both sides, and the list
+	// goes straight into the import block. go/format happens to drop a
+	// duplicate spec on its way out, which is why appending twice was never
+	// seen to break anything -- but that is the formatter's tidying and not a
+	// property of the list, and this list is what the rest of this function is
+	// written to keep unique.
 	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262", "ecma262")
 	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 	// The walker reports the first offending key in name order, so that a

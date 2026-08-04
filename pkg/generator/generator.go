@@ -3663,7 +3663,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var unevalItems *UnevaluatedItemsDef
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
-				rules = extractAliasValidationRules(merged, goType)
+				rules = g.aliasValidationRules(merged, goType)
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
