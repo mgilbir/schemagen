@@ -167,3 +167,163 @@ var knownValidationFailures = map[string]string{
 // (FIXED: all 6 entries removed — deterministic sorted-key iteration in allSubSchemas
 // and scope-aware $anchor indexing in the generator now produce consistent results.)
 var knownFlakyTests = map[string]bool{}
+
+// Reasons for knownUnvalidatedRejections. Each names a root-schema shape that
+// resolves to `any` — a bare interface carries no Validate, so nothing about
+// the group is ever checked. They are constants rather than repeated literals
+// so that fixing a shape is one grep and one delete, not 90.
+const (
+	gapRootFormatOnly       = `root states only "format", which names no Go type, so the root resolves to any and carries no Validate`
+	gapRootCompositionOnly  = `root is composition alone (allOf/anyOf/oneOf/not) and states no type of its own, so the root resolves to any and carries no Validate`
+	gapRootConditionalOnly  = `root is if/then/else alone and states no type of its own, so the root resolves to any and carries no Validate`
+	gapRootRefToFalse       = `root is a bare $ref to a boolean false schema, which resolves to any rather than to a type that refuses everything`
+	gapRootContentOnly      = `root states only contentEncoding/contentMediaType, which name no Go type, so the root resolves to any and carries no Validate`
+	gapRootDependenciesOnly = `root states only draft3 dependencies, which names no Go type, so the root resolves to any and carries no Validate`
+)
+
+// knownUnvalidatedRejections allow-lists groups that produce no Validate()
+// method while the suite marks at least one of their documents invalid.
+//
+// That combination is a provable defect, not a neutral skip: the generated code
+// accepts a document the suite says must be rejected, and before this list
+// existed it produced no subtest at all — it reached the reader only as a count
+// in the closing t.Logf of a -v run. TestExternalValidation now fails on every
+// such group whose key is absent here.
+//
+// The list is a ratchet, and it is bidirectional in the same way
+// checkKnownFailure is. An entry whose group has started producing a Validate(),
+// has stopped carrying a rejecting case, or has vanished from the corpus is
+// reported as stale and must be removed: an allow-list entry that no longer
+// allows anything is the same silence this test was written to end.
+//
+// The key is failureKey(draft, file-without-extension, group description) — the
+// shape knownValidationFailures uses, minus the per-case suffix, because the
+// skip happens once for the whole group, before any case runs.
+//
+// Measured 2026-08-03 against suite commit bce6a47: 154 of the 305 skipped
+// groups. Sections are ordered by size; fixing a root shape prunes a whole
+// section at once.
+var knownUnvalidatedRejections = map[string]string{
+	// gapRootFormatOnly (90 entries)
+	"draft2019-09/optional/format/date-time/validation of date-time strings":                                 gapRootFormatOnly,
+	"draft2019-09/optional/format/date/validation of date strings":                                           gapRootFormatOnly,
+	"draft2019-09/optional/format/duration/validation of duration strings":                                   gapRootFormatOnly,
+	"draft2019-09/optional/format/email/validation of e-mail addresses":                                      gapRootFormatOnly,
+	"draft2019-09/optional/format/hostname/validation of A-label (punycode) host names":                      gapRootFormatOnly,
+	"draft2019-09/optional/format/hostname/validation of host names":                                         gapRootFormatOnly,
+	"draft2019-09/optional/format/idn-email/validation of an internationalized e-mail addresses":             gapRootFormatOnly,
+	"draft2019-09/optional/format/idn-hostname/validation of internationalized host names":                   gapRootFormatOnly,
+	"draft2019-09/optional/format/idn-hostname/validation of separators in internationalized host names":     gapRootFormatOnly,
+	"draft2019-09/optional/format/ipv4/validation of IP addresses":                                           gapRootFormatOnly,
+	"draft2019-09/optional/format/ipv6/validation of IPv6 addresses":                                         gapRootFormatOnly,
+	"draft2019-09/optional/format/iri-reference/validation of IRI References":                                gapRootFormatOnly,
+	"draft2019-09/optional/format/iri/validation of IRIs":                                                    gapRootFormatOnly,
+	"draft2019-09/optional/format/json-pointer/validation of JSON-pointers (JSON String Representation)":     gapRootFormatOnly,
+	"draft2019-09/optional/format/regex/validation of regular expressions":                                   gapRootFormatOnly,
+	"draft2019-09/optional/format/relative-json-pointer/validation of Relative JSON Pointers (RJP)":          gapRootFormatOnly,
+	"draft2019-09/optional/format/time/validation of time strings":                                           gapRootFormatOnly,
+	"draft2019-09/optional/format/uri-reference/validation of URI References":                                gapRootFormatOnly,
+	"draft2019-09/optional/format/uri-template/format: uri-template":                                         gapRootFormatOnly,
+	"draft2019-09/optional/format/uri/validation of URIs":                                                    gapRootFormatOnly,
+	"draft2019-09/optional/format/uuid/uuid format":                                                          gapRootFormatOnly,
+	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: false": gapRootFormatOnly,
+	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: true":  gapRootFormatOnly,
+	"draft2020-12/optional/format/date-time/validation of date-time strings":                                 gapRootFormatOnly,
+	"draft2020-12/optional/format/date/validation of date strings":                                           gapRootFormatOnly,
+	"draft2020-12/optional/format/duration/validation of duration strings":                                   gapRootFormatOnly,
+	"draft2020-12/optional/format/ecmascript-regex/\\a is not an ECMA 262 control escape":                    gapRootFormatOnly,
+	"draft2020-12/optional/format/email/validation of e-mail addresses":                                      gapRootFormatOnly,
+	"draft2020-12/optional/format/hostname/validation of A-label (punycode) host names":                      gapRootFormatOnly,
+	"draft2020-12/optional/format/hostname/validation of host names":                                         gapRootFormatOnly,
+	"draft2020-12/optional/format/idn-email/validation of an internationalized e-mail addresses":             gapRootFormatOnly,
+	"draft2020-12/optional/format/idn-hostname/validation of internationalized host names":                   gapRootFormatOnly,
+	"draft2020-12/optional/format/idn-hostname/validation of separators in internationalized host names":     gapRootFormatOnly,
+	"draft2020-12/optional/format/ipv4/validation of IP addresses":                                           gapRootFormatOnly,
+	"draft2020-12/optional/format/ipv6/validation of IPv6 addresses":                                         gapRootFormatOnly,
+	"draft2020-12/optional/format/iri-reference/validation of IRI References":                                gapRootFormatOnly,
+	"draft2020-12/optional/format/iri/validation of IRIs":                                                    gapRootFormatOnly,
+	"draft2020-12/optional/format/json-pointer/validation of JSON-pointers (JSON String Representation)":     gapRootFormatOnly,
+	"draft2020-12/optional/format/regex/validation of regular expressions":                                   gapRootFormatOnly,
+	"draft2020-12/optional/format/relative-json-pointer/validation of Relative JSON Pointers (RJP)":          gapRootFormatOnly,
+	"draft2020-12/optional/format/time/validation of time strings":                                           gapRootFormatOnly,
+	"draft2020-12/optional/format/uri-reference/validation of URI References":                                gapRootFormatOnly,
+	"draft2020-12/optional/format/uri-template/format: uri-template":                                         gapRootFormatOnly,
+	"draft2020-12/optional/format/uri/validation of URIs":                                                    gapRootFormatOnly,
+	"draft2020-12/optional/format/uuid/uuid format":                                                          gapRootFormatOnly,
+	"draft3/optional/format/color/validation of CSS colors":                                                  gapRootFormatOnly,
+	"draft3/optional/format/date-time/validation of date-time strings":                                       gapRootFormatOnly,
+	"draft3/optional/format/date/validation of date strings":                                                 gapRootFormatOnly,
+	"draft3/optional/format/ecmascript-regex/ECMA 262 regex dialect recognition":                             gapRootFormatOnly,
+	"draft3/optional/format/email/validation of e-mail addresses":                                            gapRootFormatOnly,
+	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
+	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
+	"draft3/optional/format/ipv6/validation of IPv6 addresses":                                               gapRootFormatOnly,
+	"draft3/optional/format/regex/validation of regular expressions":                                         gapRootFormatOnly,
+	"draft3/optional/format/time/validation of time strings":                                                 gapRootFormatOnly,
+	"draft3/optional/format/uri/validation of URIs":                                                          gapRootFormatOnly,
+	"draft4/optional/format/date-time/validation of date-time strings":                                       gapRootFormatOnly,
+	"draft4/optional/format/email/validation of e-mail addresses":                                            gapRootFormatOnly,
+	"draft4/optional/format/hostname/validation of host names":                                               gapRootFormatOnly,
+	"draft4/optional/format/ipv4/validation of IP addresses":                                                 gapRootFormatOnly,
+	"draft4/optional/format/ipv6/validation of IPv6 addresses":                                               gapRootFormatOnly,
+	"draft4/optional/format/uri/validation of URIs":                                                          gapRootFormatOnly,
+	"draft6/optional/format/date-time/validation of date-time strings":                                       gapRootFormatOnly,
+	"draft6/optional/format/email/validation of e-mail addresses":                                            gapRootFormatOnly,
+	"draft6/optional/format/hostname/validation of host names":                                               gapRootFormatOnly,
+	"draft6/optional/format/ipv4/validation of IP addresses":                                                 gapRootFormatOnly,
+	"draft6/optional/format/ipv6/validation of IPv6 addresses":                                               gapRootFormatOnly,
+	"draft6/optional/format/json-pointer/validation of JSON-pointers (JSON String Representation)":           gapRootFormatOnly,
+	"draft6/optional/format/uri-reference/validation of URI References":                                      gapRootFormatOnly,
+	"draft6/optional/format/uri-template/format: uri-template":                                               gapRootFormatOnly,
+	"draft6/optional/format/uri/validation of URIs":                                                          gapRootFormatOnly,
+	"draft7/optional/format/date-time/validation of date-time strings":                                       gapRootFormatOnly,
+	"draft7/optional/format/date/validation of date strings":                                                 gapRootFormatOnly,
+	"draft7/optional/format/email/validation of e-mail addresses":                                            gapRootFormatOnly,
+	"draft7/optional/format/hostname/validation of A-label (punycode) host names":                            gapRootFormatOnly,
+	"draft7/optional/format/hostname/validation of host names":                                               gapRootFormatOnly,
+	"draft7/optional/format/idn-email/validation of an internationalized e-mail addresses":                   gapRootFormatOnly,
+	"draft7/optional/format/idn-hostname/validation of internationalized host names":                         gapRootFormatOnly,
+	"draft7/optional/format/idn-hostname/validation of separators in internationalized host names":           gapRootFormatOnly,
+	"draft7/optional/format/ipv4/validation of IP addresses":                                                 gapRootFormatOnly,
+	"draft7/optional/format/ipv6/validation of IPv6 addresses":                                               gapRootFormatOnly,
+	"draft7/optional/format/iri-reference/validation of IRI References":                                      gapRootFormatOnly,
+	"draft7/optional/format/iri/validation of IRIs":                                                          gapRootFormatOnly,
+	"draft7/optional/format/json-pointer/validation of JSON-pointers (JSON String Representation)":           gapRootFormatOnly,
+	"draft7/optional/format/regex/validation of regular expressions":                                         gapRootFormatOnly,
+	"draft7/optional/format/relative-json-pointer/validation of Relative JSON Pointers (RJP)":                gapRootFormatOnly,
+	"draft7/optional/format/time/validation of time strings":                                                 gapRootFormatOnly,
+	"draft7/optional/format/uri-reference/validation of URI References":                                      gapRootFormatOnly,
+	"draft7/optional/format/uri-template/format: uri-template":                                               gapRootFormatOnly,
+	"draft7/optional/format/uri/validation of URIs":                                                          gapRootFormatOnly,
+
+	// gapRootCompositionOnly (37 entries)
+	"draft2019-09/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
+	"draft2019-09/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapRootCompositionOnly,
+	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapRootCompositionOnly,
+	"draft2020-12/not/collect annotations inside a 'not', even if collection is disabled":                    gapRootCompositionOnly,
+	"draft2020-12/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":            gapRootCompositionOnly,
+	"draft6/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
+	"draft7/optional/unknownKeyword/$id inside an unknown keyword is not a real identifier":                  gapRootCompositionOnly,
+
+	// gapRootConditionalOnly (21 entries)
+	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)": gapRootConditionalOnly,
+	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
+	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
+
+	// gapRootRefToFalse (2 entries)
+	"draft2019-09/ref/$ref to boolean schema false": gapRootRefToFalse,
+	"draft2020-12/ref/$ref to boolean schema false": gapRootRefToFalse,
+
+	// gapRootContentOnly (3 entries)
+	"draft7/optional/content/validation of binary string-encoding":                     gapRootContentOnly,
+	"draft7/optional/content/validation of binary-encoded media type documents":        gapRootContentOnly,
+	"draft7/optional/content/validation of string-encoded content based on media type": gapRootContentOnly,
+
+	// gapRootDependenciesOnly (1 entry)
+	"draft3/dependencies/dependencies": gapRootDependenciesOnly,
+}
