@@ -4407,3 +4407,91 @@ func TestFalsePropertyRefusesExplicitNull(t *testing.T) {
 		},
 	)
 }
+
+// TestAnyOfBranchUnevaluatedPropertiesIsPerDocument covers issue #111: an
+// `unevaluatedProperties` inside an `anyOf` branch was enforced whether or not
+// that branch matched the document.
+//
+// The first four inputs are the point. {"a":1} satisfies the *second* branch,
+// which states no `unevaluatedProperties` at all, and a branch the document
+// fails contributes nothing -- neither its assertions nor the annotations the
+// keyword reads. The generated code applied the first branch's keyword
+// unconditionally and refused it, which two reference implementations call
+// valid. A false rejection is worse than a missing check, so these four are the
+// accept-controls that must never come back.
+//
+// The last two are the reject-controls beside them, and they are why the fix is
+// an exact evaluation rather than a deletion: {"b":2,"c":3} fails the first
+// branch on c and the second on the missing `a`, so no branch holds and the
+// document really is invalid. Dropping the keyword would accept it.
+func TestAnyOfBranchUnevaluatedPropertiesIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_branch_unevaluated_properties.json",
+		[]string{
+			`{"a":1}`,
+			`{"b":2}`,
+			`{"a":1,"b":2}`,
+			// No key is unevaluated, so the first branch holds vacuously.
+			`{}`,
+		},
+		[]string{
+			`{"b":2,"c":3}`,
+			`{"c":3}`,
+		},
+	)
+}
+
+// TestAnyOfBranchUnevaluatedPropertiesWithoutParentProperties is the same
+// keyword reached by the other route into a struct.
+//
+// A parent that declares no properties of its own goes through generateAnyOfDef,
+// which builds a merged schema without the anyOf and hands that to
+// generateStructDef -- so the collector inside it never saw the keyword and the
+// applicator went unchecked entirely. The branch here also carries a $ref beside
+// its own `properties`, which is the second half: from 2019-09 a $ref is an
+// ordinary applicator, so the branch's own keyword applies and what the $ref
+// evaluates is exempt from it. Reading only the target, as the allOf collector
+// does, found no keyword and left this unchecked too.
+func TestAnyOfBranchUnevaluatedPropertiesWithoutParentProperties(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json",
+		[]string{
+			// The $ref evaluates x, the sibling properties evaluate y.
+			`{"x":1,"y":2}`,
+			// The second branch matches and states no unevaluatedProperties.
+			`{"q":1,"z":2}`,
+			`{}`,
+		},
+		[]string{
+			`{"x":1,"z":2}`,
+			`{"y":"no"}`,
+		},
+	)
+}
+
+// TestOneOfBranchUnevaluatedPropertiesIsPerDocument is issue #111 reached
+// through `oneOf`, where the count makes the false rejection sharper.
+//
+// {"a":1,"b":1} satisfies the second branch alone: the first branch declares
+// only `b`, so `a` is unevaluated and `unevaluatedProperties:false` fails it.
+// The flattened approximation decides whether a branch matches from its required
+// keys, its consts and its declared types, none of which mention `a`, so it
+// counted two matches and reported "expected exactly 1". That approximation is
+// dropped where the applicator is evaluated exactly; this is the control that
+// says so.
+func TestOneOfBranchUnevaluatedPropertiesIsPerDocument(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_branch_unevaluated_properties.json",
+		[]string{
+			`{"a":1}`,
+			`{"b":1}`,
+			`{"a":1,"b":1}`,
+		},
+		[]string{
+			// Fails the first branch on z and the second on the missing a.
+			`{"b":1,"z":2}`,
+			`{"z":1}`,
+			`{}`,
+		},
+	)
+}

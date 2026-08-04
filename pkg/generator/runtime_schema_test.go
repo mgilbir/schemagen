@@ -43,6 +43,9 @@ func TestRefusedBranchesCompileToTheRuntimeEvaluator(t *testing.T) {
 		// Issue #114: a root "not" whose sub-schema states object structure.
 		{"not over an object shape", `{"not":{"type":"object","properties":{"foo":{"type":"string"}}}}`},
 		{"not over a required key", `{"not":{"required":["foo"]}}`},
+		// Issue #111: unevaluatedProperties is modelled, so a schema whose only
+		// content is that keyword no longer fails the evaluator closed.
+		{"unevaluatedProperties in a branch", `{"not":{"anyOf":[true],"unevaluatedProperties":false}}`},
 	}
 
 	for _, tt := range tests {
@@ -137,7 +140,11 @@ func TestUnmodelledKeywordsFailClosedAndAreReported(t *testing.T) {
 		keyword string
 	}{
 		{"content keywords", `{"contentEncoding":"base64"}`, "contentEncoding"},
-		{"unevaluatedProperties", `{"not":{"anyOf":[true],"unevaluatedProperties":false}}`, "not"},
+		// "format" stays out of the evaluator's model on purpose: schemagen
+		// asserts a format only where the schema gives the position a string
+		// type, and a node evaluator that quietly ignored it would enforce a
+		// different schema here than the static path does two lines away.
+		{"format in a branch", `{"not":{"anyOf":[true],"format":"email"}}`, "not"},
 		{"an unknown keyword", `{"anyOf":[{"x-vendor":1},{"type":"string"}]}`, "anyOf"},
 		{"a vendor keyword at the root", `{"x-vendor":{"a":1}}`, "x-vendor"},
 	}

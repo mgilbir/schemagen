@@ -101,7 +101,8 @@ type StructDef struct {
 	RequiredJSON           []string                  // JSON property names that must be present (for required validation)
 	NonObjectValidations   []ValidationRule          // constraints that apply to non-object data (e.g., minimum on a schema that is both object and numeric)
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
-	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf/anyOf sub-schemas
+	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf sub-schemas
+	RuntimeBranchChecks    []RuntimeBranchCheck      // anyOf/oneOf keywords a branch's unevaluatedProperties makes per-document; evaluated at runtime
 	ObjectEnum             []string                  // canonical JSON of the whole documents an enum permits, when one was merged in beside the declared properties
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
@@ -364,6 +365,12 @@ func (d *StructDef) HasBranchOverflowChecks() bool {
 	return len(d.BranchOverflowChecks) > 0
 }
 
+// HasRuntimeBranchChecks returns true if the struct carries an anyOf/oneOf whose
+// unevaluatedProperties can only be settled against the document in hand.
+func (d *StructDef) HasRuntimeBranchChecks() bool {
+	return len(d.RuntimeBranchChecks) > 0
+}
+
 // HasObjectEnum returns true if an enum over whole documents applies to the
 // struct.
 func (d *StructDef) HasObjectEnum() bool {
@@ -394,6 +401,12 @@ func (d *StructDef) NeedsRawProps() bool {
 	// values too. Only the raw map has both; the declared fields have been
 	// decoded into Go types by then and the overflow map never held them.
 	if len(d.BranchOverflowChecks) > 0 {
+		return true
+	}
+	// The runtime branch evaluator is handed the document rebuilt from the raw
+	// map: the applicator's branches speak about every key, including the ones
+	// this struct declares fields for.
+	if len(d.RuntimeBranchChecks) > 0 {
 		return true
 	}
 	// An enum over whole documents is compared against the document, which is
@@ -818,6 +831,40 @@ type BranchOverflowCheck struct {
 	// (resolvePatternPropertyTypes): a sub-schema whose type turns out not to
 	// carry a Validate leaves this empty and the value goes unchecked.
 	TypeName string
+}
+
+// RuntimeBranchCheck is one applicator keyword -- an `anyOf` or a `oneOf` -- one
+// of whose branches states `unevaluatedProperties`, compiled to the runtime
+// evaluator and run against the document.
+//
+// It exists because that keyword cannot be answered at generation time. An
+// `allOf` branch always binds, so its `unevaluatedProperties` and the set of
+// keys it accounts for are both readable from the schema, which is what
+// BranchOverflowCheck carries. An `anyOf` or `oneOf` branch binds only if the
+// *instance* satisfies it, and a branch that fails contributes nothing at all --
+// neither its assertions nor the annotations its siblings' keyword reads. So in
+//
+//	{"properties":{"a":{"type":"integer"}},
+//	 "anyOf":[{"properties":{"b":{"type":"integer"}},"unevaluatedProperties":false},
+//	          {"required":["a"]}]}
+//
+// the document {"a":1} is valid: it satisfies the second branch, which states no
+// `unevaluatedProperties`, and the first branch's keyword never applies because
+// that branch does not match. Enforcing the keyword unconditionally rejected it
+// (issue #111), and no static approximation can do better -- which branch
+// contributes is a fact about the document, not about the schema.
+//
+// The whole keyword is compiled, not the offending branch alone: an
+// `unevaluatedProperties` inside a branch is exempted by what that branch
+// evaluates, and only evaluating the branch produces that set. A subtree the
+// evaluator cannot model compiles to nothing and the check is dropped, which
+// leaves the keyword unchecked rather than checked wrongly.
+type RuntimeBranchCheck struct {
+	// Keyword names the applicator in the error message: "anyOf" or "oneOf".
+	Keyword string
+	// NodeLiteral is the Go composite literal for the _schemaNode holding that
+	// keyword and its branches.
+	NodeLiteral string
 }
 
 // ValidationRule describes a validation constraint on a struct field.

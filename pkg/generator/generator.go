@@ -771,6 +771,13 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
+			if len(sd.RuntimeBranchChecks) > 0 {
+				// The document is rebuilt from the raw map before the compiled
+				// applicator is evaluated over it, and a failure is reported
+				// with the reason the evaluator gave.
+				needsFmt = true
+				needsJSON = true
+			}
 			if len(sd.ObjectEnum) > 0 {
 				// The document is re-encoded to compare it against the members.
 				needsFmt = true
@@ -2349,7 +2356,8 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// The one the merge adopted is skipped by pointer identity, so the overflow
 	// map above and a check here never both answer for the same keyword.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
-	if len(branchChecks) > 0 {
+	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
@@ -2362,6 +2370,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 		Validations:          validations,
 		ItemValidations:      itemValidations,
 		BranchOverflowChecks: branchChecks,
+		RuntimeBranchChecks:  runtimeBranchChecks,
 		RequiredJSON:         requiredJSON,
 		OverflowNullCheck:    overflowNullCheck,
 		NeedsMarshal:         needsMarshal,
@@ -3260,6 +3269,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		unevalProps = g.buildUnevaluatedPropertiesDef(s)
 	}
 
+	// An allOf/anyOf branch stating additionalProperties or unevaluatedProperties
+	// keeps its own view of which keys it leaves unaccounted for; neither keyword
+	// can be folded into this struct's overflow map. See
+	// collectBranchOverflowChecks and collectRuntimeBranchChecks.
+	branchChecks := g.collectBranchOverflowChecks(s, name)
+	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+
 	objectOneOfs := g.extractObjectOneOfDefs(s)
 	if len(objectOneOfs) > 0 {
 		needsUnmarshal = true
@@ -3273,6 +3289,27 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
+	// Where the applicator is evaluated exactly, the flattened approximation of
+	// it is dropped rather than run beside it.
+	//
+	// The two do not merely duplicate work: the approximation decides whether a
+	// branch matches from its required keys, its consts and its declared types,
+	// and a branch stating unevaluatedProperties can fail on a key none of those
+	// mention. It then counts a branch that does not hold, which for `oneOf` is
+	// the difference between one match and two -- so
+	// {"oneOf":[{"properties":{"b":{}},"required":["b"],
+	//            "unevaluatedProperties":false},
+	//           {"properties":{"a":{}},"required":["a"]}]}
+	// rejected {"a":1,"b":1}, which satisfies the second branch alone. That is
+	// the same false rejection as #111 reached by the other keyword, and the
+	// exact check below is what settles it.
+	if runtimeBranchCheckFor(runtimeBranchChecks, "oneOf") != nil {
+		objectOneOfs = nil
+	}
+	if runtimeBranchCheckFor(runtimeBranchChecks, "anyOf") != nil {
+		objectAnyOfs = nil
+	}
+
 	// An if/then/else beside the object's properties applies to the object as a
 	// whole. Its branches are not folded into any one field's rules -- they only
 	// bind when the condition holds -- so they are checked here against the raw
@@ -3282,12 +3319,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
-	// An allOf/anyOf branch stating additionalProperties or unevaluatedProperties
-	// keeps its own view of which keys it leaves unaccounted for; neither keyword
-	// can be folded into this struct's overflow map. See
-	// collectBranchOverflowChecks.
-	branchChecks := g.collectBranchOverflowChecks(s, name)
-	if len(branchChecks) > 0 {
+	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		// The checks read the raw JSON, which only the custom unmarshaler keeps,
 		// and every key that is not a declared field must survive the round trip
 		// for the marshaler to put it back.
@@ -3346,6 +3378,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		NonObjectValidations:   nonObjRules,
 		UnevaluatedProperties:  unevalProps,
 		BranchOverflowChecks:   branchChecks,
+		RuntimeBranchChecks:    runtimeBranchChecks,
 		ObjectEnum:             objectEnum,
 		ObjectOneOfs:           objectOneOfs,
 		ObjectAnyOfs:           objectAnyOfs,
@@ -5080,11 +5113,26 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// any branch has no matchable criteria (required keys / const / type checks),
 	// that branch matches any object and the whole anyOf is unconstrained, so the
 	// check is skipped to avoid false rejections.
-	if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
-		if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
-			if sd, ok := last.(*StructDef); ok {
-				sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
+	//
+	// A branch stating unevaluatedProperties is taken over whole instead: the
+	// merge builds `merged` without the anyOf, so generateStructDef never sees the
+	// keyword and neither collector inside it fires. That is why the same schema
+	// written with a property of its own was checked and this one was not --
+	// {"type":"object","anyOf":[{"properties":{"b":{}},
+	//                            "unevaluatedProperties":false}]}
+	// accepted {"b":1,"c":2}, which no branch admits.
+	if last := g.output.TypeDefs[len(g.output.TypeDefs)-1]; last.TypeName() == name {
+		if sd, ok := last.(*StructDef); ok {
+			runtimeChecks := g.collectRuntimeBranchChecks(s)
+			if len(runtimeChecks) > 0 {
+				sd.RuntimeBranchChecks = append(sd.RuntimeBranchChecks, runtimeChecks...)
 				sd.NeedsUnmarshal = true
+			}
+			if runtimeBranchCheckFor(runtimeChecks, "anyOf") == nil {
+				if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
+					sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
+					sd.NeedsUnmarshal = true
+				}
 			}
 		}
 	}
@@ -13513,25 +13561,15 @@ func mergeEvalBranches(a, b *EvalBranchDef) *EvalBranchDef {
 func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName string) []BranchOverflowCheck {
 	var checks []BranchOverflowCheck
 
-	// unevaluatedProperties, from a direct allOf or anyOf branch. This is the
-	// long-standing "cousin isolation" case: an unevaluatedProperties inside an
-	// applicator branch sees the annotations of its own branch and not a
-	// sibling's.
+	// unevaluatedProperties, from a direct allOf branch. This is the long-standing
+	// "cousin isolation" case: an unevaluatedProperties inside an applicator
+	// branch sees the annotations of its own branch and not a sibling's.
+	//
+	// An allOf branch only. Every allOf branch has to hold, so its keyword and its
+	// accounted set are both readable from the schema. An anyOf or oneOf branch
+	// binds only where the instance satisfies it, so neither is knowable here; see
+	// collectRuntimeBranchChecks, which answers those against the document.
 	for _, sub := range s.AllOf {
-		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
-		}
-		if resolved.UnevaluatedProperties == nil {
-			continue
-		}
-		if check := g.buildBranchUnevalCheck(resolved, ownerName, len(checks)); check != nil {
-			checks = append(checks, *check)
-		}
-	}
-	for _, sub := range s.AnyOf {
 		resolved := sub
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if r := g.resolveRefInContext(effRef, sub); r != nil {
@@ -13553,6 +13591,111 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 	checks = append(checks, g.collectBranchAdditionalChecks(s.AllOf, s.AdditionalProperties, ownerName, len(checks), make(map[*schema.Schema]bool))...)
 
 	return checks
+}
+
+// collectRuntimeBranchChecks compiles an `anyOf` or `oneOf` whose branches state
+// `unevaluatedProperties` to the runtime evaluator, because nothing static can
+// answer it.
+//
+// The keyword in such a branch is scoped to that branch *and* conditional on it:
+// a branch the document fails contributes nothing, neither its assertions nor
+// the annotations its own `unevaluatedProperties` exempts. Which branches
+// contribute is therefore a property of the document, and the generated code has
+// to evaluate them to find out. Enforcing the keyword unconditionally was issue
+// #111 -- a false rejection, which is worse than no check at all.
+//
+// The whole keyword is compiled rather than the branch stating it, for two
+// reasons. The branch's own `properties`, `patternProperties`,
+// `additionalProperties`, `$ref` and nested applicators are what exempt a key
+// from its `unevaluatedProperties`, and only evaluating the branch produces that
+// set; and the keyword's own assertion -- at least one branch matches, exactly
+// one for `oneOf` -- has to be judged against the same branches, or a document
+// could pass a branch that the evaluator then fails.
+//
+// A subtree the evaluator cannot model yields nothing and the check is dropped,
+// which leaves the applicator judged by the static approximation alone. That is
+// the same answer this keyword got before #111 in every position but the
+// rejecting one.
+func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranchCheck {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var checks []RuntimeBranchCheck
+	for _, group := range []struct {
+		keyword string
+		field   string
+		subs    []*schema.Schema
+	}{{"anyOf", "AnyOf", s.AnyOf}, {"oneOf", "OneOf", s.OneOf}} {
+		if !g.branchStatesUnevaluatedProperties(group.subs) {
+			continue
+		}
+		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
+		list, ok := b.list(group.subs, 2)
+		if !ok {
+			continue
+		}
+		checks = append(checks, RuntimeBranchCheck{
+			Keyword:     group.keyword,
+			NodeLiteral: fmt.Sprintf("_schemaNode{\n\t%s: %s,\n}", group.field, list),
+		})
+	}
+	return checks
+}
+
+// runtimeBranchCheckFor returns the compiled check for one applicator keyword,
+// or nil if that keyword was not taken over.
+func runtimeBranchCheckFor(checks []RuntimeBranchCheck, keyword string) *RuntimeBranchCheck {
+	for i := range checks {
+		if checks[i].Keyword == keyword {
+			return &checks[i]
+		}
+	}
+	return nil
+}
+
+// branchStatesUnevaluatedProperties reports whether any direct branch of an
+// applicator states `unevaluatedProperties`, on the branch itself or through a
+// $ref it carries.
+//
+// Both sides are read, and the draft decides whether the first one counts.
+// Through draft-07 a $ref replaces the schema object it sits in, so a keyword
+// beside it says nothing and only the target's counts; from 2019-09 the $ref is
+// an ordinary applicator and the branch's own keyword applies as well. Reading
+// only the target was what left
+// {"anyOf":[{"$ref":"#/$defs/base","properties":{"y":{}},
+//
+//	"unevaluatedProperties":false}]}
+//
+// unchecked: the target states no such keyword, so nothing here fired.
+//
+// This is a probe, so the lookup is the uncounted one: a branch that turns out
+// not to compile costs the caller nothing, and recording the reference would
+// make an optimistic look here decide whether Generate reports an unresolved
+// reference.
+//
+// Direct branches only, which is the same reach the static collector has. A
+// keyword buried deeper inside a branch was never enforced and is not enforced
+// now; taking the applicator over for it would change generated code for schemas
+// that have no defect to fix.
+func (g *Generator) branchStatesUnevaluatedProperties(subs []*schema.Schema) bool {
+	for _, sub := range subs {
+		if sub == nil {
+			continue
+		}
+		effRef := sub.EffectiveRef()
+		if effRef == "" || !g.refOverridesSiblingsForSchema(sub) {
+			if sub.UnevaluatedProperties != nil {
+				return true
+			}
+		}
+		if effRef == "" {
+			continue
+		}
+		if r := g.resolveRefInContextUncounted(effRef, sub); r != nil && r.UnevaluatedProperties != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // collectBranchAdditionalChecks walks the allOf branches for schema objects that

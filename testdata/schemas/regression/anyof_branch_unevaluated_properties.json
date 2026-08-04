@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnyOfBranchUnevaluatedProperties",
+  "type": "object",
+  "properties": {
+    "a": {"type": "integer"}
+  },
+  "anyOf": [
+    {"properties": {"b": {"type": "integer"}}, "unevaluatedProperties": false},
+    {"required": ["a"]}
+  ]
+}

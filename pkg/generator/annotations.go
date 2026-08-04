@@ -39,8 +39,8 @@ var annotationKeywords = map[string]bool{
 // "format" is left out because schemagen asserts a format only where the schema
 // gives the position a string type, and a node evaluator that quietly ignored it
 // would enforce a different schema here than the static path does two lines
-// away. "unevaluatedProperties" and the content keywords are left out because
-// nothing here models them. "$dynamicRef" and "$recursiveRef" are left out
+// away. The content keywords are left out because nothing here models them.
+// "$dynamicRef" and "$recursiveRef" are left out
 // because resolving them needs the dynamic scope of the *instance* evaluation,
 // which an inlined tree does not have -- which is also what makes the anchors
 // safe to accept and ignore: an anchor with nothing pointing at it constrains
@@ -64,8 +64,9 @@ var validatorKeywords = map[string]bool{
 	"dependentRequired": true, "dependentSchemas": true,
 	"allOf": true, "anyOf": true, "oneOf": true, "not": true,
 	"if": true, "then": true, "else": true,
-	"unevaluatedItems": true,
-	"$ref":             true,
+	"unevaluatedItems":      true,
+	"unevaluatedProperties": true,
+	"$ref":                  true,
 
 	// Carry no constraint of their own where they sit.
 	"$defs": true, "definitions": true,
@@ -383,7 +384,8 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		name string
 		sub  *schema.Schema
 	}{{"Not", s.Not}, {"If", s.If}, {"Then", s.Then}, {"Else", s.Else},
-		{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems}} {
+		{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems},
+		{"UnevaluatedProperties", s.UnevaluatedProperties}} {
 		if branch.sub == nil {
 			continue
 		}

@@ -162,6 +162,9 @@ func allGoldenTests() []goldenTestCase {
 		// Pins that a property whose schema is `false` is refused on the
 		// document's own keys rather than on the decoded field being non-nil.
 		{"regression/false_property_explicit_null", "testdata/schemas/regression/false_property_explicit_null.json", "testdata/golden/regression/false_property_explicit_null.go"},
+		{"regression/anyof_branch_unevaluated_properties", "testdata/schemas/regression/anyof_branch_unevaluated_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_properties.go"},
+		{"regression/anyof_branch_unevaluated_no_properties", "testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_no_properties.go"},
+		{"regression/oneof_branch_unevaluated_properties", "testdata/schemas/regression/oneof_branch_unevaluated_properties.json", "testdata/golden/regression/oneof_branch_unevaluated_properties.go"},
 	}
 }
 

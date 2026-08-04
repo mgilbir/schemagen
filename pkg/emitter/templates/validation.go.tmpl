@@ -1113,6 +1113,43 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- end}}
+	{{- if $struct.HasRuntimeBranchChecks}}
+	{{- /* An anyOf or oneOf one of whose branches states unevaluatedProperties.
+	       Which branches contribute is a fact about the document -- a branch the
+	       document fails asserts nothing and evaluates nothing -- so the keyword
+	       is held as data and interpreted here rather than approximated at
+	       generation time. See RuntimeBranchCheck.
+
+	       The document is rebuilt from the raw JSON the unmarshaler kept, which
+	       is the only place every key still exists together: the declared ones
+	       have been decoded into Go fields by now and the overflow map never held
+	       them. A value not built from JSON has no document to judge and is
+	       passed over, the way the required-property check treats untracked
+	       presence. */}}
+	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
+	// contributes depends on the document, so the applicator is evaluated here.
+	if {{$recv}}._jsonRawProps != nil {
+		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
+		for _rbKey, _rbRaw := range {{$recv}}._jsonRawProps {
+			var _rbVal any
+			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+			}
+			_rbInstance[_rbKey] = _rbVal
+		}
+		{{- range $ri, $check := $struct.RuntimeBranchChecks}}
+		{
+			_rbNode{{$ri}} := {{$check.NodeLiteral}}
+			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
+				if _rbRes.reason == "" {
+					return fmt.Errorf("{{$check.Keyword}}: value does not satisfy the schema")
+				}
+				return fmt.Errorf("{{$check.Keyword}}: %s", _rbRes.reason)
+			}
+		}
+		{{- end}}
+	}
+	{{- end}}
 	{{- if $struct.HasObjectEnum}}
 	{{- /* An enum an allOf branch stated about the whole object. Its members are
 	       documents, so the comparison is against the document -- read off the
