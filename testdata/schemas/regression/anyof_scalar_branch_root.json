@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnyOfScalarBranchRoot",
+  "description": "Issue #133's first table, where the group is the whole document. The merge is a Go struct, so \"x\" -- which the string branch admits -- was refused by encoding/json before a branch was tried, while {\"j\":\"b\"} decoded into the struct and passed a Validate the summary had declined to write.",
+  "anyOf": [
+    {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+    {"type": "string"}
+  ]
+}

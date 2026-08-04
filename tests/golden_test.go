@@ -177,6 +177,22 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/anyof_branch_unevaluated_no_properties", "testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_no_properties.go"},
 		{"regression/oneof_branch_unevaluated_properties", "testdata/schemas/regression/oneof_branch_unevaluated_properties.json", "testdata/golden/regression/oneof_branch_unevaluated_properties.go"},
 		{"regression/constraint_only_positions", "testdata/schemas/regression/constraint_only_positions.json", "testdata/golden/regression/constraint_only_positions.go"},
+		{"regression/overflow_map_untyped_value", "testdata/schemas/regression/overflow_map_untyped_value.json", "testdata/golden/regression/overflow_map_untyped_value.go"},
+		{"regression/allof_nested_anyof_unevaluated", "testdata/schemas/regression/allof_nested_anyof_unevaluated.json", "testdata/golden/regression/allof_nested_anyof_unevaluated.go"},
+		{"regression/allof_nested_oneof_unevaluated", "testdata/schemas/regression/allof_nested_oneof_unevaluated.json", "testdata/golden/regression/allof_nested_oneof_unevaluated.go"},
+		{"regression/allof_nested_anyof_unevaluated_items", "testdata/schemas/regression/allof_nested_anyof_unevaluated_items.json", "testdata/golden/regression/allof_nested_anyof_unevaluated_items.go"},
+		// Pins which anyOf groups keep the merged struct and which leave it for
+		// the evaluator: a branch the struct cannot hold -- a scalar, a const, a
+		// `not`, the `true` schema -- takes the group away, a `false` branch
+		// keeps the struct and gains the runtime applicator instead, and the
+		// all-object group beside them keeps the summary it already judges
+		// correctly.
+		{"regression/anyof_boolean_and_scalar_branches", "testdata/schemas/regression/anyof_boolean_and_scalar_branches.json", "testdata/golden/regression/anyof_boolean_and_scalar_branches.go"},
+		{"regression/anyof_scalar_branch_root", "testdata/schemas/regression/anyof_scalar_branch_root.json", "testdata/golden/regression/anyof_scalar_branch_root.go"},
+		{"regression/anyof_false_branch_root", "testdata/schemas/regression/anyof_false_branch_root.json", "testdata/golden/regression/anyof_false_branch_root.go"},
+		// Pins that an if/then/else with a boolean `if` or a boolean branch is
+		// given a name to live in wherever it is written, not only at a root.
+		{"regression/if_boolean_branch_positions", "testdata/schemas/regression/if_boolean_branch_positions.json", "testdata/golden/regression/if_boolean_branch_positions.go"},
 	}
 }
 

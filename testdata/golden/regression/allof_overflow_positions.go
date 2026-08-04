@@ -7,10 +7,70 @@ import (
 	"fmt"
 )
 
+// LowerValue accepts any JSON value. Constraints apply only when the value is number.
+type LowerValue struct {
+	_value float64
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (l *LowerValue) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		l._raw = append(l._raw[:0], data...)
+		l._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &l._value); _err == nil {
+		l._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	l._raw = append(l._raw[:0], data...)
+	l._isRaw = true
+	return nil
+}
+func (l LowerValue) MarshalJSON() ([]byte, error) {
+	if l._isRaw {
+		if len(l._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return l._raw, nil
+	}
+	return json.Marshal(l._value)
+}
+func (l LowerValue) Float64() float64 { return l._value }
+func (l LowerValue) IsNumber() bool   { return !l._isRaw }
+func (l LowerValue) Raw() json.RawMessage {
+	if l._isRaw {
+		return l._raw
+	}
+	_b, _ := json.Marshal(l._value)
+	return _b
+}
+func (l LowerValue) String() string {
+	if l._isRaw {
+		return string(l._raw)
+	}
+	return fmt.Sprintf("%v", l._value)
+}
+
+// Validate checks LowerValue against its JSON Schema constraints.
+func (l LowerValue) Validate() error {
+	if l._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if float64(l._value) < 5 {
+		return fmt.Errorf("value: %v is less than minimum 5", l._value)
+	}
+	return nil
+}
+
 type Lower struct {
-	AdditionalProperties map[string]float64 `json:"-"`
-	_nonObject           bool               // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage    // raw bytes of non-object data for lossless roundtrip
+	AdditionalProperties map[string]LowerValue `json:"-"`
+	_nonObject           bool                  // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage       // raw bytes of non-object data for lossless roundtrip
 }
 
 func (l *Lower) UnmarshalJSON(data []byte) error {
@@ -45,9 +105,9 @@ func (l *Lower) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if l.AdditionalProperties == nil {
-				l.AdditionalProperties = make(map[string]float64)
+				l.AdditionalProperties = make(map[string]LowerValue)
 			}
-			var val float64
+			var val LowerValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
 				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}
@@ -96,8 +156,8 @@ func (l Lower) Validate() error {
 		return nil
 	}
 	for _k0, _e0 := range l.AdditionalProperties {
-		if float64(_e0) < 5 {
-			return fmt.Errorf("additionalProperties[%q]: value %v is less than minimum 5", _k0, _e0)
+		if _err := _e0.Validate(); _err != nil {
+			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
 		}
 	}
 	return nil
@@ -416,8 +476,68 @@ func (a AllOfOverflowPositionsNamedKey) Validate() error {
 	return nil
 }
 
+// AllOfOverflowPositionsSoleBranchValue accepts any JSON value. Constraints apply only when the value is number.
+type AllOfOverflowPositionsSoleBranchValue struct {
+	_value float64
+	_raw   json.RawMessage
+	_isRaw bool
+}
+
+func (a *AllOfOverflowPositionsSoleBranchValue) UnmarshalJSON(data []byte) error {
+	// Null is a non-matching type for inferred schemas — store as raw.
+	if string(data) == "null" {
+		a._raw = append(a._raw[:0], data...)
+		a._isRaw = true
+		return nil
+	}
+	// Try typed unmarshal first.
+	if _err := json.Unmarshal(data, &a._value); _err == nil {
+		a._isRaw = false
+		return nil
+	}
+	// Non-matching type — store raw bytes, accept silently per JSON Schema.
+	a._raw = append(a._raw[:0], data...)
+	a._isRaw = true
+	return nil
+}
+func (a AllOfOverflowPositionsSoleBranchValue) MarshalJSON() ([]byte, error) {
+	if a._isRaw {
+		if len(a._raw) == 0 {
+			return []byte("null"), nil
+		}
+		return a._raw, nil
+	}
+	return json.Marshal(a._value)
+}
+func (a AllOfOverflowPositionsSoleBranchValue) Float64() float64 { return a._value }
+func (a AllOfOverflowPositionsSoleBranchValue) IsNumber() bool   { return !a._isRaw }
+func (a AllOfOverflowPositionsSoleBranchValue) Raw() json.RawMessage {
+	if a._isRaw {
+		return a._raw
+	}
+	_b, _ := json.Marshal(a._value)
+	return _b
+}
+func (a AllOfOverflowPositionsSoleBranchValue) String() string {
+	if a._isRaw {
+		return string(a._raw)
+	}
+	return fmt.Sprintf("%v", a._value)
+}
+
+// Validate checks AllOfOverflowPositionsSoleBranchValue against its JSON Schema constraints.
+func (a AllOfOverflowPositionsSoleBranchValue) Validate() error {
+	if a._isRaw {
+		return nil // Constraints don't apply to non-matching types.
+	}
+	if float64(a._value) < 5 {
+		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+	}
+	return nil
+}
+
 type AllOfOverflowPositionsSoleBranch struct {
-	AdditionalProperties map[string]float64 `json:"-"`
+	AdditionalProperties map[string]AllOfOverflowPositionsSoleBranchValue `json:"-"`
 }
 
 func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
@@ -446,9 +566,9 @@ func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]float64)
+				a.AdditionalProperties = make(map[string]AllOfOverflowPositionsSoleBranchValue)
 			}
-			var val float64
+			var val AllOfOverflowPositionsSoleBranchValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
 				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}
@@ -486,8 +606,8 @@ func (a AllOfOverflowPositionsSoleBranch) MarshalJSON() ([]byte, error) {
 // Validate checks AllOfOverflowPositionsSoleBranch against its JSON Schema constraints.
 func (a AllOfOverflowPositionsSoleBranch) Validate() error {
 	for _k0, _e0 := range a.AdditionalProperties {
-		if float64(_e0) < 5 {
-			return fmt.Errorf("additionalProperties[%q]: value %v is less than minimum 5", _k0, _e0)
+		if _err := _e0.Validate(); _err != nil {
+			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
 		}
 	}
 	return nil

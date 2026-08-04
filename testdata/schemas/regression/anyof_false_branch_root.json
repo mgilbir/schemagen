@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnyOfFalseBranchRoot",
+  "description": "Issue #133's second table. A `false` branch states neither a required key nor a property check, so the object-shape summary dropped the whole \"at least one branch matches\" assertion and {\"j\":\"b\"} was accepted on the strength of the one branch written to reject everything. Nothing escapes the merged struct through a `false` branch, so the struct stays and the applicator is evaluated against the document instead.",
+  "anyOf": [
+    {"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
+    false
+  ]
+}

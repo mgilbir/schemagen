@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OverflowMapUntypedValue",
+  "description": "Issue #137: an overflow map typed from a sub-schema that states no \"type\" asserts what the schema did not say. `minimum` constrains numbers and is vacuous for every other JSON kind, so map[string]float64 refused a string and an object in the decoder and measured a null's Go zero against the bound. The same narrowing follows from minLength (string), minItems (array) and required (object). Each position here is checked in both spellings of the overflow map -- the struct field beside declared properties, and the Go map an all-additionalProperties object becomes -- with a sub-schema that does state its type as the control that must keep narrowing.",
+  "type": "object",
+  "properties": {
+    "bare": {
+      "$comment": "The reported shape as a Go map: no declared key, one schema for every value.",
+      "type": "object",
+      "additionalProperties": { "minimum": 5 }
+    },
+    "strLen": {
+      "type": "object",
+      "additionalProperties": { "minLength": 3 }
+    },
+    "arrLen": {
+      "type": "object",
+      "additionalProperties": { "minItems": 2 }
+    },
+    "objReq": {
+      "type": "object",
+      "additionalProperties": { "required": ["a"] }
+    },
+    "typed": {
+      "$comment": "The accept-control: the sub-schema states its type, so the narrowing is authorized and a wrong-typed value really is a rejection.",
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 5 }
+    },
+    "viaRef": {
+      "$comment": "The same untyped sub-schema written as a $defs entry, which has always got the wrapper. The inline spelling must now agree with it.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/AtLeastFive" }
+    }
+  },
+  "additionalProperties": { "minimum": 5 },
+  "$defs": {
+    "AtLeastFive": { "minimum": 5 }
+  }
+}

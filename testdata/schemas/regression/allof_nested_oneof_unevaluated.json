@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfNestedOneOfUnevaluated",
+  "description": "Issue #135 through oneOf, where the missing check is also a false rejection. The static approximation decides whether a branch matches from its required keys, its consts and its declared types, and a branch stating unevaluatedProperties can fail on a key none of those mention -- so it counted two matches for a document that satisfies the second branch alone, which is #111's rejection surviving one level down. The first allOf branch sits behind a $ref, which the merge follows, so both collectors have to agree on which branch that is. The second allOf branch is the control for the suppression being per variant slice: its oneOf states no unevaluatedProperties, gets no exact check, and must keep the approximation that is dropped for its sibling.",
+  "type": "object",
+  "properties": {
+    "z": { "type": "string" }
+  },
+  "allOf": [
+    { "$ref": "#/$defs/PickOne" },
+    {
+      "oneOf": [{ "required": ["m"] }, { "required": ["n"] }]
+    }
+  ],
+  "$defs": {
+    "PickOne": {
+      "oneOf": [
+        {
+          "properties": { "b": { "type": "integer" }, "m": {}, "n": {} },
+          "required": ["b"],
+          "unevaluatedProperties": false
+        },
+        { "properties": { "a": { "type": "integer" } }, "required": ["a"] }
+      ]
+    }
+  }
+}
