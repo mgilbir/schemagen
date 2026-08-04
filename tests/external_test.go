@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -275,6 +277,10 @@ func failureKey(parts ...string) string {
 //   - Unknown pass → OK
 func checkKnownFailure(t *testing.T, key string, err error, knownFailures map[string]string) {
 	t.Helper()
+	// The one place knownFlakyTests is read is the one place its ledger is
+	// written, so a consumer cannot consult the map without being counted. See
+	// flakySweepState for why that matters.
+	flakySweep.visit(t, key)
 	// Skip flaky tests that non-deterministically pass/fail due to Go map iteration order.
 	if _, flaky := knownFlakyTests[key]; flaky {
 		if err != nil {
@@ -345,7 +351,10 @@ func (l *keyLedger) complete() bool { return len(l.offered) == len(l.visited) }
 // It is separated from the reporting so it can be tested in milliseconds against
 // planted ledgers. The alternative is a guard whose only exercise is a 50-minute
 // corpus run that has to be sabotaged to see it fire once.
-func staleKnownFailureKeys(known map[string]string, l *keyLedger) []string {
+//
+// The value type is a parameter only because knownFlakyTests is a set and the
+// other four maps carry a reason string; nothing here reads the value.
+func staleKnownFailureKeys[V any](known map[string]V, l *keyLedger) []string {
 	var stale []string
 	for key := range known {
 		if !l.visited[key] {
@@ -370,6 +379,257 @@ func reportStaleKnownFailures(t *testing.T, mapName string, known map[string]str
 		t.Errorf("stale %s entry: %q matches no case this run tested — the case was renamed or removed "+
 			"upstream, or its group stopped being tested at all; delete the key, or find out which", mapName, key)
 	}
+}
+
+// flakyConsumers names every top-level test that consults knownFlakyTests.
+//
+// It is a declaration, not an observation, and it has to be: the sweep below
+// stands down until all of these have run, and a test that has been filtered out
+// leaves no trace to notice. What can be observed is the other direction — a test
+// that reads the map without appearing here — and flakySweepState.verdict reports
+// that, because such a test may be the only carrier of a key and its absence from
+// a run would make that key look vanished.
+var flakyConsumers = []string{
+	"TestExternalParsing",
+	"TestExternalCodeGen",
+	"TestExternalRoundTrip",
+	"TestExternalValidation",
+}
+
+// flakySweepState is knownFlakyTests's staleness sweep.
+//
+// The other four known-failure maps each belong to one test, so each can be
+// swept where it is read, against a ledger that test filled. knownFlakyTests
+// belongs to all four -- checkKnownFailure consults it before any of them --
+// and that is what stops the same shape from working here. A per-test sweep
+// would see, at the end of TestExternalParsing, an entry naming a case only
+// TestExternalRoundTrip carries, and would call it stale because the test doing
+// the sweeping never reached it. That is false staleness, and false staleness is
+// worse than none: it teaches whoever reads it to delete a live entry.
+//
+// So the ledger is one ledger, shared by the four tests, and the sweep runs from
+// whichever of them finishes last rather than from a named one. "Last" is
+// decided by the walked set rather than by declaration order: each test marks
+// itself when it has walked every file the corpus holds, and the sweep fires on
+// the call that completes the set. Nothing depends on the order the tests are
+// declared in or on -shuffle leaving it alone.
+//
+// TestMain is the other candidate for "after the last", and is where this
+// process's cache cleanup lives. It was not used: it holds no *testing.T, so a
+// stale entry could only be reported by printing to stderr and forcing the exit
+// code by hand, which detaches the message from the test that would explain it
+// and reports nothing at all when the sweep should merely stand down. The
+// last-of-four rule reaches the same point in the run with an ordinary t.Errorf.
+//
+// The keys stay in the format the four maps use -- draft/file/group[/case], with
+// no test name in them. Namespacing per test was the alternative and would make
+// the sweep per-test again, but an entry would then have to name the test that
+// suppresses it, which is information the flakiness does not have: the
+// non-determinism these entries covered came from map iteration order inside the
+// generator, which is not a property of the test observing it. It would also
+// leave knownFlakyTests's keys in a format subtly different from the four maps it
+// shadows, so a key copied across from knownRoundTripFailures -- the obvious way
+// to write one -- would match nothing.
+type flakySweepState struct {
+	mu       sync.Mutex
+	ledger   *keyLedger
+	walked   map[string]bool // consumer -> walked every file the corpus holds
+	observed map[string]bool // consumer -> read knownFlakyTests at least once
+	reported map[string]bool // stray consumer -> already named once
+}
+
+var flakySweep = newFlakySweepState()
+
+func newFlakySweepState() *flakySweepState {
+	return &flakySweepState{
+		ledger:   newKeyLedger(),
+		walked:   make(map[string]bool, len(flakyConsumers)),
+		observed: make(map[string]bool, len(flakyConsumers)),
+		reported: make(map[string]bool, len(flakyConsumers)),
+	}
+}
+
+// offer records a key the run is about to hand to a subtest. As with keyLedger,
+// call it outside the subtest, so that a -run filter shows up as offered and not
+// visited rather than as a case the corpus has lost.
+func (s *flakySweepState) offer(key string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ledger.offer(key)
+}
+
+// visit records that a subtest of the named test reached the key.
+func (s *flakySweepState) visit(t *testing.T, key string) {
+	s.record(topLevelTest(t.Name()), key)
+}
+
+// record is visit with the consuming test named directly, so the sweep can be
+// driven without a real subtest tree behind it.
+func (s *flakySweepState) record(consumer, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ledger.visit(key)
+	s.observed[consumer] = true
+}
+
+// markReported claims the right to name a stray consumer, and reports whether
+// this call is the one that got it.
+func (s *flakySweepState) markReported(consumer string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reported[consumer] {
+		return false
+	}
+	s.reported[consumer] = true
+	return true
+}
+
+// markWalked records that the named test walked every file the corpus holds, and
+// so offered every key it has to offer.
+func (s *flakySweepState) markWalked(consumer string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.walked[consumer] = true
+}
+
+// topLevelTest returns the name of the top-level test a (sub)test name belongs
+// to: "TestExternalRoundTrip/draft3/type/an object" -> "TestExternalRoundTrip".
+func topLevelTest(name string) string {
+	if i := strings.IndexByte(name, '/'); i >= 0 {
+		return name[:i]
+	}
+	return name
+}
+
+// flakySweepVerdict is what the sweep concluded, separated from the reporting so
+// that every arm of it can be exercised in milliseconds against a planted state
+// rather than only by sabotaging a 50-minute corpus run.
+//
+// At most one of stray, pending and incomplete is a reason to stand down, and
+// they are checked in that order; stale is only ever filled when none of them is.
+type flakySweepVerdict struct {
+	stray      []string // tests that read the map but are not in flakyConsumers
+	pending    []string // consumers that have not walked the whole corpus yet
+	incomplete bool     // keys were offered and never reached (a -run filter below file level)
+	stale      []string // entries no case in the run carried
+	offered    int
+	visited    int
+}
+
+// verdict judges knownFlakyTests against everything the four tests have recorded
+// so far.
+func (s *flakySweepState) verdict(known map[string]bool) flakySweepVerdict {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	v := flakySweepVerdict{offered: len(s.ledger.offered), visited: len(s.ledger.visited)}
+	for consumer := range s.observed {
+		if !slices.Contains(flakyConsumers, consumer) {
+			v.stray = append(v.stray, consumer)
+		}
+	}
+	sort.Strings(v.stray)
+	for _, consumer := range flakyConsumers {
+		if !s.walked[consumer] {
+			v.pending = append(v.pending, consumer)
+		}
+	}
+	if len(v.stray) > 0 || len(v.pending) > 0 {
+		return v
+	}
+	if !s.ledger.complete() {
+		v.incomplete = true
+		return v
+	}
+	v.stale = staleKnownFailureKeys(known, s.ledger)
+	return v
+}
+
+// finish is called by each of the four tests once its walk is over. It records
+// whether that walk covered the whole corpus, and sweeps if this call is the one
+// that completed the set.
+func (s *flakySweepState) finish(t *testing.T, walkedFiles, corpusFiles int) {
+	t.Helper()
+	consumer := topLevelTest(t.Name())
+
+	// A -run filter selecting some drafts or some files stops their groups from
+	// being walked at all, so their keys are never offered and the ledger cannot
+	// see the gap. This is the same pairing TestExternalValidation already makes
+	// between countCodeGenSuitableGroups and its own ledger, for the same reason:
+	// neither check sees the other's case.
+	if walkedFiles != corpusFiles {
+		t.Logf("partial run: %s walked %d of the corpus's %d files (a -run filter on the subtests?). "+
+			"The knownFlakyTests staleness sweep judges the whole corpus across every test that consults "+
+			"the map, and is skipped; run without a subtest filter, or via 'make test-external', to exercise it",
+			consumer, walkedFiles, corpusFiles)
+		return
+	}
+	s.markWalked(consumer)
+
+	v := s.verdict(knownFlakyTests)
+	switch {
+	case len(v.stray) > 0:
+		// Once per stray consumer, not once per consumer that finishes after it:
+		// every remaining test would otherwise repeat the same paragraph.
+		for _, name := range v.stray {
+			if s.markReported(name) {
+				t.Errorf("%s consults knownFlakyTests but is not listed in flakyConsumers, so the staleness "+
+					"sweep does not wait for it and does not know which keys it carries — a run that filtered "+
+					"it out would report every entry only it carries as stale. Add it to flakyConsumers and "+
+					"give it a flakySweep.finish call", name)
+			}
+		}
+	case len(v.pending) > 0:
+		t.Logf("knownFlakyTests staleness sweep deferred: %s %s not yet walked the whole corpus; "+
+			"the sweep runs from the last of the %d tests that consult the map",
+			strings.Join(v.pending, ", "), pluralHave(len(v.pending)), len(flakyConsumers))
+	case v.incomplete:
+		t.Logf("partial run: reached %d of the %d knownFlakyTests keys the corpus offers (a -run filter on "+
+			"the subtests?). The staleness sweep judges the whole corpus and is skipped; run without a "+
+			"subtest filter, or via 'make test-external', to exercise it", v.visited, v.offered)
+	case len(v.stale) > 0:
+		for _, key := range v.stale {
+			t.Errorf("stale knownFlakyTests entry: %q matches no case any of the %d tests that consult the "+
+				"map tested — the case was renamed or removed upstream, or its group stopped being reached "+
+				"at all; delete the key, or find out which", key, len(flakyConsumers))
+		}
+	default:
+		// Said out loud on a clean run, because a sweep that reports nothing and
+		// a sweep that ran over nothing read identically otherwise — which is
+		// the failure #119 was about, one level down.
+		t.Logf("knownFlakyTests staleness sweep: %d keys carried across %d tests, %d entr(ies) in the map, none stale",
+			v.visited, len(flakyConsumers), len(knownFlakyTests))
+	}
+}
+
+// pluralHave picks the verb for a list of names, so the deferral message reads
+// as a sentence in both the "one test left" and "three tests left" cases.
+func pluralHave(n int) string {
+	if n == 1 {
+		return "has"
+	}
+	return "have"
+}
+
+// countCorpusFiles counts the (draft, file) pairs the four external tests walk
+// when nothing filters them.
+//
+// It is the file-level counterpart to countCodeGenSuitableGroups, and it is a
+// file count rather than a group count because all four tests walk every file
+// while disagreeing about which groups inside one they visit. Missing draft
+// directories are skipped here exactly as the tests skip them, so a corpus
+// checkout without one is not mistaken for a filtered run.
+func countCorpusFiles(t *testing.T) int {
+	t.Helper()
+	var n int
+	for _, draft := range allDrafts {
+		draftDir := filepath.Join(jstsBaseDir, draft)
+		if _, err := os.Stat(draftDir); os.IsNotExist(err) {
+			continue
+		}
+		n += len(listJSONFiles(t, draftDir))
+	}
+	return n
 }
 
 // checkUnvalidatedRejection is checkKnownFailure's counterpart for a group that
@@ -1180,40 +1440,59 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) (val
 	return verdict, nil
 }
 
-// TestUnsweptKnownFailureMapsAreEmpty keeps the four known-failure maps that
-// have no staleness sweep from acquiring entries that could go stale unnoticed.
+// sweptKnownFailureMaps names every known-failure map that has a staleness
+// sweep, against the sweep that carries it. An entry here is a claim that an
+// entry in that map naming a case the corpus no longer has will be reported.
+var sweptKnownFailureMaps = map[string]string{
+	"knownValidationFailures":    "TestExternalValidation, via reportStaleKnownFailures",
+	"knownUnvalidatedRejections": "TestExternalValidation, via reportStaleUnvalidated",
+	"knownFlakyTests":            "every test in flakyConsumers, via flakySweep.finish",
+}
+
+// unsweptKnownFailureMaps names every known-failure map that has none, and is
+// held empty by TestUnsweptKnownFailureMapsAreEmpty instead. The sizes are
+// behind funcs so that the two registries can be read without depending on
+// package variable initialisation order.
+var unsweptKnownFailureMaps = map[string]func() int{
+	"knownParseFailures":     func() int { return len(knownParseFailures) },
+	"knownCodeGenFailures":   func() int { return len(knownCodeGenFailures) },
+	"knownRoundTripFailures": func() int { return len(knownRoundTripFailures) },
+}
+
+// TestUnsweptKnownFailureMapsAreEmpty keeps the known-failure maps that have no
+// staleness sweep from acquiring entries that could go stale unnoticed.
 //
-// knownValidationFailures is swept: TestExternalValidation offers every case key
-// the corpus carries and errors on an entry no case matched. These four are not,
-// because each would need its own ledger threaded through a different test with
-// a different notion of which groups it visits, and all four are empty --
-// writing four sweeps that can never fire, and cannot be watched failing against
-// anything real, would be four decorative guards.
+// Two of the six maps are swept where they are read, by the one test that owns
+// them, and knownFlakyTests is swept across the four tests that share it. These
+// three are not, because each would need its own ledger threaded through a
+// different test with a different notion of which groups it visits, and all
+// three are empty -- writing three sweeps that can never fire, and cannot be
+// watched failing against anything real, would be three decorative guards.
 //
-// Empty is therefore the property to hold, and this is where it is held. The
-// moment one of them gains an entry, the entry needs the sweep, because an entry
-// naming a case upstream has since renamed reads as an outstanding defect while
-// suppressing nothing -- which is exactly what the draft 3 lookbehind entry did
-// across the #121 corpus bump.
+// Empty is therefore the property to hold, and it is a stronger property than a
+// sweep: an empty map has nothing that can go stale. This is where it is held.
+// The moment one of them gains an entry, the entry needs the sweep, because an
+// entry naming a case upstream has since renamed reads as an outstanding defect
+// while suppressing nothing -- which is exactly what the draft 3 lookbehind entry
+// did across the #121 corpus bump. knownFlakyTests left this list by acquiring
+// the sweep (#143), not by being excused from it, and nothing else may leave it
+// on other terms.
 //
 // It deliberately does not need the corpus on disk, so it runs under plain
 // `go test ./...` rather than only under the external gate.
 func TestUnsweptKnownFailureMapsAreEmpty(t *testing.T) {
-	unswept := []struct {
-		name string
-		size int
-	}{
-		{"knownParseFailures", len(knownParseFailures)},
-		{"knownCodeGenFailures", len(knownCodeGenFailures)},
-		{"knownRoundTripFailures", len(knownRoundTripFailures)},
-		{"knownFlakyTests", len(knownFlakyTests)},
+	names := make([]string, 0, len(unsweptKnownFailureMaps))
+	for name := range unsweptKnownFailureMaps {
+		names = append(names, name)
 	}
-	for _, m := range unswept {
-		if m.size != 0 {
+	sort.Strings(names)
+	for _, name := range names {
+		if size := unsweptKnownFailureMaps[name](); size != 0 {
 			t.Errorf("%s has %d entr(ies) but no staleness sweep, so an entry whose case upstream renames "+
 				"would stop being consulted in silence. Give it a keyLedger and a reportStaleKnownFailures "+
-				"call in the test that reads it (TestExternalValidation is the worked example), then delete "+
-				"it from this list", m.name, m.size)
+				"call in the test that reads it (TestExternalValidation is the worked example, and "+
+				"flakySweep is the worked example for a map more than one test reads), then move it from "+
+				"unsweptKnownFailureMaps to sweptKnownFailureMaps", name, size)
 		}
 	}
 }
@@ -1222,6 +1501,7 @@ func TestUnsweptKnownFailureMapsAreEmpty(t *testing.T) {
 func TestExternalParsing(t *testing.T) {
 	requireTestSuite(t)
 
+	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
 			draftDir := filepath.Join(jstsBaseDir, draft)
@@ -1233,10 +1513,14 @@ func TestExternalParsing(t *testing.T) {
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
+					walkedFiles++
 					groups := loadTestGroups(t, filepath.Join(draftDir, file))
 					for _, group := range groups {
+						// Offered outside the subtest, so that a -run filter
+						// selecting some groups reads as offered-and-not-reached
+						// rather than as a corpus that has lost them.
+						key := flakySweep.offer(failureKey(draft, filenameWithoutExt(file), group.Description))
 						t.Run(group.Description, func(t *testing.T) {
-							key := failureKey(draft, filenameWithoutExt(file), group.Description)
 							err := tryParse(group.Schema)
 							checkKnownFailure(t, key, err, knownParseFailures)
 						})
@@ -1245,6 +1529,7 @@ func TestExternalParsing(t *testing.T) {
 			}
 		})
 	}
+	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 }
 
 // TestExternalCodeGen tests that we can generate compilable Go code from object-like schemas.
@@ -1252,6 +1537,7 @@ func TestExternalCodeGen(t *testing.T) {
 	requireTestSuite(t)
 	resolver := remotesResolver(t)
 
+	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
 			draftDir := filepath.Join(jstsBaseDir, draft)
@@ -1263,13 +1549,14 @@ func TestExternalCodeGen(t *testing.T) {
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
+					walkedFiles++
 					groups := loadTestGroups(t, filepath.Join(draftDir, file))
 					for _, group := range groups {
 						if !isCodeGenSuitable(group.Schema) {
 							continue
 						}
+						key := flakySweep.offer(failureKey(draft, filenameWithoutExt(file), group.Description))
 						t.Run(group.Description, func(t *testing.T) {
-							key := failureKey(draft, filenameWithoutExt(file), group.Description)
 							err := tryGenerateAndCompile(group.Schema, resolver, isBignumFile(file))
 							checkKnownFailure(t, key, err, knownCodeGenFailures)
 						})
@@ -1278,6 +1565,7 @@ func TestExternalCodeGen(t *testing.T) {
 			}
 		})
 	}
+	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 }
 
 // TestExternalRoundTrip tests lossless JSON round-tripping through generated code.
@@ -1285,6 +1573,7 @@ func TestExternalRoundTrip(t *testing.T) {
 	requireTestSuite(t)
 	resolver := remotesResolver(t)
 
+	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
 			draftDir := filepath.Join(jstsBaseDir, draft)
@@ -1296,6 +1585,7 @@ func TestExternalRoundTrip(t *testing.T) {
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
+					walkedFiles++
 					groups := loadTestGroups(t, filepath.Join(draftDir, file))
 					for _, group := range groups {
 						if !isCodeGenSuitable(group.Schema) {
@@ -1313,10 +1603,14 @@ func TestExternalRoundTrip(t *testing.T) {
 							continue
 						}
 
+						caseKeys := make([]string, len(validTests))
+						for i, tc := range validTests {
+							caseKeys[i] = flakySweep.offer(failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description))
+						}
 						t.Run(group.Description, func(t *testing.T) {
-							for _, tc := range validTests {
+							for i, tc := range validTests {
+								key := caseKeys[i]
 								t.Run(tc.Description, func(t *testing.T) {
-									key := failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)
 									err := tryRoundTrip(group.Schema, tc.Data, resolver, isBignumFile(file))
 									checkKnownFailure(t, key, err, knownRoundTripFailures)
 								})
@@ -1327,6 +1621,7 @@ func TestExternalRoundTrip(t *testing.T) {
 			}
 		})
 	}
+	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 }
 
 // minValidatedGroups is the number of test groups this test reached a generated
@@ -1405,6 +1700,7 @@ func TestExternalValidation(t *testing.T) {
 	// ledger does the same job for knownValidationFailures, whose keys name a
 	// single case rather than a whole group.
 	ledger := newKeyLedger()
+	var walkedFiles int
 
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
@@ -1417,6 +1713,7 @@ func TestExternalValidation(t *testing.T) {
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
+					walkedFiles++
 					groups := loadTestGroups(t, filepath.Join(draftDir, file))
 					for _, group := range groups {
 						if !isCodeGenSuitable(group.Schema) {
@@ -1464,7 +1761,11 @@ func TestExternalValidation(t *testing.T) {
 						// a corpus that appears to have lost them.
 						caseKeys := make([]string, len(group.Tests))
 						for i, tc := range group.Tests {
-							caseKeys[i] = ledger.offer(failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description))
+							// Both ledgers see the key: this test's own, which
+							// sweeps knownValidationFailures here, and the
+							// process-wide one, which sweeps knownFlakyTests
+							// once all four consumers have finished.
+							caseKeys[i] = ledger.offer(flakySweep.offer(failureKey(draft, filenameWithoutExt(file), group.Description, tc.Description)))
 						}
 						t.Run(group.Description, func(t *testing.T) {
 							for i, tc := range group.Tests {
@@ -1505,6 +1806,12 @@ func TestExternalValidation(t *testing.T) {
 		rejectedByValidate, rejectedAtDecode)
 	t.Logf("Of the %d tested groups, %d have a root Validate() whose body is exactly `return nil`, %d of those with a document the suite marks invalid",
 		testedGroups, noChecksGroups, noChecksWithRejection)
+
+	// Before the early return below, because knownFlakyTests's sweep has its own
+	// notion of a partial run -- it is the only gate here that spans all four
+	// external tests, and standing it down on this test's group count would make
+	// it depend on which of the four ran last.
+	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 
 	// The three gates below judge the whole corpus, so they are meaningless on a
 	// run that only walked part of it. This check catches a -run filter that
