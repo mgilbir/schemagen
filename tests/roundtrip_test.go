@@ -4495,3 +4495,50 @@ func TestOneOfBranchUnevaluatedPropertiesIsPerDocument(t *testing.T) {
 		},
 	)
 }
+
+// TestConstraintOnlyPositionsAreChecked covers issue #126: a schema that
+// constrains a value without naming a type collapsed to `any` everywhere except
+// a document root.
+//
+// `any` is interface-underlying, so Go forbids methods on it: such a position
+// had no Validate for a check to live in and json.Unmarshal into it could not
+// fail, which turned every one of these keywords into nothing at all. The
+// fixture writes one such schema into each position the generator reaches by a
+// different path -- a property, an array element, a map value, a tuple slot, a
+// composition branch, a type union, an array of nulls -- because this repository
+// has repeatedly fixed one of them and left its siblings, and only a case per
+// position can tell the two apart.
+//
+// The valid half is the narrowness control. Every one of these documents was
+// accepted before and must still be: the wrapper introduced here changes the Go
+// type of the field, and a wrapper that rejected what the schema permits would
+// be a worse defect than the one being fixed.
+func TestConstraintOnlyPositionsAreChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/constraint_only_positions.json",
+		[]string{
+			`{}`,
+			`{"prop":1}`,
+			`{"list":[1]}`,
+			`{"map":{"k":"abcd"}}`,
+			`{"tuple":[1]}`,
+			`{"branch":5}`,
+			`{"branch":"s"}`,
+			`{"union":"x"}`,
+			`{"union":5}`,
+			`{"nulls":[null]}`,
+			`{"unevaluated":{"a":1}}`,
+			`{"unevaluated":{"b":2}}`,
+		},
+		[]string{
+			`{"prop":{"foo":"x"}}`,
+			`{"list":[{"foo":"x"}]}`,
+			`{"map":{"k":"ab"}}`,
+			`{"tuple":["s"]}`,
+			`{"branch":1}`,
+			`{"union":true}`,
+			`{"nulls":[1]}`,
+			`{"unevaluated":{"c":3}}`,
+		},
+	)
+}

@@ -99,6 +99,46 @@ func TestRuntimeEvaluatorDoesNotHijackWorkingShapes(t *testing.T) {
 	}
 }
 
+// The constraint-only arm of issue #126 is the last thing every position tries,
+// and this is what says so. Each schema below already had a Go type that carries
+// its checks; taking the position over would replace that type with a raw-JSON
+// wrapper, which is a worse type for the caller and no better a check.
+//
+// The last two are the ones a syntactic emptiness test gets wrong. A composition
+// whose every branch is the `true` schema says exactly what {} says, but it is
+// not spelled {} -- the compiled node has an AllOf field, so the literal is not
+// one of the three unownedNodeLiterals and the wrapper looked worthwhile. See
+// acceptsEveryValue.
+func TestConstraintOnlyArmDoesNotHijackTypedPositions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		jsonName string
+		want     string
+	}{
+		{"typed element", `{"type":"object","properties":{"p":{"type":"array","items":{"type":"string"}}}}`, "p", "[]string"},
+		{"typed map value", `{"type":"object","properties":{"p":{"type":"object","additionalProperties":{"type":"string"}}}}`, "p", "map[string]string"},
+		{"constrained scalar", `{"type":"object","properties":{"p":{"type":"string","minLength":3}}}`, "p", "*string"},
+		{"nullable scalar", `{"type":"object","properties":{"p":{"type":["string","null"]}}}`, "p", "*string"},
+		{"allOf over true", `{"type":"object","properties":{"p":{"allOf":[{"$ref":"#/$defs/always"}]}},"$defs":{"always":true}}`, "p", "any"},
+		{"allOf over empty", `{"type":"object","properties":{"p":{"allOf":[{},{}]}}}`, "p", "any"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := structNamed(t, generateForItemTest(t, addTitle(tt.input)), "Doc")
+			if got := fieldNamedJSON(t, doc, tt.jsonName).Type.GoTypeName(); got != tt.want {
+				t.Fatalf("%q: type = %q, want %q -- the constraint-only arm claimed a position that was already typed", tt.jsonName, got, tt.want)
+			}
+		})
+	}
+}
+
+// addTitle names the root Doc so structNamed can find it.
+func addTitle(input string) string {
+	return `{"title":"Doc",` + input[1:]
+}
+
 // A schema that genuinely constrains nothing describes exactly what `any`
 // describes. Turning those into a wrapper struct would break every caller's
 // field type for no validation at all, so the evaluator has to hand them back.

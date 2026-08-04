@@ -6646,7 +6646,50 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 	}
 
+	// Nothing above gave the value a Go type, and the fallback is `any`: a type
+	// Go forbids methods on, so a schema landing here is not weakened but
+	// dropped. json.Unmarshal into it cannot fail and there is no Validate for a
+	// check to live in, which is right for a schema that constrains nothing and a
+	// silent lie for any other.
+	//
+	// A name for the position is the whole fix, and it is the last thing tried so
+	// it cannot take a schema away from an arm that types it better. This is
+	// issue #126, and it is the same gap #113 and #114 closed at a document root:
+	// {"properties":{"b":{"not":{"type":"object","required":["foo"]}}}} came out
+	// `B any` and accepted {"b":{"foo":"x"}}, which the `not` forbids, while the
+	// identical schema written as the whole document has rejected it since #114.
+	// Every position that reaches here shares the arm -- an element, a map value,
+	// a tuple slot, a oneOf branch -- so the answer no longer depends on where
+	// the schema was written.
+	//
+	// It does change the field's Go type from `any` to the wrapper's name, across
+	// every such position. That is the same trade the root made, and the
+	// alternative is a field whose schema is enforced nowhere.
+	if def := g.constraintOnlyNamedType(s, contextName); def != nil {
+		return def
+	}
+
 	return &PrimitiveType{Name: "any"}
+}
+
+// constraintOnlyNamedType materializes a schema that constrains without naming a
+// type, and returns the type to reference it by. nil keeps today's `any`.
+//
+// The guards are what keep it from claiming a name that is already spoken for.
+// A name already generated belongs to another schema (or to this one, reached by
+// another route), and a name being generated is the frame that called us -- both
+// would have the wrapper stand in for something else.
+func (g *Generator) constraintOnlyNamedType(s *schema.Schema, contextName string) GoType {
+	if contextName == "" || g.generated[contextName] || g.generating[contextName] || g.nodesInProgress[s] {
+		return nil
+	}
+	def := g.constraintOnlyWrapperDef(contextName, s)
+	if def == nil {
+		return nil
+	}
+	g.generated[contextName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	return &NamedType{Name: contextName}
 }
 
 // materializeNamed generates s under contextName and returns the name to
@@ -8220,6 +8263,25 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	if g.bigIntInlineWrapper(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
+	}
+	// An element or map value whose "type" names no single Go type -- a union of
+	// two JSON types, or "null" alone. resolveType answers *any for both, and a
+	// *any decodes a null and every other value besides, so
+	// {"items":{"type":"null"}} accepted [1] and {"items":{"type":["string",
+	// "number"]}} accepted [true]. The property position has always materialized
+	// this shape; the element and map-value ones came through resolveType and did
+	// not. Part of issue #126.
+	//
+	// extractTypeOnlySchemaDef is narrow by construction and is what keeps this
+	// from claiming anything else: it declines a single non-null type, so
+	// []string and *string are untouched, and it declines a schema stating any
+	// keyword besides the type.
+	if !g.generated[itemContext] {
+		if def := g.extractTypeOnlySchemaDef(itemContext, items); def != nil {
+			g.generated[itemContext] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return &NamedType{Name: itemContext}
+		}
 	}
 	return g.resolveType(items, itemContext)
 }
@@ -13976,6 +14038,22 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// for lightweight runtime type checking.
 	if jsonType := primarySchemaType(resolved); jsonType != "" {
 		return TupleItemDef{JSONType: jsonType}, true
+	}
+
+	// A position whose schema constrains the value without naming a type -- a
+	// bare "not", a bare if/then/else, a composition over unrelated shapes, a
+	// union of two JSON types. hasStructuralKeywords counts none of those and the
+	// JSONType arm above has nothing to say about a schema with no single type,
+	// so the position rendered nothing at all and its keywords were enforced
+	// nowhere. This is the tuple slot of issue #126, and it defers to the same
+	// ladder the element, map-value and property positions do, so the four agree
+	// on what a given subschema becomes.
+	//
+	// Last, after the arms above, for the reason every other position puts it
+	// last: a schema one of them can type is typed by it, and this must not take
+	// the position away from an answer that is already right.
+	if g.constraintOnlyNamedType(resolved, posName) != nil {
+		return TupleItemDef{TypeName: posName}, true
 	}
 
 	return TupleItemDef{}, false

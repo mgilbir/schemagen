@@ -165,6 +165,7 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/anyof_branch_unevaluated_properties", "testdata/schemas/regression/anyof_branch_unevaluated_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_properties.go"},
 		{"regression/anyof_branch_unevaluated_no_properties", "testdata/schemas/regression/anyof_branch_unevaluated_no_properties.json", "testdata/golden/regression/anyof_branch_unevaluated_no_properties.go"},
 		{"regression/oneof_branch_unevaluated_properties", "testdata/schemas/regression/oneof_branch_unevaluated_properties.json", "testdata/golden/regression/oneof_branch_unevaluated_properties.go"},
+		{"regression/constraint_only_positions", "testdata/schemas/regression/constraint_only_positions.json", "testdata/golden/regression/constraint_only_positions.go"},
 	}
 }
 

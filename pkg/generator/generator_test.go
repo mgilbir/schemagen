@@ -5325,7 +5325,12 @@ func TestUntaggableOptionalFieldsSkipTheirAbsentValue(t *testing.T) {
 		// to keep a bare value type. The map is still nil when absent, which is
 		// what this case is here to pin.
 		{"m\"p", "map[string]string", "nil"},
-		{"a\"n", "any", "nil"},
+		// A type union names no single Go type, so this field was `any` until
+		// issue #126: `any` is interface-underlying, Go forbids methods on it,
+		// and the union was enforced nowhere -- {"a\"n": true} was accepted.
+		// The wrapper is the same one the identical subschema has always got in
+		// a $defs entry, and it is omitted by IsZero rather than by nil.
+		{"a\"n", "DocAN", "iszero"},
 		{"p\"t", "*string", "nil"},
 		{"w\"r", "DocWR", "iszero"},
 	} {
