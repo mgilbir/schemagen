@@ -1081,15 +1081,18 @@ func TestExternalRoundTrip(t *testing.T) {
 }
 
 // minValidatedGroups is the number of test groups this test reached a generated
-// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1586 of
+// Validate() for, measured on 2026-08-04 against suite commit bce6a47: 1752 of
 // the 1799 code-gen-suitable groups (1803 groups in the corpus, less the 4 whose
 // schema is boolean `true`, which asserts nothing and so has nothing to test).
 //
-// It was 1494 when this gate was written, one commit earlier. Compiling the
-// schemas that used to become `type X any` to the runtime evaluator raised it by
-// 92, and the 43 knownUnvalidatedRejections entries those groups held were
-// deleted -- which is the mechanism working: each one failed by name, saying it
-// now produces a Validate(), rather than sitting in the list unread.
+// It was 1494 when this gate was written. Compiling the schemas that used to
+// become `type X any` to the runtime evaluator raised it to 1586, and the 43
+// knownUnvalidatedRejections entries those groups held were deleted. Giving a
+// bare {"format":X} the wrapper issue #106 asks for -- a value held as a string
+// when the instance is one, with a Validate that judges it -- raised it to 1752
+// and took 88 more entries with it, which is what left knownUnvalidatedRejections
+// with 23. Each one failed by name, saying it now produces a Validate(), rather
+// than sitting in the list unread; that is the mechanism working.
 //
 // It is a floor, not a target. A group that produces no Validate() produces no
 // subtest either, so a change that stopped generating one would remove tests
@@ -1101,7 +1104,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 1586
+const minValidatedGroups = 1752
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.
