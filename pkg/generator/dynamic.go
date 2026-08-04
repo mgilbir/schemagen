@@ -39,6 +39,19 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if s == nil || s.IsBooleanSchema() {
 		return nil, false
 	}
+	// `"enum": []` admits nothing, which is what the boolean `false` schema on
+	// the line above says, and it has to be refused here for a reason the gate
+	// below cannot cover: `enum` is tagged omitempty, so an empty one leaves no
+	// key in the re-marshaled schema and the loop reads a branch that states
+	// nothing. A branch with no checks matches everything, so
+	// {"oneOf":[{"enum":[]},{"type":"string"}]} counted two matches for "x" and
+	// refused a document the schema permits -- the one failure this generator
+	// treats as worse than a missing check. Refusing the branch hands the whole
+	// schema to the runtime evaluator, which is where a `false` branch is
+	// already answered. See emptyEnumSchema.
+	if emptyEnumSchema(s) {
+		return nil, false
+	}
 	raw, err := json.Marshal(s)
 	if err != nil {
 		return nil, false

@@ -1,9 +1,13 @@
 package tests
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -161,4 +165,344 @@ func TestKeyLedgerCompleteness(t *testing.T) {
 	if !duplicated.complete() {
 		t.Error("a key offered twice and reached twice is still a complete run")
 	}
+}
+
+// flakyFixtureGroup is one test group as the four external tests see it, which
+// is not the same way twice: TestExternalParsing visits every group, the other
+// three skip the ones that are not code-gen-suitable, TestExternalRoundTrip
+// visits only the cases the suite marks valid, and TestExternalValidation visits
+// no case at all unless the group produced a Validate(). Those disagreements are
+// the whole difficulty knownFlakyTests's sweep has to survive, so the fixture
+// carries them rather than pretending the four tests walk the same corpus.
+type flakyFixtureGroup struct {
+	draft, file, group string
+	cases              []string // every case, in suite order
+	valid              []string // the subset the suite marks valid
+	suitable           bool     // isCodeGenSuitable(schema)
+	validates          bool     // code generation produced a Validate()
+}
+
+// flakyFixture is a slice of the real corpus, transcribed from the pinned
+// checkout, and it is real for a reason: a guard watched failing against a
+// fixture the real case never resembles has not been watched at all. Each of the
+// three groups is a shape that actually occurs and that reaches a different
+// subset of the four tests.
+//
+//   - boolean schema 'true' is not code-gen-suitable, so parsing is the only test
+//     that ever carries its key. It is the case a per-test sweep gets wrong.
+//   - the CSS colors group is suitable but resolves to `any`, so it carries no
+//     Validate() and TestExternalValidation never reaches its cases; it is in
+//     knownUnvalidatedRejections for exactly that reason.
+//   - the integer group is the ordinary one that all four tests reach.
+var flakyFixture = []flakyFixtureGroup{{
+	draft: "draft2020-12", file: "boolean_schema", group: "boolean schema 'true'",
+	cases: []string{"number is valid", "string is valid"},
+	valid: []string{"number is valid", "string is valid"},
+}, {
+	draft: "draft3", file: "optional/format/color", group: "validation of CSS colors",
+	cases:    []string{"a valid CSS color name", "an invalid CSS color name"},
+	valid:    []string{"a valid CSS color name"},
+	suitable: true,
+}, {
+	draft: "draft2020-12", file: "type", group: "integer type matches integers",
+	cases:     []string{"an integer is an integer", "a float is not an integer"},
+	valid:     []string{"an integer is an integer"},
+	suitable:  true,
+	validates: true,
+}}
+
+// replayFlakyConsumer drives the sweep the way the named external test drives
+// it: keys offered outside the subtest, reached inside it, and the walk declared
+// complete at the end.
+func replayFlakyConsumer(s *flakySweepState, consumer string, groups []flakyFixtureGroup) {
+	for _, g := range groups {
+		groupKey := failureKey(g.draft, g.file, g.group)
+		switch consumer {
+		case "TestExternalParsing":
+			s.record(consumer, s.offer(groupKey))
+		case "TestExternalCodeGen":
+			if g.suitable {
+				s.record(consumer, s.offer(groupKey))
+			}
+		case "TestExternalRoundTrip":
+			if g.suitable {
+				for _, c := range g.valid {
+					s.record(consumer, s.offer(failureKey(groupKey, c)))
+				}
+			}
+		case "TestExternalValidation":
+			if g.suitable && g.validates {
+				for _, c := range g.cases {
+					s.record(consumer, s.offer(failureKey(groupKey, c)))
+				}
+			}
+		}
+	}
+	s.markWalked(consumer)
+}
+
+// replayFlakyRun replays every consumer in flakyConsumers over the fixture.
+func replayFlakyRun(groups []flakyFixtureGroup) *flakySweepState {
+	s := newFlakySweepState()
+	for _, consumer := range flakyConsumers {
+		replayFlakyConsumer(s, consumer, groups)
+	}
+	return s
+}
+
+// TestFlakySweepIsCorpusWide is the reason knownFlakyTests's sweep is not four
+// per-test sweeps.
+//
+// The other four maps each belong to one test, so each can be swept against a
+// ledger that test filled. knownFlakyTests is read by all four, and no one of
+// them reaches all of its keys: "boolean schema 'true'" is not code-gen-suitable,
+// so TestExternalParsing is the only test that ever carries it. A sweep run at
+// the end of any other test would call that entry stale and invite whoever read
+// the message to delete a live suppression -- the wrong answer, loudly, which is
+// worse than the silence #143 is about.
+//
+// The second half plants exactly that: the naive design, a ledger holding one
+// test's keys, judging the same map. It has to report the entry stale, or this
+// test is asserting nothing.
+func TestFlakySweepIsCorpusWide(t *testing.T) {
+	const parsingOnly = "draft2020-12/boolean_schema/boolean schema 'true'"
+	const roundTripOnly = "draft3/optional/format/color/validation of CSS colors/a valid CSS color name"
+	known := map[string]bool{parsingOnly: true, roundTripOnly: true}
+
+	shared := replayFlakyRun(flakyFixture)
+	if got := shared.verdict(known); len(got.stale) != 0 {
+		t.Errorf("the corpus-wide sweep reported %v stale; every one of those keys was carried by one of "+
+			"the four tests, so none of them is", got.stale)
+	}
+
+	perTest := newFlakySweepState()
+	replayFlakyConsumer(perTest, "TestExternalValidation", flakyFixture)
+	// The other three are declared walked without replaying them, which is the
+	// per-test sweep this design rejects: one test's ledger, judged as if it were
+	// the corpus.
+	for _, consumer := range flakyConsumers {
+		perTest.markWalked(consumer)
+	}
+	got := perTest.verdict(known)
+	want := []string{parsingOnly, roundTripOnly}
+	if !reflect.DeepEqual(got.stale, want) {
+		t.Errorf("a sweep over one test's ledger reported %v stale, want %v — if it reports nothing, this "+
+			"test no longer demonstrates why the ledger is shared", got.stale, want)
+	}
+}
+
+// TestFlakySweepReportsStaleEntry covers the defect the sweep exists for: an
+// entry naming a case the corpus no longer has, which checkKnownFailure cannot
+// say anything about because it is never consulted. That is what the draft 3
+// lookbehind entry became when upstream renamed the case, and nothing said so.
+func TestFlakySweepReportsStaleEntry(t *testing.T) {
+	s := replayFlakyRun(flakyFixture)
+	known := map[string]bool{
+		// Still carried, by TestExternalCodeGen among others.
+		"draft3/optional/format/color/validation of CSS colors": true,
+		// Renamed upstream: the run offers "a float is not an integer".
+		"draft2020-12/type/integer type matches integers/a float is no integer": true,
+		// A whole file that no longer exists.
+		"draft2020-12/definitions/valid definition": true,
+	}
+	got := s.verdict(known)
+	want := []string{
+		"draft2020-12/definitions/valid definition",
+		"draft2020-12/type/integer type matches integers/a float is no integer",
+	}
+	if !reflect.DeepEqual(got.stale, want) {
+		t.Errorf("verdict.stale = %v, want %v", got.stale, want)
+	}
+}
+
+// TestFlakySweepStandsDownOnPartialRuns checks the two shapes of partial run,
+// because reporting false staleness would train someone to delete a live entry.
+//
+// A -run filter above the group level (a draft, a file, or a whole test) stops
+// keys being offered at all, so the ledger cannot see the gap and the file count
+// has to; one below it walks the corpus and then tests a subset, which the ledger
+// sees and the file count cannot. Neither check sees the other's case.
+func TestFlakySweepStandsDownOnPartialRuns(t *testing.T) {
+	stale := map[string]bool{"draft2020-12/type/integer type matches integers/renamed upstream": true}
+
+	t.Run("a test that has not run", func(t *testing.T) {
+		s := newFlakySweepState()
+		for _, consumer := range flakyConsumers[:2] {
+			replayFlakyConsumer(s, consumer, flakyFixture)
+		}
+		got := s.verdict(stale)
+		if want := flakyConsumers[2:]; !reflect.DeepEqual(got.pending, want) {
+			t.Errorf("verdict.pending = %v, want %v", got.pending, want)
+		}
+		if len(got.stale) != 0 {
+			t.Errorf("a run missing two of the four consumers reported %v stale; it cannot know", got.stale)
+		}
+	})
+
+	t.Run("a test that ran on part of the corpus", func(t *testing.T) {
+		// finish() is what compares the walk against countCorpusFiles, so this
+		// is the state it leaves behind: the consumer never marked walked.
+		s := newFlakySweepState()
+		for _, consumer := range flakyConsumers {
+			replayFlakyConsumer(s, consumer, flakyFixture)
+		}
+		delete(s.walked, "TestExternalRoundTrip")
+		if got := s.verdict(stale); len(got.stale) != 0 || len(got.pending) != 1 {
+			t.Errorf("verdict = %+v, want one pending consumer and no staleness", got)
+		}
+	})
+
+	t.Run("a filter below the file level", func(t *testing.T) {
+		s := replayFlakyRun(flakyFixture)
+		// A group or case the run offered and never reached, which is what a
+		// -run filter on a group name leaves behind.
+		s.offer("draft2020-12/type/number type matches numbers")
+		got := s.verdict(stale)
+		if !got.incomplete {
+			t.Error("a run that offered a key it never reached is incomplete")
+		}
+		if len(got.stale) != 0 {
+			t.Errorf("an incomplete run reported %v stale; it cannot tell an unselected case from a "+
+				"vanished one", got.stale)
+		}
+	})
+}
+
+// TestFlakySweepReportsStrayConsumer covers the assumption flakyConsumers is:
+// that those four tests are the only ones that read knownFlakyTests.
+//
+// A fifth test added later would read the map through checkKnownFailure like the
+// others, but the sweep would not wait for it and would not know which keys only
+// it carries -- so a run that filtered it out would report those keys as
+// vanished. The list cannot be observed (a test that did not run leaves no
+// trace), but a test that reads the map while absent from the list can be, and
+// the first full run after it is written says so.
+func TestFlakySweepReportsStrayConsumer(t *testing.T) {
+	s := replayFlakyRun(flakyFixture)
+	s.record("TestExternalSomethingNew", "draft2020-12/type/integer type matches integers")
+
+	got := s.verdict(map[string]bool{})
+	if want := []string{"TestExternalSomethingNew"}; !reflect.DeepEqual(got.stray, want) {
+		t.Errorf("verdict.stray = %v, want %v", got.stray, want)
+	}
+	if got := s.verdict(map[string]bool{"draft2020-12/definitions/gone": true}); len(got.stale) != 0 {
+		t.Errorf("a run with an untracked consumer reported %v stale; it does not know what that "+
+			"consumer carries", got.stale)
+	}
+}
+
+// TestTopLevelTest pins the name the sweep files a subtest under. Getting this
+// wrong would file every subtest under its own name, so no consumer would ever
+// match flakyConsumers and every run would report four stray consumers.
+func TestTopLevelTest(t *testing.T) {
+	for name, want := range map[string]string{
+		"TestExternalParsing":                                  "TestExternalParsing",
+		"TestExternalRoundTrip/draft3/type/an object":          "TestExternalRoundTrip",
+		"TestExternalValidation/v1/optional/format-annotation": "TestExternalValidation",
+	} {
+		if got := topLevelTest(name); got != want {
+			t.Errorf("topLevelTest(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestEveryKnownFailureMapIsClassified holds the line TestUnsweptKnownFailureMaps-
+// AreEmpty used to hold on its own.
+//
+// That test names the maps it guards, so a map added to
+// external_known_failures.go tomorrow and listed nowhere would be guarded by
+// nothing at all -- neither swept nor held empty -- which is the silence this
+// whole mechanism exists to end, arriving through the one door nobody watches.
+// Every map declared in that file has to be classified as swept or unswept, and
+// the classification is checked against the source rather than against a second
+// list, so a rename breaks it too.
+func TestEveryKnownFailureMapIsClassified(t *testing.T) {
+	const src = "external_known_failures.go"
+	file, err := parser.ParseFile(token.NewFileSet(), src, nil, 0)
+	if err != nil {
+		t.Fatalf("parsing %s: %v", src, err)
+	}
+
+	declared := map[string]bool{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			if !valueSpecIsMap(value) {
+				continue
+			}
+			for _, name := range value.Names {
+				declared[name.Name] = true
+			}
+		}
+	}
+	if len(declared) == 0 {
+		t.Fatalf("found no map declarations in %s — the parse found nothing to classify, so this test "+
+			"would pass however many maps went unguarded", src)
+	}
+
+	// Sorted, so that a change adding two unclassified maps reports them in the
+	// same order twice running.
+	for _, name := range sortedKeys(declared) {
+		_, swept := sweptKnownFailureMaps[name]
+		_, unswept := unsweptKnownFailureMaps[name]
+		switch {
+		case swept && unswept:
+			t.Errorf("%s is listed as both swept and unswept", name)
+		case !swept && !unswept:
+			t.Errorf("%s is declared in %s but is in neither sweptKnownFailureMaps nor "+
+				"unsweptKnownFailureMaps, so nothing guards it: no staleness sweep reports an entry of "+
+				"it that has gone stale, and TestUnsweptKnownFailureMapsAreEmpty does not hold it empty. "+
+				"Give it a sweep and list it in the first, or list it in the second", name, src)
+		}
+	}
+	for _, listed := range []map[string]bool{keysOf(sweptKnownFailureMaps), keysOf(unsweptKnownFailureMaps)} {
+		for _, name := range sortedKeys(listed) {
+			if !declared[name] {
+				t.Errorf("%s is classified but is not declared in %s — it was renamed or moved, and the "+
+					"classification now describes nothing", name, src)
+			}
+		}
+	}
+}
+
+// valueSpecIsMap reports whether a var declares a map, whether the type is
+// written out or left to the composite literal on the right.
+func valueSpecIsMap(spec *ast.ValueSpec) bool {
+	if _, ok := spec.Type.(*ast.MapType); ok {
+		return true
+	}
+	for _, value := range spec.Values {
+		if lit, ok := value.(*ast.CompositeLit); ok {
+			if _, ok := lit.Type.(*ast.MapType); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// keysOf is the set of keys of a map, so the two classification registries can
+// be walked without caring what they hold.
+func keysOf[V any](m map[string]V) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for k := range m {
+		out[k] = true
+	}
+	return out
+}
+
+// sortedKeys is keysOf's counterpart for reporting: map iteration order is
+// deliberately random, and a failure list that reorders itself between runs
+// cannot be diffed.
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

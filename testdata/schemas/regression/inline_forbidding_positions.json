@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InlineForbiddingPositions",
+  "description": "Issue #142: an inline sub-schema that admits no instance at all, written at every position that resolves rather than names. `items: false` forbids every element and `{\"enum\":[]}` forbids every value, so the array, map, slot and branch holding one is invalid the moment it holds anything -- and each came out `[]any`, `map[string]any` or a Go type with no check. The two spellings are the same statement, which is why they sit here side by side; the accept-control beside every rejection is the container that holds nothing, which stays valid throughout.",
+  "type": "object",
+  "properties": {
+    "falseItems": {
+      "$comment": "The reported element position. `items: false` forbids every element, so any non-empty array is invalid -- and the empty one is not.",
+      "type": "array",
+      "items": false
+    },
+    "emptyEnumItems": {
+      "$comment": "The same position in the other spelling. enum asserts the instance equals one of the values listed, and there are none.",
+      "type": "array",
+      "items": { "enum": [] }
+    },
+    "typedEmptyEnumItems": {
+      "$comment": "A stated type does not rescue an empty enum: no string equals a member of the empty set either. The element used to be typed `string` and accepted every string.",
+      "type": "array",
+      "items": { "type": "string", "enum": [] }
+    },
+    "nestedFalseItems": {
+      "$comment": "One level down, where the per-element descent is the only thing that reaches the position. The inner element type was right and its Validate was dispatched by nobody.",
+      "type": "array",
+      "items": { "type": "array", "items": false }
+    },
+    "nullableFalseItems": {
+      "$comment": "The nullable arm of the same position, which resolveType reaches by a different route. A null is still permitted.",
+      "type": ["array", "null"],
+      "items": false
+    },
+    "emptyEnumValues": {
+      "$comment": "The reported map-value position: every value is invalid, so an object with any key at all is -- and one with none is not.",
+      "type": "object",
+      "additionalProperties": { "enum": [] }
+    },
+    "nullableEmptyEnumValues": {
+      "$comment": "The nullable spelling of the map, which shares the element tail.",
+      "type": ["object", "null"],
+      "additionalProperties": { "enum": [] }
+    },
+    "emptyEnumSlot": {
+      "$comment": "A tuple slot, which has answered a `false` position since #126 and read the empty enum as an ordinary sub-schema.",
+      "type": "array",
+      "prefixItems": [{ "enum": [] }]
+    },
+    "emptyEnumBranch": {
+      "oneOf": [{ "enum": [] }, { "type": "string" }]
+    },
+    "emptyEnumAllOf": {
+      "$comment": "A conjunction with a branch admitting nothing admits nothing, whatever the other branch says.",
+      "allOf": [{ "enum": [] }, { "type": "string" }]
+    },
+    "emptyEnumAnyOf": {
+      "$comment": "A disjunction whose every branch admits nothing admits nothing.",
+      "anyOf": [{ "enum": [] }]
+    },
+    "refEmptyEnumAnyOf": {
+      "$comment": "The same branch behind a reference. A $ref is not the schema it names, so the branch has to be resolved before it can be judged -- the rule #116 wrote down for `false` and which the empty enum needs too.",
+      "anyOf": [{ "$ref": "#/$defs/NeverEnum" }]
+    },
+    "emptyEnumPattern": {
+      "type": "object",
+      "patternProperties": { "^a": { "enum": [] } }
+    },
+    "emptyEnumNames": {
+      "$comment": "No property name is admissible, so only the empty object is. Written through a $defs entry because that is the spelling `propertyNames` is read in at all: an inline object property is typed map[string]any and the keyword is dropped there for `false` as much as for the empty enum, which is a gap of its own and not this one.",
+      "$ref": "#/$defs/NoNames"
+    },
+    "emptyEnumContains": {
+      "$comment": "`contains` demands at least one matching element and nothing matches, so every array is invalid -- the empty one included, which is what separates this from the positions above.",
+      "type": "array",
+      "contains": { "enum": [] }
+    },
+    "emptyEnumDependent": {
+      "$comment": "Through a $defs entry for the same reason emptyEnumNames is: an inline object property is typed map[string]any and dependentSchemas is dropped there whatever the branch says.",
+      "$ref": "#/$defs/NeverWithK"
+    },
+    "emptyEnumUnevalItems": {
+      "type": "array",
+      "prefixItems": [true],
+      "unevaluatedItems": { "enum": [] }
+    },
+    "emptyEnumUnevalProps": {
+      "type": "object",
+      "properties": { "k": true },
+      "unevaluatedProperties": { "enum": [] }
+    },
+    "inferredEmptyEnumItems": {
+      "$comment": "The same element position on an array inferred from its keywords rather than declared, which is a separate path through the generator. A string satisfies an items-only schema and must stay valid.",
+      "items": { "enum": [] }
+    },
+    "inferredEmptyEnumSlot": {
+      "prefixItems": [{ "enum": [] }]
+    },
+    "inferredEmptyEnumTail": {
+      "$comment": "The tail of an inferred tuple: in 2020-12 a schema-valued `items` beside prefixItems governs only what follows the prefix, so the first element is free and the second is not.",
+      "prefixItems": [true],
+      "items": { "enum": [] }
+    },
+    "notEmptyEnum": {
+      "$comment": "The second false-rejection control, and the opposite reading: a `not` over a schema that admits nothing admits everything. The empty enum was read as the empty schema, which made this a forbidden property and refused every document.",
+      "not": { "enum": [] }
+    },
+    "notTypedConst": {
+      "$comment": "The same over-reading one keyword along: the inner schema admits the string \"x\" and nothing else, so the `not` forbids \"x\" alone. `const` was not read at all and the inner schema was taken for {\"type\":\"string\"}, which refused every string there is.",
+      "not": { "type": "string", "const": "x" }
+    },
+    "notEmptyEnumBound": {
+      "$comment": "And a third reading of the same inner schema: no value is both at least five and a member of the empty set, so the `not` admits every value.",
+      "not": { "minimum": 5, "enum": [] }
+    },
+    "notAnyOfEmptyEnum": {
+      "$comment": "The branch form a draft-3 `disallow` normalizes to, and the one place a `not` branch is read for its bounds rather than its type alone. The branch admits nothing, so the anyOf does, so the `not` admits everything -- read as if the enum were absent it forbade every number from five up.",
+      "not": { "anyOf": [{ "type": "number", "minimum": 5, "enum": [] }] }
+    },
+    "notTypedEmptyEnum": {
+      "$comment": "And the empty-enum spelling of it: no string satisfies the inner schema either, so the `not` admits every value.",
+      "not": { "type": "string", "enum": [] }
+    },
+    "viaRefFalse": {
+      "$comment": "The control that was already right: the identical element sub-schema behind a $defs entry, which #116 gave the forbidding type in every position. The inline spellings now answer as it does.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Never" }
+    },
+    "viaRefEmptyEnum": {
+      "$comment": "And the empty-enum spelling of that reference, which #121 gave the same type. A $ref is not the schema it names, so the two have to be asked separately.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/NeverEnum" }
+    },
+    "notEmptyItems": {
+      "$comment": "The working sibling spelling at the element position: `{\"not\":{}}` is the same empty set and has reached the constraint-only ladder since #126. Its rows must not move.",
+      "type": "array",
+      "items": { "not": {} }
+    },
+    "okEnumItems": {
+      "$comment": "The broad accept-control. An enum that lists values is not the empty one, and a predicate that read len() rather than the nil would forbid every schema in the corpus -- starting here.",
+      "type": "array",
+      "items": { "enum": ["a", "b"] }
+    },
+    "plainItems": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "Never": false,
+    "NeverEnum": { "enum": [] },
+    "NoNames": {
+      "type": "object",
+      "propertyNames": { "enum": [] }
+    },
+    "NeverWithK": {
+      "type": "object",
+      "dependentSchemas": { "k": { "enum": [] } }
+    }
+  }
+}

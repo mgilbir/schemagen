@@ -162,6 +162,17 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		return fmt.Sprintf("_schemaNode{Boolean: _boolPtr(%t)}", s.IsTrueSchema()), true
 	}
 
+	// `"enum": []` admits nothing, so it compiles to the node the boolean
+	// `false` schema compiles to on the line above. It has to be answered before
+	// the keyword emission below, which asks len(s.Enum) > 0 and so left the
+	// empty list out: the node came back `_schemaNode{}`, which admits
+	// everything, and a `false` branch inside a oneOf turned into a matching one.
+	// Conditioned on the validation vocabulary, since without it `enum` asserts
+	// nothing at all. See emptyEnumSchema and schemaForbidsEveryValue.
+	if b.g != nil && b.g.schemaForbidsEveryValue(s) {
+		return "_schemaNode{Boolean: _boolPtr(false)}", true
+	}
+
 	// Before draft 2019-09 a $ref replaces the schema object it sits in, so the
 	// siblings say nothing and must not be read -- neither to enforce them nor
 	// to refuse the schema for carrying one the evaluator does not model.
