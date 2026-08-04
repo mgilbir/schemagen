@@ -581,6 +581,43 @@ var ephemeralCacheDir string
 // clear on both sides.
 const staleCacheAge = time.Hour
 
+// cacheLastActive reports when a cache directory was last written to.
+//
+// It is not the directory's own mtime, which is the obvious reading and the
+// wrong one. Go lays out GOCACHE as 256 subdirectories plus trim.txt on first
+// use and writes every entry *inside* those, so the root's mtime is stamped once
+// when the cache is created and never advances again however hard the cache is
+// worked -- measured at six consecutive builds over fifteen seconds, all five
+// after the first leaving the root untouched. Judging by it makes a run that
+// outlives staleCacheAge indistinguishable from an abandoned one, so a
+// concurrently starting run deletes a live cache out from under it. That is the
+// "sweeping too much" direction this function's comment calls the worse and
+// quieter of the two: nothing fails visibly, the robbed run just recompiles from
+// nothing and looks inexplicably slow.
+//
+// The immediate children do track activity -- each build touches the bucket it
+// writes into, and trim.txt is rewritten periodically -- so the newest of the
+// root and its children is the answer. Reading one level is enough and is
+// bounded: 257 entries for a Go cache, and no recursion into the thousands of
+// files below.
+func cacheLastActive(dir string, root os.FileInfo) time.Time {
+	newest := root.ModTime()
+	children, err := os.ReadDir(dir)
+	if err != nil {
+		return newest
+	}
+	for _, c := range children {
+		info, err := c.Info()
+		if err != nil {
+			continue
+		}
+		if t := info.ModTime(); t.After(newest) {
+			newest = t
+		}
+	}
+	return newest
+}
+
 // sweepStaleCaches deletes ephemeral cache directories left behind by earlier
 // runs.
 //
@@ -615,10 +652,14 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 			continue
 		}
 		info, err := e.Info()
-		if err != nil || info.ModTime().After(cutoff) {
+		if err != nil {
 			continue
 		}
-		os.RemoveAll(filepath.Join(tmp, name))
+		path := filepath.Join(tmp, name)
+		if cacheLastActive(path, info).After(cutoff) {
+			continue
+		}
+		os.RemoveAll(path)
 	}
 }
 
