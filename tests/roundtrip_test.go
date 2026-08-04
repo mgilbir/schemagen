@@ -5542,3 +5542,142 @@ func TestInlineUntypedPositionsKeepEveryKind(t *testing.T) {
 		},
 	)
 }
+
+// TestInlineForbiddingPositionsRejectEveryValue is the behavioural half of issue
+// #142. A sub-schema that admits no instance at all was enforced at a document
+// root and behind a $ref and dropped inline, so {"items":false} came out []any
+// with no check and accepted [1], and {"additionalProperties":{"enum":[]}} came
+// out map[string]any and accepted a value under every key.
+//
+// The invalid list is the whole of the defect, in both spellings and at every
+// position that resolves rather than names. The two are the same statement --
+// enum asserts the instance equals one of the values listed, and there are none
+// -- so a position that answers one and not the other is answering by spelling
+// rather than by meaning.
+//
+// The valid list is what the fix must not cost, and it carries three kinds of
+// control:
+//
+//   - The empty container beside every rejection. An empty array satisfies
+//     {"items":false} and an object with no keys satisfies
+//     {"additionalProperties":{"enum":[]}}: the sub-schema speaks about the
+//     values that are there, and there are none. `contains` is the one that goes
+//     the other way, since it demands a match rather than judging one.
+//   - The two documents this generator used to refuse. emptyEnumBranch is a
+//     oneOf whose forbidding branch never matches, so "s" matches exactly one
+//     branch; notEmptyEnum and notTypedConst are `not` over schemas read as if a
+//     keyword were absent, which made the negation wider than the schema. A
+//     false rejection is the failure this repository treats as worse than a
+//     missing check, and these are where it is watched.
+//   - The spellings that were already right and must not move: viaRefFalse, the
+//     same element sub-schema behind a $defs entry, and notEmptyItems, the
+//     `{"not":{}}` spelling of the empty set. okEnumItems and plainItems are the
+//     broad control: a predicate reading len() where it must read the nil would
+//     forbid every schema in the corpus, and these are the first to say so.
+func TestInlineForbiddingPositionsRejectEveryValue(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/inline_forbidding_positions.json",
+		[]string{
+			// The empty container satisfies a sub-schema about its contents.
+			`{"falseItems":[]}`,
+			`{"emptyEnumItems":[]}`,
+			`{"typedEmptyEnumItems":[]}`,
+			`{"nestedFalseItems":[]}`,
+			`{"nestedFalseItems":[[]]}`,
+			`{"nullableFalseItems":[]}`,
+			`{"nullableFalseItems":null}`,
+			`{"emptyEnumValues":{}}`,
+			`{"nullableEmptyEnumValues":{}}`,
+			`{"nullableEmptyEnumValues":null}`,
+			`{"emptyEnumSlot":[]}`,
+			`{"emptyEnumPattern":{}}`,
+			`{"emptyEnumPattern":{"b":1}}`,
+			`{"emptyEnumNames":{}}`,
+			`{"emptyEnumDependent":{}}`,
+			`{"emptyEnumDependent":{"j":1}}`,
+			`{"emptyEnumUnevalItems":[]}`,
+			`{"emptyEnumUnevalItems":[1]}`,
+			`{"emptyEnumUnevalProps":{}}`,
+			`{"emptyEnumUnevalProps":{"k":1}}`,
+			// An items-only or prefixItems-only schema says nothing about a
+			// value that is not an array.
+			`{"inferredEmptyEnumItems":[]}`,
+			`{"inferredEmptyEnumItems":"abc"}`,
+			`{"inferredEmptyEnumSlot":[]}`,
+			`{"inferredEmptyEnumSlot":"abc"}`,
+			`{"inferredEmptyEnumTail":[]}`,
+			`{"inferredEmptyEnumTail":[1]}`,
+			`{"inferredEmptyEnumTail":"abc"}`,
+			// The two false rejections.
+			`{"emptyEnumBranch":"s"}`,
+			`{"notEmptyEnum":1}`,
+			`{"notEmptyEnum":"abc"}`,
+			`{"notEmptyEnum":null}`,
+			`{"notEmptyEnum":{"a":1}}`,
+			`{"notTypedConst":"abc"}`,
+			`{"notTypedConst":1}`,
+			`{"notTypedEmptyEnum":"abc"}`,
+			`{"notTypedEmptyEnum":1}`,
+			`{"notEmptyEnumBound":7}`,
+			`{"notEmptyEnumBound":1}`,
+			`{"notEmptyEnumBound":"abc"}`,
+			`{"notAnyOfEmptyEnum":7}`,
+			`{"notAnyOfEmptyEnum":1}`,
+			`{"notAnyOfEmptyEnum":"abc"}`,
+			// The spellings that were already right.
+			`{"viaRefFalse":[]}`,
+			`{"viaRefEmptyEnum":[]}`,
+			`{"notEmptyItems":[]}`,
+			// A listed enum is not the empty one.
+			`{"okEnumItems":[]}`,
+			`{"okEnumItems":["a"]}`,
+			`{"okEnumItems":["a","b"]}`,
+			`{"plainItems":["x"]}`,
+			`{}`,
+		},
+		[]string{
+			// The reported element position, in both spellings and through the
+			// nested and nullable routes.
+			`{"falseItems":[1]}`,
+			`{"falseItems":["x",2]}`,
+			`{"emptyEnumItems":[1]}`,
+			`{"emptyEnumItems":[null]}`,
+			`{"typedEmptyEnumItems":["x"]}`,
+			`{"nestedFalseItems":[[1]]}`,
+			`{"nullableFalseItems":[1]}`,
+			// The reported map-value position, and its nullable route.
+			`{"emptyEnumValues":{"x":1}}`,
+			`{"emptyEnumValues":{"x":"s"}}`,
+			`{"nullableEmptyEnumValues":{"x":1}}`,
+			// The slot, branch and composition positions.
+			`{"emptyEnumSlot":[1]}`,
+			`{"emptyEnumBranch":1}`,
+			`{"emptyEnumAllOf":"s"}`,
+			`{"emptyEnumAllOf":1}`,
+			`{"emptyEnumAnyOf":"s"}`,
+			`{"emptyEnumAnyOf":1}`,
+			`{"refEmptyEnumAnyOf":"s"}`,
+			`{"refEmptyEnumAnyOf":1}`,
+			// The keyword positions.
+			`{"emptyEnumPattern":{"a1":1}}`,
+			`{"emptyEnumNames":{"a":1}}`,
+			`{"emptyEnumContains":[]}`,
+			`{"emptyEnumContains":[1]}`,
+			`{"emptyEnumDependent":{"k":1}}`,
+			`{"emptyEnumUnevalItems":[1,2]}`,
+			`{"emptyEnumUnevalProps":{"x":1}}`,
+			// The inferred-array spellings of the element and the slot.
+			`{"inferredEmptyEnumItems":[1]}`,
+			`{"inferredEmptyEnumSlot":[1]}`,
+			`{"inferredEmptyEnumTail":[1,2]}`,
+			// The `not` reads its inner schema whole: this one forbids "x" and
+			// nothing else.
+			`{"notTypedConst":"x"}`,
+			// The controls that were already rejecting, and still are.
+			`{"viaRefFalse":[1]}`,
+			`{"viaRefEmptyEnum":[1]}`,
+			`{"notEmptyItems":[1]}`,
+			`{"okEnumItems":["c"]}`,
+		},
+	)
+}

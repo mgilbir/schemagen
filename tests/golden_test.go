@@ -188,6 +188,14 @@ func allGoldenTests() []goldenTestCase {
 		// float64, and the prefixItems slot beside them keeps the raw wrapper it
 		// already had.
 		{"regression/inline_untyped_positions", "testdata/schemas/regression/inline_untyped_positions.json", "testdata/golden/regression/inline_untyped_positions.go"},
+		// The API promise of issue #142, and the reason that one has a golden
+		// too: an element and a map value whose sub-schema admits nothing stop
+		// being []any and map[string]any and become the wrapper that refuses
+		// every value, which is the type the same sub-schema has always had
+		// behind a $ref. The slot, branch and keyword positions beside them
+		// change no type at all -- they gain the check they were missing -- and
+		// this is where the difference is pinned.
+		{"regression/inline_forbidding_positions", "testdata/schemas/regression/inline_forbidding_positions.json", "testdata/golden/regression/inline_forbidding_positions.go"},
 		// Pins which anyOf groups keep the merged struct and which leave it for
 		// the evaluator: a branch the struct cannot hold -- a scalar, a const, a
 		// `not`, the `true` schema -- takes the group away, a `false` branch

@@ -3374,7 +3374,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	for i, pattern := range sortedKeys(s.PatternProperties) {
 		ppSchema := s.PatternProperties[pattern]
 		ppDef := PatternPropertyDef{Pattern: pattern}
-		if ppSchema.IsFalseSchema() {
+		// A sub-schema admitting nothing forbids every key the pattern matches.
+		// `{"enum":[]}` says that as much as `false` does, and reached neither
+		// this arm nor patternValueTypeName below -- so
+		// {"patternProperties":{"^a":{"enum":[]}}} accepted {"a1":1}.
+		if g.schemaForbidsEveryValue(ppSchema) {
 			ppDef.IsForbidden = true
 		} else if ppSchema.IsBooleanSchema() {
 			// boolean true → no constraints
@@ -4948,7 +4952,7 @@ func (g *Generator) allOfContainsFalseSchemaOnPath(allOf []*schema.Schema, onPat
 		if sub == nil {
 			continue
 		}
-		if sub.IsFalseSchema() {
+		if g.schemaForbidsEveryValue(sub) {
 			return true
 		}
 		if onPath[sub] {
@@ -4963,7 +4967,7 @@ func (g *Generator) allOfContainsFalseSchemaOnPath(allOf []*schema.Schema, onPat
 			if effRef := sub.EffectiveRef(); effRef != "" {
 				if r := g.resolveRefInContext(effRef, sub); r != nil && !onPath[r] {
 					onPath[r] = true
-					hit = r.IsFalseSchema() ||
+					hit = g.schemaForbidsEveryValue(r) ||
 						(len(r.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(r.AllOf, onPath))
 					delete(onPath, r)
 				}
@@ -4977,18 +4981,22 @@ func (g *Generator) allOfContainsFalseSchemaOnPath(allOf []*schema.Schema, onPat
 	return false
 }
 
-// subIsFalse reports whether a composition branch admits nothing -- either it is
-// the boolean `false` itself, or it is a reference to one.
+// subIsFalse reports whether a composition branch admits nothing -- it is the
+// boolean `false` itself, it says the same thing another way, or it is a
+// reference to one that does.
 //
 // The reference has to count, for the reason #116 records: a $ref is not the
 // schema it names, so a predicate that only asks IsFalseSchema sees an ordinary
 // branch, and {"anyOf":[{"$ref":"#/$defs/b"}]} over {"b":false} came out
 // `type Root any` while the identical {"anyOf":[false]} was already refused.
+// The other spelling counts for the same reason one keyword further out: an
+// {"anyOf":[{"enum":[]}]} admits nothing, and reading it as an ordinary branch
+// left the schema `any`.
 func (g *Generator) subIsFalse(sub *schema.Schema) bool {
 	if sub == nil {
 		return false
 	}
-	return sub.IsFalseSchema() || g.resolvedToFalseSchema(sub)
+	return g.schemaForbidsEveryValue(sub) || g.resolvedToFalseSchema(sub)
 }
 
 // compositionAdmitsNothing reports whether an anyOf or a oneOf on this schema
@@ -7700,7 +7708,8 @@ func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
 }
 
 // resolvedToFalseSchema checks if a property schema's $ref, $dynamicRef, or
-// $recursiveRef resolves to a boolean false schema ("always invalid").
+// $recursiveRef resolves to a schema no instance satisfies ("always invalid").
+// Both spellings count; see schemaForbidsEveryValue.
 func (g *Generator) resolvedToFalseSchema(s *schema.Schema) bool {
 	if s == nil {
 		return false
@@ -7708,13 +7717,13 @@ func (g *Generator) resolvedToFalseSchema(s *schema.Schema) bool {
 	// Check $ref / $recursiveRef.
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
-			return resolved.IsFalseSchema()
+			return g.schemaForbidsEveryValue(resolved)
 		}
 	}
 	// Check $dynamicRef.
 	if s.DynamicRef != "" {
 		if resolved := g.resolveDynamicRef(s.DynamicRef, s); resolved != nil {
-			return resolved.IsFalseSchema()
+			return g.schemaForbidsEveryValue(resolved)
 		}
 	}
 	return false
@@ -8740,6 +8749,19 @@ func (g *Generator) objectShapeNeedsNamedType(s *schema.Schema) bool {
 // and falls through to the alias paths, where its branches attach to the
 // declared or inferred type.
 func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext string) GoType {
+	// An element (or map value) whose sub-schema admits nothing. See
+	// forbiddingInlineType, and issue #142.
+	//
+	// First, not last, and that is the one place in this ladder where the
+	// ordering rule is inverted. Every arm below answers "what Go type holds the
+	// values this schema admits", and the answer here is that there are none, so
+	// an arm that types the position can only be describing values the schema
+	// forbids: {"type":"string","enum":[]} is a string type over an empty set,
+	// and []string then accepts every string. generateTypeDef puts its two
+	// forbidding arms ahead of the enum and type arms for the same reason.
+	if goType, ok := g.forbiddingInlineType(items, itemContext); ok {
+		return goType
+	}
 	// An element (or map value) whose unevaluatedItems only the runtime
 	// annotation evaluator can settle. Same reasoning as the property arm in
 	// resolvePropertyType: nothing below names the position, so the keyword
@@ -9097,7 +9119,7 @@ func (g *Generator) inferTypeFromConstraints(s *schema.Schema) string {
 // In this narrow case, the schema is equivalent to a fixed-length tuple with
 // maxItems = tuple length.
 func (g *Generator) unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
-	if s.UnevaluatedItems == nil || !s.UnevaluatedItems.IsFalseSchema() {
+	if !g.schemaForbidsEveryValue(s.UnevaluatedItems) {
 		return false
 	}
 	tupleLen := 0
@@ -9153,13 +9175,14 @@ func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItems
 
 	ui := s.UnevaluatedItems
 
-	// Boolean schemas
-	if ui.IsBooleanSchema() {
-		if ui.IsTrueSchema() {
-			// unevaluatedItems: true — allow anything, no validation needed
-			return nil
-		}
-		// unevaluatedItems: false — reject any unevaluated items
+	// unevaluatedItems: true — allow anything, no validation needed
+	if ui.IsTrueSchema() {
+		return nil
+	}
+	// A sub-schema admitting nothing — reject any unevaluated item.
+	// `{"enum":[]}` says that as much as `false` does, and fell to the
+	// schema-valued path below, which extracts no check from it and returns nil.
+	if g.schemaForbidsEveryValue(ui) {
 		def := &UnevaluatedItemsDef{IsForbidden: true}
 		g.collectEvaluatedItems(s, def)
 		// If all items are already evaluated, unevaluatedItems:false is a no-op
@@ -9865,10 +9888,19 @@ func (g *Generator) populateValidatableFields() {
 const maxItemLevels = 8
 
 // singleItemsSchema returns the sub-schema that governs every element of an
-// array schema, or nil when there is none to speak of. A tuple form, a boolean
-// items, and a 2020-12 prefixItems (where `items` governs only the tail) all
+// array schema, or nil when there is none to speak of. A tuple form, `items:
+// true`, and a 2020-12 prefixItems (where `items` governs only the tail) all
 // answer nil: those positions are validated elsewhere, and guessing here would
 // reject data the schema allows.
+//
+// `items: false` was answered nil beside `items: true`, and it is not the same
+// case. `true` says nothing about an element and there is nothing for the
+// descent to carry; `false` says no element is admissible, and since issue #142
+// the position holds the type that says so -- so stopping here left that type's
+// Validate dispatched by nobody. It showed one level down, where the descent is
+// the only thing that reaches an element:
+// {"type":"array","items":{"type":"array","items":false}} typed the inner
+// element correctly and then accepted [[1]].
 func (g *Generator) singleItemsSchema(s *schema.Schema) *schema.Schema {
 	if s == nil || s.AdditionalItems != nil {
 		return nil
@@ -9876,7 +9908,7 @@ func (g *Generator) singleItemsSchema(s *schema.Schema) *schema.Schema {
 	if len(s.PrefixItems) > 0 && g.supportsPrefixItems(s) {
 		return nil
 	}
-	if s.Items == nil || s.Items.Schema == nil || s.Items.Schema.IsBooleanSchema() {
+	if s.Items == nil || s.Items.Schema == nil || s.Items.Schema.IsTrueSchema() {
 		return nil
 	}
 	return s.Items.Schema
@@ -9952,15 +9984,64 @@ func (g *Generator) boxedInferredType(sub *schema.Schema, name string) (GoType, 
 	if !g.boxedInferredTypeNeedsName(sub, name) {
 		return nil, false
 	}
-	if n, cyclic := g.materializeNamed(sub, name); g.generated[n] {
-		return namedOrPointer(n, cyclic), true
-	}
-	return nil, false
+	return g.namedInlineType(sub, name)
 }
 
 // boxedInferredTypeNeedsName is boxedInferredType's question, split out so the
 // two halves of the answer -- whether to name the position, and what the name
 // resolves to -- can be read apart.
+func (g *Generator) boxedInferredTypeNeedsName(sub *schema.Schema, name string) bool {
+	if !g.validationKeywordsEnabled() || !g.inlineNameAvailable(sub, name) {
+		return false
+	}
+	return g.typeIsInferredFromConstraints(sub)
+}
+
+// forbiddingInlineType names an inline position whose sub-schema admits no
+// instance at all, so that the position gets the type generateTypeDef builds for
+// exactly that schema. The second result is false when the position keeps the
+// type it has today, which every caller answers by resolving as before.
+//
+// An element and a map value were the two positions with no such path.
+//
+//	{"type":"object","properties":{"a":{"type":"array","items":false}}}
+//	{"type":"object","properties":{"a":{"type":"object","additionalProperties":{"enum":[]}}}}
+//
+// `items: false` forbids every element, so any non-empty array is invalid, and
+// an empty enum forbids every value, so an object with any key at all is. Both
+// came out `[]any` and `map[string]any` with no check and accepted {"a":[1]} and
+// {"a":{"x":1}}. That is issue #142, and it is the last position of the family
+// #113, #114, #116 and #126 walked: a schema that constrains without naming a Go
+// type is enforced at a document root and behind a $ref, and was dropped inline.
+//
+// The type the position should have already exists and needed nothing.
+// generateTypeDef answers a schema that admits nothing with a raw-JSON wrapper
+// whose Validate refuses every value present -- the arm #116 gave the boolean
+// `false` schema in every position, and the one #121 gave `{"enum":[]}` beside
+// it. So the identical sub-schema written as a $defs entry and referenced has
+// always rejected these documents while the inline spelling accepted them;
+// {"items":{"$ref":"#/$defs/F"}} with F of `false` is the control, and it was
+// already right. Naming the position is what routes the inline one to the same
+// type.
+//
+// This is a different question from boxedInferredType's, and the two are not
+// one predicate wearing two names. That one asks whether a type would be
+// *inferred* from a keyword the schema did not state, and its answer is a box
+// that keeps the value whatever kind it arrives as and applies the keywords only
+// where they speak; it declines a schema that states a "type", because such a
+// schema authorized the narrowing. Here the schema's own answer is that no value
+// is admissible, which no Go type expresses, so a stated "type" changes nothing
+// -- {"type":"string","enum":[]} admits no string either -- and the wrapper is
+// not a box for a value but a refusal of every one.
+func (g *Generator) forbiddingInlineType(sub *schema.Schema, name string) (GoType, bool) {
+	if !g.schemaForbidsEveryValue(sub) || !g.inlineNameAvailable(sub, name) {
+		return nil, false
+	}
+	return g.namedInlineType(sub, name)
+}
+
+// inlineNameAvailable reports whether an inline position may be materialized
+// under name.
 //
 // The guards are constraintOnlyNamedType's, with one relaxation: a name already
 // generated belongs to another schema and is refused, *unless* this very node
@@ -9969,8 +10050,8 @@ func (g *Generator) boxedInferredType(sub *schema.Schema, name string) (GoType, 
 // us, and a node already in flight would have the wrapper stand in for the
 // definition being built above it; both are refused outright, and the caller
 // then resolves the position exactly as it did before.
-func (g *Generator) boxedInferredTypeNeedsName(sub *schema.Schema, name string) bool {
-	if sub == nil || name == "" || !g.validationKeywordsEnabled() {
+func (g *Generator) inlineNameAvailable(sub *schema.Schema, name string) bool {
+	if sub == nil || name == "" {
 		return false
 	}
 	if g.generating[name] || g.nodesInProgress[sub] {
@@ -9979,7 +10060,53 @@ func (g *Generator) boxedInferredTypeNeedsName(sub *schema.Schema, name string) 
 	if _, named := g.nodeTypeNames[sub]; !named && g.generated[name] {
 		return false
 	}
-	return g.typeIsInferredFromConstraints(sub)
+	return true
+}
+
+// namedInlineType materializes sub under name and answers with the reference to
+// it, or (nil, false) when generateTypeDef declined to declare anything.
+func (g *Generator) namedInlineType(sub *schema.Schema, name string) (GoType, bool) {
+	if n, cyclic := g.materializeNamed(sub, name); g.generated[n] {
+		return namedOrPointer(n, cyclic), true
+	}
+	return nil, false
+}
+
+// emptyEnumSchema reports whether a schema states `"enum": []`, which admits no
+// instance at all: enum asserts that the instance equals one of the values
+// listed, and there are none. That is what the boolean `false` schema says, and
+// what the official suite's "empty enum" group states -- a string, a number, a
+// null, an object, an array and a boolean all marked invalid.
+//
+// The nil test is what separates an absent enum from an empty one:
+// encoding/json leaves the field nil for an absent keyword and allocates an
+// empty slice for `[]`, so len() alone would answer yes for every schema in the
+// corpus. Read `s.Enum != nil` and never `len(s.Enum) == 0` on its own.
+//
+// It is also the reason this question cannot be asked of the re-marshaled
+// keyword set the representability gates read: `enum` is tagged omitempty, so an
+// empty one leaves no key behind and a gate that decides from those keys sees a
+// schema stating nothing.
+func emptyEnumSchema(s *schema.Schema) bool {
+	return s != nil && s.Enum != nil && len(s.Enum) == 0
+}
+
+// schemaForbidsEveryValue reports whether a sub-schema admits no instance at
+// all, in either of the two spellings generateTypeDef answers with the
+// forbidding wrapper: the boolean `false` schema, and `"enum": []`.
+//
+// The empty enum is conditioned on the validation vocabulary, exactly as
+// generateTypeDef's own arm is. Where the declared metaschema omits that
+// vocabulary `enum` asserts nothing, and reading it as a refusal there would
+// reject every document the schema permits.
+func (g *Generator) schemaForbidsEveryValue(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if s.IsFalseSchema() {
+		return true
+	}
+	return g.validationKeywordsEnabled() && emptyEnumSchema(s)
 }
 
 // typeIsInferredFromConstraints reports whether a schema states no "type" of its
@@ -11594,10 +11721,18 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 	}
 	// An empty schema (no constraints) matches everything.
 	// Must check ALL structural and validation keywords to avoid false positives.
+	//
+	// The enum test is `s.Enum == nil` and not `len(s.Enum) == 0`, because the
+	// empty list is the one enum that is not an absent enum: it admits nothing,
+	// which is the opposite of what this predicate reports. Read through the one
+	// caller that matters, {"not":{"enum":[]}} is a `not` over the empty set and
+	// so admits *every* value -- and len() said "accepts all" of the inner
+	// schema, which turned into a forbidden-property rule and refused every
+	// document the schema permits. See emptyEnumSchema.
 	return len(s.Type) == 0 && len(s.Properties) == 0 && s.Not == nil &&
 		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
 		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
-		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
+		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && s.Enum == nil &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
 		len(s.Required) == 0 && s.AdditionalProperties == nil &&
 		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
@@ -11739,7 +11874,7 @@ func isSimpleNotBranchSchema(s *schema.Schema) bool {
 		s.If == nil && s.Then == nil && s.Else == nil &&
 		len(s.Properties) == 0 && len(s.PatternProperties) == 0 && s.AdditionalProperties == nil &&
 		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil && s.Contains == nil &&
-		len(s.Enum) == 0 && s.Const == nil && !s.ConstIsNull && s.Format == nil &&
+		s.Enum == nil && s.Const == nil && !s.ConstIsNull && s.Format == nil &&
 		s.UniqueItems == nil && s.MinProperties == nil && s.MaxProperties == nil &&
 		len(s.Definitions) == 0 && len(s.Defs) == 0 &&
 		s.PropertyNames == nil && s.UnevaluatedItems == nil && s.UnevaluatedProperties == nil &&
@@ -11748,11 +11883,21 @@ func isSimpleNotBranchSchema(s *schema.Schema) bool {
 
 // isTypeOnlySchema returns true if the schema has only a "type" constraint and
 // nothing else (used for not:{type:X} detection).
+// The enum and const tests are what keep a schema that names a type *and*
+// enumerates its values from being read as if it named only the type. Every
+// caller is a `not`, where dropping a conjunct from the inner schema widens the
+// negation instead of narrowing it: {"not":{"type":"string","enum":[]}} is a
+// `not` over a schema no string satisfies and so admits every string, and
+// {"not":{"type":"string","const":"x"}} forbids "x" alone -- both were read as
+// {"not":{"type":"string"}} and refused every string there is. `const` was not
+// tested at all, and `enum` was tested with len(), which cannot tell an absent
+// enum from the empty one; see emptyEnumSchema.
 func isTypeOnlySchema(s *schema.Schema) bool {
 	return len(s.Properties) == 0 && s.Not == nil &&
 		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
 		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
-		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil && len(s.Enum) == 0 &&
+		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil &&
+		s.Enum == nil && s.Const == nil && !s.ConstIsNull &&
 		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
 		len(s.Required) == 0 && s.AdditionalProperties == nil &&
 		s.Items == nil && len(s.PrefixItems) == 0 &&
@@ -12400,7 +12545,7 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 		// In draft 2020-12, "items" (as single schema) acts as additionalItems.
 		if hasSingleItems {
 			itemSchema := s.Items.Schema
-			if itemSchema.IsFalseSchema() {
+			if g.schemaForbidsEveryValue(itemSchema) {
 				additionalItemsFalse = true
 			} else if len(itemSchema.Type) == 1 {
 				additionalItemsType = itemSchema.Type[0]
@@ -12431,7 +12576,7 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	// items as single schema — validates every element.
 	if hasSingleItems {
 		itemSchema := s.Items.Schema
-		if itemSchema.IsFalseSchema() {
+		if g.schemaForbidsEveryValue(itemSchema) {
 			itemsFalse = true
 		} else if itemSchema.IsBooleanSchema() {
 			// items: true — no constraint
@@ -12482,7 +12627,7 @@ func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
 // inferredTupleItemFromSchema converts a sub-schema to an InferredTupleItem.
 // The generator is needed to resolve $ref sub-schemas.
 func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema) InferredTupleItem {
-	if sub.IsFalseSchema() {
+	if g.schemaForbidsEveryValue(sub) {
 		return InferredTupleItem{IsFalse: true}
 	}
 	if sub.IsTrueSchema() || sub.IsBooleanSchema() {
@@ -12530,8 +12675,13 @@ func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
 // extractPropertyNamesDef builds a PropertyNamesDef from a propertyNames sub-schema.
 // Returns nil if the sub-schema is boolean true or has no actionable constraints.
 func extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef {
-	// Boolean false schema: no property name is valid (empty objects only).
-	if pn.IsFalseSchema() {
+	// A sub-schema admitting nothing: no property name is valid (empty objects
+	// only). `{"enum":[]}` says that as much as `false` does, and reached
+	// neither this arm nor the enum arm below, which asks len() > 0 -- so
+	// {"propertyNames":{"enum":[]}} accepted every object. Every caller is
+	// already behind validationKeywordsEnabled, which is the gate the empty enum
+	// needs; see emptyEnumSchema.
+	if pn.IsFalseSchema() || emptyEnumSchema(pn) {
 		return &PropertyNamesDef{IsForbidden: true}
 	}
 	// Boolean true schema: no constraint.
@@ -12671,8 +12821,12 @@ func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstr
 		constraint := DependentSchemaConstraint{TriggerKey: trigger}
 		hasConstraint := false
 
-		// Boolean false schema: always reject when trigger is present.
-		if depSchema.IsFalseSchema() {
+		// A sub-schema admitting nothing: always reject when the trigger is
+		// present. `{"enum":[]}` says that as much as `false` does, and reached no
+		// arm below, so {"dependentSchemas":{"k":{"enum":[]}}} accepted every
+		// object carrying "k". Both callers are behind validationKeywordsEnabled,
+		// which is the gate the empty enum needs; see emptyEnumSchema.
+		if depSchema.IsFalseSchema() || emptyEnumSchema(depSchema) {
 			constraint.IsFalse = true
 			result = append(result, constraint)
 			continue
@@ -12753,8 +12907,14 @@ func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
 		maxC = &v
 	}
 
-	// Boolean false schema: no element can ever match.
-	if containsSch.IsFalseSchema() {
+	// A sub-schema admitting nothing: no element can ever match. `{"enum":[]}`
+	// says that as much as `false` does, and reached neither this arm nor the
+	// enum arms below, which ask len() == 1 and len() > 0 -- so
+	// {"contains":{"enum":[]}} accepted every array, including the empty one that
+	// `contains` refuses outright. Every caller either sits behind
+	// validationKeywordsEnabled or discards the result when it is off, which is
+	// the gate the empty enum needs; see emptyEnumSchema.
+	if containsSch.IsFalseSchema() || emptyEnumSchema(containsSch) {
 		return &ContainsDef{IsFalse: true}, minC, maxC
 	}
 
@@ -13436,12 +13596,15 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 	def := &UnevaluatedPropertiesDef{}
 
 	// Check if unevaluatedProperties is a boolean schema.
-	if uneval.IsBooleanSchema() {
-		if uneval.BooleanSchema != nil && *uneval.BooleanSchema {
-			def.IsAllowed = true
-			return def
-		}
-		// false → forbidden
+	if uneval.IsTrueSchema() {
+		def.IsAllowed = true
+		return def
+	}
+	// A sub-schema admitting nothing forbids every unevaluated key. `{"enum":[]}`
+	// says that as much as `false` does, and took the branch below instead, where
+	// a schema with no type is "allowed permissively" -- so
+	// {"unevaluatedProperties":{"enum":[]}} accepted every extra key.
+	if g.schemaForbidsEveryValue(uneval) {
 		def.IsForbidden = true
 	} else {
 		// unevaluatedProperties is a schema constraint (not boolean).
@@ -14768,8 +14931,13 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 		return TupleItemDef{}, false
 	}
 
-	// Boolean false schema — reject any value at this position.
-	if posSch.IsFalseSchema() {
+	// A sub-schema admitting nothing — reject any value at this position.
+	// `{"enum":[]}` is the same statement as `false` (see schemaForbidsEveryValue)
+	// and reached none of the arms below: the enum arms all ask len() > 0, and
+	// what was left read the rest of the schema as if the keyword were absent, so
+	// {"prefixItems":[{"enum":[]}]} accepted [1] and {"prefixItems":
+	// [{"type":"string","enum":[]}]} accepted every string at that position.
+	if g.schemaForbidsEveryValue(posSch) {
 		return TupleItemDef{IsFalse: true}, true
 	}
 
