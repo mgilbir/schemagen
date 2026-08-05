@@ -7122,3 +7122,121 @@ func TestReferenceKeywordsAreIgnoredByDraftsWithoutThem(t *testing.T) {
 		)
 	})
 }
+
+// TestDynamicAnchorOnANestedIdBelongsToThatResource is issues #163 and #164,
+// which are one defect seen from two ends.
+//
+// #159 replaced findDynamicAnchor with resourceDynamicAnchor for the runtime
+// evaluator: an anchor written *on* a node that carries its own $id belongs to
+// the resource that node starts, not to the one that merely contains it, so a
+// resource nothing ever enters must not answer for evaluations passing
+// overhead. The static path went on reading it the other way, and this fixture
+// is where the two answers part company.
+//
+// `strayItemType` is such a node -- a $defs entry with an $id and a
+// $dynamicAnchor, referred to by nothing. Credited to the document root, it sits
+// on the outermost frame of every evaluation and wins every time, so genericBox
+// bound `value` to a number for both paths that reach it. That is the dangerous
+// direction: `{"value":"x"}` is valid down either path and was refused, at
+// decode, by FirstBox and SecondBox alike -- while Root, which #160 sends to the
+// evaluator, accepted the same document. One schema, two answers, decided by
+// which generated type the caller happened to hold.
+//
+// Root is the accept-control for the evaluator half and FirstBox and SecondBox
+// for the static half; asserting both is what says the two paths now agree
+// rather than that one of them was silenced. `{}` and `{"first":{}}` are the
+// controls for a fix that had simply stopped checking: required is still read,
+// so a Validate that accepted everything fails here.
+//
+// The verdicts are Bowtie's over python-jsonschema, go-jsonschema and rust-boon,
+// which agree on all ten documents, taken before this test was written. The
+// FirstBox rows were asked of a document whose root is `{"$ref": "firstBox"}`
+// over the same $defs, which is what "validated as the root of its own
+// evaluation" means for a generated type.
+func TestDynamicAnchorOnANestedIdBelongsToThatResource(t *testing.T) {
+	t.Run("the document root", func(t *testing.T) {
+		runValidationCasesForType(t,
+			"testdata/schemas/regression/dynamic_ref_boundary_anchor.json", "Root",
+			[]string{
+				`{}`,
+				`{"first":{"value":1}}`,
+				`{"first":{"value":"x"}}`,
+				`{"second":{"value":"x"}}`,
+				`{"first":{"value":{"a":1}}}`,
+			},
+			[]string{
+				`{"first":{}}`,
+			},
+		)
+	})
+
+	// The two $defs types the stray anchor was answering for. They are asserted
+	// separately because the defect was invisible from the root: #160 routes the
+	// root to the evaluator, which already read the anchor correctly, and only a
+	// caller holding one of these ever met the static binding.
+	for _, typeName := range []string{"FirstBox", "SecondBox"} {
+		t.Run(typeName, func(t *testing.T) {
+			runValidationCasesForType(t,
+				"testdata/schemas/regression/dynamic_ref_boundary_anchor.json", typeName,
+				[]string{
+					`{"value":1}`,
+					`{"value":"x"}`,
+					`{"value":{"a":1}}`,
+				},
+				[]string{
+					`{}`,
+				},
+			)
+		})
+	}
+}
+
+// TestDynamicAnchorDeclaredByAnEnteredResourceStillWins is the accept-control
+// for the change above, and the reason it is not spelled "always take the
+// bookend".
+//
+// Narrowing the reading takes anchors away from resources that never declared
+// them; it must take nothing away from a resource that did. `holder` declares
+// itemType in its own $defs -- an ordinary node inside the resource, not a
+// boundary -- and `strayRes` is the boundary node that used to outrank it by
+// sitting one level further out. So the fix has to keep searching after the
+// document root answers nothing, and a fix that stopped at the first frame or
+// fell straight through to the bookend would accept `{"box":{"value":1}}`,
+// which all three implementations refuse.
+//
+// GenericBox is the same subschema judged as its own root, where the answer is
+// the permissive bookend because no evaluation starting there ever enters
+// holder. Both rows come from the same generated file, so together they say the
+// binding follows the path rather than the text.
+//
+// Verdicts from Bowtie over python-jsonschema, go-jsonschema and rust-boon,
+// unanimous on all eight documents.
+func TestDynamicAnchorDeclaredByAnEnteredResourceStillWins(t *testing.T) {
+	t.Run("the document root", func(t *testing.T) {
+		runValidationCasesForType(t,
+			"testdata/schemas/regression/dynamic_ref_inner_frame_anchor.json", "Root",
+			[]string{
+				`{}`,
+				`{"box":{"value":"x"}}`,
+				`{"box":{"value":"x","extra":1}}`,
+			},
+			[]string{
+				`{"box":{"value":1}}`,
+				`{"box":{}}`,
+			},
+		)
+	})
+
+	t.Run("GenericBox", func(t *testing.T) {
+		runValidationCasesForType(t,
+			"testdata/schemas/regression/dynamic_ref_inner_frame_anchor.json", "GenericBox",
+			[]string{
+				`{"value":1}`,
+				`{"value":"x"}`,
+			},
+			[]string{
+				`{}`,
+			},
+		)
+	})
+}

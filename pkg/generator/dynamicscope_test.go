@@ -507,3 +507,131 @@ func TestReferenceKeywordsFollowTheNodesOwnDialect(t *testing.T) {
 		t.Error("the embedded 2019-09 resource lost its $recursiveRef; the gate is reading the document rather than the node")
 	}
 }
+
+// TestStaticDynamicRefReadsTheScopeByResource is issues #163 and #164 at the
+// function the fix is written in.
+//
+// The compiled-and-run half is TestDynamicAnchorOnANestedIdBelongsToThatResource,
+// which is what proves the binding reaches a document; this is what says
+// resolveDynamicRef asks of a scope frame the same question the generated
+// evaluator asks, rather than the one findDynamicAnchor answers. The two
+// disagree only where an anchor sits on a node carrying its own $id, and no
+// corpus file has that shape -- so without this and the fixture beside it the
+// rule is held by nothing.
+func TestStaticDynamicRefReadsTheScopeByResource(t *testing.T) {
+	// A stray resource: a $defs entry with its own $id and a $dynamicAnchor,
+	// which nothing refers to. Read by resource it is on no scope any evaluation
+	// builds; read by findDynamicAnchor the document root publishes it, and it
+	// then outranks the bookend for every reference in the document.
+	t.Run("a boundary node publishes nothing", func(t *testing.T) {
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://schemagen.test/boundary/main",
+			"type": "object",
+			"properties": {"box": {"$ref": "genericBox"}},
+			"$defs": {
+				"genericBox": {
+					"$id": "genericBox",
+					"properties": {"value": {"$dynamicRef": "#itemType"}},
+					"$defs": {"defaultItemType": {"$dynamicAnchor": "itemType"}}
+				},
+				"stray": {"$id": "strayItemType", "$dynamicAnchor": "itemType", "type": "number"}
+			}
+		}`)
+		box := root.Defs["genericBox"]
+		ref := box.Properties["value"]
+		bookend := box.Defs["defaultItemType"]
+
+		g.dynamicScope = []*schema.Schema{root, box}
+		got := g.resolveDynamicRef(ref.DynamicRef, ref)
+		if got != bookend {
+			t.Errorf("resolveDynamicRef = %s, want the bookend: strayItemType is a resource of its own, "+
+				"so nothing that enters the document root puts its anchor on the scope", describeAnchorTarget(got))
+		}
+		// The control on the fixture rather than on the fix: if the stray anchor
+		// were not reachable by the old reading at all, the case above would
+		// pass for any implementation whatsoever.
+		if findDynamicAnchor(root, "itemType") != root.Defs["stray"] {
+			t.Error("the fixture no longer reproduces the divergence: findDynamicAnchor must still credit " +
+				"the stray anchor to the document root, or nothing here is being tested")
+		}
+	})
+
+	// The other direction, and the reason the fix is not "take the bookend". A
+	// resource that declares the anchor in its own $defs still answers, and it
+	// answers even though an outer frame was asked first and said nothing.
+	t.Run("an entered resource still publishes its own", func(t *testing.T) {
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://schemagen.test/inner/main",
+			"type": "object",
+			"properties": {"box": {"$ref": "holder"}},
+			"$defs": {
+				"aStray": {"$id": "strayRes", "$dynamicAnchor": "itemType"},
+				"genericBox": {
+					"$id": "genericBox",
+					"properties": {"value": {"$dynamicRef": "#itemType"}},
+					"$defs": {"defaultItemType": {"$dynamicAnchor": "itemType"}}
+				},
+				"holder": {
+					"$id": "holder",
+					"$ref": "genericBox",
+					"$defs": {"itemType": {"$dynamicAnchor": "itemType", "type": "string"}}
+				}
+			}
+		}`)
+		box := root.Defs["genericBox"]
+		ref := box.Properties["value"]
+		want := root.Defs["holder"].Defs["itemType"]
+
+		g.dynamicScope = []*schema.Schema{root, root.Defs["holder"], box}
+		if got := g.resolveDynamicRef(ref.DynamicRef, ref); got != want {
+			t.Errorf("resolveDynamicRef = %s, want holder's own itemType: the document root declares none, "+
+				"so the walk has to go on to the resource that does", describeAnchorTarget(got))
+		}
+	})
+
+	// The frame that declares the anchor on its own root rather than below it.
+	// resourceDynamicAnchor answers this one from its isRoot arm, which the two
+	// cases above never reach, and a reading that skipped the frame node itself
+	// would fall through to the bookend here and nowhere else.
+	t.Run("a resource anchored on its own root", func(t *testing.T) {
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://schemagen.test/self/main",
+			"type": "object",
+			"properties": {"box": {"$ref": "holder"}},
+			"$defs": {
+				"genericBox": {
+					"$id": "genericBox",
+					"properties": {"value": {"$dynamicRef": "#itemType"}},
+					"$defs": {"defaultItemType": {"$dynamicAnchor": "itemType"}}
+				},
+				"holder": {
+					"$id": "holder",
+					"$dynamicAnchor": "itemType",
+					"type": ["object", "string"]
+				}
+			}
+		}`)
+		box := root.Defs["genericBox"]
+		ref := box.Properties["value"]
+		holder := root.Defs["holder"]
+
+		g.dynamicScope = []*schema.Schema{root, holder, box}
+		if got := g.resolveDynamicRef(ref.DynamicRef, ref); got != holder {
+			t.Errorf("resolveDynamicRef = %s, want holder itself: an anchor on a resource root is the "+
+				"resource's own, and the frame that entered it publishes it", describeAnchorTarget(got))
+		}
+	})
+}
+
+// describeAnchorTarget names a resolved target by what distinguishes one
+// candidate from another here, since every one of them is an anonymous
+// subschema and %v over a Schema prints a wall of zero fields.
+func describeAnchorTarget(s *schema.Schema) string {
+	if s == nil {
+		return "nil"
+	}
+	return "{$id: " + s.ID + ", type: " + strings.Join(s.Type, "|") + "}"
+}

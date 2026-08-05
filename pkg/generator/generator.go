@@ -8118,10 +8118,19 @@ func (g *Generator) popDynamicScope() {
 //  1. Resolve the $dynamicRef to its initial target (just like $ref).
 //  2. Check if the initial target schema has a $dynamicAnchor with the same name
 //     as the fragment in the $dynamicRef (the "bookend").
-//  3. If a bookend exists, walk the dynamic scope chain (the stack of document
-//     roots entered via $ref) from outermost to innermost. The first document
-//     root that contains a $dynamicAnchor with the same name wins.
+//  3. If a bookend exists, walk the dynamic scope chain (the stack of resources
+//     entered via $ref) from outermost to innermost. The first resource that
+//     *declares* a $dynamicAnchor with the same name wins.
 //  4. If no bookend exists at the initial target, behave like a normal $ref.
+//
+// Step 3 asks resourceDynamicAnchor, which is pkg/schema's resource rule and the
+// same question the generated evaluator asks of each frame it pushes. The other
+// reading -- findDynamicAnchor, which stops descending at a nested $id but still
+// reads the boundary node -- credits an anchor written on such a node to the
+// resource that merely contains it, and a resource nothing ever enters then
+// answers for every evaluation that passes overhead. That is issues #163 and
+// #164: the two paths through this generator disagreed about the same rule, and
+// the disagreement was a false rejection down the static one.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
 	// Steps 1 and 2, which the runtime evaluator needs too: see
 	// dynamicRefInitialTarget.
@@ -8134,15 +8143,15 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	}
 
 	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
-	// innermost, looking for the first document root that contains a
-	// $dynamicAnchor with the same name.
-	for _, docRoot := range g.dynamicScope {
-		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
+	// innermost, looking for the first resource that declares a $dynamicAnchor
+	// with the same name.
+	for _, resource := range g.dynamicScope {
+		if found := resourceDynamicAnchor(resource, anchorName); found != nil {
 			return found
 		}
 	}
 
-	// Fallback: no override found in dynamic scope — use the bookend.
+	// Fallback: no resource in scope declares the anchor — use the bookend.
 	return initialTarget
 }
 
