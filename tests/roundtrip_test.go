@@ -954,6 +954,94 @@ func main() {
 	}
 }
 
+// runRoundTripCases generates code for schemaPath, then compiles and runs a
+// program that unmarshals each document, marshals it back, and asserts the two
+// are the same JSON value.
+//
+// runValidationCases is blind to this: a field written back as an invented null,
+// or one dropped that the document carried, still passes Validate. The tag that
+// decides it is chosen from the field's Go type and the property's schema
+// together, and a golden pins the tag rather than its effect -- which is a
+// guard that cannot fail for the reason it exists.
+func runRoundTripCases(t *testing.T, schemaPath string, docs ...string) {
+	t.Helper()
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true}
+	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
+	rootType := extractRootTypeName(t, string(generated))
+	tmpDir := t.TempDir()
+
+	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
+		t.Fatalf("writing types.go: %v", err)
+	}
+	writeSharedHelpers(t, tmpDir, generatedMain)
+	mainGo := fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+)
+
+func main() {
+	docs := []string{%s}
+	failed := false
+	for _, input := range docs {
+		var obj %s
+		if err := json.Unmarshal([]byte(input), &obj); err != nil {
+			fmt.Fprintf(os.Stderr, "unmarshal %%s: %%v\n", input, err)
+			failed = true
+			continue
+		}
+		out, err := json.Marshal(obj)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "marshal %%s: %%v\n", input, err)
+			failed = true
+			continue
+		}
+		var original, result any
+		if err := json.Unmarshal([]byte(input), &original); err != nil {
+			fmt.Fprintf(os.Stderr, "unmarshal original %%s: %%v\n", input, err)
+			failed = true
+			continue
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			fmt.Fprintf(os.Stderr, "unmarshal result %%s: %%v\n", string(out), err)
+			failed = true
+			continue
+		}
+		if !reflect.DeepEqual(original, result) {
+			fmt.Fprintf(os.Stderr, "ROUND-TRIP MISMATCH\n  in:  %%s\n  out: %%s\n", input, string(out))
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`, goStringSliceElems(docs), rootType)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatalf("writing main.go: %v", err)
+	}
+	if err := writeTestGoMod(tmpDir, "round_trip_cases_test"); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd.Dir = tmpDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("round-trip cases failed:\n%s\nerror: %v", string(output), err)
+	}
+	if outputStr := programOutput(output); outputStr != "PASS" {
+		t.Fatalf("round-trip cases output:\n%s", outputStr)
+	}
+}
+
 // goStringSliceElems renders items as comma-separated Go string literals for
 // embedding inside a []string{...} composite literal.
 func goStringSliceElems(items []string) string {
@@ -6175,6 +6263,271 @@ func TestEnumFilterReadsWhatTheTypeAsserts(t *testing.T) {
 				`{"stringSibling":"a"}`,
 				`{"objectSibling":"a"}`,
 				`{"objectSibling":{}}`,
+			},
+		)
+	})
+}
+
+// TestOneOfSingleBranchOnAProperty is issue #150's first table.
+//
+// A oneOf of one branch on a declared property is still rendered as the
+// sealed-interface union -- one variant, and a variant selection cannot judge is
+// matched by every document the field can hold. So the branch was tested
+// nowhere, whatever it said: a const, the `false` schema and `{"enum":[]}` all
+// accepted the documents they exist to refuse. The same three schemas at a
+// document root, at an array element and at a map value have always been right,
+// because none of those positions builds a union.
+//
+// The controls are the rows that must not move. boundBranch and typedBranch are
+// decided by selection itself -- the Go type settles the `type` and the union's
+// own Checks settle the bound -- so they keep the union and keep rejecting.
+// twoBranch, list and map were already correct and stay correct.
+func TestOneOfSingleBranchOnAProperty(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/oneof_single_branch_positions.json",
+		[]string{
+			`{}`,
+			`{"constBranch":"a"}`,
+			`{"objBranch":{"k":"x"}}`,
+			`{"boundBranch":9}`,
+			`{"typedBranch":"z"}`,
+			`{"twoBranch":"a"}`,
+			`{"twoBranch":3}`,
+			`{"list":["a"]}`,
+			`{"list":[]}`,
+			`{"map":{"x":"a"}}`,
+			`{"map":{}}`,
+		},
+		[]string{
+			`{"constBranch":"b"}`, // the defect
+			`{"falseBranch":1}`,   // the defect: nothing satisfies `false`
+			`{"falseBranch":"a"}`,
+			`{"emptyEnum":1}`, // the defect: nothing satisfies an empty enum
+			`{"emptyEnum":"a"}`,
+			`{"objBranch":{}}`,
+			`{"boundBranch":1}`,
+			`{"typedBranch":1}`,
+			`{"twoBranch":"b"}`,
+			`{"list":["b"]}`,
+			`{"map":{"x":"b"}}`,
+		},
+	)
+}
+
+// TestNullableCompositionKeepsItsBranch is issue #150's second table.
+//
+// {X, {"type":"null"}} collapses to a pointer at X's own Go type, and X is then
+// read by nothing else: the field rules and the element checks a property
+// normally carries are taken from the property schema, which here is the wrapper
+// and states none of them. Every row below whose branch resolves to a bare Go
+// type therefore lost its checks -- a const, a length, an element bound, a
+// minItems, a numeric bound, a map-value bound -- and the two rows that admit no
+// document at all, `false` and `{"enum":[]}`, accepted everything.
+//
+// The last four are the controls. anyEnum and anyObj resolve to a type of their
+// own, whose Validate the field calls, so they were right before and must stay
+// pointers to it rather than becoming wrappers. anyPlain and anyArr state nothing
+// their Go type does not already say, and naming them would cost a field type and
+// buy no check.
+//
+// Every null row is an accept-control on the same line: the whole point of the
+// shape is that null is admitted, and a fix that forgot the null branch would
+// pass every rejection here and still be wrong.
+func TestNullableCompositionKeepsItsBranch(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_composition_branches.json",
+		[]string{
+			`{}`,
+			`{"anyConst":"a"}`,
+			`{"anyConst":null}`,
+			`{"oneConst":"a"}`,
+			`{"oneConst":null}`,
+			`{"anyFalse":null}`,
+			`{"anyEmpty":null}`,
+			`{"anyLen":"abc"}`,
+			`{"anyLen":null}`,
+			`{"anyItems":["abc","dddd"]}`,
+			`{"anyItems":[]}`,
+			`{"anyItems":null}`,
+			`{"anyMinIt":[1,2]}`,
+			`{"anyMinIt":null}`,
+			`{"anyBound":5}`,
+			`{"anyBound":null}`,
+			`{"oneMapVal":{"k":"abc"}}`,
+			`{"oneMapVal":{}}`,
+			`{"oneMapVal":null}`,
+			`{"anyEnum":"a"}`,
+			`{"anyEnum":null}`,
+			`{"anyObj":{"k":"x"}}`,
+			`{"anyObj":null}`,
+			`{"anyPlain":"z"}`,
+			`{"anyPlain":null}`,
+			`{"anyArr":["z"]}`,
+			`{"anyArr":null}`,
+		},
+		[]string{
+			`{"anyConst":"b"}`,
+			`{"oneConst":"b"}`,
+			`{"anyFalse":1}`,
+			`{"anyFalse":"a"}`,
+			`{"anyEmpty":1}`,
+			`{"anyEmpty":"a"}`,
+			`{"anyLen":"ab"}`,
+			`{"anyItems":["ab"]}`,
+			`{"anyMinIt":[]}`,
+			`{"anyMinIt":[1]}`,
+			`{"anyBound":1}`,
+			`{"oneMapVal":{"k":"a"}}`,
+			`{"anyEnum":"b"}`,
+			`{"anyObj":{}}`,
+			`{"anyPlain":1}`,
+			`{"anyArr":[1]}`,
+		},
+	)
+}
+
+// TestNullableCompositionRoundTrips is the marshalling half of the same fixture,
+// and the guard the validation table cannot be.
+//
+// Giving these positions a name gives them the raw-JSON wrapper, which is a
+// struct: encoding/json's omitempty never drops a struct, and the wrapper's own
+// MarshalJSON writes "null" when it holds no bytes. So without ",omitzero" every
+// absent property came back as a null the document never carried -- accepted by
+// Validate, and wrong. The wrapper reports absence through IsZero, and omitzero
+// is what reads it; a present null keeps the bytes and survives.
+//
+// The rows are chosen so that both directions are watched: {} must stay {}, and
+// each explicit null must stay a null.
+func TestNullableCompositionRoundTrips(t *testing.T) {
+	runRoundTripCases(t,
+		"testdata/schemas/regression/nullable_composition_branches.json",
+		`{}`,
+		`{"anyConst":null}`,
+		`{"anyConst":"a"}`,
+		`{"oneConst":null}`,
+		`{"anyFalse":null}`,
+		`{"anyEmpty":null}`,
+		`{"anyLen":null}`,
+		`{"anyLen":"abc"}`,
+		`{"anyItems":null}`,
+		`{"anyItems":["abc"]}`,
+		`{"anyBound":null}`,
+		`{"anyBound":7}`,
+		`{"oneMapVal":null}`,
+		`{"anyEnum":null}`,
+		`{"anyObj":null}`,
+		`{"anyPlain":null}`,
+		`{"anyArr":null}`,
+		`{"anyConst":"a","anyLen":"abc","anyBound":7,"anyEnum":"c","anyPlain":"z"}`,
+	)
+}
+
+// TestNullableFormatPositionsRoundTrip is the same property on the fixture that
+// found it. Three of its eleven properties resolve to the wrapper without being
+// null-only, and those three carried no omit tag at all, so a document with none
+// of them came back carrying all three as nulls.
+func TestNullableFormatPositionsRoundTrip(t *testing.T) {
+	runRoundTripCases(t,
+		"testdata/schemas/regression/nullable_format_positions.json",
+		`{}`,
+		`{"inline":null}`,
+		`{"inline":"1.2.3.4"}`,
+		`{"stamp":null,"mail":null}`,
+		`{"mail":"a@b.example"}`,
+	)
+}
+
+// TestNullableAnyOfWithANamedBranch is the same collapse at the site that answers
+// with an alias, `type X *T`.
+//
+// Go forbids a method on a type whose underlying type is a pointer, so X has no
+// Validate and nothing reaches T's -- not a caller holding an X, and not the
+// property here, which is typed by a $ref to X. Both definitions accepted every
+// object. The enum spelling did worse: the branch was generated under the alias's
+// own name, so the same identifier was declared twice and the output did not
+// compile, which is why runValidationCases is the right home for this one.
+func TestNullableAnyOfWithANamedBranch(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/nullable_anyof_named_branch.json",
+		[]string{
+			`{}`,
+			`{"obj":{"k":"x"}}`,
+			`{"obj":null}`,
+			`{"word":"a"}`,
+			`{"word":"c"}`,
+			`{"word":null}`,
+		},
+		[]string{
+			`{"obj":{}}`,
+			`{"obj":{"k":1}}`,
+			`{"word":"b"}`,
+		},
+	)
+}
+
+// TestRefSiblingValuesFollowTheDraft is issue #151, both sides of the split.
+//
+// Through draft 7 a $ref replaces everything written beside it, and the enum arm
+// of each ladder that turns a schema into a Go type ran ahead of the ref arms --
+// so the sibling decided the type and the reference was never followed. That is
+// over-enforcement: "abc" satisfies the referenced schema and was refused for a
+// const the draft says is not there to be read. All five draft-7 accept rows
+// below were rejections before this change.
+//
+// "ab" is what keeps the fix from being "drop the check": with the sibling
+// ignored the *target* still applies, and a schema that fell through to `any`
+// would accept it. The 2020-12 fixture is the other control -- there the sibling
+// does apply, and every one of its rejections has to survive a change that
+// removes the same rejections one draft earlier.
+func TestRefSiblingValuesFollowTheDraft(t *testing.T) {
+	t.Run("draft7IgnoresTheSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_values_draft7.json",
+			[]string{
+				`{}`,
+				`{"constSibling":"abc"}`,
+				`{"enumSibling":"abc"}`,
+				`{"emptyEnumSibling":"abc"}`,
+				`{"listSibling":["abc"]}`,
+				`{"mapSibling":{"k":"abc"}}`,
+				`{"namedSibling":"abc"}`,
+				`{"namedEmptyEnum":"abc"}`,
+				`{"noSibling":"abc"}`,
+			},
+			[]string{
+				`{"constSibling":"ab"}`,
+				`{"enumSibling":"ab"}`,
+				`{"emptyEnumSibling":"ab"}`,
+				`{"listSibling":["ab"]}`,
+				`{"mapSibling":{"k":"ab"}}`,
+				`{"namedSibling":"ab"}`,
+				`{"namedEmptyEnum":"ab"}`,
+				`{"noSibling":"ab"}`,
+			},
+		)
+	})
+	t.Run("2020AppliesTheSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_values_2020.json",
+			[]string{
+				`{}`,
+				`{"constSibling":"a"}`,
+				`{"enumSibling":"a"}`,
+				`{"enumSibling":"c"}`,
+				`{"listSibling":["a"]}`,
+				`{"mapSibling":{"k":"a"}}`,
+				`{"namedSibling":"a"}`,
+				`{"noSibling":"false"}`,
+			},
+			[]string{
+				`{"constSibling":"false"}`,
+				`{"enumSibling":"false"}`,
+				`{"emptyEnumSibling":"false"}`,
+				`{"listSibling":["false"]}`,
+				`{"mapSibling":{"k":"false"}}`,
+				`{"namedSibling":"false"}`,
+				`{"namedEmptyEnum":"false"}`,
+				`{"namedEmptyEnum":"a"}`,
 			},
 		)
 	})

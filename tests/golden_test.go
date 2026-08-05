@@ -226,6 +226,21 @@ func allGoldenTests() []goldenTestCase {
 		// Pins that an if/then/else with a boolean `if` or a boolean branch is
 		// given a name to live in wherever it is written, not only at a root.
 		{"regression/if_boolean_branch_positions", "testdata/schemas/regression/if_boolean_branch_positions.json", "testdata/golden/regression/if_boolean_branch_positions.go"},
+		// Issue #150, the two decision points where the composition machinery
+		// declined to name a type for a variant. The first pins which
+		// single-branch groups leave the sealed-interface union and which keep
+		// it; the second and third pin which {X, "null"} collapses keep the
+		// pointer at X's type and which are read by the evaluator instead. The
+		// narrowness is the point of pinning them: a wider reading takes the
+		// pointer away from every nullable property in the corpus.
+		{"regression/oneof_single_branch_positions", "testdata/schemas/regression/oneof_single_branch_positions.json", "testdata/golden/regression/oneof_single_branch_positions.go"},
+		{"regression/nullable_composition_branches", "testdata/schemas/regression/nullable_composition_branches.json", "testdata/golden/regression/nullable_composition_branches.go"},
+		{"regression/nullable_anyof_named_branch", "testdata/schemas/regression/nullable_anyof_named_branch.json", "testdata/golden/regression/nullable_anyof_named_branch.go"},
+		// Issue #151, both sides of the draft split: through draft 7 the enum
+		// arms stand behind the ref arms and the sibling names no type at all,
+		// from 2019-09 on they run first and it does.
+		{"regression/ref_sibling_values_draft7", "testdata/schemas/regression/ref_sibling_values_draft7.json", "testdata/golden/regression/ref_sibling_values_draft7.go"},
+		{"regression/ref_sibling_values_2020", "testdata/schemas/regression/ref_sibling_values_2020.json", "testdata/golden/regression/ref_sibling_values_2020.go"},
 	}
 }
 

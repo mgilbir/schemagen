@@ -1884,7 +1884,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// encoding/json leaves the field nil when the keyword is absent and allocates
 	// an empty slice for `[]`, so len() alone cannot tell them apart and would
 	// forbid every schema in the corpus.
-	if g.validationKeywordsEnabled() && s.Enum != nil && len(s.Enum) == 0 {
+	//
+	// refDisplacesSiblingValues is what keeps all three enum arms behind the ref
+	// arms on the drafts that say the reference wins; see issue #151.
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && s.Enum != nil && len(s.Enum) == 0 {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
@@ -1895,12 +1900,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
-	if g.validationKeywordsEnabled() {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum {
 		s = promoteConstToEnum(s)
 	}
 
 	// Enum type
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		return g.generateEnumDef(name, s)
 	}
 
@@ -1990,7 +1995,28 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 					effective = resolved
 				}
 			}
-			goType := g.resolveType(effective, name)
+			// The variant is generated under a name of its own rather than under
+			// this one. Where it materializes a type -- an enum, an object, a
+			// `not` -- resolveType claimed the very name the alias below is about
+			// to declare, and the two declarations of it did not compile at all:
+			// {"anyOf":[{"enum":["a","c"]},{"type":"null"}]} emitted `Doc
+			// redeclared in this block`. Where it materializes nothing, which is
+			// every scalar, the name is never taken and the suffix costs nothing.
+			goType := g.resolveType(effective, name+"Value")
+			if !g.nullableAliasCarriesTheBranch(effective, goType) {
+				// A branch whose own assertions the pointer cannot carry. The
+				// evaluator reads the whole group off the raw value and needs no Go
+				// type per branch, which is the move #125 made for a oneOf leaving
+				// the union and #133 for an anyOf branch the merge could not hold.
+				// Where it cannot read the group the alias stays: wrong as it is
+				// about this branch, it still gives the caller the branch's type,
+				// and the alternative here enforces nothing either.
+				if def := g.rawWrapperDef(name, s); def != nil {
+					g.generated[name] = true
+					g.output.TypeDefs = append(g.output.TypeDefs, def)
+					return nil
+				}
+			}
 			if !goType.IsPointer() {
 				goType = &PointerType{Inner: goType}
 			}
@@ -2815,7 +2841,17 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// nullPresenceTracked), the tag no longer has to carry that distinction:
 		// omitempty drops the absent property and MarshalJSON writes back exactly
 		// the nulls the document had. See issue #110.
-		nullSurvivesOmit := (isNullOnly(propSchema) && g.isRawValueWrapperType(goType)) ||
+		//
+		// The wrapper answers for every schema it types, not only a null-only one.
+		// What keeps the two apart is the bytes it holds -- "null" for a present
+		// null and nothing at all for an absent property -- and that is the same
+		// whatever else the schema says, which is why nullPresenceTracked declines
+		// to track the property separately for exactly this type. Reading the
+		// wrapper only under isNullOnly is what left a nullable composition the
+		// evaluator claims, {"anyOf":[{"type":"string","const":"a"},{"type":
+		// "null"}]}, with neither tag: the field was written unconditionally and an
+		// absent property came back as an invented null.
+		nullSurvivesOmit := g.isRawValueWrapperType(goType) ||
 			g.nullPresenceTracked(propSchema, goType)
 		if omitEmpty && !nullSurvivesOmit {
 			// Suppress omitempty for properties whose schema explicitly includes null
@@ -6199,6 +6235,170 @@ func (g *Generator) separateNullFromOneOf(variants []*schema.Schema) ([]*schema.
 	return nonNull, hasNull
 }
 
+// nullableCollapseCarriesTheBranch reports whether the pointer produced by
+// collapsing {X, {"type":"null"}} to X's own Go type still tests everything X
+// asserts.
+//
+// Three arms make that collapse -- the two in resolvePropertyType and the anyOf
+// one in generateTypeDef -- and each of them resolves X alone and wraps the
+// answer in a pointer. Nothing else reads X. The keywords a property normally
+// carries on its parent's field, and the element checks an array normally
+// carries beside it, are both read from the *property* schema, which here is the
+// {X, "null"} wrapper and states none of them. So the collapse keeps whatever X's
+// own type carries and drops the rest, which is issue #150's second half:
+// {"anyOf":[{"type":"string","const":"a"},{"type":"null"}]} came out *string and
+// accepted "b", and so did the same schema written with a minLength, a pattern,
+// a minItems, or an element bound.
+//
+// A named type is X's own type, and its Validate is where X's keywords went, so
+// nothing is lost. A bare string, int64, bool, []T or map[string]T carries the
+// shape and nothing else, and then X may state nothing but that shape.
+//
+// A boolean branch is read for what it admits rather than for what it states.
+// `true` admits every document, so the collapse loses nothing; `false` admits
+// none, and the pointer to `any` it collapses to admits them all.
+func (g *Generator) nullableCollapseCarriesTheBranch(branch *schema.Schema, inner GoType) bool {
+	if branch == nil || !g.validationKeywordsEnabled() {
+		return true
+	}
+	if branch.IsBooleanSchema() {
+		return branch.IsTrueSchema()
+	}
+	// A branch that admits no instance at all, however it is spelled. It is asked
+	// first because the two spellings the keyword list cannot show are here --
+	// `"enum": []` is dropped from the marshaled form by omitempty, and a `type`
+	// that filters every member out leaves the list non-empty -- and because the
+	// answer does not depend on the Go type: no value satisfies the branch, and
+	// every value satisfies the pointer.
+	if g.schemaForbidsEveryValue(branch) {
+		return false
+	}
+	if goTypeIsGenerated(inner) {
+		return true
+	}
+	return !g.schemaStatesMoreThanItsGoType(branch, inner, 0)
+}
+
+// nullableAliasCarriesTheBranch is nullableCollapseCarriesTheBranch asked at the
+// one site that answers with an alias rather than with a field: the anyOf arm of
+// generateTypeDef, whose reply is `type X *T`.
+//
+// A struct field typed *T is validated through T -- populateValidatableFields
+// finds the method and the parent calls it, which is why a branch that
+// materializes a type loses nothing at a property. An alias has no such caller.
+// Go forbids a method on a type whose underlying type is a pointer, so X gets no
+// Validate at all, and a field typed by a $ref to X gets one that is not there
+// either: {"$defs":{"N":{"anyOf":[{"type":"object","required":["k"]},
+// {"type":"null"}]}}} accepted {} through a property referring to N.
+//
+// So a branch with a type of its own is the worst case here rather than the
+// exempt one, and only a branch whose checks were never going anywhere -- a
+// plain string, a plain []T -- may keep the alias.
+func (g *Generator) nullableAliasCarriesTheBranch(branch *schema.Schema, inner GoType) bool {
+	if goTypeIsGenerated(inner) {
+		return false
+	}
+	return g.nullableCollapseCarriesTheBranch(branch, inner)
+}
+
+// nullableCollapseNamedType gives a {X, {"type":"null"}} property a name of its
+// own when the pointer the collapse would produce leaves X's assertions untested,
+// and reports whether it did.
+//
+// It is the property-position counterpart of the diversion the anyOf arm of
+// generateTypeDef makes, and it asks the same question of the same function: the
+// evaluator judges every branch against the raw value, so it needs no Go type per
+// branch and the null branch costs it nothing.
+//
+// rawWrapperDef is asked directly rather than through generateTypeDef because
+// the two spellings would not arrive at the same place. generateTypeDef reads a
+// oneOf whose branch describes an object on the struct path, which flattens the
+// branch into ObjectOneOfs and drops what does not fit that summary --
+// {"oneOf":[{"type":"object","additionalProperties":{"minLength":3}},
+// {"type":"null"}]} accepted {"k":"a"} through it. The wrapper reads the whole
+// schema or declines.
+//
+// Nothing is claimed when it declines: the caller keeps today's pointer, which
+// is wrong about this branch but still gives the field the branch's Go type,
+// where a name with no Validate would give neither.
+func (g *Generator) nullableCollapseNamedType(s, branch *schema.Schema, inner GoType, parentName, fieldName string) (GoType, bool) {
+	if g.nullableCollapseCarriesTheBranch(branch, inner) {
+		return nil, false
+	}
+	nestedName := parentName + fieldName
+	if nestedName == "" || g.generated[nestedName] || g.generating[nestedName] || g.nodesInProgress[s] {
+		return nil, false
+	}
+	def := g.rawWrapperDef(nestedName, s)
+	if def == nil {
+		return nil, false
+	}
+	g.generated[nestedName] = true
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	return &NamedType{Name: nestedName}, true
+}
+
+// goTypeIsGenerated reports whether t names a type this run defines, whose own
+// Validate is where the schema it was built from went. A primitive, a slice or a
+// map carries its shape and no check.
+func goTypeIsGenerated(t GoType) bool {
+	switch v := t.(type) {
+	case *NamedType:
+		return true
+	case *PointerType:
+		return goTypeIsGenerated(v.Inner)
+	}
+	return false
+}
+
+// schemaStatesMoreThanItsGoType reports whether s asserts anything the bare Go
+// type t does not already express.
+//
+// "type" is what t is. "items" is what t's element type is, and an element is
+// resolved by these same rules, so the question recurses there and stops at the
+// first keyword neither answers. Everything else -- a bound, a pattern, a const,
+// an enum, a format, additionalProperties, a composition, a `not` -- is a check
+// that has to be written somewhere, and a plain Go type has nowhere to write it.
+//
+// The keyword list is read off the re-marshaled schema by unenforcedKeywords, so
+// a keyword the parser learns later arrives here as one more thing t does not
+// express rather than as one that was never there.
+func (g *Generator) schemaStatesMoreThanItsGoType(s *schema.Schema, t GoType, depth int) bool {
+	if s == nil {
+		return false
+	}
+	if depth > maxRuntimeDepth {
+		return true
+	}
+	// {"const":null} is spelled with a field the marshaler skips, so the keyword
+	// list below cannot show it. Read directly, like the two evaluators do.
+	if s.ConstIsNull {
+		return true
+	}
+	for _, key := range unenforcedKeywords(s) {
+		if key == "type" {
+			continue
+		}
+		if key != "items" {
+			return true
+		}
+		// A single items schema over a slice: the element type answers for it.
+		// A tuple (draft-7 `items` as an array) does not reduce to one element
+		// type, so it is left with everything else.
+		at, ok := t.(*ArrayType)
+		if !ok || s.Items == nil || s.Items.Schema == nil || len(s.Items.Schemas) > 0 {
+			return true
+		}
+		if goTypeIsGenerated(at.ItemType) {
+			continue
+		}
+		if g.schemaStatesMoreThanItsGoType(s.Items.Schema, at.ItemType, depth+1) {
+			return true
+		}
+	}
+	return false
+}
+
 // generateEnumDef produces an EnumDef from an enum schema.
 func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	g.generated[name] = true
@@ -6395,12 +6595,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// Only promote when no explicit type is specified (the enum is needed to
 	// determine the Go type). When type IS specified, keep the natural Go type
 	// and rely on the "const" validation rule for enforcement.
-	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
+	//
+	// refDisplacesSiblingValues holds both arms behind the ref arms below on the
+	// drafts where the reference displaces what is written beside it (issue #151).
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum → generate enum type
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		enumName := parentName + fieldName
 		if err := g.generateEnumDef(enumName, s); err != nil {
 			return nil, err
@@ -6445,6 +6649,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			innerType, err := g.resolvePropertyType(variant, parentName, fieldName, ctxSchema)
 			if err != nil {
 				return nil, err
+			}
+			if t, ok := g.nullableCollapseNamedType(s, variant, innerType, parentName, fieldName); ok {
+				return t, nil
 			}
 			if !innerType.IsPointer() {
 				return &PointerType{Inner: innerType}, nil
@@ -6504,6 +6711,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			innerType, err := g.resolvePropertyType(effective, parentName, fieldName, ctxSchema)
 			if err != nil {
 				return nil, err
+			}
+			if t, ok := g.nullableCollapseNamedType(s, effective, innerType, parentName, fieldName); ok {
+				return t, nil
 			}
 			if !innerType.IsPointer() {
 				return &PointerType{Inner: innerType}, nil
@@ -6850,12 +7060,16 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// items:{"const":5} resolves to `any` and the const is enforced nowhere.
 	// The promotion returns a copy, but the enum arm below consumes it and
 	// returns, so it never reaches the node-identity bookkeeping further down.
-	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
+	//
+	// Both arms stand behind the ref arms on the drafts where a $ref displaces
+	// what is written beside it; see refDisplacesSiblingValues and issue #151.
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		enumName := contextName
 		_ = g.generateEnumDef(enumName, s)
 		return &NamedType{Name: enumName}
@@ -10275,7 +10489,17 @@ func (g *Generator) forbidsEveryValueOnPath(s *schema.Schema, depth int, onPath 
 	// written empty, and a list its own "type" filters empty (#145). Both are
 	// behind the validation vocabulary, since a metaschema withholding `enum`
 	// and `type` makes neither assert anything.
-	if g.validationKeywordsEnabled() && (emptyEnumSchema(s) || g.declaredTypeAdmitsNoEnumMember(s)) {
+	//
+	// Neither is read beside a $ref on a draft that displaces its siblings, for
+	// the reason declaredTypeAdmitsNoEnumMember already declines there: the enum
+	// is not written as far as that draft is concerned, so it states no members
+	// and cannot make the schema empty. Reading it refuses documents the
+	// referenced schema admits, which is issue #151's over-enforcement reached
+	// by the one route that is not a type ladder -- a $defs entry spelled
+	// {"$ref":"#/definitions/Word","enum":[]} made its property forbidden on
+	// draft 7.
+	if g.validationKeywordsEnabled() && !g.refDisplacesSiblingValues(s) &&
+		(emptyEnumSchema(s) || g.declaredTypeAdmitsNoEnumMember(s)) {
 		return true
 	}
 	if onPath == nil {
@@ -11670,6 +11894,31 @@ func refOverridesSiblingsForDraft(draft schema.Draft) bool {
 		// DraftUnknown: be conservative and assume modern behavior.
 		return false
 	}
+}
+
+// refDisplacesSiblingValues reports whether an `enum` or a `const` written
+// beside a $ref is one the draft says to ignore.
+//
+// Through draft 7 a $ref replaces everything written beside it -- the rule
+// refOverridesSiblingsForSchema states, and the one #118 applied to `type`. The
+// three ladders that turn a schema into a Go type each read the enum *before*
+// their ref arms: generateTypeDef, resolvePropertyType and resolveType all
+// promote a const, then answer with the enum type. So on those drafts the
+// sibling decided the type and the reference was never followed, and
+// {"$ref":"#/definitions/aString","const":"a"} rejected "b" -- a document the
+// draft admits, since the const is not there to be read (issue #151).
+//
+// From 2019-09 on $ref is an ordinary applicator and the sibling does apply, so
+// the arms keep their order there and nothing changes. That is the whole of the
+// difference: this is not a claim about which of the two should win where both
+// apply, only about the drafts where one of them is not written at all.
+//
+// It is asked of the schema rather than of the run because $schema is a
+// per-document declaration and a $ref may cross into a document that makes a
+// different one -- the same reason refOverridesSiblingsForSchema exists beside
+// refOverridesSiblings.
+func (g *Generator) refDisplacesSiblingValues(s *schema.Schema) bool {
+	return s != nil && s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)
 }
 
 func (g *Generator) validationKeywordsEnabled() bool {
@@ -14820,9 +15069,23 @@ func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
 // is accepted. {"oneOf":[{object},{"const":"x"},false]} is the shape: {"k":"a"}
 // satisfies one branch and is reported as matching three.
 //
-// Fewer than two non-null branches never reaches the union — one beside a null
-// branch is the nullable-pointer shape, and zero is not a union — so the
-// question does not arise there.
+// A group of one is the same defect with only the second direction left, and it
+// used to be waved through here on the reasoning that "fewer than two branches
+// never reaches the union". Two of the three cases that reads do not: the group
+// generateOneOfForProperty declines is the one with a null branch *beside* the
+// single non-null one, which becomes the nullable pointer, and a group of no
+// branches at all. A lone non-null branch does reach the union, as a union of one
+// variant, and one variant that outruns selection is matched by every document
+// the field can hold — so {"oneOf":[{"type":"string","const":"a"}]} on a property
+// accepted {"p":"b"}, and so did {"oneOf":[false]} and {"oneOf":[{"enum":[]}]},
+// which admit no document at all. That is issue #150; the same schemas at a
+// document root have always been right, because the root never built a union.
+//
+// oneOfIsUnselectableUnion keeps its own arity test. A lone branch selection
+// cannot see is this function's business, and it is answered here with the
+// somewhere-better guard the caller applies — where that predicate fires
+// unconditionally, on the strength of a miscount only a second branch can
+// produce.
 func (g *Generator) oneOfUnionOutrunsBranches(s *schema.Schema) bool {
 	if s == nil || len(s.OneOf) == 0 {
 		return false
@@ -14834,8 +15097,8 @@ func (g *Generator) oneOfUnionOutrunsBranches(s *schema.Schema) bool {
 	if !g.validationKeywordsEnabled() {
 		return false
 	}
-	nonNull, _ := g.separateNullFromOneOf(s.OneOf)
-	if len(nonNull) < 2 {
+	nonNull, hasNull := g.separateNullFromOneOf(s.OneOf)
+	if len(nonNull) == 0 || (hasNull && len(nonNull) == 1) {
 		return false
 	}
 	for _, v := range nonNull {
@@ -14868,6 +15131,17 @@ func (g *Generator) oneOfUnionOutrunsBranches(s *schema.Schema) bool {
 // registered, is a document the branch would have made it fetch anyway.
 func (g *Generator) oneOfHasSomewhereBetterThanTheUnion(s *schema.Schema) bool {
 	if primarySchemaType(s) != "" || g.inferTypeFromConstraints(s) != "" {
+		return true
+	}
+	// The forbidding arm is the third home, and leaving it off the list is what
+	// kept {"oneOf":[false]} and {"oneOf":[{"enum":[]}]} on a property in the
+	// union: both outrun selection, neither names a type, and the evaluator
+	// declines a group whose only branch admits nothing -- so the union was
+	// judged the best on offer when generateTypeDef would in fact have forbidden
+	// every document (issue #150). compositionAdmitsNothing is the same question
+	// resolveType already delegates for an element or a map value, asked on
+	// exactly the terms that arm decides it.
+	if g.compositionAdmitsNothing(s) {
 		return true
 	}
 	return g.rawWrapperDef("", s) != nil

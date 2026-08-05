@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefSiblingValues2020",
+  "description": "The other side of the draft split, and the control on the change #151 makes: from 2019-09 on a $ref is an ordinary applicator and the sibling does apply, so every rejection here has to survive a fix that removes those same rejections one draft earlier. The word `false` is admitted by the target and refused by each sibling, and that refusal is the whole of what this fixture watches.",
+  "type": "object",
+  "$defs": {
+    "Word": {"type": "string"},
+    "NamedSibling": {"$ref": "#/$defs/Word", "const": "a"},
+    "NamedEmptyEnum": {"$ref": "#/$defs/Word", "enum": []}
+  },
+  "properties": {
+    "constSibling": {"$ref": "#/$defs/Word", "const": "a"},
+    "enumSibling": {"$ref": "#/$defs/Word", "enum": ["a", "c"]},
+    "emptyEnumSibling": {"$ref": "#/$defs/Word", "enum": []},
+    "listSibling": {"type": "array", "items": {"$ref": "#/$defs/Word", "const": "a"}},
+    "mapSibling": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Word", "const": "a"}},
+    "namedSibling": {"$ref": "#/$defs/NamedSibling"},
+    "namedEmptyEnum": {"$ref": "#/$defs/NamedEmptyEnum"},
+    "noSibling": {"$ref": "#/$defs/Word"}
+  }
+}

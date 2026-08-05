@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RefSiblingValuesDraft7",
+  "description": "Through draft 7 a $ref replaces everything written beside it, which is the rule #118 applied to `type`. The enum arm of each of the three ladders that turn a schema into a Go type ran ahead of their ref arms, so a const, an enum or an empty enum beside a $ref decided the type and the reference was never followed: \"abc\" was rejected at every position although the draft admits it, which is over-enforcement -- a document refused for a keyword that is not there to be read. The target still applies, which is what \"ab\" pins. One position per ladder: a property is resolvePropertyType, an element and a map value are resolveType, and a definitions entry reached through a $ref is generateTypeDef.",
+  "type": "object",
+  "definitions": {
+    "Word": {"type": "string", "minLength": 3},
+    "NamedSibling": {"$ref": "#/definitions/Word", "const": "a"},
+    "NamedEmptyEnum": {"$ref": "#/definitions/Word", "enum": []}
+  },
+  "properties": {
+    "constSibling": {"$ref": "#/definitions/Word", "const": "a"},
+    "enumSibling": {"$ref": "#/definitions/Word", "enum": ["a"]},
+    "emptyEnumSibling": {"$ref": "#/definitions/Word", "enum": []},
+    "listSibling": {"type": "array", "items": {"$ref": "#/definitions/Word", "const": "a"}},
+    "mapSibling": {"type": "object", "additionalProperties": {"$ref": "#/definitions/Word", "const": "a"}},
+    "namedSibling": {"$ref": "#/definitions/NamedSibling"},
+    "namedEmptyEnum": {"$ref": "#/definitions/NamedEmptyEnum"},
+    "noSibling": {"$ref": "#/definitions/Word"}
+  }
+}

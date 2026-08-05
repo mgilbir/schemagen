@@ -1299,12 +1299,12 @@ func (n NullableFormatPositionsTupleItem0) Validate() error {
 type NullableFormatPositions struct {
 	Buckets              *NullableFormatPositionsBuckets            `json:"buckets,omitempty"`
 	Chain                ChainOuter                                 `json:"chain,omitzero"`
-	Inline               NullableFormatPositionsInline              `json:"inline"`
+	Inline               NullableFormatPositionsInline              `json:"inline,omitzero"`
 	List                 []NullableFormatPositionsListItem          `json:"list,omitzero"`
-	Mail                 NullableFormatPositionsMail                `json:"mail"`
+	Mail                 NullableFormatPositionsMail                `json:"mail,omitzero"`
 	Map                  map[string]NullableFormatPositionsMapValue `json:"map,omitzero"`
 	Ref                  NullableV4                                 `json:"ref,omitzero"`
-	Stamp                NullableFormatPositionsStamp               `json:"stamp"`
+	Stamp                NullableFormatPositionsStamp               `json:"stamp,omitzero"`
 	Tuple                []any                                      `json:"tuple,omitzero"`
 	Wrapped              NullableFormatPositionsWrapped             `json:"wrapped,omitzero"`
 	Branch               isNullableFormatPositions_Branch           `json:"-"`

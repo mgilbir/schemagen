@@ -8535,3 +8535,180 @@ func hasRuntimeBranchCheck(checks []RuntimeBranchCheck, keyword string) bool {
 	}
 	return false
 }
+
+// TestOneOfGroupOfOneReachesTheUnion is the arity half of issue #150.
+//
+// oneOfUnionOutrunsBranches used to answer false for any group with fewer than
+// two non-null branches, on the reasoning that such a group never reaches the
+// sealed-interface union. Only two of the three cases that reads do: a group
+// with no branches, and a lone branch beside a null one, which
+// generateOneOfForProperty declines in favour of the nullable pointer. A lone
+// branch on its own does reach the union, as a union of one variant.
+//
+// This asks the question of the predicate directly, because the symptom is a
+// missing check rather than a wrong type: with the union kept, the branch is
+// tested nowhere and the property accepts every document it can decode.
+func TestOneOfGroupOfOneReachesTheUnion(t *testing.T) {
+	cases := []struct {
+		name    string
+		schema  string
+		outruns bool
+	}{
+		{"lone const branch", `{"oneOf":[{"type":"string","const":"a"}]}`, true},
+		{"lone false branch", `{"oneOf":[false]}`, true},
+		{"lone empty enum branch", `{"oneOf":[{"enum":[]}]}`, true},
+		{"lone bare bound branch", `{"oneOf":[{"minimum":5}]}`, true},
+		// Selection decides these two on its own: the Go type settles the
+		// `type`, and the union's own Checks settle the bound.
+		{"lone typed branch", `{"oneOf":[{"type":"string"}]}`, false},
+		{"lone bounded typed branch", `{"oneOf":[{"type":"integer","minimum":5}]}`, false},
+		// The two shapes that genuinely never reach the union.
+		{"const branch beside null", `{"oneOf":[{"type":"string","const":"a"},{"type":"null"}]}`, false},
+		{"null branch alone", `{"oneOf":[{"type":"null"}]}`, false},
+		// Unchanged: the multi-branch group the predicate was written for.
+		{"two branches, one outrunning", `{"oneOf":[{"type":"string","const":"a"},{"type":"integer"}]}`, true},
+		{"two branches, both decided", `{"oneOf":[{"type":"string"},{"type":"integer"}]}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.schema), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if got := primedGenerator(t).oneOfUnionOutrunsBranches(&s); got != tc.outruns {
+				t.Fatalf("oneOfUnionOutrunsBranches(%s) = %v, want %v", tc.schema, got, tc.outruns)
+			}
+		})
+	}
+}
+
+// TestNullableCollapseCarriesTheBranch is the reading that decides issue #150's
+// second half, and the narrowness control on it.
+//
+// The collapse keeps whatever X's own Go type carries and drops everything else,
+// so the question is which of the two X states. A generated type is X's own type
+// and its Validate is where X's keywords went; a bare string, int64, []T or
+// map[string]T carries the shape and no check, and then X may state nothing but
+// that shape.
+//
+// The `carries` rows are what keeps the fix from taking the pointer away from
+// every nullable property in the corpus: a wider reading names them all, changes
+// their field types and buys no check for it.
+func TestNullableCollapseCarriesTheBranch(t *testing.T) {
+	g := primedGenerator(t)
+	str := &PrimitiveType{Name: "string"}
+	num := &PrimitiveType{Name: "int64"}
+	named := &NamedType{Name: "DocP"}
+	strSlice := &ArrayType{ItemType: str}
+	namedSlice := &ArrayType{ItemType: named}
+	strMap := &MapType{KeyType: str, ValueType: str}
+
+	cases := []struct {
+		name    string
+		branch  string
+		inner   GoType
+		carries bool
+	}{
+		{"bare string", `{"type":"string"}`, str, true},
+		{"bare slice", `{"type":"array","items":{"type":"string"}}`, strSlice, true},
+		{"slice of a named element", `{"type":"array","items":{"enum":["a"]}}`, namedSlice, true},
+		{"a type of its own", `{"type":"string","enum":["a","c"]}`, named, true},
+		{"the true schema", `true`, str, true},
+
+		{"const beside a type", `{"type":"string","const":"a"}`, str, false},
+		{"length bound", `{"type":"string","minLength":3}`, str, false},
+		{"pattern", `{"type":"string","pattern":"^a+$"}`, str, false},
+		{"numeric bound", `{"type":"integer","minimum":5}`, num, false},
+		{"count on a slice", `{"type":"array","minItems":2}`, strSlice, false},
+		{"bound inside items", `{"type":"array","items":{"type":"string","minLength":3}}`, strSlice, false},
+		{"bound on a map value", `{"type":"object","additionalProperties":{"minLength":3}}`, strMap, false},
+		{"the false schema", `false`, &PrimitiveType{Name: "any"}, false},
+		// Two spellings the marshaled keyword list cannot show: omitempty drops
+		// an empty enum, and ConstIsNull is not marshaled at all.
+		{"empty enum", `{"enum":[]}`, &PrimitiveType{Name: "any"}, false},
+		{"null const", `{"const":null}`, &PrimitiveType{Name: "any"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.branch), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if got := g.nullableCollapseCarriesTheBranch(&s, tc.inner); got != tc.carries {
+				t.Fatalf("nullableCollapseCarriesTheBranch(%s, %s) = %v, want %v",
+					tc.branch, tc.inner.GoTypeName(), got, tc.carries)
+			}
+		})
+	}
+
+	// The alias site asks the same question with one answer inverted: `type X *T`
+	// is a pointer underlying type, so X has no Validate and nothing calls T's.
+	t.Run("alias site refuses a named branch", func(t *testing.T) {
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(`{"type":"string","enum":["a","c"]}`), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+		if g.nullableAliasCarriesTheBranch(&s, named) {
+			t.Fatal("nullableAliasCarriesTheBranch said an alias to a named type carries it; `type X *T` can hold no method, so T.Validate is reached by nobody")
+		}
+		var plain schema.Schema
+		if err := json.Unmarshal([]byte(`{"type":"string"}`), &plain); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		plain.Normalize()
+		if !g.nullableAliasCarriesTheBranch(&plain, str) {
+			t.Fatal("nullableAliasCarriesTheBranch refused a branch stating nothing but its type; naming it would cost a type and buy no check")
+		}
+	})
+}
+
+// TestRefDisplacesSiblingValuesFollowsTheDraft is issue #151's predicate.
+//
+// Through draft 7 a $ref replaces everything written beside it, so the enum arms
+// must stand behind the ref arms; from 2019-09 on it is an ordinary applicator
+// and they must not. An unknown draft is read as modern, which is the direction
+// that keeps a check.
+func TestRefDisplacesSiblingValuesFollowsTheDraft(t *testing.T) {
+	cases := []struct {
+		draft     schema.Draft
+		displaces bool
+	}{
+		{schema.Draft03, true},
+		{schema.Draft04, true},
+		{schema.Draft06, true},
+		{schema.Draft07, true},
+		{schema.Draft201909, false},
+		{schema.Draft202012, false},
+		{schema.DraftV1, false},
+		{schema.DraftUnknown, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.draft.String(), func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			g.draft = tc.draft
+			g.draftOverridden = true
+
+			var withRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"$ref":"#/$defs/T","const":"a"}`), &withRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			withRef.Normalize()
+			if got := g.refDisplacesSiblingValues(&withRef); got != tc.displaces {
+				t.Fatalf("refDisplacesSiblingValues(const beside $ref) on %s = %v, want %v", tc.draft, got, tc.displaces)
+			}
+
+			// No $ref, nothing to displace with -- on every draft.
+			var noRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"const":"a"}`), &noRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			noRef.Normalize()
+			if g.refDisplacesSiblingValues(&noRef) {
+				t.Fatalf("refDisplacesSiblingValues(bare const) on %s = true; there is no reference for the sibling to stand behind", tc.draft)
+			}
+		})
+	}
+}
