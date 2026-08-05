@@ -360,6 +360,8 @@ func formatHelperNameFunc(v any, stringBacked bool) string {
 		return "schemagenFormatTime"
 	case generator.Draft3TimeFormat:
 		return "schemagenFormatDraft3Time"
+	case generator.Draft3ColorFormat:
+		return "schemagenFormatDraft3Color"
 	case "date-time":
 		return "schemagenFormatDateTime"
 	case "duration":

@@ -22,6 +22,12 @@ func flockShared(*os.File) bool { return false }
 
 func flockExclusiveNB(*os.File) bool { return false }
 
+// makeBlockingFile cannot be built here. Its only caller is a guard that
+// already skips this platform, because what that guard watches is the lock
+// above deciding an outcome the age check would decide the other way, and
+// without a lock there is no such outcome.
+func makeBlockingFile(string) bool { return false }
+
 // freeBytes cannot answer here. The caller reports the precondition as
 // unchecked rather than treating an unknown as enough space.
 func freeBytes(string) (uint64, error) {

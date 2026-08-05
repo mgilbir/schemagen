@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://schemagen.test/recursive-ref-outermost/main.json",
+  "$defs": {
+    "inner": {
+      "$id": "inner.json",
+      "$recursiveAnchor": true,
+      "additionalProperties": { "$recursiveRef": "#" }
+    }
+  },
+  "if": {
+    "propertyNames": { "pattern": "^[a-m]" }
+  },
+  "then": {
+    "$id": "anyLeafNode.json",
+    "$recursiveAnchor": true,
+    "$ref": "inner.json"
+  },
+  "else": {
+    "$id": "integerNode.json",
+    "$recursiveAnchor": true,
+    "type": ["object", "integer"],
+    "$ref": "inner.json"
+  }
+}

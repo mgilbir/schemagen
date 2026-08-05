@@ -32,10 +32,26 @@ type Generator struct {
 	resourceGraph              *schema.ResourceGraph // document/dialect/anchor graph for validation planning
 	validationKeywordsDisabled bool                  // true when the declared metaschema omits the validation vocabulary
 
+	// metaschemaVocabularies memoises declaredVocabulary by $schema URI,
+	// including the misses. formatAssertsFor asks the question once per schema
+	// node rather than once per document, and the resolver behind it may be
+	// fetching over the network -- an HTTPResolver caches what it retrieves but
+	// not what it failed to retrieve, so an unreachable metaschema would be
+	// re-attempted, with its timeout, at every call site.
+	metaschemaVocabularies map[string]map[string]bool
+
 	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
 	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
 	// within it resolves against that subschema, not the top-level root.
 	documentRoots map[string]*schema.Schema
+
+	// dynamicAnchorDecls memoises, by anchor name, every schema in the document
+	// that declares it. The node builder's loop check asks the question once per
+	// schema it walks past and the answer is a walk of the whole document, so
+	// without this a schema with several dynamic references pays for it
+	// quadratically. The empty name is the $recursiveAnchor namespace; see
+	// dynamicAnchorDeclarations.
+	dynamicAnchorDecls map[string][]*schema.Schema
 
 	// dynamicScope tracks the stack of document roots entered via $ref during
 	// code generation. This enables $dynamicRef to resolve against the dynamic
@@ -270,10 +286,18 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Initialize dynamic scope with the root document root.
 	g.dynamicScope = []*schema.Schema{s}
+	// The anchor index is about this document, so a Generator reused for another
+	// one must not answer from the last one's.
+	g.dynamicAnchorDecls = nil
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
 	g.validationKeywordsDisabled = !g.hasValidationVocabulary(s)
+
+	// Settle draft 3's own format spellings before anything asks what a format
+	// keyword says. buildDocumentRoots has run, so every node's dialect is
+	// answerable.
+	g.normalizeDialectFormats(s)
 
 	// Collect definitions ($defs and definitions) and build anchor index.
 	// Iterate in sorted key order for deterministic anchor registration
@@ -1477,7 +1501,7 @@ func noteFormatImports(r ValidationRule, needsFmt, needsNetIP *bool) {
 // and the test that walks the two together.
 func FormatCheckableOnString(format string) bool {
 	switch format {
-	case "ipv4", "ipv6", "date-time", Draft3TimeFormat:
+	case "ipv4", "ipv6", "date-time", Draft3TimeFormat, Draft3ColorFormat:
 		return true
 	default:
 		return formatNeedsValidation(format)
@@ -1495,9 +1519,91 @@ func FormatCheckableOnString(format string) bool {
 // ask for it and nothing downstream can confuse it for one.
 const Draft3TimeFormat = "time (draft 3)"
 
+// Draft3ColorFormat is the internal name for draft 3's "color", which no later
+// draft has at all. Draft 3 section 5.23 defines it as a CSS colour "based on
+// CSS 2.1", naming that specification by its dated W3C URI, so the grammar this
+// checks is a fixed one rather than a moving target: the hash notations and the
+// rgb() function of CSS 2.1 section 4.3.6, and the keywords that specification
+// lists as values of type <color>.
+//
+// Pinning it there is also what the official suite asks for. It marks
+// "#00332520" invalid -- eight hex digits is #RRGGBBAA, which CSS Color 4 added
+// and CSS 2.1 does not have -- so reading "color" as modern CSS would accept a
+// document draft 3 forbids. The naming is likewise deliberate: it is not a legal
+// format keyword, so a 2020-12 schema writing "color" still gets the annotation
+// every draft after 3 says an unknown format is.
+const Draft3ColorFormat = "color (draft 3)"
+
+// draft3FormatSpellings maps the format names that belong to draft 3 alone onto
+// the name this generator checks them under.
+//
+// Two of them are the same format every later draft has under a different
+// spelling: draft 3's "host-name" is "hostname" and its "ip-address" is "ipv4",
+// which is why they map onto those names outright rather than onto an internal
+// one -- the check, the Go type mapping and the helper are all the modern
+// format's, because it *is* the modern format. "color" has no later counterpart
+// and maps to an internal name of its own.
+//
+// This is a separate mechanism from formatRulesForDialect, and the split is
+// forced rather than chosen. "time" is spelled the same in every draft, so it
+// survives every checkability test on the way to a rule and the rewrite can
+// happen on the rule. These three are unknown format keywords outside draft 3,
+// which is what they must stay -- so the spelling has to be settled on the
+// schema itself, before the first thing that asks FormatCheckableOnString what
+// the keyword says. A rule-level rewrite would run after the rule had already
+// been dropped.
+var draft3FormatSpellings = map[string]string{
+	"host-name":  "hostname",
+	"ip-address": "ipv4",
+	"color":      Draft3ColorFormat,
+}
+
+// normalizeDialectFormats settles the "format" keyword of every schema reachable
+// from the root onto the spelling this generator checks it under, for the nodes
+// whose own dialect is draft 3.
+//
+// It is a pass rather than a lookup at each of the seven places that read
+// s.Format because those places do not agree on what they are asking: one wants
+// the Go type, one whether a wrapper is owed, one whether a rule can be built.
+// Answering the spelling question once, where the draft is known and before any
+// of them run, is what stops the next one that gets added from being the one
+// that forgets.
+//
+// The gate is per node, not per document, so a draft-3 resource embedded in a
+// later-draft document is rewritten and its host document is not. A node the
+// walk never reaches -- one a resolver produced for a remote reference -- keeps
+// its draft-3 spelling and is read as the unknown format it is in every other
+// draft, which withholds a check rather than inventing a rejection.
+func (g *Generator) normalizeDialectFormats(s *schema.Schema) {
+	seen := make(map[*schema.Schema]bool)
+	var walk func(*schema.Schema)
+	walk = func(n *schema.Schema) {
+		if n == nil || seen[n] {
+			return
+		}
+		seen[n] = true
+		if n.Format != nil && g.draftForSchema(n) == schema.Draft03 {
+			if renamed, ok := draft3FormatSpellings[*n.Format]; ok {
+				n.Format = &renamed
+			}
+		}
+		for _, sub := range allSubSchemas(n) {
+			walk(sub)
+		}
+		// allSubSchemas answers a different question -- which subschemas produce
+		// a Go type -- and leaves out two that hold a schema all the same. A
+		// format under either of them is as much a draft-3 spelling as any
+		// other.
+		walk(n.PropertyNames)
+		walk(n.ContentSchema)
+	}
+	walk(s)
+}
+
 // formatRulesForDialect rewrites a rule set's format keywords to the spelling
-// the schema's own draft gives them. Only "time" differs; everything else means
-// the same thing in every draft this generator reads.
+// the schema's own draft gives them. Only "time" differs by draft under a name
+// every draft shares; the names draft 3 alone has are settled earlier, on the
+// schema -- see draft3FormatSpellings.
 func (g *Generator) formatRulesForDialect(s *schema.Schema, rules []ValidationRule) []ValidationRule {
 	if g.draftForSchema(s) != schema.Draft03 {
 		return rules
@@ -1584,12 +1690,99 @@ func (g *Generator) formatAssertsFor(s *schema.Schema) bool {
 	if g.config.FormatAssertion {
 		return true
 	}
+	// A metaschema that names a format vocabulary has said which of the two
+	// readings its schemas take, and it outranks the draft the metaschema is
+	// written in: that is the whole point of declaring one. 2020-12's own
+	// metaschema declares format-annotation and so answers exactly what the
+	// switch below would; a custom one declaring format-assertion is asking for
+	// the other reading, and nothing but this reads it.
+	if asserts, declared := g.metaschemaFormatPosture(s); declared {
+		return asserts
+	}
 	switch g.draftForSchema(s) {
 	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07, schema.DraftV1:
 		return true
 	default:
 		return false
 	}
+}
+
+// metaschemaFormatPosture reads the format posture out of the $vocabulary of the
+// metaschema a schema declares, and reports whether it said anything at all.
+//
+// 2019-09 split "format" into two vocabularies that cannot both be in force:
+// format-annotation, which the standard metaschemas declare and whose content is
+// that format produces an annotation, and format-assertion, which says the
+// keyword is checked and a document failing it is invalid. A schema pointing
+// $schema at a metaschema declaring the second is asking for assertion in a
+// dialect whose default is annotation, and that request is legible nowhere else
+// -- the dialect URI is the custom metaschema's own $id, so DetectDraft answers
+// DraftUnknown for it and the switch in formatAssertsFor would fall to the
+// conservative default and enforce nothing.
+//
+// The boolean the declaration carries is deliberately ignored. Per the 2020-12
+// core specification it says what an implementation that does *not* recognise
+// the vocabulary must do -- refuse the schema when true, ignore the vocabulary
+// when false -- and says nothing to one that does. This generator recognises
+// format-assertion, so both spellings assert, which is what the official suite
+// asserts too: optional/format-assertion.json marks "not-an-ipv4" invalid under
+// the false metaschema and the true one alike.
+//
+// Only the declared metaschema is read, not the whole metaschema chain. A
+// vocabulary a metaschema inherits through $ref is a keyword *definition*, not a
+// declaration that it is in force; $vocabulary is the only thing that declares
+// one, and it is not inherited.
+func (g *Generator) metaschemaFormatPosture(s *schema.Schema) (asserts, declared bool) {
+	vocab := g.declaredVocabulary(s)
+	if len(vocab) == 0 {
+		return false, false
+	}
+	for uri := range vocab {
+		if strings.HasSuffix(uri, "/vocab/format-assertion") {
+			return true, true
+		}
+	}
+	for uri := range vocab {
+		if strings.HasSuffix(uri, "/vocab/format-annotation") {
+			return false, true
+		}
+	}
+	return false, false
+}
+
+// declaredVocabulary returns the $vocabulary of the metaschema s is written
+// against: its own when s is a metaschema, otherwise the one the document it
+// belongs to points $schema at, resolved through the configured resolver.
+//
+// It is hasValidationVocabulary's lookup, lifted out so that the two questions
+// asked of a metaschema -- does the validation vocabulary bind, does format
+// assert -- read the same document by the same rule instead of two.
+func (g *Generator) declaredVocabulary(s *schema.Schema) map[string]bool {
+	if s == nil {
+		return nil
+	}
+	if len(s.Vocabulary) > 0 {
+		return s.Vocabulary
+	}
+	uri := s.Schema
+	if uri == "" && s.DocumentRoot != nil {
+		uri = s.DocumentRoot.Schema
+	}
+	if uri == "" || g.resolver == nil {
+		return nil
+	}
+	if vocab, ok := g.metaschemaVocabularies[uri]; ok {
+		return vocab
+	}
+	var vocab map[string]bool
+	if meta, err := g.resolver.ResolveSchema(uri, nil); err == nil && meta != nil {
+		vocab = meta.Vocabulary
+	}
+	if g.metaschemaVocabularies == nil {
+		g.metaschemaVocabularies = make(map[string]map[string]bool)
+	}
+	g.metaschemaVocabularies[uri] = vocab
+	return vocab
 }
 
 // contentAssertsFor reports whether the content vocabulary binds as an
@@ -7802,7 +7995,53 @@ func (g *Generator) popDynamicScope() {
 //     root that contains a $dynamicAnchor with the same name wins.
 //  4. If no bookend exists at the initial target, behave like a normal $ref.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
-	// Extract the fragment anchor name for dynamic scope lookup.
+	// Steps 1 and 2, which the runtime evaluator needs too: see
+	// dynamicRefInitialTarget.
+	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, g.resolveRefInContext)
+	if initialTarget == nil {
+		return nil
+	}
+	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
+		return initialTarget
+	}
+
+	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
+	// innermost, looking for the first document root that contains a
+	// $dynamicAnchor with the same name.
+	for _, docRoot := range g.dynamicScope {
+		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
+			return found
+		}
+	}
+
+	// Fallback: no override found in dynamic scope — use the bookend.
+	return initialTarget
+}
+
+// dynamicRefInitialTarget performs the static half of a $dynamicRef: the schema
+// the reference would reach if it were spelled $ref, and the plain-name anchor
+// its fragment carries.
+//
+// Both halves are needed by two callers that do different things with them.
+// resolveDynamicRef compares the anchor against the target to decide whether the
+// generation-time dynamic scope is consulted at all; the node builder compares
+// them for the same reason, and then keeps the target as the fallback the
+// generated evaluator uses when no resource in the document's dynamic scope
+// claims the anchor. Sharing the computation is what keeps the two from
+// disagreeing about where a reference points.
+//
+// The anchor is empty for a fragment that is a JSON pointer or absent, which is
+// the shape that can never resolve dynamically: bookending is a statement about
+// a plain-name anchor.
+//
+// resolve is the caller's own reference resolver rather than a fixed one,
+// because the two callers differ in whether a miss should be recorded.
+// resolveDynamicRef is producing a type and its failure is an unresolved
+// reference the run must report; the node builder is probing, and a reference it
+// cannot serve costs the caller only this compiled form -- it falls back to what
+// it would have emitted anyway, and recording the miss would turn an optimistic
+// look into a reported error.
+func (g *Generator) dynamicRefInitialTarget(ref string, ctx *schema.Schema, resolve func(string, *schema.Schema) *schema.Schema) (*schema.Schema, string) {
 	var anchorName string
 	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") {
 		anchorName = ref[1:] // plain name fragment, e.g., "#items" → "items"
@@ -7813,7 +8052,6 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 		}
 	}
 
-	// Step 1: Resolve the $dynamicRef to its initial target (static resolution).
 	var initialTarget *schema.Schema
 	ctxDocRoot := g.rootSchema
 	if ctx != nil && ctx.DocumentRoot != nil {
@@ -7832,29 +8070,9 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	}
 	if initialTarget == nil {
 		// For JSON pointers, full URIs, or when local resolution failed.
-		initialTarget = g.resolveRefInContext(ref, ctx)
+		initialTarget = resolve(ref, ctx)
 	}
-	if initialTarget == nil {
-		return nil
-	}
-
-	// Step 2: Check for the bookend — does the initial target have a matching
-	// $dynamicAnchor? If not, $dynamicRef behaves like a normal $ref.
-	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
-		return initialTarget
-	}
-
-	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
-	// innermost, looking for the first document root that contains a
-	// $dynamicAnchor with the same name.
-	for _, docRoot := range g.dynamicScope {
-		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
-			return found
-		}
-	}
-
-	// Fallback: no override found in dynamic scope — use the bookend.
-	return initialTarget
+	return initialTarget, anchorName
 }
 
 // findDynamicAnchor searches a schema tree for a sub-schema with the given
@@ -12096,21 +12314,17 @@ func (g *Generator) requiresStrictIntegerToken(s *schema.Schema) bool {
 	}
 }
 
+// hasValidationVocabulary reports whether the validation keywords bind for a
+// schema, which they do unless the metaschema it declares lists its vocabularies
+// and leaves that one out. A document naming no metaschema, or one whose
+// metaschema declares no $vocabulary at all, says nothing about the question and
+// keeps the default.
 func (g *Generator) hasValidationVocabulary(s *schema.Schema) bool {
-	if s == nil {
+	vocab := g.declaredVocabulary(s)
+	if len(vocab) == 0 {
 		return true
 	}
-	if len(s.Vocabulary) > 0 {
-		return declaresValidationVocabulary(s.Vocabulary)
-	}
-	if s.Schema == "" || g.resolver == nil {
-		return true
-	}
-	meta, err := g.resolver.ResolveSchema(s.Schema, nil)
-	if err != nil || meta == nil || len(meta.Vocabulary) == 0 {
-		return true
-	}
-	return declaresValidationVocabulary(meta.Vocabulary)
+	return declaresValidationVocabulary(vocab)
 }
 
 func declaresValidationVocabulary(vocabulary map[string]bool) bool {
@@ -13084,11 +13298,27 @@ func (g *Generator) nullableFormatUnionType(s *schema.Schema, contextName string
 // cannot drift apart. {"format":"ipv4","minimum":3} is about numbers by that
 // reading and keeps the arm that types it as one.
 func (g *Generator) stringAnnotationOnlySchema(s *schema.Schema) bool {
-	if s == nil || !g.validationKeywordsEnabled() {
+	if s == nil {
 		return false
 	}
 	statesFormat := s.Format != nil && FormatCheckableOnString(*s.Format)
 	if !statesFormat && !statesContentVocabulary(s) {
+		return false
+	}
+	// The validation vocabulary decides whether the *validation* keywords bind,
+	// and neither of the two this wrapper exists for is one of them: from
+	// 2019-09 "format" is its own vocabulary and the content keywords are
+	// another. A metaschema that declares format-assertion and omits validation
+	// -- which is exactly what the suite's optional/format-assertion.json points
+	// its schemas at -- is asking for the format to be checked, and reading its
+	// silence about validation as silence about format left {"format":"ipv4"}
+	// resolving to a bare `any` with no Validate at all under the one metaschema
+	// written to demand one.
+	//
+	// The gate still stands for everything else the wrapper would carry: a
+	// minLength beside the format is a validation keyword, and withoutValidationRules
+	// takes it back out when the vocabulary does not bind.
+	if !g.validationKeywordsEnabled() && !(statesFormat && g.formatAssertsFor(s)) {
 		return false
 	}
 	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 {
@@ -13144,13 +13374,39 @@ func (g *Generator) stringAnnotationOnlyDef(name string, s *schema.Schema) *Infe
 	if !g.stringAnnotationOnlySchema(s) {
 		return nil
 	}
+	rules := g.aliasValidationRules(s, &PrimitiveType{Name: "string"})
+	if !g.validationKeywordsEnabled() {
+		rules = withoutValidationRules(rules)
+	}
 	return &InferredAliasDef{
 		Name:             name,
 		Description:      s.Description,
 		InferredGoType:   &PrimitiveType{Name: "string"},
 		InferredJSONType: "string",
-		Validations:      g.aliasValidationRules(s, &PrimitiveType{Name: "string"}),
+		Validations:      rules,
 	}
+}
+
+// withoutValidationRules keeps only the rules that come from a vocabulary other
+// than the validation one -- "format" and the content keywords, each of which
+// this generator gates separately and neither of which the validation
+// vocabulary speaks for.
+//
+// It is reached only when a metaschema declared its vocabularies and left
+// validation out, which is the one case where the wrapper can be built for a
+// format the metaschema does assert while a minLength written beside it asserts
+// nothing at all.
+func withoutValidationRules(rules []ValidationRule) []ValidationRule {
+	kept := rules[:0:0]
+	for _, r := range rules {
+		if r.RuleType == "format" || r.RuleType == "content" {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
 
 // declaredFormatStringSchema reports whether s is {"type":"string"} with a
@@ -15562,7 +15818,11 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 			if !needsRuntime {
 				continue
 			}
-			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
+			// No hoistPrefix: this literal is a local variable inside a Validate
+			// method, and a recursive node needs a package-level variable to
+			// point back at. A schema that would want one is declined here and
+			// keeps the static approximation, as it did before hoisting existed.
+			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
 			list, ok := b.list(group.subs, 2)
 			if !ok {
 				continue

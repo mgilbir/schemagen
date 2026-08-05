@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
 // TestSweepStaleCachesReclaimsOnlyAbandonedDirectories pins both halves of the
@@ -28,12 +31,26 @@ func TestSweepStaleCachesReclaimsOnlyAbandonedDirectories(t *testing.T) {
 
 	// name → how long ago it was last touched; negative means "in the future",
 	// which a clock skew between machines sharing /tmp can genuinely produce.
+	//
+	// Every prefix the sweep knows appears here, abandoned and live, because the
+	// list of prefixes is the whole of what decides whether a directory is ever
+	// looked at: the four work-directory prefixes were absent from it for two
+	// releases while the reasoning for sweeping them was already written down.
+	// What a *real* work directory looks like is the business of
+	// TestSweepSparesAWorkDirectoryALiveRunIsUsing below; this one is about
+	// names.
 	dirs := map[string]time.Duration{
-		"schemagen-gocache-abandoned": 3 * time.Hour,
-		"schemagen-cogen-abandoned":   3 * time.Hour,
-		"schemagen-gocache-live":      time.Minute,
-		"schemagen-cogen-live":        time.Minute,
-		"schemagen-gocache-future":    -time.Hour,
+		"schemagen-gocache-abandoned":  3 * time.Hour,
+		"schemagen-cogen-abandoned":    3 * time.Hour,
+		"schemagen-external-abandoned": 3 * time.Hour,
+		"schemagen-rt-abandoned":       3 * time.Hour,
+		"schemagen-val-abandoned":      3 * time.Hour,
+		"schemagen-gocache-live":       time.Minute,
+		"schemagen-cogen-live":         time.Minute,
+		"schemagen-external-live":      time.Minute,
+		"schemagen-rt-live":            time.Minute,
+		"schemagen-val-live":           time.Minute,
+		"schemagen-gocache-future":     -time.Hour,
 	}
 	for name, age := range dirs {
 		p := filepath.Join(tmp, name)
@@ -98,15 +115,19 @@ func TestSweepStaleCachesReclaimsOnlyAbandonedDirectories(t *testing.T) {
 
 	sweepStaleCachesIn(tmp, time.Now().Add(-staleCacheAge))
 
-	gone := []string{"schemagen-gocache-abandoned", "schemagen-cogen-abandoned"}
+	gone := []string{
+		"schemagen-gocache-abandoned", "schemagen-cogen-abandoned",
+		"schemagen-external-abandoned", "schemagen-rt-abandoned", "schemagen-val-abandoned",
+	}
 	kept := []string{
-		"schemagen-gocache-live", "schemagen-cogen-live", "schemagen-gocache-future",
+		"schemagen-gocache-live", "schemagen-cogen-live", "schemagen-external-live",
+		"schemagen-rt-live", "schemagen-val-live", "schemagen-gocache-future",
 		"schemagen-gocache-long-running", "schemagen-something-else",
 	}
 
 	for _, name := range gone {
 		if _, err := os.Stat(filepath.Join(tmp, name)); !os.IsNotExist(err) {
-			t.Errorf("%s survived the sweep; an abandoned cache is what this reclaims, and leaving it is how the disk fills", name)
+			t.Errorf("%s survived the sweep; an abandoned directory of a swept kind is what this reclaims, and leaving it is how the disk fills and how /tmp accumulates debris nobody can attribute", name)
 		}
 	}
 	for _, name := range kept {
@@ -159,11 +180,18 @@ func buildRealCache(t *testing.T, dir string) {
 	}
 }
 
-// ageCache stamps a cache's root and every bucket as untouched for the given
-// span, which is what a run that is getting nothing but cache *hits* really
-// looks like: Go updates an entry's mtime at most once an hour and creates no
-// new bucket, so nothing at this level moves for as long as the hits last.
-func ageCache(t *testing.T, dir string, age time.Duration) {
+// ageTree stamps a directory's root and every immediate child as untouched for
+// the given span -- the two levels cacheLastActive reads.
+//
+// It is what both kinds of directory the sweep looks at really look like while
+// in use. A cache getting nothing but *hits* creates no new bucket and updates
+// an entry's mtime at most once an hour, so nothing at this level moves for as
+// long as the hits last. A work directory is stamped once, when the harness
+// finishes writing the generated module into it, and neither the compile nor
+// the run that follows advances the root or any child -- measured over a live
+// one at 250ms intervals through a cold `go run`, every sample reporting an age
+// equal to its own elapsed time.
+func ageTree(t *testing.T, dir string, age time.Duration) {
 	t.Helper()
 	when := time.Now().Add(-age)
 	entries, err := os.ReadDir(dir)
@@ -197,7 +225,13 @@ func holdCacheLock(t *testing.T, dir string) *cacheLock {
 }
 
 // assertNoDoomedLeftovers checks that the rename-then-delete left nothing
-// behind. A doomed directory that survives is a cache nobody will look for.
+// behind. A doomed directory that survives is a directory nobody will look for.
+//
+// It matches the marker anywhere in the name rather than a fixed prefix,
+// because the prefix is now whatever the directory came in with: a swept cache
+// becomes schemagen-gocache-doomed-*, a swept work directory
+// schemagen-val-doomed-* and so on. A check written against one spelling would
+// stop watching the other four the moment they were added.
 func assertNoDoomedLeftovers(t *testing.T, tmp string) {
 	t.Helper()
 	entries, err := os.ReadDir(tmp)
@@ -205,7 +239,7 @@ func assertNoDoomedLeftovers(t *testing.T, tmp string) {
 		t.Fatalf("read %s: %v", tmp, err)
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "schemagen-gocache-doomed-") {
+		if strings.Contains(e.Name(), "-doomed-") {
 			t.Errorf("%s was left behind by a delete that renamed it out of the way first", e.Name())
 		}
 	}
@@ -233,7 +267,7 @@ func TestSweepSparesACacheALiveRunIsHolding(t *testing.T) {
 	tmp := t.TempDir()
 	dir := filepath.Join(tmp, "schemagen-gocache-shared-test")
 	buildRealCache(t, dir)
-	ageCache(t, dir, 3*time.Hour)
+	ageTree(t, dir, 3*time.Hour)
 
 	lock := holdCacheLock(t, dir)
 	sweepStaleCachesIn(tmp, time.Now().Add(-staleCacheAge))
@@ -248,6 +282,281 @@ func TestSweepSparesACacheALiveRunIsHolding(t *testing.T) {
 		t.Fatalf("an abandoned cache of exactly the shape spared above survived the sweep (%v); the lock was not what spared it, and an abandoned cache stays on the volume", err)
 	}
 	assertNoDoomedLeftovers(t, tmp)
+}
+
+// workDirFixtureSchema is the schema the work-directory fixtures are generated
+// from.
+//
+// It is written for what it makes the generator emit, not for what it says: a
+// root object with a Validate() method, string, numeric, array and object
+// constraints, a pattern, and an asserted `format: email`. The format block is
+// what puts the ECMA-262 engine and x/net/idna in the helper file, so the
+// module carries the same external requirements as the ones the corpus
+// produces and is compiled the same way rather than being a cheap stand-in.
+const workDirFixtureSchema = `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "a": {"type": "string", "minLength": 2, "pattern": "^a.*", "format": "email"},
+    "b": {"type": "integer", "minimum": 1, "maximum": 100},
+    "c": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "d": {"type": "object", "additionalProperties": {"type": "number"}}
+  },
+  "required": ["a", "b"]
+}`
+
+// buildRealWorkDir writes a work directory the way tryValidation writes one:
+// the real generator and emitter over a real schema, the real helper-file
+// companion, the real go.mod and go.sum, and the real generated main().
+//
+// A hand-made directory is not a fixture for this, for the same reason a
+// hand-made GOCACHE was not a fixture for the cache sweep -- and that mistake
+// has already shipped here once, in a test whose "live" control was a bare
+// directory while the sweep it guarded would have deleted every long-running
+// cache on the box. What the sweep has to spare is a directory with a
+// compilable module in it and a `go` process working inside it, so that is what
+// this builds.
+//
+// fixture.json is made a named pipe rather than a file. The generated program
+// reads it with os.ReadFile, which blocks in the open until a writer arrives,
+// so the caller decides exactly when the program stops being mid-run -- the
+// directory is genuinely in use, at an instant chosen rather than hoped for.
+// The returned path is that pipe.
+func buildRealWorkDir(t *testing.T, dir string) string {
+	t.Helper()
+	code, err := tryGenerateWithValidation(json.RawMessage(workDirFixtureSchema), nil, schema.Draft202012, false, true, false)
+	if err != nil {
+		t.Fatalf("generating the fixture module: %v", err)
+	}
+	if code == "" {
+		t.Fatalf("the fixture schema produced no Validate(); a work directory without one is not what the harness compiles")
+	}
+	rootType := extractRootTypeNameFromCode(code)
+	if rootType == "" {
+		t.Fatalf("no root type in the generated fixture")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	main := strings.Replace(code, "package testpkg", "package main", 1)
+	if err := os.WriteFile(filepath.Join(dir, "types.go"), []byte(main), 0o644); err != nil {
+		t.Fatalf("write types.go: %v", err)
+	}
+	if err := writeSharedHelpersErr(dir, main); err != nil {
+		t.Fatalf("write helpers: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(generateValidateMain(rootType)), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	if err := writeTestGoMod(dir, "validate_test"); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+
+	// The fixture is worthless if it is not the real shape, so it says so here
+	// rather than passing quietly with three files in it.
+	for _, name := range []string{"types.go", "schemagen_helpers.go", "main.go", "go.mod", "go.sum"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("the fixture work directory has no %s (%v); it is not a module the harness would have written", name, err)
+		}
+	}
+	helpers, err := os.ReadFile(filepath.Join(dir, "schemagen_helpers.go"))
+	if err != nil {
+		t.Fatalf("read helpers: %v", err)
+	}
+	for _, dep := range []string{"goecma262", "golang.org/x/net/idna"} {
+		if !strings.Contains(string(helpers), dep) {
+			t.Fatalf("the fixture module does not import %s, so it is cheaper to build than the ones the corpus produces and is not the thing being spared", dep)
+		}
+	}
+
+	fixture := filepath.Join(dir, "fixture.json")
+	if !makeBlockingFile(fixture) {
+		t.Fatalf("could not create the blocking fixture at %s", fixture)
+	}
+	return fixture
+}
+
+// holdRunLock claims tmp the way a live run claims it, by taking the shared
+// lock on the run lock file. Separate open files are separate flock holders
+// even inside one process, so this is another run as far as the kernel is
+// concerned.
+func holdRunLock(t *testing.T, tmp string) *cacheLock {
+	t.Helper()
+	return holdCacheLock(t, sharedCachePathIn(tmp))
+}
+
+// TestSweepSparesAWorkDirectoryALiveRunIsUsing is the half of #158 that adding
+// four prefixes to a list does not get right on its own.
+//
+// A work directory's mtimes are stamped once, when the harness finishes writing
+// the generated module into it, and nothing afterwards advances them: the
+// compile and the run that follow write into GOCACHE and into go run's own
+// scratch space, never into the directory they are working in. Measured over a
+// live one at 250ms intervals through a cold `go run` -- every sample reporting
+// a root age and a cacheLastActive age equal to its own elapsed time, and every
+// child still stamped at the moment it was written. So a work directory has
+// exactly the property that made the first cache sweep wrong: judged on mtimes,
+// a directory in use is indistinguishable from one a killed run left behind.
+//
+// The commands are bounded -- 30s for a compile or a round trip, 90s for a
+// generated program, 10m for the bowtie oracle -- and the cutoff is an hour, so
+// today the arithmetic holds. It holds by a margin nobody is consulting when
+// they raise a timeout, and a `go run` killed at its context whose child still
+// holds the output pipe is bounded by nothing at all. So the claim decides, and
+// what is asserted here is the claim deciding: the fixture is aged past the
+// cutoff so that age says "delete", and only the lock says otherwise.
+//
+// The control is the same directory a moment later with the run gone. If that
+// one does not disappear, this test proves nothing, because it would mean the
+// age check had spared it all along.
+func TestSweepSparesAWorkDirectoryALiveRunIsUsing(t *testing.T) {
+	if !cacheLockingSupported {
+		t.Skip("without flock nothing can claim a run, so the sweep judges work directories by age alone here")
+	}
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "schemagen-val-liveworkdir")
+	fixture := buildRealWorkDir(t, dir)
+
+	// A real run, in the real directory, with the real arguments and the real
+	// cache. It gets as far as reading its fixture and stops there.
+	cmd := exec.Command("go", goRunArgs...)
+	cmd.Dir = dir
+	cmd.Env = sharedCacheEnv()
+	type runResult struct {
+		out []byte
+		err error
+	}
+	finished := make(chan runResult, 1)
+	go func() {
+		out, err := cmd.CombinedOutput()
+		finished <- runResult{out, err}
+	}()
+
+	// Opening the pipe for writing returns only once the program has opened it
+	// for reading, so this is the build having succeeded and the program being
+	// alive inside dir -- known, not assumed.
+	opened := make(chan *os.File, 1)
+	go func() {
+		w, err := os.OpenFile(fixture, os.O_WRONLY, 0)
+		if err != nil {
+			opened <- nil
+			return
+		}
+		opened <- w
+	}()
+	var w *os.File
+	select {
+	case w = <-opened:
+		if w == nil {
+			t.Fatalf("could not open the fixture pipe for writing")
+		}
+	case r := <-finished:
+		t.Fatalf("the run ended before the generated program read its fixture: %v\n%s", r.err, r.out)
+	case <-time.After(5 * time.Minute):
+		t.Fatalf("the generated program never reached its fixture")
+	}
+
+	// Aged past the cutoff, which is what a work directory whose command has
+	// outlived the sweep's patience looks like -- and what every live one would
+	// look like if a timeout were ever raised past an hour.
+	ageTree(t, dir, 3*time.Hour)
+
+	lock := holdRunLock(t, tmp)
+	sweepStaleCachesIn(tmp, time.Now().Add(-staleCacheAge))
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("the sweep deleted a work directory a live run was compiling in (%v); that group now fails to build and reports itself as a schema failure", err)
+	}
+	for _, name := range []string{"types.go", "schemagen_helpers.go", "main.go", "go.mod", "go.sum"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("the sweep emptied a work directory a live run was using: %s is gone (%v)", name, err)
+		}
+	}
+	assertNoDoomedLeftovers(t, tmp)
+
+	// Let it finish. The verdict is the proof that the directory really was
+	// usable throughout, rather than merely still present.
+	if _, err := w.Write([]byte(`{"a":"a@example.com","b":5,"c":["x"],"d":{"e":1.5}}`)); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	w.Close()
+	select {
+	case r := <-finished:
+		if r.err != nil {
+			t.Fatalf("the run that survived the sweep then failed: %v\n%s", r.err, r.out)
+		}
+		if got := strings.TrimSpace(string(r.out)); got != "VALID" {
+			t.Fatalf("the generated program said %q, not VALID; the directory it ran in was not intact", got)
+		}
+	case <-time.After(5 * time.Minute):
+		t.Fatalf("the generated program never finished after its fixture arrived")
+	}
+
+	// The control. Same directory, same ages, nobody running: it must go, or
+	// the lock was not what spared it above and this proves nothing.
+	lock.release()
+	ageTree(t, dir, 3*time.Hour)
+	sweepStaleCachesIn(tmp, time.Now().Add(-staleCacheAge))
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("a work directory of exactly the shape spared above, with no run left to own it, survived the sweep (%v); either the lock was not what spared it or /tmp keeps the debris #158 is about", err)
+	}
+	assertNoDoomedLeftovers(t, tmp)
+}
+
+// TestSweepAsksBeforeThisRunClaimsTheCache pins the order inside init, which
+// became load-bearing when the work-directory half started reading the run
+// lock.
+//
+// A process that has already taken its own claim sees itself as a live run, so
+// anotherRunIsAlive answers true for the whole of that process's sweep and not
+// one work directory is ever reclaimed. Nothing fails: a sweep that reclaims
+// nothing is indistinguishable from a temp directory with nothing to reclaim,
+// which is how this leak went unnoticed for two releases in the first place.
+func TestSweepAsksBeforeThisRunClaimsTheCache(t *testing.T) {
+	if !cacheLockingSupported {
+		t.Skip("nothing can claim a run here, so there is no order to get wrong")
+	}
+	if !sweptBeforeClaiming {
+		t.Errorf("this process held its claim on %s before it swept, so its sweep saw a live run and reclaimed no work directory at all", sharedCacheLockPath())
+	}
+}
+
+// TestAWorkDirectoryIsSweptUnderItsOwnName holds the doomed name honest.
+//
+// The rename is what makes a delete atomic to a run arriving mid-sweep, and a
+// crash between the two steps leaves the renamed directory behind -- so the
+// name it is renamed to has to be a name the sweep still reclaims *and* a name
+// that says what it was. Reusing the cache's spelling for a work directory
+// would satisfy the first and quietly break the second, which is the exact
+// complaint #158 makes: /tmp accumulating debris nobody can attribute.
+func TestAWorkDirectoryIsSweptUnderItsOwnName(t *testing.T) {
+	for _, prefix := range append(append([]string{}, workDirPrefixes...), cacheDirPrefixes...) {
+		tmp := t.TempDir()
+		dir := filepath.Join(tmp, prefix+"named")
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+		doomed, moved := renameForRemoval(dir, prefix)
+		if !moved {
+			t.Fatalf("%s could not be renamed out of the way", dir)
+		}
+		base := filepath.Base(doomed)
+		if !strings.HasPrefix(base, prefix) {
+			t.Errorf("a %s directory was renamed to %s, which no longer says what it was", prefix, base)
+		}
+		gotPrefix, _, ok := sweptDirKind(base)
+		switch {
+		case !ok:
+			t.Errorf("%s is not a name the sweep looks at, so a crash between the rename and the delete leaks it permanently", base)
+		case gotPrefix != prefix:
+			t.Errorf("%s is reclaimed as a %s directory rather than the %s one it was; the leak is closed and the attribution is not", base, gotPrefix, prefix)
+		}
+		// And it must actually be reclaimed, not merely recognised.
+		ageTree(t, doomed, 3*time.Hour)
+		sweepStaleCachesIn(tmp, time.Now().Add(-staleCacheAge))
+		if _, err := os.Stat(doomed); !os.IsNotExist(err) {
+			t.Errorf("%s survived the sweep (%v); a directory stranded between the rename and the delete is a permanent leak", base, err)
+		}
+	}
 }
 
 // TestSharedCacheIsClearedByTheLastRunOut pins the other end of the lock:

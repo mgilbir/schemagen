@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://schemagen.test/recursive-ref-like-ref/schema.json",
+  "$defs": {
+    "myobject": {
+      "$id": "myobject.json",
+      "$recursiveAnchor": false,
+      "anyOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": { "$recursiveRef": "#" }
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    { "type": "integer" },
+    { "$ref": "#/$defs/myobject" }
+  ]
+}

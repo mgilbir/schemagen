@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "title": "Draft3FormatSpellings",
+  "type": "object",
+  "properties": {
+    "colour": { "format": "color" },
+    "host": { "format": "host-name" },
+    "addr": { "format": "ip-address" },
+    "modernHost": { "format": "hostname" },
+    "modernAddr": { "format": "ipv4" }
+  }
+}

@@ -890,8 +890,37 @@ func formatAnnotatingConfig() generator.Config {
 // a working flag from a flag that does nothing.
 func runValidationCasesWithConfig(t *testing.T, schemaPath string, cfg generator.Config, valid, invalid []string) {
 	t.Helper()
+	runValidationCasesOn(t, schemaPath, "", cfg, valid, invalid)
+}
+
+// runValidationCasesForType is runValidationCases against a named type rather
+// than the one extractRootTypeName picks.
+//
+// It exists because that function answers "the last top-level struct carrying
+// JSON tags", which is the root for a schema whose root is an object and is not
+// the root for a schema whose root is anything else. A root compiled to the
+// runtime evaluator is a struct wrapping raw JSON with no tag on it, so a
+// document schema that also defines a tagged struct anywhere hands these cases
+// the wrong type -- and the wrong type has its own Validate, so the run passes
+// or fails on a question nobody asked. Naming the type is the only way to be
+// sure the documents are being judged by the schema the test is about.
+func runValidationCasesForType(t *testing.T, schemaPath, typeName string, valid, invalid []string) {
+	t.Helper()
+	runValidationCasesOn(t, schemaPath, typeName, generator.Config{
+		PackageName: "testpkg",
+		OmitEmpty:   true,
+	}, valid, invalid)
+}
+
+func runValidationCasesOn(t *testing.T, schemaPath, typeName string, cfg generator.Config, valid, invalid []string) {
+	t.Helper()
 	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
-	rootType := extractRootTypeName(t, string(generated))
+	rootType := typeName
+	if rootType == "" {
+		rootType = extractRootTypeName(t, string(generated))
+	} else if !strings.Contains(string(generated), "type "+rootType+" ") {
+		t.Fatalf("generated code declares no type %s; the fixture or the name is wrong", rootType)
+	}
 	tmpDir := t.TempDir()
 
 	generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
@@ -4506,6 +4535,79 @@ func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
 	)
 }
 
+// TestDraft3FormatSpellingsAreChecked is the behavioural half of draft 3's three
+// own format names, compiled and run rather than read off the IR.
+//
+// "host-name" and "ip-address" are the same formats every later draft spells
+// "hostname" and "ipv4", and the two modern properties beside them are the
+// control: they were always checked, and a fix that rerouted the keyword rather
+// than adding the older spelling would show up as one of them going quiet.
+//
+// "color" is the one with no counterpart, and the cases are what draft 3 section
+// 5.23 names: CSS 2.1, by its dated URI. That is why "#00332520" is refused --
+// eight hex digits is #RRGGBBAA, which CSS Color 4 added and 2.1 does not have,
+// and the official suite marks it invalid. The accepted list carries the
+// notations 2.1 does define, so a check that passed by refusing everything with
+// a "#" in it could not get through.
+//
+// Every property is a format with no declared "type", so the wrapper accepts a
+// value of any other JSON type and asserts only on a string. The non-string
+// documents below are the controls for that: refusing one would be rejecting
+// what the schema permits.
+func TestDraft3FormatSpellingsAreChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_format_spellings.json",
+		[]string{
+			`{}`,
+			`{"host":"www.example.com"}`,
+			`{"host":"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.com"}`,
+			`{"addr":"192.168.0.1"}`,
+			`{"colour":"fuchsia"}`,
+			`{"colour":"FUCHSIA"}`,
+			`{"colour":"#CC8899"}`,
+			`{"colour":"#C89"}`,
+			`{"colour":"#c89"}`,
+			`{"colour":"transparent"}`,
+			`{"colour":"ButtonFace"}`,
+			`{"colour":"rgb(255,0,0)"}`,
+			`{"colour":"rgb(100%, 0%, 0%)"}`,
+			`{"colour":"rgb(-10, 300, 0)"}`,
+			// The modern spellings, which were checked before and must stay so.
+			`{"modernHost":"www.example.com"}`,
+			`{"modernAddr":"192.168.0.1"}`,
+			// Not strings, so no format speaks about them at all.
+			`{"colour":5,"host":true,"addr":null}`,
+			`{"host":{"a":1},"addr":["x"]}`,
+		},
+		[]string{
+			`{"host":"not_a_valid_host_name"}`,
+			`{"host":"-hostname"}`,
+			`{"host":"hostname-"}`,
+			`{"host":"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl.com"}`,
+			`{"host":""}`,
+			`{"addr":"127.0.0.0.1"}`,
+			`{"addr":"256.256.256.256"}`,
+			`{"colour":"puce"}`,
+			`{"colour":"light_grayish_red-violet"}`,
+			`{"colour":"#00332520"}`,
+			`{"colour":"#CC88"}`,
+			`{"colour":"#GG8899"}`,
+			`{"colour":""}`,
+			// CSS Color 3 and 4 additions, which the specification draft 3 names
+			// does not have.
+			`{"colour":"rebeccapurple"}`,
+			`{"colour":"hsl(0, 100%, 50%)"}`,
+			// rgb() with the wrong arity, a mixed unit, or a non-number.
+			`{"colour":"rgb(255,0)"}`,
+			`{"colour":"rgb(255,0%,0)"}`,
+			`{"colour":"rgb(a,b,c)"}`,
+			// The modern spellings, whose rejections must survive too.
+			`{"modernHost":"not_a_valid_host_name"}`,
+			`{"modernAddr":"256.256.256.256"}`,
+		},
+	)
+}
+
 // TestOneOfBooleanAndConstBranches is the behavioural half of issue #125.
 //
 // The sealed-interface union decides a branch by decoding the value into that
@@ -6630,6 +6732,198 @@ func TestHiddenKeywordSpellingsAreRead(t *testing.T) {
 			`{"patternConstNull":{"a1":1}}`,
 			`{"patternConstString":{"b1":"z"}}`,
 			`{"plainEnum":"z"}`,
+		},
+	)
+}
+
+// TestRecursiveRefBehavesLikeRef is the first half of what a $recursiveRef
+// needs, and it is the half the reason on file for these ten groups had wrong.
+//
+// Nothing here declares $recursiveAnchor: true, so the keyword resolves exactly
+// where a $ref would -- the resource it is written in -- and the resolver has
+// always got that right. What collapsed the type to `any` was the cycle the
+// resolved target closes: myobject's additionalProperties are myobjects, and a
+// schema that contains itself is not a tree of composite literals. The evaluator
+// carries it as a node variable the cycle points back at.
+//
+// The valid half is the control, and it is what the whole recursion is for. A
+// generated check that rejected `{"foo":{"bar":"hi"}}` would be a false
+// rejection reached by "fixing" the recursion into a refusal.
+func TestRecursiveRefBehavesLikeRef(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_ref_like_ref.json", "Root",
+		[]string{
+			`1`,
+			`{"foo":"hi"}`,
+			`{"foo":{"bar":"hi"}}`,
+			`{"foo":{"bar":{"baz":"hi"}}}`,
+		},
+		[]string{
+			`{"foo":1}`,
+			`{"foo":{"bar":1}}`,
+			`{"foo":{"bar":{"baz":1}}}`,
+		},
+	)
+}
+
+// TestRecursiveRefTakesTheOutermostAnchor is the other half: a $recursiveRef
+// whose destination the schema text does not fix.
+//
+// Three resources declare $recursiveAnchor: true, and which of them the keyword
+// inside inner.json means depends on whether the document's own property names
+// sent evaluation down `then` or `else`. `{"alpha":1.1}` enters anyLeafNode,
+// where a float is a leaf like any other; `{"november":1.1}` enters integerNode,
+// which admits only objects and integers. The keyword is one line of schema and
+// the two documents differ in one letter.
+//
+// The nested pair matter more than the flat ones. They are the documents that
+// prove the anchor is re-read at each level rather than resolved once: the outer
+// object picks the branch, and the inner value is judged by the branch the
+// *outer* object picked, because that resource is still the outermost one in
+// scope when the recursion comes back round.
+func TestRecursiveRefTakesTheOutermostAnchor(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_ref_outermost_anchor.json", "Root",
+		[]string{
+			`{"alpha":1.1}`,
+			`{"alpha":{"zulu":1.1}}`,
+			`{"november":1}`,
+			`{"november":{"alpha":2}}`,
+		},
+		[]string{
+			`{"november":1.1}`,
+			`{"november":{"alpha":1.1}}`,
+			`{"november":"text"}`,
+		},
+	)
+}
+
+// TestDynamicRefResolvesThroughTheScopeChain is the $dynamicRef spelling of the
+// same thing, and the shape the keyword was designed for: one generic list
+// definition whose element type is supplied by whichever resource referred to
+// it.
+//
+// genericList declares an itemType anchor of its own that admits everything --
+// the bookend, without which the reference would be an ordinary $ref -- and
+// numberList and stringList each declare one that does not. Both are on the
+// dynamic scope when the reference is reached and the outermost wins, so a
+// generated check that searched inwards-out would answer with the permissive
+// one and accept every list. The valid pairs are what catches the opposite
+// mistake, a check that answered with the wrong sibling and rejected the list
+// the document asked for.
+func TestDynamicRefResolvesThroughTheScopeChain(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/dynamic_ref_scope_chain.json", "Root",
+		[]string{
+			`{"kindOfList":"numbers","list":[1.1]}`,
+			`{"kindOfList":"strings","list":["foo"]}`,
+			`{"kindOfList":"numbers","list":[]}`,
+		},
+		[]string{
+			`{"kindOfList":"numbers","list":["foo"]}`,
+			`{"kindOfList":"strings","list":[1.1]}`,
+		},
+	)
+}
+
+// TestDynamicRefIgnoresALeftScope pins the direction the scope is a *stack*
+// rather than a set.
+//
+// first_scope declares thingy as a number and is entered by `if`, which finishes
+// before `then` begins -- so by the time the reference is reached that resource
+// has been left and its anchor is gone. inner_scope declares thingy as a string
+// and is where the reference statically points, which is what makes it a bookend
+// and nothing else. The answer is second_scope's, because that is the outermost
+// resource still in scope, and it says null.
+//
+// So the two rejections are each a different mistake: `42` is what a scope that
+// never pops accepts, and `"a string"` is what resolving statically to the
+// bookend accepts. Only `null` is right, and it is the only document here that
+// nothing else would accept.
+func TestDynamicRefIgnoresALeftScope(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/dynamic_ref_left_scope.json", "Root",
+		[]string{
+			`null`,
+		},
+		[]string{
+			`42`,
+			`"a string"`,
+		},
+	)
+}
+
+// TestRecursiveCompositionIsEnforced is the recursion on its own, with no
+// dynamic reference anywhere near it.
+//
+// A root anyOf of "a string, or an object of these" is an ordinary schema and
+// was `type Root any` -- a type Go forbids methods on, so json.Unmarshal into it
+// could not fail and every document below was accepted. The evaluator refused it
+// for the one reason that has nothing to do with $ref semantics: the compiled
+// literal would have to contain itself.
+//
+// It is also the fixture that isolates the first of the three spellings
+// HelpersReferencedBy watches for. Nothing here emits a DynamicRef or a resource
+// frame, so a file that stopped matching a bare node reference would name
+// _schemaNode.Ref with no such field declared, and this is the only test in the
+// tree that would fail to build.
+func TestRecursiveCompositionIsEnforced(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_composition.json", "Root",
+		[]string{
+			`"hi"`,
+			`{}`,
+			`{"a":"hi"}`,
+			`{"a":{"b":{"c":"hi"}}}`,
+		},
+		[]string{
+			`1`,
+			`{"a":1}`,
+			`{"a":{"b":{"c":1}}}`,
+		},
+	)
+}
+
+// TestDynamicRefEntersAResourceReferredToInTheMiddle is the case the test suite
+// does not have, and the one that decides whether the dynamic scope is a stack
+// of *resources entered* or a list of resource roots landed on.
+//
+// `then` points at outer#/$defs/entry -- inside the resource, not at its root --
+// and outer is where the restrictive `leaf` anchor lives. Reading the scope as
+// roots landed on never records outer at all, and the reference then answers
+// with inner's permissive `leaf`, which admits everything. Reading it as
+// resources entered records outer, outer is outermost, and its anchor wins.
+//
+// The anchor is on outer's own root rather than in its $defs, which is the
+// second thing this pins. A frame entered part-way into a resource hangs off the
+// node the reference landed on, not off the resource root, so the shorthand that
+// says "the node whose frame this is" cannot stand in for the root here -- and
+// `{"a":{"b":1}}` is judged by outer's `entry` subschema instead of by outer,
+// which admits it.
+//
+// The if/then is not decoration. A root that takes a static Go type keeps its
+// static checks, and this reference is compiled at all only because the root
+// composition sends the whole schema to the evaluator -- so the same three
+// resources written under a bare root $ref are still unenforced, which is the
+// gap noted beside this test rather than closed by it.
+//
+// The rejections are what the permissive reading accepts, and `5` and
+// `{"z":{"b":1}}` are the controls for the two halves of the conditional. The
+// expected verdicts are not this repository's opinion: they were taken from
+// google/jsonschema-go, run over the same six documents, before this test was
+// written.
+func TestDynamicRefEntersAResourceReferredToInTheMiddle(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/dynamic_ref_mid_resource_entry.json", "Root",
+		[]string{
+			`{"a":{"b":"x"}}`,
+			`{"a":{"b":{"c":"x"}}}`,
+			`5`,
+		},
+		[]string{
+			`{"a":{"b":1}}`,
+			`{"a":{"b":true}}`,
+			`{"z":{"b":1}}`,
 		},
 	)
 }

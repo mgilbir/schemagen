@@ -248,6 +248,12 @@ func allGoldenTests() []goldenTestCase {
 		// Issue #154: the two keyword spellings a re-marshaled schema does not
 		// show, beside the spellings it does, at each gate that reads one.
 		{"regression/hidden_keyword_spellings", "testdata/schemas/regression/hidden_keyword_spellings.json", "testdata/golden/regression/hidden_keyword_spellings.go"},
+		// The two things a schema needs when it is not a finite tree, in one
+		// file: node variables assigned in init() because the schema contains
+		// itself, and the resource frames a $recursiveRef is resolved against.
+		// The roundtrip tests say what the code decides; this says what it looks
+		// like, which is where a frame published by the wrong resource shows up.
+		{"regression/recursive_ref_outermost_anchor", "testdata/schemas/regression/recursive_ref_outermost_anchor.json", "testdata/golden/regression/recursive_ref_outermost_anchor.go"},
 	}
 }
 

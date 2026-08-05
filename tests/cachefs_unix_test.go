@@ -7,10 +7,12 @@ import (
 	"syscall"
 )
 
-// The two things this suite needs from the operating system to look after the
-// shared build cache: a lock that says who is using it, and the free space on
-// the volume it lives on. Both are unix calls, and both have a stated fallback
-// in cachefs_other_test.go for a platform that does not offer them.
+// The three things this suite needs from the operating system to look after the
+// directories it leaves in /tmp: a lock that says who is using the shared build
+// cache, the free space on the volume it lives on, and -- for the sweep's own
+// guards -- a file whose reader blocks. All are unix calls, and each has a
+// stated fallback in cachefs_other_test.go for a platform that does not offer
+// it.
 
 // cacheLockingSupported says the lock below is a real answer, which is what
 // lets a run delete the shared cache when it is the last one holding it.
@@ -33,6 +35,18 @@ func flockShared(f *os.File) bool {
 func flockExclusiveNB(f *os.File) bool {
 	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil
 }
+
+// makeBlockingFile creates a named pipe at path, and reports whether it could.
+//
+// It is fixture machinery rather than harness machinery. A generated program
+// reads its fixture with os.ReadFile, and an os.ReadFile of a FIFO blocks in the
+// open until a writer arrives -- which is what lets a guard hold a *real* work
+// directory genuinely mid-use, module compiled and program running inside it,
+// at an instant it chooses rather than an instant it hopes for. Sleeping for a
+// build that usually takes three seconds is the alternative, and a guard that
+// silently stops covering the thing it names on a loaded machine is not a
+// guard.
+func makeBlockingFile(path string) bool { return syscall.Mkfifo(path, 0o600) == nil }
 
 // freeBytes reports the space available to this user on the filesystem holding
 // path.

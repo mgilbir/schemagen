@@ -177,25 +177,47 @@ var knownValidationFailures = map[string]string{
 // and scope-aware $anchor indexing in the generator now produce consistent results.)
 var knownFlakyTests = map[string]bool{}
 
-// Reasons for knownUnvalidatedRejections. Each names a root-schema shape that
-// resolves to `any` — a bare interface carries no Validate, so nothing about
-// the group is ever checked. They are constants rather than repeated literals
-// so that fixing a shape is one grep and one delete, not 90.
+// The reasons for knownUnvalidatedRejections used to live here. Each named why
+// a group's root resolved to `any` — a bare interface carries no Validate, so
+// nothing about the group was ever checked — and they were constants rather than
+// repeated literals so that fixing one cause was one grep and one delete, not
+// 90.
 //
-// Three are gone rather than left empty: gapRootRefToFalse, which #116 answered
-// by giving a $ref to a boolean false the forbidding wrapper the root already
-// had, gapRootDependenciesOnly, which #117 answered by reading draft 3's
-// bare-string dependency, and gapRootContentOnly, which #115 answered by giving
+// There are none left, and the history of how they went is worth more than the
+// empty const block would be.
+//
+// Six went because the shape stopped being a gap. gapRootRefToFalse, which #116
+// answered by giving a $ref to a boolean false the forbidding wrapper the root
+// already had; gapRootDependenciesOnly, which #117 answered by reading draft 3's
+// bare-string dependency; and gapRootContentOnly, which #115 answered by giving
 // a content keyword with no declared type the same string wrapper #106 gave a
 // format. A reason nothing cites is a shape that is no longer a gap, and keeping
 // the constant would invite the next entry to be filed under something already
 // fixed.
-const (
-	gapRootFormatOnly      = `root states only "format", which names no Go type, so the root resolves to any and carries no Validate`
-	gapRootCompositionOnly = `root is composition alone (allOf/anyOf/oneOf/not) and states no type of its own, so the root resolves to any and carries no Validate`
-	gapRootConditionalOnly = `root is if/then/else alone and states no type of its own, so the root resolves to any and carries no Validate`
-)
-
+//
+// Three went for a different reason: they were not true. Two of them,
+// gapRootCompositionOnly and gapRootConditionalOnly, said that a root stating
+// only anyOf, or only if/then/else, resolves to any for that reason -- which
+// this generator has not done since #113/#114, and the goldens for an anyOf and
+// a oneOf root say so. Every group filed under them was a $recursiveRef or a
+// $dynamicRef group. The last, gapRootFormatOnly, was answered for 88 of its 90
+// entries by #106 and kept the remaining five on a reason that had stopped
+// describing them: three named draft 3's own spellings of formats this generator
+// does check under the modern names, and two named a format the custom
+// metaschema they declare asserts by vocabulary.
+//
+// A wrong reason is worse than no reason. It says the group has been diagnosed,
+// so the next reader starts from the diagnosis rather than from the schema --
+// which is how five entries sat behind "the root is a format" while two of them
+// were about a vocabulary declaration and three about a spelling table. The
+// replacement written for the last ten was wrong in its own way, and only by one
+// word: it said the reference had "no target this generator resolves
+// statically", when five of the ten resolved perfectly well and collapsed
+// anyway, because what the compiled evaluator could not express was the *cycle*
+// the resolved target closed. Re-deriving it from the schemas is what found
+// that; taking the reason on trust would have built a resolver for a resolution
+// that already worked.
+//
 // knownUnvalidatedRejections allow-lists groups that produce no Validate()
 // method while the suite marks at least one of their documents invalid.
 //
@@ -215,12 +237,18 @@ const (
 // shape knownValidationFailures uses, minus the per-case suffix, because the
 // skip happens once for the whole group, before any case runs.
 //
-// Re-measured 2026-08-04 against suite commit cf2e5e0: 20 of the 39 skipped
-// groups, down from 111 of 213. Sections are ordered by size; fixing a root
-// shape prunes a whole section at once, which is what happened earlier — a
-// format with no "type" is now the wrapper issue #106 asks for rather than
-// `any`, so 88 of the 90 entries filed under gapRootFormatOnly went with it,
-// along with the last of gapRootRefToFalse and gapRootDependenciesOnly.
+// Measured 2026-08-04 against suite commit cf2e5e0: 20 of the 39 skipped
+// groups, down from 111 of 213. Fixing one cause prunes a whole section at
+// once, which is what happened earlier — a format with no "type" is now the
+// wrapper issue #106 asks for rather than `any`, so 88 of the 90 entries filed
+// under gapRootFormatOnly went with it, along with the last of gapRootRefToFalse
+// and gapRootDependenciesOnly.
+//
+// That pair of numbers has not been re-measured since: five entries left this
+// list below, and each of those groups also stopped being skipped, so both
+// figures moved and neither was taken again. Whoever runs the whole corpus next
+// should restate them rather than subtract, since the skipped total counts
+// groups this list never named.
 //
 // The #121 corpus bump left every one of the 18 entries measured at bce6a47
 // standing — the staleness sweep named none of them — and added exactly two,
@@ -230,31 +258,18 @@ const (
 // others. Both failed by name on the first run that walked v1, rather than
 // arriving as a silent skip.
 //
-// The section counts below were re-derived from the entries rather than carried
-// forward: gapRootCompositionOnly and gapRootConditionalOnly said 37 and 21
-// while holding 11 and 4, left behind when #113/#114 pruned them.
-var knownUnvalidatedRejections = map[string]string{
-	// gapRootFormatOnly (5 entries)
-	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: false": gapRootFormatOnly,
-	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: true":  gapRootFormatOnly,
-	"draft3/optional/format/color/validation of CSS colors":                                                  gapRootFormatOnly,
-	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
-	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
-
-	// gapRootCompositionOnly (10 entries)
-	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapRootCompositionOnly,
-
-	// gapRootConditionalOnly (5 entries)
-	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)": gapRootConditionalOnly,
-	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
-	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
-	// v1 has no counterpart to "multiple dynamic paths": its dynamicRef.json is
-	// 2020-12's minus that group, so only one of the pair is listed here. An
-	// entry for it would be reported stale rather than quietly ignored.
-	"v1/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef": gapRootConditionalOnly,
-}
+// The last section was ten $recursiveRef and $dynamicRef groups, and it is
+// empty. The runtime evaluator carries the dynamic scope now -- the stack of
+// schema resources entered on the way to the keyword, searched from the
+// outermost in -- and it can express a schema that contains itself, which is
+// what the five "works like $ref" groups actually needed and what the reason on
+// file had misdiagnosed. All ten produce a Validate() and every document in them
+// gets the verdict the suite gives it, in both directions.
+//
+// The map stays declared rather than being deleted, because it is a ratchet and
+// an empty ratchet is still a ratchet: the next group that produces no
+// Validate() while carrying a document the suite forbids fails
+// TestExternalValidation by name, and clearing that failure means adding a key
+// here deliberately, with a reason. Empty is the strongest state this list can
+// be in and the easiest one to lose.
+var knownUnvalidatedRejections = map[string]string{}

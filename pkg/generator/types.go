@@ -1661,9 +1661,24 @@ type AnnotationSchemaDef struct {
 	Description string
 	NodeLiteral string // Go composite literal for the root _schemaNode
 
+	// Nodes are the schemas hoisted into variables of their own because a
+	// reference leads back to them: a schema whose additionalProperties are
+	// schemas of the same shape describes a cycle, and a cycle cannot be written
+	// as one composite literal. When this is non-empty the variables are
+	// assigned in init() rather than at declaration, because Go refuses a cycle
+	// between package-level initialisers and that is exactly what this is.
+	Nodes []RuntimeNodeVar
+
 	// NeedsPattern reports whether the literal names an ECMA-262 pattern, which
 	// is what pulls the regexp engine into the package's helper file.
 	NeedsPattern bool
+}
+
+// RuntimeNodeVar is one node of a recursive compiled schema, emitted as a
+// package-level variable so the rest of the schema can point back at it.
+type RuntimeNodeVar struct {
+	Name    string
+	Literal string
 }
 
 func (d *AnnotationSchemaDef) TypeName() string { return d.Name }
