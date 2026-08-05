@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemagen.test/ref-keywords/2020",
+  "type": "object",
+  "properties": {
+    "dynTree": { "$ref": "dynNode" }
+  },
+  "$defs": {
+    "dynNode": {
+      "$id": "dynNode",
+      "$dynamicAnchor": "dynNode",
+      "type": "object",
+      "properties": { "leaf": { "type": "integer" } },
+      "additionalProperties": { "$dynamicRef": "#dynNode" }
+    }
+  }
+}

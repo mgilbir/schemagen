@@ -294,3 +294,91 @@ func TestHelpersReferencedByReadsTheDynamicArms(t *testing.T) {
 		})
 	}
 }
+
+// TestReferenceKeywordsFollowTheirDialect is issue #161 at the level the fix is
+// written: the normalization pass, over every draft this generator identifies.
+//
+// The compiled-and-run half is TestReferenceKeywordsAreIgnoredByDraftsWithoutThem,
+// which covers draft 7, 2019-09, 2020-12 and v1. Drafts 3, 4 and 6 have no
+// fixture of their own -- neither keyword can appear in a suite file for them and
+// a hand-written one would say what draft 7's already says -- so this is what
+// holds them, and it is a table rather than three more fixtures because the
+// question is the same question seven times.
+//
+// The two keywords are asked separately of every draft, and 2019-09 is why: it
+// defines one of them and not the other, so a gate written per draft rather than
+// per keyword passes every other row here and fails that one.
+func TestReferenceKeywordsFollowTheirDialect(t *testing.T) {
+	for _, tc := range []struct {
+		draft    string
+		uri      string
+		defsKey  string
+		keepsRec bool
+		keepsDyn bool
+	}{
+		{draft: "3", uri: "http://json-schema.org/draft-03/schema#", defsKey: "definitions"},
+		{draft: "4", uri: "http://json-schema.org/draft-04/schema#", defsKey: "definitions"},
+		{draft: "6", uri: "http://json-schema.org/draft-06/schema#", defsKey: "definitions"},
+		{draft: "7", uri: "http://json-schema.org/draft-07/schema#", defsKey: "definitions"},
+		{draft: "2019-09", uri: "https://json-schema.org/draft/2019-09/schema", defsKey: "$defs", keepsRec: true},
+		{draft: "2020-12", uri: "https://json-schema.org/draft/2020-12/schema", defsKey: "$defs", keepsRec: true, keepsDyn: true},
+		{draft: "v1", uri: "https://json-schema.org/v1", defsKey: "$defs", keepsRec: true, keepsDyn: true},
+	} {
+		t.Run(tc.draft, func(t *testing.T) {
+			src := `{
+				"$schema": "` + tc.uri + `",
+				"$id": "https://schemagen.test/ref-keywords/` + tc.draft + `",
+				"properties": {
+					"rec": {"$recursiveRef": "#/` + tc.defsKey + `/narrow"},
+					"dyn": {"$dynamicRef": "#/` + tc.defsKey + `/narrow"}
+				},
+				"` + tc.defsKey + `": {"narrow": {"type": "integer"}}
+			}`
+			_, root := dynamicScopeFixture(t, src)
+			if got := root.Properties["rec"].RecursiveRef != ""; got != tc.keepsRec {
+				t.Errorf("draft %s keeps $recursiveRef = %v, want %v", tc.draft, got, tc.keepsRec)
+			}
+			if got := root.Properties["dyn"].DynamicRef != ""; got != tc.keepsDyn {
+				t.Errorf("draft %s keeps $dynamicRef = %v, want %v", tc.draft, got, tc.keepsDyn)
+			}
+			// EffectiveRef is the function issue #161 names, and the one some
+			// forty call sites read. Clearing the field is what makes it agree,
+			// so it is asserted here rather than assumed to follow.
+			if got := root.Properties["rec"].EffectiveRef() != ""; got != tc.keepsRec {
+				t.Errorf("draft %s: EffectiveRef reports a reference = %v, want %v", tc.draft, got, tc.keepsRec)
+			}
+		})
+	}
+}
+
+// TestReferenceKeywordsFollowTheNodesOwnDialect is the half of the pass that a
+// document-wide gate would get wrong.
+//
+// $schema is declared per resource, so a 2019-09 resource embedded in a draft-7
+// document is read under 2019-09 and keeps its $recursiveRef, while the draft-7
+// nodes around it lose theirs. The same rule normalizeDialectFormats applies to
+// draft 3's format spellings, and the same reason refOverridesSiblingsForSchema
+// exists beside refOverridesSiblings.
+func TestReferenceKeywordsFollowTheNodesOwnDialect(t *testing.T) {
+	_, root := dynamicScopeFixture(t, `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://schemagen.test/mixed/main",
+		"properties": {"host": {"$recursiveRef": "#/definitions/narrow"}},
+		"definitions": {
+			"narrow": {"type": "integer"},
+			"embedded": {
+				"$id": "https://schemagen.test/mixed/embedded",
+				"$schema": "https://json-schema.org/draft/2019-09/schema",
+				"properties": {"guest": {"$recursiveRef": "#/$defs/narrow"}},
+				"$defs": {"narrow": {"type": "integer"}}
+			}
+		}
+	}`)
+	if got := root.Properties["host"].RecursiveRef; got != "" {
+		t.Errorf("the draft-7 host kept $recursiveRef = %q", got)
+	}
+	embedded := root.Definitions["embedded"]
+	if got := embedded.Properties["guest"].RecursiveRef; got == "" {
+		t.Error("the embedded 2019-09 resource lost its $recursiveRef; the gate is reading the document rather than the node")
+	}
+}

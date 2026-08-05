@@ -299,6 +299,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// answerable.
 	g.normalizeDialectFormats(s)
 
+	// And drop the two reference keywords from the dialects that do not define
+	// them, for the same reason and in the same place.
+	g.normalizeDialectRefKeywords(s)
+
 	// Collect definitions ($defs and definitions) and build anchor index.
 	// Iterate in sorted key order for deterministic anchor registration
 	// (important when multiple defs declare the same $anchor in different scopes).
@@ -1600,6 +1604,113 @@ func (g *Generator) normalizeDialectFormats(s *schema.Schema) {
 	walk(s)
 }
 
+// normalizeDialectRefKeywords removes $recursiveRef and $dynamicRef from the
+// nodes whose own dialect does not define them.
+//
+// Each keyword arrived in a particular draft, and the drafts before it do not
+// have it. $recursiveRef arrived in 2019-09, so drafts 3, 4, 6 and 7 have never
+// heard of it; $dynamicRef arrived in 2020-12, so 2019-09 has not heard of that
+// one either. A schema writing one where its dialect does not define it states
+// an unknown keyword, and every draft says the same thing about those: ignore
+// them. This generator honoured both on every draft, which is over-enforcement
+// rather than the under-enforcement most of these findings are -- a draft-7
+// schema whose $recursiveRef target is narrower than the schema itself refused a
+// document draft-7 readers, ignoring the keyword, accept (issue #161). No file
+// in the pinned suite exercises it: $recursiveRef appears only under
+// draft2019-09 and $dynamicRef only under draft2020-12 and v1, so the corpus
+// could never have caught this and a hand-written fixture is the only way in.
+//
+// A pass rather than a test at each reader, for the reason normalizeDialectFormats
+// gives above it: sixty-nine calls to EffectiveRef and getting on for a hundred
+// direct reads of the two fields stand outside the tests, they do not agree on
+// what they are asking, and a rule applied per reader is a rule the next reader
+// added will not apply. Clearing the field
+// once, where the dialect is known and before anything has looked, is what makes
+// the answer the same in all of them -- including Schema.EffectiveRef, which
+// returns $recursiveRef unconditionally and is the function the issue names.
+//
+// The gate is per node, so a 2019-09 resource embedded in a draft-7 document
+// keeps its $recursiveRef and the host document does not gain one.
+//
+// A dialect this generator cannot identify is left alone. DraftUnknown is not
+// only "no $schema": it is also what a document declaring a custom metaschema
+// answers, and such a metaschema may perfectly well assemble a vocabulary that
+// defines the keyword -- two groups of the suite declare one. Dropping the
+// keyword there would discard a constraint the document means, on no evidence
+// beyond this generator not recognising a URI.
+func (g *Generator) normalizeDialectRefKeywords(s *schema.Schema) {
+	seen := make(map[*schema.Schema]bool)
+	var walk func(*schema.Schema)
+	walk = func(n *schema.Schema) {
+		if n == nil || seen[n] {
+			return
+		}
+		seen[n] = true
+		if n.RecursiveRef != "" && !recursiveRefDefinedForDraft(g.draftForSchema(n)) {
+			n.RecursiveRef = ""
+		}
+		if n.DynamicRef != "" && !dynamicRefDefinedForDraft(g.draftForSchema(n)) {
+			n.DynamicRef = ""
+		}
+		for _, sub := range allSubSchemas(n) {
+			walk(sub)
+		}
+		// The two allSubSchemas leaves out; a reference under either is as much
+		// the dialect's business as any other.
+		walk(n.PropertyNames)
+		walk(n.ContentSchema)
+	}
+	walk(s)
+}
+
+// recursiveRefDefinedForDraft reports whether $recursiveRef is a keyword of the
+// draft, rather than a word the draft has never heard of.
+//
+// It arrived in 2019-09, so drafts 3, 4, 6 and 7 do not have it and a schema
+// writing it there states an unknown keyword. That is the whole of what this
+// answers, and the four early drafts are the whole of what it says no to.
+//
+// 2020-12 is the interesting one and it is deliberately a yes. The keyword is
+// not in 2020-12's core vocabulary -- $dynamicRef replaced it -- so a reading of
+// the specification alone would drop it there too, and the reading was checked
+// rather than assumed: over {"additionalProperties":{"$recursiveRef":"#"}}
+// declared as 2020-12, python-jsonschema ignores the keyword and both
+// santhosh-tekuri implementations (go-jsonschema and rust-boon) go on honouring
+// it. Two answers from three implementations is not a settled question, and this
+// repository's rule for a split oracle is to record it rather than pick a
+// favourite. Dropping the keyword there would also be the one direction that
+// cannot be taken back cheaply: every document the target refused becomes
+// accepted. The four early drafts have no such split, because the keyword did
+// not exist for anything to disagree about.
+//
+// DraftUnknown answers true for a different reason again -- see
+// normalizeDialectRefKeywords.
+func recursiveRefDefinedForDraft(d schema.Draft) bool {
+	switch d {
+	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
+		return false
+	default:
+		return true
+	}
+}
+
+// dynamicRefDefinedForDraft reports whether $dynamicRef is a keyword of the
+// draft.
+//
+// It replaced $recursiveRef in 2020-12, so 2019-09 does not have it either and
+// the span this says no to is one draft wider. That is not an inference from the
+// specification alone: over {"additionalProperties":{"$dynamicRef":"#node"}}
+// declared as 2019-09, python-jsonschema, go-jsonschema and rust-boon all three
+// ignore the keyword, and all three ignore it on draft 6 and draft 7 as well.
+func dynamicRefDefinedForDraft(d schema.Draft) bool {
+	switch d {
+	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07, schema.Draft201909:
+		return false
+	default:
+		return true
+	}
+}
+
 // formatRulesForDialect rewrites a rule set's format keywords to the spelling
 // the schema's own draft gives them. Only "time" differs by draft under a name
 // every draft shares; the names draft 3 alone has are settled earlier, on the
@@ -2020,6 +2131,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	if g.generated[name] {
 		return nil
 	}
+
 	if _, ok := g.typeSchemas[name]; !ok {
 		g.typeSchemas[name] = s
 	}

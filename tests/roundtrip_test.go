@@ -6927,3 +6927,115 @@ func TestDynamicRefEntersAResourceReferredToInTheMiddle(t *testing.T) {
 		},
 	)
 }
+
+// TestReferenceKeywordsAreIgnoredByDraftsWithoutThem is issue #161, and it is
+// the rarer half of these findings: over-enforcement, which refuses a document
+// the draft permits.
+//
+// $recursiveRef arrived in 2019-09 and $dynamicRef replaced it in 2020-12, so a
+// draft-7 schema carrying either states a keyword its dialect never defined --
+// and every draft says to ignore an unknown keyword. Schema.EffectiveRef
+// returned $recursiveRef whatever the draft, so this generator honoured it
+// everywhere, and a draft-7 recNode whose additionalProperties are recNodes
+// refused {"recTree":{"a":"x"}}, which a draft-7 reader accepts.
+//
+// The corpus cannot see this. $recursiveRef appears only under draft2019-09 in
+// the pinned suite and $dynamicRef only under draft2020-12 and v1, so the gate
+// has no file carrying either keyword into a draft that lacks it, and these four
+// fixtures are the only thing that does.
+//
+// The accept-controls matter more than the rejections here. A gate that simply
+// stopped reading both keywords would pass every draft-7 case below and break
+// the drafts that define them, so 2019-09 is asserted to go on honouring
+// $recursiveRef -- two levels deep, so a fix that dropped only the recursion
+// would fail -- and 2020-12 and v1 to go on honouring $dynamicRef. 2019-09 also
+// carries the $dynamicRef half, which it does not define either, and that is the
+// one draft where the two keywords must answer differently: a gate written per
+// draft rather than per keyword cannot pass both of its rows.
+//
+// The verdicts are Bowtie's, over python-jsonschema, go-jsonschema and
+// rust-boon, which agree on every document asserted here -- except v1's, which
+// none of the three can answer because none of them declares that dialect. The
+// v1 fixture is its 2020-12 twin with two URIs changed, so what it asserts is
+// that v1 follows 2020-12, which is what DraftV1 exists to say.
+//
+// The one case the three split on -- whether 2020-12 still honours
+// $recursiveRef, which its core vocabulary no longer defines -- is deliberately
+// asserted nowhere, and schemagen goes on honouring it; see
+// recursiveRefDefinedForDraft.
+func TestReferenceKeywordsAreIgnoredByDraftsWithoutThem(t *testing.T) {
+	t.Run("draft7 ignores both", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_draft7.json",
+			[]string{
+				`{}`,
+				`{"recTree":{"leaf":1},"dynTree":{"leaf":1}}`,
+				`{"recTree":{"a":"x"}}`,
+				`{"dynTree":{"a":"x"}}`,
+				`{"recTree":{"a":{"leaf":1}}}`,
+				`{"recTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+			},
+			[]string{
+				// `type` is the control: it is read on every draft, so a fixture
+				// that rejected nothing at all could not tell a working generator
+				// from one that emitted no Validate.
+				`{"recTree":"x"}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("2019-09 honours $recursiveRef and ignores $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_2019.json",
+			[]string{
+				`{}`,
+				`{"recTree":{"leaf":1},"dynTree":{"leaf":1}}`,
+				`{"recTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+			},
+			[]string{
+				`{"recTree":{"a":"x"}}`,
+				`{"recTree":{"a":{"leaf":"x"}}}`,
+				`{"recTree":"x"}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("2020-12 honours $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_2020.json",
+			[]string{
+				`{}`,
+				`{"dynTree":{"leaf":1}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+			},
+			[]string{
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("v1 honours $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_v1.json",
+			[]string{
+				`{}`,
+				`{"dynTree":{"leaf":1}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+			},
+			[]string{
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+}
