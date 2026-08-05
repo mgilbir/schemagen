@@ -226,6 +226,11 @@ func allGoldenTests() []goldenTestCase {
 		// Pins that an if/then/else with a boolean `if` or a boolean branch is
 		// given a name to live in wherever it is written, not only at a root.
 		{"regression/if_boolean_branch_positions", "testdata/schemas/regression/if_boolean_branch_positions.json", "testdata/golden/regression/if_boolean_branch_positions.go"},
+		// Issue #151, both sides of the draft split: through draft 7 the enum
+		// arms stand behind the ref arms and the sibling names no type at all,
+		// from 2019-09 on they run first and it does.
+		{"regression/ref_sibling_values_draft7", "testdata/schemas/regression/ref_sibling_values_draft7.json", "testdata/golden/regression/ref_sibling_values_draft7.go"},
+		{"regression/ref_sibling_values_2020", "testdata/schemas/regression/ref_sibling_values_2020.json", "testdata/golden/regression/ref_sibling_values_2020.go"},
 	}
 }
 

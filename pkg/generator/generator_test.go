@@ -8535,3 +8535,51 @@ func hasRuntimeBranchCheck(checks []RuntimeBranchCheck, keyword string) bool {
 	}
 	return false
 }
+
+// TestRefDisplacesSiblingValuesFollowsTheDraft is issue #151's predicate.
+//
+// Through draft 7 a $ref replaces everything written beside it, so the enum arms
+// must stand behind the ref arms; from 2019-09 on it is an ordinary applicator
+// and they must not. An unknown draft is read as modern, which is the direction
+// that keeps a check.
+func TestRefDisplacesSiblingValuesFollowsTheDraft(t *testing.T) {
+	cases := []struct {
+		draft     schema.Draft
+		displaces bool
+	}{
+		{schema.Draft03, true},
+		{schema.Draft04, true},
+		{schema.Draft06, true},
+		{schema.Draft07, true},
+		{schema.Draft201909, false},
+		{schema.Draft202012, false},
+		{schema.DraftV1, false},
+		{schema.DraftUnknown, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.draft.String(), func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			g.draft = tc.draft
+			g.draftOverridden = true
+
+			var withRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"$ref":"#/$defs/T","const":"a"}`), &withRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			withRef.Normalize()
+			if got := g.refDisplacesSiblingValues(&withRef); got != tc.displaces {
+				t.Fatalf("refDisplacesSiblingValues(const beside $ref) on %s = %v, want %v", tc.draft, got, tc.displaces)
+			}
+
+			// No $ref, nothing to displace with -- on every draft.
+			var noRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"const":"a"}`), &noRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			noRef.Normalize()
+			if g.refDisplacesSiblingValues(&noRef) {
+				t.Fatalf("refDisplacesSiblingValues(bare const) on %s = true; there is no reference for the sibling to stand behind", tc.draft)
+			}
+		})
+	}
+}

@@ -6179,3 +6179,71 @@ func TestEnumFilterReadsWhatTheTypeAsserts(t *testing.T) {
 		)
 	})
 }
+
+// TestRefSiblingValuesFollowTheDraft is issue #151, both sides of the split.
+//
+// Through draft 7 a $ref replaces everything written beside it, and the enum arm
+// of each ladder that turns a schema into a Go type ran ahead of the ref arms --
+// so the sibling decided the type and the reference was never followed. That is
+// over-enforcement: "abc" satisfies the referenced schema and was refused for a
+// const the draft says is not there to be read. All five draft-7 accept rows
+// below were rejections before this change.
+//
+// "ab" is what keeps the fix from being "drop the check": with the sibling
+// ignored the *target* still applies, and a schema that fell through to `any`
+// would accept it. The 2020-12 fixture is the other control -- there the sibling
+// does apply, and every one of its rejections has to survive a change that
+// removes the same rejections one draft earlier.
+func TestRefSiblingValuesFollowTheDraft(t *testing.T) {
+	t.Run("draft7IgnoresTheSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_values_draft7.json",
+			[]string{
+				`{}`,
+				`{"constSibling":"abc"}`,
+				`{"enumSibling":"abc"}`,
+				`{"emptyEnumSibling":"abc"}`,
+				`{"listSibling":["abc"]}`,
+				`{"mapSibling":{"k":"abc"}}`,
+				`{"namedSibling":"abc"}`,
+				`{"namedEmptyEnum":"abc"}`,
+				`{"noSibling":"abc"}`,
+			},
+			[]string{
+				`{"constSibling":"ab"}`,
+				`{"enumSibling":"ab"}`,
+				`{"emptyEnumSibling":"ab"}`,
+				`{"listSibling":["ab"]}`,
+				`{"mapSibling":{"k":"ab"}}`,
+				`{"namedSibling":"ab"}`,
+				`{"namedEmptyEnum":"ab"}`,
+				`{"noSibling":"ab"}`,
+			},
+		)
+	})
+	t.Run("2020AppliesTheSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_values_2020.json",
+			[]string{
+				`{}`,
+				`{"constSibling":"a"}`,
+				`{"enumSibling":"a"}`,
+				`{"enumSibling":"c"}`,
+				`{"listSibling":["a"]}`,
+				`{"mapSibling":{"k":"a"}}`,
+				`{"namedSibling":"a"}`,
+				`{"noSibling":"false"}`,
+			},
+			[]string{
+				`{"constSibling":"false"}`,
+				`{"enumSibling":"false"}`,
+				`{"emptyEnumSibling":"false"}`,
+				`{"listSibling":["false"]}`,
+				`{"mapSibling":{"k":"false"}}`,
+				`{"namedSibling":"false"}`,
+				`{"namedEmptyEnum":"false"}`,
+				`{"namedEmptyEnum":"a"}`,
+			},
+		)
+	})
+}

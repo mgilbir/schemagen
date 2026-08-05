@@ -1884,7 +1884,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// encoding/json leaves the field nil when the keyword is absent and allocates
 	// an empty slice for `[]`, so len() alone cannot tell them apart and would
 	// forbid every schema in the corpus.
-	if g.validationKeywordsEnabled() && s.Enum != nil && len(s.Enum) == 0 {
+	//
+	// refDisplacesSiblingValues is what keeps all three enum arms behind the ref
+	// arms on the drafts that say the reference wins; see issue #151.
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && s.Enum != nil && len(s.Enum) == 0 {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
@@ -1895,12 +1900,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
-	if g.validationKeywordsEnabled() {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum {
 		s = promoteConstToEnum(s)
 	}
 
 	// Enum type
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		return g.generateEnumDef(name, s)
 	}
 
@@ -6395,12 +6400,16 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// Only promote when no explicit type is specified (the enum is needed to
 	// determine the Go type). When type IS specified, keep the natural Go type
 	// and rely on the "const" validation rule for enforcement.
-	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
+	//
+	// refDisplacesSiblingValues holds both arms behind the ref arms below on the
+	// drafts where the reference displaces what is written beside it (issue #151).
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum → generate enum type
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		enumName := parentName + fieldName
 		if err := g.generateEnumDef(enumName, s); err != nil {
 			return nil, err
@@ -6850,12 +6859,16 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// items:{"const":5} resolves to `any` and the const is enforced nowhere.
 	// The promotion returns a copy, but the enum arm below consumes it and
 	// returns, so it never reaches the node-identity bookkeeping further down.
-	if g.validationKeywordsEnabled() && len(s.Type) == 0 {
+	//
+	// Both arms stand behind the ref arms on the drafts where a $ref displaces
+	// what is written beside it; see refDisplacesSiblingValues and issue #151.
+	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum
-	if g.validationKeywordsEnabled() && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
 		enumName := contextName
 		_ = g.generateEnumDef(enumName, s)
 		return &NamedType{Name: enumName}
@@ -10275,7 +10288,17 @@ func (g *Generator) forbidsEveryValueOnPath(s *schema.Schema, depth int, onPath 
 	// written empty, and a list its own "type" filters empty (#145). Both are
 	// behind the validation vocabulary, since a metaschema withholding `enum`
 	// and `type` makes neither assert anything.
-	if g.validationKeywordsEnabled() && (emptyEnumSchema(s) || g.declaredTypeAdmitsNoEnumMember(s)) {
+	//
+	// Neither is read beside a $ref on a draft that displaces its siblings, for
+	// the reason declaredTypeAdmitsNoEnumMember already declines there: the enum
+	// is not written as far as that draft is concerned, so it states no members
+	// and cannot make the schema empty. Reading it refuses documents the
+	// referenced schema admits, which is issue #151's over-enforcement reached
+	// by the one route that is not a type ladder -- a $defs entry spelled
+	// {"$ref":"#/definitions/Word","enum":[]} made its property forbidden on
+	// draft 7.
+	if g.validationKeywordsEnabled() && !g.refDisplacesSiblingValues(s) &&
+		(emptyEnumSchema(s) || g.declaredTypeAdmitsNoEnumMember(s)) {
 		return true
 	}
 	if onPath == nil {
@@ -11670,6 +11693,31 @@ func refOverridesSiblingsForDraft(draft schema.Draft) bool {
 		// DraftUnknown: be conservative and assume modern behavior.
 		return false
 	}
+}
+
+// refDisplacesSiblingValues reports whether an `enum` or a `const` written
+// beside a $ref is one the draft says to ignore.
+//
+// Through draft 7 a $ref replaces everything written beside it -- the rule
+// refOverridesSiblingsForSchema states, and the one #118 applied to `type`. The
+// three ladders that turn a schema into a Go type each read the enum *before*
+// their ref arms: generateTypeDef, resolvePropertyType and resolveType all
+// promote a const, then answer with the enum type. So on those drafts the
+// sibling decided the type and the reference was never followed, and
+// {"$ref":"#/definitions/aString","const":"a"} rejected "b" -- a document the
+// draft admits, since the const is not there to be read (issue #151).
+//
+// From 2019-09 on $ref is an ordinary applicator and the sibling does apply, so
+// the arms keep their order there and nothing changes. That is the whole of the
+// difference: this is not a claim about which of the two should win where both
+// apply, only about the drafts where one of them is not written at all.
+//
+// It is asked of the schema rather than of the run because $schema is a
+// per-document declaration and a $ref may cross into a document that makes a
+// different one -- the same reason refOverridesSiblingsForSchema exists beside
+// refOverridesSiblings.
+func (g *Generator) refDisplacesSiblingValues(s *schema.Schema) bool {
+	return s != nil && s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)
 }
 
 func (g *Generator) validationKeywordsEnabled() bool {
