@@ -295,6 +295,131 @@ func TestHelpersReferencedByReadsTheDynamicArms(t *testing.T) {
 	}
 }
 
+// TestDynamicScopeDecidesTheTarget is the narrowing that keeps issue #160's fix
+// from claiming every schema that mentions these two keywords.
+//
+// Compiling a schema to the runtime evaluator is what makes a bookended
+// reference resolve per document, and it costs the caller the struct or named
+// type the static path would have produced. That price is worth paying only
+// where the schema really does leave the target open, so the predicate asks
+// whether a second declaration of the anchor is in reach -- and the two false
+// cases below are what say it asks that rather than "does a dynamic reference
+// appear anywhere".
+//
+// The recursive tree is the shape every $recursiveRef in the test suite is
+// written as, and the shape most real 2019-09 schemas use. It anchors one
+// resource and refers back to it, so the answer is the same down every path and
+// the type it generates today is the right one. Answering true for it would turn
+// each of those into a raw-JSON wrapper for no gain.
+func TestDynamicScopeDecidesTheTarget(t *testing.T) {
+	t.Run("two resources supply the same anchor", func(t *testing.T) {
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://schemagen.test/two-paths/main",
+			"type": "object",
+			"properties": {
+				"numbers": {"$ref": "numberList"},
+				"strings": {"$ref": "stringList"}
+			},
+			"$defs": {
+				"genericList": {
+					"$id": "genericList",
+					"properties": {"list": {"items": {"$dynamicRef": "#itemType"}}},
+					"$defs": {"defaultItemType": {"$dynamicAnchor": "itemType"}}
+				},
+				"numberList": {
+					"$id": "numberList",
+					"$defs": {"itemType": {"$dynamicAnchor": "itemType", "type": "number"}},
+					"$ref": "genericList"
+				},
+				"stringList": {
+					"$id": "stringList",
+					"$defs": {"itemType": {"$dynamicAnchor": "itemType", "type": "string"}},
+					"$ref": "genericList"
+				}
+			}
+		}`)
+		if !g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("numberList and stringList both declare itemType and both reach the same reference, " +
+				"so which one it means is a fact about the document and no single Go type can state it")
+		}
+		// genericList on its own reaches only its own declaration, and a caller
+		// validating against that type starts the dynamic scope there -- so the
+		// static answer is the whole answer and the type it has stays.
+		if g.dynamicScopeDecidesTheTarget(root.Defs["genericList"]) {
+			t.Error("genericList alone reaches one declaration of itemType, so its reference has one possible target")
+		}
+		// numberList is what makes following references load-bearing. It holds
+		// one declaration of itemType and no dynamic reference at all; the
+		// reference, and the second declaration that competes with its own, are
+		// both inside genericList, which it can reach only through its $ref. A
+		// walk of the subtree alone finds neither and answers false.
+		if !g.dynamicScopeDecidesTheTarget(root.Defs["numberList"]) {
+			t.Error("numberList reaches genericList only through its $ref, and that is where both the reference " +
+				"and the competing declaration of itemType are; a reach that does not follow references misses them")
+		}
+	})
+
+	t.Run("one resource supplies the anchor", func(t *testing.T) {
+		// The second $recursiveAnchor, on `inner`, is what makes the count a
+		// count of *resources* rather than of nodes. A $recursiveAnchor anchors
+		// the root of the resource that writes it and nothing else -- the rule
+		// pkg/schema's resource graph applies and findDynamicAnchorDeclarations
+		// with it -- so this one puts nothing on any dynamic scope and there is
+		// still exactly one place the reference can land. Counted as a
+		// declaration it would make this schema look path-dependent and cost it
+		// its generated type, which is the shape every recursive 2019-09 schema
+		// in the suite has.
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2019-09/schema",
+			"$id": "https://schemagen.test/one-anchor/main.json",
+			"$defs": {
+				"node": {
+					"$id": "node.json",
+					"$recursiveAnchor": true,
+					"type": "object",
+					"properties": {"inner": {"$recursiveAnchor": true, "type": "object"}},
+					"additionalProperties": {"$recursiveRef": "#"}
+				}
+			},
+			"properties": {"tree": {"$ref": "node.json"}}
+		}`)
+		if g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("one resource declares the anchor, so the reference means the same thing down every path; " +
+				"routing this to the evaluator would cost every recursive 2019-09 schema its generated type")
+		}
+	})
+
+	t.Run("no bookend", func(t *testing.T) {
+		// Two anchored resources are in reach on purpose, so the count alone
+		// answers yes and the bookend test is the only thing left saying no.
+		// Without them this subtest would pass for a predicate that had stopped
+		// reading bookending at all.
+		//
+		// "#" is the only value 2019-09 gives $recursiveRef, and a $recursiveRef
+		// spelled as anything else is read as the plain reference it looks like
+		// -- dynamicRefTarget's rule, and the reason "$recursiveRef with no
+		// $recursiveAnchor works like $ref" is a test with its answer in the
+		// title. So the two anchors below are not in play for this reference,
+		// however many of them there are.
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2019-09/schema",
+			"$id": "https://schemagen.test/unbookended/main.json",
+			"properties": {"a": {"$ref": "#/$defs/user"}},
+			"$defs": {
+				"user": {"$recursiveRef": "#/$defs/narrow"},
+				"narrow": {"type": "integer"},
+				"one": {"$id": "one.json", "$recursiveAnchor": true, "type": "number"},
+				"two": {"$id": "two.json", "$recursiveAnchor": true, "type": "boolean"}
+			}
+		}`)
+		if g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("a $recursiveRef whose value is not \"#\" is a plain reference, so neither $recursiveAnchor " +
+				"in the document is ever searched and the target is the one the pointer names")
+		}
+	})
+}
+
 // TestReferenceKeywordsFollowTheirDialect is issue #161 at the level the fix is
 // written: the normalization pass, over every draft this generator identifies.
 //

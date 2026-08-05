@@ -166,6 +166,118 @@ func resourceDynamicAnchor(root *schema.Schema, name string) *schema.Schema {
 	return search(root, true)
 }
 
+// dynamicScopeDecidesTheTarget reports whether some bookended dynamic reference
+// under s has a target the schema text does not fix -- which is to say, whether
+// generating a Go type for s means choosing one of several answers and calling
+// it the answer.
+//
+// The static path resolves such a reference once, against a dynamic scope the
+// generator maintains while it walks. That is sound only where the walk and the
+// evaluation agree about the path, and they cannot agree in general: the whole
+// point of the keyword is that the path is a property of the *instance*. One Go
+// type is emitted per schema, so a definition two resources reach through
+// different scopes gets one binding and the other resource's documents are
+// judged by it. #159 gave the runtime evaluator the scope that answers this, but
+// only schemas the static path declined ever reached it.
+//
+// The question asked here is what makes the answer narrow. A bookended reference
+// whose anchor is declared exactly once among the schemas s can reach has one
+// possible target however the instance arrives, so the static resolution is the
+// dynamic one and the type it produces stays. Only a second declaration puts the
+// answer in the document's hands, and only then is the whole schema compiled to
+// the evaluator. That is why {"$recursiveAnchor":true,"additionalProperties":
+// {"$recursiveRef":"#"}} -- the recursive tree every draft-2019-09 schema in the
+// suite is written as -- keeps the type it has today.
+//
+// Reachability is asked of s rather than of the document because a generated
+// type is validated as the root of its own evaluation: a caller holding a
+// NumberList and calling Validate on it starts the dynamic scope at numberList,
+// exactly as a validator handed that subschema would. So the declarations that
+// can win are the ones s reaches, and a sibling definition s has no route to
+// cannot be on any scope this type sees.
+//
+// $defs is followed like anything else, which over-counts a definition nothing
+// refers to. Over-counting compiles a schema that did not have to be compiled;
+// under-counting leaves the reference resolved to a guess, so the reach is
+// deliberately the generous one.
+func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	reach := g.dynamicallyReachable(s)
+	for node := range reach {
+		if node.RecursiveRef == "" && node.DynamicRef == "" {
+			continue
+		}
+		_, anchor, dynamic, ok := g.dynamicRefTarget(node)
+		if !ok || !dynamic {
+			continue
+		}
+		if countDynamicAnchorDeclarations(reach, anchor) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicallyReachable collects every schema an evaluation rooted at s could
+// arrive at, following references as well as subschemas.
+//
+// References have to be followed, because a resource reached only through one is
+// still on the dynamic scope while it is being evaluated -- that is what makes
+// the generic-container shape work at all, and a walk of the tree alone would
+// miss every publisher of the anchor it looks for.
+func (g *Generator) dynamicallyReachable(s *schema.Schema) map[*schema.Schema]bool {
+	seen := map[*schema.Schema]bool{}
+	var walk func(*schema.Schema)
+	walk = func(n *schema.Schema) {
+		if n == nil || n.IsBooleanSchema() || seen[n] {
+			return
+		}
+		seen[n] = true
+		for _, sub := range allSubSchemas(n) {
+			walk(sub)
+		}
+		// allSubSchemas answers "which subschemas produce a Go type" and leaves
+		// out two that hold a schema all the same; an anchor or a reference under
+		// either is as real as any other.
+		walk(n.PropertyNames)
+		walk(n.ContentSchema)
+		if n.Ref != "" {
+			walk(g.resolveRefInContextUncounted(n.Ref, n))
+		}
+		if n.RecursiveRef != "" || n.DynamicRef != "" {
+			if target, _, _, ok := g.dynamicRefTarget(n); ok {
+				walk(target)
+			}
+		}
+	}
+	walk(s)
+	return seen
+}
+
+// countDynamicAnchorDeclarations counts the schemas in reach that declare the
+// given anchor.
+//
+// The empty name is the $recursiveAnchor namespace, and a $recursiveAnchor
+// always anchors the root of the resource it is written in, so only resource
+// roots answer to it -- the same rule findDynamicAnchorDeclarations applies.
+func countDynamicAnchorDeclarations(reach map[*schema.Schema]bool, name string) int {
+	count := 0
+	for node := range reach {
+		if name == "" {
+			if node.DocumentRoot == node && node.RecursiveAnchor != nil && *node.RecursiveAnchor {
+				count++
+			}
+			continue
+		}
+		if node.DynamicAnchor == name {
+			count++
+		}
+	}
+	return count
+}
+
 // dynamicRefCanLoop reports whether evaluating the reference on s could arrive
 // back at s with the same value still in hand, which is an evaluation that never
 // finishes.

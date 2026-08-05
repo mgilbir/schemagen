@@ -2132,6 +2132,22 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// A bookended $dynamicRef or $recursiveRef whose anchor is declared more than
+	// once in reach cannot be decided statically either: which declaration wins
+	// is settled by the resources the *instance* evaluation entered. Route it
+	// here, ahead of the arms that would pick one of them and emit a type as if
+	// it were the answer.
+	//
+	// Behind the re-entrancy guard above rather than beside annotationSchemaDef,
+	// because the same name arrives here more than once -- a $defs entry is
+	// generated in its own right and again through every $ref that reaches it --
+	// and an arm in front of the guard emits its definition each time.
+	if def := g.dynamicScopeSchemaDef(name, s); def != nil {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		return nil
+	}
+
 	if _, ok := g.typeSchemas[name]; !ok {
 		g.typeSchemas[name] = s
 	}

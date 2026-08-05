@@ -6928,6 +6928,89 @@ func TestDynamicRefEntersAResourceReferredToInTheMiddle(t *testing.T) {
 	)
 }
 
+// TestDynamicRefResolvesPerDocumentUnderATypedRoot is issue #160, and the gap
+// the comment beside TestDynamicRefEntersAResourceReferredToInTheMiddle named
+// rather than closed.
+//
+// #159 gave the runtime evaluator a dynamic scope, so a bookended $dynamicRef
+// resolves per document -- for the schemas that reach the evaluator, which are
+// only the ones the static path declines. This root declines nothing: it is an
+// object with two properties and takes an ordinary struct, so its $dynamicRef
+// was resolved once, against the schema text. genericList's own itemType admits
+// everything, that is the answer the one resolution reached, and the generated
+// code accepted every list of anything.
+//
+// The two properties are the whole point. They reach the same genericList
+// through different resources, so the reference means "number" down one and
+// "string" down the other, and no single Go type can be both. A generator that
+// picks one binding is right about half the documents by construction.
+//
+// Each rejection is paired with the same document under the other property,
+// which is what says the check discriminates rather than simply refusing lists.
+// The empty and two-element lists are the controls for a fix that rejected every
+// list, or that only looked at the first element. The verdicts were taken from
+// python-jsonschema, go-jsonschema (santhosh-tekuri) and rust-boon, run over
+// these eight documents through Bowtie before the test was written; all three
+// agree on every one.
+func TestDynamicRefResolvesPerDocumentUnderATypedRoot(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/dynamic_ref_typed_root.json", "Root",
+		[]string{
+			`{}`,
+			`{"numbers":{"list":[1.1]}}`,
+			`{"strings":{"list":["foo"]}}`,
+			`{"numbers":{"list":[]},"strings":{"list":[]}}`,
+			`{"numbers":{"list":[1,2.5]},"strings":{"list":["a","b"]}}`,
+		},
+		[]string{
+			`{"numbers":{"list":["foo"]}}`,
+			`{"strings":{"list":[1.1]}}`,
+			`{"numbers":{"list":[1,"x"]}}`,
+		},
+	)
+}
+
+// TestRecursiveRefResolvesPerDocumentUnderATypedRoot is the $recursiveRef half
+// of issue #160, and it is the suite's "$recursiveRef with $recursiveAnchor"
+// shape with the if/then root taken off.
+//
+// TestRecursiveRefTakesTheOutermostAnchor asks the same question of the same
+// three resources through a conditional root, which is the thing that sent the
+// whole schema to the evaluator. Here the root is an object with two properties
+// and takes a struct, so the static path claimed it and the keyword was resolved
+// once against the schema text -- and the two properties enter different
+// anchored resources, so one resolution cannot be right about both.
+//
+// This is also the only fixture in the tree that makes the $recursiveAnchor
+// spelling of the count load-bearing. That anchor has no name: it is filed under
+// the empty string and belongs to the *root of the resource that writes it*, so
+// counting nodes rather than resource roots would answer differently here and
+// nowhere else.
+//
+// `{"anyLeaf":{"a":1.1}}` and `{"intLeaf":{"a":1.1}}` are one letter apart and
+// get opposite verdicts, which is what says the anchor is read per path. The
+// nested pair are what say it is re-read at each level rather than once: the
+// outer property picks the resource and the inner value is still judged by it.
+// The verdicts are Bowtie's, over python-jsonschema, go-jsonschema and
+// rust-boon, which agree on all eight.
+func TestRecursiveRefResolvesPerDocumentUnderATypedRoot(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_ref_typed_root.json", "Root",
+		[]string{
+			`{}`,
+			`{"anyLeaf":{"a":1.1}}`,
+			`{"anyLeaf":{"a":{"b":"x"}}}`,
+			`{"intLeaf":{"a":1}}`,
+			`{"intLeaf":{"a":{"b":1}}}`,
+		},
+		[]string{
+			`{"intLeaf":{"a":1.1}}`,
+			`{"intLeaf":{"a":{"b":1.1}}}`,
+			`{"intLeaf":{"a":"x"}}`,
+		},
+	)
+}
+
 // TestReferenceKeywordsAreIgnoredByDraftsWithoutThem is issue #161, and it is
 // the rarer half of these findings: over-enforcement, which refuses a document
 // the draft permits.

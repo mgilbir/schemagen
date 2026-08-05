@@ -971,6 +971,37 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	return &AnnotationSchemaDef{Name: name, Description: s.Description, NodeLiteral: lit, NeedsPattern: b.usesPattern}
 }
 
+// dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
+// no single answer, and returns nil for every other schema.
+//
+// It is the second of the two arms that claim a schema *before* the static ones,
+// and it is there for the same reason the first is: the constraint it carries
+// cannot be decided at generation time, so an arm that produced a Go type from
+// it would be answering a question the schema does not settle. Where a
+// $dynamicRef's anchor is declared twice among the schemas this one reaches, its
+// target is a property of the instance, and one binding chosen for the generated
+// type is right for the documents that take one path and wrong for the rest --
+// which is what left `{"numbers":{"list":["foo"]}}` accepted by a schema saying
+// that list holds numbers (issue #160).
+//
+// The narrowing is dynamicScopeDecidesTheTarget's, and it is what keeps this
+// from claiming every schema that mentions the two keywords. A reference whose
+// anchor has one declaration in reach means the same thing down every path, so
+// the static resolution is already the dynamic one and the struct or named type
+// it produces is untouched. Only the schema whose answer moves is compiled, and
+// it is compiled whole, because the scope a reference resolves against is built
+// by the resources entered on the way to it and no check local to the keyword
+// can see the frames its callers pushed.
+func (g *Generator) dynamicScopeSchemaDef(name string, s *schema.Schema) *AnnotationSchemaDef {
+	if !g.validationKeywordsEnabled() {
+		return nil
+	}
+	if !g.dynamicScopeDecidesTheTarget(s) {
+		return nil
+	}
+	return g.runtimeSchemaDef(name, s)
+}
+
 // rawWrapperDef is what every arm that was about to emit `type X any` asks
 // first: a definition that keeps the schema enforceable, or nil if there is
 // genuinely nothing to enforce.
