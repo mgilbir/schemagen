@@ -403,7 +403,13 @@ make test-short
 # Update golden test fixtures
 make golden
 
-# Download and run against the official JSON Schema Test Suite
+# Download and run against the official JSON Schema Test Suite.
+# Takes ~25 min and needs free space under TMPDIR for the build cache it fills
+# (it names the figure and refuses to start below it). Concurrent runs share
+# one cache and the last one out deletes it, so the requirement is the same
+# however many runs are going. SCHEMAGEN_KEEP_GOCACHE=1 keeps the cache for
+# the next run, which is most of those 25 minutes back when the generator has
+# not changed.
 make test-external
 
 # Fuzz the parse -> generate -> emit pipeline for panics

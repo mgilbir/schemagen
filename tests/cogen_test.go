@@ -968,12 +968,12 @@ func coRunCase(cc *coConfig, doc *coDoc, muts []coMutation) (coResult, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), coRunTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
 	cmd.Dir = dir
-	// The ephemeral GOCACHE is not optional here: a few hundred iterations, each
+	// The separate GOCACHE is not optional here: a few hundred iterations, each
 	// compiling a package that will never be seen again, would otherwise add
 	// gigabytes to the user's persistent build cache.
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return res, fmt.Errorf("compile/run: %w\n%s", err, string(out))

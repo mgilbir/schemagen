@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -100,6 +101,13 @@ func testGoSum() string {
 // allDrafts that is not all of them is the quietest way to stop measuring
 // something. If a directory ever has to be left out, leave it in this list and
 // skip it where the skip can carry a reason -- an absent name carries none.
+//
+// That is now a check rather than an instruction, in both directions:
+// requireTestSuite refuses a checkout with a directory this list does not name,
+// and one without a directory it does. tests/latest is the one thing under
+// tests/ that is deliberately not here, and it is a symlink to tests/draft2020-12
+// rather than a directory -- walking it would run that draft twice and double
+// every figure derived from it. See unlistedDraftDirs.
 var allDrafts = []string{"draft3", "draft4", "draft6", "draft7", "draft2019-09", "draft2020-12", "v1"}
 
 // draftFromDir maps a test-suite directory name to a schema.Draft constant.
@@ -262,6 +270,170 @@ func requireTestSuite(t *testing.T) {
 	if _, err := os.Stat(metaSchemaDir); err != nil {
 		t.Fatalf("SCHEMAGEN_RUN_EXTERNAL=1 but the meta-schemas are not at %s (%v). Run 'make download-metaschemas', or 'make test-external' which does it for you.", metaSchemaDir, err)
 	}
+	requireCacheHeadroom(t)
+	if missing := missingDraftDirs(jstsBaseDir); len(missing) > 0 {
+		t.Fatalf("SCHEMAGEN_RUN_EXTERNAL=1 but the checkout at %s has no %s director(y/ies), and allDrafts "+
+			"says the pinned corpus does.\n"+
+			"  A partial checkout is the one input that makes every staleness sweep in this file lie. Each "+
+			"of them reads an absent draft as 'the corpus does not have this draft' rather than 'this "+
+			"checkout is incomplete', on the walking and on the counting side alike — so the two agree, "+
+			"nothing looks filtered, the sweeps run, and every known-failure entry naming the absent draft "+
+			"is reported stale. Deleting those entries on that advice is how a live suppression is lost.\n"+
+			"  Run 'make download-test-suite', which pins the checkout at JSTS_COMMIT and is what this "+
+			"check depends on for the guarantee it is enforcing. If upstream has genuinely dropped a draft, "+
+			"the bump belongs in the Makefile and the name belongs out of allDrafts, with every figure in "+
+			"tests/external_known_failures.go and minValidatedGroups re-measured against the new corpus",
+			jstsBaseDir, strings.Join(missing, ", "))
+	}
+	if unlisted, err := unlistedDraftDirs(jstsBaseDir); err != nil {
+		t.Fatalf("reading %s: %v", jstsBaseDir, err)
+	} else if len(unlisted) > 0 {
+		t.Fatalf("the checkout at %s has %s director(y/ies) that allDrafts does not name, so nothing in "+
+			"this package runs them.\n"+
+			"  That is #121 exactly: v1 had shipped in the corpus for months while allDrafts named six "+
+			"drafts, and 438 groups and 1988 cases were never run while every figure this suite reports "+
+			"read as though the corpus had been covered.\n"+
+			"  Add the name to allDrafts and re-measure minValidatedGroups and the entries in "+
+			"tests/external_known_failures.go against the larger corpus — expect new ones. If a directory "+
+			"genuinely must not be run, that is a decision to take deliberately and to write down where it "+
+			"can carry its reason, as tests/v1/proposals is in listJSONFiles",
+			jstsBaseDir, strings.Join(unlisted, ", "))
+	}
+}
+
+// externalRunFreeBytes is what a run of this suite requires on the volume
+// holding the build cache.
+//
+// The measurement it is drawn from: two full runs, started two minutes apart
+// and sharing the cache, peaked at 1.9G between them, and the volume was back
+// where it started when the second one finished. The same two runs before this
+// change, measured on the same box the same afternoon, held 34.6G and 37.1G in
+// two directories and were still growing at 45 minutes.
+//
+// 8 GiB is therefore several times what a run should need, on purpose. The two
+// errors are not symmetric: refusing a run that would have fitted costs one
+// message and a `df`, while accepting one that does not costs 25 minutes and
+// arrives disguised as a wave of schema failures. It also leaves room for the
+// cases the 1.9G does not cover -- a cache kept from an earlier generator state
+// under SCHEMAGEN_KEEP_GOCACHE, two runs on branches whose generated code
+// differs and so share nothing, and whatever else the volume is doing.
+const externalRunFreeBytes = 8 << 30
+
+// requireCacheHeadroom refuses to start a run the volume cannot hold.
+//
+// The reason it is a Fatal and not a warning is what running out actually looks
+// like. The disk fills somewhere in the middle, and every compile from then on
+// fails with "no space left on device" attributed to whichever test key was
+// unlucky -- at the link, at the write, at the mkdir -- so the run reads as a
+// wave of validation failures against real schemas. One such run reported
+// "13826 passing subtests, 0 failures" and no coverage line: a corpse wearing
+// the shape of a pass. Four gate runs died that way in one session, and the
+// time went on triaging schemas rather than on reading `df`. A precondition
+// that names the requirement costs one line of output and ends that.
+//
+// It is not a promise that the run will finish: another process can still fill
+// the volume afterwards, and this cannot see that. It is the half that can be
+// checked, checked at the point where the answer is still cheap.
+func requireCacheHeadroom(t *testing.T) {
+	t.Helper()
+	need := uint64(externalRunFreeBytes)
+	if v := os.Getenv("SCHEMAGEN_EXTERNAL_MIN_FREE_GB"); v != "" {
+		gb, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			t.Fatalf("SCHEMAGEN_EXTERNAL_MIN_FREE_GB=%q is not a number of gigabytes", v)
+		}
+		need = gb << 30
+	}
+	if need == 0 {
+		return
+	}
+	msg, measured := cacheShortfall(sharedCacheDir, need)
+	if !measured {
+		// Saying so is the point: an unmeasurable volume is not a volume with
+		// room on it, and a silent pass here would be the same silence the
+		// check exists to end.
+		t.Logf("the free-space precondition is unchecked: %s", msg)
+		return
+	}
+	if msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+// cacheShortfall measures the volume holding dir and reports what stands in the
+// way of a run.
+//
+// It is separate from requireCacheHeadroom so that the message can be tested
+// against a volume that really is too small for the figure asked of it, rather
+// than asserted about in the abstract. measured false means the platform could
+// not answer; msg then carries the reason, and is not a refusal.
+func cacheShortfall(dir string, need uint64) (msg string, measured bool) {
+	free, err := freeBytes(dir)
+	if err != nil {
+		return fmt.Sprintf("free space on %s could not be measured (%v); %d GiB is the requirement and nothing checked it", dir, err, need>>30), false
+	}
+	if free >= need {
+		return "", true
+	}
+	return fmt.Sprintf("only %.1f GiB free on the volume holding %s, and a run of this suite requires %d GiB.\n"+
+		"A full run compiles ~27,000 programs into that cache; when the volume fills mid-run, every\n"+
+		"compile after that reports \"no space left on device\" against an individual test key, so the run\n"+
+		"reads as a wave of schema failures rather than as a full disk. Free some space, or leave\n"+
+		"SCHEMAGEN_KEEP_GOCACHE unset so the cache is cleared when the last run finishes. If you know the\n"+
+		"cache is already warm and this run will add little, set SCHEMAGEN_EXTERNAL_MIN_FREE_GB to the\n"+
+		"figure you are prepared to bet on, or to 0 to run unchecked.",
+		float64(free)/(1<<30), dir, need>>30), true
+}
+
+// unlistedDraftDirs returns the directories under base that allDrafts does not
+// name, which is the same coupling missingDraftDirs enforces read the other way.
+// The pin fixes one commit, so the set of draft directories is knowable, and both
+// directions of disagreement with it are defects — one stops the sweeps judging a
+// corpus that is there, the other stops the corpus being run at all.
+//
+// Symlinks are not directories to os.DirEntry and so are skipped, which is the
+// answer this wants rather than an accident of the API: the pinned checkout has
+// tests/latest pointing at tests/draft2020-12, and walking it would run that
+// draft twice and double every figure derived from it. A symlink that upstream
+// turns into a real directory of its own stops being skipped, which is the point
+// at which someone should look.
+func unlistedDraftDirs(base string) ([]string, error) {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return nil, err
+	}
+	var unlisted []string
+	for _, entry := range entries {
+		if entry.IsDir() && !slices.Contains(allDrafts, entry.Name()) {
+			unlisted = append(unlisted, entry.Name())
+		}
+	}
+	sort.Strings(unlisted)
+	return unlisted, nil
+}
+
+// missingDraftDirs returns the drafts allDrafts names that base does not have.
+//
+// It is checked once, up front, rather than by each walk, because each walk on
+// its own cannot tell the difference that matters: os.Stat says the directory is
+// not there, and "the corpus does not have this draft" and "this checkout is
+// incomplete" are the same observation with opposite consequences. Skipping is
+// right for the first and catastrophic for the second — see requireTestSuite for
+// what the sweeps then do.
+//
+// The check is possible at all only because the corpus is pinned (#121): the
+// Makefile's JSTS_COMMIT names one commit, that commit has all seven directories,
+// so any absence is a broken checkout rather than a corpus that moved. That is a
+// guarantee made in another file, which is exactly why it is asserted here rather
+// than assumed.
+func missingDraftDirs(base string) []string {
+	var missing []string
+	for _, draft := range allDrafts {
+		if _, err := os.Stat(filepath.Join(base, draft)); err != nil {
+			missing = append(missing, draft)
+		}
+	}
+	return missing
 }
 
 // failureKey builds a lookup key for the known-failures maps.
@@ -343,7 +515,42 @@ func (l *keyLedger) offer(key string) string {
 func (l *keyLedger) visit(key string) { l.visited[key] = true }
 
 // complete reports whether every offered key was reached.
-func (l *keyLedger) complete() bool { return len(l.offered) == len(l.visited) }
+//
+// Containment, not a comparison of the two sizes. len(offered) == len(visited)
+// gives the same answer only while every visited key was offered, and nothing
+// here enforces that: a consumer reaching a key it never offered makes the two
+// counts coincide over a real gap, so the sweep would run on an incomplete
+// ledger believing it complete and report the unreached entries as vanished
+// upstream. That is the one answer this machinery must never give -- false
+// staleness teaches whoever reads it to delete a live suppression. Containment
+// costs a walk of a map the sweep is about to walk anyway.
+func (l *keyLedger) complete() bool {
+	for key := range l.offered {
+		if !l.visited[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// unofferedVisits returns the keys this run reached without offering, sorted.
+//
+// That is a defect in the harness rather than a statement about the corpus, and
+// it is worth its own report because of what it does to the sweep either way
+// round: an unoffered visit both hides the gap complete() exists to see and
+// marks a known-failure entry as carried, so a genuinely stale entry naming that
+// key would be swept up silently. Every visit today comes from checkKnownFailure
+// with a key its caller offered during the walk; this is what says so.
+func (l *keyLedger) unofferedVisits() []string {
+	var stray []string
+	for key := range l.visited {
+		if !l.offered[key] {
+			stray = append(stray, key)
+		}
+	}
+	sort.Strings(stray)
+	return stray
+}
 
 // staleKnownFailureKeys returns the entries of known that no case in this run
 // carried, sorted. See keyLedger for why that is not simply "unused".
@@ -367,8 +574,23 @@ func staleKnownFailureKeys[V any](known map[string]V, l *keyLedger) []string {
 
 // reportStaleKnownFailures errors on every entry of a known-failure map that no
 // case in this run carried.
-func reportStaleKnownFailures(t *testing.T, mapName string, known map[string]string, l *keyLedger) {
+//
+// fates is what became of every group the run walked, and it is what turns the
+// message from a guess into a statement. A key naming a case of a group that
+// still runs is a renamed or deleted case; the same key when its group has
+// stopped producing a Validate() is a coverage regression wearing the same
+// words, and the two ask for opposite actions -- delete the entry, or restore
+// the group. Pass nil from a sweep that keeps no such record, and the message
+// falls back to naming both possibilities.
+func reportStaleKnownFailures(t *testing.T, mapName string, known map[string]string, l *keyLedger, fates map[string]groupFate) {
 	t.Helper()
+	if stray := l.unofferedVisits(); len(stray) > 0 {
+		t.Errorf("%d %s key(s) were reached without being offered, the first being %q — offers are what "+
+			"make this sweep safe under a -run filter, and a key visited without one both hides an "+
+			"unreached key from the completeness check and marks a stale entry as carried. Offer the key "+
+			"where the walk hands it to the subtest", len(stray), mapName, stray[0])
+		return
+	}
 	if !l.complete() {
 		t.Logf("partial run: reached %d of the %d %s keys the corpus offers (a -run filter on the subtests?). "+
 			"The staleness sweep judges the whole corpus and is skipped; run without a subtest filter, "+
@@ -376,8 +598,57 @@ func reportStaleKnownFailures(t *testing.T, mapName string, known map[string]str
 		return
 	}
 	for _, key := range staleKnownFailureKeys(known, l) {
-		t.Errorf("stale %s entry: %q matches no case this run tested — the case was renamed or removed "+
-			"upstream, or its group stopped being tested at all; delete the key, or find out which", mapName, key)
+		t.Errorf("stale %s entry: %q %s", mapName, key, staleCaseCause(key, fates))
+	}
+}
+
+// staleCaseCause explains why a case key matched nothing, as the tail of the
+// stale-entry message.
+//
+// The four readings are not variations on one sentence: only the first is the
+// renamed-upstream case the sweep was written for, and the other three are
+// regressions that happen to arrive through the same door. Reported as one
+// sentence they point away from their own cause -- a group that stopped
+// producing a Validate() drops the coverage floor and files a stale entry, and
+// the reader sees two unrelated complaints for one event with the louder of them
+// asking for the wrong fix.
+//
+// The group is found by longest prefix rather than by cutting at the last "/",
+// because 15 group descriptions and 56 case descriptions in the pinned corpus
+// contain one ("unevaluatedItems with if/then/else", "$ref resolves to
+// /definitions/base_foo, data validates"). Longest wins, which is the only
+// defensible answer where a group description is itself a prefix of another.
+func staleCaseCause(key string, fates map[string]groupFate) string {
+	var group string
+	var fate groupFate
+	var found bool
+	for g, f := range fates {
+		if len(g) < len(group) || !strings.HasPrefix(key, g+"/") {
+			continue
+		}
+		group, fate, found = g, f, true
+	}
+	if !found {
+		if fates == nil {
+			return "matches no case this run tested — the case was renamed or removed upstream, or its " +
+				"group stopped being tested at all; delete the key, or find out which"
+		}
+		return "matches no case of any group this run walked — the case, its group or its whole file was " +
+			"renamed or removed upstream; delete the key"
+	}
+	switch fate {
+	case fateValidated:
+		return fmt.Sprintf("names no case of %q, which this run did test — the case alone was renamed or "+
+			"removed upstream; delete the key", group)
+	case fateCodeGenError:
+		return fmt.Sprintf("is not stale: %q now fails code generation outright, so none of its cases ran. "+
+			"That is a code-generation regression (see TestExternalCodeGen), not a case the corpus lost; "+
+			"fix that rather than deleting the key", group)
+	default: // fateUnvalidated, fateNoRejection
+		return fmt.Sprintf("is not stale: %q now produces no Validate() method, so none of its cases ran "+
+			"and the defect this key records is no longer being measured. That is a coverage regression — "+
+			"the validation coverage floor is reporting the same event — not a case the corpus lost; fix "+
+			"that rather than deleting the key", group)
 	}
 }
 
@@ -505,11 +776,13 @@ func topLevelTest(name string) string {
 // that every arm of it can be exercised in milliseconds against a planted state
 // rather than only by sabotaging a 50-minute corpus run.
 //
-// At most one of stray, pending and incomplete is a reason to stand down, and
-// they are checked in that order; stale is only ever filled when none of them is.
+// At most one of stray, pending, unoffered and incomplete is a reason to stand
+// down, and they are checked in that order; stale is only ever filled when none
+// of them is.
 type flakySweepVerdict struct {
 	stray      []string // tests that read the map but are not in flakyConsumers
 	pending    []string // consumers that have not walked the whole corpus yet
+	unoffered  []string // keys reached without being offered (a broken offer/visit pairing)
 	incomplete bool     // keys were offered and never reached (a -run filter below file level)
 	stale      []string // entries no case in the run carried
 	offered    int
@@ -537,6 +810,12 @@ func (s *flakySweepState) verdict(known map[string]bool) flakySweepVerdict {
 	if len(v.stray) > 0 || len(v.pending) > 0 {
 		return v
 	}
+	// Before the completeness check rather than after it: an unoffered visit is
+	// what makes that check answer "complete" over a real gap, so asking it first
+	// would be asking the question this one exists to protect.
+	if v.unoffered = s.ledger.unofferedVisits(); len(v.unoffered) > 0 {
+		return v
+	}
 	if !s.ledger.complete() {
 		v.incomplete = true
 		return v
@@ -555,7 +834,7 @@ func (s *flakySweepState) finish(t *testing.T, walkedFiles, corpusFiles int) {
 	// A -run filter selecting some drafts or some files stops their groups from
 	// being walked at all, so their keys are never offered and the ledger cannot
 	// see the gap. This is the same pairing TestExternalValidation already makes
-	// between countCodeGenSuitableGroups and its own ledger, for the same reason:
+	// between corpusCodeGenSuitableGroups and its own ledger, for the same reason:
 	// neither check sees the other's case.
 	if walkedFiles != corpusFiles {
 		t.Logf("partial run: %s walked %d of the corpus's %d files (a -run filter on the subtests?). "+
@@ -583,6 +862,11 @@ func (s *flakySweepState) finish(t *testing.T, walkedFiles, corpusFiles int) {
 		t.Logf("knownFlakyTests staleness sweep deferred: %s %s not yet walked the whole corpus; "+
 			"the sweep runs from the last of the %d tests that consult the map",
 			strings.Join(v.pending, ", "), pluralHave(len(v.pending)), len(flakyConsumers))
+	case len(v.unoffered) > 0:
+		t.Errorf("%d knownFlakyTests key(s) were reached without being offered, the first being %q — offers "+
+			"are what make this sweep safe under a -run filter, and a key visited without one both hides an "+
+			"unreached key from the completeness check and marks a stale entry as carried. Offer the key "+
+			"where the walk hands it to the subtest", len(v.unoffered), v.unoffered[0])
 	case v.incomplete:
 		t.Logf("partial run: reached %d of the %d knownFlakyTests keys the corpus offers (a -run filter on "+
 			"the subtests?). The staleness sweep judges the whole corpus and is skipped; run without a "+
@@ -614,20 +898,20 @@ func pluralHave(n int) string {
 // countCorpusFiles counts the (draft, file) pairs the four external tests walk
 // when nothing filters them.
 //
-// It is the file-level counterpart to countCodeGenSuitableGroups, and it is a
+// It is the file-level counterpart to corpusCodeGenSuitableGroups, and it is a
 // file count rather than a group count because all four tests walk every file
-// while disagreeing about which groups inside one they visit. Missing draft
-// directories are skipped here exactly as the tests skip them, so a corpus
-// checkout without one is not mistaken for a filtered run.
+// while disagreeing about which groups inside one they visit.
+//
+// It used to skip a missing draft directory, exactly as the walks did, so that a
+// checkout without one was not mistaken for a filtered run. That agreement was
+// the problem: both sides read the absence the same wrong way, the counts
+// matched, and the sweeps ran over a corpus missing a seventh of itself. The
+// absence is now refused up front by requireTestSuite, and this walks all seven.
 func countCorpusFiles(t *testing.T) int {
 	t.Helper()
 	var n int
 	for _, draft := range allDrafts {
-		draftDir := filepath.Join(jstsBaseDir, draft)
-		if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-			continue
-		}
-		n += len(listJSONFiles(t, draftDir))
+		n += len(listJSONFiles(t, filepath.Join(jstsBaseDir, draft)))
 	}
 	return n
 }
@@ -671,6 +955,13 @@ const (
 // did not describe a group in this run. A stale entry is the same class of lie
 // as the silent skip the list replaced: it reads as "this is still broken" while
 // suppressing nothing, and it hides the next regression that lands on that key.
+//
+// The "matches no group" arm can say that flatly because two other checks have
+// run first: requireTestSuite has refused a checkout missing a draft directory,
+// and reportWalkRecordGaps has established that fates holds every group the
+// corpus walk found. Without those, an unrecorded group and a group the corpus
+// no longer has are the same observation here, and the message would be naming
+// the wrong one.
 func reportStaleUnvalidated(t *testing.T, fates map[string]groupFate) {
 	t.Helper()
 	keys := make([]string, 0, len(knownUnvalidatedRejections))
@@ -701,33 +992,123 @@ func reportStaleUnvalidated(t *testing.T, fates map[string]groupFate) {
 	}
 }
 
-// countCodeGenSuitableGroups walks the corpus and counts the groups
-// TestExternalValidation would visit if nothing filtered it.
+// corpusCodeGenSuitableGroups walks the corpus and returns the groups
+// TestExternalValidation would visit if nothing filtered it: how many there are,
+// and every one of them by key, against the case descriptions it holds.
 //
-// The aggregate gates at the end of that test — the coverage floor and the
-// allow-list staleness sweep — are statements about the whole corpus, and a
-// `go test -run TestExternalValidation/draft3` run would fail both of them for
-// no reason at all: five drafts never walked reads identically to five drafts
+// The aggregate gates at the end of that test — the coverage floor and the two
+// staleness sweeps — are statements about the whole corpus, and a
+// `go test -run TestExternalValidation/draft3` run would fail all of them for
+// no reason at all: six drafts never walked reads identically to six drafts
 // that stopped producing Validate(). Comparing the visited count against this
 // one distinguishes the two, so a filtered run says so and stays quiet rather
 // than crying wolf.
-func countCodeGenSuitableGroups(t *testing.T) int {
+//
+// The map is the same walk's answer to a second question, asked by
+// reportWalkRecordGaps: which groups and cases the run was obliged to record.
+// Both are needed and neither is derivable from the other — the count is what a
+// filtered run fails, the keys are what a mis-placed record fails — and doing it
+// in one walk keeps the two answers describing the same corpus.
+//
+// The count is not len(the map): two groups in one file may share a description,
+// which is legal and would collapse. It does not happen in the pinned corpus
+// (2252 suitable groups, 2252 distinct keys), and a count derived from len()
+// would start disagreeing with the walk the day it did.
+func corpusCodeGenSuitableGroups(t *testing.T) (int, map[string][]string) {
 	t.Helper()
 	var n int
+	groups := make(map[string][]string, 2304)
 	for _, draft := range allDrafts {
 		draftDir := filepath.Join(jstsBaseDir, draft)
-		if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-			continue
-		}
 		for _, file := range listJSONFiles(t, draftDir) {
 			for _, group := range loadTestGroups(t, filepath.Join(draftDir, file)) {
-				if isCodeGenSuitable(group.Schema) {
-					n++
+				if !isCodeGenSuitable(group.Schema) {
+					continue
 				}
+				n++
+				key := failureKey(draft, filenameWithoutExt(file), group.Description)
+				cases := make([]string, len(group.Tests))
+				for i, tc := range group.Tests {
+					cases[i] = tc.Description
+				}
+				groups[key] = cases
 			}
 		}
 	}
-	return n
+	return n, groups
+}
+
+// walkRecordGaps checks the two records TestExternalValidation's end-of-run
+// sweeps judge — the fates of every group, and the ledger of every case key
+// offered — against an independent walk of the corpus, and returns what each is
+// missing.
+//
+// Both records are filled during the walk and *outside* the group subtest, and
+// both sweeps are correct under a -run filter below the file level only because
+// of it. That is nowhere stated at either write site and nothing enforced it:
+// move either write inside the subtest and a group-level filter still walks
+// every file, so the coverage check still sees the whole corpus and stands no
+// one down, while the record it hands the sweep now holds only the selected
+// groups. reportStaleUnvalidated then calls every unselected allow-list entry a
+// group the suite no longer has, and the ledger — offering and visiting the same
+// shrunken set — reads as complete and calls every unselected knownValidation-
+// Failures entry a case that vanished upstream. Live suppressions, reported
+// stale, in the two sweeps whose whole purpose is to catch the opposite lie.
+//
+// So it is asserted rather than commented, and asserted against the corpus
+// rather than against a sibling counter incremented in the same loop: a counter
+// written beside the record shares the record's fate and would agree with it
+// however wrong both were.
+//
+// It runs only after the coverage check has established the whole corpus was
+// walked; on a filtered run below the file level everything here is expected to
+// be missing.
+//
+// The computation is separated from the reporting for the reason
+// staleKnownFailureKeys already is: exercising it otherwise means sabotaging a
+// 50-minute run to watch it fire once, and a guard nobody has watched fail
+// proves nothing -- doubly so for a guard whose whole subject is another guard.
+func walkRecordGaps(corpus map[string][]string, fates map[string]groupFate, l *keyLedger) (unrecorded, unoffered []string) {
+	for _, key := range sortedKeys(corpus) {
+		fate, seen := fates[key]
+		if !seen {
+			unrecorded = append(unrecorded, key)
+			continue
+		}
+		if fate != fateValidated {
+			// No Validate(), or no code at all: the run offers no case key for
+			// such a group, and is right not to.
+			continue
+		}
+		for _, tc := range corpus[key] {
+			if caseKey := failureKey(key, tc); !l.offered[caseKey] {
+				unoffered = append(unoffered, caseKey)
+			}
+		}
+	}
+	return unrecorded, unoffered
+}
+
+// reportWalkRecordGaps errors on whatever walkRecordGaps found, naming the write
+// that has to move back and what the sweep would otherwise report.
+func reportWalkRecordGaps(t *testing.T, corpus map[string][]string, fates map[string]groupFate, l *keyLedger) {
+	t.Helper()
+	unrecorded, unoffered := walkRecordGaps(corpus, fates, l)
+	if len(unrecorded) > 0 {
+		t.Errorf("%d group(s) this run walked left no fate recorded, the first being %q. "+
+			"reportStaleUnvalidated judges knownUnvalidatedRejections against that record, so a group "+
+			"missing from it reads as an allow-list entry matching no group in the suite — a live entry "+
+			"reported stale. The record is written during the walk, outside the group subtest, which is "+
+			"what makes it survive a -run filter selecting some groups; if it has moved inside one, move "+
+			"it back", len(unrecorded), unrecorded[0])
+	}
+	if len(unoffered) > 0 {
+		t.Errorf("%d case(s) of groups that produced a Validate() were never offered to the "+
+			"knownValidationFailures ledger, the first being %q. Keys are offered during the walk, outside "+
+			"the group subtest, so that a -run filter shows up as offered-and-not-reached; offered inside "+
+			"it instead, a filtered run offers and reaches the same shrunken set, the ledger reads as "+
+			"complete, and every entry naming an unselected case is reported stale", len(unoffered), unoffered[0])
+	}
 }
 
 // groupHasRejectingCase reports whether the suite marks any document in the
@@ -949,11 +1330,139 @@ func extractRootTypeNameFromCode(code string) string {
 	return lastType
 }
 
-// ephemeralCacheDir holds a per-process temporary GOCACHE directory that is
-// cleaned up at process exit. Using a shared ephemeral cache (instead of the
-// user's persistent ~/.cache/go-build) prevents the ~14,000 unique compilations
-// from bloating the build cache by hundreds of gigabytes.
-var ephemeralCacheDir string
+// sharedCacheDir is the GOCACHE every `go build` and `go run` this package
+// starts points at: one directory per user, adopted by every run on the box
+// rather than created per process.
+//
+// The reason for not using ~/.cache/go-build has not changed -- a full external
+// run is ~27,000 compilations of code nobody will build again, and leaving that
+// in the developer's own cache is not a kindness. What changed is that a
+// *per-process* copy of it multiplies by the number of runs in flight. Four
+// such caches sitting at 24G, 25G, 21G and 16G at once filled a 394G volume,
+// and a full volume does not announce itself as one: it reports "no space left
+// on device" against individual test keys -- at the link, at the write, at the
+// mkdir -- so a dead run reads exactly like a set of real validation failures,
+// and one of them reported 13826 passing subtests, 0 failures and no coverage
+// line at all.
+//
+// Sharing makes it one directory however many runs are going, and with
+// goRunArgs trimming the paths out of the entries, that directory is small:
+// two full runs started two minutes apart peaked at 1.9G between them, where
+// the same two runs beforehand held 34.6G and 37.1G and were still growing.
+//
+// Go's build cache is safe to share, which is not a claim taken on faith:
+// ~/.cache/go-build is already shared by every concurrent go command a user
+// runs, and cmd/go's cache is written for exactly that. An entry is committed
+// by writing its last byte, "because writing it will make the size match what
+// other processes expect to find and might cause them to start using the file";
+// trim.txt is read and rewritten under lockedfile; an ETXTBSY on an output is
+// read as "it must have already been written by another go process and then
+// run". Measured here as well, at 8 concurrent processes putting 25 identical
+// modules each through one cache -- 200 compilations racing for the same
+// entries -- with no failure and no wrong output.
+var sharedCacheDir string
+
+// sharedCacheLock is this process's claim on that directory, held for the
+// lifetime of the run. See cacheLock.
+var sharedCacheLock *cacheLock
+
+// sharedCachePath names the shared cache, and sharedCacheLockPath the lock that
+// says who is using it.
+//
+// The uid is in the name because /tmp is shared between users: a fixed name
+// belongs to whoever ran first, and the second user then cannot write to it at
+// all -- a failure mode a per-process MkdirTemp did not have and this must not
+// introduce. The lock file sits *beside* the cache rather than inside it,
+// because a lock inside a directory that gets renamed away stops being the file
+// the next process opens: two runs would then hold locks on two inodes and
+// neither would see the other. For the same reason the lock file is never
+// deleted, by the sweep or by anything else. It is empty, and unlinking it
+// while another process has it open is precisely how mutual exclusion is lost.
+func sharedCachePath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("schemagen-gocache-shared-%d", os.Getuid()))
+}
+
+func sharedCacheLockPath() string { return sharedCachePath() + ".lock" }
+
+// cacheLock is a process's claim on a shared cache directory.
+//
+// It is an flock rather than a marker file or a pid list because the question
+// is "is another run using this right now" and the kernel answers it exactly:
+// the lock is held for as long as the process lives and is released when it
+// dies, including under kill -9 and including a run killed by the very full
+// disk this machinery exists to avoid. A marker file has to be cleaned up by
+// the process that wrote it, which is the one thing a killed process cannot do,
+// and that is the failure #136 already had to write a sweep for.
+//
+// A run holds it shared: any number of runs may use the cache at once. Deleting
+// it requires the exclusive lock, so a delete can only happen when nobody else
+// holds the cache -- which is what makes both "the last run out clears up" and
+// "the sweep reclaims an abandoned cache" safe to do against a live box.
+type cacheLock struct{ f *os.File }
+
+// lockSharedCache takes the shared lock on the cache, creating the lock file if
+// this is the first run on the box. A nil result means locking is unavailable
+// (a platform without flock, or a lock file that cannot be opened); the caller
+// then uses the cache anyway and leaves reclaiming it to the age-based sweep.
+func lockSharedCache() *cacheLock {
+	if !cacheLockingSupported {
+		return nil
+	}
+	f, err := os.OpenFile(sharedCacheLockPath(), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil
+	}
+	if !flockShared(f) {
+		f.Close()
+		return nil
+	}
+	return &cacheLock{f: f}
+}
+
+// lockCacheForRemoval takes the exclusive lock on the cache at path, if that
+// cache has a lock file at all.
+//
+// The two "false" answers are deliberately different. A directory with no lock
+// file beside it is a per-process cache from an older revision, or a cogen
+// scratch directory: nothing claims it, so removal proceeds on the age check
+// alone, exactly as it did before. A directory whose lock is held is one a live
+// run is building into, and it must survive however old its mtimes look.
+func lockCacheForRemoval(path string) (*cacheLock, bool) {
+	if !cacheLockingSupported {
+		return nil, true
+	}
+	f, err := os.OpenFile(path+".lock", os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, true
+	}
+	if !flockExclusiveNB(f) {
+		f.Close()
+		return nil, false
+	}
+	return &cacheLock{f: f}, true
+}
+
+// tryExclusive reports whether this process is the only one still holding the
+// cache, by upgrading its shared lock.
+//
+// A failed upgrade can leave the shared lock dropped -- flock(2) says the
+// conversion is not atomic -- which is why this is only ever called on the way
+// out, after the last build has run. The answer is still right: whoever is left
+// holding the cache gets the exclusive lock when they in turn finish.
+func (l *cacheLock) tryExclusive() bool {
+	if l == nil {
+		return false
+	}
+	return flockExclusiveNB(l.f)
+}
+
+// release drops the lock. Closing the file is what releases an flock, and it is
+// also what the kernel does for a process that never gets here.
+func (l *cacheLock) release() {
+	if l != nil {
+		l.f.Close()
+	}
+}
 
 // staleCacheAge is how old an abandoned cache must be before this process will
 // delete it. It has to exceed the longest a live run can go without touching
@@ -1040,40 +1549,155 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 		if cacheLastActive(path, info).After(cutoff) {
 			continue
 		}
-		os.RemoveAll(path)
+		// The age check above is a heuristic about mtimes; the lock is a fact
+		// about processes. Both have to agree before a cache is deleted, and
+		// the lock is the one that cannot be fooled: a run that is getting
+		// nothing but cache hits creates no new bucket entries, so it advances
+		// no mtime this sweep can see, and that is exactly the run a *shared*
+		// cache makes common. Without this, the second concurrent run would
+		// delete the first one's cache out from under it, and the robbed run
+		// would not fail -- it would silently recompile from nothing.
+		lock, free := lockCacheForRemoval(path)
+		if !free {
+			continue
+		}
+		doomed, moved := renameForRemoval(path)
+		// The claim is wanted for the rename and not for the emptying: holding
+		// it through the delete would stall the startup of every run that
+		// arrives meanwhile, and those runs have nothing to wait for -- the
+		// directory they will create is already a different one.
+		lock.release()
+		if moved {
+			os.RemoveAll(doomed)
+		}
 	}
+}
+
+// renameForRemoval moves a cache directory aside, and reports where to.
+//
+// Deleting a cache is done in two steps because the second one is slow. The
+// rename is atomic, so a run arriving a moment later finds no directory and
+// creates a fresh one rather than building into a tree being emptied underneath
+// it, and only one of two sweepers can win. Emptying a cache takes long enough
+// for that window to be real -- seconds for the 1.9G a shared one holds, tens of
+// them for the 35G a per-process one reached -- and what comes out of the window
+// is a build failure attributed to a test case, which is the shape of wrongness
+// this whole file exists to stop reporting.
+//
+// The doomed name keeps the swept prefix, so a crash between the rename and the
+// delete leaves something the next run reclaims rather than a permanent leak.
+func renameForRemoval(path string) (string, bool) {
+	doomed := filepath.Join(filepath.Dir(path),
+		fmt.Sprintf("schemagen-gocache-doomed-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	if err := os.Rename(path, doomed); err != nil {
+		// Already gone, or not ours to move. Either way there is nothing to do:
+		// reclaiming space is best-effort, and a directory another user owns is
+		// not this process's to worry about.
+		return "", false
+	}
+	return doomed, true
 }
 
 func init() {
 	sweepStaleCaches()
-	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
-	if err != nil {
-		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
+	// The lock comes before the directory: a sweeper that has just decided this
+	// cache is abandoned holds the exclusive lock while it renames it away, so
+	// taking the shared lock first is what stops this process from creating a
+	// directory into a rename that has not happened yet.
+	sharedCacheLock = lockSharedCache()
+	dir := sharedCachePath()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		panic(fmt.Sprintf("creating shared GOCACHE %s: %v", dir, err))
 	}
-	ephemeralCacheDir = dir
+	sharedCacheDir = dir
 }
 
-// TestMain cleans up the ephemeral cache directory after all tests finish.
+// TestMain releases this process's claim on the shared cache, and clears it up
+// if this was the last run using it.
 func TestMain(m *testing.M) {
 	code := m.Run()
-	if ephemeralCacheDir != "" {
-		os.RemoveAll(ephemeralCacheDir)
-	}
+	releaseSharedCache()
 	os.Exit(code)
 }
 
-// ephemeralCacheEnv returns a copy of the current environment with GOCACHE
-// pointed at an ephemeral temporary directory. This prevents external go
-// build/run invocations from bloating the user's persistent build cache —
-// each test compiles unique generated code that will never be reused.
-func ephemeralCacheEnv() []string {
+// releaseSharedCache hands the shared cache back, deleting it when nobody else
+// holds it.
+//
+// Deleting on the way out is what keeps the footprint bounded over time, and
+// the bound is the point of the exercise. Sharing alone bounds *concurrent*
+// runs at one directory; it does nothing for consecutive ones, because every
+// change to the generator makes all ~27,000 compilations miss and adds another
+// cache's worth to the same directory. A developer iterating would fill the
+// same volume from the other direction, more slowly and just as fatally, and
+// the age-based sweep would not touch a cache that is used again every half
+// hour.
+//
+// So the steady state is: one directory while runs overlap, nothing left behind
+// once they have all finished. SCHEMAGEN_KEEP_GOCACHE=1 keeps it instead, which
+// is worth it when the next run is going to be the same code -- a warm cache
+// turns most of a 25-minute run into cache hits -- and costs another cache's
+// worth per distinct generator state until an idle hour lets the sweep reclaim
+// it.
+func releaseSharedCache() {
+	if sharedCacheDir == "" {
+		return
+	}
+	releaseCacheDir(sharedCacheDir, sharedCacheLock, os.Getenv("SCHEMAGEN_KEEP_GOCACHE") == "1")
+}
+
+// releaseCacheDir is releaseSharedCache with the directory, the claim and the
+// choice supplied, so a test can drive both halves without touching the cache
+// the running process is using.
+//
+// The order is the whole of it: the delete happens only if the claim can be
+// made exclusive, and the claim is dropped afterwards either way.
+func releaseCacheDir(dir string, lock *cacheLock, keep bool) {
+	doomed, moved := "", false
+	if !keep && lock.tryExclusive() {
+		doomed, moved = renameForRemoval(dir)
+	}
+	lock.release()
+	if moved {
+		os.RemoveAll(doomed)
+	}
+}
+
+// goBuildArgs and goRunArgs are how every throwaway program in this package is
+// compiled, and the -trimpath is what makes sharing a cache worth anything.
+//
+// A build without it records the absolute directory of its source in what it
+// produces, so the action ID takes in the temp directory the harness happened
+// to draw -- and every group of every run draws a fresh one. Two runs
+// compiling byte-identical source then share nothing at all: measured at
+// +2 MB of new cache content for a second copy of a ten-line program in a
+// different directory, and +0 with -trimpath, against 36 MB of dependencies
+// they share either way. Over ~1200 groups that is the difference between one
+// cache and a cache per run in a single directory, which would leave this no
+// better than a cache per process. Measured on the full corpus: two concurrent
+// runs peaked at 1.9G with it, against 34.6G and 37.1G in two directories
+// without. It is also what makes a *second* run fast rather than merely cheap
+// -- 892s and 938s here, against 1239s for one run alone before.
+//
+// Nothing measured here depends on the paths it erases: the harness reads the
+// program's own PASS/FAIL/verdict lines, and the only thing that gets shorter
+// is the file name in a panic trace from a generated program.
+var (
+	goBuildArgs = []string{"build", "-trimpath", "."}
+	goRunArgs   = []string{"run", "-trimpath", "."}
+)
+
+// sharedCacheEnv returns a copy of the current environment with GOCACHE
+// pointed at the shared cache directory, which is where every go build and go
+// run this package starts must write: the code they compile is generated,
+// unique to this corpus, and has no business in the developer's own cache.
+func sharedCacheEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "GOCACHE=") {
 			env = append(env, e)
 		}
 	}
-	return append(env, "GOCACHE="+ephemeralCacheDir)
+	return append(env, "GOCACHE="+sharedCacheDir)
 }
 
 // tryParse attempts to parse a JSTS schema into our schema.Schema type.
@@ -1141,9 +1765,9 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", ".")
+	cmd := exec.CommandContext(ctx, "go", goBuildArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compile: %s\n%s", err, string(output))
@@ -1209,9 +1833,9 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("round-trip: %s\n%s", err, string(output))
@@ -1407,9 +2031,9 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) (val
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return verdictMissing, fmt.Errorf("run: %s\n%s", err, string(output))
@@ -1504,12 +2128,11 @@ func TestExternalParsing(t *testing.T) {
 	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
+			// No absent-directory arm: requireTestSuite has established that
+			// every draft allDrafts names is present, and a skip here would be
+			// the reading that makes the end-of-run sweeps report every entry
+			// naming the absent draft as stale.
 			draftDir := filepath.Join(jstsBaseDir, draft)
-			if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-				t.Skipf("draft directory %s not found", draft)
-				return
-			}
-
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
@@ -1540,12 +2163,11 @@ func TestExternalCodeGen(t *testing.T) {
 	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
+			// No absent-directory arm: requireTestSuite has established that
+			// every draft allDrafts names is present, and a skip here would be
+			// the reading that makes the end-of-run sweeps report every entry
+			// naming the absent draft as stale.
 			draftDir := filepath.Join(jstsBaseDir, draft)
-			if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-				t.Skipf("draft directory %s not found", draft)
-				return
-			}
-
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
@@ -1576,12 +2198,11 @@ func TestExternalRoundTrip(t *testing.T) {
 	var walkedFiles int
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
+			// No absent-directory arm: requireTestSuite has established that
+			// every draft allDrafts names is present, and a skip here would be
+			// the reading that makes the end-of-run sweeps report every entry
+			// naming the absent draft as stale.
 			draftDir := filepath.Join(jstsBaseDir, draft)
-			if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-				t.Skipf("draft directory %s not found", draft)
-				return
-			}
-
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
@@ -1702,6 +2323,15 @@ func TestExternalValidation(t *testing.T) {
 	var rejectedAtDecode, rejectedByValidate int
 	// fates records what became of every group, so a knownUnvalidatedRejections
 	// entry that describes none of them can say why it went stale.
+	//
+	// Both records below are written during the walk and outside the group
+	// subtest, and that placement is load-bearing rather than incidental: it is
+	// the whole reason their sweeps stay correct under a -run filter selecting
+	// some groups or some cases. Such a filter still walks every file, so nothing
+	// stands the sweeps down, and a record filled inside the subtest would hold
+	// only the selected groups — at which point both sweeps report every
+	// unselected entry as one the corpus has lost. reportWalkRecordGaps is the
+	// assertion that says so; see it before moving either write.
 	fates := make(map[string]groupFate, 2048)
 	// ledger does the same job for knownValidationFailures, whose keys name a
 	// single case rather than a whole group.
@@ -1710,12 +2340,11 @@ func TestExternalValidation(t *testing.T) {
 
 	for _, draft := range allDrafts {
 		t.Run(draft, func(t *testing.T) {
+			// No absent-directory arm: requireTestSuite has established that
+			// every draft allDrafts names is present, and a skip here would be
+			// the reading that makes the end-of-run sweeps report every entry
+			// naming the absent draft as stale.
 			draftDir := filepath.Join(jstsBaseDir, draft)
-			if _, err := os.Stat(draftDir); os.IsNotExist(err) {
-				t.Skipf("draft directory %s not found", draft)
-				return
-			}
-
 			files := listJSONFiles(t, draftDir)
 			for _, file := range files {
 				t.Run(filenameWithoutExt(file), func(t *testing.T) {
@@ -1819,13 +2448,14 @@ func TestExternalValidation(t *testing.T) {
 	// it depend on which of the four ran last.
 	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 
-	// The three gates below judge the whole corpus, so they are meaningless on a
-	// run that only walked part of it. This check catches a -run filter that
+	// Everything below judges the whole corpus, so it is meaningless on a run
+	// that only walked part of it. This check catches a -run filter that
 	// selected some drafts or some files, which stops their groups being walked
 	// at all; the ledger's own completeness check catches one that selected some
 	// groups or some cases, which walks them and then tests a subset. Both are
 	// needed, and neither sees the other's case.
-	if corpusGroups := countCodeGenSuitableGroups(t); totalGroups != corpusGroups {
+	corpusGroups, corpusCases := corpusCodeGenSuitableGroups(t)
+	if totalGroups != corpusGroups {
 		t.Logf("partial run: walked %d of the corpus's %d code-gen-suitable groups (a -run filter on the subtests?). "+
 			"The coverage floor and the two staleness sweeps judge the whole corpus and are skipped; "+
 			"run without a subtest filter, or via 'make test-external', to exercise them",
@@ -1833,7 +2463,12 @@ func TestExternalValidation(t *testing.T) {
 		return
 	}
 
-	reportStaleKnownFailures(t, "knownValidationFailures", knownValidationFailures, ledger)
+	// Before the sweeps, because it is the statement they rest on: both judge a
+	// record filled during the walk, and both are safe under a -run filter only
+	// while that record is filled outside the group subtest.
+	reportWalkRecordGaps(t, corpusCases, fates, ledger)
+
+	reportStaleKnownFailures(t, "knownValidationFailures", knownValidationFailures, ledger, fates)
 
 	if testedGroups < minValidatedGroups {
 		t.Errorf("validation coverage regressed from %d to %d groups (of %d code-gen-suitable groups): "+
