@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NullableCompositionBranches",
+  "description": "A composition written as {X, {\"type\":\"null\"}} collapsed to a pointer at X's own Go type, and nothing then read X again: the keywords a property carries on its parent's field, and the element checks an array carries beside it, are both taken from the property schema, which here is the wrapper and states none of them. So anyConst accepted \"b\", anyLen accepted \"ab\", anyItems accepted [\"ab\"], anyMinIt accepted [], anyBound accepted 1, oneMapVal accepted {\"k\":\"a\"}, and anyFalse and anyEmpty accepted documents no branch admits. anyEnum, anyObj, anyPlain and anyArr are the controls: the first two get a type of their own, whose Validate the field calls, and the last two state nothing their Go type does not already say.",
+  "type": "object",
+  "properties": {
+    "anyConst": {"anyOf": [{"type": "string", "const": "a"}, {"type": "null"}]},
+    "oneConst": {"oneOf": [{"type": "string", "const": "a"}, {"type": "null"}]},
+    "anyFalse": {"anyOf": [false, {"type": "null"}]},
+    "anyEmpty": {"anyOf": [{"enum": []}, {"type": "null"}]},
+    "anyLen": {"anyOf": [{"type": "string", "minLength": 3}, {"type": "null"}]},
+    "anyItems": {"anyOf": [{"type": "array", "items": {"type": "string", "minLength": 3}}, {"type": "null"}]},
+    "anyMinIt": {"anyOf": [{"type": "array", "minItems": 2}, {"type": "null"}]},
+    "anyBound": {"anyOf": [{"type": "integer", "minimum": 5}, {"type": "null"}]},
+    "oneMapVal": {"oneOf": [{"type": "object", "additionalProperties": {"type": "string", "minLength": 3}}, {"type": "null"}]},
+    "anyEnum": {"anyOf": [{"type": "string", "enum": ["a", "c"]}, {"type": "null"}]},
+    "anyObj": {"anyOf": [{"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}}, {"type": "null"}]},
+    "anyPlain": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "anyArr": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
+  }
+}

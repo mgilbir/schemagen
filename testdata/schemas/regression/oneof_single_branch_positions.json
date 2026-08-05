@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OneOfSingleBranchPositions",
+  "description": "A oneOf of one branch on a declared property built a sealed-interface union of one variant, and a lone variant that outruns selection is matched by every document the field can hold. So the branch was tested nowhere: constBranch accepted \"b\", falseBranch and emptyEnum accepted values no document satisfies, and the arity guard that let them through read a group of one as a group that never reaches the union. boundBranch, typedBranch, twoBranch, list and map are the controls: the first two are decided by selection and keep the union, and the last three were already right.",
+  "type": "object",
+  "properties": {
+    "constBranch": {"oneOf": [{"type": "string", "const": "a"}]},
+    "falseBranch": {"oneOf": [false]},
+    "emptyEnum": {"oneOf": [{"enum": []}]},
+    "objBranch": {"oneOf": [{"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}}]},
+    "boundBranch": {"oneOf": [{"type": "integer", "minimum": 5}]},
+    "typedBranch": {"oneOf": [{"type": "string"}]},
+    "twoBranch": {"oneOf": [{"type": "string", "const": "a"}, {"type": "integer"}]},
+    "list": {"type": "array", "items": {"oneOf": [{"type": "string", "const": "a"}]}},
+    "map": {"type": "object", "additionalProperties": {"oneOf": [{"type": "string", "const": "a"}]}}
+  }
+}
