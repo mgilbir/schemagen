@@ -15,6 +15,18 @@ type HelperSet struct {
 	DynamicConst       bool // _dynConstOK, only reached by object-level conditionals
 	Annotations        bool // _schemaNode and the runtime schema evaluator
 	AnnotationsPattern bool // the evaluator's ECMA-262 arms, and the engine they need
+
+	// AnnotationsDynamic adds the two things a schema needs when it cannot be
+	// written as one finite tree: a node that refers to another node, so a
+	// schema that contains itself can be expressed at all, and the stack of
+	// schema resources a $dynamicRef or $recursiveRef is resolved against.
+	//
+	// They share a flag because they arrive together. A dynamic reference is
+	// almost always what makes a schema recursive, and the resource frames are
+	// no use without somewhere for a reference to point. Conditional for the
+	// usual reason: a package whose schemas do neither should not carry the
+	// stack, nor pay for threading it through every call in the evaluator.
+	AnnotationsDynamic bool
 	Integer            bool // jsonInteger and the shape-preserving converters
 	NullCheck          bool // jsonNullRule and the recursive walker that applies one
 	Format             bool // schemagenFormat* -- one function per asserted format
@@ -45,6 +57,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.DynamicConst = h.DynamicConst || other.DynamicConst
 	h.Annotations = h.Annotations || other.Annotations
 	h.AnnotationsPattern = h.AnnotationsPattern || other.AnnotationsPattern
+	h.AnnotationsDynamic = h.AnnotationsDynamic || other.AnnotationsDynamic
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
@@ -106,6 +119,16 @@ func HelpersReferencedBy(src string) HelperSet {
 		// needed costs an import and compiles.
 		if strings.Contains(src, "Pattern: _strPtr(") || strings.Contains(src, "PatternProperties:") {
 			set.AnnotationsPattern = true
+		}
+		// The recursive and dynamic arms are read the same way, off the three
+		// fields only a file needing them can carry: a node pointing at another
+		// node, a reference the dynamic scope resolves, and the frame a schema
+		// resource publishes. All three are matched because each can appear
+		// without the others -- a recursive schema with no dynamic reference in
+		// it names only the first -- and a missed one is a file that names a
+		// type the helpers do not declare, which does not compile.
+		if strings.Contains(src, "Ref: &_rt") || strings.Contains(src, "DynamicRef:") || strings.Contains(src, "DynamicAnchors:") {
+			set.AnnotationsDynamic = true
 		}
 	}
 	// jsonInteger and its three container rebuilders come as one block, and the

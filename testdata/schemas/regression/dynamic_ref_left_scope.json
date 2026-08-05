@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemagen.test/dynamic-ref-left-scope/main",
+  "if": {
+    "$id": "first_scope",
+    "$defs": {
+      "thingy": { "$dynamicAnchor": "thingy", "type": "number" }
+    }
+  },
+  "then": {
+    "$id": "second_scope",
+    "$ref": "start",
+    "$defs": {
+      "thingy": { "$dynamicAnchor": "thingy", "type": "null" }
+    }
+  },
+  "$defs": {
+    "start": {
+      "$id": "start",
+      "$dynamicRef": "inner_scope#thingy"
+    },
+    "thingy": {
+      "$id": "inner_scope",
+      "$dynamicAnchor": "thingy",
+      "type": "string"
+    }
+  }
+}

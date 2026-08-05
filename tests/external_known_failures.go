@@ -177,47 +177,47 @@ var knownValidationFailures = map[string]string{
 // and scope-aware $anchor indexing in the generator now produce consistent results.)
 var knownFlakyTests = map[string]bool{}
 
-// Reasons for knownUnvalidatedRejections. Each names why a group's root
-// resolves to `any` — a bare interface carries no Validate, so nothing about
-// the group is ever checked. They are constants rather than repeated literals
-// so that fixing one cause is one grep and one delete, not 90.
+// The reasons for knownUnvalidatedRejections used to live here. Each named why
+// a group's root resolved to `any` — a bare interface carries no Validate, so
+// nothing about the group was ever checked — and they were constants rather than
+// repeated literals so that fixing one cause was one grep and one delete, not
+// 90.
 //
-// They named a root *shape* while every one of them was a shape, and the
-// remaining one is not: what collapses a $recursiveRef root is a reference the
-// branch holds, not the branch. Naming the cause rather than the silhouette is
-// the difference between a reason that stays true and one that has to be
-// re-derived, which is what the paragraph below is about.
+// There are none left, and the history of how they went is worth more than the
+// empty const block would be.
 //
-// Six are gone rather than left empty. gapRootRefToFalse, which #116 answered
-// by giving a $ref to a boolean false the forbidding wrapper the root already
-// had; gapRootDependenciesOnly, which #117 answered by reading draft 3's
+// Six went because the shape stopped being a gap. gapRootRefToFalse, which #116
+// answered by giving a $ref to a boolean false the forbidding wrapper the root
+// already had; gapRootDependenciesOnly, which #117 answered by reading draft 3's
 // bare-string dependency; and gapRootContentOnly, which #115 answered by giving
 // a content keyword with no declared type the same string wrapper #106 gave a
 // format. A reason nothing cites is a shape that is no longer a gap, and keeping
 // the constant would invite the next entry to be filed under something already
 // fixed.
 //
-// The other three went for a different reason: they were not true. Two of them,
+// Three went for a different reason: they were not true. Two of them,
 // gapRootCompositionOnly and gapRootConditionalOnly, said that a root stating
 // only anyOf, or only if/then/else, resolves to any for that reason -- which
 // this generator has not done since #113/#114, and the goldens for an anyOf and
-// a oneOf root say so. Every group filed under them is a $recursiveRef or a
-// $dynamicRef group, and what collapses those roots is the unresolvable
-// reference inside the branch, not the branch. The last, gapRootFormatOnly, was
-// answered for 88 of its 90 entries by #106 and kept the remaining five on a
-// reason that had stopped describing them: three named draft 3's own spellings
-// of formats this generator does check under the modern names, and two named a
-// format the custom metaschema they declare asserts by vocabulary. Both are now
-// read, so the constant has nothing left to cite it.
+// a oneOf root say so. Every group filed under them was a $recursiveRef or a
+// $dynamicRef group. The last, gapRootFormatOnly, was answered for 88 of its 90
+// entries by #106 and kept the remaining five on a reason that had stopped
+// describing them: three named draft 3's own spellings of formats this generator
+// does check under the modern names, and two named a format the custom
+// metaschema they declare asserts by vocabulary.
 //
 // A wrong reason is worse than no reason. It says the group has been diagnosed,
 // so the next reader starts from the diagnosis rather than from the schema --
 // which is how five entries sat behind "the root is a format" while two of them
-// were about a vocabulary declaration and three about a spelling table.
-const (
-	gapDynamicRefRoot = `a $recursiveRef/$dynamicRef with no target this generator resolves statically collapses the subschema holding it to any, and the root with it, so the root carries no Validate`
-)
-
+// were about a vocabulary declaration and three about a spelling table. The
+// replacement written for the last ten was wrong in its own way, and only by one
+// word: it said the reference had "no target this generator resolves
+// statically", when five of the ten resolved perfectly well and collapsed
+// anyway, because what the compiled evaluator could not express was the *cycle*
+// the resolved target closed. Re-deriving it from the schemas is what found
+// that; taking the reason on trust would have built a resolver for a resolution
+// that already worked.
+//
 // knownUnvalidatedRejections allow-lists groups that produce no Validate()
 // method while the suite marks at least one of their documents invalid.
 //
@@ -258,26 +258,18 @@ const (
 // others. Both failed by name on the first run that walked v1, rather than
 // arriving as a silent skip.
 //
-// One section is left, of ten. The five that were not in it went for two
-// unrelated reasons that had been filed as one: draft 3's "host-name",
-// "ip-address" and "color" are now settled onto the spellings this generator
-// checks before anything asks whether the keyword names a checkable format, and
-// the two format-assertion groups are now read from the $vocabulary of the
-// custom metaschema they declare rather than from a --format-assertion the
-// harness was passing on that file's behalf.
-var knownUnvalidatedRejections = map[string]string{
-	// gapDynamicRefRoot (10 entries)
-	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)":   gapDynamicRefRoot,
-	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                          gapDynamicRefRoot,
-	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":                 gapDynamicRefRoot,
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                              gapDynamicRefRoot,
-	// v1 has no counterpart to "multiple dynamic paths": its dynamicRef.json is
-	// 2020-12's minus that group, so only one of the pair is listed here. An
-	// entry for it would be reported stale rather than quietly ignored.
-	"v1/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef": gapDynamicRefRoot,
-}
+// The last section was ten $recursiveRef and $dynamicRef groups, and it is
+// empty. The runtime evaluator carries the dynamic scope now -- the stack of
+// schema resources entered on the way to the keyword, searched from the
+// outermost in -- and it can express a schema that contains itself, which is
+// what the five "works like $ref" groups actually needed and what the reason on
+// file had misdiagnosed. All ten produce a Validate() and every document in them
+// gets the verdict the suite gives it, in both directions.
+//
+// The map stays declared rather than being deleted, because it is a ratchet and
+// an empty ratchet is still a ratchet: the next group that produces no
+// Validate() while carrying a document the suite forbids fails
+// TestExternalValidation by name, and clearing that failure means adding a key
+// here deliberately, with a reason. Empty is the strongest state this list can
+// be in and the easiest one to lose.
+var knownUnvalidatedRejections = map[string]string{}

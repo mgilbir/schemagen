@@ -2408,6 +2408,13 @@ func TestExternalRoundTrip(t *testing.T) {
 // knownUnvalidatedRejections entries went stale in the same run and were
 // deleted -- the sweep named each one rather than letting the number drift.
 //
+// It was 2218 until draft 3's own format spellings (host-name, ip-address,
+// color), the format vocabulary a custom metaschema declares, and a runtime
+// dynamic scope for $recursiveRef/$dynamicRef stopped fifteen roots resolving
+// to `any`. knownUnvalidatedRejections emptied out in the same run: every
+// group that carried a must-reject document while producing no Validate() now
+// produces one. The map stays declared -- it is the ratchet, not a record.
+//
 // minValidatedGroups is the number of test groups this test reached a generated
 // Validate() for, measured on 2026-08-04 against suite commit cf2e5e0: 2213 of
 // the 2252 code-gen-suitable groups (2257 groups in the corpus, less the 5 whose
@@ -2451,7 +2458,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 2218
+const minValidatedGroups = 2237
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.

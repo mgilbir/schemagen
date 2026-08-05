@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemagen.test/mid-resource-entry/main",
+  "if": { "propertyNames": { "pattern": "^[a-m]" } },
+  "then": { "$ref": "outer#/$defs/entry" },
+  "else": { "type": "integer" },
+  "$defs": {
+    "outer": {
+      "$id": "outer",
+      "$dynamicAnchor": "leaf",
+      "type": ["object", "string"],
+      "$defs": {
+        "entry": { "additionalProperties": { "$ref": "inner" } }
+      }
+    },
+    "inner": {
+      "$id": "inner",
+      "$defs": { "leaf": { "$dynamicAnchor": "leaf" } },
+      "additionalProperties": { "$dynamicRef": "#leaf" }
+    }
+  }
+}

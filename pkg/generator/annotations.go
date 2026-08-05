@@ -40,13 +40,18 @@ var annotationKeywords = map[string]bool{
 // gives the position a string type, and a node evaluator that quietly ignored it
 // would enforce a different schema here than the static path does two lines
 // away. The content keywords are left out because nothing here models them.
-// "$dynamicRef" and "$recursiveRef" are left out
-// because resolving them needs the dynamic scope of the *instance* evaluation,
-// which an inlined tree does not have -- which is also what makes the anchors
-// safe to accept and ignore: an anchor with nothing pointing at it constrains
-// nothing. "dependencies", "extends" and "disallow" are left out because
-// Normalize rewrites them into modern keywords but leaves the originals in
-// place, so accepting the key would risk reading a schema twice.
+// "dependencies", "extends" and "disallow" are left out because Normalize
+// rewrites them into modern keywords but leaves the originals in place, so
+// accepting the key would risk reading a schema twice.
+//
+// "$dynamicRef" and "$recursiveRef" are here, but they are the two entries a
+// caller may still be refused over: the tree is inlined, and where such a
+// reference resolves is a property of the path the *instance* evaluation took to
+// it, which no inlined tree states. What is compiled is the search rather than
+// its answer -- the anchor name, and the resources that publish it -- and a
+// caller that cannot emit the package-level variables that needs is declined.
+// The anchors themselves stay non-constraining, which they always were: an
+// anchor nothing looks up constrains nothing.
 //
 // Everything not listed fails the schema closed, so a keyword the parser learns
 // later cannot be dropped silently.
@@ -67,6 +72,8 @@ var validatorKeywords = map[string]bool{
 	"unevaluatedItems":      true,
 	"unevaluatedProperties": true,
 	"$ref":                  true,
+	"$dynamicRef":           true,
+	"$recursiveRef":         true,
 
 	// Carry no constraint of their own where they sit.
 	"$defs": true, "definitions": true,
@@ -101,9 +108,21 @@ var inertKeywords = map[string]bool{
 // a thousand nested anyOf and two thousand nested not, which is a legal document
 // and no use to anybody. Without the bound the builder spends minutes assembling
 // a literal for it. Real schemas nest an order of magnitude less than this.
+//
+// maxRuntimeRounds bounds a different thing: the fixpoint the hoisting builder
+// runs. Each round either discovers a schema that has to become a node of its
+// own or an anchor name the dynamic scope has to carry, and both sets only grow,
+// so the loop ends on its own for any schema. The bound is what keeps a
+// pathological one from spending the time to prove it.
+//
+// maxRuntimeHoists bounds the other factor of the same product. A round
+// re-renders every hoisted node as well as the root, so the cost is rounds times
+// nodes and neither may be left to the schema.
 const (
-	maxRuntimeNodes = 4000
-	maxRuntimeDepth = 48
+	maxRuntimeNodes  = 4000
+	maxRuntimeDepth  = 48
+	maxRuntimeRounds = 64
+	maxRuntimeHoists = 32
 )
 
 // nodeBuilder renders a schema as a Go _schemaNode composite literal.
@@ -111,17 +130,174 @@ const (
 // allowed decides which keywords the caller is prepared to have modelled;
 // anything else refuses the whole subtree. inlineRefs turns on $ref resolution,
 // which is what makes the stack necessary: a reference that leads back to a
-// schema already being rendered would inline for ever, so it is refused, and the
-// caller falls back to whatever it would have done without this path.
+// schema already being rendered would inline for ever.
+//
+// hoistPrefix is what a caller able to emit package-level variables sets, and it
+// changes the answer to that cycle. A reference that closes a loop by descending
+// into the value -- an object whose additionalProperties are objects of the same
+// shape -- terminates for any finite document, and is emitted as a node
+// variable the cycle points back at rather than refused. Without a prefix the
+// cycle is refused as before, which is the answer for a caller emitting a
+// literal inside a function body, where there is nowhere to put such a variable.
 type nodeBuilder struct {
-	g          *Generator
-	allowed    map[string]bool
-	inlineRefs bool
+	g           *Generator
+	allowed     map[string]bool
+	inlineRefs  bool
+	hoistPrefix string
 
-	stack       map[*schema.Schema]bool
+	// stack maps a schema being rendered to the number of value-descending
+	// steps taken when rendering of it began. Meeting it again with a larger
+	// count is a cycle that shrinks the value each time round; meeting it with
+	// the same count is a schema that applies to the same value for ever.
+	stack    map[*schema.Schema]int
+	descents int
+
+	// resource is the schema resource the node being rendered belongs to. A node
+	// whose resource differs from it is *entering* one, which is what puts that
+	// resource on the dynamic scope -- and a reference into the middle of a
+	// resource does that as much as arriving at its root does, which is why this
+	// is tracked rather than recognised from the node.
+	resource *schema.Schema
+
 	depth       int
 	nodes       int
 	usesPattern bool
+
+	// hoisted names the schemas rendered as variables of their own, in the order
+	// they were found, so the names and the emitted order are the same on every
+	// run. rendering is the one whose body is being produced right now, which is
+	// the single place a hoisted schema is written out rather than referred to.
+	hoisted    map[*schema.Schema]string
+	hoistOrder []*schema.Schema
+	rendering  *schema.Schema
+
+	// dynAnchors holds the anchor names some compiled reference resolves through
+	// the dynamic scope, which is what decides whether a schema resource
+	// contributes a frame at all. It is discovered while rendering rather than
+	// before it, because a reference only becomes dynamic once its target is
+	// known -- so a name learned late sets restart and the whole literal is
+	// built again with the frames it now needs.
+	dynAnchors map[string]bool
+	restart    bool
+}
+
+// reset clears the per-round rendering state, keeping everything the rounds
+// accumulate: the hoisted set, the anchor names, and whether a pattern was seen.
+func (b *nodeBuilder) reset() {
+	b.stack = map[*schema.Schema]int{}
+	b.descents = 0
+	b.depth = 0
+	b.nodes = 0
+	// Nothing has been entered at the start of a literal, so the first node
+	// publishes its own resource -- which is right for the root and right for a
+	// hoisted node, since a reference reaching one enters whatever resource it
+	// belongs to.
+	b.resource = nil
+}
+
+// build renders s, together with every schema hoisted out of it.
+//
+// It runs to a fixpoint because the two things a round can discover are both
+// invisible until something has been rendered: a cycle is only a cycle once the
+// schema closing it has been reached, and a schema resource only has to publish
+// its anchors once a reference below it turns out to need them. Either
+// discovery invalidates what was rendered before it, so the round is thrown away
+// and run again against the larger set. Both sets grow monotonically, so the
+// loop terminates; maxRuntimeRounds is there for the schema that would take too
+// long proving it.
+func (b *nodeBuilder) build(s *schema.Schema) (string, []RuntimeNodeVar, bool) {
+	for round := 0; round < maxRuntimeRounds; round++ {
+		b.restart = false
+		b.reset()
+		root, ok := b.literal(s, 0)
+		if !ok {
+			return "", nil, false
+		}
+		// hoistOrder may grow while this loop runs, and the entries added are
+		// rendered by the same loop; a growth also sets restart, so the round
+		// they were found in is discarded and they are rendered again against
+		// the complete set.
+		var vars []RuntimeNodeVar
+		for i := 0; i < len(b.hoistOrder); i++ {
+			if b.overBudget() {
+				return "", nil, false
+			}
+			target := b.hoistOrder[i]
+			b.reset()
+			b.rendering = target
+			lit, ok := b.literal(target, 1)
+			b.rendering = nil
+			if !ok {
+				return "", nil, false
+			}
+			vars = append(vars, RuntimeNodeVar{Name: b.hoisted[target], Literal: lit})
+		}
+		if !b.restart {
+			return root, vars, true
+		}
+	}
+	return "", nil, false
+}
+
+// hoistRef records that s needs a variable of its own and returns the node that
+// refers to it.
+func (b *nodeBuilder) hoistRef(s *schema.Schema) string {
+	name, ok := b.hoisted[s]
+	if !ok {
+		if b.hoisted == nil {
+			b.hoisted = map[*schema.Schema]string{}
+		}
+		name = fmt.Sprintf("%s%d", b.hoistPrefix, len(b.hoistOrder)+1)
+		b.hoisted[s] = name
+		b.hoistOrder = append(b.hoistOrder, s)
+		b.restart = true
+	}
+	return "_schemaNode{Ref: &" + name + "}"
+}
+
+// overBudget reports whether the fixpoint has grown past what it is willing to
+// spend. Each hoisted node is a whole literal of its own and a round re-renders
+// all of them, so the work is the product of the two counts -- and both are
+// bounded here rather than left to the schema. A schema that hits it is refused,
+// which is the same answer as any other thing the evaluator cannot carry.
+func (b *nodeBuilder) overBudget() bool { return len(b.hoistOrder) > maxRuntimeHoists }
+
+// needAnchor records that the dynamic scope has to carry a name, so that the
+// schema resources declaring it publish it on the way past.
+func (b *nodeBuilder) needAnchor(name string) {
+	if b.dynAnchors[name] {
+		return
+	}
+	if b.dynAnchors == nil {
+		b.dynAnchors = map[string]bool{}
+	}
+	b.dynAnchors[name] = true
+	b.restart = true
+}
+
+// sub renders a subschema that applies to a *different* value than its parent --
+// an item, a property, a key. Crossing one of these is what makes a reference
+// cycle terminate on a finite document, and hoistRef is only reached through
+// having crossed one.
+func (b *nodeBuilder) sub(s *schema.Schema, indent int) (string, bool) {
+	b.descents++
+	lit, ok := b.literal(s, indent)
+	b.descents--
+	return lit, ok
+}
+
+func (b *nodeBuilder) subList(subs []*schema.Schema, indent int) (string, bool) {
+	b.descents++
+	lit, ok := b.list(subs, indent)
+	b.descents--
+	return lit, ok
+}
+
+func (b *nodeBuilder) subMemberList(members map[string]*schema.Schema, indent int) (string, bool) {
+	b.descents++
+	lit, ok := b.memberList(members, indent)
+	b.descents--
+	return lit, ok
 }
 
 // resolve looks up a schema's $ref without recording the outcome.
@@ -143,16 +319,42 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if b.nodes > maxRuntimeNodes || b.depth >= maxRuntimeDepth {
 		return "", false
 	}
-	if b.stack[s] {
-		// A reference cycle. Inlining cannot terminate, and enforcing the part
-		// above the cycle would be a different schema.
-		return "", false
+	// A schema already given a variable of its own is referred to, not written
+	// out again -- except in the one place its body is being produced.
+	if name, ok := b.hoisted[s]; ok && s != b.rendering {
+		return "_schemaNode{Ref: &" + name + "}", true
 	}
-	b.stack[s] = true
+	if at, on := b.stack[s]; on {
+		// A reference cycle. Where it closes without the value having got any
+		// smaller, inlining cannot terminate and neither could evaluation, so
+		// the schema is refused; enforcing the part above the cycle would be a
+		// different schema. Where the value descends on the way round, a finite
+		// document ends the recursion and the cycle becomes a node variable
+		// pointing back at itself.
+		if b.hoistPrefix == "" || b.descents <= at {
+			return "", false
+		}
+		return b.hoistRef(s), true
+	}
+	if b.stack == nil {
+		b.stack = map[*schema.Schema]int{}
+	}
+	b.stack[s] = b.descents
 	b.depth++
+	// Which schema resource this node belongs to, which is what decides whether
+	// arriving at it *enters* one. A reference into the middle of a resource
+	// enters it exactly as arriving at its root does -- the dynamic scope is the
+	// resources entered, not the roots landed on -- so the resource is tracked
+	// rather than the root recognised.
+	enclosing := b.resource
+	entered := s.DocumentRoot != nil && s.DocumentRoot != enclosing
+	if entered {
+		b.resource = s.DocumentRoot
+	}
 	defer func() {
 		delete(b.stack, s)
 		b.depth--
+		b.resource = enclosing
 	}()
 
 	pad := strings.Repeat("\t", indent)
@@ -277,14 +479,14 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		}
 	}
 	if len(tuple) > 0 {
-		list, ok := b.list(tuple, indent+2)
+		list, ok := b.subList(tuple, indent+2)
 		if !ok {
 			return "", false
 		}
 		add(fmt.Sprintf("PrefixItems: %s,", list))
 	}
 	if itemsSchema != nil {
-		lit, ok := b.literal(itemsSchema, indent+1)
+		lit, ok := b.sub(itemsSchema, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -301,7 +503,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if additional == nil {
 			return "", false
 		}
-		lit, ok := b.literal(additional, indent+1)
+		lit, ok := b.sub(additional, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -309,7 +511,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 
 	if s.Contains != nil {
-		lit, ok := b.literal(s.Contains, indent+1)
+		lit, ok := b.sub(s.Contains, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -331,14 +533,17 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if s.MaxProperties != nil {
 		add(fmt.Sprintf("MaxProperties: _intPtr(%d),", s.MaxProperties.Int()))
 	}
+	// dependentSchemas is not in this group, and the difference is the one sub
+	// draws: its branches apply to the object itself, where a property's or a
+	// pattern's apply to a member of it.
 	for _, group := range []struct {
 		name    string
 		members map[string]*schema.Schema
-	}{{"Properties", s.Properties}, {"PatternProperties", s.PatternProperties}, {"DependentSchemas", s.DependentSchemas}} {
+	}{{"Properties", s.Properties}, {"PatternProperties", s.PatternProperties}} {
 		if len(group.members) == 0 {
 			continue
 		}
-		list, ok := b.memberList(group.members, indent+2)
+		list, ok := b.subMemberList(group.members, indent+2)
 		if !ok {
 			return "", false
 		}
@@ -347,12 +552,19 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 			b.usesPattern = true
 		}
 	}
+	if len(s.DependentSchemas) > 0 {
+		list, ok := b.memberList(s.DependentSchemas, indent+2)
+		if !ok {
+			return "", false
+		}
+		add(fmt.Sprintf("DependentSchemas: %s,", list))
+	}
 	if s.AdditionalProperties != nil {
 		additional := s.AdditionalProperties.AsSchema()
 		if additional == nil {
 			return "", false
 		}
-		lit, ok := b.literal(additional, indent+1)
+		lit, ok := b.sub(additional, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -377,6 +589,54 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		}
 		allOf = append(append([]*schema.Schema(nil), allOf...), resolved)
 	}
+
+	// $recursiveRef and $dynamicRef exist only in drafts where a reference is an
+	// applicator, so they are conjuncts like the $ref above -- with the one
+	// difference that where they lead may not be decidable here at all.
+	if s.RecursiveRef != "" || s.DynamicRef != "" {
+		if !b.inlineRefs {
+			return "", false
+		}
+		target, anchor, dynamic, ok := b.g.dynamicRefTarget(s)
+		if !ok {
+			return "", false
+		}
+		if !dynamic {
+			// Nothing declares the anchor this reference would have searched
+			// for, so it is a $ref by a longer name and is inlined like one.
+			allOf = append(append([]*schema.Schema(nil), allOf...), target)
+		} else {
+			lit, ok := b.dynamicRefLiteral(s, target, anchor, indent+1)
+			if !ok {
+				return "", false
+			}
+			add(lit)
+		}
+	}
+
+	// A schema resource publishes its anchors for as long as it is being
+	// evaluated, which is what a reference below it searches. Only the names
+	// some reference actually searches for are published: an anchor nothing
+	// looks up costs a frame and changes no answer.
+	if len(b.dynAnchors) > 0 {
+		if s.DocumentRoot == nil {
+			// Which resource this node belongs to was never computed, so whether
+			// it publishes anything is unknown -- and an unpublished anchor is
+			// not an anchor that changes nothing. It hands the reference to
+			// whatever resource is further out, which is a different schema and
+			// can reject a document this one allows.
+			return "", false
+		}
+		if entered {
+			anchors, ok := b.dynamicAnchorsLiteral(s, s.DocumentRoot, indent+2)
+			if !ok {
+				return "", false
+			}
+			if anchors != "" {
+				add(fmt.Sprintf("DynamicAnchors: %s,", anchors))
+			}
+		}
+	}
 	for _, group := range []struct {
 		name string
 		subs []*schema.Schema
@@ -394,13 +654,27 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	for _, branch := range []struct {
 		name string
 		sub  *schema.Schema
-	}{{"Not", s.Not}, {"If", s.If}, {"Then", s.Then}, {"Else", s.Else},
-		{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems},
-		{"UnevaluatedProperties", s.UnevaluatedProperties}} {
+	}{{"Not", s.Not}, {"If", s.If}, {"Then", s.Then}, {"Else", s.Else}} {
 		if branch.sub == nil {
 			continue
 		}
 		lit, ok := b.literal(branch.sub, indent+1)
+		if !ok {
+			return "", false
+		}
+		add(fmt.Sprintf("%s: _node(%s),", branch.name, lit))
+	}
+	// propertyNames judges a key rather than the object, and the unevaluated
+	// pair judges what is left of an item or a member, so all three descend.
+	for _, branch := range []struct {
+		name string
+		sub  *schema.Schema
+	}{{"PropertyNames", s.PropertyNames}, {"UnevaluatedItems", s.UnevaluatedItems},
+		{"UnevaluatedProperties", s.UnevaluatedProperties}} {
+		if branch.sub == nil {
+			continue
+		}
+		lit, ok := b.sub(branch.sub, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -412,6 +686,87 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 	sort.Strings(fields)
 	return "_schemaNode{\n" + strings.Join(fields, "\n") + "\n" + pad + "}", true
+}
+
+// dynamicRefLiteral emits the field for a $recursiveRef or $dynamicRef whose
+// target the dynamic scope decides.
+//
+// The fallback is compiled too, and it is not decoration: the scope is searched
+// from the outermost resource in, and a document whose path enters no resource
+// declaring the anchor leaves the reference meaning what it statically says.
+//
+// A reference that could arrive back at itself with the same value in hand is
+// refused rather than compiled, because that is a generated program that does
+// not finish. The builder's own cycle check cannot see it -- the loop is closed
+// by a target chosen per document, not by an edge in the tree -- so it is asked
+// separately. See dynamicRefCanLoop.
+func (b *nodeBuilder) dynamicRefLiteral(s, target *schema.Schema, anchor string, indent int) (string, bool) {
+	if b.hoistPrefix == "" {
+		// A dynamic reference resolves to a schema resource, which is a node
+		// somewhere else in the tree, and the frames that carry those are only
+		// emitted where package-level variables can be. See hoistPrefix.
+		return "", false
+	}
+	if b.g.dynamicRefCanLoop(s, target, anchor) {
+		return "", false
+	}
+	b.needAnchor(anchor)
+	fallback, ok := b.literal(target, indent+1)
+	if !ok {
+		return "", false
+	}
+	pad := strings.Repeat("\t", indent)
+	inner := strings.Repeat("\t", indent+1)
+	return fmt.Sprintf("DynamicRef: &_dynamicRef{\n%sAnchor: %q,\n%sFallback: _node(%s),\n%s},",
+		inner, anchor, inner, fallback, pad), true
+}
+
+// dynamicAnchorsLiteral emits the anchors a schema resource contributes to the
+// dynamic scope, or "" when it declares none of the names in play.
+//
+// An anchor on the node the frame hangs off is emitted with no node of its own.
+// That is not a saving: it is the only way to express it. Such an anchor names
+// the very node that carries it, and Go rejects a cycle between package-level
+// variable initialisers, so a node holding a pointer to itself cannot be
+// written. The evaluator reads a nil node as "the node whose frame this is".
+//
+// entry and resource are two schemas and not one, because a reference into the
+// middle of a resource enters it: the frame is published on the node the
+// reference lands on, while the anchors it publishes are the resource's. So a
+// $recursiveAnchor -- which always names the resource root -- gets the nil
+// spelling when the reference landed on that root and an ordinary node when it
+// did not, and the two cases resolve to the same schema either way. Reading the
+// nil spelling as "the resource root" instead would be wrong for the same reason
+// in reverse, since the root is not what a mid-resource frame hangs off.
+func (b *nodeBuilder) dynamicAnchorsLiteral(entry, resource *schema.Schema, indent int) (string, bool) {
+	names := make([]string, 0, len(b.dynAnchors))
+	for name := range b.dynAnchors {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	pad := strings.Repeat("\t", indent)
+	closePad := strings.Repeat("\t", indent-1)
+	var parts []string
+	for _, name := range names {
+		declared := resourceDynamicAnchor(resource, name)
+		if declared == nil {
+			continue
+		}
+		if declared == entry {
+			parts = append(parts, fmt.Sprintf("%s{Name: %q},", pad, name))
+			continue
+		}
+		lit, ok := b.literal(declared, indent+1)
+		if !ok {
+			return "", false
+		}
+		parts = append(parts, fmt.Sprintf("%s{Name: %q, Node: _node(%s)},", pad, name, lit))
+	}
+	if len(parts) == 0 {
+		return "", true
+	}
+	return "[]_schemaAnchor{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 func (b *nodeBuilder) list(subs []*schema.Schema, indent int) (string, bool) {
@@ -608,7 +963,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !needsRuntimeAnnotations(s) && !g.hasCousinUnevaluatedItems(s) {
 		return nil
 	}
-	b := &nodeBuilder{g: g, allowed: annotationKeywords, stack: map[*schema.Schema]bool{}}
+	b := &nodeBuilder{g: g, allowed: annotationKeywords, stack: map[*schema.Schema]int{}}
 	lit, ok := b.literal(s, 0)
 	if !ok {
 		return nil
@@ -882,12 +1237,27 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 	if !g.validationKeywordsEnabled() {
 		return nil
 	}
-	b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
-	lit, ok := b.literal(s, 0)
+	b := &nodeBuilder{
+		g:          g,
+		allowed:    validatorKeywords,
+		inlineRefs: true,
+		stack:      map[*schema.Schema]int{},
+		// The variables are named after the type they belong to, which is unique
+		// in its package, so two schemas compiled into one package cannot claim
+		// the same name.
+		hoistPrefix: "_rt" + name + "Node",
+	}
+	lit, nodes, ok := b.build(s)
 	if !ok || unownedNodeLiterals[lit] {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Description: s.Description, NodeLiteral: lit, NeedsPattern: b.usesPattern}
+	return &AnnotationSchemaDef{
+		Name:         name,
+		Description:  s.Description,
+		NodeLiteral:  lit,
+		Nodes:        nodes,
+		NeedsPattern: b.usesPattern,
+	}
 }
 
 // unownedNodeLiterals are the compiled forms this path hands back rather than

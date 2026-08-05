@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemagen.test/dynamic-ref-scope-chain/main",
+  "if": {
+    "properties": { "kindOfList": { "const": "numbers" } },
+    "required": ["kindOfList"]
+  },
+  "then": { "$ref": "numberList" },
+  "else": { "$ref": "stringList" },
+  "$defs": {
+    "genericList": {
+      "$id": "genericList",
+      "properties": {
+        "list": { "items": { "$dynamicRef": "#itemType" } }
+      },
+      "$defs": {
+        "defaultItemType": {
+          "$comment": "Only needed to satisfy bookending requirement",
+          "$dynamicAnchor": "itemType"
+        }
+      }
+    },
+    "numberList": {
+      "$id": "numberList",
+      "$defs": {
+        "itemType": { "$dynamicAnchor": "itemType", "type": "number" }
+      },
+      "$ref": "genericList"
+    },
+    "stringList": {
+      "$id": "stringList",
+      "$defs": {
+        "itemType": { "$dynamicAnchor": "itemType", "type": "string" }
+      },
+      "$ref": "genericList"
+    }
+  }
+}

@@ -31,8 +31,31 @@ func ({{$recv}} {{.Name}}) IsZero() bool { return len({{$recv}}._raw) == 0 }
 
 func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
 
+{{- if .Nodes}}
+// {{.Name}}Schema is the schema {{.Name}} validates against, and the nodes below
+// it are the parts of that schema something inside it refers back to.
+//
+// They are assembled in init() rather than declared with their values because
+// the schema is recursive, and Go refuses a cycle between package-level variable
+// initialisers. Taking a node's address is not part of that cycle, so the
+// assignments may run in any order.
+var (
+	{{.Name}}Schema _schemaNode
+{{- range .Nodes}}
+	{{.Name}} _schemaNode
+{{- end}}
+)
+
+func init() {
+{{- range .Nodes}}
+	{{.Name}} = {{.Literal}}
+{{- end}}
+	{{$.Name}}Schema = {{$.NodeLiteral}}
+}
+{{- else}}
 // {{.Name}}Schema is the schema {{.Name}} validates against.
 var {{.Name}}Schema = {{.NodeLiteral}}
+{{- end}}
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {

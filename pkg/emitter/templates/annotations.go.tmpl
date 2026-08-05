@@ -1,4 +1,20 @@
 {{define "annotation_helpers"}}
+{{- /*
+	$ev and $sc keep the dynamic scope out of a package that has no use for it.
+	The evaluator threads a stack of schema resources through every recursive
+	call, and a package whose schemas name no $dynamicRef or $recursiveRef would
+	be carrying a parameter nothing ever reads. With the arms off, $ev is
+	_evalNode and $sc is empty and the emitted evaluator is what it always was;
+	with them on, the recursion goes through _evalNodeIn and _evalNode becomes
+	the entry point that starts it with an empty scope -- so the callers outside
+	this block, in annotation_schema and validation, are the same either way.
+*/ -}}
+{{- $ev := "_evalNode" -}}
+{{- $sc := "" -}}
+{{- if .AnnotationsDynamic -}}
+{{- $ev = "_evalNodeIn" -}}
+{{- $sc = ", _scope" -}}
+{{- end -}}
 // The types below evaluate JSON Schema at runtime, against a value decoded into
 // `any`.
 //
@@ -63,7 +79,86 @@ type _schemaNode struct {
 
 	UnevaluatedItems      *_schemaNode
 	UnevaluatedProperties *_schemaNode
+{{- if .AnnotationsDynamic}}
+
+	// Ref evaluates another node in place of this one, and is how a schema that
+	// contains itself is expressed: an object whose additionalProperties are
+	// objects of the same shape is a cycle, and a cycle is not a tree of
+	// composite literals. Go refuses a cycle between package-level variable
+	// initialisers, so the nodes taking part in one are declared empty and
+	// assigned in init().
+	Ref *_schemaNode
+
+	// DynamicAnchors marks this node as *entering* a schema resource and lists
+	// what that resource contributes to the dynamic scope while it is being
+	// evaluated. Entering is not the same as being the resource's root: a
+	// reference into the middle of a resource enters it too, and the frame then
+	// hangs off the node the reference landed on. Only the anchors some
+	// reference in this schema searches for are listed; an anchor nothing looks
+	// up changes no answer.
+	DynamicAnchors []_schemaAnchor
+
+	// DynamicRef is a $dynamicRef or $recursiveRef, and is another conjunct like
+	// AllOf: the drafts that define these keywords are the drafts where a
+	// reference applies beside its siblings rather than replacing them.
+	DynamicRef *_dynamicRef
+{{- end}}
 }
+{{- if .AnnotationsDynamic}}
+
+// _schemaAnchor is one $dynamicAnchor -- or one $recursiveAnchor, which is filed
+// under the empty name, a name no $dynamicAnchor may have -- that a schema
+// resource publishes while it is on the dynamic scope.
+//
+// A nil Node means the node this frame hangs off. That is not a shorthand: such
+// an anchor names the very node that carries it, and a node holding a pointer to
+// itself cannot be written as a composite literal. Where a reference entered a
+// resource part-way, the anchor and the node differ and the generator writes the
+// node out instead, so this spelling always means the same thing.
+type _schemaAnchor struct {
+	Name string
+	Node *_schemaNode
+}
+
+// _dynamicRef is a reference whose target is decided by the path taken to it
+// rather than by where it is written.
+//
+// The scope is searched from the outermost resource inwards, so the same keyword
+// means different things down different paths -- which is the whole point of it,
+// and why no amount of reading the schema settles it in advance. Fallback is
+// where it points when the path entered no resource publishing the anchor, which
+// is what a plain $ref would have meant.
+type _dynamicRef struct {
+	Anchor   string
+	Fallback *_schemaNode
+}
+
+// _schemaFrame is one schema resource on the dynamic scope, holding what it
+// publishes and the node that entered it -- the latter because an anchor on that
+// node is recorded as naming no node at all, and this is the node it names.
+type _schemaFrame struct {
+	node    *_schemaNode
+	anchors []_schemaAnchor
+}
+
+// _dynResolveRef picks the node a $dynamicRef or $recursiveRef names, by walking
+// the dynamic scope from the outermost resource inwards and taking the first one
+// that publishes the anchor.
+func _dynResolveRef(r *_dynamicRef, scope []_schemaFrame) *_schemaNode {
+	for i := range scope {
+		for _, anchor := range scope[i].anchors {
+			if anchor.Name != r.Anchor {
+				continue
+			}
+			if anchor.Node != nil {
+				return anchor.Node
+			}
+			return scope[i].node
+		}
+	}
+	return r.Fallback
+}
+{{- end}}
 
 // _schemaMember is one entry of a keyword whose argument is an object mapping a
 // name or a pattern to a schema. A slice rather than a map so the order the
@@ -119,10 +214,33 @@ func (r *_evalResult) fail(reason string) _evalResult {
 // _evalNode reports whether v satisfies n, together with the item annotations
 // produced. Annotations from a subschema count only when that subschema
 // matched: a failed anyOf branch contributes nothing.
-func _evalNode(n *_schemaNode, v any) _evalResult {
+{{- if .AnnotationsDynamic}}
+//
+// Nothing has been entered when validation starts, so the dynamic scope starts
+// empty.
+func _evalNode(n *_schemaNode, v any) _evalResult { return _evalNodeIn(n, v, nil) }
+
+// _evalNodeIn is _evalNode carrying the schema resources entered on the way
+// here, which is what a $dynamicRef is resolved against.
+{{- end}}
+func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFrame{{end}}) _evalResult {
 	if n == nil {
 		return _newEval(true)
 	}
+{{- if .AnnotationsDynamic}}
+	if n.Ref != nil {
+		return {{$ev}}(n.Ref, v{{$sc}})
+	}
+	if len(n.DynamicAnchors) > 0 {
+		// This node enters a schema resource, so the resource is in scope for as
+		// long as it is being evaluated and out of scope again on the way back --
+		// which is what makes a $dynamicRef's target depend on the path rather
+		// than on the text. The slice is grown with its capacity clipped so that
+		// the append copies: two branches evaluated from the same scope would
+		// otherwise write their frames over each other's.
+		_scope = append(_scope[:len(_scope):len(_scope)], _schemaFrame{node: n, anchors: n.DynamicAnchors})
+	}
+{{- end}}
 	res := _newEval(true)
 	if n.Boolean != nil {
 		if *n.Boolean {
@@ -202,7 +320,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 				break
 			}
 			sub := sub
-			r := _evalNode(&sub, arr[i])
+			r := {{$ev}}(&sub, arr[i]{{$sc}})
 			if !r.ok {
 				return res.fail(r.reason)
 			}
@@ -211,7 +329,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 	}
 	if isArray && n.Items != nil {
 		for i := len(n.PrefixItems); i < len(arr); i++ {
-			r := _evalNode(n.Items, arr[i])
+			r := {{$ev}}(n.Items, arr[i]{{$sc}})
 			if !r.ok {
 				return res.fail(r.reason)
 			}
@@ -223,7 +341,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 	if isArray && n.Contains != nil {
 		count := 0
 		for i, elem := range arr {
-			if _evalNode(n.Contains, elem).ok {
+			if {{$ev}}(n.Contains, elem{{$sc}}).ok {
 				res.evaluated[i] = true
 				count++
 			}
@@ -254,7 +372,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		}
 		if n.PropertyNames != nil {
 			for _, key := range _dynSortedKeys(obj) {
-				r := _evalNode(n.PropertyNames, key)
+				r := {{$ev}}(n.PropertyNames, key{{$sc}})
 				if !r.ok {
 					return res.fail("property name " + key + ": " + r.reason)
 				}
@@ -266,7 +384,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if !present {
 				continue
 			}
-			r := _evalNode(&member.Node, value)
+			r := {{$ev}}(&member.Node, value{{$sc}})
 			if !r.ok {
 				return res.fail("property " + member.Key + ": " + r.reason)
 			}
@@ -283,7 +401,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 				if !_dynPatternOK(member.Key, key) {
 					continue
 				}
-				r := _evalNode(&member.Node, obj[key])
+				r := {{$ev}}(&member.Node, obj[key]{{$sc}})
 				if !r.ok {
 					return res.fail("property " + key + ": " + r.reason)
 				}
@@ -301,7 +419,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 					continue
 				}
 {{- end}}
-				r := _evalNode(n.AdditionalProperties, obj[key])
+				r := {{$ev}}(n.AdditionalProperties, obj[key]{{$sc}})
 				if !r.ok {
 					return res.fail("property " + key + ": " + r.reason)
 				}
@@ -323,7 +441,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if _, present := obj[member.Key]; !present {
 				continue
 			}
-			r := _evalNode(&member.Node, v)
+			r := {{$ev}}(&member.Node, v{{$sc}})
 			if !r.ok {
 				return res.fail("dependent schema for " + member.Key + ": " + r.reason)
 			}
@@ -332,9 +450,23 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 	}
 
 	// In-place applicators contribute their annotations to this node.
+{{- if .AnnotationsDynamic}}
+	// A $dynamicRef is one of them, and is resolved here rather than earlier
+	// because the scope it is resolved against is the one this node has just
+	// joined: a resource whose own root carries the reference publishes its
+	// anchors to it, which is what "$recursiveRef with no $recursiveAnchor in
+	// the outer schema resource" turns on.
+	if n.DynamicRef != nil {
+		r := {{$ev}}(_dynResolveRef(n.DynamicRef, _scope), v{{$sc}})
+		if !r.ok {
+			return res.fail(r.reason)
+		}
+		res.absorb(r)
+	}
+{{- end}}
 	for i := range n.AllOf {
 		sub := n.AllOf[i]
-		r := _evalNode(&sub, v)
+		r := {{$ev}}(&sub, v{{$sc}})
 		if !r.ok {
 			return res.fail(r.reason)
 		}
@@ -344,7 +476,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		any := false
 		for i := range n.AnyOf {
 			sub := n.AnyOf[i]
-			r := _evalNode(&sub, v)
+			r := {{$ev}}(&sub, v{{$sc}})
 			if r.ok {
 				any = true
 				res.absorb(r)
@@ -359,7 +491,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 		var matched _evalResult
 		for i := range n.OneOf {
 			sub := n.OneOf[i]
-			r := _evalNode(&sub, v)
+			r := {{$ev}}(&sub, v{{$sc}})
 			if r.ok {
 				matches++
 				matched = r
@@ -372,22 +504,22 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 	}
 	// "not" contributes no annotations: a subschema that must fail evaluates
 	// nothing, and one that succeeds is a failure of this node.
-	if n.Not != nil && _evalNode(n.Not, v).ok {
+	if n.Not != nil && {{$ev}}(n.Not, v{{$sc}}).ok {
 		return res.fail("value matches a forbidden schema")
 	}
 	if n.If != nil {
-		r := _evalNode(n.If, v)
+		r := {{$ev}}(n.If, v{{$sc}})
 		if r.ok {
 			res.absorb(r)
 			if n.Then != nil {
-				tr := _evalNode(n.Then, v)
+				tr := {{$ev}}(n.Then, v{{$sc}})
 				if !tr.ok {
 					return res.fail(tr.reason)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
-			er := _evalNode(n.Else, v)
+			er := {{$ev}}(n.Else, v{{$sc}})
 			if !er.ok {
 				return res.fail(er.reason)
 			}
@@ -405,7 +537,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if res.evaluated[i] {
 				continue
 			}
-			r := _evalNode(n.UnevaluatedItems, arr[i])
+			r := {{$ev}}(n.UnevaluatedItems, arr[i]{{$sc}})
 			if !r.ok {
 				return res.fail(r.reason)
 			}
@@ -426,7 +558,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult {
 			if res.evaluatedProps[key] {
 				continue
 			}
-			r := _evalNode(n.UnevaluatedProperties, obj[key])
+			r := {{$ev}}(n.UnevaluatedProperties, obj[key]{{$sc}})
 			if !r.ok {
 				return res.fail("unevaluated property " + key + ": " + r.reason)
 			}

@@ -45,6 +45,14 @@ type Generator struct {
 	// within it resolves against that subschema, not the top-level root.
 	documentRoots map[string]*schema.Schema
 
+	// dynamicAnchorDecls memoises, by anchor name, every schema in the document
+	// that declares it. The node builder's loop check asks the question once per
+	// schema it walks past and the answer is a walk of the whole document, so
+	// without this a schema with several dynamic references pays for it
+	// quadratically. The empty name is the $recursiveAnchor namespace; see
+	// dynamicAnchorDeclarations.
+	dynamicAnchorDecls map[string][]*schema.Schema
+
 	// dynamicScope tracks the stack of document roots entered via $ref during
 	// code generation. This enables $dynamicRef to resolve against the dynamic
 	// scope chain (walking from outermost to innermost) rather than only the
@@ -278,6 +286,9 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Initialize dynamic scope with the root document root.
 	g.dynamicScope = []*schema.Schema{s}
+	// The anchor index is about this document, so a Generator reused for another
+	// one must not answer from the last one's.
+	g.dynamicAnchorDecls = nil
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
@@ -7984,7 +7995,53 @@ func (g *Generator) popDynamicScope() {
 //     root that contains a $dynamicAnchor with the same name wins.
 //  4. If no bookend exists at the initial target, behave like a normal $ref.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
-	// Extract the fragment anchor name for dynamic scope lookup.
+	// Steps 1 and 2, which the runtime evaluator needs too: see
+	// dynamicRefInitialTarget.
+	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, g.resolveRefInContext)
+	if initialTarget == nil {
+		return nil
+	}
+	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
+		return initialTarget
+	}
+
+	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
+	// innermost, looking for the first document root that contains a
+	// $dynamicAnchor with the same name.
+	for _, docRoot := range g.dynamicScope {
+		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
+			return found
+		}
+	}
+
+	// Fallback: no override found in dynamic scope — use the bookend.
+	return initialTarget
+}
+
+// dynamicRefInitialTarget performs the static half of a $dynamicRef: the schema
+// the reference would reach if it were spelled $ref, and the plain-name anchor
+// its fragment carries.
+//
+// Both halves are needed by two callers that do different things with them.
+// resolveDynamicRef compares the anchor against the target to decide whether the
+// generation-time dynamic scope is consulted at all; the node builder compares
+// them for the same reason, and then keeps the target as the fallback the
+// generated evaluator uses when no resource in the document's dynamic scope
+// claims the anchor. Sharing the computation is what keeps the two from
+// disagreeing about where a reference points.
+//
+// The anchor is empty for a fragment that is a JSON pointer or absent, which is
+// the shape that can never resolve dynamically: bookending is a statement about
+// a plain-name anchor.
+//
+// resolve is the caller's own reference resolver rather than a fixed one,
+// because the two callers differ in whether a miss should be recorded.
+// resolveDynamicRef is producing a type and its failure is an unresolved
+// reference the run must report; the node builder is probing, and a reference it
+// cannot serve costs the caller only this compiled form -- it falls back to what
+// it would have emitted anyway, and recording the miss would turn an optimistic
+// look into a reported error.
+func (g *Generator) dynamicRefInitialTarget(ref string, ctx *schema.Schema, resolve func(string, *schema.Schema) *schema.Schema) (*schema.Schema, string) {
 	var anchorName string
 	if strings.HasPrefix(ref, "#") && !strings.HasPrefix(ref, "#/") {
 		anchorName = ref[1:] // plain name fragment, e.g., "#items" → "items"
@@ -7995,7 +8052,6 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 		}
 	}
 
-	// Step 1: Resolve the $dynamicRef to its initial target (static resolution).
 	var initialTarget *schema.Schema
 	ctxDocRoot := g.rootSchema
 	if ctx != nil && ctx.DocumentRoot != nil {
@@ -8014,29 +8070,9 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	}
 	if initialTarget == nil {
 		// For JSON pointers, full URIs, or when local resolution failed.
-		initialTarget = g.resolveRefInContext(ref, ctx)
+		initialTarget = resolve(ref, ctx)
 	}
-	if initialTarget == nil {
-		return nil
-	}
-
-	// Step 2: Check for the bookend — does the initial target have a matching
-	// $dynamicAnchor? If not, $dynamicRef behaves like a normal $ref.
-	if anchorName == "" || initialTarget.DynamicAnchor != anchorName {
-		return initialTarget
-	}
-
-	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
-	// innermost, looking for the first document root that contains a
-	// $dynamicAnchor with the same name.
-	for _, docRoot := range g.dynamicScope {
-		if found := findDynamicAnchor(docRoot, anchorName); found != nil {
-			return found
-		}
-	}
-
-	// Fallback: no override found in dynamic scope — use the bookend.
-	return initialTarget
+	return initialTarget, anchorName
 }
 
 // findDynamicAnchor searches a schema tree for a sub-schema with the given
@@ -15782,7 +15818,11 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 			if !needsRuntime {
 				continue
 			}
-			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]bool{}}
+			// No hoistPrefix: this literal is a local variable inside a Validate
+			// method, and a recursive node needs a package-level variable to
+			// point back at. A schema that would want one is declined here and
+			// keeps the static approximation, as it did before hoisting existed.
+			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
 			list, ok := b.list(group.subs, 2)
 			if !ok {
 				continue
