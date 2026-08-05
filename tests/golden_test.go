@@ -196,6 +196,15 @@ func allGoldenTests() []goldenTestCase {
 		// change no type at all -- they gain the check they were missing -- and
 		// this is where the difference is pinned.
 		{"regression/inline_forbidding_positions", "testdata/schemas/regression/inline_forbidding_positions.json", "testdata/golden/regression/inline_forbidding_positions.go"},
+		// The API promise of issue #146, which is the one the six keywords do not
+		// have: they gain a check and change no type, so the difference this
+		// golden pins is the inline object. A propertyless object that constrains
+		// its shape stops being map[string]any and becomes a struct of its own --
+		// the type the same schema has always had behind a $ref -- which is what
+		// gives propertyNames and dependentSchemas somewhere to live inline, and
+		// carries required, minProperties, maxProperties and dependentRequired
+		// with them. See constrainsObjectShape.
+		{"regression/forbidding_subschema_spellings", "testdata/schemas/regression/forbidding_subschema_spellings.json", "testdata/golden/regression/forbidding_subschema_spellings.go"},
 		// Pins which anyOf groups keep the merged struct and which leave it for
 		// the evaluator: a branch the struct cannot hold -- a scalar, a const, a
 		// `not`, the `true` schema -- takes the group away, a `false` branch

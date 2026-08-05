@@ -2149,7 +2149,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// Root-level "not" schema: generates a wrapper around json.RawMessage that
 	// validates the negated constraint. Only handles schemas where "not" is the
 	// sole meaningful keyword (no type, properties, items, etc.).
-	if notDef := extractNotSchemaDef(name, s); notDef != nil {
+	if notDef := g.extractNotSchemaDef(name, s); notDef != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, notDef)
 		return nil
@@ -2273,7 +2273,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			// Extract item-level validation constraints.
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
 			// Extract contains/minContains/maxContains constraints.
-			containsDef, minContains, maxContains := extractContainsDef(s)
+			containsDef, minContains, maxContains := g.extractContainsDef(s)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
@@ -2326,7 +2326,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			tupleTail := g.buildTupleTailDef(s, name)
-			containsDef, minContains, maxContains := extractContainsDef(s)
+			containsDef, minContains, maxContains := g.extractContainsDef(s)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -2482,7 +2482,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// Extract dependentSchemas constraints.
 	var depSchemas []DependentSchemaConstraint
 	if g.validationKeywordsEnabled() {
-		depSchemas = extractDependentSchemaConstraints(s)
+		depSchemas = g.extractDependentSchemaConstraints(s)
 	}
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true
@@ -2490,7 +2490,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// Extract propertyNames constraint.
 	var propNames *PropertyNamesDef
 	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
-		propNames = extractPropertyNamesDef(s.PropertyNames)
+		propNames = g.extractPropertyNamesDef(s.PropertyNames)
 		if propNames != nil {
 			needsUnmarshal = true // need _jsonKeys for validation
 		}
@@ -3419,7 +3419,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// Extract dependent schema constraints.
 	var depSchemas []DependentSchemaConstraint
 	if g.validationKeywordsEnabled() {
-		depSchemas = extractDependentSchemaConstraints(s)
+		depSchemas = g.extractDependentSchemaConstraints(s)
 	}
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
@@ -3570,7 +3570,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// Extract propertyNames constraint.
 	var propertyNamesDef *PropertyNamesDef
 	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
-		propertyNamesDef = extractPropertyNamesDef(s.PropertyNames)
+		propertyNamesDef = g.extractPropertyNamesDef(s.PropertyNames)
 		if propertyNamesDef != nil {
 			needsUnmarshal = true // need _jsonKeys for validation
 		}
@@ -3963,7 +3963,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
-				containsDef, minContains, maxContains = extractContainsDef(arraySchema)
+				containsDef, minContains, maxContains = g.extractContainsDef(arraySchema)
 				unevalItems = g.buildUnevaluatedItemsDef(merged)
 				// The alias *is* the slice, so the per-element checks hang off
 				// the receiver rather than off a field.
@@ -4006,7 +4006,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			}
 			g.generated[name] = true
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(arraySchema, name)
-			containsDef, minContains, maxContains := extractContainsDef(arraySchema)
+			containsDef, minContains, maxContains := g.extractContainsDef(arraySchema)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -5053,7 +5053,7 @@ func (g *Generator) countBooleanSchemas(subs []*schema.Schema) (trueCount, false
 	for _, sub := range subs {
 		if g.subIsFalse(sub) {
 			falseCount++
-		} else if sub.IsTrueSchema() || isAcceptAllSchema(sub) {
+		} else if sub.IsTrueSchema() || g.acceptsEveryInstance(sub) {
 			trueCount++
 		}
 	}
@@ -6786,7 +6786,7 @@ func (g *Generator) inlineConstraintWrapper(s *schema.Schema) bool {
 		return false
 	}
 	if s.Not != nil {
-		return extractNotSchemaDef("", s) != nil
+		return g.extractNotSchemaDef("", s) != nil
 	}
 	if s.If != nil && (s.Then != nil || s.Else != nil) {
 		return g.dynamicSchemaDef("", s) != nil
@@ -8699,21 +8699,98 @@ func forbidsEveryKey(s *schema.Schema) bool {
 	return ap != nil && ap.Bool != nil && !*ap.Bool
 }
 
+// constrainsObjectShape reports whether an object schema demands something of
+// the object as a whole that a bare Go map has nowhere to hold.
+//
+// The six keywords are the ones generatePropertylessObjectDef already emits
+// checks for, and a $defs entry stating any of them has enforced it since long
+// before this: {"$defs":{"N":{"type":"object","propertyNames":false}}} refuses
+// {"a":1} through the named type's Validate. Written inline the same schema came
+// out map[string]any -- a type with no Validate for a check to live in -- and
+// accepted it. That is the second half of issue #146, and it is the same
+// inline-versus-named asymmetry #113, #114, #116, #126, #137, #139 and #142
+// closed one position at a time; here the position is the object itself.
+//
+// It matters to the first half as well. propertyNames and dependentSchemas are
+// two of the six keywords that drop a forbidding sub-schema, and inline they
+// were not dropping the *sub-schema* -- they were not being read at all, for
+// `false` as much as for {"not":{}}. #142's fixture reaches both through a $defs
+// entry and records why in a $comment; with this, the inline spelling answers
+// too and the workaround is no longer the only way to test them.
+//
+// Three things are excluded, and only three. A schema-valued
+// additionalProperties keeps the exclusion objectIsStruct already states: that
+// schema describes the values, one for all of them, and it is a Go map. Naming
+// the position would keep the value typing -- the struct's overflow map is
+// map[string]string either way -- and gain the shape check with it, but it would
+// take map[string]string away from the *field*, which is the whole of #84, so
+// such a schema keeps the map and the keyword stays unenforced there. The golden
+// is where that trade is pinned.
+//
+// A stated type has to be one the propertyless struct can hold, and an enum, a
+// const or a draft-3 type alternative takes the schema away altogether. Both are
+// the same rule: materializing a schema some other arm answers does not leave
+// its type alone, it replaces it. {"type":"string","required":["a"]} describes
+// strings and a struct refuses "abc" at the decoder; {"required":["y"],
+// "enum":[1,2]} is an enum, and read as an object shape it rendered a union
+// whose selection tested `required` against the number 1 -- which satisfies the
+// branch, since `required` speaks only about objects -- and refused a document
+// the schema permits.
+//
+// Nothing else is refused, and the usual fail-closed reading is upside down
+// here. Answering yes routes the position to generateTypeDef under a name, which
+// is the whole ladder rather than one rung of it, so a keyword this predicate has
+// never heard of is answered there at least as well as map[string]any answers it
+// -- which is not at all. It is the fallback that is lossy, so a gate refusing
+// every unfamiliar keyword cost checks and bought nothing: it left
+// {"type":"object","required":["a"],"unevaluatedProperties":false} a bare map.
+//
+// The exclusions are written against the struct fields rather than a re-marshaled
+// key set for the reason emptyEnumSchema records: `enum` is tagged omitempty and
+// `const: null` leaves no key at all, so a key-set gate cannot see either.
+func constrainsObjectShape(s *schema.Schema) bool {
+	if s == nil || mapValueSchema(s, "object") != nil {
+		return false
+	}
+	if s.PropertyNames == nil && len(s.DependentSchemas) == 0 &&
+		len(s.DependentRequired) == 0 && len(s.Required) == 0 &&
+		s.MinProperties == nil && s.MaxProperties == nil {
+		return false
+	}
+	// A stated type has to be one the propertyless struct answers. "object"
+	// alone is the plain case and ["object","null"] the nullable one, which
+	// resolveType's nullable arm materializes through this same predicate.
+	for _, t := range s.Type {
+		if t != "object" && t != "null" {
+			return false
+		}
+	}
+	// The enum arm of resolveType, and generateEnumDef behind it, answer these
+	// better than the struct does.
+	if s.Enum != nil || s.Const != nil || s.ConstIsNull || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	return true
+}
+
 // objectIsStruct reports whether an object schema has to be materialized rather
-// than answered with a bare Go map: it names its keys, or it forbids every key.
+// than answered with a bare Go map: it names its keys, it forbids every key, or
+// it constrains the object's shape in a way no map can carry.
 //
 // The second is not a map because there is nothing for a map to hold, and it is
 // the shape resolveType used to collapse to map[string]any --
 // {"type":"object","additionalProperties":false} written as a property accepted
 // {"x":1}, while the identical schema in a $defs entry has always rejected it
 // through the Forbidden overflow map generatePropertylessObjectDef emits. The
-// named position was right and the inline one was the outlier.
+// named position was right and the inline one was the outlier. The third is that
+// same reading applied to the rest of what a propertyless object can state; see
+// constrainsObjectShape.
 //
 // What is deliberately absent is a *schema-valued* additionalProperties: that
 // does describe the values, one schema for all of them, and it is a Go map --
 // which is the whole of #84 and must not be undone here.
 func objectIsStruct(s *schema.Schema) bool {
-	return namesObjectKeys(s) || forbidsEveryKey(s)
+	return namesObjectKeys(s) || forbidsEveryKey(s) || constrainsObjectShape(s)
 }
 
 // objectShapeNeedsNamedType reports whether an object schema states something
@@ -10092,21 +10169,149 @@ func emptyEnumSchema(s *schema.Schema) bool {
 }
 
 // schemaForbidsEveryValue reports whether a sub-schema admits no instance at
-// all, in either of the two spellings generateTypeDef answers with the
-// forbidding wrapper: the boolean `false` schema, and `"enum": []`.
+// all. Every arm below is a theorem about the empty set rather than a guess,
+// because the answer is what makes a position emit a rejection: an arm that is
+// merely usually right would refuse documents the schema permits, which this
+// repository treats as worse than a missing check.
 //
-// The empty enum is conditioned on the validation vocabulary, exactly as
-// generateTypeDef's own arm is. Where the declared metaschema omits that
-// vocabulary `enum` asserts nothing, and reading it as a refusal there would
-// reject every document the schema permits.
+// The two direct spellings are the ones generateTypeDef answers with the
+// forbidding wrapper -- the boolean `false` schema, and `"enum": []`. The empty
+// enum is conditioned on the validation vocabulary, exactly as generateTypeDef's
+// own arm is: where the declared metaschema omits that vocabulary `enum` asserts
+// nothing, and reading it as a refusal there would reject every document the
+// schema permits.
+//
+// The composition arms are issue #146. `{"not":{}}` and `{"oneOf":[false,false]}`
+// say what `false` says, and six keywords that answered `false` and the empty
+// enum after #142 -- propertyNames, contains, dependentSchemas,
+// unevaluatedItems, unevaluatedProperties, and an inferred array's item and tail
+// -- read only those two and dropped these. Each of them holds a *forbidding*
+// arm and nothing else, so widening what counts as forbidding is what reaches
+// them; there is no per-keyword ladder to build because there is no other shape
+// those positions can express.
+//
+//	not      not(T) is the empty set exactly when T is every value. The inner
+//	         schema is read by acceptsEveryInstance, which is a whitelist and
+//	         must stay one -- a keyword it fails to notice makes the negation
+//	         wider than the schema, which is the #142 false rejection again.
+//	allOf    a conjunction with one empty conjunct is empty, whatever the others
+//	         say. This is allOfContainsFalseSchema's rule, reached from here so
+//	         that {"allOf":[{"not":{}},{"type":"string"}]} is refused whole
+//	         rather than by the one branch the static merge could read.
+//	anyOf    a disjunction is empty when every branch is.
+//	oneOf    "exactly one branch matches" holds for no value when no branch
+//	         matches any. The mirror rule -- two branches that each match
+//	         everything -- is compositionAdmitsNothing's and stays there, since
+//	         it needs the accept-all reading rather than the forbidding one.
+//
+// A branch is judged after its $ref is followed, for the reason #116 recorded:
+// a $ref is not the schema it names, so {"oneOf":[{"$ref":"#/$defs/never"}]}
+// would otherwise read as an ordinary branch. The schema in hand is judged as
+// written, and a top-level $ref is not followed here -- resolvedToFalseSchema is
+// the caller that asks that question, and following it here would take
+// {"items":{"$ref":"#/$defs/Never"}} away from the arm that resolves the
+// reference and materialize the element under an inline name instead.
 func (g *Generator) schemaForbidsEveryValue(s *schema.Schema) bool {
-	if s == nil {
+	return g.forbidsEveryValueOnPath(s, 0, nil)
+}
+
+// forbidsEveryValueOnPath is schemaForbidsEveryValue's recursion. onPath is the
+// set of nodes already being judged one frame up, which is what terminates
+// {"$defs":{"a":{"allOf":[{"$ref":"#/$defs/a"}]}}}: a node whose own answer is
+// still in flight has nothing to add, and false is the answer that keeps the
+// document. depth bounds the same thing for a schema that is merely very deep.
+func (g *Generator) forbidsEveryValueOnPath(s *schema.Schema, depth int, onPath map[*schema.Schema]bool) bool {
+	if s == nil || depth > maxRuntimeDepth || onPath[s] {
 		return false
 	}
-	if s.IsFalseSchema() {
+	if s.IsBooleanSchema() {
+		return s.IsFalseSchema()
+	}
+	if g.validationKeywordsEnabled() && emptyEnumSchema(s) {
 		return true
 	}
-	return g.validationKeywordsEnabled() && emptyEnumSchema(s)
+	if onPath == nil {
+		onPath = make(map[*schema.Schema]bool)
+	}
+	onPath[s] = true
+	defer delete(onPath, s)
+
+	// The arms below are applicators rather than validation keywords, so none of
+	// them is conditioned on the validation vocabulary the way the empty enum
+	// above is: a metaschema can withhold `enum` and still assert `not`, and
+	// allOfContainsFalseSchema and compositionAdmitsNothing have always read
+	// these unconditionally.
+	if s.Not != nil && g.acceptsEveryInstance(s.Not) {
+		return true
+	}
+	for _, sub := range s.AllOf {
+		if g.branchForbidsEveryValue(sub, depth+1, onPath) {
+			return true
+		}
+	}
+	if g.everyBranchForbids(s.AnyOf, depth, onPath) {
+		return true
+	}
+	if g.everyBranchForbids(s.OneOf, depth, onPath) {
+		return true
+	}
+	return false
+}
+
+// everyBranchForbids reports whether a disjunction has branches and every one of
+// them admits nothing.
+//
+// The emptiness test is the arm every schema in the corpus takes, since almost
+// none states an anyOf or a oneOf at all: a bare `for` over no branches falls
+// out of its loop reporting that they all forbid, which would make the empty set
+// of every schema there is.
+func (g *Generator) everyBranchForbids(subs []*schema.Schema, depth int, onPath map[*schema.Schema]bool) bool {
+	if len(subs) == 0 {
+		return false
+	}
+	for _, sub := range subs {
+		if !g.branchForbidsEveryValue(sub, depth+1, onPath) {
+			return false
+		}
+	}
+	return true
+}
+
+// branchForbidsEveryValue judges a composition branch, following a $ref before
+// reading it. A branch is the one position where the reference has to be
+// resolved: it is the schema the composition applies, not a name standing for
+// something else the caller will reach by another route.
+func (g *Generator) branchForbidsEveryValue(sub *schema.Schema, depth int, onPath map[*schema.Schema]bool) bool {
+	if sub == nil || depth > maxRuntimeDepth {
+		return false
+	}
+	if g.forbidsEveryValueOnPath(sub, depth, onPath) {
+		return true
+	}
+	if effRef := sub.EffectiveRef(); effRef != "" {
+		if resolved := g.resolveRefInContext(effRef, sub); resolved != nil {
+			return g.forbidsEveryValueOnPath(resolved, depth+1, onPath)
+		}
+	}
+	return false
+}
+
+// acceptsEveryInstance reports whether a schema admits every JSON value, so that
+// a `not` over it admits none.
+//
+// It is isAcceptAllSchema plus the one keyword that predicate cannot judge on
+// its own. `format` binds as an assertion on some dialects and as an annotation
+// on others, so whether {"format":"email"} constrains anything is the
+// generator's question and not the schema's -- and read as accept-all under
+// assertion it made {"not":{"format":"email"}} forbid every value, including the
+// strings that are not email addresses and the numbers `format` never speaks
+// about. That is a false rejection, and it was reachable before this change
+// through extractNotSchemaDef; the fix is here so that both callers get it.
+func (g *Generator) acceptsEveryInstance(s *schema.Schema) bool {
+	if s == nil || !isAcceptAllSchema(s) {
+		return false
+	}
+	return !(s.Format != nil && g.formatAssertsFor(s))
 }
 
 // typeIsInferredFromConstraints reports whether a schema states no "type" of its
@@ -10411,7 +10616,7 @@ func (g *Generator) buildFieldContains(fieldName, jsonName string, fieldType GoT
 	if _, ok := base.(*ArrayType); !ok {
 		return nil
 	}
-	def, minContains, maxContains := extractContainsDef(s)
+	def, minContains, maxContains := g.extractContainsDef(s)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil
 	}
@@ -11454,7 +11659,15 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	// read here instead and came out `any` with no check at all. Both spellings
 	// are the empty set, so both are the same rule. The nil test is what
 	// separates an absent enum from an empty one; see generateTypeDef.
-	if (s.Not != nil && isAcceptAllSchema(s.Not)) || (s.Enum != nil && len(s.Enum) == 0) {
+	//
+	// An inner `format` is declined outright rather than read. Whether
+	// {"format":"email"} constrains anything is the dialect's answer and not the
+	// schema's, and this function has no generator to ask -- read as accept-all
+	// it made {"not":{"format":"email"}} forbid every value, including the
+	// strings that are not email addresses. Declining costs the check on a
+	// dialect where `format` is an annotation, which is a check the two callers
+	// that do hold a generator still emit; see acceptsEveryInstance.
+	if (s.Not != nil && s.Not.Format == nil && isAcceptAllSchema(s.Not)) || (s.Enum != nil && len(s.Enum) == 0) {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "forbidden", Value: true,
@@ -11719,6 +11932,14 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
+	// A boolean schema carries its answer in a field with no JSON key and no
+	// keyword of its own, so every test below passes for it and `false` -- the
+	// schema that matches no value at all -- read as matching every one. Through
+	// the `not` callers that is the negation turned inside out: {"not":false}
+	// admits everything and was refused outright.
+	if s.IsBooleanSchema() {
+		return s.IsTrueSchema()
+	}
 	// An empty schema (no constraints) matches everything.
 	// Must check ALL structural and validation keywords to avoid false positives.
 	//
@@ -11748,7 +11969,7 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 // extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only
 // schema that we can statically validate. Returns nil for schemas that have
 // other constraints or use complex not sub-schemas we can't handle.
-func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
+func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
 	if s.Not == nil {
 		return nil
 	}
@@ -11775,7 +11996,13 @@ func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
 	}
 
 	// not: {} (empty schema) or not: true → forbid everything.
-	if isAcceptAllSchema(not) || not.IsTrueSchema() {
+	//
+	// acceptsEveryInstance rather than isAcceptAllSchema, because `format` is the
+	// one keyword whose reading is the generator's and not the schema's: where
+	// the dialect asserts it, {"not":{"format":"email"}} forbids email addresses
+	// alone, and reading the inner schema as accept-all refused every string
+	// there is and every number besides. See acceptsEveryInstance.
+	if g.acceptsEveryInstance(not) || not.IsTrueSchema() {
 		return &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
@@ -11785,7 +12012,7 @@ func extractNotSchemaDef(name string, s *schema.Schema) *NotSchemaDef {
 
 	// not: {not: {}} → double negation of accept-all = accept-all.
 	// No validation needed.
-	if not.Not != nil && isAcceptAllSchema(not.Not) {
+	if not.Not != nil && g.acceptsEveryInstance(not.Not) {
 		return nil
 	}
 
@@ -12674,14 +12901,16 @@ func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
 
 // extractPropertyNamesDef builds a PropertyNamesDef from a propertyNames sub-schema.
 // Returns nil if the sub-schema is boolean true or has no actionable constraints.
-func extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef {
+func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef {
 	// A sub-schema admitting nothing: no property name is valid (empty objects
 	// only). `{"enum":[]}` says that as much as `false` does, and reached
 	// neither this arm nor the enum arm below, which asks len() > 0 -- so
-	// {"propertyNames":{"enum":[]}} accepted every object. Every caller is
-	// already behind validationKeywordsEnabled, which is the gate the empty enum
-	// needs; see emptyEnumSchema.
-	if pn.IsFalseSchema() || emptyEnumSchema(pn) {
+	// {"propertyNames":{"enum":[]}} accepted every object. `{"not":{}}` and
+	// {"oneOf":[false,false]} say it too, and reached nothing at all; that is
+	// issue #146, and schemaForbidsEveryValue is where all four spellings meet.
+	// Every caller is already behind validationKeywordsEnabled, which is the
+	// gate the empty enum needs; see emptyEnumSchema.
+	if g.schemaForbidsEveryValue(pn) {
 		return &PropertyNamesDef{IsForbidden: true}
 	}
 	// Boolean true schema: no constraint.
@@ -12811,7 +13040,7 @@ func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
 // $ref or an unrecognized keyword (refused whole, see objectConditionalBranchLenient),
 // and per-property keywords the dynamic evaluator does not model -- enum,
 // nested properties/items, and the applicators.
-func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
+func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
 	if len(s.DependentSchemas) == 0 {
 		return nil
 	}
@@ -12824,9 +13053,11 @@ func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstr
 		// A sub-schema admitting nothing: always reject when the trigger is
 		// present. `{"enum":[]}` says that as much as `false` does, and reached no
 		// arm below, so {"dependentSchemas":{"k":{"enum":[]}}} accepted every
-		// object carrying "k". Both callers are behind validationKeywordsEnabled,
-		// which is the gate the empty enum needs; see emptyEnumSchema.
-		if depSchema.IsFalseSchema() || emptyEnumSchema(depSchema) {
+		// object carrying "k". `{"not":{}}` and {"oneOf":[false,false]} are the
+		// same statement again and reached nothing either -- issue #146. Both
+		// callers are behind validationKeywordsEnabled, which is the gate the
+		// empty enum needs; see emptyEnumSchema and schemaForbidsEveryValue.
+		if g.schemaForbidsEveryValue(depSchema) {
 			constraint.IsFalse = true
 			result = append(result, constraint)
 			continue
@@ -12888,7 +13119,7 @@ func extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstr
 	return result
 }
 
-func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
+func (g *Generator) extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
 	if s.Contains == nil {
 		return nil, nil, nil
 	}
@@ -12911,10 +13142,12 @@ func extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
 	// says that as much as `false` does, and reached neither this arm nor the
 	// enum arms below, which ask len() == 1 and len() > 0 -- so
 	// {"contains":{"enum":[]}} accepted every array, including the empty one that
-	// `contains` refuses outright. Every caller either sits behind
-	// validationKeywordsEnabled or discards the result when it is off, which is
-	// the gate the empty enum needs; see emptyEnumSchema.
-	if containsSch.IsFalseSchema() || emptyEnumSchema(containsSch) {
+	// `contains` refuses outright. `{"not":{}}` and {"oneOf":[false,false]} are
+	// the same statement once more and reached nothing -- issue #146. Every
+	// caller either sits behind validationKeywordsEnabled or discards the result
+	// when it is off, which is the gate the empty enum needs; see
+	// emptyEnumSchema and schemaForbidsEveryValue.
+	if g.schemaForbidsEveryValue(containsSch) {
 		return &ContainsDef{IsFalse: true}, minC, maxC
 	}
 

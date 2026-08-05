@@ -5681,3 +5681,251 @@ func TestInlineForbiddingPositionsRejectEveryValue(t *testing.T) {
 		},
 	)
 }
+
+// TestNotOverAFormatFollowsTheDialect is the false-rejection guard for the
+// predicate #146 reads a `not` through. Whether {"format":"email"} constrains
+// anything is the dialect's answer, so a predicate that decides the inner schema
+// admits every value without asking the dialect gets the negation backwards
+// exactly where format asserts: {"not":{"format":"email"}} then forbade every
+// value, and "not-an-email", the number 5 and a null are the documents that say
+// so. Under 2020-12's own posture format annotates, the inner schema really does
+// admit everything, and the negation really does forbid everything -- so the two
+// arms disagree by design and a fix that answered one posture for both would
+// fail the other.
+//
+// formatBranches is the same reading through the other caller. A oneOf whose
+// branches both accept every value matches twice and so matches nothing, so
+// reading a format branch as accept-all refused every document there too --
+// which is why the fix is in one predicate rather than at the `not`.
+//
+// The documents whose verdict turns on the assertion itself are on neither list
+// under assertion, and deliberately: the negation forbids the conforming email
+// and the oneOf forbids "neither" and the number, and the generated code refuses
+// none of them. Those are missing checks rather than wrong ones, this change
+// does not claim them, and listing them as valid would pin the gap open against
+// the day somebody closes it. See acceptsEveryInstance.
+func TestNotOverAFormatFollowsTheDialect(t *testing.T) {
+	t.Run("2020-12 annotates, so the negation forbids everything", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/not_over_format.json",
+			[]string{
+				`{"notEmailInItems":[]}`,
+				`{}`,
+			},
+			[]string{
+				`{"notEmail":"not-an-email"}`,
+				`{"notEmail":5}`,
+				`{"notEmail":null}`,
+				`{"notEmail":"a@b.com"}`,
+				`{"notEmailInItems":["not-an-email"]}`,
+				`{"notEmailInItems":[5]}`,
+				`{"notEmailInItems":["a@b.com"]}`,
+				// Both branches accept everything, so every value matches two.
+				`{"formatBranches":"a@b.com"}`,
+				`{"formatBranches":"1.2.3.4"}`,
+				`{"formatBranches":"neither"}`,
+				`{"formatBranches":5}`,
+			},
+		)
+	})
+	t.Run("under assertion it forbids the conforming string alone", func(t *testing.T) {
+		runValidationCasesWithConfig(t,
+			"testdata/schemas/regression/not_over_format.json",
+			formatAssertingConfig(),
+			[]string{
+				`{"notEmail":"not-an-email"}`,
+				`{"notEmail":5}`,
+				`{"notEmail":null}`,
+				`{"notEmailInItems":[]}`,
+				`{"notEmailInItems":["not-an-email"]}`,
+				`{"notEmailInItems":[5]}`,
+				// Each satisfies exactly one branch, and the whole schema
+				// refused every value of any kind before this.
+				`{"formatBranches":"a@b.com"}`,
+				`{"formatBranches":"1.2.3.4"}`,
+				`{}`,
+			},
+			nil,
+		)
+	})
+}
+
+// TestForbiddingSubschemaSpellingsAreEnforced is the behavioural half of issue
+// #146. #142 closed `false` and `{"enum":[]}` at six keyword positions;
+// {"not":{}} and {"oneOf":[false,false]} are the same statement and were dropped
+// at every one of them, so the position answered by spelling rather than by
+// meaning. Beside that: propertyNames and dependentSchemas were dropped whole on
+// an inline object property, whatever the spelling, and an allOf with a branch
+// the static merge could not read was enforced by halves. The four object
+// keywords dropped alongside them -- required, minProperties, maxProperties and
+// dependentRequired -- are here too: not this issue's keywords, but its defect
+// in its predicate at its position.
+//
+// The invalid list is the whole of the defect. The valid list is what the fix
+// must not cost, and it carries five kinds of control:
+//
+//   - The container that satisfies the sub-schema, beside every rejection. An
+//     empty object satisfies a forbidding propertyNames and an object without
+//     the trigger key satisfies a forbidding dependentSchemas: the sub-schema
+//     speaks about what is there, and there is none of it. `contains` is the one
+//     that goes the other way, since it demands a match rather than judging one,
+//     so its empty array is on the invalid side.
+//   - The `not` that does not forbid everything. notEnumBranch is a negation of
+//     the empty set, notFalse its boolean spelling, notTypedConst a negation
+//     that forbids one string, and notShallowEnum one that forbids two values.
+//     Reading any of them as forbidding is a false rejection, and notFalse is
+//     the one this change introduced and had to fix: a boolean schema carries
+//     its answer in a field with no JSON key, so every keyword test passed for
+//     it and `false` read as accept-all. See isAcceptAllSchema.
+//   - The composition with one live branch. oneOfOneFalse and anyOfOneFalse each
+//     hold a forbidding branch beside a real one; a predicate that answered
+//     "some branch forbids" rather than "every branch forbids" would refuse
+//     both, and "s" is what says so.
+//   - The type-conditional row. inferredNotItems and inferredNotSlot state only
+//     array keywords, so a string satisfies them, and nullableInlineNames still
+//     admits a null.
+//   - The schema the inline object arm must not claim. `required` speaks about
+//     objects, so strBranchRequired and unionBranchRequired state it and still
+//     describe strings; read as an object shape they get a struct, and the
+//     struct refuses "abc" at the decoder. mapWithMinProps is the other
+//     declined shape, and the golden rather than this list is what pins it.
+//
+// Every verdict here was cross-checked against python-jsonschema before it was
+// written down; the two agree on all of them.
+func TestForbiddingSubschemaSpellingsAreEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/forbidding_subschema_spellings.json",
+		[]string{
+			// The container the forbidding sub-schema says nothing about.
+			`{"notNames":{}}`,
+			`{"oneOfNames":{}}`,
+			`{"anyOfNames":{}}`,
+			`{"refNotNames":{}}`,
+			`{"notDependent":{}}`,
+			`{"notDependent":{"j":1}}`,
+			`{"oneOfDependent":{}}`,
+			`{"notUnevalItems":[]}`,
+			`{"notUnevalItems":[1]}`,
+			`{"oneOfUnevalItems":[1]}`,
+			`{"notUnevalProps":{}}`,
+			`{"notUnevalProps":{"k":1}}`,
+			`{"oneOfUnevalProps":{"k":1}}`,
+			`{"inlineFalseNames":{}}`,
+			`{"inlineNotNames":{}}`,
+			`{"inlineFalseDependent":{}}`,
+			`{"inlineFalseDependent":{"j":1}}`,
+			`{"inlineNotDependent":{}}`,
+			`{"nullableInlineNames":null}`,
+			`{"nullableInlineNames":{}}`,
+			// An array-only schema says nothing about a value that is not an
+			// array, and a prefix leaves the tail free.
+			`{"inferredNotItems":[]}`,
+			`{"inferredNotItems":"abc"}`,
+			`{"inferredOneOfItems":[]}`,
+			`{"inferredOneOfItems":"abc"}`,
+			`{"inferredNotTail":[]}`,
+			`{"inferredNotTail":[1]}`,
+			`{"inferredNotTail":"abc"}`,
+			`{"inferredOneOfTail":[1]}`,
+			`{"inferredNotSlot":[]}`,
+			`{"inferredNotSlot":"abc"}`,
+			// The object shapes that hold.
+			`{"inlineRequired":{"a":1}}`,
+			`{"inlineMinProps":{"a":1,"b":2}}`,
+			`{"inlineMaxProps":{"a":1}}`,
+			`{"inlineDepRequired":{"k":1,"j":2}}`,
+			`{"inlineDepRequired":{"j":1}}`,
+			// The map the inline arm declines, whose minProperties is left
+			// unenforced so the field keeps map[string]string. The document that
+			// would show the gap is on neither list, for the reason the format
+			// test gives; the golden is what pins the type.
+			`{"mapWithMinProps":{"a":"x","b":"y"}}`,
+			// `required` speaks about objects, so a schema stating it may still
+			// describe strings alone. Reading that as an object shape gives the
+			// branch a struct, which refuses the string at the decoder.
+			`{"strBranchRequired":"abc"}`,
+			`{"strBranchRequired":5}`,
+			`{"unionBranchRequired":"abc"}`,
+			`{"unionBranchRequired":5}`,
+			`{"unionBranchRequired":{"a":1}}`,
+			// The `not` that forbids less than everything.
+			`{"notEnumBranch":1}`,
+			`{"notEnumBranch":"abc"}`,
+			`{"notEnumBranch":null}`,
+			`{"notEnumBranch":{"a":1}}`,
+			`{"notTypedConst":"abc"}`,
+			`{"notTypedConst":1}`,
+			`{"notFalse":1}`,
+			`{"notFalse":"abc"}`,
+			`{"notShallowEnum":"c"}`,
+			`{"notShallowEnum":1}`,
+			// The composition with a branch still alive.
+			`{"oneOfOneFalse":"s"}`,
+			`{"anyOfOneFalse":"s"}`,
+			// The keyword that constrains without forbidding.
+			`{"okNames":{}}`,
+			`{"okNames":{"ab":1}}`,
+			`{"okContains":[1]}`,
+			`{"plainItems":["x"]}`,
+			`{}`,
+		},
+		[]string{
+			// propertyNames, in both spellings and behind a reference.
+			`{"notNames":{"a":1}}`,
+			`{"oneOfNames":{"a":1}}`,
+			`{"anyOfNames":{"a":1}}`,
+			`{"refNotNames":{"a":1}}`,
+			// contains, which refuses the empty array too.
+			`{"notContains":[]}`,
+			`{"notContains":[1]}`,
+			`{"oneOfContains":[]}`,
+			`{"oneOfContains":[1]}`,
+			`{"allOfContains":[]}`,
+			`{"allOfContains":["s"]}`,
+			// dependentSchemas, once the trigger key is there.
+			`{"notDependent":{"k":1}}`,
+			`{"oneOfDependent":{"k":1}}`,
+			// The two unevaluated keywords.
+			`{"notUnevalItems":[1,2]}`,
+			`{"oneOfUnevalItems":[1,2]}`,
+			`{"notUnevalProps":{"x":1}}`,
+			`{"oneOfUnevalProps":{"x":1}}`,
+			// The inferred array's item, tail and slot.
+			`{"inferredNotItems":[1]}`,
+			`{"inferredOneOfItems":[1]}`,
+			`{"inferredNotTail":[1,2]}`,
+			`{"inferredOneOfTail":[1,2]}`,
+			`{"inferredNotSlot":[1]}`,
+			// The allOf whose unreadable branch used to be enforced by halves:
+			// the string was accepted and only the number was refused.
+			`{"allOfNot":"s"}`,
+			`{"allOfNot":1}`,
+			`{"anyOfNot":"s"}`,
+			`{"anyOfNot":1}`,
+			// The keywords an inline object property dropped whole.
+			`{"inlineFalseNames":{"a":1}}`,
+			`{"inlineNotNames":{"a":1}}`,
+			`{"inlineFalseDependent":{"k":1}}`,
+			`{"inlineNotDependent":{"k":1}}`,
+			`{"inlineRequired":{"b":1}}`,
+			`{"inlineMinProps":{"a":1}}`,
+			`{"inlineMaxProps":{"a":1,"b":2}}`,
+			`{"inlineDepRequired":{"k":1}}`,
+			`{"nullableInlineNames":{"a":1}}`,
+			// No branch of these accepts an object without "a", and reading the
+			// first branch as an object shape would refuse the string instead.
+			`{"strBranchRequired":{"a":1}}`,
+			`{"unionBranchRequired":{"b":1}}`,
+			// The `not` reads its inner schema whole.
+			`{"notTypedConst":"x"}`,
+			`{"notShallowEnum":"a"}`,
+			// A composition still refuses what no branch admits.
+			`{"oneOfOneFalse":1}`,
+			`{"anyOfOneFalse":1}`,
+			// The controls that were already rejecting, and still are.
+			`{"okNames":{"abcd":1}}`,
+			`{"okContains":[]}`,
+			`{"okContains":["x"]}`,
+		},
+	)
+}

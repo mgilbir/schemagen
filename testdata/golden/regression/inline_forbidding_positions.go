@@ -981,11 +981,7 @@ func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) String() string { return str
 
 // InlineForbiddingPositionsNotAnyOfEmptyEnumSchema is the schema InlineForbiddingPositionsNotAnyOfEmptyEnum validates against.
 var InlineForbiddingPositionsNotAnyOfEmptyEnumSchema = _schemaNode{
-	Not: _node(_schemaNode{
-		AnyOf: []_schemaNode{
-			_schemaNode{Boolean: _boolPtr(false)},
-		},
-	}),
+	Not: _node(_schemaNode{Boolean: _boolPtr(false)}),
 }
 
 // Validate checks InlineForbiddingPositionsNotAnyOfEmptyEnum against its JSON Schema constraints.

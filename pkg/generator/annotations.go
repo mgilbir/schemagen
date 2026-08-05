@@ -665,7 +665,7 @@ func (g *Generator) constraintOnlyWrapperDef(name string, s *schema.Schema) Type
 	if g.acceptsEveryValue(s, 0, map[*schema.Schema]bool{}) {
 		return nil
 	}
-	if def := extractNotSchemaDef(name, s); def != nil {
+	if def := g.extractNotSchemaDef(name, s); def != nil {
 		return def
 	}
 	if def := g.extractTypeOnlySchemaDef(name, s); def != nil {

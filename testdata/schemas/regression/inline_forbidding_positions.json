@@ -64,7 +64,7 @@
       "patternProperties": { "^a": { "enum": [] } }
     },
     "emptyEnumNames": {
-      "$comment": "No property name is admissible, so only the empty object is. Written through a $defs entry because that is the spelling `propertyNames` is read in at all: an inline object property is typed map[string]any and the keyword is dropped there for `false` as much as for the empty enum, which is a gap of its own and not this one.",
+      "$comment": "No property name is admissible, so only the empty object is. Written through a $defs entry because when this was added that was the only spelling `propertyNames` was read in at all -- an inline object property was typed map[string]any and the keyword was dropped there, which #146 closed. The reference stays: it is the position #142 measured, and the inline one is covered by that issue's own fixture.",
       "$ref": "#/$defs/NoNames"
     },
     "emptyEnumContains": {
@@ -73,7 +73,7 @@
       "contains": { "enum": [] }
     },
     "emptyEnumDependent": {
-      "$comment": "Through a $defs entry for the same reason emptyEnumNames is: an inline object property is typed map[string]any and dependentSchemas is dropped there whatever the branch says.",
+      "$comment": "Through a $defs entry for the same reason emptyEnumNames is, and with the same footnote: the inline spelling was typed map[string]any and dropped dependentSchemas whatever the branch said, until #146.",
       "$ref": "#/$defs/NeverWithK"
     },
     "emptyEnumUnevalItems": {

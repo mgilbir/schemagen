@@ -7,6 +7,206 @@ import (
 	"fmt"
 )
 
+type OneOfRequiredOnlyObjectValueOption0 struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+}
+
+func (o *OneOfRequiredOnlyObjectValueOption0) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
+	o._jsonKeys = nil
+	o._nonObject = false
+	o._rawNonObject = nil
+	// Schema has no explicit "type":"object" — object constraints are type-conditional.
+	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		o._nonObject = true
+		o._rawNonObject = append(o._rawNonObject[:0], data...)
+		return nil
+	}
+	type Alias OneOfRequiredOnlyObjectValueOption0
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(o),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		o._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			o._jsonKeys[_k] = true
+		}
+		knownFields := map[string]bool{}
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
+				continue
+			}
+			if o.AdditionalProperties == nil {
+				o.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			o.AdditionalProperties[rawKey] = rawVal
+		}
+	}
+
+	return nil
+}
+func (o OneOfRequiredOnlyObjectValueOption0) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return o._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
+	type Alias OneOfRequiredOnlyObjectValueOption0
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(o),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range o.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
+}
+
+// Validate checks OneOfRequiredOnlyObjectValueOption0 against its JSON Schema constraints.
+func (o OneOfRequiredOnlyObjectValueOption0) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if o._nonObject {
+		return nil
+	}
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if o._jsonKeys != nil {
+		for _, _req := range []string{"foo", "bar"} {
+			if !o._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
+	return nil
+}
+
+type OneOfRequiredOnlyObjectValueOption1 struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+}
+
+func (o *OneOfRequiredOnlyObjectValueOption1) UnmarshalJSON(data []byte) error {
+	o.AdditionalProperties = nil
+	o._jsonKeys = nil
+	o._nonObject = false
+	o._rawNonObject = nil
+	// Schema has no explicit "type":"object" — object constraints are type-conditional.
+	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		o._nonObject = true
+		o._rawNonObject = append(o._rawNonObject[:0], data...)
+		return nil
+	}
+	type Alias OneOfRequiredOnlyObjectValueOption1
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(o),
+	}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	{
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+		o._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			o._jsonKeys[_k] = true
+		}
+		knownFields := map[string]bool{}
+		for rawKey, rawVal := range raw {
+			if knownFields[rawKey] {
+				continue
+			}
+			if o.AdditionalProperties == nil {
+				o.AdditionalProperties = make(map[string]json.RawMessage)
+			}
+			o.AdditionalProperties[rawKey] = rawVal
+		}
+	}
+
+	return nil
+}
+func (o OneOfRequiredOnlyObjectValueOption1) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return o._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
+	type Alias OneOfRequiredOnlyObjectValueOption1
+	aux := struct {
+		Alias
+	}{
+		Alias: (Alias)(o),
+	}
+	data, err := json.Marshal(aux)
+	if err != nil {
+		return nil, err
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range o.AdditionalProperties {
+		obj[k] = v
+	}
+	return json.Marshal(obj)
+}
+
+// Validate checks OneOfRequiredOnlyObjectValueOption1 against its JSON Schema constraints.
+func (o OneOfRequiredOnlyObjectValueOption1) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if o._nonObject {
+		return nil
+	}
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if o._jsonKeys != nil {
+		for _, _req := range []string{"foo", "baz"} {
+			if !o._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
+	}
+	return nil
+}
+
 type OneOfRequiredOnlyObject struct {
 	Value         isOneOfRequiredOnlyObject_Value `json:"-"`
 	_jsonKeys     map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -19,39 +219,41 @@ type isOneOfRequiredOnlyObject_Value interface {
 	isOneOfRequiredOnlyObject_Value()
 }
 
-// OneOfRequiredOnlyObject_Any wraps any as a Value variant.
-type OneOfRequiredOnlyObject_Any struct {
-	Any any
+// OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0 wraps *OneOfRequiredOnlyObjectValueOption0 as a Value variant.
+type OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0 struct {
+	OneOfRequiredOnlyObjectValueOption0 *OneOfRequiredOnlyObjectValueOption0
 }
 
-func (*OneOfRequiredOnlyObject_Any) isOneOfRequiredOnlyObject_Value() {}
-
-// OneOfRequiredOnlyObject_Any2 wraps any as a Value variant.
-type OneOfRequiredOnlyObject_Any2 struct {
-	Any2 any
+func (*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0) isOneOfRequiredOnlyObject_Value() {
 }
 
-func (*OneOfRequiredOnlyObject_Any2) isOneOfRequiredOnlyObject_Value() {}
+// OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1 wraps *OneOfRequiredOnlyObjectValueOption1 as a Value variant.
+type OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1 struct {
+	OneOfRequiredOnlyObjectValueOption1 *OneOfRequiredOnlyObjectValueOption1
+}
 
-// GetAny returns the Any variant value, or the zero value if not set.
-func (o *OneOfRequiredOnlyObject) GetAny() any {
+func (*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1) isOneOfRequiredOnlyObject_Value() {
+}
+
+// GetOneOfRequiredOnlyObjectValueOption0 returns the OneOfRequiredOnlyObjectValueOption0 variant value, or the zero value if not set.
+func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption0() *OneOfRequiredOnlyObjectValueOption0 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRequiredOnlyObject_Any); ok {
-			return v.Any
+		if v, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0); ok {
+			return v.OneOfRequiredOnlyObjectValueOption0
 		}
 	}
-	var zero any
+	var zero *OneOfRequiredOnlyObjectValueOption0
 	return zero
 }
 
-// GetAny2 returns the Any2 variant value, or the zero value if not set.
-func (o *OneOfRequiredOnlyObject) GetAny2() any {
+// GetOneOfRequiredOnlyObjectValueOption1 returns the OneOfRequiredOnlyObjectValueOption1 variant value, or the zero value if not set.
+func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption1() *OneOfRequiredOnlyObjectValueOption1 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRequiredOnlyObject_Any2); ok {
-			return v.Any2
+		if v, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1); ok {
+			return v.OneOfRequiredOnlyObjectValueOption1
 		}
 	}
-	var zero any
+	var zero *OneOfRequiredOnlyObjectValueOption1
 	return zero
 }
 
@@ -79,27 +281,56 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isOneOfRequiredOnlyObject_Value
+			var oneofStrictErr error
 
-			// Try variant: Any
+			// Try variant: OneOfRequiredOnlyObjectValueOption0
 			{
 				if oneofHasRequiredFields(oneofData, "foo", "bar") {
-					var candidate any
+					var candidate *OneOfRequiredOnlyObjectValueOption0
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
-						o.Value = &OneOfRequiredOnlyObject_Any{Any: candidate}
+						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
 
-			// Try variant: Any2
+			// Try variant: OneOfRequiredOnlyObjectValueOption1
 			{
 				if oneofHasRequiredFields(oneofData, "foo", "baz") {
-					var candidate any
+					var candidate *OneOfRequiredOnlyObjectValueOption1
 					if err := json.Unmarshal(oneofData, &candidate); err == nil {
-						o.Value = &OneOfRequiredOnlyObject_Any2{Any2: candidate}
+						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
 						oneofMatched++
+						if candidate != nil {
+							if _vErr := candidate.Validate(); _vErr == nil {
+								oneofStrict++
+								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
+							} else {
+								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
+							}
+						} else {
+							oneofOpaque++
+						}
 					} else {
 						oneofLastErr = err
 					}
@@ -108,6 +339,23 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 
 			if oneofMatched == 0 {
 				return fmt.Errorf("OneOfRequiredOnlyObject.Value: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					o.Value = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("OneOfRequiredOnlyObject.Value: no matching oneOf variant: %w", oneofStrictErr)
+				}
 			}
 			if oneofMatched > 1 {
 				return fmt.Errorf("OneOfRequiredOnlyObject.Value: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
@@ -132,10 +380,10 @@ func (o OneOfRequiredOnlyObject) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if o.Value != nil {
 		switch v := o.Value.(type) {
-		case *OneOfRequiredOnlyObject_Any:
-			return json.Marshal(v.Any)
-		case *OneOfRequiredOnlyObject_Any2:
-			return json.Marshal(v.Any2)
+		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
+			return json.Marshal(v.OneOfRequiredOnlyObjectValueOption0)
+		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
+			return json.Marshal(v.OneOfRequiredOnlyObjectValueOption1)
 		}
 	}
 	return []byte("null"), nil
@@ -175,6 +423,26 @@ func (o OneOfRequiredOnlyObject) Validate() error {
 		}
 		if _oneOfMatches != 1 {
 			return fmt.Errorf("oneOf: matched %d variants, expected exactly 1", _oneOfMatches)
+		}
+	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := o.Value.(type) {
+	case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
+		if _oneOfSel.OneOfRequiredOnlyObjectValueOption0 != nil {
+			if err := _oneOfSel.OneOfRequiredOnlyObjectValueOption0.Validate(); err != nil {
+				return err
+			}
+		}
+	case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
+		if _oneOfSel.OneOfRequiredOnlyObjectValueOption1 != nil {
+			if err := _oneOfSel.OneOfRequiredOnlyObjectValueOption1.Validate(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

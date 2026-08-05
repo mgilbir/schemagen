@@ -6220,12 +6220,20 @@ func TestOneOfObjectVariantsAreMarkedValidatable(t *testing.T) {
 }
 
 // TestOneOfScalarVariantsAreNotMarkedValidatable is the over-reach guard for
-// the arm above. A scalar variant's wrapper holds a plain Go string or int64
-// and a constraint-only branch resolves to `any`; neither has a Validate, so a
-// dispatch case for one would not compile, and a group with no dispatchable
-// variant at all would emit a type switch whose bound variable goes unused.
-// Their branch constraints ride on OneOfVariant.Checks instead, applied during
-// selection.
+// the arm above. A scalar variant's wrapper holds a plain Go string or int64,
+// which has no Validate, so a dispatch case for one would not compile and a
+// group with no dispatchable variant at all would emit a type switch whose bound
+// variable goes unused. Their branch constraints ride on OneOfVariant.Checks
+// instead, applied during selection.
+//
+// The required-only union beside it is the other direction, and it used to be a
+// second instance of the first: {"required":["p"]} resolved to `any` and its
+// variant was not dispatchable either. Since issue #146 a propertyless object
+// that constrains its shape is materialized wherever it is written -- see
+// constrainsObjectShape -- so the branch has a type of its own, that type has a
+// Validate, and the union dispatches to it. Both readings are pinned here
+// because what decides them is one field: a variant is Validatable exactly when
+// its Go type is a generated type that carries checks, and nothing else.
 func TestOneOfScalarVariantsAreNotMarkedValidatable(t *testing.T) {
 	input := `{"type":"object","properties":{
 		"a":{"oneOf":[{"type":"string","minLength":3},{"type":"integer","minimum":5}]},
@@ -6242,28 +6250,46 @@ func TestOneOfScalarVariantsAreNotMarkedValidatable(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	groups := 0
+	groups := map[string]*OneOfDef{}
 	for _, td := range ir.TypeDefs {
 		sd, ok := td.(*StructDef)
 		if !ok {
 			continue
 		}
-		for _, oof := range sd.OneOfs {
-			groups++
-			if oof.HasValidatableVariants() {
-				t.Fatalf("%s.%s HasValidatableVariants() = true; an empty type switch does not compile",
-					sd.Name, oof.FieldName)
-			}
-			for _, v := range oof.Variants {
-				if v.Validatable {
-					t.Fatalf("%s.%s variant %s (type %s) Validatable = true; that type has no Validate method",
-						sd.Name, oof.FieldName, v.FieldName, v.Type.GoTypeName())
-				}
-			}
+		for oi := range sd.OneOfs {
+			groups[sd.Name+"."+sd.OneOfs[oi].FieldName] = &sd.OneOfs[oi]
 		}
 	}
-	if groups != 2 {
-		t.Fatalf("found %d oneOf groups, want 2 (the scalar union and the required-only union)", groups)
+	if len(groups) != 2 {
+		t.Fatalf("found %d oneOf groups, want 2 (the scalar union and the required-only union)", len(groups))
+	}
+
+	scalar := groups["Root.A"]
+	if scalar == nil {
+		t.Fatalf("no oneOf group for Root.A; found %v", sortedKeys(groups))
+	}
+	if scalar.HasValidatableVariants() {
+		t.Fatalf("Root.A HasValidatableVariants() = true; an empty type switch does not compile")
+	}
+	for _, v := range scalar.Variants {
+		if v.Validatable {
+			t.Fatalf("Root.A variant %s (type %s) Validatable = true; that type has no Validate method",
+				v.FieldName, v.Type.GoTypeName())
+		}
+	}
+
+	shaped := groups["Root.B"]
+	if shaped == nil {
+		t.Fatalf("no oneOf group for Root.B; found %v", sortedKeys(groups))
+	}
+	if !shaped.HasValidatableVariants() {
+		t.Fatalf("Root.B HasValidatableVariants() = false; the required-only branches are materialized types now, so their required check is dispatched from nowhere else")
+	}
+	for _, v := range shaped.Variants {
+		if !v.Validatable {
+			t.Fatalf("Root.B variant %s (type %s) Validatable = false; its own type carries the branch's required check",
+				v.FieldName, v.Type.GoTypeName())
+		}
 	}
 }
 
@@ -6505,6 +6531,71 @@ func TestOneOfRequiredOnlyVariantIsFullyChecked(t *testing.T) {
 	if !union.Variants[1].FullyChecked {
 		t.Fatalf("variant 1 (type %s) FullyChecked = false; the branch states only `required`, which the presence gate already tests, so selection cannot narrow and the valid document stays rejected",
 			union.Variants[1].Type.GoTypeName())
+	}
+}
+
+// TestSchemaForbidsEveryValueTerminatesOnACycle is the guard for the bound in
+// schemaForbidsEveryValue's recursion, and it is a unit test because nothing
+// end-to-end reaches it: every generation path that could carry a cyclic
+// composition into the predicate is stopped by an outer bound first, so the
+// pipeline answers the same with the guard removed and with it in place.
+//
+// The predicate follows a $ref when it judges a composition branch, which is
+// what makes {"$defs":{"L":{"anyOf":[{"$ref":"#/$defs/L"}]}}} reachable: L's only
+// branch resolves back to L, and each frame asks the same question of the same
+// node. Two things stop it -- the node set forbidsEveryValueOnPath carries, and
+// the depth bound branchForbidsEveryValue re-checks after it follows a reference
+// -- and each masks the other, so removing either alone changes nothing and this
+// test catches the pair. Removing both ends the run in "fatal error: stack
+// overflow", which no recover intercepts: the failure mode cyclicNodeName
+// records for the same shape one layer up.
+//
+// The verdict is the other half. A cycle is not evidence that the schema admits
+// nothing, and false is the answer that keeps every document: L's branches are
+// unknown, not empty.
+func TestSchemaForbidsEveryValueTerminatesOnACycle(t *testing.T) {
+	const doc = `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type": "object",
+		"$defs": {
+			"L": {"anyOf": [{"$ref": "#/$defs/L"}]},
+			"M": {"oneOf": [{"$ref": "#/$defs/N"}]},
+			"N": {"oneOf": [{"$ref": "#/$defs/M"}]},
+			"P": {"allOf": [{"$ref": "#/$defs/P"}]}
+		}
+	}`
+
+	var root schema.Schema
+	if err := json.Unmarshal([]byte(doc), &root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	root.Normalize()
+	g := New(Config{PackageName: "testpkg"})
+	if _, err := g.Generate(&root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	// A watchdog, because the failure this guards against is non-termination
+	// rather than a wrong answer: without it a regression hangs the package's
+	// whole test binary until the go test timeout, which reports a panic in
+	// whatever else was running rather than naming this.
+	done := make(chan bool, 1)
+	go func() {
+		forbids := false
+		for _, name := range []string{"L", "M", "N", "P"} {
+			if g.schemaForbidsEveryValue(root.Defs[name]) {
+				forbids = true
+			}
+		}
+		done <- forbids
+	}()
+	select {
+	case forbids := <-done:
+		if forbids {
+			t.Fatalf("schemaForbidsEveryValue said a cyclic composition admits nothing; a cycle is an unknown branch, not an empty one, and reading it as empty refuses every document")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("schemaForbidsEveryValue did not return on a cyclic composition; the recursion has no base case")
 	}
 }
 
