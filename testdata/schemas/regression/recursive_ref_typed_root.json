@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://schemagen.test/recursive-ref-typed-root/main.json",
+  "type": "object",
+  "properties": {
+    "anyLeaf": { "$ref": "anyLeafNode.json" },
+    "intLeaf": { "$ref": "integerNode.json" }
+  },
+  "$defs": {
+    "inner": {
+      "$id": "inner.json",
+      "$recursiveAnchor": true,
+      "additionalProperties": { "$recursiveRef": "#" }
+    },
+    "anyLeafNode": {
+      "$id": "anyLeafNode.json",
+      "$recursiveAnchor": true,
+      "$ref": "inner.json"
+    },
+    "integerNode": {
+      "$id": "integerNode.json",
+      "$recursiveAnchor": true,
+      "type": ["object", "integer"],
+      "$ref": "inner.json"
+    }
+  }
+}

@@ -6927,3 +6927,198 @@ func TestDynamicRefEntersAResourceReferredToInTheMiddle(t *testing.T) {
 		},
 	)
 }
+
+// TestDynamicRefResolvesPerDocumentUnderATypedRoot is issue #160, and the gap
+// the comment beside TestDynamicRefEntersAResourceReferredToInTheMiddle named
+// rather than closed.
+//
+// #159 gave the runtime evaluator a dynamic scope, so a bookended $dynamicRef
+// resolves per document -- for the schemas that reach the evaluator, which are
+// only the ones the static path declines. This root declines nothing: it is an
+// object with two properties and takes an ordinary struct, so its $dynamicRef
+// was resolved once, against the schema text. genericList's own itemType admits
+// everything, that is the answer the one resolution reached, and the generated
+// code accepted every list of anything.
+//
+// The two properties are the whole point. They reach the same genericList
+// through different resources, so the reference means "number" down one and
+// "string" down the other, and no single Go type can be both. A generator that
+// picks one binding is right about half the documents by construction.
+//
+// Each rejection is paired with the same document under the other property,
+// which is what says the check discriminates rather than simply refusing lists.
+// The empty and two-element lists are the controls for a fix that rejected every
+// list, or that only looked at the first element. The verdicts were taken from
+// python-jsonschema, go-jsonschema (santhosh-tekuri) and rust-boon, run over
+// these eight documents through Bowtie before the test was written; all three
+// agree on every one.
+func TestDynamicRefResolvesPerDocumentUnderATypedRoot(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/dynamic_ref_typed_root.json", "Root",
+		[]string{
+			`{}`,
+			`{"numbers":{"list":[1.1]}}`,
+			`{"strings":{"list":["foo"]}}`,
+			`{"numbers":{"list":[]},"strings":{"list":[]}}`,
+			`{"numbers":{"list":[1,2.5]},"strings":{"list":["a","b"]}}`,
+		},
+		[]string{
+			`{"numbers":{"list":["foo"]}}`,
+			`{"strings":{"list":[1.1]}}`,
+			`{"numbers":{"list":[1,"x"]}}`,
+		},
+	)
+}
+
+// TestRecursiveRefResolvesPerDocumentUnderATypedRoot is the $recursiveRef half
+// of issue #160, and it is the suite's "$recursiveRef with $recursiveAnchor"
+// shape with the if/then root taken off.
+//
+// TestRecursiveRefTakesTheOutermostAnchor asks the same question of the same
+// three resources through a conditional root, which is the thing that sent the
+// whole schema to the evaluator. Here the root is an object with two properties
+// and takes a struct, so the static path claimed it and the keyword was resolved
+// once against the schema text -- and the two properties enter different
+// anchored resources, so one resolution cannot be right about both.
+//
+// This is also the only fixture in the tree that makes the $recursiveAnchor
+// spelling of the count load-bearing. That anchor has no name: it is filed under
+// the empty string and belongs to the *root of the resource that writes it*, so
+// counting nodes rather than resource roots would answer differently here and
+// nowhere else.
+//
+// `{"anyLeaf":{"a":1.1}}` and `{"intLeaf":{"a":1.1}}` are one letter apart and
+// get opposite verdicts, which is what says the anchor is read per path. The
+// nested pair are what say it is re-read at each level rather than once: the
+// outer property picks the resource and the inner value is still judged by it.
+// The verdicts are Bowtie's, over python-jsonschema, go-jsonschema and
+// rust-boon, which agree on all eight.
+func TestRecursiveRefResolvesPerDocumentUnderATypedRoot(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_ref_typed_root.json", "Root",
+		[]string{
+			`{}`,
+			`{"anyLeaf":{"a":1.1}}`,
+			`{"anyLeaf":{"a":{"b":"x"}}}`,
+			`{"intLeaf":{"a":1}}`,
+			`{"intLeaf":{"a":{"b":1}}}`,
+		},
+		[]string{
+			`{"intLeaf":{"a":1.1}}`,
+			`{"intLeaf":{"a":{"b":1.1}}}`,
+			`{"intLeaf":{"a":"x"}}`,
+		},
+	)
+}
+
+// TestReferenceKeywordsAreIgnoredByDraftsWithoutThem is issue #161, and it is
+// the rarer half of these findings: over-enforcement, which refuses a document
+// the draft permits.
+//
+// $recursiveRef arrived in 2019-09 and $dynamicRef replaced it in 2020-12, so a
+// draft-7 schema carrying either states a keyword its dialect never defined --
+// and every draft says to ignore an unknown keyword. Schema.EffectiveRef
+// returned $recursiveRef whatever the draft, so this generator honoured it
+// everywhere, and a draft-7 recNode whose additionalProperties are recNodes
+// refused {"recTree":{"a":"x"}}, which a draft-7 reader accepts.
+//
+// The corpus cannot see this. $recursiveRef appears only under draft2019-09 in
+// the pinned suite and $dynamicRef only under draft2020-12 and v1, so the gate
+// has no file carrying either keyword into a draft that lacks it, and these four
+// fixtures are the only thing that does.
+//
+// The accept-controls matter more than the rejections here. A gate that simply
+// stopped reading both keywords would pass every draft-7 case below and break
+// the drafts that define them, so 2019-09 is asserted to go on honouring
+// $recursiveRef -- two levels deep, so a fix that dropped only the recursion
+// would fail -- and 2020-12 and v1 to go on honouring $dynamicRef. 2019-09 also
+// carries the $dynamicRef half, which it does not define either, and that is the
+// one draft where the two keywords must answer differently: a gate written per
+// draft rather than per keyword cannot pass both of its rows.
+//
+// The verdicts are Bowtie's, over python-jsonschema, go-jsonschema and
+// rust-boon, which agree on every document asserted here -- except v1's, which
+// none of the three can answer because none of them declares that dialect. The
+// v1 fixture is its 2020-12 twin with two URIs changed, so what it asserts is
+// that v1 follows 2020-12, which is what DraftV1 exists to say.
+//
+// The one case the three split on -- whether 2020-12 still honours
+// $recursiveRef, which its core vocabulary no longer defines -- is deliberately
+// asserted nowhere, and schemagen goes on honouring it; see
+// recursiveRefDefinedForDraft.
+func TestReferenceKeywordsAreIgnoredByDraftsWithoutThem(t *testing.T) {
+	t.Run("draft7 ignores both", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_draft7.json",
+			[]string{
+				`{}`,
+				`{"recTree":{"leaf":1},"dynTree":{"leaf":1}}`,
+				`{"recTree":{"a":"x"}}`,
+				`{"dynTree":{"a":"x"}}`,
+				`{"recTree":{"a":{"leaf":1}}}`,
+				`{"recTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+			},
+			[]string{
+				// `type` is the control: it is read on every draft, so a fixture
+				// that rejected nothing at all could not tell a working generator
+				// from one that emitted no Validate.
+				`{"recTree":"x"}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("2019-09 honours $recursiveRef and ignores $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_2019.json",
+			[]string{
+				`{}`,
+				`{"recTree":{"leaf":1},"dynTree":{"leaf":1}}`,
+				`{"recTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+			},
+			[]string{
+				`{"recTree":{"a":"x"}}`,
+				`{"recTree":{"a":{"leaf":"x"}}}`,
+				`{"recTree":"x"}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("2020-12 honours $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_2020.json",
+			[]string{
+				`{}`,
+				`{"dynTree":{"leaf":1}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+			},
+			[]string{
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+
+	t.Run("v1 honours $dynamicRef", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_keywords_v1.json",
+			[]string{
+				`{}`,
+				`{"dynTree":{"leaf":1}}`,
+				`{"dynTree":{"a":{"leaf":1}}}`,
+			},
+			[]string{
+				`{"dynTree":{"a":"x"}}`,
+				`{"dynTree":{"a":{"leaf":"x"}}}`,
+				`{"dynTree":"x"}`,
+			},
+		)
+	})
+}

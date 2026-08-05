@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://schemagen.test/ref-keywords/2019",
+  "type": "object",
+  "properties": {
+    "recTree": { "$ref": "recNode" },
+    "dynTree": { "$ref": "dynNode" }
+  },
+  "$defs": {
+    "recNode": {
+      "$id": "recNode",
+      "$recursiveAnchor": true,
+      "type": "object",
+      "properties": { "leaf": { "type": "integer" } },
+      "additionalProperties": { "$recursiveRef": "#" }
+    },
+    "dynNode": {
+      "$id": "dynNode",
+      "$dynamicAnchor": "dynNode",
+      "type": "object",
+      "properties": { "leaf": { "type": "integer" } },
+      "additionalProperties": { "$dynamicRef": "#dynNode" }
+    }
+  }
+}

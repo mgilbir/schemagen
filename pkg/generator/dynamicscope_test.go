@@ -294,3 +294,216 @@ func TestHelpersReferencedByReadsTheDynamicArms(t *testing.T) {
 		})
 	}
 }
+
+// TestDynamicScopeDecidesTheTarget is the narrowing that keeps issue #160's fix
+// from claiming every schema that mentions these two keywords.
+//
+// Compiling a schema to the runtime evaluator is what makes a bookended
+// reference resolve per document, and it costs the caller the struct or named
+// type the static path would have produced. That price is worth paying only
+// where the schema really does leave the target open, so the predicate asks
+// whether a second declaration of the anchor is in reach -- and the two false
+// cases below are what say it asks that rather than "does a dynamic reference
+// appear anywhere".
+//
+// The recursive tree is the shape every $recursiveRef in the test suite is
+// written as, and the shape most real 2019-09 schemas use. It anchors one
+// resource and refers back to it, so the answer is the same down every path and
+// the type it generates today is the right one. Answering true for it would turn
+// each of those into a raw-JSON wrapper for no gain.
+func TestDynamicScopeDecidesTheTarget(t *testing.T) {
+	t.Run("two resources supply the same anchor", func(t *testing.T) {
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://schemagen.test/two-paths/main",
+			"type": "object",
+			"properties": {
+				"numbers": {"$ref": "numberList"},
+				"strings": {"$ref": "stringList"}
+			},
+			"$defs": {
+				"genericList": {
+					"$id": "genericList",
+					"properties": {"list": {"items": {"$dynamicRef": "#itemType"}}},
+					"$defs": {"defaultItemType": {"$dynamicAnchor": "itemType"}}
+				},
+				"numberList": {
+					"$id": "numberList",
+					"$defs": {"itemType": {"$dynamicAnchor": "itemType", "type": "number"}},
+					"$ref": "genericList"
+				},
+				"stringList": {
+					"$id": "stringList",
+					"$defs": {"itemType": {"$dynamicAnchor": "itemType", "type": "string"}},
+					"$ref": "genericList"
+				}
+			}
+		}`)
+		if !g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("numberList and stringList both declare itemType and both reach the same reference, " +
+				"so which one it means is a fact about the document and no single Go type can state it")
+		}
+		// genericList on its own reaches only its own declaration, and a caller
+		// validating against that type starts the dynamic scope there -- so the
+		// static answer is the whole answer and the type it has stays.
+		if g.dynamicScopeDecidesTheTarget(root.Defs["genericList"]) {
+			t.Error("genericList alone reaches one declaration of itemType, so its reference has one possible target")
+		}
+		// numberList is what makes following references load-bearing. It holds
+		// one declaration of itemType and no dynamic reference at all; the
+		// reference, and the second declaration that competes with its own, are
+		// both inside genericList, which it can reach only through its $ref. A
+		// walk of the subtree alone finds neither and answers false.
+		if !g.dynamicScopeDecidesTheTarget(root.Defs["numberList"]) {
+			t.Error("numberList reaches genericList only through its $ref, and that is where both the reference " +
+				"and the competing declaration of itemType are; a reach that does not follow references misses them")
+		}
+	})
+
+	t.Run("one resource supplies the anchor", func(t *testing.T) {
+		// The second $recursiveAnchor, on `inner`, is what makes the count a
+		// count of *resources* rather than of nodes. A $recursiveAnchor anchors
+		// the root of the resource that writes it and nothing else -- the rule
+		// pkg/schema's resource graph applies and findDynamicAnchorDeclarations
+		// with it -- so this one puts nothing on any dynamic scope and there is
+		// still exactly one place the reference can land. Counted as a
+		// declaration it would make this schema look path-dependent and cost it
+		// its generated type, which is the shape every recursive 2019-09 schema
+		// in the suite has.
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2019-09/schema",
+			"$id": "https://schemagen.test/one-anchor/main.json",
+			"$defs": {
+				"node": {
+					"$id": "node.json",
+					"$recursiveAnchor": true,
+					"type": "object",
+					"properties": {"inner": {"$recursiveAnchor": true, "type": "object"}},
+					"additionalProperties": {"$recursiveRef": "#"}
+				}
+			},
+			"properties": {"tree": {"$ref": "node.json"}}
+		}`)
+		if g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("one resource declares the anchor, so the reference means the same thing down every path; " +
+				"routing this to the evaluator would cost every recursive 2019-09 schema its generated type")
+		}
+	})
+
+	t.Run("no bookend", func(t *testing.T) {
+		// Two anchored resources are in reach on purpose, so the count alone
+		// answers yes and the bookend test is the only thing left saying no.
+		// Without them this subtest would pass for a predicate that had stopped
+		// reading bookending at all.
+		//
+		// "#" is the only value 2019-09 gives $recursiveRef, and a $recursiveRef
+		// spelled as anything else is read as the plain reference it looks like
+		// -- dynamicRefTarget's rule, and the reason "$recursiveRef with no
+		// $recursiveAnchor works like $ref" is a test with its answer in the
+		// title. So the two anchors below are not in play for this reference,
+		// however many of them there are.
+		g, root := dynamicScopeFixture(t, `{
+			"$schema": "https://json-schema.org/draft/2019-09/schema",
+			"$id": "https://schemagen.test/unbookended/main.json",
+			"properties": {"a": {"$ref": "#/$defs/user"}},
+			"$defs": {
+				"user": {"$recursiveRef": "#/$defs/narrow"},
+				"narrow": {"type": "integer"},
+				"one": {"$id": "one.json", "$recursiveAnchor": true, "type": "number"},
+				"two": {"$id": "two.json", "$recursiveAnchor": true, "type": "boolean"}
+			}
+		}`)
+		if g.dynamicScopeDecidesTheTarget(root) {
+			t.Error("a $recursiveRef whose value is not \"#\" is a plain reference, so neither $recursiveAnchor " +
+				"in the document is ever searched and the target is the one the pointer names")
+		}
+	})
+}
+
+// TestReferenceKeywordsFollowTheirDialect is issue #161 at the level the fix is
+// written: the normalization pass, over every draft this generator identifies.
+//
+// The compiled-and-run half is TestReferenceKeywordsAreIgnoredByDraftsWithoutThem,
+// which covers draft 7, 2019-09, 2020-12 and v1. Drafts 3, 4 and 6 have no
+// fixture of their own -- neither keyword can appear in a suite file for them and
+// a hand-written one would say what draft 7's already says -- so this is what
+// holds them, and it is a table rather than three more fixtures because the
+// question is the same question seven times.
+//
+// The two keywords are asked separately of every draft, and 2019-09 is why: it
+// defines one of them and not the other, so a gate written per draft rather than
+// per keyword passes every other row here and fails that one.
+func TestReferenceKeywordsFollowTheirDialect(t *testing.T) {
+	for _, tc := range []struct {
+		draft    string
+		uri      string
+		defsKey  string
+		keepsRec bool
+		keepsDyn bool
+	}{
+		{draft: "3", uri: "http://json-schema.org/draft-03/schema#", defsKey: "definitions"},
+		{draft: "4", uri: "http://json-schema.org/draft-04/schema#", defsKey: "definitions"},
+		{draft: "6", uri: "http://json-schema.org/draft-06/schema#", defsKey: "definitions"},
+		{draft: "7", uri: "http://json-schema.org/draft-07/schema#", defsKey: "definitions"},
+		{draft: "2019-09", uri: "https://json-schema.org/draft/2019-09/schema", defsKey: "$defs", keepsRec: true},
+		{draft: "2020-12", uri: "https://json-schema.org/draft/2020-12/schema", defsKey: "$defs", keepsRec: true, keepsDyn: true},
+		{draft: "v1", uri: "https://json-schema.org/v1", defsKey: "$defs", keepsRec: true, keepsDyn: true},
+	} {
+		t.Run(tc.draft, func(t *testing.T) {
+			src := `{
+				"$schema": "` + tc.uri + `",
+				"$id": "https://schemagen.test/ref-keywords/` + tc.draft + `",
+				"properties": {
+					"rec": {"$recursiveRef": "#/` + tc.defsKey + `/narrow"},
+					"dyn": {"$dynamicRef": "#/` + tc.defsKey + `/narrow"}
+				},
+				"` + tc.defsKey + `": {"narrow": {"type": "integer"}}
+			}`
+			_, root := dynamicScopeFixture(t, src)
+			if got := root.Properties["rec"].RecursiveRef != ""; got != tc.keepsRec {
+				t.Errorf("draft %s keeps $recursiveRef = %v, want %v", tc.draft, got, tc.keepsRec)
+			}
+			if got := root.Properties["dyn"].DynamicRef != ""; got != tc.keepsDyn {
+				t.Errorf("draft %s keeps $dynamicRef = %v, want %v", tc.draft, got, tc.keepsDyn)
+			}
+			// EffectiveRef is the function issue #161 names, and the one some
+			// forty call sites read. Clearing the field is what makes it agree,
+			// so it is asserted here rather than assumed to follow.
+			if got := root.Properties["rec"].EffectiveRef() != ""; got != tc.keepsRec {
+				t.Errorf("draft %s: EffectiveRef reports a reference = %v, want %v", tc.draft, got, tc.keepsRec)
+			}
+		})
+	}
+}
+
+// TestReferenceKeywordsFollowTheNodesOwnDialect is the half of the pass that a
+// document-wide gate would get wrong.
+//
+// $schema is declared per resource, so a 2019-09 resource embedded in a draft-7
+// document is read under 2019-09 and keeps its $recursiveRef, while the draft-7
+// nodes around it lose theirs. The same rule normalizeDialectFormats applies to
+// draft 3's format spellings, and the same reason refOverridesSiblingsForSchema
+// exists beside refOverridesSiblings.
+func TestReferenceKeywordsFollowTheNodesOwnDialect(t *testing.T) {
+	_, root := dynamicScopeFixture(t, `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "https://schemagen.test/mixed/main",
+		"properties": {"host": {"$recursiveRef": "#/definitions/narrow"}},
+		"definitions": {
+			"narrow": {"type": "integer"},
+			"embedded": {
+				"$id": "https://schemagen.test/mixed/embedded",
+				"$schema": "https://json-schema.org/draft/2019-09/schema",
+				"properties": {"guest": {"$recursiveRef": "#/$defs/narrow"}},
+				"$defs": {"narrow": {"type": "integer"}}
+			}
+		}
+	}`)
+	if got := root.Properties["host"].RecursiveRef; got != "" {
+		t.Errorf("the draft-7 host kept $recursiveRef = %q", got)
+	}
+	embedded := root.Definitions["embedded"]
+	if got := embedded.Properties["guest"].RecursiveRef; got == "" {
+		t.Error("the embedded 2019-09 resource lost its $recursiveRef; the gate is reading the document rather than the node")
+	}
+}
