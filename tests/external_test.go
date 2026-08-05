@@ -1378,11 +1378,20 @@ var sharedCacheLock *cacheLock
 // neither would see the other. For the same reason the lock file is never
 // deleted, by the sweep or by anything else. It is empty, and unlinking it
 // while another process has it open is precisely how mutual exclusion is lost.
-func sharedCachePath() string {
-	return filepath.Join(os.TempDir(), fmt.Sprintf("schemagen-gocache-shared-%d", os.Getuid()))
+//
+// Both take the temp directory as an argument in their -In form, so a test can
+// stand up a whole box's worth of state -- a cache, a lock, a set of work
+// directories -- inside a t.TempDir() and drive the sweep over it. The
+// no-argument forms are the real ones every caller outside a test uses.
+func sharedCachePathIn(tmp string) string {
+	return filepath.Join(tmp, fmt.Sprintf("schemagen-gocache-shared-%d", os.Getuid()))
 }
 
-func sharedCacheLockPath() string { return sharedCachePath() + ".lock" }
+func sharedCachePath() string { return sharedCachePathIn(os.TempDir()) }
+
+func sharedCacheLockPathIn(tmp string) string { return sharedCachePathIn(tmp) + ".lock" }
+
+func sharedCacheLockPath() string { return sharedCacheLockPathIn(os.TempDir()) }
 
 // cacheLock is a process's claim on a shared cache directory.
 //
@@ -1423,10 +1432,13 @@ func lockSharedCache() *cacheLock {
 // cache has a lock file at all.
 //
 // The two "false" answers are deliberately different. A directory with no lock
-// file beside it is a per-process cache from an older revision, or a cogen
-// scratch directory: nothing claims it, so removal proceeds on the age check
-// alone, exactly as it did before. A directory whose lock is held is one a live
-// run is building into, and it must survive however old its mtimes look.
+// file beside it is a per-process cache from an older revision: nothing claims
+// it, so removal proceeds on the age check alone, exactly as it did before. A
+// directory whose lock is held is one a live run is building into, and it must
+// survive however old its mtimes look.
+//
+// Only caches reach here. A work directory has no lock of its own and is judged
+// against the run lock instead; see workDirPrefixes and anotherRunIsAlive.
 func lockCacheForRemoval(path string) (*cacheLock, bool) {
 	if !cacheLockingSupported {
 		return nil, true
@@ -1508,17 +1520,109 @@ func cacheLastActive(dir string, root os.FileInfo) time.Time {
 	return newest
 }
 
-// sweepStaleCaches deletes ephemeral cache directories left behind by earlier
-// runs.
+// The two families of directory this package leaves in the temp directory, and
+// the reason each is judged the way it is.
 //
-// TestMain removes this process's directory on the way out, which handles the
+// A *cache* is one per user and lives as long as any run is using it, so it is
+// claimed by an flock on a lock file beside it and the sweep asks that lock
+// before deleting one. A *work directory* is one per test group: the harness
+// draws it, writes a generated module into it, compiles or runs that module,
+// reads the verdict and deletes it, all inside a single bounded command. A run
+// makes roughly 27,000 of them.
+//
+// That count is why they are not given locks of their own. A lock file has to
+// outlive the directory it guards -- unlinking one while another process has it
+// open is precisely how mutual exclusion is lost, which is why the cache's lock
+// is never deleted -- so a lock per work directory would trade seven stranded
+// directories for 27,000 stranded lock files, which is the litter this is meant
+// to remove, multiplied.
+//
+// So a work directory is judged by age *and* by the claim the run that owns it
+// already holds: the shared cache lock. See anotherRunIsAlive.
+var (
+	cacheDirPrefixes = []string{"schemagen-gocache-"}
+	workDirPrefixes  = []string{
+		"schemagen-cogen-",    // one generated program, built and run (cogen, and its bowtie oracle)
+		"schemagen-external-", // one generated module, compiled
+		"schemagen-rt-",       // one generated module, built and round-tripped
+		"schemagen-val-",      // one generated module, built and asked for a verdict
+	}
+)
+
+// sweptDirKind classifies a name in the temp directory, reporting the prefix it
+// matched and whether that prefix names a work directory rather than a cache.
+//
+// The prefix is returned rather than discarded because the doomed name a
+// removal renames through keeps it: a directory stranded between the rename and
+// the delete should say what it was, and calling a work directory a gocache is
+// the kind of unattributable debris this sweep exists to stop leaving behind.
+func sweptDirKind(name string) (prefix string, work, ok bool) {
+	for _, p := range workDirPrefixes {
+		if strings.HasPrefix(name, p) {
+			return p, true, true
+		}
+	}
+	for _, p := range cacheDirPrefixes {
+		if strings.HasPrefix(name, p) {
+			return p, false, true
+		}
+	}
+	return "", false, false
+}
+
+// anotherRunIsAlive reports whether any run of this package is currently using
+// tmp, by asking for the shared cache lock nobody may hold but a live run.
+//
+// This is the claim a work directory cannot carry itself, and it is exact for
+// the question that matters: a work directory only ever outlives the command
+// that made it if the process died, so if no run is alive then every work
+// directory in tmp is abandoned, and if one is alive the sweep leaves them all
+// for the next run that starts on an idle box.
+//
+// It is asked once per sweep, before anything is removed, and the exclusive
+// lock is dropped immediately -- a run arriving meanwhile waits microseconds
+// for a lock it takes shared. A run *exiting* in that same window finds its own
+// upgrade to exclusive refused and leaves the cache for the age sweep instead
+// of deleting it, which is a miss of microseconds against the length of a run
+// and is in the safe direction: it costs one cache an idle hour on the volume,
+// where the other direction would cost a live run its cache.
+//
+// A missing lock file means no run has ever started here, which is "not alive".
+// So does a platform without flock: nothing can claim anything there, and the
+// alternative reading -- treating an unanswerable question as "a run is alive"
+// -- would make work directories immortal on that platform, which is the leak
+// being fixed. There the age check stands alone, exactly as it does for the
+// cache. See cachefs_other_test.go.
+func anotherRunIsAlive(tmp string) bool {
+	if !cacheLockingSupported {
+		return false
+	}
+	f, err := os.OpenFile(sharedCacheLockPathIn(tmp), os.O_RDWR, 0o600)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	return !flockExclusiveNB(f)
+}
+
+// sweepStaleCaches deletes the ephemeral cache and work directories left behind
+// by earlier runs.
+//
+// TestMain removes this process's directories on the way out, which handles the
 // common path. It cannot handle any other: a -timeout kill, a SIGTERM from a
 // harness, an interrupt, or a crash on a full disk all skip it, and each one
-// strands roughly 2G. That compounds -- a full disk kills runs, and each kill
-// strands another cache -- and it has already exhausted a 394G volume, at which
-// point the suite fails with "no space left on device" reported against
-// individual test keys, so a dead run reads like a set of real validation
-// failures.
+// strands a cache of roughly 2G plus whatever work directories were in flight.
+// That compounds -- a full disk kills runs, and each kill strands another cache
+// -- and it has already exhausted a 394G volume, at which point the suite fails
+// with "no space left on device" reported against individual test keys, so a
+// dead run reads like a set of real validation failures.
+//
+// The work directories are small: the seven a session of killed runs left
+// behind came to 200K, against the 25G a single stranded cache used to cost,
+// so this half is not what fills a volume. They are
+// swept for the other reason, which is that /tmp should not accumulate debris
+// whose provenance nobody can work out a week later -- that is what made
+// diagnosing the cache problem harder than it needed to be.
 //
 // So the sweep happens on the way in, where it works no matter how the previous
 // process died. Errors are ignored throughout: reclaiming space is best-effort,
@@ -1533,12 +1637,19 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 	if err != nil {
 		return
 	}
+	// Asked once, before anything is removed, and read by every work directory
+	// below. The listing above is what bounds the answer's usefulness in the
+	// other direction: a run that starts a moment after this returns "no" draws
+	// its work directories under names that are not in entries, so nothing this
+	// loop can reach belongs to it.
+	runAlive := anotherRunIsAlive(tmp)
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if !strings.HasPrefix(name, "schemagen-gocache-") && !strings.HasPrefix(name, "schemagen-cogen-") {
+		prefix, work, ok := sweptDirKind(name)
+		if !ok {
 			continue
 		}
 		info, err := e.Info()
@@ -1549,23 +1660,46 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 		if cacheLastActive(path, info).After(cutoff) {
 			continue
 		}
-		// The age check above is a heuristic about mtimes; the lock is a fact
-		// about processes. Both have to agree before a cache is deleted, and
-		// the lock is the one that cannot be fooled: a run that is getting
-		// nothing but cache hits creates no new bucket entries, so it advances
-		// no mtime this sweep can see, and that is exactly the run a *shared*
-		// cache makes common. Without this, the second concurrent run would
-		// delete the first one's cache out from under it, and the robbed run
-		// would not fail -- it would silently recompile from nothing.
-		lock, free := lockCacheForRemoval(path)
-		if !free {
-			continue
+		// The age check above is a heuristic about mtimes; a lock is a fact
+		// about processes. Both have to agree before anything is deleted, and
+		// the lock is the one that cannot be fooled.
+		var lock *cacheLock
+		if work {
+			// A work directory's mtimes are frozen the moment the harness
+			// finishes writing the module into it -- measured over a live one:
+			// root and every child stamped once, and neither the compile nor
+			// the run that follows advancing either -- so it has the same shape
+			// as a cache root, and age alone reads a live directory as an
+			// abandoned one for as long as its command takes. The commands are
+			// bounded (30s for a compile or a round trip, 90s for a generated
+			// program, 10m for the bowtie oracle) and the cutoff is an hour, so
+			// the arithmetic happens to hold; but it holds by a margin nobody
+			// is consulting when they raise a timeout, and a command that hangs
+			// past its context -- a killed `go run` whose child still holds the
+			// output pipe -- is bounded by nothing. So the claim decides, and
+			// the arithmetic is the second opinion.
+			if runAlive {
+				continue
+			}
+		} else {
+			// A run that is getting nothing but cache *hits* creates no new
+			// bucket entries, so it advances no mtime this sweep can see, and
+			// that is exactly the run a *shared* cache makes common. Without
+			// this, the second concurrent run would delete the first one's
+			// cache out from under it, and the robbed run would not fail -- it
+			// would silently recompile from nothing.
+			var free bool
+			lock, free = lockCacheForRemoval(path)
+			if !free {
+				continue
+			}
 		}
-		doomed, moved := renameForRemoval(path)
+		doomed, moved := renameForRemoval(path, prefix)
 		// The claim is wanted for the rename and not for the emptying: holding
 		// it through the delete would stall the startup of every run that
 		// arrives meanwhile, and those runs have nothing to wait for -- the
-		// directory they will create is already a different one.
+		// directory they will create is already a different one. Nil for a work
+		// directory, which holds no lock of its own; release says so.
 		lock.release()
 		if moved {
 			os.RemoveAll(doomed)
@@ -1573,7 +1707,8 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 	}
 }
 
-// renameForRemoval moves a cache directory aside, and reports where to.
+// renameForRemoval moves a directory aside, and reports where to. prefix is the
+// swept prefix the directory's name carried.
 //
 // Deleting a cache is done in two steps because the second one is slow. The
 // rename is atomic, so a run arriving a moment later finds no directory and
@@ -1584,11 +1719,14 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 // is a build failure attributed to a test case, which is the shape of wrongness
 // this whole file exists to stop reporting.
 //
-// The doomed name keeps the swept prefix, so a crash between the rename and the
-// delete leaves something the next run reclaims rather than a permanent leak.
-func renameForRemoval(path string) (string, bool) {
+// The doomed name keeps the prefix the directory came in with, which does two
+// things: a crash between the rename and the delete leaves something the next
+// run reclaims rather than a permanent leak, and it leaves it under a name that
+// still says what it was. A work directory renamed to schemagen-gocache-doomed
+// would be reclaimed just as reliably and would be a lie to whoever found it.
+func renameForRemoval(path, prefix string) (string, bool) {
 	doomed := filepath.Join(filepath.Dir(path),
-		fmt.Sprintf("schemagen-gocache-doomed-%d-%d", os.Getpid(), time.Now().UnixNano()))
+		fmt.Sprintf("%sdoomed-%d-%d", prefix, os.Getpid(), time.Now().UnixNano()))
 	if err := os.Rename(path, doomed); err != nil {
 		// Already gone, or not ours to move. Either way there is nothing to do:
 		// reclaiming space is best-effort, and a directory another user owns is
@@ -1598,7 +1736,20 @@ func renameForRemoval(path string) (string, bool) {
 	return doomed, true
 }
 
+// sweptBeforeClaiming records that the sweep ran before this process took its
+// own claim on the shared cache.
+//
+// The order is load-bearing now that anotherRunIsAlive reads that same claim: a
+// process holding it sees itself as a live run and stops reclaiming work
+// directories altogether. That regression has no symptom -- a sweep that
+// reclaims nothing looks exactly like a temp directory with nothing to reclaim
+// -- so the order is recorded here and asserted in
+// TestSweepAsksBeforeThisRunClaimsTheCache rather than left to whoever next
+// edits init.
+var sweptBeforeClaiming bool
+
 func init() {
+	sweptBeforeClaiming = sharedCacheLock == nil
 	sweepStaleCaches()
 	// The lock comes before the directory: a sweeper that has just decided this
 	// cache is abandoned holds the exclusive lock while it renames it away, so
@@ -1654,7 +1805,7 @@ func releaseSharedCache() {
 func releaseCacheDir(dir string, lock *cacheLock, keep bool) {
 	doomed, moved := "", false
 	if !keep && lock.tryExclusive() {
-		doomed, moved = renameForRemoval(dir)
+		doomed, moved = renameForRemoval(dir, "schemagen-gocache-")
 	}
 	lock.release()
 	if moved {
