@@ -90,6 +90,42 @@ func (r RefSiblingValues2020ConstSibling) Validate() error {
 	}
 }
 
+// RefSiblingValues2020EmptyEnumSibling accepts any JSON value and validates a root-level "not" constraint.
+type RefSiblingValues2020EmptyEnumSibling struct {
+	_raw json.RawMessage
+}
+
+func (r *RefSiblingValues2020EmptyEnumSibling) UnmarshalJSON(data []byte) error {
+	r._raw = append(r._raw[:0], data...)
+	return nil
+}
+
+func (r RefSiblingValues2020EmptyEnumSibling) MarshalJSON() ([]byte, error) {
+	if len(r._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return r._raw, nil
+}
+
+func (r RefSiblingValues2020EmptyEnumSibling) Raw() json.RawMessage { return r._raw }
+
+// IsZero reports whether no value was present, so an optional field tagged
+// ",omitzero" is omitted when absent rather than marshalled as null.
+func (r RefSiblingValues2020EmptyEnumSibling) IsZero() bool { return len(r._raw) == 0 }
+
+func (r RefSiblingValues2020EmptyEnumSibling) String() string { return string(r._raw) }
+
+// Validate checks RefSiblingValues2020EmptyEnumSibling against its JSON Schema "not" constraint.
+func (r RefSiblingValues2020EmptyEnumSibling) Validate() error {
+	// No value was present. A constraint applies to a value that is there; an
+	// absent optional property is the parent's business (required), not this
+	// type's.
+	if len(r._raw) == 0 {
+		return nil
+	}
+	return fmt.Errorf("not: value is forbidden (not schema matches all values)")
+}
+
 type RefSiblingValues2020EnumSibling string
 
 const (
@@ -142,7 +178,7 @@ func (r RefSiblingValues2020MapSiblingValue) Validate() error {
 // RefSiblingValues2020 - The other side of the draft split, and the control on the change #151 makes: from 2019-09 on a $ref is an ordinary applicator and the sibling does apply, so every rejection here has to survive a fix that removes those same rejections one draft earlier. The word `false` is admitted by the target and refused by each sibling, and that refusal is the whole of what this fixture watches.
 type RefSiblingValues2020 struct {
 	ConstSibling         *RefSiblingValues2020ConstSibling              `json:"constSibling,omitempty"`
-	EmptyEnumSibling     *Word                                          `json:"emptyEnumSibling,omitempty"`
+	EmptyEnumSibling     RefSiblingValues2020EmptyEnumSibling           `json:"emptyEnumSibling,omitzero"`
 	EnumSibling          *RefSiblingValues2020EnumSibling               `json:"enumSibling,omitempty"`
 	ListSibling          []RefSiblingValues2020ListSiblingItem          `json:"listSibling,omitzero"`
 	MapSibling           map[string]RefSiblingValues2020MapSiblingValue `json:"mapSibling,omitzero"`
@@ -252,17 +288,16 @@ func (r RefSiblingValues2020) MarshalJSON() ([]byte, error) {
 
 // Validate checks RefSiblingValues2020 against its JSON Schema constraints.
 func (r RefSiblingValues2020) Validate() error {
-	if r._jsonKeys["emptyEnumSibling"] {
-		if r.EmptyEnumSibling != nil || r._jsonKeys["emptyEnumSibling"] {
-			return fmt.Errorf("emptyEnumSibling: property is forbidden (no value satisfies its schema)")
-		}
-	}
 	if r.ConstSibling != nil {
 		if err := r.ConstSibling.Validate(); err != nil {
 			return fmt.Errorf("constSibling.%w", err)
 		}
 	}
-	if r.EmptyEnumSibling != nil {
+	// An optional property the source JSON did not carry left its Go zero
+	// behind, which is not a value the schema ever saw. _jsonKeys records the
+	// keys the JSON had; when nil the value was not built from JSON and
+	// presence is unknowable, so the check still runs.
+	if r._jsonKeys == nil || r._jsonKeys["emptyEnumSibling"] {
 		if err := r.EmptyEnumSibling.Validate(); err != nil {
 			return fmt.Errorf("emptyEnumSibling.%w", err)
 		}

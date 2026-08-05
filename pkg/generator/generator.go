@@ -1887,7 +1887,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	//
 	// refDisplacesSiblingValues is what keeps all three enum arms behind the ref
 	// arms on the drafts that say the reference wins; see issue #151.
+	//
+	// refMergesSiblingValues stands the two value arms down on the drafts that say
+	// both bind, so the implicit-allOf arm below reaches them (issue #153). The
+	// forbidden arm immediately below is not one of them: `{"enum":[]}` admits
+	// nothing whatever the reference says, so this is already the whole answer.
 	refDisplacesEnum := g.refDisplacesSiblingValues(s)
+	refMergesEnum := g.refMergesSiblingValues(s)
 
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && s.Enum != nil && len(s.Enum) == 0 {
 		g.generated[name] = true
@@ -1900,12 +1906,12 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	}
 
 	// Const -> treat as single-element enum for validation purposes.
-	if g.validationKeywordsEnabled() && !refDisplacesEnum {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum {
 		s = promoteConstToEnum(s)
 	}
 
 	// Enum type
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
 		return g.generateEnumDef(name, s)
 	}
 
@@ -3711,6 +3717,20 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// only one pattern can be kept it is the parent's -- which is what #68
 		// established when a branch had none to offer.
 		merged.PropertyNames = s.PropertyNames
+		// And the same for enum and const, which say which values are legal at
+		// all. mergeConstraints reads a branch's onto a target that has none, so
+		// without this seeding a parent's list was dropped outright -- and from
+		// 2019-09 on {"$ref":T,"const":c} is rewritten into exactly this shape,
+		// with the reference as the only branch and the const on the parent, so
+		// the const vanished on the way in (issue #153).
+		//
+		// Seeded before the merge rather than propagated after it, for the reason
+		// the bounds above are: mergeConstraints keeps the first list it is given,
+		// so seeding is what makes the parent's the one that survives where a
+		// branch states one too. Both bind, one slot holds them, and keeping the
+		// parent's under-enforces rather than refusing values the schema allows --
+		// the direction mergeConstraints already documents for this pair.
+		merged.Enum, merged.Const, merged.ConstIsNull = s.Enum, s.Const, s.ConstIsNull
 	}
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
@@ -3900,6 +3920,26 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		if g.validationKeywordsEnabled() {
 			merged = promoteConstToEnum(merged)
 			if len(merged.Enum) > 0 {
+				// An enum type checks membership and nothing else, so a merge
+				// stating anything further has to be carried somewhere that can
+				// hold both. That is what {"$ref":T,"const":c} is rewritten into
+				// from 2019-09 on, and taking the enum arm for it dropped T
+				// outright: with T = {"type":"string","minLength":5} the type
+				// admitted "abc", which T forbids (issue #153).
+				//
+				// The evaluator is asked for the *original* schema rather than the
+				// merge, so it reads the reference itself rather than the subset
+				// mergeConstraints was able to lift onto `merged`. When it declines
+				// -- a keyword it does not model, a cycle it cannot inline -- the
+				// enum arm below is still the answer, which is what it has always
+				// been here.
+				if !enumTypeCarriesSchema(merged) {
+					if def := g.rawWrapperDef(name, s); def != nil {
+						g.generated[name] = true
+						g.output.TypeDefs = append(g.output.TypeDefs, def)
+						return nil
+					}
+				}
 				g.generated[name] = true
 				return g.generateEnumDef(name, merged)
 			}
@@ -6597,14 +6637,17 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// and rely on the "const" validation rule for enforcement.
 	//
 	// refDisplacesSiblingValues holds both arms behind the ref arms below on the
-	// drafts where the reference displaces what is written beside it (issue #151).
+	// drafts where the reference displaces what is written beside it (issue #151),
+	// and refMergesSiblingValues holds them behind the same arms on the drafts
+	// where both bind and only the merge can say so (issue #153).
 	refDisplacesEnum := g.refDisplacesSiblingValues(s)
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
+	refMergesEnum := g.refMergesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum → generate enum type
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
 		enumName := parentName + fieldName
 		if err := g.generateEnumDef(enumName, s); err != nil {
 			return nil, err
@@ -7062,14 +7105,17 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// returns, so it never reaches the node-identity bookkeeping further down.
 	//
 	// Both arms stand behind the ref arms on the drafts where a $ref displaces
-	// what is written beside it; see refDisplacesSiblingValues and issue #151.
+	// what is written beside it (refDisplacesSiblingValues, issue #151), and
+	// equally on the drafts where it applies beside it and only the merge arm
+	// below can carry both (refMergesSiblingValues, issue #153).
 	refDisplacesEnum := g.refDisplacesSiblingValues(s)
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Type) == 0 {
+	refMergesEnum := g.refMergesSiblingValues(s)
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
 	// Inline enum
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && len(s.Enum) > 0 {
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
 		enumName := contextName
 		_ = g.generateEnumDef(enumName, s)
 		return &NamedType{Name: enumName}
@@ -9177,12 +9223,24 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 // Adding it here rather than at the individual call sites is what keeps the
 // draft split correct: draft-07 and earlier short-circuit before this is
 // reached, so they still suppress the sibling, and only 2019-09 onward changes.
+//
+// "enum" and "const" join it for exactly that reason, and that is #153. They are
+// what a type ladder reads first, so where the other keywords on this list lost
+// the *sibling* to the reference these lost the *reference* to the sibling:
+// {"$defs":{"Long":{"type":"string","minLength":5}},"$ref":"#/$defs/Long",
+// "const":"abc"} became the const's own enum type, the $ref was never followed,
+// and "abc" was accepted although the target forbids it. refMergesSiblingValues
+// is what stands the enum arms down so the merge this predicate selects is
+// reached; on draft-07 and earlier refDisplacesSiblingValues stands them down
+// instead and the short-circuit above keeps the reference alone, so #151's
+// answer there is untouched.
 func hasRefStructuralSiblings(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
 	return len(s.Type) > 0 || hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
-		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil
+		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil ||
+		statesEnumOrConst(s)
 }
 
 // primarySchemaType returns the primary (first non-null) type from the type list.
@@ -11921,6 +11979,110 @@ func (g *Generator) refDisplacesSiblingValues(s *schema.Schema) bool {
 	return s != nil && s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)
 }
 
+// refMergesSiblingValues is refDisplacesSiblingValues on the other side of the
+// same split: the drafts where an `enum` or a `const` written beside a $ref
+// applies *beside* the reference rather than instead of it.
+//
+// From 2019-09 on $ref is an ordinary applicator, so the schema asserts the
+// reference and the sibling at once -- an implicit allOf of the two. The enum
+// arms of the three type ladders run ahead of their ref arms, so what happened
+// instead was that the sibling applied *instead of* the reference: the enum
+// decided the type, the $ref was never followed and the target's own keywords
+// were dropped. {"$defs":{"Long":{"type":"string","minLength":5}},
+// "$ref":"#/$defs/Long","const":"abc"} accepted "abc", which the target forbids
+// (issue #153).
+//
+// So on these drafts the enum arms stand down too, and for the opposite reason:
+// not because the sibling is absent, but because the merge arm below them is the
+// only one that can state both halves. hasRefStructuralSiblings lists `enum` and
+// `const` for the same reason it lists `type` (#118), which is what points the
+// ref arms at that merge.
+//
+// The empty enum is deliberately not exempted here and not routed to the merge:
+// `{"enum":[]}` admits nothing whatever the reference says, so generateTypeDef's
+// forbidden arm above is already the complete answer and reaches it first.
+//
+// It asks for `$ref` and not for the other two references, because `$ref` is
+// what the merge arm can claim: generateTypeDef synthesizes an allOf whose first
+// branch carries the reference, and mergeAllOfBranches follows a `$ref` and a
+// `$recursiveRef` from there but resolves neither a `$dynamicRef` nor the
+// dynamic scope a `$recursiveRef` needs. Standing the enum arms down for a
+// reference no later arm picks up drops the sibling as well as the target:
+// {"$dynamicRef":"#T","const":"abc"} was left with no check at all, where before
+// it at least enforced the const. Under-enforcement for those two spellings is
+// what this leaves in place, and it is what they had.
+//
+// Asked of the schema rather than of the run, as refDisplacesSiblingValues is
+// and for the same reason: $schema is a per-document declaration and a $ref may
+// cross into a document that makes a different one.
+func (g *Generator) refMergesSiblingValues(s *schema.Schema) bool {
+	return s != nil && s.Ref != "" &&
+		!g.refOverridesSiblingsForSchema(s) && statesEnumOrConst(s)
+}
+
+// enumTypeCarriesSchema reports whether the enum type generateEnumDef would
+// build for a schema checks everything that schema asserts.
+//
+// An EnumDef holds one thing: the list of admissible values. Its Validate
+// compares the instance against them and stops, so every other assertion on the
+// schema is dropped the moment the enum arm claims it -- silently, because the
+// type looks complete.
+//
+// Three keywords are carried anyway and are not counted here:
+//
+//   - "enum" and "const" are the list itself.
+//   - "type" is carried by enumMembersDeclaredTypeAdmits, which drops the members
+//     the declared type forbids before the type is built (#145). A list that
+//     empties becomes a forbidden type, so the declared type is enforced exactly.
+//   - "allOf" and "$ref", which generateAllOfDef preserves on its merged schema
+//     for collectEvaluatedProperties and for unevaluatedProperties rather than as
+//     assertions still to be met -- the branches were merged into the very schema
+//     being asked about. Reading them as unmet would send every merged enum to a
+//     wrapper, including the ones the merge carried in full.
+//
+// Anything else answers false, which is the direction that keeps a check: the
+// caller then offers the position to the runtime evaluator and falls back to the
+// enum when that declines.
+func enumTypeCarriesSchema(s *schema.Schema) bool {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
+		return false
+	}
+	for key := range present {
+		switch key {
+		case "enum", "const", "type", "allOf", "$ref":
+			continue
+		}
+		if nonConstrainingKeywords[key] || inertKeywords[key] {
+			continue
+		}
+		return false
+	}
+	// A keyword with no field on Schema arrives as an extension, and nothing is
+	// known about what it demands -- except for the handful known to demand
+	// nothing, which keywordsOnly lets through here for the same reason: a schema
+	// must not lose its enum type for carrying a comment.
+	for key := range s.Extensions {
+		if !inertKeywords[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// statesEnumOrConst reports whether a schema pins the set of values it admits by
+// listing them -- `enum` in any spelling, `const` in any spelling.
+//
+// The three spellings have to be asked for separately because two of them do not
+// survive a round trip through JSON: `Enum` is tagged omitempty, so `"enum": []`
+// re-marshals to nothing at all, and `ConstIsNull` is tagged "-" because
+// encoding/json leaves a *any nil for a JSON null and the flag is the only record
+// that `"const": null` was written. Reading the struct is what tells those two
+// apart from a schema that states neither; see issue #154.
+func statesEnumOrConst(s *schema.Schema) bool {
+	return s != nil && (s.Enum != nil || s.Const != nil || s.ConstIsNull)
+}
+
 func (g *Generator) validationKeywordsEnabled() bool {
 	return !g.validationKeywordsDisabled
 }
@@ -14048,25 +14210,26 @@ var patternValueScalarKeywords = map[string]bool{
 // everything a patternProperties sub-schema says, so the bucket needs no type of
 // its own.
 //
-// Decided from the re-marshaled key set rather than from a list of struct
-// fields, so a keyword the parser learns later fails closed -- it is not in the
-// set, the answer is no, and the position gets a materialized type that does
-// understand it. That is the rule aliasVariantRules and dynamicBranchChecks
-// already follow, and here it is what stops this from becoming a second
-// hand-maintained list of keywords that silently lags the first.
+// Decided from schemaKeywordSet rather than from a list of struct fields, so a
+// keyword the parser learns later fails closed -- it is not in the set, the
+// answer is no, and the position gets a materialized type that does understand
+// it. That is the rule aliasVariantRules and dynamicBranchChecks already follow,
+// and here it is what stops this from becoming a second hand-maintained list of
+// keywords that silently lags the first. It is also what answers the keywords the
+// marshaled form drops: {"patternProperties":{"^a":{"const":null}}} showed no key
+// at all, so the scalar rules were held to cover a sub-schema they say nothing
+// about and every value under a matching key was accepted (issue #154).
 func patternRulesCoverSchema(s *schema.Schema) bool {
 	if s == nil {
 		return true
 	}
+	// TypeSchemas stays a test of its own: schemaKeywordSet reports it as "type",
+	// which this list allows, and the scalar type rule can only carry a name.
 	if len(s.Extensions) > 0 || len(s.TypeSchemas) > 0 {
 		return false
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return false
 	}
 	for key := range present {

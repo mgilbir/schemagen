@@ -516,12 +516,8 @@ func (b *nodeBuilder) keywordsOnly(s *schema.Schema) bool {
 			return false
 		}
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return false
 	}
 	for key := range present {
@@ -768,6 +764,51 @@ func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef 
 	return def
 }
 
+// schemaKeywordSet returns the keywords a schema states. It is the reading every
+// gate in this package that decides "can this schema be represented" and "does
+// this schema state anything" is built on.
+//
+// The re-marshaled key set is the base, and that is deliberate: a keyword the
+// parser learns later arrives with a struct field that marshals, so it lands in
+// the set and the gate reading it fails closed. A hand-written list of struct
+// fields has the opposite default -- the field nobody remembered is missed
+// silently -- which is why the gates were written this way and why they stay
+// this way.
+//
+// What the base cannot do is show a field whose *presence* its encoding erases,
+// and Schema.KeywordsMarshaledFormOmits is the one place that knows which those
+// are. Every gate reads both, because a gate that forgets the difference has each
+// time turned into a defect of its own: `{"enum":[]}` read as a schema stating
+// nothing (#142, and the local patch dynamicBranchChecks carried until this
+// existed), and `{"const":null}` read the same way at three gates at once, which
+// is issue #154. Sharing the reading is the point -- a per-gate patch is what has
+// to be remembered five times and was remembered once.
+//
+// The second result is false when the schema cannot be marshaled. No gate may
+// read that as "states nothing": the set is unknown, not empty.
+func schemaKeywordSet(s *schema.Schema) (map[string]bool, bool) {
+	if s == nil {
+		return nil, false
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return nil, false
+	}
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &present); err != nil {
+		return nil, false
+	}
+	hidden := s.KeywordsMarshaledFormOmits()
+	seen := make(map[string]bool, len(present)+len(hidden))
+	for key := range present {
+		seen[key] = true
+	}
+	for _, key := range hidden {
+		seen[key] = true
+	}
+	return seen, true
+}
+
 // unenforcedKeywords lists the keywords on a schema that state a constraint,
 // in the order they would be read.
 //
@@ -779,17 +820,9 @@ func unenforcedKeywords(s *schema.Schema) []string {
 	if s == nil {
 		return nil
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
+	seen, ok := schemaKeywordSet(s)
+	if !ok {
 		return nil
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
-		return nil
-	}
-	seen := make(map[string]bool, len(present)+len(s.Extensions))
-	for key := range present {
-		seen[key] = true
 	}
 	for key := range s.Extensions {
 		seen[key] = true

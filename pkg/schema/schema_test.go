@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -1619,4 +1620,200 @@ func TestResolveIndexStillWorksAtTheBoundary(t *testing.T) {
 	if _, err := r.Resolve("#/allOf/1"); err == nil {
 		t.Fatal("expected error for index past the end")
 	}
+}
+
+// TestKeywordsMarshaledFormOmitsFindsTheHiddenSpellings pins the three keyword
+// spellings that do not survive a round trip through JSON.
+//
+// Each is a keyword the schema states and the marshaled form does not show, so
+// anything reading the marshaled key set alone sees a schema stating nothing.
+// The controls beside them are the spellings that do survive: a named "type" and
+// a non-null const are already visible and must not be reported here, and a
+// schema stating neither must report nothing at all.
+func TestKeywordsMarshaledFormOmitsFindsTheHiddenSpellings(t *testing.T) {
+	strConst := any("a")
+	cases := []struct {
+		name   string
+		schema Schema
+		want   []string
+	}{
+		{"emptyEnum", Schema{Enum: []any{}}, []string{"enum"}},
+		{"constNull", Schema{ConstIsNull: true}, []string{"const"}},
+		{"schemaValuedType", Schema{TypeSchemas: []*Schema{{Type: TypeList{"string"}}}}, []string{"type"}},
+		{"nonEmptyEnum", Schema{Enum: []any{"a"}}, []string{"enum"}},
+		{"namedType", Schema{Type: TypeList{"string"}}, nil},
+		{"stringConst", Schema{Const: &strConst}, nil},
+		{"statesNothing", Schema{}, nil},
+		{"minLengthOnly", Schema{MinLength: flexIntPtr(3)}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.schema.KeywordsMarshaledFormOmits()
+			if len(got) != len(tc.want) {
+				t.Fatalf("KeywordsMarshaledFormOmits() = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("KeywordsMarshaledFormOmits() = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+	if (*Schema)(nil).KeywordsMarshaledFormOmits() != nil {
+		t.Fatal("KeywordsMarshaledFormOmits() on a nil schema must be nil")
+	}
+}
+
+// TestSchemaFieldsAreClassifiedForPresence is what keeps
+// KeywordsMarshaledFormOmits from lagging the struct it reads.
+//
+// Deciding what a schema states from its marshaled key set is fail-closed for
+// every field JSON can carry, and blind to every field it cannot. Three such
+// fields have each produced a defect already (issues #142 and #154), and the way
+// a fourth arrives is somebody adding a field tagged `json:"-"`, or one whose
+// omitempty hides a value that means something when empty, and nobody noticing
+// that a predicate two packages away now reads it as absent.
+//
+// So every field is classified here and the default is failure. A new field with
+// no entry fails this test until its author decides which kind it is, and a field
+// classified as a hidden assertion that KeywordsMarshaledFormOmits does not
+// report fails the last block below.
+func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
+	// hiddenAssertions are the fields whose presence the marshaled form erases
+	// and which assert something. KeywordsMarshaledFormOmits must report each.
+	hiddenAssertions := map[string]string{
+		"Enum":        "enum",  // omitempty: `"enum": []` admits nothing and marshals to nothing
+		"ConstIsNull": "const", // json:"-": the only record that `"const": null` was written
+		"TypeSchemas": "type",  // json:"-": draft 3 schema-valued entries of a "type" array
+	}
+	// notKeywords are the fields the marshaled form also erases and which state
+	// nothing a keyword reader needs. The value is the reason.
+	notKeywords := map[string]string{
+		"BooleanSchema":    "a bare true/false; every reader asks IsBooleanSchema first, and it has no keyword name to report",
+		"Extensions":       "unknown keywords, unioned in by name at each reader that wants them",
+		"extensionSchemas": "a parse cache for Extensions",
+		"DetectedDraft":    "which draft the document was read under, not something it asserts",
+		"BaseURI":          "where a relative $ref resolves from",
+		"DocumentRoot":     "where a JSON Pointer fragment resolves from",
+	}
+	// emptyIsAbsent are the slice and map fields whose omitempty tag drops an
+	// empty value and for which that is the right reading: written empty they
+	// assert nothing, so nothing is lost. Enum is the one that is not here.
+	emptyIsAbsent := map[string]bool{
+		"Vocabulary": true, "Type": true, "AllOf": true, "AnyOf": true, "OneOf": true,
+		"Properties": true, "Required": true, "PatternProperties": true,
+		"PrefixItems": true, "Definitions": true, "Defs": true,
+		"DependentSchemas": true, "DependentRequired": true,
+		"Extends": true, "Disallow": true, "Dependencies": true,
+	}
+
+	tp := reflect.TypeOf(Schema{})
+	for i := 0; i < tp.NumField(); i++ {
+		f := tp.Field(i)
+		tag := f.Tag.Get("json")
+		name, opts, _ := strings.Cut(tag, ",")
+
+		if tag == "-" || tag == "" {
+			if _, ok := hiddenAssertions[f.Name]; ok {
+				continue
+			}
+			if _, ok := notKeywords[f.Name]; ok {
+				continue
+			}
+			t.Fatalf("field %s is invisible to a marshaled schema and is classified neither as a hidden assertion "+
+				"nor as a non-keyword. Every gate that decides what a schema states reads the marshaled key set, so "+
+				"an unclassified field of this shape is read as absent -- add it to hiddenAssertions (and to "+
+				"Schema.KeywordsMarshaledFormOmits) or to notKeywords with the reason it states nothing.", f.Name)
+		}
+
+		if strings.Contains(opts, "omitempty") {
+			switch f.Type.Kind() {
+			case reflect.Slice, reflect.Map:
+				if _, hidden := hiddenAssertions[f.Name]; hidden {
+					continue
+				}
+				if emptyIsAbsent[f.Name] {
+					continue
+				}
+				t.Fatalf("field %s (keyword %q) is a slice or map tagged omitempty, so written empty it marshals to "+
+					"nothing. Say which that is: add it to emptyIsAbsent if an empty value asserts nothing, or to "+
+					"hiddenAssertions (and to Schema.KeywordsMarshaledFormOmits) if it asserts something the way "+
+					"`\"enum\": []` does.", f.Name, name)
+			}
+		}
+	}
+
+	// A classification is only worth having if it has to agree with the code. So
+	// every classified field is set on a schema of its own and the method's answer
+	// is held to what the classification says it should be -- reported for a
+	// hidden assertion, silent for everything else.
+	//
+	// Both directions matter. Without the first, a field called a hidden assertion
+	// that KeywordsMarshaledFormOmits never learned about is read as absent by
+	// every gate. Without the second, moving `Enum` to emptyIsAbsent passes while
+	// the method goes on reporting it -- the inventory then says `"enum": []`
+	// asserts nothing, which is exactly the reading issue #142 was, sitting in a
+	// test that claims to have checked it.
+	for i := 0; i < tp.NumField(); i++ {
+		f := tp.Field(i)
+		tag := f.Tag.Get("json")
+		_, opts, _ := strings.Cut(tag, ",")
+		hiddenTag := tag == "-" || tag == ""
+		emptyTag := strings.Contains(opts, "omitempty") &&
+			(f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Map)
+		if !hiddenTag && !emptyTag {
+			continue
+		}
+
+		s := reflect.New(tp).Elem()
+		v := s.Field(i)
+		if !v.CanSet() {
+			// An unexported field, which no keyword reader can be asked about.
+			continue
+		}
+		switch f.Type.Kind() {
+		case reflect.Slice:
+			// Empty for the omitempty question ("written empty, does it assert?"),
+			// one element for the json:"-" question ("present at all").
+			if emptyTag {
+				v.Set(reflect.MakeSlice(f.Type, 0, 0))
+			} else {
+				v.Set(reflect.MakeSlice(f.Type, 1, 1))
+			}
+		case reflect.Map:
+			v.Set(reflect.MakeMap(f.Type))
+		case reflect.Bool:
+			v.SetBool(true)
+		case reflect.String:
+			v.SetString("x")
+		case reflect.Ptr:
+			v.Set(reflect.New(f.Type.Elem()))
+		case reflect.Int, reflect.Int64:
+			v.SetInt(1)
+		default:
+			t.Fatalf("field %s has kind %s, which this test does not know how to set; the classification below "+
+				"is unchecked until it does", f.Name, f.Type.Kind())
+		}
+
+		got := s.Addr().Interface().(*Schema).KeywordsMarshaledFormOmits()
+		if keyword, hidden := hiddenAssertions[f.Name]; hidden {
+			if len(got) != 1 || got[0] != keyword {
+				t.Fatalf("KeywordsMarshaledFormOmits() for a schema stating only %s = %v, want [%q]: the "+
+					"classification calls the field a hidden assertion and the method does not report it",
+					f.Name, got, keyword)
+			}
+			continue
+		}
+		if len(got) != 0 {
+			t.Fatalf("KeywordsMarshaledFormOmits() for a schema stating only %s = %v, want nothing: the "+
+				"classification says this field asserts nothing the marshaled form hides, and the method "+
+				"disagrees. One of the two is wrong, and a gate reading the method is what decides documents",
+				f.Name, got)
+		}
+	}
+}
+
+func flexIntPtr(v int) *FlexInt {
+	f := FlexInt(v)
+	return &f
 }

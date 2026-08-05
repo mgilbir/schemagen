@@ -8712,3 +8712,315 @@ func TestRefDisplacesSiblingValuesFollowsTheDraft(t *testing.T) {
 		})
 	}
 }
+
+// TestRefMergesSiblingValuesFollowsTheDraft is issue #153's predicate, and the
+// mirror of TestRefDisplacesSiblingValuesFollowsTheDraft above.
+//
+// The two split the drafts between them and never both hold. Through draft 7 the
+// sibling is not written as far as the draft is concerned, so the reference
+// stands alone; from 2019-09 on both bind and only a merge can say so. Either way
+// the enum arms of the three type ladders stand down -- what differs is which arm
+// picks the schema up.
+func TestRefMergesSiblingValuesFollowsTheDraft(t *testing.T) {
+	cases := []struct {
+		draft  schema.Draft
+		merges bool
+	}{
+		{schema.Draft03, false},
+		{schema.Draft04, false},
+		{schema.Draft06, false},
+		{schema.Draft07, false},
+		{schema.Draft201909, true},
+		{schema.Draft202012, true},
+		{schema.DraftV1, true},
+		{schema.DraftUnknown, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.draft.String(), func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			g.draft = tc.draft
+			g.draftOverridden = true
+
+			// Each spelling of the sibling, including the two a re-marshaled
+			// schema does not show.
+			for _, doc := range []string{
+				`{"$ref":"#/$defs/T","const":"a"}`,
+				`{"$ref":"#/$defs/T","const":null}`,
+				`{"$ref":"#/$defs/T","enum":["a"]}`,
+				`{"$ref":"#/$defs/T","enum":[]}`,
+			} {
+				var withRef schema.Schema
+				if err := json.Unmarshal([]byte(doc), &withRef); err != nil {
+					t.Fatalf("unmarshal %s: %v", doc, err)
+				}
+				withRef.Normalize()
+				if got := g.refMergesSiblingValues(&withRef); got != tc.merges {
+					t.Fatalf("refMergesSiblingValues(%s) on %s = %v, want %v", doc, tc.draft, got, tc.merges)
+				}
+				// The two predicates partition the drafts: exactly one of them
+				// claims a value sibling written beside a reference.
+				if g.refDisplacesSiblingValues(&withRef) == g.refMergesSiblingValues(&withRef) {
+					t.Fatalf("refDisplacesSiblingValues and refMergesSiblingValues agree on %s for %s; "+
+						"a sibling is either not written or written beside the reference, never both and never neither",
+						tc.draft, doc)
+				}
+			}
+
+			// No $ref, nothing to merge with -- on every draft.
+			var noRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"const":"a"}`), &noRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			noRef.Normalize()
+			if g.refMergesSiblingValues(&noRef) {
+				t.Fatalf("refMergesSiblingValues(bare const) on %s = true; there is no reference for it to bind with", tc.draft)
+			}
+
+			// A $ref with no value sibling is nobody's business here.
+			var bareRef schema.Schema
+			if err := json.Unmarshal([]byte(`{"$ref":"#/$defs/T"}`), &bareRef); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			bareRef.Normalize()
+			if g.refMergesSiblingValues(&bareRef) {
+				t.Fatalf("refMergesSiblingValues(bare $ref) on %s = true; there is no sibling to bind", tc.draft)
+			}
+
+			// The two references the merge cannot follow. Standing the enum arms
+			// down for one of them drops the sibling as well as the target,
+			// because no later arm picks the schema up:
+			// {"$dynamicRef":"#T","const":"abc"} was left with no check at all.
+			for _, doc := range []string{
+				`{"$dynamicRef":"#T","const":"a"}`,
+				`{"$recursiveRef":"#","const":"a"}`,
+			} {
+				var other schema.Schema
+				if err := json.Unmarshal([]byte(doc), &other); err != nil {
+					t.Fatalf("unmarshal %s: %v", doc, err)
+				}
+				other.Normalize()
+				if g.refMergesSiblingValues(&other) {
+					t.Fatalf("refMergesSiblingValues(%s) on %s = true; the merge arm claims $ref alone, so "+
+						"standing the enum arms down here leaves the schema with no arm at all", doc, tc.draft)
+				}
+			}
+		})
+	}
+}
+
+// TestHasRefStructuralSiblingsReadsValueKeywords pins the addition #153 makes to
+// the sibling list, in every spelling.
+//
+// The list is what points a ref arm at the merge instead of at an alias. `enum`
+// and `const` were absent from it, so a schema stating one was described by the
+// sibling alone and the reference was dropped; `type` was absent before #118 and
+// the same schema was described by the reference alone.
+func TestHasRefStructuralSiblingsReadsValueKeywords(t *testing.T) {
+	cases := []struct {
+		doc  string
+		want bool
+	}{
+		{`{"$ref":"#/$defs/T","const":"a"}`, true},
+		{`{"$ref":"#/$defs/T","const":null}`, true},
+		{`{"$ref":"#/$defs/T","enum":["a"]}`, true},
+		{`{"$ref":"#/$defs/T","enum":[]}`, true},
+		{`{"$ref":"#/$defs/T","type":"string"}`, true},
+		// Nothing beside the reference: the alias describes the target and is
+		// the whole of what the schema says.
+		{`{"$ref":"#/$defs/T"}`, false},
+		{`{"$ref":"#/$defs/T","title":"t","description":"d"}`, false},
+		{`{"$ref":"#/$defs/T","default":"a"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if got := hasRefStructuralSiblings(&s); got != tc.want {
+				t.Fatalf("hasRefStructuralSiblings(%s) = %v, want %v", tc.doc, got, tc.want)
+			}
+		})
+	}
+	if hasRefStructuralSiblings(nil) {
+		t.Fatal("hasRefStructuralSiblings(nil) = true")
+	}
+}
+
+// TestEnumTypeCarriesSchema pins what an enum type is allowed to be the whole
+// answer for.
+//
+// An EnumDef checks membership and nothing else. The declared type is carried
+// too, because generateEnumDef drops the members that type forbids before it
+// builds anything (#145), and the allOf and $ref a merge leaves behind are
+// bookkeeping rather than assertions still to be met. Anything else on the
+// schema is dropped by the enum type, so the answer has to be no.
+func TestEnumTypeCarriesSchema(t *testing.T) {
+	cases := []struct {
+		doc  string
+		want bool
+	}{
+		{`{"enum":["a"]}`, true},
+		{`{"type":"string","enum":["a"]}`, true},
+		{`{"type":"string","enum":["a"],"title":"t","description":"d","$comment":"c"}`, true},
+		{`{"type":"string","enum":["a"],"allOf":[{"type":"string"}]}`, true},
+		{`{"type":"string","enum":["a"],"$ref":"#/$defs/T"}`, true},
+		// The shape issue #153 produces: the merge carried a bound off the
+		// reference, and an enum type would drop it.
+		{`{"type":"string","minLength":5,"enum":["abc","abcde"]}`, false},
+		{`{"type":"string","enum":["a"],"pattern":"^a"}`, false},
+		{`{"type":"string","enum":["a"],"format":"email"}`, false},
+		{`{"enum":["a"],"not":{"type":"integer"}}`, false},
+		{`{"type":"array","enum":[[1]],"minItems":1}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if got := enumTypeCarriesSchema(&s); got != tc.want {
+				t.Fatalf("enumTypeCarriesSchema(%s) = %v, want %v", tc.doc, got, tc.want)
+			}
+		})
+	}
+	// A keyword this generator does not model arrives as an extension, and an
+	// enum type says nothing about it.
+	var ext schema.Schema
+	if err := json.Unmarshal([]byte(`{"type":"string","enum":["a"],"x-not-modelled":1}`), &ext); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ext.Normalize()
+	if enumTypeCarriesSchema(&ext) {
+		t.Fatal("enumTypeCarriesSchema(enum beside an unknown keyword) = true")
+	}
+}
+
+// TestAcceptsEveryValueReadsTheHiddenSpellings is issue #154's predicate.
+//
+// It answers "this schema forbids nothing", and two callers give a position no
+// type of its own when it says yes. It decided from the re-marshaled key set
+// alone, so `"enum": []` and `"const": null` -- neither of which leaves a key
+// behind -- read as schemas stating nothing and it answered true for both. The
+// empty enum admits no value at all.
+//
+// The accept rows are the schemas for which true is the right answer, and they
+// are what keeps the fix from being "answer false more often": a position whose
+// schema really does state nothing must go on getting the convenient type rather
+// than a wrapper carrying a check that can never fail.
+func TestAcceptsEveryValueReadsTheHiddenSpellings(t *testing.T) {
+	forbidsSomething := []string{
+		`{"enum":[]}`,
+		`{"const":null}`,
+		`{"enum":["a"]}`,
+		`{"const":"a"}`,
+		`{"allOf":[{"enum":[]}]}`,
+		`{"anyOf":[{"const":null}]}`,
+		`{"oneOf":[{"enum":[]}]}`,
+		`{"type":"string"}`,
+		`false`,
+	}
+	acceptsEverything := []string{
+		`{}`,
+		`true`,
+		`{"title":"t","description":"d"}`,
+		`{"$defs":{"T":{"type":"string"}}}`,
+		`{"allOf":[{}]}`,
+		`{"anyOf":[{},{}]}`,
+		`{"oneOf":[{}]}`,
+	}
+	for _, doc := range forbidsSomething {
+		t.Run("forbids/"+doc, func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+				t.Fatalf("acceptsEveryValue(%s) = true; the schema refuses at least one value, and a position "+
+					"answered this way is given no type to carry the check", doc)
+			}
+		})
+	}
+	for _, doc := range acceptsEverything {
+		t.Run("accepts/"+doc, func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if !g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+				t.Fatalf("acceptsEveryValue(%s) = false; the schema forbids nothing, and a wrapper built for it "+
+					"would carry a Validate that can never fail", doc)
+			}
+		})
+	}
+	// A draft 3 "type" whose entries are schemas rather than names. It is held on
+	// TypeSchemas, which is tagged "-", so the marshaled form shows no "type" at
+	// all and the schema read as one asserting nothing. Built here rather than
+	// unmarshaled because the shape is what matters, not the parse.
+	t.Run("forbids/schema-valued type", func(t *testing.T) {
+		g := New(Config{PackageName: "testpkg"})
+		s := schema.Schema{TypeSchemas: []*schema.Schema{{Type: schema.TypeList{"string"}}}}
+		if g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+			t.Fatal("acceptsEveryValue(draft 3 schema-valued type) = true; the alternatives narrow what the " +
+				"position admits, and a position answered this way is given no type to carry the check")
+		}
+	})
+}
+
+// TestDynamicBranchChecksRefusesTheHiddenSpellings is the same reading at the
+// gate that decides whether an applicator branch can be evaluated against an
+// untyped value.
+//
+// A branch it accepts with no checks matches every value. `"enum": []` matches
+// none and `"const": null` matches one, so reading either as "no checks" makes
+// the branch count as a match where it should not: {"anyOf":[{"const":null}]}
+// accepted every value, and an empty-enum branch inside a oneOf counted a second
+// match and refused a document the schema permits.
+func TestDynamicBranchChecksRefusesTheHiddenSpellings(t *testing.T) {
+	refused := []string{`{"enum":[]}`, `{"const":null}`, `{"enum":["a"]}`, `{"const":"a"}`, `{"not":{}}`}
+	for _, doc := range refused {
+		t.Run("refused/"+doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			g := New(Config{PackageName: "testpkg"})
+			_ = g
+			if _, ok := dynamicBranchChecks(&s); ok {
+				t.Fatalf("dynamicBranchChecks(%s) accepted the branch; it states something the checks cannot "+
+					"carry, and a branch with no checks matches every value", doc)
+			}
+		})
+	}
+	// The controls: branches the evaluator does model, which must go on being
+	// modelled. A branch stating nothing at all matches everything and that is
+	// the right answer for it.
+	accepted := []string{`{"type":"string"}`, `{"minLength":3}`, `{}`, `{"title":"t"}`}
+	for _, doc := range accepted {
+		t.Run("accepted/"+doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if _, ok := dynamicBranchChecks(&s); !ok {
+				t.Fatalf("dynamicBranchChecks(%s) refused a branch it models", doc)
+			}
+		})
+	}
+	// A draft 3 schema-valued "type" entry is held on a field the marshaled form
+	// does not show, and the checks can only carry a type *name*. Reading it as
+	// absent made the branch match everything.
+	typeSchemas := schema.Schema{TypeSchemas: []*schema.Schema{{Type: schema.TypeList{"string"}}}}
+	if _, ok := dynamicBranchChecks(&typeSchemas); ok {
+		t.Fatal("dynamicBranchChecks(schema-valued type) accepted the branch; the checks carry a type name and " +
+			"this branch names none, so it would have matched every value")
+	}
+}

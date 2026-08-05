@@ -729,6 +729,54 @@ func (s *Schema) IsFalseSchema() bool {
 	return s.BooleanSchema != nil && !*s.BooleanSchema
 }
 
+// KeywordsMarshaledFormOmits returns the keywords this schema states that
+// marshalling it back to JSON does not show.
+//
+// Anything asking "what does this schema state" reads the marshaled key set,
+// because that reading is fail-closed: a keyword this package learns later comes
+// with a struct field that marshals, or lands in Extensions, and either way it is
+// counted rather than missed. That property is worth keeping and no enumeration
+// written by hand has it -- a field nobody remembered to list would be dropped
+// silently, which is the failure the marshaled form was chosen to avoid.
+//
+// What the marshaled form cannot do is carry a field whose *presence* its
+// encoding erases, and there are exactly three:
+//
+//   - Enum is tagged omitempty, so `"enum": []` -- the schema that admits no
+//     value at all -- marshals to nothing and reads as a schema that states
+//     nothing.
+//   - ConstIsNull is tagged "-", because encoding/json leaves a *any nil for a
+//     JSON null and the flag is the only record that `"const": null` was written.
+//   - TypeSchemas is tagged "-", and holds the draft 3 schema-valued entries of a
+//     "type" array. A schema whose whole type list is schema-valued marshals with
+//     no "type" at all.
+//
+// So the two are read together: the marshaled set for everything it can show,
+// this for the three it cannot. Reading the marshaled set alone is what let
+// acceptsEveryValue answer "accepts every value" for {"enum":[]}, which admits
+// none, and for {"const":null}, which admits one; a position holding either then
+// got a Go type with no check on it at all -- issues #142 and #154.
+//
+// TestSchemaFieldsAreClassifiedForPresence is what keeps this list complete: it
+// reflects over Schema and fails when a field is added whose JSON tag hides it
+// the same way, until that field is classified.
+func (s *Schema) KeywordsMarshaledFormOmits() []string {
+	if s == nil {
+		return nil
+	}
+	var hidden []string
+	if s.Enum != nil {
+		hidden = append(hidden, "enum")
+	}
+	if s.ConstIsNull {
+		hidden = append(hidden, "const")
+	}
+	if len(s.TypeSchemas) > 0 {
+		hidden = append(hidden, "type")
+	}
+	return hidden
+}
+
 // trimJSONWhitespace strips leading/trailing whitespace from JSON data
 // and returns it as a string for easy comparison.
 func trimJSONWhitespace(data []byte) string {

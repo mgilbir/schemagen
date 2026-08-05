@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefSiblingTarget2020",
+  "description": "Issue #153, the other half of #151's split. From 2019-09 on a $ref is an ordinary applicator, so an `enum` or a `const` written beside it applies *with* the reference and not instead of it. The enum arm of each type ladder claimed the schema first, so the sibling decided the type and the target was never followed: with the target {\"type\":\"string\",\"minLength\":5}, \"abc\" was accepted at every position although the target forbids it. Every position here states both halves and every one has an accept row: \"abcde\" satisfies target and sibling alike, \"abc\" is refused by the target, \"zzzzz\" by the sibling. noSibling is the control that the target alone still binds, and noRef the control that an enum with no reference beside it is untouched -- it keeps its own type and admits \"abc\". ref_sibling_values_draft7.json is the control on the other side of the split: there the same shape must keep admitting the document the sibling forbids.",
+  "type": "object",
+  "$defs": {
+    "Long": {"type": "string", "minLength": 5},
+    "NamedEnum": {"$ref": "#/$defs/Long", "enum": ["abc", "abcde"]},
+    "NamedConst": {"$ref": "#/$defs/Long", "const": "abc"},
+    "AnyWord": {"$dynamicAnchor": "AnyWord", "type": "string"}
+  },
+  "properties": {
+    "constSatisfied": {"$ref": "#/$defs/Long", "const": "abcde"},
+    "constForbidden": {"$ref": "#/$defs/Long", "const": "abc"},
+    "enumSibling": {"$ref": "#/$defs/Long", "enum": ["abc", "abcde"]},
+    "listSibling": {"type": "array", "items": {"$ref": "#/$defs/Long", "enum": ["abc", "abcde"]}},
+    "mapSibling": {"type": "object", "additionalProperties": {"$ref": "#/$defs/Long", "enum": ["abc", "abcde"]}},
+    "namedEnum": {"$ref": "#/$defs/NamedEnum"},
+    "namedConst": {"$ref": "#/$defs/NamedConst"},
+    "noSibling": {"$ref": "#/$defs/Long"},
+    "noRef": {"enum": ["abc", "abcde"]},
+    "dynSibling": {
+      "$comment": "Only $ref reaches the merge: mergeAllOfBranches follows a $ref and a $recursiveRef, and resolves neither a $dynamicRef nor the dynamic scope a $recursiveRef is resolved against. So the enum arms must go on claiming this position, and the const must go on being enforced. Standing them down for a reference no later arm picks up left the property with no check whatever, which is a regression this row exists to catch. The target says nothing a string does not, so both readings of the sibling agree on every document listed for it and nothing here pins the half that is still dropped.",
+      "$dynamicRef": "#AnyWord",
+      "const": "abc"
+    }
+  }
+}

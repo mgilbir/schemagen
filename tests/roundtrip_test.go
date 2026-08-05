@@ -6532,3 +6532,104 @@ func TestRefSiblingValuesFollowTheDraft(t *testing.T) {
 		)
 	})
 }
+
+// TestRefSiblingTargetBindsWithItsSibling is issue #153, the half #151 left.
+//
+// From 2019-09 on a $ref is an ordinary applicator, so the schema asserts the
+// reference and the `enum` or `const` beside it at once. The enum arm of each
+// type ladder claimed the schema before its ref arms, so the sibling applied
+// *instead of* the reference and the target was never followed: "abc" was
+// accepted at every position below although the target's minLength forbids it.
+//
+// The three rows per position are what say the two halves both bind rather than
+// one having replaced the other. "abcde" satisfies both and must be accepted --
+// a fix that simply forbade the shape would fail there. "abc" is refused by the
+// target alone and is the rejection this issue adds. "zzzzz" is refused by the
+// sibling alone and was already refused before it, so it is the control that the
+// sibling did not stop being read.
+//
+// noSibling is the target on its own, noRef the sibling on its own; both keep
+// the answers they had. ref_sibling_values_draft7.json is the control on the
+// other side of the split, and it must go on accepting the document the sibling
+// forbids -- #151's answer there is untouched by this.
+func TestRefSiblingTargetBindsWithItsSibling(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_target_2020.json",
+		[]string{
+			`{}`,
+			`{"constSatisfied":"abcde"}`,
+			`{"enumSibling":"abcde"}`,
+			`{"listSibling":["abcde"]}`,
+			`{"mapSibling":{"k":"abcde"}}`,
+			`{"namedEnum":"abcde"}`,
+			`{"noSibling":"abcde"}`,
+			`{"noRef":"abc"}`,
+			`{"noRef":"abcde"}`,
+			`{"dynSibling":"abc"}`,
+		},
+		[]string{
+			`{"constSatisfied":"zzzzz"}`,
+			`{"constForbidden":"abc"}`,
+			`{"constForbidden":"abcde"}`,
+			`{"enumSibling":"abc"}`,
+			`{"enumSibling":"zzzzz"}`,
+			`{"listSibling":["abc"]}`,
+			`{"mapSibling":{"k":"abc"}}`,
+			`{"namedEnum":"abc"}`,
+			`{"namedEnum":"zzzzz"}`,
+			`{"namedConst":"abc"}`,
+			`{"noSibling":"abc"}`,
+			`{"noRef":"zzzzz"}`,
+			// A $dynamicRef is the reference the merge cannot follow, so the enum
+			// arms go on claiming it and the const goes on being enforced. These
+			// two are what catch standing them down for a reference no later arm
+			// picks up, which left the property accepting every value.
+			`{"dynSibling":"zz"}`,
+			`{"dynSibling":"abcde"}`,
+		},
+	)
+}
+
+// TestHiddenKeywordSpellingsAreRead is issue #154.
+//
+// Five gates decide what a schema states by re-marshalling it and reading the
+// keys, and two spellings survive that trip as nothing at all: `"enum": []`,
+// because the field is tagged omitempty, and `"const": null`, because
+// encoding/json leaves a *any nil for a null and the flag recording it is tagged
+// "-". A schema stating only one of those read as a schema stating nothing, so
+// acceptsEveryValue answered true for a schema admitting no value whatever and
+// each gate handed its position a type with no check on it.
+//
+// Every rejection below is paired with the same statement in the spelling that
+// was always read -- `false` beside the empty enum, a string constant beside the
+// null one. The pair is the point: before this the two answered differently, and
+// a position answering by spelling rather than by meaning is the shape #142 and
+// #146 already had to close twice.
+func TestHiddenKeywordSpellingsAreRead(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/hidden_keyword_spellings.json",
+		[]string{
+			`{}`,
+			`{"anyOfSummaryEmptyEnum":{"k":"y"}}`,
+			`{"anyOfSummaryFalse":{"k":"y"}}`,
+			`{"constNullBranch":null}`,
+			`{"constStringBranch":"a"}`,
+			`{"oneOfConstNull":null}`,
+			`{"oneOfConstNull":"x"}`,
+			`{"patternConstNull":{"a1":null}}`,
+			`{"patternConstNull":{}}`,
+			`{"patternConstString":{"b1":"a"}}`,
+			`{"plainEnum":"a"}`,
+		},
+		[]string{
+			`{"anyOfSummaryEmptyEnum":{"a":"x"}}`,
+			`{"anyOfSummaryFalse":{"a":"x"}}`,
+			`{"constNullBranch":1}`,
+			`{"constStringBranch":1}`,
+			`{"oneOfConstNull":1}`,
+			`{"patternConstNull":{"a1":1}}`,
+			`{"patternConstString":{"b1":"z"}}`,
+			`{"plainEnum":"z"}`,
+		},
+	)
+}
