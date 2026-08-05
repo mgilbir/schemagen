@@ -161,6 +161,17 @@ download-metaschemas:
 # tracks machine load: ~25 min on an idle 16-core box, and it has been observed
 # to blow through a 30m limit under load. The timeout is generous on purpose --
 # a run killed at the deadline reports no failures and looks like a pass.
+#
+# It also needs disk. The ~27,000 compilations go into a build cache under
+# TMPDIR rather than into ~/.cache/go-build, which is no place for them.
+# Concurrent runs share that one directory -- two full runs measured 1.9G
+# between them -- and the last one out deletes it, so the requirement is the
+# same for any number of runs rather than that much each. A run refuses to
+# start when the volume is below the figure it names, instead of dying halfway
+# through and reporting a full volume as a wave of schema failures. Set
+# SCHEMAGEN_KEEP_GOCACHE=1 to leave the cache behind for the next run, which
+# gets most of those 25 minutes back when the generator has not changed, and
+# costs another cache's worth of disk when it has.
 test-external: download-test-suite download-metaschemas
 	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
 

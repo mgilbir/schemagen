@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -262,6 +263,91 @@ func requireTestSuite(t *testing.T) {
 	if _, err := os.Stat(metaSchemaDir); err != nil {
 		t.Fatalf("SCHEMAGEN_RUN_EXTERNAL=1 but the meta-schemas are not at %s (%v). Run 'make download-metaschemas', or 'make test-external' which does it for you.", metaSchemaDir, err)
 	}
+	requireCacheHeadroom(t)
+}
+
+// externalRunFreeBytes is what a run of this suite requires on the volume
+// holding the build cache.
+//
+// The measurement it is drawn from: two full runs, started two minutes apart
+// and sharing the cache, peaked at 1.9G between them, and the volume was back
+// where it started when the second one finished. The same two runs before this
+// change, measured on the same box the same afternoon, held 34.6G and 37.1G in
+// two directories and were still growing at 45 minutes.
+//
+// 8 GiB is therefore several times what a run should need, on purpose. The two
+// errors are not symmetric: refusing a run that would have fitted costs one
+// message and a `df`, while accepting one that does not costs 25 minutes and
+// arrives disguised as a wave of schema failures. It also leaves room for the
+// cases the 1.9G does not cover -- a cache kept from an earlier generator state
+// under SCHEMAGEN_KEEP_GOCACHE, two runs on branches whose generated code
+// differs and so share nothing, and whatever else the volume is doing.
+const externalRunFreeBytes = 8 << 30
+
+// requireCacheHeadroom refuses to start a run the volume cannot hold.
+//
+// The reason it is a Fatal and not a warning is what running out actually looks
+// like. The disk fills somewhere in the middle, and every compile from then on
+// fails with "no space left on device" attributed to whichever test key was
+// unlucky -- at the link, at the write, at the mkdir -- so the run reads as a
+// wave of validation failures against real schemas. One such run reported
+// "13826 passing subtests, 0 failures" and no coverage line: a corpse wearing
+// the shape of a pass. Four gate runs died that way in one session, and the
+// time went on triaging schemas rather than on reading `df`. A precondition
+// that names the requirement costs one line of output and ends that.
+//
+// It is not a promise that the run will finish: another process can still fill
+// the volume afterwards, and this cannot see that. It is the half that can be
+// checked, checked at the point where the answer is still cheap.
+func requireCacheHeadroom(t *testing.T) {
+	t.Helper()
+	need := uint64(externalRunFreeBytes)
+	if v := os.Getenv("SCHEMAGEN_EXTERNAL_MIN_FREE_GB"); v != "" {
+		gb, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			t.Fatalf("SCHEMAGEN_EXTERNAL_MIN_FREE_GB=%q is not a number of gigabytes", v)
+		}
+		need = gb << 30
+	}
+	if need == 0 {
+		return
+	}
+	msg, measured := cacheShortfall(sharedCacheDir, need)
+	if !measured {
+		// Saying so is the point: an unmeasurable volume is not a volume with
+		// room on it, and a silent pass here would be the same silence the
+		// check exists to end.
+		t.Logf("the free-space precondition is unchecked: %s", msg)
+		return
+	}
+	if msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+// cacheShortfall measures the volume holding dir and reports what stands in the
+// way of a run.
+//
+// It is separate from requireCacheHeadroom so that the message can be tested
+// against a volume that really is too small for the figure asked of it, rather
+// than asserted about in the abstract. measured false means the platform could
+// not answer; msg then carries the reason, and is not a refusal.
+func cacheShortfall(dir string, need uint64) (msg string, measured bool) {
+	free, err := freeBytes(dir)
+	if err != nil {
+		return fmt.Sprintf("free space on %s could not be measured (%v); %d GiB is the requirement and nothing checked it", dir, err, need>>30), false
+	}
+	if free >= need {
+		return "", true
+	}
+	return fmt.Sprintf("only %.1f GiB free on the volume holding %s, and a run of this suite requires %d GiB.\n"+
+		"A full run compiles ~27,000 programs into that cache; when the volume fills mid-run, every\n"+
+		"compile after that reports \"no space left on device\" against an individual test key, so the run\n"+
+		"reads as a wave of schema failures rather than as a full disk. Free some space, or leave\n"+
+		"SCHEMAGEN_KEEP_GOCACHE unset so the cache is cleared when the last run finishes. If you know the\n"+
+		"cache is already warm and this run will add little, set SCHEMAGEN_EXTERNAL_MIN_FREE_GB to the\n"+
+		"figure you are prepared to bet on, or to 0 to run unchecked.",
+		float64(free)/(1<<30), dir, need>>30), true
 }
 
 // failureKey builds a lookup key for the known-failures maps.
@@ -949,11 +1035,139 @@ func extractRootTypeNameFromCode(code string) string {
 	return lastType
 }
 
-// ephemeralCacheDir holds a per-process temporary GOCACHE directory that is
-// cleaned up at process exit. Using a shared ephemeral cache (instead of the
-// user's persistent ~/.cache/go-build) prevents the ~14,000 unique compilations
-// from bloating the build cache by hundreds of gigabytes.
-var ephemeralCacheDir string
+// sharedCacheDir is the GOCACHE every `go build` and `go run` this package
+// starts points at: one directory per user, adopted by every run on the box
+// rather than created per process.
+//
+// The reason for not using ~/.cache/go-build has not changed -- a full external
+// run is ~27,000 compilations of code nobody will build again, and leaving that
+// in the developer's own cache is not a kindness. What changed is that a
+// *per-process* copy of it multiplies by the number of runs in flight. Four
+// such caches sitting at 24G, 25G, 21G and 16G at once filled a 394G volume,
+// and a full volume does not announce itself as one: it reports "no space left
+// on device" against individual test keys -- at the link, at the write, at the
+// mkdir -- so a dead run reads exactly like a set of real validation failures,
+// and one of them reported 13826 passing subtests, 0 failures and no coverage
+// line at all.
+//
+// Sharing makes it one directory however many runs are going, and with
+// goRunArgs trimming the paths out of the entries, that directory is small:
+// two full runs started two minutes apart peaked at 1.9G between them, where
+// the same two runs beforehand held 34.6G and 37.1G and were still growing.
+//
+// Go's build cache is safe to share, which is not a claim taken on faith:
+// ~/.cache/go-build is already shared by every concurrent go command a user
+// runs, and cmd/go's cache is written for exactly that. An entry is committed
+// by writing its last byte, "because writing it will make the size match what
+// other processes expect to find and might cause them to start using the file";
+// trim.txt is read and rewritten under lockedfile; an ETXTBSY on an output is
+// read as "it must have already been written by another go process and then
+// run". Measured here as well, at 8 concurrent processes putting 25 identical
+// modules each through one cache -- 200 compilations racing for the same
+// entries -- with no failure and no wrong output.
+var sharedCacheDir string
+
+// sharedCacheLock is this process's claim on that directory, held for the
+// lifetime of the run. See cacheLock.
+var sharedCacheLock *cacheLock
+
+// sharedCachePath names the shared cache, and sharedCacheLockPath the lock that
+// says who is using it.
+//
+// The uid is in the name because /tmp is shared between users: a fixed name
+// belongs to whoever ran first, and the second user then cannot write to it at
+// all -- a failure mode a per-process MkdirTemp did not have and this must not
+// introduce. The lock file sits *beside* the cache rather than inside it,
+// because a lock inside a directory that gets renamed away stops being the file
+// the next process opens: two runs would then hold locks on two inodes and
+// neither would see the other. For the same reason the lock file is never
+// deleted, by the sweep or by anything else. It is empty, and unlinking it
+// while another process has it open is precisely how mutual exclusion is lost.
+func sharedCachePath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("schemagen-gocache-shared-%d", os.Getuid()))
+}
+
+func sharedCacheLockPath() string { return sharedCachePath() + ".lock" }
+
+// cacheLock is a process's claim on a shared cache directory.
+//
+// It is an flock rather than a marker file or a pid list because the question
+// is "is another run using this right now" and the kernel answers it exactly:
+// the lock is held for as long as the process lives and is released when it
+// dies, including under kill -9 and including a run killed by the very full
+// disk this machinery exists to avoid. A marker file has to be cleaned up by
+// the process that wrote it, which is the one thing a killed process cannot do,
+// and that is the failure #136 already had to write a sweep for.
+//
+// A run holds it shared: any number of runs may use the cache at once. Deleting
+// it requires the exclusive lock, so a delete can only happen when nobody else
+// holds the cache -- which is what makes both "the last run out clears up" and
+// "the sweep reclaims an abandoned cache" safe to do against a live box.
+type cacheLock struct{ f *os.File }
+
+// lockSharedCache takes the shared lock on the cache, creating the lock file if
+// this is the first run on the box. A nil result means locking is unavailable
+// (a platform without flock, or a lock file that cannot be opened); the caller
+// then uses the cache anyway and leaves reclaiming it to the age-based sweep.
+func lockSharedCache() *cacheLock {
+	if !cacheLockingSupported {
+		return nil
+	}
+	f, err := os.OpenFile(sharedCacheLockPath(), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil
+	}
+	if !flockShared(f) {
+		f.Close()
+		return nil
+	}
+	return &cacheLock{f: f}
+}
+
+// lockCacheForRemoval takes the exclusive lock on the cache at path, if that
+// cache has a lock file at all.
+//
+// The two "false" answers are deliberately different. A directory with no lock
+// file beside it is a per-process cache from an older revision, or a cogen
+// scratch directory: nothing claims it, so removal proceeds on the age check
+// alone, exactly as it did before. A directory whose lock is held is one a live
+// run is building into, and it must survive however old its mtimes look.
+func lockCacheForRemoval(path string) (*cacheLock, bool) {
+	if !cacheLockingSupported {
+		return nil, true
+	}
+	f, err := os.OpenFile(path+".lock", os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, true
+	}
+	if !flockExclusiveNB(f) {
+		f.Close()
+		return nil, false
+	}
+	return &cacheLock{f: f}, true
+}
+
+// tryExclusive reports whether this process is the only one still holding the
+// cache, by upgrading its shared lock.
+//
+// A failed upgrade can leave the shared lock dropped -- flock(2) says the
+// conversion is not atomic -- which is why this is only ever called on the way
+// out, after the last build has run. The answer is still right: whoever is left
+// holding the cache gets the exclusive lock when they in turn finish.
+func (l *cacheLock) tryExclusive() bool {
+	if l == nil {
+		return false
+	}
+	return flockExclusiveNB(l.f)
+}
+
+// release drops the lock. Closing the file is what releases an flock, and it is
+// also what the kernel does for a process that never gets here.
+func (l *cacheLock) release() {
+	if l != nil {
+		l.f.Close()
+	}
+}
 
 // staleCacheAge is how old an abandoned cache must be before this process will
 // delete it. It has to exceed the longest a live run can go without touching
@@ -1040,40 +1254,155 @@ func sweepStaleCachesIn(tmp string, cutoff time.Time) {
 		if cacheLastActive(path, info).After(cutoff) {
 			continue
 		}
-		os.RemoveAll(path)
+		// The age check above is a heuristic about mtimes; the lock is a fact
+		// about processes. Both have to agree before a cache is deleted, and
+		// the lock is the one that cannot be fooled: a run that is getting
+		// nothing but cache hits creates no new bucket entries, so it advances
+		// no mtime this sweep can see, and that is exactly the run a *shared*
+		// cache makes common. Without this, the second concurrent run would
+		// delete the first one's cache out from under it, and the robbed run
+		// would not fail -- it would silently recompile from nothing.
+		lock, free := lockCacheForRemoval(path)
+		if !free {
+			continue
+		}
+		doomed, moved := renameForRemoval(path)
+		// The claim is wanted for the rename and not for the emptying: holding
+		// it through the delete would stall the startup of every run that
+		// arrives meanwhile, and those runs have nothing to wait for -- the
+		// directory they will create is already a different one.
+		lock.release()
+		if moved {
+			os.RemoveAll(doomed)
+		}
 	}
+}
+
+// renameForRemoval moves a cache directory aside, and reports where to.
+//
+// Deleting a cache is done in two steps because the second one is slow. The
+// rename is atomic, so a run arriving a moment later finds no directory and
+// creates a fresh one rather than building into a tree being emptied underneath
+// it, and only one of two sweepers can win. Emptying a cache takes long enough
+// for that window to be real -- seconds for the 1.9G a shared one holds, tens of
+// them for the 35G a per-process one reached -- and what comes out of the window
+// is a build failure attributed to a test case, which is the shape of wrongness
+// this whole file exists to stop reporting.
+//
+// The doomed name keeps the swept prefix, so a crash between the rename and the
+// delete leaves something the next run reclaims rather than a permanent leak.
+func renameForRemoval(path string) (string, bool) {
+	doomed := filepath.Join(filepath.Dir(path),
+		fmt.Sprintf("schemagen-gocache-doomed-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	if err := os.Rename(path, doomed); err != nil {
+		// Already gone, or not ours to move. Either way there is nothing to do:
+		// reclaiming space is best-effort, and a directory another user owns is
+		// not this process's to worry about.
+		return "", false
+	}
+	return doomed, true
 }
 
 func init() {
 	sweepStaleCaches()
-	dir, err := os.MkdirTemp("", "schemagen-gocache-*")
-	if err != nil {
-		panic(fmt.Sprintf("creating ephemeral GOCACHE: %v", err))
+	// The lock comes before the directory: a sweeper that has just decided this
+	// cache is abandoned holds the exclusive lock while it renames it away, so
+	// taking the shared lock first is what stops this process from creating a
+	// directory into a rename that has not happened yet.
+	sharedCacheLock = lockSharedCache()
+	dir := sharedCachePath()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		panic(fmt.Sprintf("creating shared GOCACHE %s: %v", dir, err))
 	}
-	ephemeralCacheDir = dir
+	sharedCacheDir = dir
 }
 
-// TestMain cleans up the ephemeral cache directory after all tests finish.
+// TestMain releases this process's claim on the shared cache, and clears it up
+// if this was the last run using it.
 func TestMain(m *testing.M) {
 	code := m.Run()
-	if ephemeralCacheDir != "" {
-		os.RemoveAll(ephemeralCacheDir)
-	}
+	releaseSharedCache()
 	os.Exit(code)
 }
 
-// ephemeralCacheEnv returns a copy of the current environment with GOCACHE
-// pointed at an ephemeral temporary directory. This prevents external go
-// build/run invocations from bloating the user's persistent build cache —
-// each test compiles unique generated code that will never be reused.
-func ephemeralCacheEnv() []string {
+// releaseSharedCache hands the shared cache back, deleting it when nobody else
+// holds it.
+//
+// Deleting on the way out is what keeps the footprint bounded over time, and
+// the bound is the point of the exercise. Sharing alone bounds *concurrent*
+// runs at one directory; it does nothing for consecutive ones, because every
+// change to the generator makes all ~27,000 compilations miss and adds another
+// cache's worth to the same directory. A developer iterating would fill the
+// same volume from the other direction, more slowly and just as fatally, and
+// the age-based sweep would not touch a cache that is used again every half
+// hour.
+//
+// So the steady state is: one directory while runs overlap, nothing left behind
+// once they have all finished. SCHEMAGEN_KEEP_GOCACHE=1 keeps it instead, which
+// is worth it when the next run is going to be the same code -- a warm cache
+// turns most of a 25-minute run into cache hits -- and costs another cache's
+// worth per distinct generator state until an idle hour lets the sweep reclaim
+// it.
+func releaseSharedCache() {
+	if sharedCacheDir == "" {
+		return
+	}
+	releaseCacheDir(sharedCacheDir, sharedCacheLock, os.Getenv("SCHEMAGEN_KEEP_GOCACHE") == "1")
+}
+
+// releaseCacheDir is releaseSharedCache with the directory, the claim and the
+// choice supplied, so a test can drive both halves without touching the cache
+// the running process is using.
+//
+// The order is the whole of it: the delete happens only if the claim can be
+// made exclusive, and the claim is dropped afterwards either way.
+func releaseCacheDir(dir string, lock *cacheLock, keep bool) {
+	doomed, moved := "", false
+	if !keep && lock.tryExclusive() {
+		doomed, moved = renameForRemoval(dir)
+	}
+	lock.release()
+	if moved {
+		os.RemoveAll(doomed)
+	}
+}
+
+// goBuildArgs and goRunArgs are how every throwaway program in this package is
+// compiled, and the -trimpath is what makes sharing a cache worth anything.
+//
+// A build without it records the absolute directory of its source in what it
+// produces, so the action ID takes in the temp directory the harness happened
+// to draw -- and every group of every run draws a fresh one. Two runs
+// compiling byte-identical source then share nothing at all: measured at
+// +2 MB of new cache content for a second copy of a ten-line program in a
+// different directory, and +0 with -trimpath, against 36 MB of dependencies
+// they share either way. Over ~1200 groups that is the difference between one
+// cache and a cache per run in a single directory, which would leave this no
+// better than a cache per process. Measured on the full corpus: two concurrent
+// runs peaked at 1.9G with it, against 34.6G and 37.1G in two directories
+// without. It is also what makes a *second* run fast rather than merely cheap
+// -- 892s and 938s here, against 1239s for one run alone before.
+//
+// Nothing measured here depends on the paths it erases: the harness reads the
+// program's own PASS/FAIL/verdict lines, and the only thing that gets shorter
+// is the file name in a panic trace from a generated program.
+var (
+	goBuildArgs = []string{"build", "-trimpath", "."}
+	goRunArgs   = []string{"run", "-trimpath", "."}
+)
+
+// sharedCacheEnv returns a copy of the current environment with GOCACHE
+// pointed at the shared cache directory, which is where every go build and go
+// run this package starts must write: the code they compile is generated,
+// unique to this corpus, and has no business in the developer's own cache.
+func sharedCacheEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "GOCACHE=") {
 			env = append(env, e)
 		}
 	}
-	return append(env, "GOCACHE="+ephemeralCacheDir)
+	return append(env, "GOCACHE="+sharedCacheDir)
 }
 
 // tryParse attempts to parse a JSTS schema into our schema.Schema type.
@@ -1141,9 +1470,9 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", ".")
+	cmd := exec.CommandContext(ctx, "go", goBuildArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compile: %s\n%s", err, string(output))
@@ -1209,9 +1538,9 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaRe
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("round-trip: %s\n%s", err, string(output))
@@ -1407,9 +1736,9 @@ func tryValidation(code string, dataJSON json.RawMessage, expectValid bool) (val
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
+	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
 	cmd.Dir = tmpDir
-	cmd.Env = ephemeralCacheEnv()
+	cmd.Env = sharedCacheEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return verdictMissing, fmt.Errorf("run: %s\n%s", err, string(output))
