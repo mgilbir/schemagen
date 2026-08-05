@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "title": "EnumDraft3TypeNames",
+  "description": "Issue #145 on the dialect whose \"type\" says two things nothing else does. \"any\" is a type name with no Go type of its own, so the enum's base came out `any` and the const form declared `const X Root = \"a\"` against it -- `invalid constant type`, and a Validate whose receiver was an interface. And a draft 3 type array may hold whole schemas, which widen the union past the names the list carries, so a member matching none of the names may still match one of those. Nothing is filtered on either row; both are here to say so.",
+  "type": "object",
+  "properties": {
+    "anyTyped": {
+      "$comment": "\"any\" admits every member there is, so the list survives whole and only the form it is emitted in changes. Dropping a member here would refuse a document the schema states.",
+      "type": "any",
+      "enum": ["a", "b"]
+    },
+    "typeAlternatives": {
+      "$comment": "The names on this list are \"string\" alone; the integer alternative is a schema, held apart from them. Reading the names as the whole of the type would drop 5, which the alternative admits.",
+      "type": ["string", { "type": "integer" }],
+      "enum": ["a", 5]
+    }
+  }
+}

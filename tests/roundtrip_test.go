@@ -5929,3 +5929,253 @@ func TestForbiddingSubschemaSpellingsAreEnforced(t *testing.T) {
 		},
 	)
 }
+
+// TestEnumOutsideDeclaredTypeAdmitsNothing is the behavioural half of issue
+// #145. A schema listing enum or const members its own "type" forbids was read
+// as one admitting them: {"type":"string","const":5} emitted `const Root string
+// = 5`, which does not build, and {"type":"string","enum":["a",5]} became a raw
+// enum listing both and accepted 5.
+//
+// The invalid list is the whole of the defect. It runs the one-member spelling
+// (`const`), the one-member enum, the several-member enum and the partial list
+// through every position that resolves rather than names -- a declared property,
+// an element, a map value, a tuple slot, patternProperties, an allOf branch, an
+// anyOf branch, a oneOf branch and a $ref, which is the route a document root
+// takes -- and it runs each declared type against a member of the wrong kind,
+// because the base type differs per type name and two of them (the map an
+// "object" maps to and the slice an "array" maps to) have no Go constants at
+// all, where the build failure reads `invalid constant type` instead.
+//
+// The valid list is what the fix must not cost, and it carries three kinds of
+// control:
+//
+//   - The partial list, wherever it appears. {"type":"string","enum":["a",5]}
+//     admits "a", and a filter that emptied the list rather than narrowing it
+//     would refuse it. This is the accept-control the change is most easily got
+//     wrong against, which is why it sits beside every rejection rather than
+//     once.
+//   - untypedEnum, which states no "type" at all and must be filtered by
+//     nothing. A type this generator *infers* is not an assertion the schema
+//     made, and reading one here would refuse {"untypedEnum":5}. unionEnum and
+//     nullableEnum are the same control one step out: a member matching any one
+//     of the declared types survives.
+//   - integerFloatSpelling, which reads the value and not the notation. A member
+//     written 1 and an instance written 1.0 are the same number, and from draft
+//     6 on that instance is an integer; judging the notation would drop the
+//     member and refuse both spellings.
+//
+// The empty container beside every container rejection is the third control, and
+// it is the one #142 already needed: a sub-schema about an element or a map
+// value says nothing about an array or an object that holds none.
+func TestEnumOutsideDeclaredTypeAdmitsNothing(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/enum_outside_declared_type.json",
+		[]string{
+			`{}`,
+			// The partial list admits the member its type does admit, at every
+			// position it was measured at.
+			`{"enumPartialProp":"a"}`,
+			`{"enumPartialItems":["a"]}`,
+			`{"enumPartialValues":{"x":"a"}}`,
+			`{"enumPartialSlot":["a"]}`,
+			`{"enumPartialPattern":{"a1":"a"}}`,
+			`{"enumPartialRef":"a"}`,
+			`{"fracInInteger":1}`,
+			// The empty container satisfies a sub-schema about its contents.
+			`{"constOutsideItems":[]}`,
+			`{"enumPartialItems":[]}`,
+			`{"constOutsideValues":{}}`,
+			`{"enumPartialValues":{}}`,
+			`{"constOutsideSlot":[]}`,
+			`{"enumPartialSlot":[]}`,
+			`{"constOutsidePattern":{}}`,
+			`{"constOutsidePattern":{"b":1}}`,
+			`{"enumPartialPattern":{}}`,
+			`{"enumPartialPattern":{"b":1}}`,
+			// The branch that can match is the one the schema left.
+			`{"constOutsideOneOf":5}`,
+			// The members the declared type does admit.
+			`{"typedConst":"a"}`,
+			`{"typedEnum":"a"}`,
+			`{"typedEnum":"b"}`,
+			`{"untypedEnum":"a"}`,
+			`{"untypedEnum":5}`,
+			`{"unionEnum":"a"}`,
+			`{"unionEnum":5}`,
+			`{"nullableEnum":"a"}`,
+			`{"integerEnum":1}`,
+			`{"integerEnum":2}`,
+			`{"integerFloatSpelling":1}`,
+			`{"integerFloatSpelling":1.0}`,
+			`{"numberEnum":1.5}`,
+			`{"numberEnum":2}`,
+			`{"objectEnum":{"k":1}}`,
+			`{"arrayEnum":[1]}`,
+			`{"boolEnum":true}`,
+			`{"okItems":[]}`,
+			`{"okItems":["a"]}`,
+			`{"okItems":["a","b"]}`,
+			// The keyword positions, each with the container that satisfies
+			// them: a tail that must be empty, an object with nothing
+			// unevaluated, an object with no keys, and the trigger absent.
+			`{"constOutsideUnevalItems":[]}`,
+			`{"constOutsideUnevalItems":[1]}`,
+			`{"constOutsideUnevalProps":{}}`,
+			`{"constOutsideUnevalProps":{"a":1}}`,
+			`{"constOutsideNames":{}}`,
+			`{"constOutsideDependent":{}}`,
+			`{"constOutsideDependent":{"j":1}}`,
+			// The negation of a schema admitting nothing admits everything.
+			`{"notConstOutside":"a"}`,
+			`{"notConstOutside":5}`,
+			`{"notConstOutside":null}`,
+			`{"notConstOutside":{"a":1}}`,
+		},
+		[]string{
+			// The reported spelling. constOutsideProp is the control that says
+			// the enum rows are a different question: a declared property keeps
+			// its type and emits a field-level const rule, and was already
+			// right.
+			`{"constOutsideProp":"a"}`,
+			`{"constOutsideProp":5}`,
+			`{"enumOutsideProp":"a"}`,
+			`{"enumOutsideProp":5}`,
+			`{"enumAllOutsideProp":"a"}`,
+			`{"enumAllOutsideProp":1}`,
+			`{"constOutsideRef":"a"}`,
+			`{"constOutsideRef":5}`,
+			// The partial list refuses the member its type forbids, and every
+			// value that was never listed.
+			`{"enumPartialProp":5}`,
+			`{"enumPartialProp":"b"}`,
+			`{"enumPartialRef":5}`,
+			`{"enumPartialRef":"b"}`,
+			`{"fracInInteger":2.5}`,
+			`{"fracInInteger":3}`,
+			// The element, the map value, the slot and patternProperties.
+			`{"constOutsideItems":["a"]}`,
+			`{"constOutsideItems":[5]}`,
+			`{"enumPartialItems":[5]}`,
+			`{"enumPartialItems":["b"]}`,
+			`{"constOutsideValues":{"x":"a"}}`,
+			`{"enumPartialValues":{"x":5}}`,
+			`{"enumPartialValues":{"x":"b"}}`,
+			`{"constOutsideSlot":["a"]}`,
+			`{"enumPartialSlot":[5]}`,
+			`{"enumPartialSlot":["b"]}`,
+			`{"constOutsidePattern":{"a1":"a"}}`,
+			`{"enumPartialPattern":{"a1":5}}`,
+			`{"enumPartialPattern":{"a1":"b"}}`,
+			// The compositions.
+			`{"constOutsideAllOf":"a"}`,
+			`{"constOutsideAllOf":5}`,
+			`{"constOutsideAnyOf":"a"}`,
+			`{"constOutsideAnyOf":5}`,
+			`{"constOutsideOneOf":"a"}`,
+			// One member of the wrong kind for each declared type. The base type
+			// differs per name, and three of them have no Go constants at all.
+			`{"fracOutsideInteger":2.5}`,
+			`{"fracOutsideInteger":1}`,
+			`{"nullOutsideConst":5}`,
+			`{"nullOutsideConst":null}`,
+			`{"objectOutsideConst":5}`,
+			`{"objectOutsideConst":{}}`,
+			`{"boolOutsideConst":5}`,
+			`{"boolOutsideConst":true}`,
+			`{"arrayOutsideConst":5}`,
+			`{"arrayOutsideConst":[]}`,
+			`{"numberOutsideConst":"a"}`,
+			`{"numberOutsideConst":1}`,
+			// The controls still refuse what they always refused, which is what
+			// a blanket "every typed enum admits nothing" would have satisfied
+			// without meaning anything.
+			`{"typedConst":"b"}`,
+			`{"typedEnum":"c"}`,
+			`{"untypedEnum":"b"}`,
+			`{"unionEnum":"b"}`,
+			`{"nullableEnum":5}`,
+			`{"integerEnum":3}`,
+			`{"integerFloatSpelling":2}`,
+			`{"numberEnum":3}`,
+			`{"objectEnum":{}}`,
+			`{"arrayEnum":[]}`,
+			`{"boolEnum":false}`,
+			`{"okItems":["c"]}`,
+			// The keyword positions. Each of these honoured `false` and
+			// {"enum":[]} already and read the third spelling as a sub-schema
+			// stating nothing.
+			`{"constOutsideUnevalItems":[1,2]}`,
+			`{"constOutsideUnevalItems":[1,"a"]}`,
+			`{"constOutsideUnevalProps":{"x":1}}`,
+			`{"constOutsideNames":{"a":1}}`,
+			`{"constOutsideDependent":{"k":1}}`,
+			`{"constOutsideContains":[]}`,
+			`{"constOutsideContains":[1]}`,
+			`{"constOutsideContains":["a"]}`,
+		},
+	)
+}
+
+// TestEnumFilterReadsWhatTheTypeAsserts holds the three dialect readings issue
+// #145's filter has to get right, each of which would otherwise refuse a
+// document the schema states -- the failure this repository treats as worse than
+// a missing check.
+//
+// draft3/any is the half the filter cannot reach at all, and the reason
+// generateEnumDef also asks whether its members fit the const form. "any" is a
+// type name that maps to no Go type of its own, so the enum's base came out
+// `any`: `const X Root = "a"` is `invalid constant type`, and the Validate
+// emitted beside it took an interface receiver. Nothing is filtered here -- the
+// type admits every member there is -- so the only thing that changes is the
+// form the enum is emitted in, and the raw form holds any member because it
+// compares JSON encodings rather than Go constants.
+//
+// draft3/typeAlternatives is the type array that carries a whole schema. Those
+// alternatives are held apart from the names, so the names are not the whole of
+// the type and a member matching none of them may still match one of the
+// schemas. Reading the names alone would drop 5.
+//
+// draft7/refSibling is the type that asserts nothing. Through draft 7 a $ref
+// replaces the schema object it sits in, so a "type" written beside one forbids
+// nothing and filtering against it would empty the enum and refuse 5 -- which
+// the referenced integer schema admits.
+//
+// The invalid rows are what keep each of these from being "emit nothing and
+// compile": every listed member is still accepted and everything outside the
+// list is still refused.
+func TestEnumFilterReadsWhatTheTypeAsserts(t *testing.T) {
+	t.Run("draft3", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/enum_draft3_type_names.json",
+			[]string{
+				`{}`,
+				`{"anyTyped":"a"}`,
+				`{"anyTyped":"b"}`,
+				`{"typeAlternatives":"a"}`,
+				`{"typeAlternatives":5}`,
+			},
+			[]string{
+				`{"anyTyped":"c"}`,
+				`{"anyTyped":5}`,
+				`{"anyTyped":null}`,
+				`{"typeAlternatives":"b"}`,
+				`{"typeAlternatives":7}`,
+			},
+		)
+	})
+	t.Run("draft7RefSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/enum_ref_sibling_draft7.json",
+			[]string{
+				`{}`,
+				`{"stringSibling":5}`,
+				`{"objectSibling":5}`,
+			},
+			[]string{
+				`{"stringSibling":"a"}`,
+				`{"objectSibling":"a"}`,
+				`{"objectSibling":{}}`,
+			},
+		)
+	})
+}

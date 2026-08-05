@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnumOutsideDeclaredType",
+  "description": "Issue #145: a schema listing enum or const members its own \"type\" forbids. A value cannot be both a string and 5, so {\"type\":\"string\",\"const\":5} admits no instance -- the same statement as `false` and as {\"enum\":[]} -- and a partial list like {\"type\":\"string\",\"enum\":[\"a\",5]} admits \"a\" and nothing else. The members were read as admissible everywhere: the const form emitted `const Root string = 5`, which does not build, and where it did build the position accepted values the type forbids. The controls beside each row are the schemas whose members the type does admit, and the untyped enum, which must not be filtered at all.",
+  "type": "object",
+  "properties": {
+    "constOutsideProp": {
+      "$comment": "The reported spelling at a declared property, which is the one position that was already right for it: resolvePropertyType promotes a const only when the schema states no type, so this keeps `string` and emits a field-level const rule. It is here as the control that says the enum row below is not the same question.",
+      "type": "string",
+      "const": 5
+    },
+    "enumOutsideProp": {
+      "$comment": "The same statement written as a one-member enum, which has no such gate: the property dispatched straight to generateEnumDef and emitted the const against the declared type.",
+      "type": "string",
+      "enum": [5]
+    },
+    "enumAllOutsideProp": {
+      "$comment": "Several members, none of them admissible.",
+      "type": "integer",
+      "enum": ["a", "b"]
+    },
+    "enumPartialProp": {
+      "$comment": "The row that must keep working: the type admits \"a\" and forbids 5, so the property admits \"a\" and nothing else. It used to be a raw enum listing both and accepted 5.",
+      "type": "string",
+      "enum": ["a", 5]
+    },
+    "constOutsideItems": {
+      "type": "array",
+      "items": { "type": "string", "const": 5 }
+    },
+    "enumPartialItems": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["a", 5] }
+    },
+    "constOutsideValues": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "const": 5 }
+    },
+    "enumPartialValues": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "enum": ["a", 5] }
+    },
+    "constOutsideSlot": {
+      "type": "array",
+      "prefixItems": [{ "type": "string", "const": 5 }]
+    },
+    "enumPartialSlot": {
+      "type": "array",
+      "prefixItems": [{ "type": "string", "enum": ["a", 5] }]
+    },
+    "constOutsidePattern": {
+      "type": "object",
+      "patternProperties": { "^a": { "type": "string", "const": 5 } }
+    },
+    "enumPartialPattern": {
+      "type": "object",
+      "patternProperties": { "^a": { "type": "string", "enum": ["a", 5] } }
+    },
+    "constOutsideAllOf": {
+      "$comment": "A conjunction with a branch admitting nothing admits nothing.",
+      "allOf": [{ "type": "string", "const": 5 }]
+    },
+    "constOutsideAnyOf": {
+      "$comment": "A disjunction whose every branch admits nothing admits nothing.",
+      "anyOf": [{ "type": "string", "const": 5 }]
+    },
+    "constOutsideOneOf": {
+      "$comment": "A oneOf whose forbidding branch can never be the one that matches, so the integer branch has to carry the whole selection.",
+      "oneOf": [{ "type": "string", "const": 5 }, { "type": "integer" }]
+    },
+    "constOutsideRef": {
+      "$comment": "The same sub-schema behind a reference, which is the route a document root takes: generateTypeDef names it and dispatches to generateEnumDef exactly as it does for the whole document.",
+      "$ref": "#/$defs/NeverString"
+    },
+    "enumPartialRef": {
+      "$ref": "#/$defs/OnlyA"
+    },
+    "fracOutsideInteger": {
+      "$comment": "\"integer\" reads the value: 2.5 has a fractional part, so no integer equals it.",
+      "type": "integer",
+      "const": 2.5
+    },
+    "fracInInteger": {
+      "$comment": "The same list with one member the type does admit.",
+      "type": "integer",
+      "enum": [1, 2.5]
+    },
+    "nullOutsideConst": {
+      "$comment": "The remaining declared types, each against a member of the wrong kind, and each reached through a $ref: only generateTypeDef promotes a const beside a stated type into the enum, so this is the route that emitted the const against the declared base type. The base differs per name, and two of these -- object and array -- map to a Go type that has no constants at all, where the failure reads `invalid constant type` rather than a type mismatch.",
+      "$ref": "#/$defs/NullConst"
+    },
+    "objectOutsideConst": { "$ref": "#/$defs/ObjectConst" },
+    "boolOutsideConst": { "$ref": "#/$defs/BoolConst" },
+    "arrayOutsideConst": { "$ref": "#/$defs/ArrayConst" },
+    "numberOutsideConst": { "$ref": "#/$defs/NumberConst" },
+    "typedConst": {
+      "$comment": "Control. The member is of the declared type, so nothing is filtered and the enum still refuses everything outside it.",
+      "type": "string",
+      "const": "a"
+    },
+    "typedEnum": {
+      "type": "string",
+      "enum": ["a", "b"]
+    },
+    "untypedEnum": {
+      "$comment": "The control that matters most. With no \"type\" there is nothing to filter against, and a filter that fired here would refuse 5 -- a document this schema admits. A type this generator merely infers is not an assertion the schema made.",
+      "enum": ["a", 5]
+    },
+    "unionEnum": {
+      "$comment": "Both members are of a declared type, so the list survives whole.",
+      "type": ["string", "integer"],
+      "enum": ["a", 5]
+    },
+    "nullableEnum": {
+      "$comment": "The type admits a null, the enum does not list one, so \"a\" is the only admissible value.",
+      "type": ["string", "null"],
+      "enum": ["a", 5]
+    },
+    "integerEnum": {
+      "type": "integer",
+      "enum": [1, 2]
+    },
+    "integerFloatSpelling": {
+      "$comment": "A member written 1 and an instance written 1.0 are the same number, and from draft 6 on the instance is an integer. Reading the notation rather than the value would have dropped this member.",
+      "type": "integer",
+      "const": 1
+    },
+    "numberEnum": {
+      "type": "number",
+      "enum": [1.5, 2]
+    },
+    "objectEnum": {
+      "type": "object",
+      "enum": [{ "k": 1 }]
+    },
+    "arrayEnum": {
+      "type": "array",
+      "enum": [[1]]
+    },
+    "boolEnum": {
+      "type": "boolean",
+      "const": true
+    },
+    "okItems": {
+      "$comment": "The element control: a sub-schema whose members the type admits still types the element and still refuses everything else.",
+      "type": "array",
+      "items": { "type": "string", "enum": ["a", "b"] }
+    },
+    "constOutsideUnevalItems": {
+      "$comment": "A forbidden tail folds into a maximum length: the one prefix slot is all the array may hold.",
+      "type": "array",
+      "prefixItems": [{ "type": "integer" }],
+      "unevaluatedItems": { "type": "string", "const": 5 }
+    },
+    "constOutsideUnevalProps": {
+      "type": "object",
+      "properties": { "a": { "type": "integer" } },
+      "unevaluatedProperties": { "type": "string", "const": 5 }
+    },
+    "constOutsideNames": {
+      "$comment": "A property name has to satisfy this sub-schema, and none can, so the object may carry no key at all. Reached through a $ref because propertyNames written on an inline object property is dropped whatever it says -- issue #142 reports that separately.",
+      "$ref": "#/$defs/NoNameAllowed"
+    },
+    "constOutsideDependent": {
+      "$comment": "The trigger key brings in a sub-schema admitting nothing, so carrying it is the violation. Reached through a $ref for the same reason as the row above.",
+      "$ref": "#/$defs/ForbiddenWhenK"
+    },
+    "constOutsideContains": {
+      "$comment": "No element can match, so no array satisfies it -- including the empty one, which `contains` refuses outright.",
+      "type": "array",
+      "contains": { "type": "string", "const": 5 }
+    },
+    "notConstOutside": {
+      "$comment": "The other direction, and the false rejection to watch: the inner schema forbids everything, so its negation admits everything. Reading the const without the type -- or the type without the const -- would refuse one of these two.",
+      "not": { "type": "string", "const": 5 }
+    }
+  },
+  "$defs": {
+    "NeverString": { "type": "string", "const": 5 },
+    "OnlyA": { "type": "string", "enum": ["a", 5] },
+    "NullConst": { "type": "null", "const": 5 },
+    "ObjectConst": { "type": "object", "const": 5 },
+    "BoolConst": { "type": "boolean", "const": 5 },
+    "ArrayConst": { "type": "array", "const": 5 },
+    "NumberConst": { "type": "number", "const": "a" },
+    "NoNameAllowed": {
+      "type": "object",
+      "propertyNames": { "type": "string", "const": 5 }
+    },
+    "ForbiddenWhenK": {
+      "type": "object",
+      "dependentSchemas": { "k": { "type": "string", "const": 5 } }
+    }
+  }
+}

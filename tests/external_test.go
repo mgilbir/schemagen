@@ -1624,6 +1624,12 @@ func TestExternalRoundTrip(t *testing.T) {
 	flakySweep.finish(t, walkedFiles, countCorpusFiles(t))
 }
 
+// It was 2213 before an unknown keyword carrying an enum its own "type" filters
+// empty (#145) and a forbidding sub-schema written as a composition (#146)
+// stopped resolving to a type that carries no Validate. Five
+// knownUnvalidatedRejections entries went stale in the same run and were
+// deleted -- the sweep named each one rather than letting the number drift.
+//
 // minValidatedGroups is the number of test groups this test reached a generated
 // Validate() for, measured on 2026-08-04 against suite commit cf2e5e0: 2213 of
 // the 2252 code-gen-suitable groups (2257 groups in the corpus, less the 5 whose
@@ -1667,7 +1673,7 @@ func TestExternalRoundTrip(t *testing.T) {
 // says must be rejected — already fails loudly through its stale
 // knownUnvalidatedRejections entry. Two failures for one event would train
 // people to bump numbers rather than read them.
-const minValidatedGroups = 2213
+const minValidatedGroups = 2218
 
 // TestExternalValidation tests that generated Validate() methods correctly accept
 // valid data and reject invalid data according to the JSON Schema.

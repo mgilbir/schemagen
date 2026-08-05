@@ -2039,6 +2039,56 @@ func TestGenerate_EnumType(t *testing.T) {
 	}
 }
 
+// TestGenerate_EnumNumberKindsFromGo guards the one route into issue #145's
+// filter that no JSON document can take.
+//
+// The filter drops an enum member the schema's own "type" forbids, and when
+// nothing survives the schema admits nothing and becomes the forbidding wrapper.
+// A schema read from a document has been through encoding/json, so every number
+// in it is a float64; a Schema built in Go by a caller of this package -- which
+// is the whole of its public API, and what the tests around this one do -- may
+// carry an int, an int64 or a uint instead. Reading only float64 would call
+// those members non-numeric, filter every one of them away, and turn an ordinary
+// integer enum into a type that refuses every document its schema admits.
+//
+// The bad answer is a NotSchemaDef where an EnumDef belongs, so the test asks
+// for the EnumDef by name and reads its members back.
+func TestGenerate_EnumNumberKindsFromGo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		enum []any
+	}{
+		{"int", []any{1, 2}},
+		{"int64", []any{int64(1), int64(2)}},
+		{"uint", []any{uint(1), uint(2)}},
+		{"float64", []any{float64(1), float64(2)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &schema.Schema{
+				Title: "Root",
+				Type:  schema.TypeList{"integer"},
+				Enum:  tc.enum,
+			}
+			file, err := New(DefaultConfig()).Generate(s)
+			if err != nil {
+				t.Fatalf("Generate() error: %v", err)
+			}
+			var enumDef *EnumDef
+			for _, td := range file.TypeDefs {
+				if ed, ok := td.(*EnumDef); ok && ed.Name == "Root" {
+					enumDef = ed
+				}
+			}
+			if enumDef == nil {
+				t.Fatalf("Root enum not found; got %#v", file.TypeDefs)
+			}
+			if len(enumDef.Values) != len(tc.enum) {
+				t.Fatalf("expected %d values, got %d", len(tc.enum), len(enumDef.Values))
+			}
+		})
+	}
+}
+
 func TestGenerate_InlineEnum(t *testing.T) {
 	s := &schema.Schema{
 		Title: "Task",

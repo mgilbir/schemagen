@@ -6203,6 +6203,35 @@ func (g *Generator) separateNullFromOneOf(variants []*schema.Schema) ([]*schema.
 func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	g.generated[name] = true
 
+	// A member the schema's own "type" forbids is a member no instance can ever
+	// equal, so it is dropped before anything reads the list. This has to happen
+	// first: everything below -- the heterogeneity test, the base type, the
+	// constant names, the emitted `case` arms -- answers from the members, and
+	// each of them answered from members that were never admissible.
+	//
+	// {"type":"string","enum":["a",5]} then keeps "a" and becomes a string enum,
+	// where it used to be a raw enum listing 5 as well, and accepted 5.
+	//
+	// When nothing survives, the schema admits no instance at all -- a value
+	// cannot be both a string and 5 -- and the answer is the wrapper
+	// generateTypeDef gives the boolean `false` schema and `{"enum":[]}`. That is
+	// issue #145, whose symptom was the const emitted against the type the schema
+	// declares: {"type":"string","const":5} came out `const Root string = 5`,
+	// which does not compile. See declaredTypeAdmitsNoEnumMember.
+	if kept, filtered := g.enumMembersDeclaredTypeAdmits(s); filtered {
+		if len(kept) == 0 {
+			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+				Name:        name,
+				Description: s.Description,
+				IsForbidden: true,
+			})
+			return nil
+		}
+		narrowed := *s
+		narrowed.Enum = kept
+		s = &narrowed
+	}
+
 	// Check if the enum contains non-primitive or mixed-type values.
 	// If so, generate a json.RawMessage-based "raw" enum instead of const-based.
 	if isHeterogeneousEnum(s.Enum) {
@@ -6210,6 +6239,21 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	}
 
 	baseType := g.resolveBaseType(s)
+
+	// The const form declares one Go constant per member against baseType, so a
+	// member that is not a constant of that type is a build failure rather than a
+	// wrong answer -- `const Root string = 5`, or `invalid constant type Root`
+	// where the base is a map. The raw form holds any member at all, because it
+	// compares the JSON encodings, so it is what a mismatch falls back to.
+	//
+	// The filter above removes the whole of this in every case it applies to, and
+	// this is the residue it cannot reach: a schema whose "type" asserts nothing
+	// because a draft 3-7 $ref displaces it, and a type name that maps to no Go
+	// type of its own (draft 3's "any"). Both used to reach the const form with a
+	// member it could not hold.
+	if !enumFitsConstForm(baseType, s.Enum) {
+		return g.generateRawEnumDef(name, s)
+	}
 
 	constNames := enumConstNames(name, s.Enum)
 	values := make([]EnumValue, len(s.Enum))
@@ -10227,7 +10271,11 @@ func (g *Generator) forbidsEveryValueOnPath(s *schema.Schema, depth int, onPath 
 	if s.IsBooleanSchema() {
 		return s.IsFalseSchema()
 	}
-	if g.validationKeywordsEnabled() && emptyEnumSchema(s) {
+	// Two spellings of "this states members and admits none of them": the list
+	// written empty, and a list its own "type" filters empty (#145). Both are
+	// behind the validation vocabulary, since a metaschema withholding `enum`
+	// and `type` makes neither assert anything.
+	if g.validationKeywordsEnabled() && (emptyEnumSchema(s) || g.declaredTypeAdmitsNoEnumMember(s)) {
 		return true
 	}
 	if onPath == nil {
@@ -10312,6 +10360,207 @@ func (g *Generator) acceptsEveryInstance(s *schema.Schema) bool {
 		return false
 	}
 	return !(s.Format != nil && g.formatAssertsFor(s))
+}
+
+// declaredTypeAdmitsNoEnumMember reports whether a schema lists members its own
+// "type" forbids every one of. {"type":"string","const":5} is the shortest
+// spelling: a value cannot be both a string and 5, so the schema admits no
+// instance -- the same statement as `false` and as `{"enum":[]}`, which is why
+// it belongs beside them rather than in a predicate of its own.
+//
+// It is the enum half of issue #145. The symptom was a build failure rather than
+// a wrong answer, because the const was emitted against the declared type and
+// `const Root string = 5` does not compile; but the schema had already been read
+// as one admitting a string, and every position that types from it -- an
+// element, a map value, a branch, a tuple slot -- described values the schema
+// forbids.
+//
+// Sound in one direction only, which is the direction that matters: a member the
+// type rejects can be dropped whatever else the schema says, because `type` and
+// the enum are both assertions on the instance and an instance has to satisfy
+// every one. Nothing here claims the surviving members *are* admissible -- a
+// `minLength` or a `not` may still forbid them -- so the answer is a refusal
+// only when the list empties.
+func (g *Generator) declaredTypeAdmitsNoEnumMember(s *schema.Schema) bool {
+	kept, filtered := g.enumMembersDeclaredTypeAdmits(s)
+	return filtered && len(kept) == 0
+}
+
+// enumMembersDeclaredTypeAdmits returns the members of a schema's enum (or of
+// the const it promotes to) that its own "type" admits, and reports whether the
+// question applies at all. When the second result is false the first is
+// meaningless and the caller must read s.Enum unchanged.
+//
+// The question does not apply in four cases, and each of them is a reading the
+// schema does not license:
+//
+//   - No "type" of its own. Nothing to filter against; a type this generator
+//     *infers* is not an assertion the schema made.
+//   - No enum and no const. Nothing to filter.
+//   - A draft 3 schema-valued entry in the type array, held on TypeSchemas
+//     rather than on Type. Those alternatives widen the union past the names
+//     Type lists, so a member matching none of the names may still match one of
+//     them.
+//   - A $ref on a draft where it displaces its siblings (3 through 7). There the
+//     "type" asserts nothing at all, so it cannot forbid anything either, and
+//     treating it as a filter would refuse documents the referenced schema
+//     admits. From 2019-09 on $ref is an applicator and the sibling applies, so
+//     the filter does.
+//
+// The vocabulary gate is the caller's: schemaForbidsEveryValue asks it once for
+// both spellings, and generateEnumDef is only ever reached through one.
+func (g *Generator) enumMembersDeclaredTypeAdmits(s *schema.Schema) ([]any, bool) {
+	if s == nil || len(s.Type) == 0 || len(s.TypeSchemas) > 0 {
+		return nil, false
+	}
+	if s.Ref != "" && g.refOverridesSiblingsForSchema(s) {
+		return nil, false
+	}
+	// promoteConstToEnum rather than a second reading of Const beside it: the two
+	// spellings are one keyword to every other part of this generator, and a
+	// const written {"const":null} is only visible through ConstIsNull, which is
+	// exactly the sort of detail a second copy loses.
+	members := promoteConstToEnum(s).Enum
+	if len(members) == 0 {
+		return nil, false
+	}
+	kept := make([]any, 0, len(members))
+	for _, m := range members {
+		if jsonValueMatchesAnySchemaType(m, s.Type) {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) == len(members) {
+		return nil, false
+	}
+	return kept, true
+}
+
+// jsonValueMatchesAnySchemaType reports whether a decoded JSON value is of at
+// least one of the JSON Schema types named. An empty list answers false, which
+// no caller reaches.
+func jsonValueMatchesAnySchemaType(v any, types schema.TypeList) bool {
+	for _, t := range types {
+		if jsonValueMatchesSchemaType(v, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonValueMatchesSchemaType reports whether a decoded JSON value is of the JSON
+// Schema type named by t.
+//
+// An unrecognised name answers true, which is what keeps this from inventing a
+// constraint: draft 3's "any" matches everything by definition, and a name this
+// generator does not model is a name it must not judge against.
+//
+// "integer" reads the value and not the notation. A schema is decoded by
+// encoding/json, so a member written 1 and one written 1.0 are the same float64
+// by the time this sees them, and the drafts that require an integer *token* of
+// an instance (3 and 4) still admit an instance written 1 for a member written
+// 1.0 -- the two are equal as numbers, which is what `enum` and `const` compare.
+// Judging the notation here would drop a member those drafts admit.
+func jsonValueMatchesSchemaType(v any, t string) bool {
+	switch t {
+	case "string":
+		_, ok := v.(string)
+		return ok
+	case "boolean":
+		_, ok := v.(bool)
+		return ok
+	case "null":
+		return v == nil
+	case "object":
+		_, ok := v.(map[string]any)
+		return ok
+	case "array":
+		_, ok := v.([]any)
+		return ok
+	case "number":
+		_, ok := jsonNumericValue(v)
+		return ok
+	case "integer":
+		f, ok := jsonNumericValue(v)
+		return ok && !math.IsInf(f, 0) && !math.IsNaN(f) && f == math.Trunc(f)
+	default:
+		return true
+	}
+}
+
+// jsonNumericValue reads a schema-supplied value as a number.
+//
+// float64 is what encoding/json produces and is the only case a schema read
+// from a document reaches. The integer kinds are for a Schema built in Go --
+// this package's own callers do that, and a caller who wrote Enum: []any{5}
+// beside Type: "integer" must not have the member read as a non-number and
+// filtered away.
+func jsonNumericValue(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+// enumFitsConstForm reports whether every member can be declared as a Go
+// constant of base, which is what the const form of an enum emits.
+//
+// A base that is not a primitive -- the map an "object" type maps to, the slice
+// an "array" type maps to -- has no constants at all, and `any` has none either.
+// A primitive rejects a member of the wrong Go kind. Either way the emitted
+// source does not build, so the caller falls back to the raw form.
+func enumFitsConstForm(base GoType, values []any) bool {
+	pt, ok := base.(*PrimitiveType)
+	if !ok {
+		return false
+	}
+	for _, v := range values {
+		switch pt.Name {
+		case "string":
+			if _, ok := v.(string); !ok {
+				return false
+			}
+		case "bool":
+			if _, ok := v.(bool); !ok {
+				return false
+			}
+		case "float64":
+			if _, ok := jsonNumericValue(v); !ok {
+				return false
+			}
+		case "int64":
+			f, ok := jsonNumericValue(v)
+			if !ok || math.IsInf(f, 0) || math.IsNaN(f) || f != math.Trunc(f) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // typeIsInferredFromConstraints reports whether a schema states no "type" of its
