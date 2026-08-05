@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotOverFormat",
+  "description": "A `not` whose inner schema states nothing but a format. Whether that inner schema admits every value is the dialect's answer and not the schema's: where format annotates it admits everything and the negation forbids everything, and where format asserts it admits only the non-conforming strings and the negation forbids exactly the conforming ones. Read as accept-all on both, the negation refused every document under assertion -- including the numbers `format` never speaks about.",
+  "type": "object",
+  "properties": {
+    "notEmail": { "not": { "format": "email" } },
+    "notEmailInItems": {
+      "$comment": "The same at an element, which reaches the predicate by a different route.",
+      "type": "array",
+      "items": { "not": { "format": "email" } }
+    },
+    "formatBranches": {
+      "$comment": "The other direction, through countBooleanSchemas: a oneOf whose branches both accept every value matches twice and so matches nothing, which is what makes reading a format branch as accept-all a rejection rather than a missing check. Where format annotates, both branches really do accept everything and the oneOf really is empty; where it asserts, \"a@b.com\" satisfies the first alone.",
+      "oneOf": [{ "format": "email" }, { "format": "ipv4" }]
+    }
+  }
+}

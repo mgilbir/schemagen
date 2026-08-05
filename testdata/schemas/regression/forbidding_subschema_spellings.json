@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ForbiddingSubschemaSpellings",
+  "description": "Issue #146: the six keywords that answered a forbidding sub-schema written `false` or {\"enum\":[]} after #142 -- propertyNames, contains, dependentSchemas, unevaluatedItems, unevaluatedProperties, and an inferred array's item and tail -- and dropped the same statement written {\"not\":{}} or {\"oneOf\":[false,false]}. All four spellings are the empty set, so a position that answers two of them is answering by spelling rather than by meaning. Beside them: the keywords an inline object property dropped whatever the spelling, and the allOf whose unreadable branch was enforced by halves. Where a keyword judges what an instance holds, the rejection has the container holding nothing beside it; `contains` is the exception, since it demands a match rather than judging one, and a schema that admits nothing at all has no such control by definition -- the controls for those are the negations and compositions further down, which must keep admitting what they always did.",
+  "type": "object",
+  "properties": {
+    "notNames": {
+      "$comment": "propertyNames over the empty set: no name is admissible, so only the empty object is.",
+      "type": "object",
+      "propertyNames": { "not": {} }
+    },
+    "oneOfNames": {
+      "$comment": "The oneOf spelling of the same. Every branch admits nothing, so no value matches exactly one.",
+      "type": "object",
+      "propertyNames": { "oneOf": [false, false] }
+    },
+    "refNotNames": {
+      "$comment": "The same sub-schema behind a reference. A $ref is not the schema it names, so a branch has to be resolved before it can be judged -- the rule #116 wrote down for `false`.",
+      "type": "object",
+      "propertyNames": { "anyOf": [{ "$ref": "#/$defs/NeverNot" }] }
+    },
+    "notContains": {
+      "$comment": "`contains` demands at least one matching element and nothing matches, so every array is invalid -- the empty one included, which is what separates this from every other row.",
+      "type": "array",
+      "contains": { "not": {} }
+    },
+    "oneOfContains": {
+      "type": "array",
+      "contains": { "oneOf": [false, false] }
+    },
+    "allOfContains": {
+      "$comment": "A conjunction one keyword down. The allOf arms elsewhere are reached through allOfContainsFalseSchema, which only a schema's own allOf goes through; a sub-schema handed to a keyword is judged by this predicate alone, and this row is the only thing that reaches that arm.",
+      "type": "array",
+      "contains": { "allOf": [{ "not": {} }, { "type": "string" }] }
+    },
+    "anyOfNames": {
+      "$comment": "And a disjunction one keyword down, for the same reason.",
+      "type": "object",
+      "propertyNames": { "anyOf": [false, false] }
+    },
+    "notDependent": {
+      "$comment": "dependentSchemas over the empty set: an object carrying the trigger key is invalid, and one that does not is untouched.",
+      "type": "object",
+      "dependentSchemas": { "k": { "not": {} } }
+    },
+    "oneOfDependent": {
+      "type": "object",
+      "dependentSchemas": { "k": { "oneOf": [false, false] } }
+    },
+    "notUnevalItems": {
+      "type": "array",
+      "prefixItems": [true],
+      "unevaluatedItems": { "not": {} }
+    },
+    "oneOfUnevalItems": {
+      "type": "array",
+      "prefixItems": [true],
+      "unevaluatedItems": { "oneOf": [false, false] }
+    },
+    "notUnevalProps": {
+      "type": "object",
+      "properties": { "k": true },
+      "unevaluatedProperties": { "not": {} }
+    },
+    "oneOfUnevalProps": {
+      "type": "object",
+      "properties": { "k": true },
+      "unevaluatedProperties": { "oneOf": [false, false] }
+    },
+    "inferredNotItems": {
+      "$comment": "The element of an array inferred from its keywords rather than declared, which is a separate path through the generator. A string satisfies an items-only schema and must stay valid.",
+      "items": { "not": {} }
+    },
+    "inferredOneOfItems": {
+      "items": { "oneOf": [false, false] }
+    },
+    "inferredNotTail": {
+      "$comment": "The tail of an inferred tuple: in 2020-12 a schema-valued `items` beside prefixItems governs only what follows the prefix, so the first element is free and the second is not.",
+      "prefixItems": [true],
+      "items": { "not": {} }
+    },
+    "inferredOneOfTail": {
+      "prefixItems": [true],
+      "items": { "oneOf": [false, false] }
+    },
+    "inferredNotSlot": {
+      "prefixItems": [{ "not": {} }]
+    },
+    "allOfNot": {
+      "$comment": "A conjunction with one empty conjunct is empty, whatever the other branch says. The static merge could read the second branch and not the first, so a string satisfied the schema and a number was refused only by the decoder -- one of two must-reject documents.",
+      "allOf": [{ "not": {} }, { "type": "string" }]
+    },
+    "anyOfNot": {
+      "$comment": "A disjunction whose every branch admits nothing admits nothing.",
+      "anyOf": [{ "not": {} }]
+    },
+    "inlineFalseNames": {
+      "$comment": "propertyNames written on an inline object property, which was typed map[string]any -- a type with no Validate for the check to live in -- so the keyword reached nothing at all, for `false` as much as for anything else. #142's fixture reaches propertyNames through a $defs entry for exactly this reason.",
+      "type": "object",
+      "propertyNames": false
+    },
+    "inlineNotNames": {
+      "type": "object",
+      "propertyNames": { "not": {} }
+    },
+    "inlineFalseDependent": {
+      "$comment": "And dependentSchemas at the same position, dropped the same way.",
+      "type": "object",
+      "dependentSchemas": { "k": false }
+    },
+    "inlineNotDependent": {
+      "type": "object",
+      "dependentSchemas": { "k": { "not": {} } }
+    },
+    "inlineRequired": {
+      "$comment": "The rest of what a propertyless object can state, dropped by the same map[string]any. required, minProperties, maxProperties and dependentRequired are not this issue's keywords, but they are its defect in its predicate, and a commit about an inline drop cannot leave four of them dropped.",
+      "type": "object",
+      "required": ["a"]
+    },
+    "inlineMinProps": {
+      "type": "object",
+      "minProperties": 2
+    },
+    "inlineMaxProps": {
+      "type": "object",
+      "maxProperties": 1
+    },
+    "inlineDepRequired": {
+      "type": "object",
+      "dependentRequired": { "k": ["j"] }
+    },
+    "mapWithMinProps": {
+      "$comment": "The one object shape the inline arm declines, and the golden is where that is pinned: a schema-valued additionalProperties describes the values, one schema for all of them, and it is a Go map -- which is the whole of #84. Naming the position would keep the value typing (the struct's overflow map is map[string]string either way) and gain the minProperties check, but it would take map[string]string away from the field, so the keyword stays unenforced here rather than the map being undone. This property must keep the bare map type.",
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "minProperties": 2
+    },
+    "strBranchRequired": {
+      "$comment": "The accept-control for the inline object arm's type test. `required` speaks about objects, so a schema may state it and still describe strings alone -- and reading that as an object shape gives the branch a struct, which refuses \"abc\" at the decoder. A string satisfies the first branch and nothing else does.",
+      "oneOf": [
+        { "type": "string", "required": ["a"] },
+        { "type": "integer" }
+      ]
+    },
+    "unionBranchRequired": {
+      "$comment": "The same where the type names an object among others: the struct still cannot hold the string half.",
+      "oneOf": [
+        { "type": ["object", "string"], "required": ["a"] },
+        { "type": "integer" }
+      ]
+    },
+    "nullableInlineNames": {
+      "$comment": "The nullable spelling of the inline object, which resolveType reaches by a different route. A null is still permitted.",
+      "type": ["object", "null"],
+      "propertyNames": { "not": {} }
+    },
+    "notEnumBranch": {
+      "$comment": "The first accept-control for the new reading: `not` over a schema that admits nothing admits every value. Reading {\"not\":{...}} as forbidding whenever the inner schema looks empty is the false rejection #142 fixed, and this is where it is watched.",
+      "not": { "enum": [] }
+    },
+    "notTypedConst": {
+      "$comment": "The second: the inner schema admits the string \"x\" and nothing else, so the `not` forbids \"x\" alone and admits everything else.",
+      "not": { "type": "string", "const": "x" }
+    },
+    "notFalse": {
+      "$comment": "And the third, the boolean spelling: not(false) is the accept-all schema.",
+      "not": false
+    },
+    "oneOfOneFalse": {
+      "$comment": "A oneOf with one forbidding branch is not a forbidding oneOf -- the other branch still decides. \"s\" matches exactly one branch and must stay valid; a number matches none.",
+      "oneOf": [{ "not": {} }, { "type": "string" }]
+    },
+    "anyOfOneFalse": {
+      "$comment": "The same for anyOf: one live branch is enough.",
+      "anyOf": [{ "not": {} }, { "type": "string" }]
+    },
+    "notShallowEnum": {
+      "$comment": "The broad accept-control for the recursion. An enum that lists values is not the empty one, and a `not` over it forbids exactly those values.",
+      "not": { "enum": ["a", "b"] }
+    },
+    "okNames": {
+      "$comment": "propertyNames that constrains without forbidding: the arm must not swallow it.",
+      "type": "object",
+      "propertyNames": { "maxLength": 3 }
+    },
+    "okContains": {
+      "type": "array",
+      "contains": { "type": "number" }
+    },
+    "plainItems": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "NeverNot": { "not": {} }
+  }
+}

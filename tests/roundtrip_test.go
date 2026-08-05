@@ -5681,3 +5681,501 @@ func TestInlineForbiddingPositionsRejectEveryValue(t *testing.T) {
 		},
 	)
 }
+
+// TestNotOverAFormatFollowsTheDialect is the false-rejection guard for the
+// predicate #146 reads a `not` through. Whether {"format":"email"} constrains
+// anything is the dialect's answer, so a predicate that decides the inner schema
+// admits every value without asking the dialect gets the negation backwards
+// exactly where format asserts: {"not":{"format":"email"}} then forbade every
+// value, and "not-an-email", the number 5 and a null are the documents that say
+// so. Under 2020-12's own posture format annotates, the inner schema really does
+// admit everything, and the negation really does forbid everything -- so the two
+// arms disagree by design and a fix that answered one posture for both would
+// fail the other.
+//
+// formatBranches is the same reading through the other caller. A oneOf whose
+// branches both accept every value matches twice and so matches nothing, so
+// reading a format branch as accept-all refused every document there too --
+// which is why the fix is in one predicate rather than at the `not`.
+//
+// The documents whose verdict turns on the assertion itself are on neither list
+// under assertion, and deliberately: the negation forbids the conforming email
+// and the oneOf forbids "neither" and the number, and the generated code refuses
+// none of them. Those are missing checks rather than wrong ones, this change
+// does not claim them, and listing them as valid would pin the gap open against
+// the day somebody closes it. See acceptsEveryInstance.
+func TestNotOverAFormatFollowsTheDialect(t *testing.T) {
+	t.Run("2020-12 annotates, so the negation forbids everything", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/not_over_format.json",
+			[]string{
+				`{"notEmailInItems":[]}`,
+				`{}`,
+			},
+			[]string{
+				`{"notEmail":"not-an-email"}`,
+				`{"notEmail":5}`,
+				`{"notEmail":null}`,
+				`{"notEmail":"a@b.com"}`,
+				`{"notEmailInItems":["not-an-email"]}`,
+				`{"notEmailInItems":[5]}`,
+				`{"notEmailInItems":["a@b.com"]}`,
+				// Both branches accept everything, so every value matches two.
+				`{"formatBranches":"a@b.com"}`,
+				`{"formatBranches":"1.2.3.4"}`,
+				`{"formatBranches":"neither"}`,
+				`{"formatBranches":5}`,
+			},
+		)
+	})
+	t.Run("under assertion it forbids the conforming string alone", func(t *testing.T) {
+		runValidationCasesWithConfig(t,
+			"testdata/schemas/regression/not_over_format.json",
+			formatAssertingConfig(),
+			[]string{
+				`{"notEmail":"not-an-email"}`,
+				`{"notEmail":5}`,
+				`{"notEmail":null}`,
+				`{"notEmailInItems":[]}`,
+				`{"notEmailInItems":["not-an-email"]}`,
+				`{"notEmailInItems":[5]}`,
+				// Each satisfies exactly one branch, and the whole schema
+				// refused every value of any kind before this.
+				`{"formatBranches":"a@b.com"}`,
+				`{"formatBranches":"1.2.3.4"}`,
+				`{}`,
+			},
+			nil,
+		)
+	})
+}
+
+// TestForbiddingSubschemaSpellingsAreEnforced is the behavioural half of issue
+// #146. #142 closed `false` and `{"enum":[]}` at six keyword positions;
+// {"not":{}} and {"oneOf":[false,false]} are the same statement and were dropped
+// at every one of them, so the position answered by spelling rather than by
+// meaning. Beside that: propertyNames and dependentSchemas were dropped whole on
+// an inline object property, whatever the spelling, and an allOf with a branch
+// the static merge could not read was enforced by halves. The four object
+// keywords dropped alongside them -- required, minProperties, maxProperties and
+// dependentRequired -- are here too: not this issue's keywords, but its defect
+// in its predicate at its position.
+//
+// The invalid list is the whole of the defect. The valid list is what the fix
+// must not cost, and it carries five kinds of control:
+//
+//   - The container that satisfies the sub-schema, beside every rejection. An
+//     empty object satisfies a forbidding propertyNames and an object without
+//     the trigger key satisfies a forbidding dependentSchemas: the sub-schema
+//     speaks about what is there, and there is none of it. `contains` is the one
+//     that goes the other way, since it demands a match rather than judging one,
+//     so its empty array is on the invalid side.
+//   - The `not` that does not forbid everything. notEnumBranch is a negation of
+//     the empty set, notFalse its boolean spelling, notTypedConst a negation
+//     that forbids one string, and notShallowEnum one that forbids two values.
+//     Reading any of them as forbidding is a false rejection, and notFalse is
+//     the one this change introduced and had to fix: a boolean schema carries
+//     its answer in a field with no JSON key, so every keyword test passed for
+//     it and `false` read as accept-all. See isAcceptAllSchema.
+//   - The composition with one live branch. oneOfOneFalse and anyOfOneFalse each
+//     hold a forbidding branch beside a real one; a predicate that answered
+//     "some branch forbids" rather than "every branch forbids" would refuse
+//     both, and "s" is what says so.
+//   - The type-conditional row. inferredNotItems and inferredNotSlot state only
+//     array keywords, so a string satisfies them, and nullableInlineNames still
+//     admits a null.
+//   - The schema the inline object arm must not claim. `required` speaks about
+//     objects, so strBranchRequired and unionBranchRequired state it and still
+//     describe strings; read as an object shape they get a struct, and the
+//     struct refuses "abc" at the decoder. mapWithMinProps is the other
+//     declined shape, and the golden rather than this list is what pins it.
+//
+// Every verdict here was cross-checked against python-jsonschema before it was
+// written down; the two agree on all of them.
+func TestForbiddingSubschemaSpellingsAreEnforced(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/forbidding_subschema_spellings.json",
+		[]string{
+			// The container the forbidding sub-schema says nothing about.
+			`{"notNames":{}}`,
+			`{"oneOfNames":{}}`,
+			`{"anyOfNames":{}}`,
+			`{"refNotNames":{}}`,
+			`{"notDependent":{}}`,
+			`{"notDependent":{"j":1}}`,
+			`{"oneOfDependent":{}}`,
+			`{"notUnevalItems":[]}`,
+			`{"notUnevalItems":[1]}`,
+			`{"oneOfUnevalItems":[1]}`,
+			`{"notUnevalProps":{}}`,
+			`{"notUnevalProps":{"k":1}}`,
+			`{"oneOfUnevalProps":{"k":1}}`,
+			`{"inlineFalseNames":{}}`,
+			`{"inlineNotNames":{}}`,
+			`{"inlineFalseDependent":{}}`,
+			`{"inlineFalseDependent":{"j":1}}`,
+			`{"inlineNotDependent":{}}`,
+			`{"nullableInlineNames":null}`,
+			`{"nullableInlineNames":{}}`,
+			// An array-only schema says nothing about a value that is not an
+			// array, and a prefix leaves the tail free.
+			`{"inferredNotItems":[]}`,
+			`{"inferredNotItems":"abc"}`,
+			`{"inferredOneOfItems":[]}`,
+			`{"inferredOneOfItems":"abc"}`,
+			`{"inferredNotTail":[]}`,
+			`{"inferredNotTail":[1]}`,
+			`{"inferredNotTail":"abc"}`,
+			`{"inferredOneOfTail":[1]}`,
+			`{"inferredNotSlot":[]}`,
+			`{"inferredNotSlot":"abc"}`,
+			// The object shapes that hold.
+			`{"inlineRequired":{"a":1}}`,
+			`{"inlineMinProps":{"a":1,"b":2}}`,
+			`{"inlineMaxProps":{"a":1}}`,
+			`{"inlineDepRequired":{"k":1,"j":2}}`,
+			`{"inlineDepRequired":{"j":1}}`,
+			// The map the inline arm declines, whose minProperties is left
+			// unenforced so the field keeps map[string]string. The document that
+			// would show the gap is on neither list, for the reason the format
+			// test gives; the golden is what pins the type.
+			`{"mapWithMinProps":{"a":"x","b":"y"}}`,
+			// `required` speaks about objects, so a schema stating it may still
+			// describe strings alone. Reading that as an object shape gives the
+			// branch a struct, which refuses the string at the decoder.
+			`{"strBranchRequired":"abc"}`,
+			`{"strBranchRequired":5}`,
+			`{"unionBranchRequired":"abc"}`,
+			`{"unionBranchRequired":5}`,
+			`{"unionBranchRequired":{"a":1}}`,
+			// The `not` that forbids less than everything.
+			`{"notEnumBranch":1}`,
+			`{"notEnumBranch":"abc"}`,
+			`{"notEnumBranch":null}`,
+			`{"notEnumBranch":{"a":1}}`,
+			`{"notTypedConst":"abc"}`,
+			`{"notTypedConst":1}`,
+			`{"notFalse":1}`,
+			`{"notFalse":"abc"}`,
+			`{"notShallowEnum":"c"}`,
+			`{"notShallowEnum":1}`,
+			// The composition with a branch still alive.
+			`{"oneOfOneFalse":"s"}`,
+			`{"anyOfOneFalse":"s"}`,
+			// The keyword that constrains without forbidding.
+			`{"okNames":{}}`,
+			`{"okNames":{"ab":1}}`,
+			`{"okContains":[1]}`,
+			`{"plainItems":["x"]}`,
+			`{}`,
+		},
+		[]string{
+			// propertyNames, in both spellings and behind a reference.
+			`{"notNames":{"a":1}}`,
+			`{"oneOfNames":{"a":1}}`,
+			`{"anyOfNames":{"a":1}}`,
+			`{"refNotNames":{"a":1}}`,
+			// contains, which refuses the empty array too.
+			`{"notContains":[]}`,
+			`{"notContains":[1]}`,
+			`{"oneOfContains":[]}`,
+			`{"oneOfContains":[1]}`,
+			`{"allOfContains":[]}`,
+			`{"allOfContains":["s"]}`,
+			// dependentSchemas, once the trigger key is there.
+			`{"notDependent":{"k":1}}`,
+			`{"oneOfDependent":{"k":1}}`,
+			// The two unevaluated keywords.
+			`{"notUnevalItems":[1,2]}`,
+			`{"oneOfUnevalItems":[1,2]}`,
+			`{"notUnevalProps":{"x":1}}`,
+			`{"oneOfUnevalProps":{"x":1}}`,
+			// The inferred array's item, tail and slot.
+			`{"inferredNotItems":[1]}`,
+			`{"inferredOneOfItems":[1]}`,
+			`{"inferredNotTail":[1,2]}`,
+			`{"inferredOneOfTail":[1,2]}`,
+			`{"inferredNotSlot":[1]}`,
+			// The allOf whose unreadable branch used to be enforced by halves:
+			// the string was accepted and only the number was refused.
+			`{"allOfNot":"s"}`,
+			`{"allOfNot":1}`,
+			`{"anyOfNot":"s"}`,
+			`{"anyOfNot":1}`,
+			// The keywords an inline object property dropped whole.
+			`{"inlineFalseNames":{"a":1}}`,
+			`{"inlineNotNames":{"a":1}}`,
+			`{"inlineFalseDependent":{"k":1}}`,
+			`{"inlineNotDependent":{"k":1}}`,
+			`{"inlineRequired":{"b":1}}`,
+			`{"inlineMinProps":{"a":1}}`,
+			`{"inlineMaxProps":{"a":1,"b":2}}`,
+			`{"inlineDepRequired":{"k":1}}`,
+			`{"nullableInlineNames":{"a":1}}`,
+			// No branch of these accepts an object without "a", and reading the
+			// first branch as an object shape would refuse the string instead.
+			`{"strBranchRequired":{"a":1}}`,
+			`{"unionBranchRequired":{"b":1}}`,
+			// The `not` reads its inner schema whole.
+			`{"notTypedConst":"x"}`,
+			`{"notShallowEnum":"a"}`,
+			// A composition still refuses what no branch admits.
+			`{"oneOfOneFalse":1}`,
+			`{"anyOfOneFalse":1}`,
+			// The controls that were already rejecting, and still are.
+			`{"okNames":{"abcd":1}}`,
+			`{"okContains":[]}`,
+			`{"okContains":["x"]}`,
+		},
+	)
+}
+
+// TestEnumOutsideDeclaredTypeAdmitsNothing is the behavioural half of issue
+// #145. A schema listing enum or const members its own "type" forbids was read
+// as one admitting them: {"type":"string","const":5} emitted `const Root string
+// = 5`, which does not build, and {"type":"string","enum":["a",5]} became a raw
+// enum listing both and accepted 5.
+//
+// The invalid list is the whole of the defect. It runs the one-member spelling
+// (`const`), the one-member enum, the several-member enum and the partial list
+// through every position that resolves rather than names -- a declared property,
+// an element, a map value, a tuple slot, patternProperties, an allOf branch, an
+// anyOf branch, a oneOf branch and a $ref, which is the route a document root
+// takes -- and it runs each declared type against a member of the wrong kind,
+// because the base type differs per type name and two of them (the map an
+// "object" maps to and the slice an "array" maps to) have no Go constants at
+// all, where the build failure reads `invalid constant type` instead.
+//
+// The valid list is what the fix must not cost, and it carries three kinds of
+// control:
+//
+//   - The partial list, wherever it appears. {"type":"string","enum":["a",5]}
+//     admits "a", and a filter that emptied the list rather than narrowing it
+//     would refuse it. This is the accept-control the change is most easily got
+//     wrong against, which is why it sits beside every rejection rather than
+//     once.
+//   - untypedEnum, which states no "type" at all and must be filtered by
+//     nothing. A type this generator *infers* is not an assertion the schema
+//     made, and reading one here would refuse {"untypedEnum":5}. unionEnum and
+//     nullableEnum are the same control one step out: a member matching any one
+//     of the declared types survives.
+//   - integerFloatSpelling, which reads the value and not the notation. A member
+//     written 1 and an instance written 1.0 are the same number, and from draft
+//     6 on that instance is an integer; judging the notation would drop the
+//     member and refuse both spellings.
+//
+// The empty container beside every container rejection is the third control, and
+// it is the one #142 already needed: a sub-schema about an element or a map
+// value says nothing about an array or an object that holds none.
+func TestEnumOutsideDeclaredTypeAdmitsNothing(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/enum_outside_declared_type.json",
+		[]string{
+			`{}`,
+			// The partial list admits the member its type does admit, at every
+			// position it was measured at.
+			`{"enumPartialProp":"a"}`,
+			`{"enumPartialItems":["a"]}`,
+			`{"enumPartialValues":{"x":"a"}}`,
+			`{"enumPartialSlot":["a"]}`,
+			`{"enumPartialPattern":{"a1":"a"}}`,
+			`{"enumPartialRef":"a"}`,
+			`{"fracInInteger":1}`,
+			// The empty container satisfies a sub-schema about its contents.
+			`{"constOutsideItems":[]}`,
+			`{"enumPartialItems":[]}`,
+			`{"constOutsideValues":{}}`,
+			`{"enumPartialValues":{}}`,
+			`{"constOutsideSlot":[]}`,
+			`{"enumPartialSlot":[]}`,
+			`{"constOutsidePattern":{}}`,
+			`{"constOutsidePattern":{"b":1}}`,
+			`{"enumPartialPattern":{}}`,
+			`{"enumPartialPattern":{"b":1}}`,
+			// The branch that can match is the one the schema left.
+			`{"constOutsideOneOf":5}`,
+			// The members the declared type does admit.
+			`{"typedConst":"a"}`,
+			`{"typedEnum":"a"}`,
+			`{"typedEnum":"b"}`,
+			`{"untypedEnum":"a"}`,
+			`{"untypedEnum":5}`,
+			`{"unionEnum":"a"}`,
+			`{"unionEnum":5}`,
+			`{"nullableEnum":"a"}`,
+			`{"integerEnum":1}`,
+			`{"integerEnum":2}`,
+			`{"integerFloatSpelling":1}`,
+			`{"integerFloatSpelling":1.0}`,
+			`{"numberEnum":1.5}`,
+			`{"numberEnum":2}`,
+			`{"objectEnum":{"k":1}}`,
+			`{"arrayEnum":[1]}`,
+			`{"boolEnum":true}`,
+			`{"okItems":[]}`,
+			`{"okItems":["a"]}`,
+			`{"okItems":["a","b"]}`,
+			// The keyword positions, each with the container that satisfies
+			// them: a tail that must be empty, an object with nothing
+			// unevaluated, an object with no keys, and the trigger absent.
+			`{"constOutsideUnevalItems":[]}`,
+			`{"constOutsideUnevalItems":[1]}`,
+			`{"constOutsideUnevalProps":{}}`,
+			`{"constOutsideUnevalProps":{"a":1}}`,
+			`{"constOutsideNames":{}}`,
+			`{"constOutsideDependent":{}}`,
+			`{"constOutsideDependent":{"j":1}}`,
+			// The negation of a schema admitting nothing admits everything.
+			`{"notConstOutside":"a"}`,
+			`{"notConstOutside":5}`,
+			`{"notConstOutside":null}`,
+			`{"notConstOutside":{"a":1}}`,
+		},
+		[]string{
+			// The reported spelling. constOutsideProp is the control that says
+			// the enum rows are a different question: a declared property keeps
+			// its type and emits a field-level const rule, and was already
+			// right.
+			`{"constOutsideProp":"a"}`,
+			`{"constOutsideProp":5}`,
+			`{"enumOutsideProp":"a"}`,
+			`{"enumOutsideProp":5}`,
+			`{"enumAllOutsideProp":"a"}`,
+			`{"enumAllOutsideProp":1}`,
+			`{"constOutsideRef":"a"}`,
+			`{"constOutsideRef":5}`,
+			// The partial list refuses the member its type forbids, and every
+			// value that was never listed.
+			`{"enumPartialProp":5}`,
+			`{"enumPartialProp":"b"}`,
+			`{"enumPartialRef":5}`,
+			`{"enumPartialRef":"b"}`,
+			`{"fracInInteger":2.5}`,
+			`{"fracInInteger":3}`,
+			// The element, the map value, the slot and patternProperties.
+			`{"constOutsideItems":["a"]}`,
+			`{"constOutsideItems":[5]}`,
+			`{"enumPartialItems":[5]}`,
+			`{"enumPartialItems":["b"]}`,
+			`{"constOutsideValues":{"x":"a"}}`,
+			`{"enumPartialValues":{"x":5}}`,
+			`{"enumPartialValues":{"x":"b"}}`,
+			`{"constOutsideSlot":["a"]}`,
+			`{"enumPartialSlot":[5]}`,
+			`{"enumPartialSlot":["b"]}`,
+			`{"constOutsidePattern":{"a1":"a"}}`,
+			`{"enumPartialPattern":{"a1":5}}`,
+			`{"enumPartialPattern":{"a1":"b"}}`,
+			// The compositions.
+			`{"constOutsideAllOf":"a"}`,
+			`{"constOutsideAllOf":5}`,
+			`{"constOutsideAnyOf":"a"}`,
+			`{"constOutsideAnyOf":5}`,
+			`{"constOutsideOneOf":"a"}`,
+			// One member of the wrong kind for each declared type. The base type
+			// differs per name, and three of them have no Go constants at all.
+			`{"fracOutsideInteger":2.5}`,
+			`{"fracOutsideInteger":1}`,
+			`{"nullOutsideConst":5}`,
+			`{"nullOutsideConst":null}`,
+			`{"objectOutsideConst":5}`,
+			`{"objectOutsideConst":{}}`,
+			`{"boolOutsideConst":5}`,
+			`{"boolOutsideConst":true}`,
+			`{"arrayOutsideConst":5}`,
+			`{"arrayOutsideConst":[]}`,
+			`{"numberOutsideConst":"a"}`,
+			`{"numberOutsideConst":1}`,
+			// The controls still refuse what they always refused, which is what
+			// a blanket "every typed enum admits nothing" would have satisfied
+			// without meaning anything.
+			`{"typedConst":"b"}`,
+			`{"typedEnum":"c"}`,
+			`{"untypedEnum":"b"}`,
+			`{"unionEnum":"b"}`,
+			`{"nullableEnum":5}`,
+			`{"integerEnum":3}`,
+			`{"integerFloatSpelling":2}`,
+			`{"numberEnum":3}`,
+			`{"objectEnum":{}}`,
+			`{"arrayEnum":[]}`,
+			`{"boolEnum":false}`,
+			`{"okItems":["c"]}`,
+			// The keyword positions. Each of these honoured `false` and
+			// {"enum":[]} already and read the third spelling as a sub-schema
+			// stating nothing.
+			`{"constOutsideUnevalItems":[1,2]}`,
+			`{"constOutsideUnevalItems":[1,"a"]}`,
+			`{"constOutsideUnevalProps":{"x":1}}`,
+			`{"constOutsideNames":{"a":1}}`,
+			`{"constOutsideDependent":{"k":1}}`,
+			`{"constOutsideContains":[]}`,
+			`{"constOutsideContains":[1]}`,
+			`{"constOutsideContains":["a"]}`,
+		},
+	)
+}
+
+// TestEnumFilterReadsWhatTheTypeAsserts holds the three dialect readings issue
+// #145's filter has to get right, each of which would otherwise refuse a
+// document the schema states -- the failure this repository treats as worse than
+// a missing check.
+//
+// draft3/any is the half the filter cannot reach at all, and the reason
+// generateEnumDef also asks whether its members fit the const form. "any" is a
+// type name that maps to no Go type of its own, so the enum's base came out
+// `any`: `const X Root = "a"` is `invalid constant type`, and the Validate
+// emitted beside it took an interface receiver. Nothing is filtered here -- the
+// type admits every member there is -- so the only thing that changes is the
+// form the enum is emitted in, and the raw form holds any member because it
+// compares JSON encodings rather than Go constants.
+//
+// draft3/typeAlternatives is the type array that carries a whole schema. Those
+// alternatives are held apart from the names, so the names are not the whole of
+// the type and a member matching none of them may still match one of the
+// schemas. Reading the names alone would drop 5.
+//
+// draft7/refSibling is the type that asserts nothing. Through draft 7 a $ref
+// replaces the schema object it sits in, so a "type" written beside one forbids
+// nothing and filtering against it would empty the enum and refuse 5 -- which
+// the referenced integer schema admits.
+//
+// The invalid rows are what keep each of these from being "emit nothing and
+// compile": every listed member is still accepted and everything outside the
+// list is still refused.
+func TestEnumFilterReadsWhatTheTypeAsserts(t *testing.T) {
+	t.Run("draft3", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/enum_draft3_type_names.json",
+			[]string{
+				`{}`,
+				`{"anyTyped":"a"}`,
+				`{"anyTyped":"b"}`,
+				`{"typeAlternatives":"a"}`,
+				`{"typeAlternatives":5}`,
+			},
+			[]string{
+				`{"anyTyped":"c"}`,
+				`{"anyTyped":5}`,
+				`{"anyTyped":null}`,
+				`{"typeAlternatives":"b"}`,
+				`{"typeAlternatives":7}`,
+			},
+		)
+	})
+	t.Run("draft7RefSibling", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/enum_ref_sibling_draft7.json",
+			[]string{
+				`{}`,
+				`{"stringSibling":5}`,
+				`{"objectSibling":5}`,
+			},
+			[]string{
+				`{"stringSibling":"a"}`,
+				`{"objectSibling":"a"}`,
+				`{"objectSibling":{}}`,
+			},
+		)
+	})
+}

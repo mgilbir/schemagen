@@ -88,13 +88,13 @@ func (r RawEnum) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid RawEnum value: %s", string(r))
 	}
-	s := string(canonical)
+	_canon := string(canonical)
 	for _, allowed := range rawEnumAllowedJSON {
-		if s == allowed {
+		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid RawEnum value: %s", s)
+	return fmt.Errorf("invalid RawEnum value: %s", _canon)
 }
 
 type RawAlias RawEnum

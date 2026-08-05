@@ -37,13 +37,13 @@ func (p Pair) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid Pair value: %s", string(p))
 	}
-	s := string(canonical)
+	_canon := string(canonical)
 	for _, allowed := range pairAllowedJSON {
-		if s == allowed {
+		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid Pair value: %s", s)
+	return fmt.Errorf("invalid Pair value: %s", _canon)
 }
 
 type AllOfObjectEnumConstMember struct {
@@ -647,13 +647,13 @@ func (a AllOfObjectEnumStandalone) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
 	}
-	s := string(canonical)
+	_canon := string(canonical)
 	for _, allowed := range allOfObjectEnumStandaloneAllowedJSON {
-		if s == allowed {
+		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", s)
+	return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", _canon)
 }
 
 type AllOfObjectEnumViaRef struct {

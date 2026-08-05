@@ -70,13 +70,13 @@ func (r Raw) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid Raw value: %s", string(r))
 	}
-	s := string(canonical)
+	_canon := string(canonical)
 	for _, allowed := range rawAllowedJSON {
-		if s == allowed {
+		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid Raw value: %s", s)
+	return fmt.Errorf("invalid Raw value: %s", _canon)
 }
 
 type Stamp string
@@ -173,13 +173,13 @@ func (w WrappedRaw) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid WrappedRaw value: %s", string(w))
 	}
-	s := string(canonical)
+	_canon := string(canonical)
 	for _, allowed := range wrappedRawAllowedJSON {
-		if s == allowed {
+		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid WrappedRaw value: %s", s)
+	return fmt.Errorf("invalid WrappedRaw value: %s", _canon)
 }
 
 type WrappedStamp string
