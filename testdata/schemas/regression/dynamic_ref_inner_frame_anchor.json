@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemagen.test/inner-frame/main",
+  "type": "object",
+  "properties": { "box": { "$ref": "holder" } },
+  "$defs": {
+    "aStray": { "$id": "strayRes", "$dynamicAnchor": "itemType" },
+    "genericBox": {
+      "$id": "genericBox",
+      "type": "object",
+      "properties": { "value": { "$dynamicRef": "#itemType" } },
+      "required": ["value"],
+      "$defs": { "defaultItemType": { "$dynamicAnchor": "itemType" } }
+    },
+    "holder": {
+      "$id": "holder",
+      "$ref": "genericBox",
+      "$defs": { "itemType": { "$dynamicAnchor": "itemType", "type": "string" } }
+    }
+  }
+}
