@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,114 @@ func TestListJSONFilesSkipsProposals(t *testing.T) {
 	}
 }
 
+// TestMissingDraftDirsRefusesAPartialCheckout covers the one input that makes
+// every staleness sweep in this package lie at once.
+//
+// A missing draft directory used to read as "the corpus does not have this
+// draft" on both sides of every sweep: the walks skipped it and the counting
+// functions skipped it too, so the counts agreed, nothing looked filtered, the
+// sweeps ran, and every known-failure entry naming the absent draft was reported
+// stale. Deleting live suppressions on that advice is the failure this whole
+// mechanism exists to prevent, arriving through the mechanism itself.
+//
+// It is theoretical only because the corpus is pinned, which is a guarantee made
+// in the Makefile. This is where the dependency on it is written down and
+// enforced.
+//
+// The fixture is bare directories on purpose, and that is faithful rather than
+// synthetic: missingDraftDirs stats a directory and reads nothing inside it, so
+// a directory is the whole of its input. The half of the check that needs a real
+// checkout is below, and takes one when there is one.
+func TestMissingDraftDirsRefusesAPartialCheckout(t *testing.T) {
+	root := t.TempDir()
+	for _, draft := range allDrafts {
+		if err := os.MkdirAll(filepath.Join(root, draft), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	if got := missingDraftDirs(root); len(got) != 0 {
+		t.Fatalf("missingDraftDirs on a complete checkout = %v, want none", got)
+	}
+
+	// v1 is the draft this actually happened to: it shipped in the corpus for
+	// months while allDrafts named six, and 438 groups went unrun (#121). The
+	// opposite state — allDrafts naming it and the checkout not having it — is
+	// what this refuses.
+	if err := os.RemoveAll(filepath.Join(root, "v1")); err != nil {
+		t.Fatalf("rm: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "draft3")); err != nil {
+		t.Fatalf("rm: %v", err)
+	}
+	if got, want := missingDraftDirs(root), []string{"draft3", "v1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("missingDraftDirs = %v, want %v — an absent draft directory has to be reported as an "+
+			"incomplete checkout, or every sweep reports its entries stale", got, want)
+	}
+
+	// And the real checkout, when this repository has one. The pin says all
+	// seven are there; a bare-directory fixture cannot say whether the names in
+	// allDrafts are the names on disk, and this can.
+	if _, err := os.Stat(jstsBaseDir); err == nil {
+		if got := missingDraftDirs(jstsBaseDir); len(got) != 0 {
+			t.Errorf("the checkout at %s is missing %v — run 'make download-test-suite'", jstsBaseDir, got)
+		}
+	}
+}
+
+// TestUnlistedDraftDirsRefusesAnUnrunDraft is the same coupling read the other
+// way, and it is the direction that has already cost something: v1 shipped in
+// the corpus for months while allDrafts named six drafts, so 438 groups were
+// never run and every figure this suite reports read as full coverage (#121).
+func TestUnlistedDraftDirsRefusesAnUnrunDraft(t *testing.T) {
+	root := t.TempDir()
+	for _, draft := range allDrafts {
+		if err := os.MkdirAll(filepath.Join(root, draft), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	// The pinned checkout's own tests/latest, which points at draft2020-12 and
+	// must stay skipped: walking it would run that draft twice and double every
+	// figure derived from it.
+	if err := os.Symlink(filepath.Join(root, "draft2020-12"), filepath.Join(root, "latest")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	// A README, because the suite ships one at this level: a file is not a draft.
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := unlistedDraftDirs(root)
+	if err != nil {
+		t.Fatalf("unlistedDraftDirs: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("unlistedDraftDirs on the pinned layout = %v, want none — a symlink to a listed draft and "+
+			"a plain file are not unrun drafts", got)
+	}
+
+	// The plant: the next draft arrives upstream and nobody adds it to allDrafts.
+	if err := os.MkdirAll(filepath.Join(root, "v2"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	got, err = unlistedDraftDirs(root)
+	if err != nil {
+		t.Fatalf("unlistedDraftDirs: %v", err)
+	}
+	if want := []string{"v2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unlistedDraftDirs = %v, want %v — a draft directory nothing walks is a corpus this suite "+
+			"reports on without running", got, want)
+	}
+
+	if _, err := os.Stat(jstsBaseDir); err == nil {
+		got, err := unlistedDraftDirs(jstsBaseDir)
+		if err != nil {
+			t.Fatalf("unlistedDraftDirs: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("the checkout at %s has %v, which allDrafts does not name and nothing runs", jstsBaseDir, got)
+		}
+	}
+}
+
 // TestStaleKnownFailureKeys covers the sweep that the #121 corpus bump showed
 // was missing.
 //
@@ -164,6 +273,57 @@ func TestKeyLedgerCompleteness(t *testing.T) {
 	duplicated.visit(duplicated.offer("a"))
 	if !duplicated.complete() {
 		t.Error("a key offered twice and reached twice is still a complete run")
+	}
+
+	// The plant for the count comparison this used to be. Three offered, three
+	// visited, and one of the three never reached: len(offered) == len(visited)
+	// answers "complete" over a gap the sweep would then read as three vanished
+	// cases. Only containment sees it.
+	miscounted := newKeyLedger()
+	for _, key := range []string{"a", "b", "c"} {
+		miscounted.offer(key)
+	}
+	miscounted.visit("a")
+	miscounted.visit("b")
+	miscounted.visit("never offered")
+	if len(miscounted.offered) != len(miscounted.visited) {
+		t.Fatalf("this plant is only about a count comparison if the counts coincide: offered %d, visited %d",
+			len(miscounted.offered), len(miscounted.visited))
+	}
+	if miscounted.complete() {
+		t.Error("a run that never reached \"c\" is not complete, whatever the two sizes are — complete() has " +
+			"gone back to comparing counts, and the sweep will report live entries as vanished upstream")
+	}
+	if got, want := miscounted.unofferedVisits(), []string{"never offered"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unofferedVisits = %v, want %v", got, want)
+	}
+	if got := full.unofferedVisits(); len(got) != 0 {
+		t.Errorf("a run that offered every key it reached has no unoffered visits, got %v", got)
+	}
+}
+
+// TestUnofferedVisitDoesNotSweepAStaleEntryAway is the second half of the same
+// defect, and the sharper one.
+//
+// An unoffered visit does not only hide a gap from complete(); it marks the key
+// as carried, so an entry naming it is swept up as live. The ledger would then be
+// reporting on a case the corpus does not have, which is precisely the lie the
+// whole mechanism exists to catch, arriving from inside the mechanism.
+func TestUnofferedVisitDoesNotSweepAStaleEntryAway(t *testing.T) {
+	l := newKeyLedger()
+	l.visit(l.offer("draft2020-12/type/integer type matches integers/an integer is an integer"))
+	// Reached without being offered: the shape a refactor produces when a key is
+	// built in the subtest rather than handed to it.
+	l.visit("draft2020-12/type/integer type matches integers/a float is no integer")
+
+	known := map[string]string{"draft2020-12/type/integer type matches integers/a float is no integer": "renamed upstream"}
+	if got := staleKnownFailureKeys(known, l); len(got) != 0 {
+		t.Fatalf("staleKnownFailureKeys = %v; a visited key reads as carried however it was reached, "+
+			"which is why the ledger has to notice the visit was never offered", got)
+	}
+	if got := l.unofferedVisits(); len(got) != 1 {
+		t.Errorf("unofferedVisits = %v, want the one key that was reached without being offered — without "+
+			"it nothing at all reports that stale entry", got)
 	}
 }
 
@@ -248,6 +408,220 @@ func replayFlakyRun(groups []flakyFixtureGroup) *flakySweepState {
 		replayFlakyConsumer(s, consumer, groups)
 	}
 	return s
+}
+
+// replayValidationRun builds what an unfiltered TestExternalValidation leaves
+// behind for its two end-of-run sweeps: the corpus walk's own answer, the fate
+// of every group it walked, and the ledger of every case key it offered.
+//
+// It replays the placement, which is the property under test — the fate and the
+// offers are recorded during the walk, outside the group subtest, so that a -run
+// filter below the file level shows up as a case not reached rather than a case
+// the corpus has lost. Nothing here needs a subtest, because nothing here is
+// supposed to depend on one.
+func replayValidationRun(groups []flakyFixtureGroup) (map[string][]string, map[string]groupFate, *keyLedger) {
+	corpus := make(map[string][]string)
+	fates := make(map[string]groupFate)
+	l := newKeyLedger()
+	for _, g := range groups {
+		if !g.suitable {
+			// Not code-gen-suitable: TestExternalValidation does not count it,
+			// and corpusCodeGenSuitableGroups does not return it.
+			continue
+		}
+		key := failureKey(g.draft, g.file, g.group)
+		corpus[key] = g.cases
+		switch {
+		case g.validates:
+			fates[key] = fateValidated
+			for _, c := range g.cases {
+				l.visit(l.offer(failureKey(key, c)))
+			}
+		case len(g.valid) < len(g.cases):
+			fates[key] = fateUnvalidated
+		default:
+			fates[key] = fateNoRejection
+		}
+	}
+	return corpus, fates, l
+}
+
+// TestWalkRecordGapsCatchesARecordFilledInsideTheSubtest plants the refactor that
+// would make both of TestExternalValidation's sweeps report live entries as
+// stale, and that nothing used to notice.
+//
+// Both sweeps judge a record filled during the walk. Both are safe under a -run
+// filter selecting some groups or some cases only because the record is filled
+// *outside* the group subtest: such a filter still walks every file, so the
+// coverage check sees the whole corpus and stands nobody down. Move either write
+// inside the subtest and the record shrinks to the selected groups while every
+// other check still reads as a full run — reportStaleUnvalidated then calls every
+// unselected allow-list entry a group the suite no longer has, and the ledger,
+// offering and reaching the same shrunken set, reads as complete and calls every
+// unselected knownValidationFailures entry a case that vanished upstream.
+//
+// The two plants are that refactor under the two filter shapes it survives
+// today: one selecting a group, one selecting a case.
+func TestWalkRecordGapsCatchesARecordFilledInsideTheSubtest(t *testing.T) {
+	const colors = "draft3/optional/format/color/validation of CSS colors"
+	const integers = "draft2020-12/type/integer type matches integers"
+
+	corpus, fates, ledger := replayValidationRun(flakyFixture)
+	if unrecorded, unoffered := walkRecordGaps(corpus, fates, ledger); len(unrecorded) != 0 || len(unoffered) != 0 {
+		t.Fatalf("an unfiltered run has no gaps: unrecorded %v, unoffered %v — if this fires, the rest of "+
+			"this test is measuring the fixture rather than the guard", unrecorded, unoffered)
+	}
+
+	t.Run("a fate recorded inside the group subtest", func(t *testing.T) {
+		corpus, fates, ledger := replayValidationRun(flakyFixture)
+		// `-run TestExternalValidation/.../integer type matches integers` with
+		// the fates write moved into the subtest: the colours group is walked,
+		// counted, and no longer recorded.
+		delete(fates, colors)
+		unrecorded, unoffered := walkRecordGaps(corpus, fates, ledger)
+		if want := []string{colors}; !reflect.DeepEqual(unrecorded, want) {
+			t.Errorf("unrecorded = %v, want %v — this is the group whose knownUnvalidatedRejections entry "+
+				"reportStaleUnvalidated would now call stale", unrecorded, want)
+		}
+		if len(unoffered) != 0 {
+			t.Errorf("unoffered = %v; the colours group produces no Validate(), so it offers no case key "+
+				"and must not be asked for one", unoffered)
+		}
+	})
+
+	t.Run("a case key offered inside the group subtest", func(t *testing.T) {
+		corpus, fates, ledger := replayValidationRun(flakyFixture)
+		// `-run '.../an integer is an integer'` with the offer moved into the
+		// subtest: the other case is neither offered nor reached, so the ledger
+		// reads as complete over a corpus it only half walked.
+		dropped := failureKey(integers, "a float is not an integer")
+		delete(ledger.offered, dropped)
+		delete(ledger.visited, dropped)
+		if !ledger.complete() {
+			t.Fatal("the ledger has to read as complete here, or the sweep would stand down on its own " +
+				"and this plant would be demonstrating the wrong thing")
+		}
+		unrecorded, unoffered := walkRecordGaps(corpus, fates, ledger)
+		if len(unrecorded) != 0 {
+			t.Errorf("unrecorded = %v, want none: every group was still walked and recorded", unrecorded)
+		}
+		if want := []string{dropped}; !reflect.DeepEqual(unoffered, want) {
+			t.Errorf("unoffered = %v, want %v — this is the case a knownValidationFailures entry would now "+
+				"be told had vanished upstream", unoffered, want)
+		}
+	})
+
+	t.Run("a case key reached but never offered", func(t *testing.T) {
+		corpus, fates, ledger := replayValidationRun(flakyFixture)
+		// The other way the offer goes missing: the call is dropped and the
+		// visit inside the subtest is left to stand for it. The offer is the
+		// record a -run filter is measured against and a visit cannot stand in
+		// for it, so this has to be reported as a missing offer even though the
+		// key is in the ledger.
+		for key := range ledger.offered {
+			delete(ledger.offered, key)
+		}
+		_, unoffered := walkRecordGaps(corpus, fates, ledger)
+		want := []string{
+			failureKey(integers, "an integer is an integer"),
+			failureKey(integers, "a float is not an integer"),
+		}
+		if !reflect.DeepEqual(unoffered, want) {
+			t.Errorf("unoffered = %v, want %v — the check has to read the offers; reading the visits too "+
+				"lets a run that offers nothing at all look fully recorded", unoffered, want)
+		}
+	})
+}
+
+// TestStaleCaseCauseNamesTheRegression covers the second half of a stale report:
+// what it tells the reader to do.
+//
+// A group that regresses to producing no Validate() takes its knownValidation-
+// Failures entries out of the run, and they are reported stale — word for word
+// the message a case renamed upstream produces, and the two ask for opposite
+// actions. Deleting the entry is right for the rename and wrong for the
+// regression, where it discards the record of a defect that has just stopped
+// being measured. The coverage floor reports the same event separately, so
+// nothing is missed; what the reader sees is two unrelated complaints, with the
+// louder one pointing away from the cause. fates already knows which it is.
+func TestStaleCaseCauseNamesTheRegression(t *testing.T) {
+	const colors = "draft3/optional/format/color/validation of CSS colors"
+	const integers = "draft2020-12/type/integer type matches integers"
+	const anchor = "draft2020-12/anchor/same $anchor with different base uri"
+	const siblingID = "draft7/ref/$ref prevents a sibling $id from changing the base uri"
+
+	fates := map[string]groupFate{
+		integers:  fateValidated,
+		colors:    fateUnvalidated,
+		anchor:    fateCodeGenError,
+		siblingID: fateValidated,
+	}
+
+	for _, tt := range []struct {
+		name, key string
+		fates     map[string]groupFate
+		want      []string
+		absent    []string
+	}{{
+		name:  "a case renamed upstream",
+		key:   integers + "/a float is no integer",
+		fates: fates,
+		// The one reading the sweep was written for, and the only one where
+		// deleting the key is the right answer.
+		want:   []string{`"` + integers + `"`, "which this run did test", "delete the key"},
+		absent: []string{"is not stale"},
+	}, {
+		name:  "a group that stopped producing a Validate()",
+		key:   colors + "/an invalid CSS color name",
+		fates: fates,
+		want: []string{"is not stale", `"` + colors + `"`, "no Validate() method",
+			"coverage regression", "rather than deleting the key"},
+	}, {
+		name:   "a group that stopped compiling",
+		key:    anchor + "/$ref resolves to /$defs/A/allOf/1",
+		fates:  fates,
+		want:   []string{"is not stale", `"` + anchor + `"`, "fails code generation", "TestExternalCodeGen"},
+		absent: []string{"no Validate() method"},
+	}, {
+		// A case description carrying a slash, which 56 of them do in the pinned
+		// corpus. Cutting the key at its last "/" would name a group that does
+		// not exist and fall through to "no group in this run walked it" — the
+		// answer that hides the regression, arrived at through a parse rather
+		// than a lookup.
+		name:   "a case description containing a slash",
+		key:    siblingID + "/$ref resolves to /definitions/base_foo, data does not validate",
+		fates:  fates,
+		want:   []string{`"` + siblingID + `"`, "which this run did test"},
+		absent: []string{"matches no case of any group"},
+	}, {
+		name:   "a group the corpus no longer has",
+		key:    "draft2020-12/definitions/valid definition/valid definition schema",
+		fates:  fates,
+		want:   []string{"matches no case of any group this run walked", "delete the key"},
+		absent: []string{"is not stale"},
+	}, {
+		// A sweep with no record of what became of each group cannot choose, and
+		// must not appear to: it names both possibilities, as it always did.
+		name:   "no record of the groups",
+		key:    integers + "/a float is no integer",
+		fates:  nil,
+		want:   []string{"matches no case this run tested", "or its group stopped being tested at all"},
+		absent: []string{"is not stale"},
+	}} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := staleCaseCause(tt.key, tt.fates)
+			for _, want := range tt.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("staleCaseCause(...) = %q,\n  which does not contain %q", got, want)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(got, absent) {
+					t.Errorf("staleCaseCause(...) = %q,\n  which must not contain %q", got, absent)
+				}
+			}
+		})
+	}
 }
 
 // TestFlakySweepIsCorpusWide is the reason knownFlakyTests's sweep is not four
