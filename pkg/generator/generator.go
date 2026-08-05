@@ -14048,25 +14048,26 @@ var patternValueScalarKeywords = map[string]bool{
 // everything a patternProperties sub-schema says, so the bucket needs no type of
 // its own.
 //
-// Decided from the re-marshaled key set rather than from a list of struct
-// fields, so a keyword the parser learns later fails closed -- it is not in the
-// set, the answer is no, and the position gets a materialized type that does
-// understand it. That is the rule aliasVariantRules and dynamicBranchChecks
-// already follow, and here it is what stops this from becoming a second
-// hand-maintained list of keywords that silently lags the first.
+// Decided from schemaKeywordSet rather than from a list of struct fields, so a
+// keyword the parser learns later fails closed -- it is not in the set, the
+// answer is no, and the position gets a materialized type that does understand
+// it. That is the rule aliasVariantRules and dynamicBranchChecks already follow,
+// and here it is what stops this from becoming a second hand-maintained list of
+// keywords that silently lags the first. It is also what answers the keywords the
+// marshaled form drops: {"patternProperties":{"^a":{"const":null}}} showed no key
+// at all, so the scalar rules were held to cover a sub-schema they say nothing
+// about and every value under a matching key was accepted (issue #154).
 func patternRulesCoverSchema(s *schema.Schema) bool {
 	if s == nil {
 		return true
 	}
+	// TypeSchemas stays a test of its own: schemaKeywordSet reports it as "type",
+	// which this list allows, and the scalar type rule can only carry a name.
 	if len(s.Extensions) > 0 || len(s.TypeSchemas) > 0 {
 		return false
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return false
 	}
 	for key := range present {

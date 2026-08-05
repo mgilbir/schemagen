@@ -8712,3 +8712,130 @@ func TestRefDisplacesSiblingValuesFollowsTheDraft(t *testing.T) {
 		})
 	}
 }
+
+// TestAcceptsEveryValueReadsTheHiddenSpellings is issue #154's predicate.
+//
+// It answers "this schema forbids nothing", and two callers give a position no
+// type of its own when it says yes. It decided from the re-marshaled key set
+// alone, so `"enum": []` and `"const": null` -- neither of which leaves a key
+// behind -- read as schemas stating nothing and it answered true for both. The
+// empty enum admits no value at all.
+//
+// The accept rows are the schemas for which true is the right answer, and they
+// are what keeps the fix from being "answer false more often": a position whose
+// schema really does state nothing must go on getting the convenient type rather
+// than a wrapper carrying a check that can never fail.
+func TestAcceptsEveryValueReadsTheHiddenSpellings(t *testing.T) {
+	forbidsSomething := []string{
+		`{"enum":[]}`,
+		`{"const":null}`,
+		`{"enum":["a"]}`,
+		`{"const":"a"}`,
+		`{"allOf":[{"enum":[]}]}`,
+		`{"anyOf":[{"const":null}]}`,
+		`{"oneOf":[{"enum":[]}]}`,
+		`{"type":"string"}`,
+		`false`,
+	}
+	acceptsEverything := []string{
+		`{}`,
+		`true`,
+		`{"title":"t","description":"d"}`,
+		`{"$defs":{"T":{"type":"string"}}}`,
+		`{"allOf":[{}]}`,
+		`{"anyOf":[{},{}]}`,
+		`{"oneOf":[{}]}`,
+	}
+	for _, doc := range forbidsSomething {
+		t.Run("forbids/"+doc, func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+				t.Fatalf("acceptsEveryValue(%s) = true; the schema refuses at least one value, and a position "+
+					"answered this way is given no type to carry the check", doc)
+			}
+		})
+	}
+	for _, doc := range acceptsEverything {
+		t.Run("accepts/"+doc, func(t *testing.T) {
+			g := New(Config{PackageName: "testpkg"})
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if !g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+				t.Fatalf("acceptsEveryValue(%s) = false; the schema forbids nothing, and a wrapper built for it "+
+					"would carry a Validate that can never fail", doc)
+			}
+		})
+	}
+	// A draft 3 "type" whose entries are schemas rather than names. It is held on
+	// TypeSchemas, which is tagged "-", so the marshaled form shows no "type" at
+	// all and the schema read as one asserting nothing. Built here rather than
+	// unmarshaled because the shape is what matters, not the parse.
+	t.Run("forbids/schema-valued type", func(t *testing.T) {
+		g := New(Config{PackageName: "testpkg"})
+		s := schema.Schema{TypeSchemas: []*schema.Schema{{Type: schema.TypeList{"string"}}}}
+		if g.acceptsEveryValue(&s, 0, map[*schema.Schema]bool{}) {
+			t.Fatal("acceptsEveryValue(draft 3 schema-valued type) = true; the alternatives narrow what the " +
+				"position admits, and a position answered this way is given no type to carry the check")
+		}
+	})
+}
+
+// TestDynamicBranchChecksRefusesTheHiddenSpellings is the same reading at the
+// gate that decides whether an applicator branch can be evaluated against an
+// untyped value.
+//
+// A branch it accepts with no checks matches every value. `"enum": []` matches
+// none and `"const": null` matches one, so reading either as "no checks" makes
+// the branch count as a match where it should not: {"anyOf":[{"const":null}]}
+// accepted every value, and an empty-enum branch inside a oneOf counted a second
+// match and refused a document the schema permits.
+func TestDynamicBranchChecksRefusesTheHiddenSpellings(t *testing.T) {
+	refused := []string{`{"enum":[]}`, `{"const":null}`, `{"enum":["a"]}`, `{"const":"a"}`, `{"not":{}}`}
+	for _, doc := range refused {
+		t.Run("refused/"+doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			g := New(Config{PackageName: "testpkg"})
+			_ = g
+			if _, ok := dynamicBranchChecks(&s); ok {
+				t.Fatalf("dynamicBranchChecks(%s) accepted the branch; it states something the checks cannot "+
+					"carry, and a branch with no checks matches every value", doc)
+			}
+		})
+	}
+	// The controls: branches the evaluator does model, which must go on being
+	// modelled. A branch stating nothing at all matches everything and that is
+	// the right answer for it.
+	accepted := []string{`{"type":"string"}`, `{"minLength":3}`, `{}`, `{"title":"t"}`}
+	for _, doc := range accepted {
+		t.Run("accepted/"+doc, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if _, ok := dynamicBranchChecks(&s); !ok {
+				t.Fatalf("dynamicBranchChecks(%s) refused a branch it models", doc)
+			}
+		})
+	}
+	// A draft 3 schema-valued "type" entry is held on a field the marshaled form
+	// does not show, and the checks can only carry a type *name*. Reading it as
+	// absent made the branch match everything.
+	typeSchemas := schema.Schema{TypeSchemas: []*schema.Schema{{Type: schema.TypeList{"string"}}}}
+	if _, ok := dynamicBranchChecks(&typeSchemas); ok {
+		t.Fatal("dynamicBranchChecks(schema-valued type) accepted the branch; the checks carry a type name and " +
+			"this branch names none, so it would have matched every value")
+	}
+}

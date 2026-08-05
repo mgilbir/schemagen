@@ -31,33 +31,26 @@ var dynamicSupportedKeywords = map[string]bool{
 // evaluator cannot express. That gate is the point of the function: emitting a
 // branch that ignores one of its keywords would change which values match, so
 // the caller must fall back to generating no validation rather than wrong
-// validation. Representability is decided from the keywords actually present in
-// the re-marshaled schema, not from a hand-maintained list of struct fields --
-// a new keyword in the parser then fails closed instead of being silently
-// dropped.
+// validation. Representability is decided from schemaKeywordSet, not from a
+// hand-maintained list of struct fields -- a new keyword in the parser then
+// fails closed instead of being silently dropped.
+//
+// That set is what refuses `"enum": []`, which admits nothing and so says what
+// the boolean `false` schema on the first line says. A branch with no checks
+// matches everything, so {"oneOf":[{"enum":[]},{"type":"string"}]} counted two
+// matches for "x" and refused a document the schema permits -- the one failure
+// this generator treats as worse than a missing check. It used to be caught by a
+// local emptyEnumSchema test here, because `enum` is tagged omitempty and left no
+// key behind; the same reading now covers `"const": null`, which nothing here
+// caught and which made {"anyOf":[{"const":null}]} a branch matching every value.
+// Refusing the branch hands the whole schema to the runtime evaluator, which is
+// where a `false` branch is already answered.
 func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if s == nil || s.IsBooleanSchema() {
 		return nil, false
 	}
-	// `"enum": []` admits nothing, which is what the boolean `false` schema on
-	// the line above says, and it has to be refused here for a reason the gate
-	// below cannot cover: `enum` is tagged omitempty, so an empty one leaves no
-	// key in the re-marshaled schema and the loop reads a branch that states
-	// nothing. A branch with no checks matches everything, so
-	// {"oneOf":[{"enum":[]},{"type":"string"}]} counted two matches for "x" and
-	// refused a document the schema permits -- the one failure this generator
-	// treats as worse than a missing check. Refusing the branch hands the whole
-	// schema to the runtime evaluator, which is where a `false` branch is
-	// already answered. See emptyEnumSchema.
-	if emptyEnumSchema(s) {
-		return nil, false
-	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return nil, false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return nil, false
 	}
 	for key := range present {
@@ -92,13 +85,23 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 //
 // whole is false where a keyword it models is written in a form the checks
 // cannot carry: a type union needs alternation the evaluator does not express,
-// and draft-4's boolean exclusiveMinimum/exclusiveMaximum modify their sibling
-// `minimum`/`maximum` rather than standing on their own, so the check emitted
-// for that sibling is weaker than the schema. Both are safe to keep only where
-// weaker is acceptable.
+// a draft 3 "type" whose entries are schemas rather than names widens the union
+// past anything a name can say, and draft-4's boolean
+// exclusiveMinimum/exclusiveMaximum modify their sibling `minimum`/`maximum`
+// rather than standing on their own, so the check emitted for that sibling is
+// weaker than the schema. All three are safe to keep only where weaker is
+// acceptable.
+//
+// The schema-valued "type" is the one of the three the caller's gate cannot see
+// for itself: TypeSchemas is tagged "-", so schemaKeywordSet reports the keyword
+// (it is a "type" like any other) while the emission below finds an empty
+// s.Type and would have said the branch demands nothing at all.
 func modelledChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	whole := true
 	var checks []DynamicCheck
+	if len(s.TypeSchemas) > 0 {
+		whole = false
+	}
 	if len(s.Type) == 1 {
 		checks = append(checks, DynamicCheck{Kind: "type", Value: s.Type[0]})
 	} else if len(s.Type) > 1 {
@@ -282,16 +285,20 @@ func objectPropertyChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 // applies: a condition evaluated with one of its keywords ignored picks the
 // wrong branch and turns a document the schema allows into a rejection.
 // `then` and `else` go through objectConditionalBranchLenient instead.
+//
+// schemaKeywordSet rather than the marshaled key set alone, so that a condition
+// stating only `"enum": []` or `"const": null` is refused rather than read as a
+// condition stating nothing -- which is a condition that always holds, so `then`
+// would apply to every document. As at dynamicRootKeywordsOnly, no schema under
+// testdata/schemas generates differently either way today: a group whose `if`
+// says nothing about object shape is dropped before this is reached. The reading
+// is shared because leaving one gate on the lossy form is what issue #154 is.
 func objectConditionalBranch(keyword string, s *schema.Schema) (*ObjectConditionalBranch, bool) {
 	if s == nil || s.IsBooleanSchema() || len(s.Extensions) > 0 {
 		return nil, false
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return nil, false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return nil, false
 	}
 	for key := range present {
@@ -467,18 +474,23 @@ var dynamicRootKeywords = map[string]bool{
 }
 
 // dynamicRootKeywordsOnly reports whether every keyword on s is one the dynamic
-// evaluator owns. Decided from the re-marshaled schema so a keyword the
-// generator learns later fails closed here too.
+// evaluator owns. Decided from schemaKeywordSet so a keyword the generator
+// learns later fails closed here too.
+//
+// Reading the hidden spellings changes no answer this gate gives today, and that
+// was measured rather than assumed: every schema under testdata/schemas
+// generates identically with the marshaled key set alone. Both spellings are
+// claimed before a root reaches here -- generateTypeDef answers `"enum": []`
+// with its forbidden arm and promotes `"const": null` to a single-member enum --
+// so neither survives to be read. It uses the shared reading anyway because the
+// alternative is one gate of five left on a form known to drop keywords, which
+// is how the four defects issue #154 collects came to be four rather than one.
 func dynamicRootKeywordsOnly(s *schema.Schema) bool {
 	if s == nil || len(s.Extensions) > 0 {
 		return false
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
+	present, ok := schemaKeywordSet(s)
+	if !ok {
 		return false
 	}
 	for key := range present {

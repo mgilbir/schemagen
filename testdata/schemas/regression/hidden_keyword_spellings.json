@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HiddenKeywordSpellings",
+  "description": "Issue #154. Five gates decide what a schema states by re-marshalling it and reading the keys, and marshalling drops two spellings: `enum` is tagged omitempty so \"enum\": [] leaves no key, and \"const\": null is held on a field tagged \"-\" because encoding/json cannot tell a null constant from an absent one. A schema stating only one of those read as a schema stating nothing, so each gate handed its position a type with no check on it. Every property here pairs the hidden spelling with the spelling that was always read -- `false` beside the empty enum, a string constant beside the null one -- and the two must now be answered alike. The accept row beside each rejection is the value the schema does admit; where a schema admits nothing at all, it is the document that leaves the property out.",
+  "type": "object",
+  "$defs": {
+    "AnyOfSummary": {
+      "type": "object",
+      "properties": {"a": {"type": "string"}},
+      "anyOf": [
+        {"required": ["k"], "properties": {"k": {"type": "string"}}},
+        {"enum": []}
+      ]
+    },
+    "AnyOfSummaryFalse": {
+      "type": "object",
+      "properties": {"a": {"type": "string"}},
+      "anyOf": [
+        {"required": ["k"], "properties": {"k": {"type": "string"}}},
+        false
+      ]
+    }
+  },
+  "properties": {
+    "anyOfSummaryEmptyEnum": {"$ref": "#/$defs/AnyOfSummary"},
+    "anyOfSummaryFalse": {"$ref": "#/$defs/AnyOfSummaryFalse"},
+    "constNullBranch": {"anyOf": [{"const": null}]},
+    "constStringBranch": {"anyOf": [{"const": "a"}]},
+    "oneOfConstNull": {"oneOf": [{"const": null}, {"type": "string"}]},
+    "patternConstNull": {"type": "object", "patternProperties": {"^a": {"const": null}}},
+    "patternConstString": {"type": "object", "patternProperties": {"^b": {"const": "a"}}},
+    "plainEnum": {"enum": ["a", "b"]}
+  }
+}

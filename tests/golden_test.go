@@ -241,6 +241,9 @@ func allGoldenTests() []goldenTestCase {
 		// from 2019-09 on they run first and it does.
 		{"regression/ref_sibling_values_draft7", "testdata/schemas/regression/ref_sibling_values_draft7.json", "testdata/golden/regression/ref_sibling_values_draft7.go"},
 		{"regression/ref_sibling_values_2020", "testdata/schemas/regression/ref_sibling_values_2020.json", "testdata/golden/regression/ref_sibling_values_2020.go"},
+		// Issue #154: the two keyword spellings a re-marshaled schema does not
+		// show, beside the spellings it does, at each gate that reads one.
+		{"regression/hidden_keyword_spellings", "testdata/schemas/regression/hidden_keyword_spellings.json", "testdata/golden/regression/hidden_keyword_spellings.go"},
 	}
 }
 

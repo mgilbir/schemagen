@@ -6532,3 +6532,47 @@ func TestRefSiblingValuesFollowTheDraft(t *testing.T) {
 		)
 	})
 }
+
+// TestHiddenKeywordSpellingsAreRead is issue #154.
+//
+// Five gates decide what a schema states by re-marshalling it and reading the
+// keys, and two spellings survive that trip as nothing at all: `"enum": []`,
+// because the field is tagged omitempty, and `"const": null`, because
+// encoding/json leaves a *any nil for a null and the flag recording it is tagged
+// "-". A schema stating only one of those read as a schema stating nothing, so
+// acceptsEveryValue answered true for a schema admitting no value whatever and
+// each gate handed its position a type with no check on it.
+//
+// Every rejection below is paired with the same statement in the spelling that
+// was always read -- `false` beside the empty enum, a string constant beside the
+// null one. The pair is the point: before this the two answered differently, and
+// a position answering by spelling rather than by meaning is the shape #142 and
+// #146 already had to close twice.
+func TestHiddenKeywordSpellingsAreRead(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/hidden_keyword_spellings.json",
+		[]string{
+			`{}`,
+			`{"anyOfSummaryEmptyEnum":{"k":"y"}}`,
+			`{"anyOfSummaryFalse":{"k":"y"}}`,
+			`{"constNullBranch":null}`,
+			`{"constStringBranch":"a"}`,
+			`{"oneOfConstNull":null}`,
+			`{"oneOfConstNull":"x"}`,
+			`{"patternConstNull":{"a1":null}}`,
+			`{"patternConstNull":{}}`,
+			`{"patternConstString":{"b1":"a"}}`,
+			`{"plainEnum":"a"}`,
+		},
+		[]string{
+			`{"anyOfSummaryEmptyEnum":{"a":"x"}}`,
+			`{"anyOfSummaryFalse":{"a":"x"}}`,
+			`{"constNullBranch":1}`,
+			`{"constStringBranch":1}`,
+			`{"oneOfConstNull":1}`,
+			`{"patternConstNull":{"a1":1}}`,
+			`{"patternConstString":{"b1":"z"}}`,
+			`{"plainEnum":"z"}`,
+		},
+	)
+}
