@@ -1125,8 +1125,25 @@ var allFormatKeywords = []string{
 	"uri", "uri-reference", "uri-template",
 	"iri", "iri-reference",
 	"uuid", "json-pointer", "relative-json-pointer", "regex",
-	// Not asserted, and here to prove the pair agree about that too.
+	// Not asserted, and here to prove the pair agree about that too. The three
+	// draft-3 spellings are in this group deliberately: outside draft 3 they are
+	// unknown format keywords and must stay annotations, and the generator
+	// settles them onto the names above before a rule is ever built. If one of
+	// them started answering true here, a 2020-12 schema writing "host-name"
+	// would acquire an assertion no draft after 3 licenses.
 	"unknown-format", "byte", "int32",
+	"host-name", "ip-address", "color",
+}
+
+// allInternalFormatNames is the other half of the same list: the names this
+// generator gives a format that no schema can write, because draft 3 means
+// something by a keyword that no later draft has or agrees with. They are held
+// to the same pairing as the keywords -- a name the generator asserts and the
+// emitter cannot render is a check that silently is not there -- and they are a
+// separate slice only because they are not answers to "what may a schema say".
+var allInternalFormatNames = []string{
+	generator.Draft3TimeFormat,
+	generator.Draft3ColorFormat,
 }
 
 // TestFormatHelperNamesCoverCheckableFormats holds the generator's list of
@@ -1139,11 +1156,18 @@ var allFormatKeywords = []string{
 // but the generator does not admit is dead code, which is cheaper but still a
 // lie about what is enforced.
 func TestFormatHelperNamesCoverCheckableFormats(t *testing.T) {
-	for _, format := range allFormatKeywords {
+	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
 		checkable := generator.FormatCheckableOnString(format)
 		named := formatHelperNameFunc(format, true) != ""
 		if checkable != named {
 			t.Errorf("format %q: generator says checkable=%v, emitter says it has a helper=%v", format, checkable, named)
+		}
+	}
+	// The internal names exist because the generator asserts something under
+	// them; one that answered false would be a name nothing can reach.
+	for _, format := range allInternalFormatNames {
+		if !generator.FormatCheckableOnString(format) {
+			t.Errorf("internal format name %q is not checkable, so nothing can ever be rewritten onto it", format)
 		}
 	}
 }
@@ -1168,7 +1192,7 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
 	}
 	body := string(src)
-	for _, format := range allFormatKeywords {
+	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
 		for _, stringBacked := range []bool{true, false} {
 			name := formatHelperNameFunc(format, stringBacked)
 			if name == "" {

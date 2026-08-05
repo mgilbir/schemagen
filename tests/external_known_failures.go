@@ -177,23 +177,45 @@ var knownValidationFailures = map[string]string{
 // and scope-aware $anchor indexing in the generator now produce consistent results.)
 var knownFlakyTests = map[string]bool{}
 
-// Reasons for knownUnvalidatedRejections. Each names a root-schema shape that
+// Reasons for knownUnvalidatedRejections. Each names why a group's root
 // resolves to `any` — a bare interface carries no Validate, so nothing about
 // the group is ever checked. They are constants rather than repeated literals
-// so that fixing a shape is one grep and one delete, not 90.
+// so that fixing one cause is one grep and one delete, not 90.
 //
-// Three are gone rather than left empty: gapRootRefToFalse, which #116 answered
+// They named a root *shape* while every one of them was a shape, and the
+// remaining one is not: what collapses a $recursiveRef root is a reference the
+// branch holds, not the branch. Naming the cause rather than the silhouette is
+// the difference between a reason that stays true and one that has to be
+// re-derived, which is what the paragraph below is about.
+//
+// Six are gone rather than left empty. gapRootRefToFalse, which #116 answered
 // by giving a $ref to a boolean false the forbidding wrapper the root already
-// had, gapRootDependenciesOnly, which #117 answered by reading draft 3's
-// bare-string dependency, and gapRootContentOnly, which #115 answered by giving
+// had; gapRootDependenciesOnly, which #117 answered by reading draft 3's
+// bare-string dependency; and gapRootContentOnly, which #115 answered by giving
 // a content keyword with no declared type the same string wrapper #106 gave a
 // format. A reason nothing cites is a shape that is no longer a gap, and keeping
 // the constant would invite the next entry to be filed under something already
 // fixed.
+//
+// The other three went for a different reason: they were not true. Two of them,
+// gapRootCompositionOnly and gapRootConditionalOnly, said that a root stating
+// only anyOf, or only if/then/else, resolves to any for that reason -- which
+// this generator has not done since #113/#114, and the goldens for an anyOf and
+// a oneOf root say so. Every group filed under them is a $recursiveRef or a
+// $dynamicRef group, and what collapses those roots is the unresolvable
+// reference inside the branch, not the branch. The last, gapRootFormatOnly, was
+// answered for 88 of its 90 entries by #106 and kept the remaining five on a
+// reason that had stopped describing them: three named draft 3's own spellings
+// of formats this generator does check under the modern names, and two named a
+// format the custom metaschema they declare asserts by vocabulary. Both are now
+// read, so the constant has nothing left to cite it.
+//
+// A wrong reason is worse than no reason. It says the group has been diagnosed,
+// so the next reader starts from the diagnosis rather than from the schema --
+// which is how five entries sat behind "the root is a format" while two of them
+// were about a vocabulary declaration and three about a spelling table.
 const (
-	gapRootFormatOnly      = `root states only "format", which names no Go type, so the root resolves to any and carries no Validate`
-	gapRootCompositionOnly = `root is composition alone (allOf/anyOf/oneOf/not) and states no type of its own, so the root resolves to any and carries no Validate`
-	gapRootConditionalOnly = `root is if/then/else alone and states no type of its own, so the root resolves to any and carries no Validate`
+	gapDynamicRefRoot = `a $recursiveRef/$dynamicRef with no target this generator resolves statically collapses the subschema holding it to any, and the root with it, so the root carries no Validate`
 )
 
 // knownUnvalidatedRejections allow-lists groups that produce no Validate()
@@ -215,12 +237,18 @@ const (
 // shape knownValidationFailures uses, minus the per-case suffix, because the
 // skip happens once for the whole group, before any case runs.
 //
-// Re-measured 2026-08-04 against suite commit cf2e5e0: 20 of the 39 skipped
-// groups, down from 111 of 213. Sections are ordered by size; fixing a root
-// shape prunes a whole section at once, which is what happened earlier — a
-// format with no "type" is now the wrapper issue #106 asks for rather than
-// `any`, so 88 of the 90 entries filed under gapRootFormatOnly went with it,
-// along with the last of gapRootRefToFalse and gapRootDependenciesOnly.
+// Measured 2026-08-04 against suite commit cf2e5e0: 20 of the 39 skipped
+// groups, down from 111 of 213. Fixing one cause prunes a whole section at
+// once, which is what happened earlier — a format with no "type" is now the
+// wrapper issue #106 asks for rather than `any`, so 88 of the 90 entries filed
+// under gapRootFormatOnly went with it, along with the last of gapRootRefToFalse
+// and gapRootDependenciesOnly.
+//
+// That pair of numbers has not been re-measured since: five entries left this
+// list below, and each of those groups also stopped being skipped, so both
+// figures moved and neither was taken again. Whoever runs the whole corpus next
+// should restate them rather than subtract, since the skipped total counts
+// groups this list never named.
 //
 // The #121 corpus bump left every one of the 18 entries measured at bce6a47
 // standing — the staleness sweep named none of them — and added exactly two,
@@ -230,31 +258,26 @@ const (
 // others. Both failed by name on the first run that walked v1, rather than
 // arriving as a silent skip.
 //
-// The section counts below were re-derived from the entries rather than carried
-// forward: gapRootCompositionOnly and gapRootConditionalOnly said 37 and 21
-// while holding 11 and 4, left behind when #113/#114 pruned them.
+// One section is left, of ten. The five that were not in it went for two
+// unrelated reasons that had been filed as one: draft 3's "host-name",
+// "ip-address" and "color" are now settled onto the spellings this generator
+// checks before anything asks whether the keyword names a checkable format, and
+// the two format-assertion groups are now read from the $vocabulary of the
+// custom metaschema they declare rather than from a --format-assertion the
+// harness was passing on that file's behalf.
 var knownUnvalidatedRejections = map[string]string{
-	// gapRootFormatOnly (5 entries)
-	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: false": gapRootFormatOnly,
-	"draft2020-12/optional/format-assertion/schema that uses custom metaschema with format-assertion: true":  gapRootFormatOnly,
-	"draft3/optional/format/color/validation of CSS colors":                                                  gapRootFormatOnly,
-	"draft3/optional/format/host-name/validation of host names":                                              gapRootFormatOnly,
-	"draft3/optional/format/ip-address/validation of IP addresses":                                           gapRootFormatOnly,
-
-	// gapRootCompositionOnly (10 entries)
-	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapRootCompositionOnly,
-	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapRootCompositionOnly,
-
-	// gapRootConditionalOnly (5 entries)
-	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)": gapRootConditionalOnly,
-	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                        gapRootConditionalOnly,
-	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":               gapRootConditionalOnly,
-	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                            gapRootConditionalOnly,
+	// gapDynamicRefRoot (10 entries)
+	"draft2019-09/recursiveRef/$recursiveRef with $recursiveAnchor: false works like $ref":                   gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the initial target schema resource": gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor in the outer schema resource":          gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/$recursiveRef with no $recursiveAnchor works like $ref":                       gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/$recursiveRef without using nesting":                                          gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/dynamic $recursiveRef destination (not predictable at schema compile time)":   gapDynamicRefRoot,
+	"draft2019-09/recursiveRef/multiple dynamic paths to the $recursiveRef keyword":                          gapDynamicRefRoot,
+	"draft2020-12/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef":                 gapDynamicRefRoot,
+	"draft2020-12/dynamicRef/multiple dynamic paths to the $dynamicRef keyword":                              gapDynamicRefRoot,
 	// v1 has no counterpart to "multiple dynamic paths": its dynamicRef.json is
 	// 2020-12's minus that group, so only one of the pair is listed here. An
 	// entry for it would be reported stale rather than quietly ignored.
-	"v1/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef": gapRootConditionalOnly,
+	"v1/dynamicRef/after leaving a dynamic scope, it is not used by a $dynamicRef": gapDynamicRefRoot,
 }

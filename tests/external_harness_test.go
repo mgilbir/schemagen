@@ -22,13 +22,19 @@ import (
 // TestFormatPostureForFile pins which of the suite's two format postures each
 // file asks about.
 //
-// The pair that matters is the last two. "optional/format-annotation.json" is
-// v1's opt-out and "optional/format/..." is 2019-09 and 2020-12's opt-in, and
+// The three that matter are the last three. "optional/format-annotation.json"
+// is v1's opt-out and "optional/format/..." is 2019-09 and 2020-12's opt-in, and
 // the first name starts with the second's prefix while meaning the opposite. A
 // substring test in the wrong order silently generates v1's annotation cases
 // under forced assertion, which turns 20 documents the file marks valid into
 // rejections -- the one failure this repository treats as worse than a missing
 // check.
+//
+// "optional/format-assertion.json" shares that prefix too and asks about neither
+// posture: its schemas declare a custom metaschema whose $vocabulary asks for
+// assertion, and the file exists to find out whether an implementation reads it.
+// Forcing the flag would let it pass with the declaration unread, which is
+// exactly how it passed while the generator ignored $vocabulary entirely.
 func TestFormatPostureForFile(t *testing.T) {
 	for _, tt := range []struct {
 		file                  string
@@ -40,7 +46,7 @@ func TestFormatPostureForFile(t *testing.T) {
 		{"optional/bignum.json", false, false},
 		{"optional/format/email.json", true, false},
 		{"optional/format/idn-hostname.json", true, false},
-		{"optional/format-assertion.json", true, false},
+		{"optional/format-assertion.json", false, false},
 		{"optional/format-annotation.json", false, true},
 	} {
 		t.Run(tt.file, func(t *testing.T) {

@@ -4506,6 +4506,79 @@ func TestFormatHelperPositionsCompileAndCheck(t *testing.T) {
 	)
 }
 
+// TestDraft3FormatSpellingsAreChecked is the behavioural half of draft 3's three
+// own format names, compiled and run rather than read off the IR.
+//
+// "host-name" and "ip-address" are the same formats every later draft spells
+// "hostname" and "ipv4", and the two modern properties beside them are the
+// control: they were always checked, and a fix that rerouted the keyword rather
+// than adding the older spelling would show up as one of them going quiet.
+//
+// "color" is the one with no counterpart, and the cases are what draft 3 section
+// 5.23 names: CSS 2.1, by its dated URI. That is why "#00332520" is refused --
+// eight hex digits is #RRGGBBAA, which CSS Color 4 added and 2.1 does not have,
+// and the official suite marks it invalid. The accepted list carries the
+// notations 2.1 does define, so a check that passed by refusing everything with
+// a "#" in it could not get through.
+//
+// Every property is a format with no declared "type", so the wrapper accepts a
+// value of any other JSON type and asserts only on a string. The non-string
+// documents below are the controls for that: refusing one would be rejecting
+// what the schema permits.
+func TestDraft3FormatSpellingsAreChecked(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/draft3_format_spellings.json",
+		[]string{
+			`{}`,
+			`{"host":"www.example.com"}`,
+			`{"host":"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.com"}`,
+			`{"addr":"192.168.0.1"}`,
+			`{"colour":"fuchsia"}`,
+			`{"colour":"FUCHSIA"}`,
+			`{"colour":"#CC8899"}`,
+			`{"colour":"#C89"}`,
+			`{"colour":"#c89"}`,
+			`{"colour":"transparent"}`,
+			`{"colour":"ButtonFace"}`,
+			`{"colour":"rgb(255,0,0)"}`,
+			`{"colour":"rgb(100%, 0%, 0%)"}`,
+			`{"colour":"rgb(-10, 300, 0)"}`,
+			// The modern spellings, which were checked before and must stay so.
+			`{"modernHost":"www.example.com"}`,
+			`{"modernAddr":"192.168.0.1"}`,
+			// Not strings, so no format speaks about them at all.
+			`{"colour":5,"host":true,"addr":null}`,
+			`{"host":{"a":1},"addr":["x"]}`,
+		},
+		[]string{
+			`{"host":"not_a_valid_host_name"}`,
+			`{"host":"-hostname"}`,
+			`{"host":"hostname-"}`,
+			`{"host":"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl.com"}`,
+			`{"host":""}`,
+			`{"addr":"127.0.0.0.1"}`,
+			`{"addr":"256.256.256.256"}`,
+			`{"colour":"puce"}`,
+			`{"colour":"light_grayish_red-violet"}`,
+			`{"colour":"#00332520"}`,
+			`{"colour":"#CC88"}`,
+			`{"colour":"#GG8899"}`,
+			`{"colour":""}`,
+			// CSS Color 3 and 4 additions, which the specification draft 3 names
+			// does not have.
+			`{"colour":"rebeccapurple"}`,
+			`{"colour":"hsl(0, 100%, 50%)"}`,
+			// rgb() with the wrong arity, a mixed unit, or a non-number.
+			`{"colour":"rgb(255,0)"}`,
+			`{"colour":"rgb(255,0%,0)"}`,
+			`{"colour":"rgb(a,b,c)"}`,
+			// The modern spellings, whose rejections must survive too.
+			`{"modernHost":"not_a_valid_host_name"}`,
+			`{"modernAddr":"256.256.256.256"}`,
+		},
+	)
+}
+
 // TestOneOfBooleanAndConstBranches is the behavioural half of issue #125.
 //
 // The sealed-interface union decides a branch by decoding the value into that

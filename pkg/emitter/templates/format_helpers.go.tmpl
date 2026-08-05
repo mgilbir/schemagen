@@ -472,4 +472,131 @@ func schemagenFormatIPv6Addr(a netip.Addr) error {
 	}
 	return nil
 }
+
+// schemagenDraft3ColorKeywords is every word CSS 2.1 admits where a colour is
+// wanted: the seventeen colour keywords of section 4.3.6, the system colours of
+// section 18.2, and "transparent".
+//
+// The last of those is not strictly a <color> in CSS 2.1 -- that specification
+// gives it as a value of 'background-color' and 'border-color' rather than of
+// the type -- and it is here anyway. Every implementation since has treated it
+// as a colour, CSS Color 3 made it one outright, and accepting a word whose
+// status is arguable withholds a rejection rather than inventing one, which is
+// the direction this repository errs in.
+//
+// The system colours are deprecated and are here for the same reason: CSS 2.1
+// does define them as colour values, and a document written against the
+// specification draft 3 names is not wrong for using one.
+var schemagenDraft3ColorKeywords = map[string]bool{
+	"aqua": true, "black": true, "blue": true, "fuchsia": true, "gray": true,
+	"green": true, "lime": true, "maroon": true, "navy": true, "olive": true,
+	"orange": true, "purple": true, "red": true, "silver": true, "teal": true,
+	"white": true, "yellow": true, "transparent": true,
+
+	"activeborder": true, "activecaption": true, "appworkspace": true,
+	"background": true, "buttonface": true, "buttonhighlight": true,
+	"buttonshadow": true, "buttontext": true, "captiontext": true,
+	"graytext": true, "highlight": true, "highlighttext": true,
+	"inactiveborder": true, "inactivecaption": true, "inactivecaptiontext": true,
+	"infobackground": true, "infotext": true, "menu": true, "menutext": true,
+	"scrollbar": true, "threeddarkshadow": true, "threedface": true,
+	"threedhighlight": true, "threedlightshadow": true, "threedshadow": true,
+	"window": true, "windowframe": true, "windowtext": true,
+}
+
+// schemagenFormatDraft3Color checks draft 3's "color", which section 5.23 of
+// that draft defines as a CSS colour "based on CSS 2.1" -- naming the
+// specification by its dated URI, which is what makes this a fixed grammar and
+// not a moving one.
+//
+// Three notations, and no more. #RGB and #RRGGBB; the rgb() function over three
+// integers or three percentages; and a keyword. #RRGGBBAA is deliberately
+// refused: CSS Color 4 added it and CSS 2.1 has no such thing, and the official
+// suite marks "#00332520" invalid, so reading the keyword as modern CSS would
+// accept a document draft 3 forbids. Nothing later than 2.1 is admitted for the
+// same reason -- no hsl(), no lab(), no rebeccapurple.
+//
+// Keywords are matched case-insensitively, which is what CSS says of every
+// identifier in the language.
+func schemagenFormatDraft3Color(v string) error {
+	bad := fmt.Errorf("%q is not a valid CSS 2.1 color", v)
+	if v == "" {
+		return bad
+	}
+	if v[0] == '#' {
+		hex := v[1:]
+		if len(hex) != 3 && len(hex) != 6 {
+			return bad
+		}
+		for i := 0; i < len(hex); i++ {
+			c := hex[i]
+			switch {
+			case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+			default:
+				return bad
+			}
+		}
+		return nil
+	}
+	lower := strings.ToLower(v)
+	if strings.HasPrefix(lower, "rgb(") && strings.HasSuffix(lower, ")") {
+		if schemagenDraft3RGB(lower[4 : len(lower)-1]) {
+			return nil
+		}
+		return bad
+	}
+	if schemagenDraft3ColorKeywords[lower] {
+		return nil
+	}
+	return bad
+}
+
+// schemagenDraft3RGB reports whether the argument list of an rgb() function is
+// three components of one kind -- all integers, or all percentages, which CSS
+// 2.1 forbids mixing. Values outside the range are clipped by that
+// specification rather than refused, so they are accepted here.
+func schemagenDraft3RGB(args string) bool {
+	parts := strings.Split(args, ",")
+	if len(parts) != 3 {
+		return false
+	}
+	percentages := 0
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if strings.HasSuffix(p, "%") {
+			percentages++
+			p = strings.TrimSuffix(p, "%")
+		}
+		if !schemagenDraft3CSSNumber(p) {
+			return false
+		}
+	}
+	return percentages == 0 || percentages == 3
+}
+
+// schemagenDraft3CSSNumber reports whether s is a CSS 2.1 <number>: an optional
+// sign, then digits with an optional fractional part.
+func schemagenDraft3CSSNumber(s string) bool {
+	if s == "" {
+		return false
+	}
+	if s[0] == '+' || s[0] == '-' {
+		s = s[1:]
+	}
+	intPart, fracPart, hasDot := strings.Cut(s, ".")
+	if hasDot && fracPart == "" {
+		return false
+	}
+	if intPart == "" && fracPart == "" {
+		return false
+	}
+	for _, digits := range []string{intPart, fracPart} {
+		for i := 0; i < len(digits); i++ {
+			if digits[i] < '0' || digits[i] > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
 {{- end}}

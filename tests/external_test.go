@@ -1204,18 +1204,24 @@ func isBignumFile(file string) bool {
 // actually about. This is the same per-file switch isBignumFile already makes,
 // for the same reason.
 //
-// The order of the two arms is load-bearing, and it is the reason this is a
-// switch rather than two independent tests: "optional/format-annotation.json"
-// begins with "optional/format" and means the opposite of it, so the narrower
-// name has to be tried first. draft2020-12/optional/format-assertion.json does
-// belong in the assertion arm: its schemas name a custom metaschema declaring
-// the format-assertion vocabulary, which this generator does not read, so the
-// flag stands in for the vocabulary the file is about.
+// The order of the arms is load-bearing, and it is the reason this is a switch
+// rather than independent tests: "optional/format-annotation.json" and
+// "optional/format-assertion.json" both begin with "optional/format" and neither
+// means what that prefix means, so the narrower names have to be tried first.
+//
+// format-assertion.json is the one file that runs under neither switch. It is
+// not about a configuration at all: its schemas point $schema at a custom
+// metaschema that declares the format-assertion vocabulary, and what it asks is
+// whether an implementation reads that declaration. Passing the flag would
+// answer the question by assuming it -- the file would pass with the vocabulary
+// unread, which is how it passed before there was anything to read it.
 func formatPostureFor(file string) (assertion, annotation bool) {
 	p := filepath.ToSlash(file)
 	switch {
 	case strings.Contains(p, "optional/format-annotation"):
 		return false, true
+	case strings.Contains(p, "optional/format-assertion"):
+		return false, false
 	case strings.Contains(p, "optional/format"):
 		return true, false
 	default:
