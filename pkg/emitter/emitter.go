@@ -6,7 +6,10 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"text/template"
 
 	"github.com/mgilbir/schemagen/pkg/generator"
@@ -42,12 +45,85 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 	if err := e.tmpl.ExecuteTemplate(&buf, "file.go.tmpl", data); err != nil {
 		return nil, fmt.Errorf("emitter: executing template: %w", err)
 	}
+	if kept, dropped := keepReferencedImports(buf.Bytes(), data.Imports); dropped {
+		data.Imports = kept
+		buf.Reset()
+		if err := e.tmpl.ExecuteTemplate(&buf, "file.go.tmpl", data); err != nil {
+			return nil, fmt.Errorf("emitter: executing template: %w", err)
+		}
+	}
 
 	src, err := format.Source(buf.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("emitter: formatting output: %w\nraw output:\n%s", err, buf.String())
 	}
 	return src, nil
+}
+
+// keepReferencedImports returns the subset of imports the rendered file
+// actually names, and whether anything was dropped.
+//
+// The import list is built by a hand-written model of what the templates emit
+// (generator.addRequiredImports, and the block in EmitHelpers below). That
+// model is a second copy of a decision the templates already make, so it drifts
+// -- and an import nothing refers to is not a cosmetic blemish in Go, it is a
+// compile error in the file we just wrote. Issue #202 is one instance: a struct
+// whose only null rule reaches *below* a property is emitted as a call to the
+// shared walker, which needs no fmt, while the model claimed fmt for every null
+// rule. That defect can be fixed at the model, and is; this pass is what stops
+// the next one from reaching a user, because no amount of validation testing
+// looks at whether the output compiles.
+//
+// Dropping is the safe direction. The model is only ever consulted as "which
+// packages might this file name", and a package the rendered text never
+// qualifies cannot be needed by it. Under-claiming -- an import the file does
+// name and the model omitted -- is a different defect, equally fatal and not
+// one this pass can repair; only a compile of the generated file catches that.
+func keepReferencedImports(rendered []byte, imports []generator.Import) ([]generator.Import, bool) {
+	if len(imports) == 0 {
+		return imports, false
+	}
+	used, ok := packageQualifiers(rendered)
+	if !ok {
+		// Unparseable output: leave the list alone and let format.Source report
+		// the syntax error, which says far more than a missing import would.
+		return imports, false
+	}
+	kept := make([]generator.Import, 0, len(imports))
+	for _, imp := range imports {
+		name := imp.Alias
+		if name == "" {
+			name = generator.PackageNameForImportPath(imp.Path)
+		}
+		// A blank or dot import is not referred to by name; nothing generated
+		// here emits one, but neither is silently deleting one this pass's
+		// business.
+		if name == "_" || name == "." || used[name] {
+			kept = append(kept, imp)
+		}
+	}
+	return kept, len(kept) != len(imports)
+}
+
+// packageQualifiers collects every identifier the source uses on the left of a
+// selector -- `fmt` in `fmt.Errorf`, `json` in `json.RawMessage`. A local
+// variable sharing a package's name would be counted too, which keeps an import
+// that could have gone: erring towards the list the model already produced.
+func packageQualifiers(src []byte) (map[string]bool, bool) {
+	file, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, false
+	}
+	used := make(map[string]bool)
+	ast.Inspect(file, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok {
+				used[ident.Name] = true
+			}
+		}
+		return true
+	})
+	return used, true
 }
 
 // EmitHelpers renders the shared helper file for a destination package.
@@ -141,6 +217,13 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	var buf bytes.Buffer
 	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
 		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
+	}
+	if kept, dropped := keepReferencedImports(buf.Bytes(), data.Imports); dropped {
+		data.Imports = kept
+		buf.Reset()
+		if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
+			return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
+		}
 	}
 	src, err := format.Source(buf.Bytes())
 	if err != nil {

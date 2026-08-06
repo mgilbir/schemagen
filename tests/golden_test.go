@@ -101,6 +101,19 @@ func allGoldenTests() []goldenTestCase {
 		// null there is nothing to refuse, so it is recorded instead -- and the
 		// tag is then free to say what it should about an absent property.
 		{"regression/present_null_positions", "testdata/schemas/regression/present_null_positions.json", "testdata/golden/regression/present_null_positions.go"},
+		// A root with no declared type whose one property is an array of a
+		// declared element type. Nothing about it is exotic, and the file it
+		// generated did not compile: the null rule for the property reaches
+		// below it and is emitted as a call to the shared walker, which needs no
+		// fmt, while the import model claimed fmt for every null rule -- so the
+		// file carried an import nothing referred to (issue #202).
+		//
+		// It has to stay exactly this small. Every keyword one could add here --
+		// a length, a second property with a scalar type, a required list --
+		// gives the file a fmt of its own, and the golden then reads the same
+		// whether the defect is present or not. TestCompile builds every golden,
+		// and this is the only entry in the corpus of a shape that could fail it.
+		{"regression/typeless_root_nested_null", "testdata/schemas/regression/typeless_root_nested_null.json", "testdata/golden/regression/typeless_root_nested_null.go"},
 		// The content vocabulary in both postures. Draft 7 asserts it, 2019-09
 		// and later annotate it, and the generated type is the same either way.
 		{"regression/content_posture_draft7", "testdata/schemas/regression/content_posture_draft7.json", "testdata/golden/regression/content_posture_draft7.go"},
