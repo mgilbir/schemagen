@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NotFormatDraft7",
+  "description": "Issue #185 under a dialect that asserts `format`. {\"not\":{\"type\":\"string\",\"format\":\"email\"}} forbids e-mail addresses alone; read with the format dropped it forbade every string. plainNot is the control that must still forbid every string.",
+  "type": "object",
+  "properties": {
+    "emailNot": {
+      "not": {
+        "type": "string",
+        "format": "email"
+      }
+    },
+    "plainNot": {
+      "not": {
+        "type": "string"
+      }
+    },
+    "branchFormat": {
+      "$comment": "The same keyword inside a disallow-style branch, which extractNotSchemaBranches reads by its own gate. Read with the format dropped, the branch became `a string of three characters or more` and refused every one of them.",
+      "not": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 3,
+            "format": "email"
+          }
+        ]
+      }
+    }
+  }
+}

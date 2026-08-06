@@ -4600,22 +4600,62 @@ func TestInlineIfThenElsePropertyGetsAWrapperType(t *testing.T) {
 }
 
 // TestInlineWrapperIsNotTakenForATypedProperty guards the narrowness of the
-// arm above. A `not` beside a declared type has a Go type of its own and a path
-// that produces it, and hijacking that would lose the type.
+// arm above: inlineConstraintWrapper claims a property whose *only* content is
+// the negative keyword, and must keep declining one that names a type as well,
+// because that schema has a path producing its Go type and hijacking it there
+// would lose the type.
+//
+// What that narrowness never meant is that the property keeps a bare `string`.
+// This test asserted exactly that, and in doing so pinned issue #177: a `not`
+// beside a declared type is enforced by nothing on the typed path -- `type Doc
+// struct { A string }` has nowhere to put it -- so {"type":"string","not":
+// {"const":"x"}} typed the field `string` with a Validate that never mentioned
+// the negation, and accepted "x", the one value the schema names to forbid.
+//
+// So the property is claimed after all, by inlineSiblingNotWrapper rather than
+// by the predicate this test is about. The two assertions below are what the
+// test can still say: the narrow predicate is still narrow, and the field is
+// the wrapper that carries both halves of the schema.
 func TestInlineWrapperIsNotTakenForATypedProperty(t *testing.T) {
-	ir := generateForItemTest(t, `{
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(`{
 		"title": "Doc",
 		"type": "object",
 		"properties": {
 			"a": {"type": "string", "not": {"const": "x"}}
 		},
 		"required": ["a"]
-	}`)
+	}`), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	gen := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	if gen.inlineConstraintWrapper(s.Properties["a"]) {
+		t.Fatalf("inlineConstraintWrapper claimed a typed property; it must only claim a schema whose sole content is the negative keyword")
+	}
 
 	doc := structNamed(t, ir, "Doc")
 	field := fieldNamedJSON(t, doc, "a")
-	if got := field.Type.GoTypeName(); got != "string" {
-		t.Fatalf("a type = %q, want string", got)
+	if got := field.Type.GoTypeName(); got != "DocA" {
+		t.Fatalf("a type = %q, want DocA -- a bare Go type has nowhere to carry the `not`", got)
+	}
+	var wrapper *AnnotationSchemaDef
+	for _, td := range ir.TypeDefs {
+		if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "DocA" {
+			wrapper = d
+		}
+	}
+	if wrapper == nil {
+		t.Fatalf("expected a DocA wrapper carrying the negation; got %v", ir.TypeDefs)
+	}
+	if !strings.Contains(wrapper.NodeLiteral, "Not:") || !strings.Contains(wrapper.NodeLiteral, `"string"`) {
+		t.Fatalf("DocA must carry both the type and the negation; got %s", wrapper.NodeLiteral)
 	}
 }
 
@@ -9045,5 +9085,93 @@ func TestDynamicBranchChecksRefusesTheHiddenSpellings(t *testing.T) {
 	if _, ok := dynamicBranchChecks(&typeSchemas); ok {
 		t.Fatal("dynamicBranchChecks(schema-valued type) accepted the branch; the checks carry a type name and " +
 			"this branch names none, so it would have matched every value")
+	}
+}
+
+// TestNotBesideARefKeepsItsAliasOnDraft7 guards the one exception in
+// siblingsWouldDropNot: through draft 7 a $ref replaces everything written
+// beside it, so a `not` written there is not dropped -- it does not apply, and
+// there is nothing for the sibling arm to rescue.
+//
+// Without the exception the schema is claimed all the same and compiled to the
+// runtime evaluator. The evaluator applies the same draft rule and so still
+// answers correctly, which is why no document can tell the two apart; what
+// changes is the type. `type Root S` -- an alias carrying the target's own
+// checks -- becomes a struct wrapping raw JSON, which is a worse type for the
+// caller bought with no check at all.
+func TestNotBesideARefKeepsItsAliasOnDraft7(t *testing.T) {
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(`{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {"s": {"type": "string"}},
+		"$ref": "#/definitions/s",
+		"not": {"const": "b"}
+	}`), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+
+	ir, err := New(Config{PackageName: "testpkg", Draft: schema.Draft07}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	for _, td := range ir.TypeDefs {
+		if td.TypeName() != "Root" {
+			continue
+		}
+		alias, ok := td.(*AliasDef)
+		if !ok {
+			t.Fatalf("Root = %T, want *AliasDef -- the $ref displaces the `not` on this draft, so the schema is the target and nothing here needs a raw-JSON wrapper", td)
+		}
+		if got := alias.Underlying.GoTypeName(); got != "S" {
+			t.Fatalf("Root underlying = %q, want S", got)
+		}
+		return
+	}
+	t.Fatalf("no Root definition; got %v", ir.TypeDefs)
+}
+
+// TestInertNotBesideATypeKeepsTheGoType guards the other two refusals in
+// siblingsWouldDropNot: a `not` that forbids nothing must not cost the schema
+// its Go type.
+//
+// `not: false` is a negation of the schema no value satisfies, and
+// `not: {not: {}}` is a double negation of accept-all; both say exactly what
+// {"type":"string"} says on its own. Claiming them takes a schema that is
+// already fully checked by `type Root string` and answers it with a struct
+// wrapping raw JSON -- a worse type for the caller, bought with no check,
+// because there is no check to buy.
+func TestInertNotBesideATypeKeepsTheGoType(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"not false", `{"type":"string","not":false}`},
+		{"double negation of accept-all", `{"type":"string","not":{"not":{}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.input), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+
+			ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			for _, td := range ir.TypeDefs {
+				if td.TypeName() != "Root" {
+					continue
+				}
+				alias, ok := td.(*AliasDef)
+				if !ok {
+					t.Fatalf("Root = %T, want *AliasDef over string -- this `not` forbids nothing, so there is nothing a raw-JSON wrapper would check", td)
+				}
+				if got := alias.Underlying.GoTypeName(); got != "string" {
+					t.Fatalf("Root underlying = %q, want string", got)
+				}
+				return
+			}
+			t.Fatalf("no Root definition; got %v", ir.TypeDefs)
+		})
 	}
 }

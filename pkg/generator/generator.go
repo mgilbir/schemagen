@@ -126,6 +126,24 @@ type Generator struct {
 	// per allOf and so cannot collide with another schema's answer.
 	arrayTypeInferredFromBranch map[*schema.Schema]bool
 
+	// mergedPropertyOrigins remembers, per synthesized merge target and property
+	// name, which applicator each contribution to that property arrived through.
+	//
+	// The merge deliberately erases the distinction: an allOf branch's `then`
+	// gives a property a type, and the merged struct has to declare a field for
+	// it or the value has nowhere to go. But `then` binds only on the documents
+	// its `if` selects, so what that branch *says* about the location is not said
+	// about every instance -- and readOnly/writeOnly are exactly the keywords
+	// where saying it anyway refuses documents the schema accepts (issue #174).
+	//
+	// So the type keeps coming from the merged property schema and the two
+	// annotations are read back through this instead. Keyed on the merge target,
+	// which is synthesized per allOf/anyOf and so cannot collide with another
+	// schema's answer, and on the property name rather than on the contributed
+	// node -- the same node reached unconditionally elsewhere ($defs entry used
+	// both ways) must keep its check there.
+	mergedPropertyOrigins map[*schema.Schema]map[string]*mergedPropertyOrigin
+
 	// patternMintedTypes maps a name minted for a patternProperties bucket to the
 	// node it was minted from. Only names invented here are listed -- a bucket
 	// whose sub-schema is a $ref uses the target's own name, which this mechanism
@@ -180,6 +198,7 @@ func New(cfg Config) *Generator {
 		nullChecked:        make(map[*schema.Schema]bool),
 
 		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
+		mergedPropertyOrigins:       make(map[*schema.Schema]map[string]*mergedPropertyOrigin),
 	}
 }
 
@@ -2186,6 +2205,37 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
+	// A "not" written beside any other keyword. No static arm enforces one:
+	// extractNotSchemaDef is the only arm that compiles a negation and it claims
+	// the schema whose *sole* constraint is the "not", while every arm below reads
+	// `type`, `enum`, `$ref`, `allOf`, `properties` and the rest and mints a Go
+	// type from them with the negation nowhere in it. So {"type":"string",
+	// "not":{"const":"forbidden"}} came out `type Root string` whose Validate was
+	// `return nil`, and accepted "forbidden" -- the very value the schema names to
+	// forbid. Removing the sibling made it reject correctly, so it was the
+	// presence of a sibling, not the negation, that lost the check (issue #177).
+	// The same held for a "not" beside `properties`, `enum`, `allOf`, `items`, a
+	// bound, and a 2019-09 `$ref`.
+	//
+	// The runtime evaluator models "not" beside its siblings, so the schema is
+	// compiled whole here rather than typed and half-checked. This is the arm
+	// annotationSchemaDef and dynamicScopeSchemaDef above already are: a keyword
+	// the static path cannot carry takes the schema to the evaluator instead of
+	// being dropped on the way past.
+	//
+	// Where the evaluator declines -- a "not" over a `format` it does not model,
+	// a schema past its size bound -- the arms below run as before and the
+	// negation goes unenforced. That is under-enforcement, the direction that
+	// costs an acceptance; over-negating would cost every document the schema
+	// permits, and cannot be seen from outside. See negationOperandStatesOnly.
+	if g.siblingsWouldDropNot(s) {
+		if def := g.runtimeSchemaDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
+	}
+
 	if _, ok := g.typeSchemas[name]; !ok {
 		g.typeSchemas[name] = s
 	}
@@ -3197,6 +3247,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 			if oneOfDef != nil {
 				oneOfDef.Required = required
+				// What the property schema says about itself, which a group
+				// carries for the same reasons a FieldDef does: the comment
+				// documents the field, and the annotations are what
+				// --strict-read-write acts on. Read off the property schema
+				// alone, exactly as FieldDef.Annotations is, and through the
+				// same provenance so that a keyword a conditional branch
+				// contributed is not asserted of every document (#174, #175).
+				oneOfDef.Description = propSchema.Description
+				oneOfDef.Annotations = g.propertyAnnotations(s, propName, propSchema)
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
 				needsUnmarshal = true
@@ -3338,7 +3397,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			OmitZero:       omitZero,
 			Required:       required,
 			Description:    propSchema.Description,
-			Annotations:    annotationsOf(propSchema),
+			Annotations:    g.propertyAnnotations(s, propName, propSchema),
 			ManualJSON:     manualJSON,
 			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
@@ -4019,8 +4078,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			// f.Annotations stays in the condition as a floor. The walk starts at
 			// the same schema and so normally subsumes it, but it is looked up by
 			// JSON name and a field that came from anywhere but s.Properties would
-			// find nothing; OR-ing keeps every key the old reading produced.
-			readOnly, writeOnly := g.readWriteAtLocation(s.Properties[f.JSONName])
+			// find nothing; OR-ing keeps every key the old reading produced. Both
+			// sides are now taken through the same reading of where the property
+			// came from, so the floor cannot re-admit what the walk declined.
+			readOnly, writeOnly := g.readWriteBindingAt(s, f.JSONName)
 			if f.Annotations.ReadOnly || readOnly {
 				readOnlyKeys = append(readOnlyKeys, f.JSONName)
 			}
@@ -4028,6 +4089,36 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				writeOnlyKeys = append(writeOnlyKeys, f.JSONName)
 			}
 		}
+		// A property whose oneOf the union can carry is compiled to a sealed
+		// interface rather than to a FieldDef, and a loop over the fields alone
+		// therefore emitted no key list for it at all -- so the flag was a silent
+		// no-op on exactly the shape a "credentials: oneOf [...]" property has,
+		// and a writeOnly secret was written straight back out (issue #175).
+		//
+		// It is the same property of the same object, so it is read the same way,
+		// and both templates key on the JSON name -- the decoder on the document's
+		// own keys and the encoder on the assembled map -- so neither cares how
+		// the value was typed on the way through.
+		for _, o := range oneOfs {
+			// The top-level union has no property name: the struct is the value.
+			// Its annotations reached StructDef instead.
+			if o.JSONName == "" {
+				continue
+			}
+			readOnly, writeOnly := g.readWriteBindingAt(s, o.JSONName)
+			if o.Annotations.ReadOnly || readOnly {
+				readOnlyKeys = append(readOnlyKeys, o.JSONName)
+			}
+			if o.Annotations.WriteOnly || writeOnly {
+				writeOnlyKeys = append(writeOnlyKeys, o.JSONName)
+			}
+		}
+		// Both loops walk the properties in sorted order, but a group's keys
+		// arrive after every field's, so the concatenation is sorted only when one
+		// of the two is empty. Sorting says what the order is rather than leaving
+		// it to which shape a property compiled to.
+		sort.Strings(readOnlyKeys)
+		sort.Strings(writeOnlyKeys)
 		// A struct that would otherwise have taken the default decoder or
 		// encoder needs its own, or the check has nowhere to be.
 		if len(readOnlyKeys) > 0 {
@@ -4127,6 +4218,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
+		g.recordMergedProperty(merged, k, v, false)
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
@@ -4930,9 +5022,12 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 			// be a $ref-only schema; follow it.
 			resolved = r
 		}
-		// Copy direct properties.
+		// Copy direct properties. allOf is an in-place applicator: every branch
+		// binds on every valid instance, so what it says about a property is said
+		// about all of them and the annotation reading records it as such.
 		for k, v := range resolved.Properties {
 			target.Properties[k] = v
+			g.recordMergedProperty(target, k, v, false)
 		}
 		target.Required = append(target.Required, resolved.Required...)
 		// Merge patternProperties from allOf sub-schemas.
@@ -5304,12 +5399,19 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 		}
 	}
 
+	// Every route into this function is a conditional applicator -- a oneOf or
+	// anyOf variant, a `then` or an `else` -- and anything reached from inside one
+	// is conditional too, which is why the flag is a constant here rather than a
+	// parameter threaded down. The property is still merged: the branch is where
+	// the field's type comes from, and dropping it would leave the value nowhere
+	// to go. Only the two annotations are held back. See mergedPropertyOrigins.
 	for k, v := range resolved.Properties {
 		if existing, exists := target.Properties[k]; exists {
 			target.Properties[k] = mergeVariantPropertySchemas(existing, v)
 		} else {
 			target.Properties[k] = v
 		}
+		g.recordMergedProperty(target, k, v, true)
 	}
 	for k, v := range resolved.PatternProperties {
 		if target.PatternProperties == nil {
@@ -5917,6 +6019,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
+		g.recordMergedProperty(merged, k, v, false)
 	}
 
 	// Merge each anyOf sub-schema's properties.
@@ -5927,10 +6030,16 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 				resolved = r
 			}
 		}
+		// One struct stands in for every branch here, so which branch a document
+		// matched is not a thing this type can know afterwards -- and a branch
+		// contributes its annotations only to the documents that match it. The
+		// property is merged for its type and recorded as conditional, on the same
+		// reasoning as mergeVariantObjectPropertiesInto.
 		for k, v := range resolved.Properties {
 			if _, exists := merged.Properties[k]; !exists {
 				merged.Properties[k] = v
 			}
+			g.recordMergedProperty(merged, k, v, true)
 		}
 		// Propagate type from sub-schemas if the parent doesn't have one.
 		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
@@ -7137,6 +7246,21 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return namedOrPointer(canonical, true), nil
 	}
 
+	// A property stating a "not" beside another keyword. Ahead of every arm
+	// below, each of which types the value from one of those siblings and has
+	// nowhere to put the negation -- the enum arm immediately after this one
+	// included, which is why it sits here and not with the other wrapper arms
+	// further down. See inlineSiblingNotWrapper and issue #177.
+	if g.inlineSiblingNotWrapper(s) {
+		nestedName := parentName + fieldName
+		if err := g.generateTypeDef(nestedName, s); err != nil {
+			return nil, err
+		}
+		if g.generated[nestedName] {
+			return &NamedType{Name: nestedName}, nil
+		}
+	}
+
 	// Const -> treat as single-element enum for validation purposes.
 	// Only promote when no explicit type is specified (the enum is needed to
 	// determine the Go type). When type IS specified, keep the natural Go type
@@ -7560,6 +7684,32 @@ func (g *Generator) inlineAnnotationWrapper(s *schema.Schema) bool {
 	return g.annotationSchemaDef("", s) != nil
 }
 
+// inlineSiblingNotWrapper reports whether a schema written inline -- a property,
+// an element, a map value -- states a "not" beside another keyword, and whether
+// the runtime evaluator can carry the pair.
+//
+// It is the inline half of the arm generateTypeDef gained for issue #177, and it
+// is needed for the reason inlineAnnotationWrapper is: the wrapper carrying the
+// check is only ever built for a schema being *given a name*, and a schema
+// written inline never had one. Without this, {"properties":{"a":{"type":
+// "string","not":{"const":"forbidden"}}}} types the field `string` and accepts
+// "forbidden", while the identical schema behind a $ref rejects it. Where a
+// schema lands is not something the schema says.
+//
+// inlineConstraintWrapper is the neighbouring predicate and deliberately stays
+// narrow: it claims a property whose *only* content is the negative keyword,
+// where resolveType would answer `any`. This one claims the opposite shape --
+// the "not" that has siblings, where resolveType answers with a Go type and
+// drops the negation on the way. Neither can be widened into the other: the
+// first must not take a schema away from an arm that types it, and the second
+// exists precisely because that arm types it and checks less than it says.
+func (g *Generator) inlineSiblingNotWrapper(s *schema.Schema) bool {
+	if !g.siblingsWouldDropNot(s) {
+		return false
+	}
+	return g.runtimeSchemaDef("", s) != nil
+}
+
 // inlineConstraintWrapper reports whether a property's own schema is one that
 // generateTypeDef answers with a raw-JSON wrapper carrying a Validate, and that
 // resolveType would otherwise collapse to `any`.
@@ -7601,6 +7751,19 @@ func (g *Generator) inlineConstraintWrapper(s *schema.Schema) bool {
 func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if s == nil {
 		return &PrimitiveType{Name: "any"}
+	}
+
+	// A "not" beside another keyword, in a position this ladder would type from
+	// the sibling alone -- a map value, a oneOf branch, an alias's underlying
+	// type. First, because every arm below reads one of those siblings and
+	// answers with a Go type that has nowhere to put the negation:
+	// {"additionalProperties":{"type":"string","not":{"const":"forbidden"}}}
+	// typed the map `map[string]string` and accepted {"k":"forbidden"}. See
+	// inlineSiblingNotWrapper and issue #177.
+	if g.inlineNameAvailable(s, contextName) && g.inlineSiblingNotWrapper(s) {
+		if t, ok := g.namedInlineType(s, contextName); ok {
+			return t
+		}
 	}
 
 	// Const with no explicit type -> single-member enum, exactly as
@@ -8226,6 +8389,117 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		}
 	}
 	return nil
+}
+
+// mergedPropertyOrigin records how one property of a synthesized merge target
+// came to be there. See Generator.mergedPropertyOrigins.
+//
+// conditional and unconditional are not exclusive. A property may be declared
+// beside an allOf and given a further type by one of its branches' `then`, and
+// then both are true of the same field: the location always exists, and one of
+// the schemas describing it applies only sometimes.
+type mergedPropertyOrigin struct {
+	// conditional is set once any contribution has arrived through anyOf, oneOf,
+	// then or else -- at any depth, since everything below a conditional is
+	// conditional too.
+	conditional bool
+	// unconditional holds the contributed schemas that bind on every valid
+	// instance: the parent's own property, and an allOf branch's. These are the
+	// nodes an annotation may still be read off once conditional is set. The
+	// merged schema in target.Properties[name] may not, because it is the two
+	// kinds folded together.
+	unconditional []*schema.Schema
+}
+
+// recordMergedProperty notes one contribution to target.Properties[name].
+//
+// Called from the merge itself rather than reconstructed afterwards, which is
+// the point: what a merge did is not always recoverable from what it produced
+// -- mergeVariantPropertySchemas may return a node that is neither input -- and
+// a second walk that tried would be a second opinion about the same document,
+// free to drift from the first.
+func (g *Generator) recordMergedProperty(target *schema.Schema, name string, contributed *schema.Schema, conditional bool) {
+	if target == nil {
+		return
+	}
+	byName := g.mergedPropertyOrigins[target]
+	if byName == nil {
+		byName = make(map[string]*mergedPropertyOrigin)
+		g.mergedPropertyOrigins[target] = byName
+	}
+	origin := byName[name]
+	if origin == nil {
+		origin = &mergedPropertyOrigin{}
+		byName[name] = origin
+	}
+	if conditional {
+		origin.conditional = true
+		return
+	}
+	if contributed != nil {
+		origin.unconditional = append(origin.unconditional, contributed)
+	}
+}
+
+// unconditionalPropertySchemas returns the schemas that describe owner's
+// property name on every valid instance, and whether the answer had to be
+// narrowed from the merged schema at all.
+//
+// narrowed is false for every schema that is not a merge target and for every
+// merged property no conditional applicator contributed to, and there the
+// caller reads owner.Properties[name] exactly as before -- so nothing outside
+// the merge-through-a-conditional shape moves.
+func (g *Generator) unconditionalPropertySchemas(owner *schema.Schema, name string) (schemas []*schema.Schema, narrowed bool) {
+	origin := g.mergedPropertyOrigins[owner][name]
+	if origin == nil || !origin.conditional {
+		return nil, false
+	}
+	return origin.unconditional, true
+}
+
+// readWriteBindingAt is readWriteAtLocation for a property of a struct, asked
+// through whatever the merge recorded about where that property came from.
+//
+// A conditional branch's schema is read for its type and not for these two
+// keywords, so a property the branch alone contributed answers false and one
+// that also exists unconditionally answers for its unconditional part. 2020-12
+// §7.7.1 is the rule being kept: a subschema that was not selected contributes
+// no annotations, and asserting one anyway is a false rejection in the readOnly
+// direction and a silently dropped value in the writeOnly one.
+func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readOnly, writeOnly bool) {
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		return g.readWriteAtLocation(owner.Properties[name])
+	}
+	for _, src := range sources {
+		ro, wo := g.readWriteAtLocation(src)
+		readOnly = readOnly || ro
+		writeOnly = writeOnly || wo
+	}
+	return readOnly, writeOnly
+}
+
+// propertyAnnotations reads the annotation vocabulary for a struct field.
+//
+// It is annotationsOf on the property schema, less any readOnly or writeOnly a
+// conditional branch alone put there. The other two keywords are left as the
+// merge produced them: "deprecated" and "examples" describe the location for a
+// reader and neither changes what the generated code accepts, whereas these two
+// are the pair --strict-read-write acts on, and a doc comment that disagreed
+// with the check beside it would document the wrong type. The comment and the
+// check are therefore taken from the same reading (issue #174).
+func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propSchema *schema.Schema) Annotations {
+	a := annotationsOf(propSchema)
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		return a
+	}
+	a.ReadOnly, a.WriteOnly = false, false
+	for _, src := range sources {
+		a.ReadOnly = a.ReadOnly || src.IsReadOnly()
+		a.WriteOnly = a.WriteOnly || src.IsWriteOnly()
+	}
+	return a
 }
 
 // readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by
@@ -9780,6 +10054,10 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 			return &NamedType{Name: itemContext}
 		}
 	}
+	// An element or map value stating a "not" beside another keyword needs no arm
+	// of its own here (issue #177): every path out of this function that would
+	// type it from the sibling alone ends in resolveType, whose first arm claims
+	// exactly that shape. See inlineSiblingNotWrapper.
 	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
@@ -13336,6 +13614,53 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 		s.Const == nil && !s.ConstIsNull && len(s.PatternProperties) == 0
 }
 
+// siblingsWouldDropNot reports whether a schema states a "not" that no arm
+// below generateTypeDef's runtime one would enforce, because the schema states
+// something else as well.
+//
+// It answers for the shape alone and not for what the evaluator can do with it;
+// the caller tries the evaluator and falls through when it declines. The three
+// refusals here are the cases where taking the schema over would be wrong rather
+// than merely unhelpful.
+//
+// Whether validation keywords are being generated at all is deliberately not
+// asked here: it is runtimeSchemaDef's question, every caller reaches it, and a
+// second copy of the answer is a branch nothing can be made to exercise.
+func (g *Generator) siblingsWouldDropNot(s *schema.Schema) bool {
+	if s == nil || s.Not == nil {
+		return false
+	}
+	// Through draft 7 a reference replaces everything written beside it, so the
+	// "not" does not apply and nothing is being dropped by ignoring it. See
+	// refOverridesSiblingsForSchema.
+	if s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s) {
+		return false
+	}
+	// A negation that forbids nothing. `not: false` is a "not" over the schema no
+	// value satisfies, and a double negation of accept-all says as much as `{}`
+	// does; extractNotSchemaDef declines both for that reason. Claiming them here
+	// would trade a Go type for a raw-JSON wrapper and buy no check at all.
+	if s.Not.IsFalseSchema() {
+		return false
+	}
+	if s.Not.Not != nil && g.acceptsEveryInstance(s.Not.Not) {
+		return false
+	}
+	// With no sibling this is the not-only shape, which extractNotSchemaDef and
+	// the raw-JSON wrappers further down already own -- and they produce a smaller
+	// and more readable check for it than the evaluator does.
+	stated, ok := statedConstraints(s)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if key != "not" {
+			return true
+		}
+	}
+	return false
+}
+
 // extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only
 // schema that we can statically validate. Returns nil for schemas that have
 // other constraints or use complex not sub-schemas we can't handle.
@@ -13343,6 +13668,36 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	if s.Not == nil {
 		return nil
 	}
+
+	// not: {} (empty schema) or not: true → forbid everything.
+	//
+	// A "not" over a schema that admits every instance admits none, and that is
+	// the whole schema whatever else it says: an instance has to satisfy every
+	// assertion, and no instance satisfies this one. So the answer does not depend
+	// on the siblings and is given ahead of the bail-out below, which would
+	// otherwise hand {"type":"string","not":{}} to the type arm -- `type Root
+	// string` with a Validate that returns nil, accepting every string against a
+	// schema that admits none. That is issue #177 in the one shape whose answer no
+	// evaluator is needed for.
+	//
+	// acceptsEveryInstance rather than isAcceptAllSchema, because `format` is the
+	// one keyword whose reading is the generator's and not the schema's: where the
+	// dialect asserts it, {"not":{"format":"email"}} forbids email addresses alone,
+	// and reading the inner schema as accept-all refused every string there is and
+	// every number besides. See acceptsEveryInstance.
+	//
+	// The exception is the draft where a reference replaces what stands beside it,
+	// since there the "not" is not read at all. See refOverridesSiblingsForSchema.
+	if !(s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)) &&
+		(g.acceptsEveryInstance(s.Not) || s.Not.IsTrueSchema()) {
+		return &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			Annotations: annotationsOf(s),
+			IsForbidden: true,
+		}
+	}
+
 	// Only handle "not" as the sole constraint keyword. If the schema also has
 	// type, properties, items, allOf, etc., it should be handled by other code paths.
 	if len(s.Type) > 0 || hasProperties(s) || s.Items != nil || len(s.PrefixItems) > 0 ||
@@ -13365,22 +13720,6 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		return nil
 	}
 
-	// not: {} (empty schema) or not: true → forbid everything.
-	//
-	// acceptsEveryInstance rather than isAcceptAllSchema, because `format` is the
-	// one keyword whose reading is the generator's and not the schema's: where
-	// the dialect asserts it, {"not":{"format":"email"}} forbids email addresses
-	// alone, and reading the inner schema as accept-all refused every string
-	// there is and every number besides. See acceptsEveryInstance.
-	if g.acceptsEveryInstance(not) || not.IsTrueSchema() {
-		return &NotSchemaDef{
-			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
-			IsForbidden: true,
-		}
-	}
-
 	// not: {not: {}} → double negation of accept-all = accept-all.
 	// No validation needed.
 	if not.Not != nil && g.acceptsEveryInstance(not.Not) {
@@ -13388,7 +13727,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	}
 
 	// not: {type: X} or not: {type: [X, Y]} → reject values of those types.
-	if len(not.Type) > 0 && isTypeOnlySchema(not) {
+	if len(not.Type) > 0 && g.isTypeOnlyNegationOperand(not) {
 		return &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
@@ -13400,7 +13739,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	// Draft 3 disallow arrays normalize to not:{anyOf:[...]}. Handle branches
 	// with simple type constraints and object property type checks.
 	if len(not.AnyOf) > 0 {
-		branches := extractNotSchemaBranches(not.AnyOf)
+		branches := g.extractNotSchemaBranches(not.AnyOf)
 		if len(branches) == len(not.AnyOf) {
 			return &NotSchemaDef{
 				Name:        name,
@@ -13415,28 +13754,42 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	return nil
 }
 
-func extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaBranch {
+// extractNotSchemaBranches reads the disjunction under a `not` -- the shape a
+// draft 3 "disallow" array normalizes to -- into one branch per alternative.
+//
+// A branch is a disjunct of the thing being negated, so an alternative read with
+// a keyword missing widens it exactly as a missing keyword widens the operand as
+// a whole, and every gate below is therefore an allow-list. See
+// negationOperandStatesOnly.
+func (g *Generator) extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaBranch {
 	branches := make([]NotSchemaBranch, 0, len(subs))
 	for _, sub := range subs {
 		if sub == nil || sub.IsBooleanSchema() {
 			return nil
 		}
-		if len(sub.Type) > 0 && isTypeOnlySchema(sub) {
+		if len(sub.Type) > 0 && g.isTypeOnlyNegationOperand(sub) {
 			branches = append(branches, NotSchemaBranch{Types: append([]string(nil), sub.Type...)})
 			continue
 		}
-		if len(sub.Type) == 1 && hasSimpleNotBranchValidations(sub) && isSimpleNotBranchSchema(sub) {
+		if len(sub.Type) == 1 && hasSimpleNotBranchValidations(sub) &&
+			g.negationOperandStatesOnly(sub, notBranchValidationKeywords) {
 			branches = append(branches, NotSchemaBranch{
 				Types:       append([]string(nil), sub.Type...),
 				Validations: extractSimpleNotBranchValidations(sub),
 			})
 			continue
 		}
-		if len(sub.Properties) > 0 && len(sub.Type) <= 1 && (len(sub.Type) == 0 || sub.Type[0] == "object") {
+		if len(sub.Properties) > 0 && len(sub.Type) <= 1 && (len(sub.Type) == 0 || sub.Type[0] == "object") &&
+			g.negationOperandStatesOnly(sub, notBranchPropertyKeywords) {
 			branch := NotSchemaBranch{}
 			for _, name := range sortedKeys(sub.Properties) {
 				prop := sub.Properties[name]
-				if prop == nil || len(prop.Type) != 1 || !isTypeOnlySchema(prop) {
+				// The emitted branch checks a property's JSON type and nothing
+				// else, so a property stating anything more is one this shape
+				// cannot carry -- and carrying it anyway is what made
+				// {"not":{"anyOf":[{"properties":{"a":{"type":"string",
+				// "format":"email"}}}]}} refuse every object with a string "a".
+				if prop == nil || len(prop.Type) != 1 || !g.isTypeOnlyNegationOperand(prop) {
 					return nil
 				}
 				branch.Properties = append(branch.Properties, NotPropertyBranch{Name: name, JSONType: prop.Type[0]})
@@ -13468,45 +13821,98 @@ func extractSimpleNotBranchValidations(s *schema.Schema) []ValidationRule {
 	return out
 }
 
-func isSimpleNotBranchSchema(s *schema.Schema) bool {
-	return s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
-		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 && s.Not == nil &&
-		s.If == nil && s.Then == nil && s.Else == nil &&
-		len(s.Properties) == 0 && len(s.PatternProperties) == 0 && s.AdditionalProperties == nil &&
-		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil && s.Contains == nil &&
-		s.Enum == nil && s.Const == nil && !s.ConstIsNull && s.Format == nil &&
-		s.UniqueItems == nil && s.MinProperties == nil && s.MaxProperties == nil &&
-		len(s.Definitions) == 0 && len(s.Defs) == 0 &&
-		s.PropertyNames == nil && s.UnevaluatedItems == nil && s.UnevaluatedProperties == nil &&
-		s.DependentSchemas == nil && s.DependentRequired == nil && len(s.Dependencies) == 0
+// negationOperandStatesOnly reports whether every keyword a `not` operand states
+// is one the caller named, so the caller may compile the operand knowing it has
+// read all of it.
+//
+// This is the rule the whole `not` path is built on, and it is the opposite of
+// the rule that holds everywhere else in this package. Outside a negation a
+// keyword read and then dropped costs a rejection: the generated check enforces
+// less than the schema says, and the failure is that something invalid gets
+// through. Inside a `not` the sign flips. `not (A and B)` admits every value
+// `not A` admits and more, so an operand read with one of its keywords missing
+// forbids *more* than the schema does, and the generated type refuses documents
+// the schema plainly permits -- {"not":{"type":"string","format":"email"}}
+// refusing every string rather than the e-mail addresses, and
+// {"not":{"type":"object","patternProperties":{...}}} refusing every object
+// (issue #185).
+//
+// So a gate that decides what a `not` operand says must be an allow-list over
+// the keywords the operand actually states, never a hand-written list of the
+// fields that would disqualify it. A denylist has exactly the wrong default
+// here: the keyword nobody thought to add is dropped silently and the negation
+// over-fires, and the keywords nobody has thought of yet are the ones this will
+// meet next. Both halves of #185 were fields missing from such a list, and the
+// list had already been extended twice before that.
+//
+// When the operand states something outside the list the answer is to decline
+// the negation whole, not to negate a weaker reading of it. Declining leaves the
+// constraint unenforced, which errs towards accepting a document the schema
+// forbids -- the direction that costs an acceptance rather than a rejection, and
+// the one unenforcedKeywords can report in the generated source. Over-negating
+// cannot be reported at all, because from the outside it looks like the schema
+// working.
+func (g *Generator) negationOperandStatesOnly(s *schema.Schema, allowed map[string]bool) bool {
+	if s == nil {
+		return false
+	}
+	stated, ok := statedConstraints(s)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if allowed[key] {
+			continue
+		}
+		// `format` is the one keyword whose reading is the generator's and not the
+		// schema's. Where the dialect treats it as an annotation it constrains
+		// nothing, so passing over it there is exact rather than a drop; where the
+		// dialect asserts it, it is a conjunct like any other and the operand is
+		// declined. acceptsEveryInstance answers the same question for the operand
+		// that states nothing besides.
+		if key == "format" && !g.formatAssertsFor(s) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
-// isTypeOnlySchema returns true if the schema has only a "type" constraint and
-// nothing else (used for not:{type:X} detection).
-// The enum and const tests are what keep a schema that names a type *and*
-// enumerates its values from being read as if it named only the type. Every
-// caller is a `not`, where dropping a conjunct from the inner schema widens the
-// negation instead of narrowing it: {"not":{"type":"string","enum":[]}} is a
-// `not` over a schema no string satisfies and so admits every string, and
-// {"not":{"type":"string","const":"x"}} forbids "x" alone -- both were read as
-// {"not":{"type":"string"}} and refused every string there is. `const` was not
-// tested at all, and `enum` was tested with len(), which cannot tell an absent
-// enum from the empty one; see emptyEnumSchema.
-func isTypeOnlySchema(s *schema.Schema) bool {
-	return len(s.Properties) == 0 && s.Not == nil &&
-		len(s.AllOf) == 0 && len(s.AnyOf) == 0 && len(s.OneOf) == 0 &&
-		s.Minimum == nil && s.Maximum == nil && s.MinLength == nil && s.MaxLength == nil &&
-		s.MinItems == nil && s.MaxItems == nil && s.Pattern == nil &&
-		s.Enum == nil && s.Const == nil && !s.ConstIsNull &&
-		s.Ref == "" && s.DynamicRef == "" && s.RecursiveRef == "" &&
-		len(s.Required) == 0 && s.AdditionalProperties == nil &&
-		s.Items == nil && len(s.PrefixItems) == 0 &&
-		s.Contains == nil && s.PropertyNames == nil &&
-		s.MinProperties == nil && s.MaxProperties == nil &&
-		s.If == nil && s.UnevaluatedProperties == nil && s.UnevaluatedItems == nil &&
-		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
-		s.MultipleOf == nil && s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
-		s.UniqueItems == nil
+// notTypeOnlyKeywords, notBranchValidationKeywords and notBranchPropertyKeywords
+// are the three vocabularies the static `not` compiler can read, one per shape
+// it emits. Each is exactly what the not_schema template renders for that shape:
+// a list of JSON types, a type plus the scalar bounds, or a type plus a set of
+// properties checked for their own type alone.
+//
+// Adding a keyword to one of these is a promise that the emitted code checks it.
+// Leaving one out costs nothing but a schema declined, which is the safe half of
+// the trade described on negationOperandStatesOnly.
+var (
+	notTypeOnlyKeywords = map[string]bool{"type": true}
+
+	notBranchValidationKeywords = map[string]bool{
+		"type":    true,
+		"minimum": true, "maximum": true,
+		"exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+		"minLength": true, "maxLength": true, "pattern": true,
+		"minItems": true, "maxItems": true,
+	}
+
+	notBranchPropertyKeywords = map[string]bool{"type": true, "properties": true}
+)
+
+// isTypeOnlyNegationOperand reports whether a `not` operand constrains its
+// instance by "type" and nothing else.
+//
+// The enum and const cases are what this has always had to catch: a schema that
+// names a type *and* enumerates its values read as if it named only the type
+// makes {"not":{"type":"string","const":"x"}} -- which forbids "x" alone --
+// refuse every string there is. It now catches them the other way round, by
+// naming what it can read rather than what it cannot, so `patternProperties`,
+// `format` under an asserting dialect, the content keywords and whatever arrives
+// next are caught by the same sentence.
+func (g *Generator) isTypeOnlyNegationOperand(s *schema.Schema) bool {
+	return g.negationOperandStatesOnly(s, notTypeOnlyKeywords)
 }
 
 // extractTypeOnlySchemaDef returns a *TypeOnlySchemaDef if the schema has an
@@ -16898,6 +17304,17 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// and that function has no generator to ask.
 	if g.nullableFormatUnion(resolved) || g.stringAnnotationOnlySchema(resolved) ||
 		g.declaredFormatStringSchema(resolved) || g.declaredContentStringSchema(resolved) {
+		_ = g.generateTypeDef(posName, resolved)
+		if g.generated[posName] {
+			return TupleItemDef{TypeName: posName}, true
+		}
+	}
+	// A position stating a "not" beside another keyword. hasStructuralKeywords
+	// does not count `not`, and the JSONType arm below answers from the sibling
+	// alone, so {"prefixItems":[{"type":"string","not":{"const":"forbidden"}}]}
+	// checked that the position held a string and accepted "forbidden" -- the
+	// tuple slot of issue #177. The generated type carries both.
+	if g.inlineSiblingNotWrapper(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true

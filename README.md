@@ -198,9 +198,17 @@ which they have a direction ([2020-12 §9.4][ro]):
 Both bind on a **property**, whichever way the schema says so: written on the
 property, reached through its `$ref` (however long the chain), or stated in one
 of its `allOf` branches all name the same instance location and all bind. An
-`anyOf` or `oneOf` branch does not, because which branch applies is the
-document's business and a check keyed on one would refuse documents the schema
-never marked.
+`anyOf`, `oneOf`, `if`/`then`/`else` or `dependentSchemas` branch does not,
+because which branch applies is the document's business and a check keyed on one
+would refuse documents the schema never marked. That holds however the branch is
+reached — including an object-level conditional inside an `allOf` branch, whose
+properties are merged into the same struct: the branch is where such a property
+gets its Go type, and only its `readOnly`/`writeOnly` is held back. The doc
+comment follows the same line, so the generated type does not document a
+contract it does not enforce.
+
+How the property is typed makes no difference. A property whose `oneOf` becomes
+a sealed-interface group is checked exactly as a plain field is.
 
 Outside a property the two keywords stay documentation. A `readOnly` array
 element or map value has no property name for the check to key on, and there is

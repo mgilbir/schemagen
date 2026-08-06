@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotVocabulary",
+  "description": "Issue #185: a keyword dropped from inside a `not` widens the negation, so the generated type refused documents the schema permits. typeOnly and typeOnlyBranch are the controls -- an operand whose whole content is its type must still negate.",
+  "type": "object",
+  "properties": {
+    "patternProps": {"not": {"type": "object", "patternProperties": {"^x": {"type": "integer"}}}},
+    "branchRequired": {"not": {"anyOf": [{"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["b"]}]}},
+    "typeOnly": {"not": {"type": "string"}},
+    "typeOnlyBranch": {"not": {"anyOf": [{"type": "string"}, {"type": "boolean"}]}}
+  }
+}

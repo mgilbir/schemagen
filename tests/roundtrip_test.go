@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -285,6 +286,17 @@ func allRoundTripTests() []roundTripTestCase {
 			Name:        "regression/read_write_positions",
 			SchemaPath:  "testdata/schemas/regression/read_write_positions.json",
 			FixturePath: "testdata/fixtures/regression/read_write_positions.json",
+		},
+		{
+			// Issue #174's shape, under the setting that has nothing to say
+			// about it. Every conditional branch here contributes a property to
+			// the merged struct, so every one of them has to survive the trip:
+			// the merge is what gives those values a field to live in, and a fix
+			// that suppressed the branch instead of only its annotations would
+			// drop them here.
+			Name:        "regression/read_write_conditional_positions",
+			SchemaPath:  "testdata/schemas/regression/read_write_conditional_positions.json",
+			FixturePath: "testdata/fixtures/regression/read_write_conditional_positions.json",
 		},
 	}
 }
@@ -2210,6 +2222,12 @@ func main() {
 		// struct, which carries the check in its own UnmarshalJSON.
 		` + "`" + `{"nested":{"sid":"s"}}` + "`" + `,
 		` + "`" + `{"nestedList":[{"sid":"s"}]}` + "`" + `,
+		// The oneOf group, issue #175. This property compiles to a sealed
+		// interface rather than to a struct field, and the key lists are built
+		// by walking the fields, so it was named in neither: the flag did
+		// nothing at all here and said nothing about doing nothing.
+		` + "`" + `{"roGroup":{"name":"n"}}` + "`" + `,
+		` + "`" + `{"roGroup":{"id":3}}` + "`" + `,
 	} {
 		var v ReadWritePositions
 		if err := json.Unmarshal([]byte(doc), &v); err == nil {
@@ -2242,6 +2260,10 @@ func main() {
 		` + "`" + `{"plain":"p"}` + "`" + `,
 		` + "`" + `{"untouched":"u"}` + "`" + `,
 		` + "`" + `{"woInline":"s","woViaRef":"s"}` + "`" + `,
+		// The group controls: a writeOnly group goes in, and a group whose
+		// property states nothing is untouched in both directions.
+		` + "`" + `{"woGroup":{"name":"n"}}` + "`" + `,
+		` + "`" + `{"plainGroup":{"id":1}}` + "`" + `,
 	} {
 		var v ReadWritePositions
 		if err := json.Unmarshal([]byte(doc), &v); err != nil {
@@ -2253,7 +2275,7 @@ func main() {
 	// do not come out; the array of writeOnly elements is untouched, for the
 	// reason above.
 	var v ReadWritePositions
-	if err := json.Unmarshal([]byte(` + "`" + `{"woInline":"s1","woViaRef":"s2","woViaAllOf":"s4","woList":["s3"],"untouched":"u","plain":"p"}` + "`" + `), &v); err != nil {
+	if err := json.Unmarshal([]byte(` + "`" + `{"woInline":"s1","woViaRef":"s2","woViaAllOf":"s4","woList":["s3"],"woGroup":{"name":"s5"},"plainGroup":{"id":9},"untouched":"u","plain":"p"}` + "`" + `), &v); err != nil {
 		fail("decoding the writeOnly document: %v", err)
 	}
 	out, err := json.Marshal(v)
@@ -2264,12 +2286,12 @@ func main() {
 	if err := json.Unmarshal(out, &got); err != nil {
 		fail("re-reading the output: %v", err)
 	}
-	for _, gone := range []string{"woInline", "woViaRef", "woViaAllOf"} {
+	for _, gone := range []string{"woInline", "woViaRef", "woViaAllOf", "woGroup"} {
 		if _, present := got[gone]; present {
 			fail("strict mode wrote the writeOnly property %q: %s", gone, out)
 		}
 	}
-	for _, kept := range []string{"woList", "untouched", "plain"} {
+	for _, kept := range []string{"woList", "untouched", "plain", "plainGroup"} {
 		if _, present := got[kept]; !present {
 			fail("strict mode dropped %q: %s", kept, out)
 		}
@@ -2283,6 +2305,7 @@ func main() {
 		` + "`" + `{"roList":["a"],"roMap":{"k":"b"},"woList":["s"],"roViaAnyOf":"a"}` + "`" + `,
 		` + "`" + `{"plain":"p","untouched":"u","woInline":"s"}` + "`" + `,
 		` + "`" + `{"nested":{"keep":"k"}}` + "`" + `,
+		` + "`" + `{"woGroup":{"id":1},"plainGroup":{"name":"n"}}` + "`" + `,
 	} {
 		var w ReadWritePositions
 		if err := json.Unmarshal([]byte(doc), &w); err != nil {
@@ -2325,6 +2348,367 @@ func TestReadWritePositionsAreDocumentationByDefault(t *testing.T) {
 	if !strings.Contains(src, `Read-only: the schema says "readOnly"`) {
 		t.Errorf("the default configuration dropped the readOnly doc comment entirely:\n%s", src)
 	}
+	// Including above the oneOf group, which carried no comment at all until
+	// issue #175 -- OneOfDef held neither Description nor Annotations, so the
+	// property's own prose was dropped along with the keywords. The interface
+	// name is the marker because the field's tag is `json:"-"`: the group is
+	// written by hand in MarshalJSON, so there is no property name in the line.
+	for _, c := range []struct {
+		marker string
+		want   []string
+		unwant []string
+	}{
+		{"isReadWritePositions_RoGroup", []string{"Chosen by the server.", `Read-only: the schema says "readOnly"`}, []string{"Write-only:"}},
+		{"isReadWritePositions_WoGroup", []string{`Write-only: the schema says "writeOnly"`}, []string{"Read-only:"}},
+		// The control: a group whose property says nothing gets nothing, which
+		// is what makes the two above evidence rather than a comment the
+		// template writes over every group.
+		{"isReadWritePositions_PlainGroup", nil, []string{"Read-only:", "Write-only:", "Chosen by the server."}},
+	} {
+		block := docCommentAboveLine(t, src, c.marker, "`json:\"-\"`")
+		for _, want := range c.want {
+			if !strings.Contains(block, want) {
+				t.Errorf("the comment above the %s field does not carry %q:\n%s", c.marker, want, block)
+			}
+		}
+		for _, unwant := range c.unwant {
+			if strings.Contains(block, unwant) {
+				t.Errorf("the comment above the %s field carries %q, which its property does not state:\n%s", c.marker, unwant, block)
+			}
+		}
+	}
+}
+
+// TestStrictReadWriteKeyListsAreSorted pins the order of the two key lists.
+//
+// It is a property of the generated source and not of what it does -- the
+// decoder refuses the same documents whatever order the names are in -- but the
+// lists are read by people diffing generated code, and the order stopped being
+// automatic when the oneOf groups of issue #175 joined them: the fields are
+// walked first and the groups after, so a struct carrying both came out sorted
+// within each half and not across the two.
+func TestStrictReadWriteKeyListsAreSorted(t *testing.T) {
+	src := string(generateFromSchemaWithConfig(t, "testdata/schemas/regression/read_write_positions.json",
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true}))
+	// Anchored on the root type's own methods. Every nested struct in this
+	// document carries lists of its own, and the first in the file is
+	// HasReadOnlyProperty's one-element one, which can show no ordering at all.
+	for _, c := range []struct{ anchor, opener string }{
+		{"func (r *ReadWritePositions) UnmarshalJSON", "_roKey := range []string{"},
+		{"func (r ReadWritePositions) MarshalJSON", "_woKey := range []string{"},
+	} {
+		keys := stringListAfter(t, src, c.anchor, c.opener)
+		if len(keys) < 2 {
+			t.Fatalf("%s lists %d keys, which cannot show an ordering", c.opener, len(keys))
+		}
+		if !sort.StringsAreSorted(keys) {
+			t.Errorf("%s is not in sorted order: %v", c.opener, keys)
+		}
+	}
+}
+
+// stringListAfter returns the quoted strings of the first Go slice literal
+// opened by opener at or after anchor, which is expected to be a list of one
+// element per line closed by a line whose first non-space character is "}".
+func stringListAfter(t *testing.T, src, anchor, opener string) []string {
+	t.Helper()
+	from := strings.Index(src, anchor)
+	if from < 0 {
+		t.Fatalf("generated source has no %q", anchor)
+	}
+	rel := strings.Index(src[from:], opener)
+	if rel < 0 {
+		t.Fatalf("generated source has no %q after %q", opener, anchor)
+	}
+	idx := from + rel
+	var keys []string
+	for _, line := range strings.Split(src[idx+len(opener):], "\n")[1:] {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "}") {
+			break
+		}
+		key, err := strconv.Unquote(strings.TrimSuffix(line, ","))
+		if err != nil {
+			t.Fatalf("the list after %q holds %q, which is not a Go string literal", opener, line)
+		}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// TestStrictReadWriteDeclinesAConditionalReachedInPlace is issue #174.
+//
+// --strict-read-write must never refuse a document the schema accepts, and it
+// did, for every way of reaching a conditional applicator through an in-place
+// one. readWriteAtLocation declines to walk anyOf, oneOf and if/then/else on
+// exactly that reasoning -- a branch contributes its annotations only to the
+// documents that match it -- but the allOf merge had already folded the
+// branch's property schemas into this struct's property map, so the key loop
+// read `readOnly` off a `then` as though the property had been written that
+// way and no walk was needed to get there.
+//
+// The distinction the merge erases is restored rather than the merge undone.
+// Each branch property below still becomes a typed field -- the round-trip case
+// on this schema is what says so -- and only the two annotations are read
+// through where the property came from.
+//
+// The RoBinds*/WoBinds* half is not decoration. $ref and allOf bind on every
+// valid instance and issue #172 established that they feed the key list; a fix
+// that answered #174 by reading fewer of them would have traded a false
+// rejection for a false acceptance, which is the worse of the two. roBindsBoth
+// is the sharp case: the parent declares it readOnly and a `then` branch retypes
+// it, so a rule that keyed on "a conditional touched this property" rather than
+// on which schema said what would drop a check the schema states outright.
+func TestStrictReadWriteDeclinesAConditionalReachedInPlace(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// The false rejections. Every one of these documents is accepted by the
+	// schema and was refused by the generated decoder: the property is named
+	// only inside a branch that this document does not select, or does not
+	// select alone, so nothing marked it readOnly.
+	for _, doc := range []string{
+		` + "`" + `{"roCondThen":"x"}` + "`" + `,
+		` + "`" + `{"roCondElse":"x"}` + "`" + `,
+		` + "`" + `{"roCondAnyOf":"x"}` + "`" + `,
+		` + "`" + `{"roCondOneOf":"x","pickB":1}` + "`" + `,
+		// Through a $ref into the conditional rather than an inline one. The
+		// hop is what makes the merge see a conditional at all, so both hops
+		// are written out.
+		` + "`" + `{"roCondThenViaRef":"x"}` + "`" + `,
+		// The same defect one level down, where a property-level anyOf of two
+		// object branches is merged into a struct of its own. That merge is a
+		// different function from the allOf one and had the same hole.
+		` + "`" + `{"condObject":{"b":1,"roCondNested":"x"}}` + "`" + `,
+		// The two positions issue #174 reports as unaffected, asserted rather
+		// than assumed: a dependentSchemas branch and a ` + "`" + `not` + "`" + ` both name a
+		// property that no field is ever built for.
+		` + "`" + `{"roCondDependent":"x"}` + "`" + `,
+		` + "`" + `{"roCondNot":"x"}` + "`" + `,
+		// And the document the branch *does* select. A static list of property
+		// names cannot say "readOnly when mode is present", so the flag under-
+		// enforces here rather than refusing on a condition it cannot evaluate.
+		// That is the deliberate direction -- a missing check over a false
+		// rejection -- and it is written down so that changing it is a choice.
+		` + "`" + `{"mode":"m","roCondThen":"x"}` + "`" + `,
+	} {
+		var v ReadWriteConditionalPositions
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("strict mode refused a document the schema accepts: %s: %v", doc, err)
+		}
+	}
+
+	// The other side, and the reason the merge is read through rather than
+	// ignored: an in-place applicator binds on every valid instance, so these
+	// four are still refused.
+	for _, doc := range []string{
+		` + "`" + `{"roBindsInline":"a"}` + "`" + `,
+		` + "`" + `{"roBindsViaRef":"a"}` + "`" + `,
+		` + "`" + `{"roBindsViaAllOf":"a"}` + "`" + `,
+		// Declared readOnly by the parent and retyped by a conditional branch.
+		` + "`" + `{"roBindsBoth":"a"}` + "`" + `,
+		// The same, with the unconditional half coming from an allOf branch
+		// rather than from the parent. Those are two different places in the
+		// merge and each has to record what it contributed, or the branch's
+		// keyword is lost the moment a conditional mentions the property.
+		` + "`" + `{"roBindsAllOfAndThen":"a"}` + "`" + `,
+		// And the unconditional half behind a $ref, which is the one the
+		// property schema itself does not state -- the doc comment does not
+		// follow a reference (#172) but the key list must, so this is the only
+		// case where the walk, and not the annotation read beside it, is what
+		// keeps the check.
+		` + "`" + `{"roBindsRefAndThen":"a"}` + "`" + `,
+	} {
+		var v ReadWriteConditionalPositions
+		if err := json.Unmarshal([]byte(doc), &v); err == nil {
+			fail("strict mode decoded a document setting a readOnly property: %s", doc)
+		} else if !strings.Contains(err.Error(), "read-only property may not be set") {
+			fail("decoding %s failed for the wrong reason: %v", doc, err)
+		}
+	}
+
+	// writeOnly is the same defect with no diagnostic: the value decodes, it
+	// validates, and MarshalJSON drops it. So the branch-contributed ones have
+	// to come back out, and the allOf-contributed one still may not.
+	var v ReadWriteConditionalPositions
+	in := ` + "`" + `{"pickA":1,"woBindsViaAllOf":"a","woCondThen":"b","woCondAnyOf":"c","woCondGroup":{"id":4}}` + "`" + `
+	if err := json.Unmarshal([]byte(in), &v); err != nil {
+		fail("decoding the writeOnly document: %v", err)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshaling: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		fail("re-reading the output: %v", err)
+	}
+	if _, present := got["woBindsViaAllOf"]; present {
+		fail("strict mode wrote a property an allOf branch marks writeOnly: %s", out)
+	}
+	for _, kept := range []string{"woCondThen", "woCondAnyOf", "woCondGroup"} {
+		if _, present := got[kept]; !present {
+			fail("strict mode dropped %q, which only a conditional branch marks writeOnly: %s", kept, out)
+		}
+	}
+
+	// None of it is a verdict, under either setting: both keywords are
+	// annotations and Validate does not consult them.
+	for _, doc := range []string{
+		` + "`" + `{"pickA":1}` + "`" + `,
+		` + "`" + `{"pickB":2,"roCondOneOf":"x","roCondAnyOf":"y","woCondAnyOf":"z"}` + "`" + `,
+		` + "`" + `{"mode":"m","pickA":1,"roCondThen":"x","woCondThen":"y","condObject":{"a":1,"roCondNested":"n"}}` + "`" + `,
+	} {
+		var w ReadWriteConditionalPositions
+		if err := json.Unmarshal([]byte(doc), &w); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := w.Validate(); err != nil {
+			fail("Validate rejected %s, which the schema permits: %v", doc, err)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/read_write_conditional_positions.json",
+		"strict_read_write_conditional_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true},
+	)
+}
+
+// TestConditionalReadWriteIsNotDocumentedUnconditionally is the cosmetic half
+// of issue #174, and it is the same reading asked under the default setting.
+//
+// A merged field took its doc comment from whatever the merge left in the
+// property map, so a `then` branch's readOnly produced an unconditional
+// "Read-only:" paragraph on a field the schema marks readOnly only sometimes.
+// The comment and the key list are now taken from one reading of where the
+// property came from, which is what stops the generated type from documenting
+// one contract and enforcing another.
+func TestConditionalReadWriteIsNotDocumentedUnconditionally(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/read_write_conditional_positions.json"))
+
+	// Nothing behavioural under the default configuration, whatever the merge
+	// produced. This is the same control the other matrix carries.
+	for _, unwanted := range []string{"read-only property may not be set", "_woKey", "_roKey"} {
+		if strings.Contains(src, unwanted) {
+			t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only:\n%s", unwanted, src)
+		}
+	}
+
+	for _, c := range []struct {
+		jsonName string
+		want     string
+	}{
+		// Contributed only by a branch that binds on some documents: the
+		// keyword describes those documents, and the field's comment describes
+		// all of them, so it may not be said here.
+		{"roCondThen", ""},
+		{"roCondElse", ""},
+		{"roCondAnyOf", ""},
+		{"roCondOneOf", ""},
+		{"roCondThenViaRef", ""},
+		{"woCondThen", ""},
+		{"woCondAnyOf", ""},
+		{"roCondNested", ""},
+		// Not a conditional case: the doc comment deliberately stops at the
+		// property schema, so a keyword behind a $ref is documented on the
+		// referenced type instead. The check on it is still emitted, which the
+		// strict test above is what says.
+		{"roBindsRefAndThen", ""},
+		// Written on the property itself or contributed by an allOf branch,
+		// which binds on every valid instance. These are the control: without
+		// them a fix that emitted the paragraph nowhere would pass.
+		{"roBindsInline", `Read-only: the schema says "readOnly"`},
+		{"roBindsViaAllOf", `Read-only: the schema says "readOnly"`},
+		{"woBindsViaAllOf", `Write-only: the schema says "writeOnly"`},
+		// Stated by the parent and merely retyped by a branch. The keyword is
+		// the parent's and stays.
+		{"roBindsBoth", `Read-only: the schema says "readOnly"`},
+		{"roBindsAllOfAndThen", `Read-only: the schema says "readOnly"`},
+	} {
+		// Looking the field up by its struct tag is also what says the merge
+		// still happened: a branch-contributed property that stopped becoming a
+		// field would have no tag to find, and this fails rather than passing
+		// vacuously. Without the merge the value would land in the overflow map,
+		// where it still round-trips -- so the round-trip case alone cannot see
+		// the difference.
+		block := docCommentAboveLine(t, src, "`json:\""+c.jsonName+",omitempty\"`")
+		switch {
+		case c.want == "":
+			for _, unwanted := range []string{"Read-only:", "Write-only:"} {
+				if strings.Contains(block, unwanted) {
+					t.Errorf("the comment above %q carries %q, which only a conditional branch states:\n%s",
+						c.jsonName, unwanted, block)
+				}
+			}
+		case !strings.Contains(block, c.want):
+			t.Errorf("the comment above %q does not carry %q:\n%s", c.jsonName, c.want, block)
+		}
+	}
+
+	// The two issues crossing: a property a conditional branch contributes,
+	// carrying writeOnly beside a oneOf. It compiles to the sealed interface of
+	// issue #175, which now carries the annotations it did not, and it is read
+	// through the same provenance the fields are -- so the keyword the `then`
+	// branch states is not documented of every document either.
+	group := docCommentAboveLine(t, src,
+		"isReadWriteConditionalPositions_WoCondGroup", "`json:\"-\"`")
+	for _, unwanted := range []string{"Read-only:", "Write-only:"} {
+		if strings.Contains(group, unwanted) {
+			t.Errorf("the comment above the woCondGroup field carries %q, which only a conditional branch states:\n%s",
+				unwanted, group)
+		}
+	}
+}
+
+// docCommentAboveLine returns the run of comment lines immediately above the
+// first line of src containing every one of markers.
+//
+// docCommentAbove keys on a whole declaration line, which a struct field cannot
+// offer: gofmt aligns the fields of a struct with padding nobody writes, so the
+// text of the line depends on the longest field name beside it, and a marker
+// spanning two columns of it would stop matching when an unrelated field is
+// renamed. Each marker is therefore one run of characters gofmt does not touch
+// -- a struct tag, a type name -- and a line is identified by carrying all of
+// them rather than by any one being unique in the file.
+func docCommentAboveLine(t *testing.T, src string, markers ...string) string {
+	t.Helper()
+	lines := strings.Split(src, "\n")
+	for i, line := range lines {
+		matched := true
+		for _, marker := range markers {
+			if !strings.Contains(line, marker) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		start := i
+		for start > 0 && strings.HasPrefix(strings.TrimSpace(lines[start-1]), "//") {
+			start--
+		}
+		return strings.Join(lines[start:i], "\n")
+	}
+	t.Fatalf("generated source has no line containing all of %q:\n%s", markers, src)
+	return ""
 }
 
 // runGeneratedMainProgram compiles the generated types for schemaPath together
@@ -8405,6 +8789,36 @@ func TestArrayKeywordsSurviveEveryContainerPosition(t *testing.T) {
 			`{"mapContainsObject":{"k":[{}]}}`,
 			`{"elemMinContains":[[1]]}`,
 			`{"elemMaxContains":[[1,2]]}`,
+		},
+	)
+}
+
+// TestUnusedDefinitionsDoNotDisableUnevaluatedItems is issue #178 end to end.
+//
+// The two keyword allow-lists in pkg/generator/annotations.go each carried a
+// hand-written copy of "the keywords that carry no constraint", and the copies
+// disagreed. A keyword outside an allow-list refuses the whole schema, so an
+// entirely unused $defs -- which almost every real document carries -- sent this
+// schema back to the static path, and the static path cannot enforce
+// unevaluatedItems next to an in-place applicator: ["a", 1] was accepted.
+//
+// Compiling and running the generated code is the point. The generator can be
+// read to say it now compiles the schema; only the program says what it admits.
+func TestUnusedDefinitionsDoNotDisableUnevaluatedItems(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/unused_defs_unevaluated_items.json",
+		"UnusedDefsUnevaluatedItems",
+		[]string{
+			`["a"]`,
+			`[]`,
+		},
+		[]string{
+			// One item past the tuple, and unevaluatedItems is false.
+			`["a",1]`,
+			`["a","b"]`,
+			// The allOf branch still binds on its own terms.
+			`[1]`,
+			`{"a":1}`,
 		},
 	)
 }
