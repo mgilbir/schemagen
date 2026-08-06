@@ -6759,6 +6759,12 @@ func TestOneOfVariantSelectionTypeMirrorsResolution(t *testing.T) {
 		{"allOf merge", `{"allOf":[{"type":"string","minLength":2}]}`},
 		{"format only", `{"format":"ipv4"}`},
 		{"declared format", `{"type":"string","format":"ipv4"}`},
+		// A declared string stating the content vocabulary, on the one dialect
+		// that asserts it. The $schema is what makes the case bite: under
+		// 2020-12 the keywords annotate, both sides answer a bare string, and
+		// the case could not tell a working pair from a broken one.
+		{"declared content on an asserting dialect", `{"$schema":"http://json-schema.org/draft-07/schema#","type":"string","contentEncoding":"base64"}`},
+		{"declared content on an annotating dialect", `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","contentEncoding":"base64"}`},
 		{"nested oneOf", `{"oneOf":[{"minimum":1},{"maximum":9}]}`},
 		{"not", `{"not":{"type":"string"}}`},
 	}

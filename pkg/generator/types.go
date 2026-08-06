@@ -1473,11 +1473,25 @@ type ItemLevel struct {
 	TupleItems  []TupleItemDef
 	TupleTail   *TupleItemDef
 	UnevalItems *UnevaluatedItemsDef
+
+	// What `contains` says about an element that is itself an array, and the
+	// cardinality bounds beside it. The keyword is not a ValidationRule -- it
+	// counts matching elements against a sub-schema rather than testing the
+	// value directly -- so the rule list had nowhere to carry it and it was
+	// enforced nowhere at all: {"items":{"type":"array","contains":
+	// {"type":"integer","minimum":10}}} accepted [[1]], while the identical
+	// sub-schema written on an array *property* has been checked since
+	// FieldContainsDef existed. That is issue #179, and the check emitted here
+	// is the same contains_check template every other position uses.
+	Contains    *ContainsDef
+	MinContains *int // nil means the default of 1
+	MaxContains *int // nil means no upper bound
 }
 
 // carries reports whether this level emits a check of its own.
 func (l ItemLevel) carries() bool {
-	return l.CallValidate || len(l.Rules) > 0 || len(l.TupleItems) > 0 || l.UnevalItems != nil
+	return l.CallValidate || len(l.Rules) > 0 || len(l.TupleItems) > 0 ||
+		l.UnevalItems != nil || l.Contains != nil
 }
 
 // HasTupleItems reports whether this level's element is a tuple whose positions

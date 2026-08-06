@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ArrayKeywordsInContainerPositions",
+  "description": "Issues #179, #182 and #183: one array sub-schema, written in every container position a sub-schema can sit in. uniqueItems, contains and the contains cardinality bounds were kept in some of them and dropped in the rest, and the tell in each case is the minItems written beside them, which fired in all of them.",
+  "type": "object",
+  "properties": {
+    "prop": {
+      "$comment": "The control. An array property has always carried both keywords.",
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "minItems": 2
+    },
+    "ref": {
+      "$comment": "The other control: the same sub-schema behind a $ref, answered by the named type's own Validate.",
+      "$ref": "#/$defs/UniqueStrings"
+    },
+    "patternValue": {
+      "$comment": "A third control. A patternProperties value is materialized as a named type, so it never went through the element rules at all.",
+      "type": "object",
+      "patternProperties": {
+        "^p": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 2
+        }
+      }
+    },
+    "elem": {
+      "$comment": "Issue #179: an array element that is itself an array. elementRules' whitelist ended in `default: continue`, so uniqueItems was dropped while minItems, one arm up the same switch, fired.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" },
+        "uniqueItems": true,
+        "minItems": 2
+      }
+    },
+    "mapValue": {
+      "$comment": "Issue #179 again, at the map value the same element rules govern.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" },
+        "uniqueItems": true,
+        "minItems": 2
+      }
+    },
+    "deep": {
+      "$comment": "Two containers deep, which the same descent walks and the same rules govern.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 2
+        }
+      }
+    },
+    "tupleSlot": {
+      "$comment": "Issue #182: a tuple position whose schema is an array. hasStructuralKeywords counted no array keyword, so the slot fell through to the JSON-type test and emitted a bare []any check.",
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 2
+        }
+      ],
+      "items": false
+    },
+    "tupleTail": {
+      "$comment": "The tail past a tuple's prefix, which resolves a position through the same ladder.",
+      "type": "array",
+      "prefixItems": [{ "type": "boolean" }],
+      "items": {
+        "type": "array",
+        "items": { "type": "string" },
+        "uniqueItems": true,
+        "minItems": 2
+      }
+    },
+    "containsArray": {
+      "$comment": "Issue #183: contains whose sub-schema is an array. extractContainsDef asks the same ladder for a named type, was told the sub-schema needed none, and reduced it to a `starts with [` test that counted every array.",
+      "type": "array",
+      "contains": { "type": "array", "minItems": 2 }
+    },
+    "elemContains": {
+      "$comment": "Issue #179's other half: `contains` is not a ValidationRule, so an ItemLevel had nothing to carry it and the keyword reached nothing at all one position in from the property that has always had it.",
+      "type": "array",
+      "items": { "type": "array", "contains": { "type": "integer", "minimum": 10 } }
+    },
+    "elemContainsObject": {
+      "$comment": "The element's contains sub-schema is richer than the inline checks can say, so the count delegates to a materialized type -- the same route the property position takes, exercised one position in.",
+      "type": "array",
+      "items": { "type": "array", "contains": { "type": "object", "required": ["a"] } }
+    },
+    "elemContainsArray": {
+      "$comment": "Both defects at once: a contains sub-schema that is itself an array, written at an element position.",
+      "type": "array",
+      "items": { "type": "array", "contains": { "type": "array", "minItems": 2 } }
+    },
+    "mapContainsObject": {
+      "$comment": "And the map value, which shares the element descent.",
+      "type": "object",
+      "additionalProperties": { "type": "array", "contains": { "type": "object", "required": ["a"] } }
+    },
+    "elemMinContains": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "contains": { "type": "integer" },
+        "minContains": 2
+      }
+    },
+    "elemMaxContains": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "contains": { "type": "integer" },
+        "maxContains": 1
+      }
+    }
+  },
+  "$defs": {
+    "UniqueStrings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "minItems": 2
+    }
+  }
+}

@@ -1574,6 +1574,38 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 		}
 	}
 	{{- end}}
+	{{- if eq .RuleType "uniqueItems"}}
+	{{- /*
+	An element that is itself an array, judged the same way an array property
+	and an array alias are judged: marshal each item and key a set by the JSON
+	text, so 1 and 1.0 compare equal as the keyword requires. elementRules kept
+	the keyword nowhere until now, so {"items":{"type":"array","items":
+	{"type":"string"},"uniqueItems":true}} accepted [["a","a"]] while the
+	minItems written beside it fired -- issue #179. The variable names are
+	suffixed to keep them clear of the enclosing loops' _i/_e and of a nested
+	level's own copy of this block.
+	*/}}
+	{
+		_uqSeen := make(map[string]bool, len({{$elem}}))
+		for _uqIdx, _uqItem := range {{$elem}} {
+			_uqBytes, _uqErr := json.Marshal(_uqItem)
+			if _uqErr != nil {
+				return fmt.Errorf("{{$path}}: uniqueItems check: marshal error at index %d: %w", {{$args}}, _uqIdx, _uqErr)
+			}
+			if _uqSeen[string(_uqBytes)] {
+				return fmt.Errorf("{{$path}}: items are not unique (duplicate at index %d)", {{$args}}, _uqIdx)
+			}
+			_uqSeen[string(_uqBytes)] = true
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- /* An element that is itself an array, and what `contains` says about
+	       what it holds. The same check an array property gets, over this
+	       level's element instead of a field, with the enclosing loop's indices
+	       carried into the error path. */}}
+	{{- if $lv.Contains}}
+	{{- template "contains_check" (mkContainsCtxIn $elem (printf "%s: contains" $path) $args $lv.Contains $lv.MinContains $lv.MaxContains)}}
 	{{- end}}
 	{{- /* An element that is itself a tuple. The same checks an array property
 	       gets, over this level's element instead of a field, with the enclosing
@@ -1691,6 +1723,12 @@ declares a field for it at all.
 {{define "contains_check"}}
 {{- $expr := .Expr}}
 {{- $path := .Path}}
+{{- /* Args is what an enclosing loop contributes to the error path, on the same
+       terms as tuple_items_check: an array that is another container's element
+       reports under a path carrying that loop's verbs, and the variables that
+       fill them go first in every Errorf below. A caller not inside such a loop
+       passes "" and the emitted code is unchanged. */}}
+{{- $args := argPrefix .Args}}
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		{{- /* contains: false is not a special case but the degenerate one: no
@@ -1889,16 +1927,16 @@ declares a field for it at all.
 		{{- /* minContains=0 means contains always passes for minContains check */}}
 		{{- else if .MinContains}}
 		if _containsCount < {{deref .MinContains}} {
-			return fmt.Errorf("{{$path}}: %d matching elements, minimum is {{deref .MinContains}}", _containsCount)
+			return fmt.Errorf("{{$path}}: %d matching elements, minimum is {{deref .MinContains}}", {{$args}}_containsCount)
 		}
 		{{- else}}
 		if _containsCount < 1 {
-			return fmt.Errorf("{{$path}}: no element matches the contains schema")
+			return fmt.Errorf("{{$path}}: no element matches the contains schema"{{with .Args}}, {{.}}{{end}})
 		}
 		{{- end}}
 		{{- if .MaxContains}}
 		if _containsCount > {{deref .MaxContains}} {
-			return fmt.Errorf("{{$path}}: %d matching elements, maximum is {{deref .MaxContains}}", _containsCount)
+			return fmt.Errorf("{{$path}}: %d matching elements, maximum is {{deref .MaxContains}}", {{$args}}_containsCount)
 		}
 		{{- end}}
 	}

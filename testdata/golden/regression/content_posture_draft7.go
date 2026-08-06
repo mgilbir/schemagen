@@ -131,6 +131,24 @@ func (c ContentPostureDraft7BoundedBlob) Validate() error {
 	return nil
 }
 
+type ContentPostureDraft7BranchOption0 string
+
+func (c *ContentPostureDraft7BranchOption0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type ContentPostureDraft7BranchOption0")
+	}
+	type Alias ContentPostureDraft7BranchOption0
+	return json.Unmarshal(data, (*Alias)(c))
+}
+
+// Validate checks ContentPostureDraft7BranchOption0 against its JSON Schema constraints.
+func (c ContentPostureDraft7BranchOption0) Validate() error {
+	if _err := schemagenContentString(string(c), "base64", ""); _err != nil {
+		return fmt.Errorf("value: %w", _err)
+	}
+	return nil
+}
+
 // ContentPostureDraft7EncodedDoc accepts any JSON value. Constraints apply only when the value is string.
 type ContentPostureDraft7EncodedDoc struct {
 	_value string
@@ -308,6 +326,24 @@ func (c ContentPostureDraft7ViaAllOf) Validate() error {
 	return nil
 }
 
+type ContentPostureDraft7TupleItem0 string
+
+func (c *ContentPostureDraft7TupleItem0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type ContentPostureDraft7TupleItem0")
+	}
+	type Alias ContentPostureDraft7TupleItem0
+	return json.Unmarshal(data, (*Alias)(c))
+}
+
+// Validate checks ContentPostureDraft7TupleItem0 against its JSON Schema constraints.
+func (c ContentPostureDraft7TupleItem0) Validate() error {
+	if _err := schemagenContentString(string(c), "base64", ""); _err != nil {
+		return fmt.Errorf("value: %w", _err)
+	}
+	return nil
+}
+
 // ContentPostureDraft7 - Issue #115: the content vocabulary under the one dialect that asserts it. Each position must carry the check, and none of them may narrow the Go type -- a number satisfies a content keyword trivially, so the wrapper keeps a non-string value verbatim and its Validate returns early.
 type ContentPostureDraft7 struct {
 	Blob                 *ContentPostureDraft7Blob            `json:"blob,omitempty"`
@@ -315,29 +351,148 @@ type ContentPostureDraft7 struct {
 	Doc                  *string                              `json:"doc,omitempty"`
 	EncodedDoc           *ContentPostureDraft7EncodedDoc      `json:"encodedDoc,omitempty"`
 	List                 []string                             `json:"list,omitzero"`
+	Tuple                []any                                `json:"tuple,omitzero"`
 	UnknownEncoding      *ContentPostureDraft7UnknownEncoding `json:"unknownEncoding,omitempty"`
 	ViaAllOf             *ContentPostureDraft7ViaAllOf        `json:"viaAllOf,omitempty"`
+	Branch               isContentPostureDraft7_Branch        `json:"-"`
 	AdditionalProperties map[string]json.RawMessage           `json:"-"`
 	_jsonKeys            map[string]bool                      // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                      // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+}
+
+// isContentPostureDraft7_Branch is a sealed interface for the Branch field of ContentPostureDraft7.
+// Exactly one variant must be set.
+type isContentPostureDraft7_Branch interface {
+	isContentPostureDraft7_Branch()
+}
+
+// ContentPostureDraft7_ContentPostureDraft7BranchOption0 wraps ContentPostureDraft7BranchOption0 as a Branch variant.
+type ContentPostureDraft7_ContentPostureDraft7BranchOption0 struct {
+	ContentPostureDraft7BranchOption0 ContentPostureDraft7BranchOption0
+}
+
+func (*ContentPostureDraft7_ContentPostureDraft7BranchOption0) isContentPostureDraft7_Branch() {}
+
+// ContentPostureDraft7_Boolean wraps bool as a Branch variant.
+type ContentPostureDraft7_Boolean struct {
+	Boolean bool
+}
+
+func (*ContentPostureDraft7_Boolean) isContentPostureDraft7_Branch() {}
+
+// GetContentPostureDraft7BranchOption0 returns the ContentPostureDraft7BranchOption0 variant value, or the zero value if not set.
+func (c *ContentPostureDraft7) GetContentPostureDraft7BranchOption0() ContentPostureDraft7BranchOption0 {
+	if c != nil {
+		if v, ok := c.Branch.(*ContentPostureDraft7_ContentPostureDraft7BranchOption0); ok {
+			return v.ContentPostureDraft7BranchOption0
+		}
+	}
+	var zero ContentPostureDraft7BranchOption0
+	return zero
+}
+
+// GetBoolean returns the Boolean variant value, or the zero value if not set.
+func (c *ContentPostureDraft7) GetBoolean() bool {
+	if c != nil {
+		if v, ok := c.Branch.(*ContentPostureDraft7_Boolean); ok {
+			return v.Boolean
+		}
+	}
+	var zero bool
+	return zero
 }
 
 func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 	c.AdditionalProperties = nil
 	c._jsonKeys = nil
 	c._jsonNulls = nil
+	c.Branch = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ContentPostureDraft7")
 	}
 	type Alias ContentPostureDraft7
 	aux := &struct {
 		*Alias
+		Branch json.RawMessage `json:"branch"`
 	}{
 		Alias: (*Alias)(c),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	{
+		oneofData := aux.Branch
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
+			// A second tally: branches actually satisfied, not merely decoded.
+			// An object branch keeps its constraints inside the variant type, so
+			// two branches whose required keys are both present both decode even
+			// when only one holds. oneofOpaque counts branches neither this
+			// tally nor the checks above can speak for. Read once, below.
+			var oneofStrict int
+			var oneofOpaque int
+			var oneofStrictSel isContentPostureDraft7_Branch
+			var oneofStrictErr error
+
+			// Try variant: ContentPostureDraft7BranchOption0
+			{
+				var candidate ContentPostureDraft7BranchOption0
+				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					c.Branch = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: candidate}
+					oneofMatched++
+					if _vErr := candidate.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: candidate}
+					} else {
+						oneofStrictErr = fmt.Errorf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
+					}
+				} else {
+					oneofLastErr = err
+				}
+			}
+
+			// Try variant: Boolean
+			{
+				var candidate bool
+				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					c.Branch = &ContentPostureDraft7_Boolean{Boolean: candidate}
+					oneofMatched++
+					// Nothing this branch says is left for a Validate to
+					// carry, so matching it is satisfying it.
+					oneofStrict++
+					oneofStrictSel = &ContentPostureDraft7_Boolean{Boolean: candidate}
+				} else {
+					oneofLastErr = err
+				}
+			}
+
+			if oneofMatched == 0 {
+				return fmt.Errorf("ContentPostureDraft7.Branch: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 && oneofOpaque == 0 {
+				// Several branches decoded and every one can be judged, so the
+				// branches' own constraints settle which of them the value
+				// really satisfies. Ambiguity is already a rejection here, so
+				// this can only let through a document the schema allows.
+				switch {
+				case oneofStrict == 1:
+					c.Branch = oneofStrictSel
+					oneofMatched = 1
+				case oneofStrict > 1:
+					oneofMatched = oneofStrict
+				case oneofStrictErr != nil:
+					// Not ambiguity but a value no branch accepts: report the
+					// branch's own reason rather than a count.
+					return fmt.Errorf("ContentPostureDraft7.Branch: no matching oneOf variant: %w", oneofStrictErr)
+				}
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("ContentPostureDraft7.Branch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
+		}
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -351,7 +506,9 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 		// taken from the document's own keys. See jsonNullRule for the nested
 		// spelling of the same rule.
 		for _, _nullKey := range []string{
+			"branch",
 			"doc",
+			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
@@ -392,8 +549,10 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 			"doc":             true,
 			"encodedDoc":      true,
 			"list":            true,
+			"tuple":           true,
 			"unknownEncoding": true,
 			"viaAllOf":        true,
+			"branch":          true,
 		}
 		for rawKey, rawVal := range raw {
 			if knownFields[rawKey] {
@@ -412,8 +571,26 @@ func (c ContentPostureDraft7) MarshalJSON() ([]byte, error) {
 	type Alias ContentPostureDraft7
 	aux := struct {
 		Alias
+		Branch json.RawMessage `json:"branch,omitempty"`
 	}{
 		Alias: (Alias)(c),
+	}
+
+	if c.Branch != nil {
+		switch v := c.Branch.(type) {
+		case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
+			raw, err := json.Marshal(v.ContentPostureDraft7BranchOption0)
+			if err != nil {
+				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
+			}
+			aux.Branch = raw
+		case *ContentPostureDraft7_Boolean:
+			raw, err := json.Marshal(v.Boolean)
+			if err != nil {
+				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
+			}
+			aux.Branch = raw
+		}
 	}
 	data, err := json.Marshal(aux)
 	if err != nil {
@@ -488,9 +665,38 @@ func (c ContentPostureDraft7) Validate() error {
 			return fmt.Errorf("viaAllOf.%w", err)
 		}
 	}
+	// oneOf union: the branch selection settled on one variant, whose own type
+	// carries that branch's constraints. Nothing else applies them — selection
+	// only decides which branch decodes — so the interior of an object variant
+	// goes unchecked unless the parent descends here. A variant whose type has
+	// no Validate (a scalar, or `any`) is absent from the switch: its branch
+	// constraints ride on the selection checks in UnmarshalJSON instead.
+	switch _oneOfSel := c.Branch.(type) {
+	case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
+		if err := _oneOfSel.ContentPostureDraft7BranchOption0.Validate(); err != nil {
+			return fmt.Errorf("branch.%w", err)
+		}
+	}
 	for _i0, _e0 := range c.List {
 		if _err := schemagenContentString(_e0, "base64", ""); _err != nil {
 			return fmt.Errorf("list[%d]: %w", _i0, _err)
+		}
+	}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range c.Tuple {
+		_ = _elem
+		if _idx == 0 {
+			_raw, _mErr := json.Marshal(_elem)
+			if _mErr != nil {
+				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+			}
+			var _typed ContentPostureDraft7TupleItem0
+			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+			}
+			if _vErr := _typed.Validate(); _vErr != nil {
+				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+			}
 		}
 	}
 	return nil

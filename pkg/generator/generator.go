@@ -539,7 +539,7 @@ func quoteAll(ss []string) []string {
 // noteItemValidationImports records what the emitted per-element checks need.
 // Every one of them wraps its failure in fmt.Errorf, and the individual rules
 // pull in the same packages their field-level counterparts do.
-func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, needsMath, needsUTF8, needsRegexp *bool) {
+func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, needsMath, needsUTF8, needsRegexp, needsStdRegexp *bool) {
 	if len(defs) == 0 {
 		return
 	}
@@ -554,9 +554,18 @@ func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, ne
 					*needsRegexp = true
 				case "multipleOf":
 					*needsMath = true
-				case "const":
+				case "const", "uniqueItems":
+					// Both marshal the value they judge: the const to compare
+					// its JSON text, uniqueItems to key the seen set by it.
 					*needsJSON = true
 				}
+			}
+			// A level whose element is an array carries the same contains check
+			// an array property does, and reaches for the same imports.
+			if level.Contains != nil {
+				noteFieldContainsImports([]FieldContainsDef{{
+					Contains: level.Contains, MinContains: level.MinContains, MaxContains: level.MaxContains,
+				}}, needsFmt, needsJSON, needsMath, needsStdRegexp)
 			}
 			// A level whose element is a tuple emits the same arms an array
 			// property's positions do, so it reaches for the same imports.
@@ -847,7 +856,7 @@ func (g *Generator) addRequiredImports() {
 				needsFmt = true
 			}
 			noteItemValidationImports(sd.ItemValidations,
-				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
+				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp, &needsStdRegexp)
 			noteFieldContainsImports(sd.ContainsValidations,
 				&needsFmt, &needsJSON, &needsMath, &needsStdRegexp)
 			noteFieldTupleImports(sd.TupleValidations, &needsFmt, &needsJSON, &needsMath)
@@ -967,7 +976,7 @@ func (g *Generator) addRequiredImports() {
 				}
 			}
 			noteItemValidationImports(ad.ItemValidations,
-				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
+				&needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp, &needsStdRegexp)
 			if ad.HasUnevaluatedItems() {
 				needsFmt = true
 				if ad.UnevaluatedItems.ContainsEvaluates || ad.UnevaluatedItems.ValueType != "" || len(ad.UnevaluatedItems.Checks) > 0 {
@@ -6826,7 +6835,10 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// address through that branch while the identical subschema behind a $ref
 	// was checked. Naming it gives the union's dispatch something to call, which
 	// is what every other branch shape already has.
-	if g.stringAnnotationOnlySchema(variant) || g.nullableFormatUnion(variant) || g.declaredFormatStringSchema(variant) {
+	// A declared string stating the content vocabulary is the same branch again,
+	// one keyword over; see declaredContentStringSchema.
+	if g.stringAnnotationOnlySchema(variant) || g.nullableFormatUnion(variant) ||
+		g.declaredFormatStringSchema(variant) || g.declaredContentStringSchema(variant) {
 		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
 		if variant.Title != "" {
 			variantName = SchemaNameToGoName(variant.Title)
@@ -11980,6 +11992,13 @@ func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, e
 			if !g.contentAssertsFor(elemSchema) {
 				level.Rules = withoutContentRules(level.Rules)
 			}
+			// What `contains` says about an element that is itself an array.
+			// The keyword is not a ValidationRule, so the rules above had no
+			// way to carry it and it reached nothing: see ItemLevel.Contains.
+			if elementGoKind(elemType) == "slice" {
+				level.Contains, level.MinContains, level.MaxContains =
+					g.elemContainsDef(elemSchema, fmt.Sprintf("%sItems%d", namePrefix, len(def.Levels)))
+			}
 			// An element that is a tuple in its own right. The descent stops
 			// here either way -- singleItemsSchema answers nil for a tuple,
 			// since `items` there governs only the tail -- so without this the
@@ -12015,6 +12034,32 @@ func itemLevelVar(isMap bool, level int) string {
 		return fmt.Sprintf("_k%d", level)
 	}
 	return fmt.Sprintf("_i%d", level)
+}
+
+// elemContainsDef collects the `contains` constraint an element sub-schema
+// states, for an element that is itself a Go slice. Returns nils when there is
+// nothing to check.
+//
+// It is buildFieldContains one position in: the same extractor, the same
+// can-this-ever-reject test, and the same emitted check -- only the slice it
+// counts over is a loop variable rather than a struct field. Written as an
+// element the keyword reached nothing at all, because ItemLevel had no field to
+// carry it; see ItemLevel.Contains. `contains` says nothing about a value that
+// is not an array, which is what the caller's slice guard stands for.
+//
+// parentName names the type a sub-schema too rich for inline checks is
+// materialized under, exactly as it does for a field. The caller passes the
+// prefix its own element type was resolved under, so the name agrees with every
+// other type minted for this container.
+func (g *Generator) elemContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
+	if s == nil || s.Contains == nil || !g.validationKeywordsEnabled() {
+		return nil, nil, nil
+	}
+	def, minContains, maxContains := g.extractContainsDef(s, parentName)
+	if !containsCanReject(def, minContains, maxContains) {
+		return nil, nil, nil
+	}
+	return def, minContains, maxContains
 }
 
 // buildFieldContains collects the `contains` constraint an array property
@@ -12242,19 +12287,23 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 	elemRules := extractValidationRules("", "", s)
 	elemRules = append(elemRules, allOfConstraintRules("", "", s, elemType)...)
 	for _, rule := range elemRules {
+		want, classified := elementRuleKinds[rule.RuleType]
+		if !classified {
+			// Either declined on purpose -- elementRulesDeclined says which and
+			// why -- or a keyword nobody has taught this position about. The
+			// second is a defect, and reporting it is
+			// TestEveryElementRuleTypeIsClassified's job rather than this
+			// loop's: a rule with no arm in the item_level template cannot be
+			// emitted here without producing a generated file that does not
+			// compile, so dropping it is all this function may safely do.
+			continue
+		}
+		// A keyword about some other JSON type is satisfied by every element
+		// this container can hold, and the check would not compile against it.
+		if want != anyElementKind && kind != want {
+			continue
+		}
 		switch rule.RuleType {
-		case "minLength", "maxLength", "pattern", "content":
-			if kind != "string" {
-				continue
-			}
-		case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf":
-			if kind != "number" {
-				continue
-			}
-		case "minItems", "maxItems":
-			if kind != "slice" {
-				continue
-			}
 		case "const":
 			// json.RawMessage marshals back byte for byte, whitespace and all,
 			// so a textual comparison against the const would reject values the
@@ -12264,22 +12313,74 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 			}
 		case "format":
 			// The element carries a format check on the same terms a field
-			// does, decided from the element's own Go type. Until this arm
-			// existed the keyword fell through the default below and
-			// {"items":{"type":"string","format":"ipv4"}} accepted an IPv6
-			// address in every element, while the identical subschema written
-			// as a property was checked.
+			// does, decided from the element's own Go type.
 			stringBacked, ok := formatRuleShape(elemType, rule, false)
 			if !ok {
 				continue
 			}
 			rule.StringBacked = stringBacked
-		default:
-			continue
 		}
 		out = append(out, rule)
 	}
 	return out
+}
+
+// anyElementKind is the elementRuleKinds entry for a check that compiles against
+// an element of any Go kind.
+const anyElementKind = ""
+
+// elementRuleKinds classifies every rule type extractValidationRules can produce
+// by the element Go kind whose emitted check compiles -- the kinds elementGoKind
+// answers, or anyElementKind for a check that needs nothing of the element but
+// that it marshals.
+//
+// This table and elementRulesDeclined together must name *every* rule type the
+// extractor can produce. That total-ness is the point, and it replaces a
+// `default: continue` arm that had none: a keyword added to
+// extractValidationRules did not reach the element position, and because the
+// failure mode of a missing check is silent acceptance, nothing said so.
+// uniqueItems is how that was found -- honoured on an array property and
+// dropped one position over on an array *element*, so
+// {"items":{"type":"array","items":{"type":"string"},"uniqueItems":true}}
+// accepted [["a","a"]] while the minItems written beside it fired correctly
+// (issue #179). `format` had been the same defect one keyword earlier.
+//
+// A rule type in neither map is refused by
+// TestEveryElementRuleTypeIsClassified, which reads the extractor's own source
+// for the rule types it builds. Adding a keyword to extractValidationRules
+// therefore fails that test until this position has an answer for it -- which is
+// the loudness the default arm could not give, since dropping an unrenderable
+// rule is the only thing this function may safely do at generation time and
+// emitting one would produce a file that does not compile.
+var elementRuleKinds = map[string]string{
+	"minLength": "string",
+	"maxLength": "string",
+	"pattern":   "string",
+	"content":   "string",
+
+	"minimum":          "number",
+	"maximum":          "number",
+	"exclusiveMinimum": "number",
+	"exclusiveMaximum": "number",
+	"multipleOf":       "number",
+
+	"minItems":    "slice",
+	"maxItems":    "slice",
+	"uniqueItems": "slice",
+
+	"const":  anyElementKind,
+	"format": anyElementKind,
+}
+
+// elementRulesDeclined names the rule types the element position deliberately
+// does not emit, and says why. An entry here is a decision on the record; the
+// absence of one is the bug elementRuleKinds exists to surface.
+var elementRulesDeclined = map[string]string{
+	"forbidden": "the empty-set spellings -- not:{}, enum:[] -- make the element " +
+		"sub-schema unsatisfiable, and the element is already answered by the named " +
+		"type such a schema is materialized into, whose own Validate refuses every " +
+		"value. A second refusal here would be the same verdict worded worse. See " +
+		"the forbidding-subschema fixtures.",
 }
 
 // elementGoKind classifies an element Go type by what an emitted check may
@@ -14247,6 +14348,40 @@ func (g *Generator) declaredFormatStringSchema(s *schema.Schema) bool {
 	// Anything that decides the value some other way keeps the arm that decides
 	// it: an enum or const fixes the value, a reference names another type, an
 	// applicator is judged by its branches.
+	return !hasNonTypeScopedConstraints(s)
+}
+
+// declaredContentStringSchema is declaredFormatStringSchema for the content
+// vocabulary: {"type":"string"} stating a contentEncoding or contentMediaType
+// the generated code can decide, on the one dialect that asserts them.
+//
+// The two keywords are a pair in every other position -- extractValidationRules
+// builds both, elementRules keeps both, stringAnnotationOnlySchema wraps a
+// schema stating either -- and they were a pair here too, right up to the arm
+// that gives a bare string branch a type to hang its Validate on. So under
+// draft 7 {"f":{"oneOf":[{"type":"string","contentEncoding":"base64"},
+// {"type":"boolean"}]}} accepted "!!!not base64!!!", which the same keyword on a
+// plain property rejects, and the draft 4-7 tuple spelling
+// {"items":[{"type":"string","contentEncoding":"base64"}]} accepted it too
+// (issue #183). Naming the position is the same answer format got.
+//
+// Gated on contentAssertsFor for the reason the format predicate is gated on
+// formatAssertsFor: from 2019-09 these keywords annotate, so there is no check
+// to place and a type materialized to hold none would change the generated API
+// for nothing.
+func (g *Generator) declaredContentStringSchema(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if _, ok := contentCheckFor(s); !ok {
+		return false
+	}
+	if len(s.Type) != 1 || s.Type[0] != "string" || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if !g.contentAssertsFor(s) {
+		return false
+	}
 	return !hasNonTypeScopedConstraints(s)
 }
 
@@ -16433,7 +16568,8 @@ func (g *Generator) oneOfVariantSelectionType(v *schema.Schema) GoType {
 	if g.objectShapeNeedsNamedType(v) || g.allOfNeedsNamedType(v) {
 		return nil
 	}
-	if g.stringAnnotationOnlySchema(v) || g.nullableFormatUnion(v) || g.declaredFormatStringSchema(v) {
+	if g.stringAnnotationOnlySchema(v) || g.nullableFormatUnion(v) ||
+		g.declaredFormatStringSchema(v) || g.declaredContentStringSchema(v) {
 		return nil
 	}
 	if pt := primarySchemaType(v); pt != "" {
@@ -17159,11 +17295,15 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// fallback answers "string" for it, which is true and says nothing about the
 	// format, so {"prefixItems":[{"type":"string","format":"ipv4"}]} accepted an
 	// IPv6 address at that position while the identical subschema written as a
-	// property was checked. hasStructuralKeywords does not count `format` among
-	// the keywords that need a named type, and is left alone: it is read by
-	// nothing else here and widening it would change which schemas every other
-	// caller materializes.
-	if g.nullableFormatUnion(resolved) || g.stringAnnotationOnlySchema(resolved) || g.declaredFormatStringSchema(resolved) {
+	// property was checked. The content vocabulary joins it for the same reason
+	// and by the same route -- the draft 4-7 tuple spelling
+	// {"items":[{"type":"string","contentEncoding":"base64"}]} answered "string"
+	// and dropped the encoding. hasStructuralKeywords does not count either
+	// among the keywords that need a named type, and is left alone on that
+	// point: both are annotation vocabularies whose posture is the dialect's,
+	// and that function has no generator to ask.
+	if g.nullableFormatUnion(resolved) || g.stringAnnotationOnlySchema(resolved) ||
+		g.declaredFormatStringSchema(resolved) || g.declaredContentStringSchema(resolved) {
 		_ = g.generateTypeDef(posName, resolved)
 		if g.generated[posName] {
 			return TupleItemDef{TypeName: posName}, true
@@ -17339,6 +17479,28 @@ func hasStructuralKeywords(s *schema.Schema) bool {
 	}
 	// Composition keywords at top level
 	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 {
+		return true
+	}
+	// The array shape, on exactly the terms the object shape is already claimed
+	// on above. A sub-schema whose content is what the array holds and how much
+	// of it says all of that through these keywords and nothing else, so the
+	// JSONType fallback the caller reaches next answers "it is an array" and
+	// drops the rest: {"prefixItems":[{"type":"array","items":{"type":"string"},
+	// "minItems":2,"uniqueItems":true}],"items":false} emitted a []any type test
+	// and accepted [["a"]] (issue #182), while the identical sub-schema one
+	// position over at `items` was checked. `contains` reaches the same
+	// reduction by the other route -- extractContainsDef asks this function,
+	// through inferredItemTypeName, whether the sub-schema needs a type of its
+	// own -- so {"contains":{"type":"array","minItems":2}} counted every array
+	// and accepted [[1]] (issue #183). A named type is generated from the whole
+	// sub-schema and answers for all of it.
+	//
+	// Unlike the bounds above, these are not gated on a declared "type": these
+	// keywords speak about arrays and about nothing else, so a sub-schema
+	// stating one is an array schema whether or not it says so.
+	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+		s.Contains != nil || s.MinItems != nil || s.MaxItems != nil ||
+		(s.UniqueItems != nil && *s.UniqueItems) || s.UnevaluatedItems != nil {
 		return true
 	}
 	return false

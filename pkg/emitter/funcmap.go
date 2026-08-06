@@ -63,6 +63,7 @@ func FuncMap() template.FuncMap {
 		"mkCondCtx":              mkCondCtxFunc,
 		"mkItemCtx":              mkItemCtxFunc,
 		"mkContainsCtx":          mkContainsCtxFunc,
+		"mkContainsCtxIn":        mkContainsCtxInFunc,
 		"mkTupleCtx":             mkTupleCtxFunc,
 		"mkTupleCtxIn":           mkTupleCtxInFunc,
 		"mkTupleCase":            mkTupleCaseFunc,
@@ -131,6 +132,7 @@ func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int)
 type ContainsContext struct {
 	Expr        string
 	Path        string
+	Args        string // see TupleContext.Args
 	Def         generator.ContainsDef
 	MinContains *int
 	MaxContains *int
@@ -141,6 +143,15 @@ func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContain
 	if def != nil {
 		ctx.Def = *def
 	}
+	return ctx
+}
+
+// mkContainsCtxIn is mkContainsCtx for an array reached inside an enclosing
+// loop -- an array that is another container's element -- whose error path
+// carries that loop's verbs and needs its variables to fill them.
+func mkContainsCtxInFunc(expr, path, args string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+	ctx := mkContainsCtxFunc(expr, path, def, minContains, maxContains)
+	ctx.Args = args
 	return ctx
 }
 

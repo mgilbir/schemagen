@@ -15,6 +15,16 @@
       "items": { "type": "string", "contentEncoding": "base64" }
     },
     "viaAllOf": { "allOf": [{ "contentEncoding": "base64" }] },
+    "branch": {
+      "oneOf": [
+        { "type": "string", "contentEncoding": "base64" },
+        { "type": "boolean" }
+      ]
+    },
+    "tuple": {
+      "type": "array",
+      "prefixItems": [{ "type": "string", "contentEncoding": "base64" }]
+    },
     "withSchema": {
       "$comment": "contentSchema is an annotation in every draft that defines it, and never asserts. It still says the property is about a string, which is why it gets the wrapper rather than `any`.",
       "contentMediaType": "application/json",
