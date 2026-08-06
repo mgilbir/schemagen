@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalBranchViaRef",
+  "type": "object",
+  "properties": {
+    "kind": {"type": "string"},
+    "a": {"type": "string"}
+  },
+  "if": {"required": ["kind"]},
+  "then": {"$ref": "#/$defs/other", "required": ["a"]},
+  "$defs": {
+    "other": {"maxProperties": 3}
+  }
+}

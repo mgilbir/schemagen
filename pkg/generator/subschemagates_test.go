@@ -78,6 +78,22 @@ func TestLenientPropertyGateNamesEveryKeywordTheChecksCarry(t *testing.T) {
 			"property read in part while the branch is declared fully read.")
 }
 
+// TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps holds
+// conditionalBranchKeywordsRead against objectConditionalBranchLenient, the
+// function that reduces a `then` or an `else`.
+//
+// The branch level only: what the reading keeps of each property it names is
+// lenientPropertyCheckKeywords' business, and the test above holds that. The two
+// together are what objectConditionalReadWhole means by "read whole".
+func TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps(t *testing.T) {
+	read := keywordsReadBy(t, "objectConditionalBranchLenient", "s", 2)
+	assertSameKeywords(t, "conditionalBranchKeywordsRead", conditionalBranchKeywordsRead,
+		"objectConditionalBranchLenient", read,
+		"A branch keyword the reduction keeps and the gate does not name sends every `then` stating "+
+			"it to the evaluator needlessly; one the gate names and the reduction has stopped keeping "+
+			"is a consequence declared fully read that nothing reads, which is issue #209 again.")
+}
+
 func assertSameKeywords(t *testing.T, gateName string, gate map[string]bool, sourceName string, read map[string]bool, why string) {
 	t.Helper()
 	for _, key := range sortedBoolKeys(read) {

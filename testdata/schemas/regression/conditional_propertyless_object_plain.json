@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalPropertylessObjectPlain",
+  "description": "The group objectConditionalDef reads whole, at the position that never runs it. Beside a declared property this `then` generates a check and always has; with no property to declare, the struct built for the object carries no ObjectConditionals and the consequence was enforced by nothing -- so where the schema was otherwise identical, having a property in it decided whether the conditional bound.",
+  "type": "object",
+  "if": {"required": ["kind"]},
+  "then": {"required": ["a"]}
+}

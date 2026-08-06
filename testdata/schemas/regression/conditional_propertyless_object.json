@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalPropertylessObject",
+  "description": "The same group one position over: an object that declares no properties of its own. The struct built for it carries no ObjectConditionals whatever the schema says, so the group is read by nothing rather than read in part, and every document passed.",
+  "type": "object",
+  "if": {"required": ["kind"]},
+  "then": {"$ref": "#/$defs/capped", "required": ["a"]},
+  "$defs": {
+    "capped": {"maxProperties": 3}
+  }
+}

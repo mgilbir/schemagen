@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalBranchSubschemaShapes",
+  "description": "The neighbouring spellings of an if/then/else sub-schema, one group per allOf branch so that a document naming one trigger exercises that group and no other. Every group is written on an allOf branch rather than on the root, because a branch's group is merged into the same struct and has to be read there as well. No group here states a per-property keyword: a branch's `properties` are merged into the struct as fields, whose own Go type and rules enforce them whatever the condition says, so no document can tell the conditional reading of one from the field's. That half is pinned on the IR instead, by TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator.",
+  "type": "object",
+  "properties": {
+    "kind": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"required": ["viaRef"]},
+      "then": {"$ref": "#/$defs/needsA"}
+    },
+    {
+      "if": {"required": ["refSibling"]},
+      "then": {"$ref": "#/$defs/needsA", "required": ["b"]}
+    },
+    {
+      "if": {"required": ["refChain"]},
+      "then": {"$ref": "#/$defs/chainToNeedsA"}
+    },
+    {
+      "if": {"$ref": "#/$defs/capped", "required": ["refInIf"]},
+      "then": {"required": ["c"]}
+    },
+    {
+      "if": {"required": ["nestedThen"]},
+      "then": {
+        "if": {"required": ["inner"]},
+        "then": {"required": ["deep"]}
+      }
+    },
+    {
+      "if": {"required": ["allOfBesideRef"]},
+      "then": {"$ref": "#/$defs/needsA", "allOf": [{"required": ["b"]}]}
+    },
+    {
+      "if": {"required": ["inlineReq"]},
+      "then": {"required": ["a"]}
+    },
+    {
+      "if": {"required": ["bounded"]},
+      "then": {"minProperties": 3}
+    }
+  ],
+  "$defs": {
+    "needsA": {"required": ["a"]},
+    "chainToNeedsA": {"$ref": "#/$defs/needsA"},
+    "capped": {"maxProperties": 3}
+  }
+}
