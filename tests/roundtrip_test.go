@@ -298,6 +298,18 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/read_write_conditional_positions.json",
 			FixturePath: "testdata/fixtures/regression/read_write_conditional_positions.json",
 		},
+		{
+			// The reach matrix, under the reading that changes nothing about a
+			// document. Every conditional branch here contributes a property to
+			// the merged struct and every unconditional one contributes an
+			// annotation, so the trip is what says the narrowing suppresses the
+			// keyword and not the field: a property that stopped becoming a
+			// field would land in the overflow map and still round-trip, which
+			// is why the doc-comment test looks fields up by their struct tags.
+			Name:        "regression/annotation_reach_positions",
+			SchemaPath:  "testdata/schemas/regression/annotation_reach_positions.json",
+			FixturePath: "testdata/fixtures/regression/annotation_reach_positions.json",
+		},
 	}
 }
 
@@ -2675,6 +2687,398 @@ func TestConditionalReadWriteIsNotDocumentedUnconditionally(t *testing.T) {
 				unwanted, group)
 		}
 	}
+}
+
+// TestAnnotationReachThroughApplicators is the doc-comment half of issue #187,
+// and the assertion that it answers the reach question the way
+// --strict-read-write already did.
+//
+// A field's comment was read off the property node alone, so an annotation
+// written one allOf branch below it -- which binds on every valid instance, and
+// which the merge flattens away rather than leaving anywhere else to document --
+// reached nothing: {"f":{"allOf":[{"description":"prose","readOnly":true}]}}
+// produced a bare field beside a strict-mode check that enforced the same
+// readOnly. The *Cond cells are the other direction and are equally the point: a
+// branch that binds on some documents contributes its annotations to those
+// documents, so a comment that carries them describes the wrong type.
+func TestAnnotationReachThroughApplicators(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/annotation_reach_positions.json"))
+
+	// Under the default configuration the whole vocabulary is a comment. This
+	// is the control the sibling matrices carry.
+	for _, unwanted := range []string{"read-only property may not be set", "_woKey", "_roKey"} {
+		if strings.Contains(src, unwanted) {
+			t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only:\n%s", unwanted, src)
+		}
+	}
+
+	for _, c := range []struct {
+		jsonName string
+		want     []string
+		unwanted []string
+	}{
+		// Behind an unconditional applicator on the property. The allOf is
+		// flattened into the field's type, so this comment is the only place
+		// left for what its branch says.
+		{jsonName: "annViaAllOf", want: []string{
+			"Prose written on an allOf branch of the property.",
+			`Read-only: the schema says "readOnly"`,
+			"Examples from the schema:",
+			"Deprecated: the schema marks this deprecated.",
+		}},
+		// Two levels down, because everything below an unconditional applicator
+		// is unconditional too.
+		{jsonName: "annViaNestedAllOf", want: []string{
+			"Prose two allOf levels below the property.",
+			`Write-only: the schema says "writeOnly"`,
+			"Deprecated: the schema marks this deprecated.",
+		}},
+		// Contributed by an allOf branch of the *object*, which the merge folds
+		// into the property map. That route already worked and is here so a fix
+		// that moved the reading could not lose it.
+		{jsonName: "annViaMergedAllOf", want: []string{
+			"Prose an allOf branch states about a merged property.",
+			"Deprecated: the schema marks this deprecated.",
+		}},
+		// The one deliberate stop. A $ref survives into the generated source as
+		// this field's type, and AnnotatedString carries the comment -- asserted
+		// below, so this cell is a relocation and not a loss.
+		{jsonName: "annViaRef", unwanted: []string{
+			"Prose on a referenced type", "Read-only:", "Deprecated:",
+		}},
+		// Stated only by a branch that binds on the documents that match it.
+		{jsonName: "annCondThen", unwanted: []string{
+			"Prose only a then branch states.", "Deprecated:", "Examples from the schema:",
+		}},
+		{jsonName: "annCondAnyOf", unwanted: []string{
+			"Prose only an anyOf branch states.", "Deprecated:",
+		}},
+		// Nothing said about it anywhere, which is what says the paragraphs
+		// above are read off a schema rather than written over every field.
+		{jsonName: "annPlain", unwanted: []string{
+			"Read-only:", "Write-only:", "Deprecated:", "Examples from the schema:",
+		}},
+	} {
+		// By struct tag, so a property that stopped becoming a field fails here
+		// rather than passing vacuously: the round-trip case cannot see that
+		// difference, since such a value still travels through the overflow map.
+		block := docCommentAboveLine(t, src, "`json:\""+c.jsonName+",omitempty\"`")
+		for _, want := range c.want {
+			if !strings.Contains(block, want) {
+				t.Errorf("the comment above %q does not carry %q:\n%s", c.jsonName, want, block)
+			}
+		}
+		for _, unwanted := range c.unwanted {
+			if strings.Contains(block, unwanted) {
+				t.Errorf("the comment above %q carries %q, which no schema states of every instance:\n%s",
+					c.jsonName, unwanted, block)
+			}
+		}
+	}
+
+	// A property that compiles to a sealed interface instead of a field carries
+	// the same comment for the same reasons (#175), and has to answer the reach
+	// question the same way -- prose and annotations together, since a group
+	// showing a branch's prose while withholding its deprecation would document
+	// two things at once.
+	for _, c := range []struct {
+		field    string
+		want     []string
+		unwanted []string
+	}{
+		{field: "isAnnotationReachPositions_AnnGroupPlain", want: []string{
+			"Prose on a oneOf group written on the property.",
+			"Deprecated: the schema marks this deprecated.",
+		}},
+		{field: "isAnnotationReachPositions_AnnCondGroup", unwanted: []string{
+			"Prose only a then branch states about a group.", "Deprecated:",
+		}},
+	} {
+		block := docCommentAboveLine(t, src, c.field, "`json:\"-\"`")
+		for _, want := range c.want {
+			if !strings.Contains(block, want) {
+				t.Errorf("the comment above the %s field does not carry %q:\n%s", c.field, want, block)
+			}
+		}
+		for _, unwanted := range c.unwanted {
+			if strings.Contains(block, unwanted) {
+				t.Errorf("the comment above the %s field carries %q, which only a conditional branch states:\n%s",
+					c.field, unwanted, block)
+			}
+		}
+	}
+
+	annotationReachDocDetails(t, src)
+}
+
+// annotationReachDocDetails is the tail of TestAnnotationReachThroughApplicators:
+// the two assertions that are about one declaration each rather than about a
+// cell of the matrix.
+func annotationReachDocDetails(t *testing.T, src string) {
+	t.Helper()
+
+	// The other half of the annViaRef cell: the keywords are not dropped, they
+	// are written where the reference put them.
+	refBlock := docCommentAbove(t, src, "type AnnotatedString string")
+	for _, want := range []string{
+		"Prose on a referenced type",
+		`Read-only: the schema says "readOnly"`,
+		"Deprecated: the schema marks this deprecated.",
+	} {
+		if !strings.Contains(refBlock, want) {
+			t.Errorf("the comment above AnnotatedString does not carry %q, so the field's silence about it loses it:\n%s",
+				want, refBlock)
+		}
+	}
+
+	// "Deprecated: " has to be a paragraph of its own, or gopls, staticcheck and
+	// `go doc` all miss it. Asserted on annViaNestedAllOf: it is the folded cell
+	// with no "examples", and beside "examples" gofmt writes blank comment lines
+	// of its own to fence the indented block, which would satisfy this check
+	// whatever the annotation writer did.
+	nested := docCommentAboveLine(t, src, "`json:\"annViaNestedAllOf,omitempty\"`")
+	if !strings.Contains(nested, "//\n\t// Deprecated: the schema marks this deprecated.") {
+		t.Errorf("the deprecation notice above annViaNestedAllOf is not its own paragraph:\n%s", nested)
+	}
+}
+
+// TestStrictReadWriteAgreesWithTheDocCommentThroughAnAllOf is the crossing
+// issue #187 reports: the flag reached through an allOf on the property and the
+// comment did not, so a generated type enforced a readOnly whose existence its
+// own documentation denied. One walk answers both now, so the two lists below
+// are read off the same source and have to name the same properties.
+func TestStrictReadWriteAgreesWithTheDocCommentThroughAnAllOf(t *testing.T) {
+	const schemaPath = "testdata/schemas/regression/annotation_reach_positions.json"
+	strictSrc := string(generateFromSchemaWithConfig(t, schemaPath, generator.Config{
+		PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true,
+	}))
+
+	readOnlyKeys := strictKeyList(t, strictSrc, "_roKey")
+	writeOnlyKeys := strictKeyList(t, strictSrc, "_woKey")
+
+	for _, c := range []struct {
+		jsonName string
+		keys     map[string]bool
+		comment  string
+		bound    bool
+		// documented is normally bound. It differs for exactly one position --
+		// a $ref written on the property -- and that difference is the subject
+		// of the cell, not an exemption from it.
+		documented bool
+	}{
+		// The issue's own shape: an allOf on the property. The flag reached it,
+		// the comment did not, and now both do.
+		{jsonName: "annViaAllOf", keys: readOnlyKeys, comment: `Read-only: the schema says "readOnly"`,
+			bound: true, documented: true},
+		{jsonName: "annViaNestedAllOf", keys: writeOnlyKeys, comment: `Write-only: the schema says "writeOnly"`,
+			bound: true, documented: true},
+		// The conditional control, from the other issue this one has to agree
+		// with: a `then` branch contributes its annotations to the documents it
+		// matches, so neither the check nor the paragraph may be here (#174).
+		{jsonName: "annCondThen", keys: readOnlyKeys, comment: `Read-only: the schema says "readOnly"`,
+			bound: false, documented: false},
+		// The one place the two readings are meant to differ, asserted rather
+		// than left to be discovered. The check has nowhere but this struct to
+		// live, so the flag follows the reference; the comment has somewhere
+		// better, because the reference survives into the generated source as
+		// this field's type and TestAnnotationReachThroughApplicators is what
+		// says AnnotatedString carries the paragraph. Documenting it here as
+		// well would print the same schema's comment twice, and printing it
+		// *only* here would take the borrowed keyword without the borrowed
+		// prose.
+		{jsonName: "annViaRef", keys: readOnlyKeys, comment: `Read-only: the schema says "readOnly"`,
+			bound: true, documented: false},
+	} {
+		block := docCommentAboveLine(t, strictSrc, "`json:\""+c.jsonName+",omitempty\"`")
+		if documented := strings.Contains(block, c.comment); documented != c.documented {
+			t.Errorf("%s: the doc comment carries %q = %v, want %v:\n%s",
+				c.jsonName, c.comment, documented, c.documented, block)
+		}
+		if bound := c.keys[c.jsonName]; bound != c.bound {
+			t.Errorf("%s: strict mode bound = %v, want %v (keys: readOnly %v, writeOnly %v)",
+				c.jsonName, bound, c.bound, readOnlyKeys, writeOnlyKeys)
+		}
+	}
+}
+
+// strictKeyList reads the JSON property names out of one of the two lists
+// --strict-read-write emits, by the loop variable that names it.
+//
+// Parsed rather than searched for as a substring: every one of these names is
+// also a struct tag somewhere in the same file, so `strings.Contains` cannot
+// tell a property the flag bound on from one it merely typed -- a check that
+// would have passed for every cell here, in both directions.
+func strictKeyList(t *testing.T, src, loopVar string) map[string]bool {
+	t.Helper()
+	marker := "for _, " + loopVar + " := range []string{"
+	start := strings.Index(src, marker)
+	if start < 0 {
+		return map[string]bool{}
+	}
+	rest := src[start+len(marker):]
+	end := strings.Index(rest, "}")
+	if end < 0 {
+		t.Fatalf("the %s list is not terminated:\n%s", loopVar, rest)
+	}
+	keys := map[string]bool{}
+	for _, line := range strings.Split(rest[:end], "\n") {
+		if name := strings.Trim(strings.TrimSpace(line), `",`); name != "" {
+			keys[name] = true
+		}
+	}
+	return keys
+}
+
+// TestDefaultsReachThroughApplicators is issue #186, run.
+//
+// "default" was read off the property node and nowhere else, so it survived
+// being written inline and vanished behind either unconditional binder -- and a
+// $ref almost always puts it behind one, since the reference becomes the field's
+// own named type. Following the reference was necessary to find the keyword and
+// not sufficient to write it: defaultToGoLiteral answers from the Go type name,
+// which by then is `*DefaultedString` rather than `*string`.
+//
+// The *Cond fields are the same carve-out the annotations get, and here it is a
+// behavioural claim rather than a cosmetic one: SetDefaults writing a value only
+// a `then` branch states puts it on every document, including the ones the
+// condition excludes.
+func TestDefaultsReachThroughApplicators(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	var v AnnotationReachPositions
+	if err := json.Unmarshal([]byte(` + "`" + `{}` + "`" + `), &v); err != nil {
+		fail("decoding the empty document: %v", err)
+	}
+	v.SetDefaults()
+
+	// Every unconditional route to the keyword. The first is the control that
+	// already worked; the rest are the ones issue #186 reports, each named for
+	// the applicator chain that carries it.
+	for _, c := range []struct {
+		name string
+		got  *string
+		want string
+	}{
+		{"dfltInline", v.DfltInline, "inline"},
+		{"dfltViaMergedAllOf", v.DfltViaMergedAllOf, "merged"},
+		// An allOf branch of the object states one and a ` + "`" + `then` + "`" + ` branch states
+		// another. Only the branch that binds on every document may be read.
+		{"dfltBindsBoth", v.DfltBindsBoth, "unconditional"},
+		// Two unconditional statements about the same location, one on the
+		// property and one an allOf branch below it. The nearest wins.
+		{"dfltNearestWins", v.DfltNearestWins, "own"},
+	} {
+		if c.got == nil {
+			fail("%s: SetDefaults wrote nothing, want %q", c.name, c.want)
+		} else if *c.got != c.want {
+			fail("%s: SetDefaults wrote %q, want %q", c.name, *c.got, c.want)
+		}
+	}
+
+	// The same, where the applicator has left a named type between the struct
+	// field and the scalar the default is written in.
+	for _, c := range []struct {
+		name string
+		got  *string
+		want string
+	}{
+		{"dfltViaRef", (*string)(v.DfltViaRef), "viaRef"},
+		{"dfltViaRefChain", (*string)(v.DfltViaRefChain), "viaRef"},
+		{"dfltViaAllOf", (*string)(v.DfltViaAllOf), "viaAllOf"},
+		{"dfltViaAllOfRef", (*string)(v.DfltViaAllOfRef), "viaRef"},
+		{"dfltViaNestedAllOf", (*string)(v.DfltViaNestedAllOf), "viaNested"},
+		// A $defs entry whose allOf names itself. The walk that finds the
+		// keyword has to reach the branch beside the cycle and stop at the
+		// cycle -- without the visited set it has no iteration that ends,
+		// and the generator does not return at all.
+		{"dfltViaCycle", (*string)(v.DfltViaCycle), "cycle"},
+	} {
+		if c.got == nil {
+			fail("%s: SetDefaults wrote nothing, want %q", c.name, c.want)
+		} else if *c.got != c.want {
+			fail("%s: SetDefaults wrote %q, want %q", c.name, *c.got, c.want)
+		}
+	}
+
+	// A required property is not a pointer, so the zero value is the only
+	// "unset" there is, and it takes a different arm of the writer.
+	if string(v.DfltRequiredViaRef) != "viaRef" {
+		fail("dfltRequiredViaRef: SetDefaults wrote %q, want %q", string(v.DfltRequiredViaRef), "viaRef")
+	}
+
+	// The other three scalars a default can be written in, each behind a $ref.
+	if v.DfltIntViaRef == nil || int64(*v.DfltIntViaRef) != 7 {
+		fail("dfltIntViaRef: %v, want 7", v.DfltIntViaRef)
+	}
+	if v.DfltNumberViaRef == nil || float64(*v.DfltNumberViaRef) != 1.5 {
+		fail("dfltNumberViaRef: %v, want 1.5", v.DfltNumberViaRef)
+	}
+	if v.DfltBoolViaRef == nil || !bool(*v.DfltBoolViaRef) {
+		fail("dfltBoolViaRef: %v, want true", v.DfltBoolViaRef)
+	}
+
+	// A default equal to the zero value still has to be written into a pointer
+	// field: nil is what "absent" looks like there, so "" is a value and not an
+	// absence. This is the only cell that can tell the pointer shape from the
+	// bare one, since every other default here is non-zero.
+	if v.DfltEmptyViaRef == nil {
+		fail("dfltEmptyViaRef: SetDefaults wrote nothing; a nil pointer is distinguishable from a present empty string")
+	} else if string(*v.DfltEmptyViaRef) != "" {
+		fail("dfltEmptyViaRef: SetDefaults wrote %q, want the empty string", string(*v.DfltEmptyViaRef))
+	}
+
+	// Nothing states one about these unconditionally, so nothing may be
+	// written. The four conditional ones are the carve-out; dfltObjectViaRef is
+	// a default whose target is a struct, which no conversion of a JSON value
+	// reaches; dfltMismatchViaRef states a string default for an integer type,
+	// which has no literal either; and dfltNone is the plain control.
+	for _, c := range []struct {
+		name string
+		set  bool
+	}{
+		{"dfltCondThen", v.DfltCondThen != nil},
+		{"dfltCondElse", v.DfltCondElse != nil},
+		{"dfltCondAnyOf", v.DfltCondAnyOf != nil},
+		{"dfltCondOneOf", v.DfltCondOneOf != nil},
+		{"dfltObjectViaRef", v.DfltObjectViaRef != nil},
+		{"dfltMismatchViaRef", v.DfltMismatchViaRef != nil},
+		// A $defs entry with no "type" compiles to an alias over the empty
+		// interface. The conversion into it does compile, so nothing but the
+		// scalar test stops SetDefaults from writing a boxed value into a field
+		// whose zero test cannot tell it from any other.
+		{"dfltAnyViaRef", v.DfltAnyViaRef != nil},
+		// A multi-type $defs entry compiles to a wrapper struct, and its
+		// default is a JSON string -- so a pass that answered "string" for a
+		// declaration it could not read would produce a conversion of a string
+		// literal into a struct, which is the shape that does not compile.
+		{"dfltMultiTypeViaRef", !v.DfltMultiTypeViaRef.IsZero()},
+		{"dfltNone", v.DfltNone != nil},
+	} {
+		if c.set {
+			fail("%s: SetDefaults wrote a value no schema states of every instance", c.name)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/annotation_reach_positions.json",
+		"annotation_reach_defaults_test",
+		mainGo,
+	)
 }
 
 // docCommentAboveLine returns the run of comment lines immediately above the

@@ -1100,21 +1100,36 @@ type FieldDef struct {
 	OmitZero    bool // use ",omitzero" instead of ",omitempty" (optional slice/map fields, to preserve a present-but-empty collection while still omitting an absent one)
 	Required    bool
 	Description string
-	// Annotations is read off the property schema alone, and deliberately does
-	// not follow its $ref. It and Description then answer for the same schema,
-	// which is what keeps the field's comment consistent: a field that announced
-	// a deprecation borrowed from a $defs entry while showing none of that
-	// entry's prose would be documenting two different things at once. The
-	// borrowed keywords are not lost -- the referenced type carries its own
-	// comment, and every named-type kind carries it since issue #171.
+	// Annotations and Description are read over the same schemas, so that the
+	// whole comment block speaks for one reading: everything that describes the
+	// field's location unconditionally, minus the $ref half of that reach. See
+	// Generator.propertyDocSources.
 	//
-	// Config.StrictReadWrite is the one place that does look through the
-	// reference, because the check it emits has nowhere else to live. See
-	// Generator.readWriteAtLocation.
+	// The $ref is left out because it survives into the generated source as this
+	// field's own type, and that type carries the referenced schema's comment
+	// (issue #171) -- a field repeating it would document the same schema twice,
+	// and a field that took the borrowed deprecation while showing none of the
+	// borrowed prose would document two things at once. An allOf has no such
+	// survivor, so what its branches say is folded in here (issue #187).
+	//
+	// Config.StrictReadWrite does look through the reference, because the check
+	// it emits has nowhere else to live, and so does DefaultLiteral. See
+	// Generator.unconditionalReachAt.
 	Annotations    Annotations
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
 	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
+	// DefaultShape selects the arm of the SetDefaults template that writes
+	// DefaultLiteral. Empty for the four scalars and their pointers, where the
+	// field's own Go type name selects it; "named" or "*named" when the literal
+	// is a conversion into a generated type, which the scalar arms would wrap in
+	// a second conversion of the wrong type. Set by resolveNamedTypeDefaults.
+	DefaultShape string
+	// pendingDefault is the "default" of a field defaultToGoLiteral could not
+	// write, held for resolveNamedTypeDefaults. Unexported: nothing outside this
+	// package, and no template, has any use for a value that has not been
+	// decided yet.
+	pendingDefault *any
 	// IntegerDecode is set when the field's type holds an int64 that the
 	// document's draft lets be written in float notation. See IntegerDecodeDef.
 	IntegerDecode *IntegerDecodeDef
