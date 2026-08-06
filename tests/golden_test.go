@@ -160,6 +160,13 @@ func allGoldenTests() []goldenTestCase {
 		{"regression/format_beside_length", "testdata/schemas/regression/format_beside_length.json", "testdata/golden/regression/format_beside_length.go"},
 		{"regression/typed_format_positions", "testdata/schemas/regression/typed_format_positions.json", "testdata/golden/regression/typed_format_positions.go"},
 		{"regression/format_helper_positions", "testdata/schemas/regression/format_helper_positions.json", "testdata/golden/regression/format_helper_positions.go"},
+		// Every annotation-vocabulary keyword on every named-type kind. The
+		// golden pins the paragraph layout the keywords are written in, which is
+		// the part that decides whether gopls, staticcheck and `go doc` see a
+		// "Deprecated: " notice at all; TestAnnotationKeywordsReachEveryNamedTypeKind
+		// names the cells. It is also what compiles the runtime-annotation kind
+		// as a $defs entry, which used to be emitted three times over.
+		{"regression/annotation_positions", "testdata/schemas/regression/annotation_positions.json", "testdata/golden/regression/annotation_positions.go"},
 		// Pins which oneOf groups keep the sealed-interface union and which
 		// leave it for the evaluator: a branch selection would count wrongly --
 		// a `false`, a `const`, an enum beside a `type` -- takes the group away,
@@ -361,6 +368,12 @@ func generateFromSchemaWithConfig(t *testing.T, schemaPath string, cfg generator
 func TestGoldenBigInt(t *testing.T) {
 	tests := []goldenTestCase{
 		{"bigint/integer_constraints", "testdata/schemas/bigint/integer_constraints.json", "testdata/golden/bigint/integer_constraints.go"},
+		// The big-int alias is the one named-type kind that needs a non-default
+		// configuration to exist at all -- under the default the same $defs entry
+		// comes out a plain int64 alias. It is the same
+		// position-matrix document read twice, so the two goldens differ in that
+		// kind and nothing else.
+		{"bigint/annotation_positions", "testdata/schemas/regression/annotation_positions.json", "testdata/golden/bigint/annotation_positions.go"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {

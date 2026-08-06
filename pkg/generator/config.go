@@ -65,6 +65,21 @@ type Config struct {
 	// never present when the instance is retrieved from the owning authority",
 	// so MarshalJSON leaves the property out.
 	//
+	// It binds on a property, and the property is what it keys on: the check
+	// lives in the parent struct's decoder and encoder, which are the only things
+	// that ever see a property name. Where the keyword is written does not
+	// matter -- on the property, at the end of its $ref chain, or in one of its
+	// allOf branches, all of which apply at the same instance location. See
+	// readWriteAtLocation for that reach, and for why an anyOf branch is not part
+	// of it.
+	//
+	// Outside a property it stays documentation, and that is the boundary rather
+	// than a gap. A readOnly array element or map value has no property name for
+	// the check to key on, and writeOnly has no action available there either: a
+	// property can be left out of an object, but an element cannot be left out of
+	// an array without changing its length, which minItems can see. The doc
+	// comment on the element's own type is where those are said (issue #172).
+	//
 	// Two consequences are deliberate and are why it is opt-in rather than the
 	// default:
 	//

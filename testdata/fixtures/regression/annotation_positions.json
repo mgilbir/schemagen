@@ -1,0 +1,21 @@
+{
+  "alias": "alias-1",
+  "aliasPlain": "b",
+  "enum": "red",
+  "enumPlain": "up",
+  "rawEnum": "mixed",
+  "struct": {"a": "x"},
+  "structPlain": {"b": "y"},
+  "inferred": 4,
+  "inferredPlain": 5,
+  "typeOnly": 1,
+  "typeOnlyPlain": "s",
+  "dynamic": "ab",
+  "dynamicPlain": 6,
+  "not": 1,
+  "notPlain": 2,
+  "runtime": ["a"],
+  "runtimePlain": ["b"],
+  "bigInt": 7,
+  "bigIntPlain": 8
+}

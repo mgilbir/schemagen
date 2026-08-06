@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReadWritePositions",
+  "description": "Every position \"readOnly\" and \"writeOnly\" can be written, against what --strict-read-write does with it. The keywords are annotations under every draft that defines them, so this document changes no verdict at all: Validate() gives the same answer for every instance under both settings, and the default configuration decodes and encodes it unchanged. What moves is which JSON property names the generated decoder refuses and the generated encoder drops, and the answer is the same for a keyword written on the property and for one the property reaches through a $ref or an allOf branch, which are the applicators that bind unconditionally (issue #172). An anyOf branch is not one of them and is the control for that: which branch applies is a property of the document, so a check keyed on it would refuse documents the schema never marked. The array-element and map-value positions are the other boundary: an element has no property name for the check to key on, and there is no way to omit an element from an array without changing its length, so both are documentation there and the doc comment on the element type is where they are said.",
+  "type": "object",
+  "properties": {
+    "roInline": {"type": "string", "readOnly": true},
+    "woInline": {"type": "string", "writeOnly": true},
+    "roViaRef": {"$ref": "#/$defs/ReadOnlyID"},
+    "woViaRef": {"$ref": "#/$defs/WriteOnlySecret"},
+    "roViaChain": {"$ref": "#/$defs/ChainOuter"},
+    "roViaObject": {"$ref": "#/$defs/ReadOnlyObject"},
+    "roViaAllOf": {"allOf": [{"$ref": "#/$defs/ReadOnlyID"}]},
+    "woViaAllOf": {"allOf": [{"type": "string", "writeOnly": true}]},
+    "roViaAnyOf": {"anyOf": [{"type": "string", "readOnly": true}, {"type": "integer"}]},
+    "nested": {"$ref": "#/$defs/HasReadOnlyProperty"},
+    "roList": {"type": "array", "items": {"$ref": "#/$defs/ReadOnlyID"}},
+    "roMap": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ReadOnlyID"}},
+    "woList": {"type": "array", "items": {"$ref": "#/$defs/WriteOnlySecret"}},
+    "nestedList": {"type": "array", "items": {"$ref": "#/$defs/HasReadOnlyProperty"}},
+    "plain": {"type": "string", "readOnly": false, "writeOnly": false},
+    "untouched": {"type": "string"}
+  },
+  "$defs": {
+    "ReadOnlyID": {"type": "string", "readOnly": true, "description": "Assigned by the server."},
+    "WriteOnlySecret": {"type": "string", "writeOnly": true},
+    "ChainInner": {"$ref": "#/$defs/ReadOnlyID"},
+    "ChainOuter": {"$ref": "#/$defs/ChainInner"},
+    "ReadOnlyObject": {"type": "object", "readOnly": true, "properties": {"n": {"type": "string"}}},
+    "HasReadOnlyProperty": {"type": "object", "properties": {"sid": {"type": "string", "readOnly": true}, "keep": {"type": "string"}}}
+  }
+}

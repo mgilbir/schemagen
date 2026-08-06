@@ -11,6 +11,7 @@
 // no Validate method and json.Unmarshal into it cannot fail -- every document
 // reaches your code unexamined, including the ones the schema forbids.
 {{- end}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (or (ne .Description "") (ne .Unenforced ""))}}
 type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}

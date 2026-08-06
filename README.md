@@ -164,7 +164,10 @@ a user agent. A code generator is the consumer they were written for, so they ar
 read at generation time and land in the generated source rather than in
 `Validate()`, which never sees them.
 
-By default all four become doc comments:
+By default all four become doc comments, on every kind of named type the
+generator produces — a struct, a struct field, an alias, an enum, an inferred
+alias, a big-int alias, a type-only wrapper, a dynamic wrapper, a `not` wrapper
+and a runtime-annotation wrapper:
 
 ```go
 // The identifier this resource used to carry.
@@ -191,6 +194,18 @@ which they have a direction ([2020-12 §9.4][ro]):
   authority", and this picks rejected.
 - `MarshalJSON` **omits** every `writeOnly` property — the spec says the value
   "is never present when the instance is retrieved from the owning authority".
+
+Both bind on a **property**, whichever way the schema says so: written on the
+property, reached through its `$ref` (however long the chain), or stated in one
+of its `allOf` branches all name the same instance location and all bind. An
+`anyOf` or `oneOf` branch does not, because which branch applies is the
+document's business and a check keyed on one would refuse documents the schema
+never marked.
+
+Outside a property the two keywords stay documentation. A `readOnly` array
+element or map value has no property name for the check to key on, and there is
+no way to omit an element from an array without changing its length — so the
+keyword is said in the doc comment on the element's own type and nowhere else.
 
 It is opt-in for two reasons. A type built this way no longer round-trips, by
 design. And it picks a side: one Go type cannot be both the request shape and the

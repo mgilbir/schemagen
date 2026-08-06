@@ -7,6 +7,7 @@
 // at validation time, either because an unevaluatedItems constraint depends on
 // which items the applicators evaluate for the value in hand, or because the
 // schema gives the value no Go type of its own to hang a check on.
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {
 	_raw json.RawMessage
 }

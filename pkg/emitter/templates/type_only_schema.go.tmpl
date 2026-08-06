@@ -4,6 +4,7 @@
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
 // {{.Name}} accepts any JSON value and validates that it is one of the allowed types.
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {
 	_raw json.RawMessage
 }
