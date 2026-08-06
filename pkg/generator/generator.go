@@ -331,6 +331,15 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// And drop the two reference keywords from the dialects that do not define
 	// them, for the same reason and in the same place.
+	//
+	// schema.Normalize now clears every keyword a node's declared dialect does
+	// not define, so for a document that names its own dialect this pass has
+	// nothing left to do. What it still carries is the --draft override: it reads
+	// draftForSchema, which prefers Config.Draft to the document's $schema, and so
+	// does supportsPrefixItems and so does supportsDependentRequired. Taking it
+	// away would leave --draft reaching prefixItems and the dependent pair and not
+	// these two, which is a new inconsistency of the shape issue #203 reports.
+	// TestReferenceKeywordsFollowAnExplicitDraft is what holds it.
 	g.normalizeDialectRefKeywords(s)
 
 	// Collect definitions ($defs and definitions) and build anchor index.
