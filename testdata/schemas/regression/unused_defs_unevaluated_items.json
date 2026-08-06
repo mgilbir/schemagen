@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/unused-defs-unevaluated-items",
+  "$anchor": "root",
+  "title": "UnusedDefsUnevaluatedItems",
+  "description": "unevaluatedItems inside an allOf, next to keywords that constrain nothing where they sit. Neither the unused $defs nor the $anchor may change which documents this schema admits (issue #178).",
+  "$defs": {
+    "Unused": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string"
+        }
+      ],
+      "unevaluatedItems": false
+    }
+  ]
+}

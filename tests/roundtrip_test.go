@@ -8318,3 +8318,33 @@ func TestRecursiveAnchorNestedResources(t *testing.T) {
 		},
 	)
 }
+
+// TestUnusedDefinitionsDoNotDisableUnevaluatedItems is issue #178 end to end.
+//
+// The two keyword allow-lists in pkg/generator/annotations.go each carried a
+// hand-written copy of "the keywords that carry no constraint", and the copies
+// disagreed. A keyword outside an allow-list refuses the whole schema, so an
+// entirely unused $defs -- which almost every real document carries -- sent this
+// schema back to the static path, and the static path cannot enforce
+// unevaluatedItems next to an in-place applicator: ["a", 1] was accepted.
+//
+// Compiling and running the generated code is the point. The generator can be
+// read to say it now compiles the schema; only the program says what it admits.
+func TestUnusedDefinitionsDoNotDisableUnevaluatedItems(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/unused_defs_unevaluated_items.json",
+		"UnusedDefsUnevaluatedItems",
+		[]string{
+			`["a"]`,
+			`[]`,
+		},
+		[]string{
+			// One item past the tuple, and unevaluatedItems is false.
+			`["a",1]`,
+			`["a","b"]`,
+			// The allOf branch still binds on its own terms.
+			`[1]`,
+			`{"a":1}`,
+		},
+	)
+}

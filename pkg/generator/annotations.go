@@ -10,27 +10,56 @@ import (
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
+// allowing builds a keyword allow-list: the keywords a path models, plus every
+// keyword that constrains nothing wherever it sits.
+//
+// The second half is not written out at the call sites, and that is the whole
+// point of this function. There were two allow-lists here, each carrying its own
+// hand-written copy of "the keywords that carry no constraint", and they
+// disagreed: annotationKeywords was missing $defs, definitions, id, $anchor,
+// $dynamicAnchor and $recursiveAnchor, and both were missing $vocabulary. A
+// keyword outside an allow-list refuses the whole schema, so an entirely unused
+// $defs -- which almost every real document carries -- was enough to send a
+// schema back to the static path and leave its unevaluatedItems unenforced
+// (issue #178), while a $vocabulary did the same to the runtime evaluator.
+//
+// nonConstrainingKeywords and inertKeywords are the two halves of that set, and
+// they already existed: unenforcedKeywords reads exactly this union to decide
+// which keywords an `any` alias is really dropping. Reading it here as well is
+// what makes the allow-lists agree by construction rather than by everybody
+// remembering to edit both. The lists may still differ over the keywords they
+// *model*, which is a real design difference -- see
+// TestKeywordAllowListsAgreeOnWhatConstrainsNothing, which enumerates it.
+func allowing(modelled map[string]bool) map[string]bool {
+	allowed := make(map[string]bool, len(modelled)+len(nonConstrainingKeywords)+len(inertKeywords))
+	for _, set := range []map[string]bool{modelled, nonConstrainingKeywords, inertKeywords} {
+		for key := range set {
+			allowed[key] = true
+		}
+	}
+	return allowed
+}
+
 // annotationKeywords are the keywords the unevaluatedItems path compiles to the
 // runtime evaluator. Anything outside this set makes a schema ineligible, so it
 // keeps today's static checks instead of being evaluated with a keyword silently
 // ignored.
 //
+// The literal below names only the keywords this path *models*; allowing() adds
+// the ones that constrain nothing, which are not this list's business to decide.
+//
 // It is deliberately narrower than validatorKeywords below. This path takes over
 // schemas that already generate working static checks, and widening it would
 // change the shape of code that is not broken; the other path only ever takes
 // over a schema that was about to become `type X any`.
-var annotationKeywords = map[string]bool{
+var annotationKeywords = allowing(map[string]bool{
 	"type": true, "const": true, "multipleOf": true, "minimum": true, "maximum": true,
 	"prefixItems": true, "items": true, "additionalItems": true,
 	"contains": true, "minContains": true, "maxContains": true,
 	"allOf": true, "anyOf": true, "oneOf": true,
 	"if": true, "then": true, "else": true,
 	"unevaluatedItems": true,
-
-	"$schema": true, "$id": true, "title": true, "description": true,
-	"$comment": true, "default": true, "examples": true,
-	"deprecated": true, "readOnly": true, "writeOnly": true,
-}
+})
 
 // validatorKeywords are the keywords the runtime evaluator models when it is
 // asked to enforce a whole schema, rather than only the array-annotation subset.
@@ -55,7 +84,10 @@ var annotationKeywords = map[string]bool{
 //
 // Everything not listed fails the schema closed, so a keyword the parser learns
 // later cannot be dropped silently.
-var validatorKeywords = map[string]bool{
+//
+// As with annotationKeywords, the literal names only the keywords this path
+// models; the ones that carry no constraint where they sit come from allowing().
+var validatorKeywords = allowing(map[string]bool{
 	"type": true, "const": true, "enum": true,
 	"multipleOf": true, "minimum": true, "maximum": true,
 	"exclusiveMinimum": true, "exclusiveMaximum": true, "divisibleBy": true,
@@ -74,14 +106,7 @@ var validatorKeywords = map[string]bool{
 	"$ref":                  true,
 	"$dynamicRef":           true,
 	"$recursiveRef":         true,
-
-	// Carry no constraint of their own where they sit.
-	"$defs": true, "definitions": true,
-	"$anchor": true, "$dynamicAnchor": true, "$recursiveAnchor": true,
-	"$schema": true, "$id": true, "id": true, "title": true, "description": true,
-	"$comment": true, "default": true, "examples": true,
-	"deprecated": true, "readOnly": true, "writeOnly": true,
-}
+})
 
 // inertKeywords are standard keywords that constrain nothing and have no field
 // on schema.Schema, so the parser files them under Extensions alongside genuinely
@@ -1250,6 +1275,15 @@ func unenforcedKeywords(s *schema.Schema) []string {
 // nonConstrainingKeywords are the keywords whose absence from a generated check
 // costs a document nothing: they identify a schema, describe it, or hold
 // subschemas that apply only where a reference reaches them.
+//
+// Together with inertKeywords -- the same idea for the keywords that have no
+// field on schema.Schema and so arrive through Extensions -- this is the single
+// place the package decides that a keyword constrains nothing. Both are read by
+// unenforcedKeywords, which says what an `any` alias is dropping, and by
+// allowing(), which builds the two evaluator allow-lists. That sharing is
+// load-bearing: when the allow-lists carried their own copies they drifted, and
+// an unused $defs stopped unevaluatedItems being enforced at all (#178). A
+// keyword added here reaches every one of those readers at once.
 var nonConstrainingKeywords = map[string]bool{
 	"$schema": true, "$id": true, "id": true, "$vocabulary": true,
 	"$anchor": true, "$dynamicAnchor": true, "$recursiveAnchor": true,
