@@ -363,7 +363,12 @@ func generateFromSchemaWithConfig(t *testing.T, schemaPath string, cfg generator
 		t.Fatalf("loading schema %s: %v", schemaPath, err)
 	}
 
-	s.Normalize()
+	// The draft the config names is normalized under too, exactly as cmd/schemagen
+	// does it: normalization is where a keyword the dialect does not define is
+	// dropped, and a draft answered from two sources is issue #203 in miniature.
+	// DraftUnknown means "read it from the document", which is what every fixture
+	// that names no draft gets.
+	s.NormalizeForDraft(cfg.Draft)
 
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(s)

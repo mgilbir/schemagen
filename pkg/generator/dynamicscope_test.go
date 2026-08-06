@@ -635,3 +635,45 @@ func describeAnchorTarget(s *schema.Schema) string {
 	}
 	return "{$id: " + s.ID + ", type: " + strings.Join(s.Type, "|") + "}"
 }
+
+// TestReferenceKeywordsFollowAnExplicitDraft is what normalizeDialectRefKeywords
+// still does that schema.Normalize's dialect gate does not.
+//
+// Normalize reads the dialect the document declares. Config.Draft is the
+// caller's statement that the document is to be read as some other dialect, and
+// it reaches the generator's own per-node answer -- draftForSchema -- which
+// supportsPrefixItems and supportsDependentRequired read too. A caller who
+// supplies it to Generate and not to normalization gets it applied here, and
+// dropping this pass would leave --draft reaching those two keywords and not
+// these.
+func TestReferenceKeywordsFollowAnExplicitDraft(t *testing.T) {
+	src := `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://schemagen.test/explicit-draft",
+		"properties": {
+			"rec": {"$recursiveRef": "#/$defs/narrow"},
+			"dyn": {"$dynamicRef": "#/$defs/narrow"}
+		},
+		"$defs": {"narrow": {"type": "integer"}}
+	}`
+
+	// Normalized under the document's own dialect, which defines both, and then
+	// generated as draft 7, which defines neither.
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(src), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	if s.Properties["rec"].RecursiveRef == "" || s.Properties["dyn"].DynamicRef == "" {
+		t.Fatalf("2020-12 lost a reference keyword in normalization; the control this test needs is gone")
+	}
+	if _, err := New(Config{PackageName: "testpkg", Draft: schema.Draft07}).Generate(&s); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if got := s.Properties["rec"].RecursiveRef; got != "" {
+		t.Errorf("$recursiveRef = %q under --draft 7, want it dropped", got)
+	}
+	if got := s.Properties["dyn"].DynamicRef; got != "" {
+		t.Errorf("$dynamicRef = %q under --draft 7, want it dropped", got)
+	}
+}

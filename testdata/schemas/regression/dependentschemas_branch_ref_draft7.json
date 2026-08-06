@@ -5,7 +5,8 @@
     "atMostTwo": {"maxProperties": 2}
   },
   "properties": {"alpha": {"type": "string"}},
-  "dependentSchemas": {
+  "_comment": "draft 7 spells the keyword `dependencies`; `dependentSchemas` is 2019-09's name for it and draft 7 does not define it. Normalize maps the one onto the other, so the fixture states what a draft-7 document can state and still exercises the branch.",
+  "dependencies": {
     "alpha": {
       "$ref": "#/definitions/atMostTwo",
       "properties": {"bravo": {"minimum": 5}},
