@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "atProperty": {
+      "type": "array",
+      "contains": {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
+    },
+    "atElement": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "contains": {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
+      }
+    },
+    "atMapValue": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "contains": {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
+      }
+    },
+    "atTupleSlot": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "array", "contains": {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}}
+      ]
+    },
+    "byRequired": {
+      "type": "array",
+      "contains": {"type": "object", "required": ["a"]}
+    },
+    "byScalarBound": {
+      "type": "array",
+      "contains": {"type": "integer", "minimum": 5}
+    },
+    "byDescribedBound": {
+      "type": "array",
+      "contains": {"description": "an annotation constrains nothing", "type": "integer", "minimum": 5}
+    }
+  }
+}

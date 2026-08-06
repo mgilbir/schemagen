@@ -376,3 +376,32 @@ func TestPropertyNamesFormatIsReadOnlyWhereSomethingCanJudgeIt(t *testing.T) {
 		})
 	}
 }
+
+// TestContainsGateNamesEveryKeywordTheChecksRead holds containsCheckKeywords
+// against extractContainsDef, the way the two gates above are held against their
+// own extractors.
+//
+// This gate used to be a deny-list of struct fields, and `patternProperties` was
+// the field nobody wrote down: it is not `properties`, so hasProperties did not
+// see it, and a `contains` naming an object shape by pattern counted every
+// object (issue #207). A deny-list has to be remembered keyword by keyword and
+// fails silently when it is not; an allow-list read from the sub-schema's own
+// keyword set fails closed, and this test is what keeps the list the extractor's
+// vocabulary rather than a second thing to remember.
+//
+// `const` and `enum` are named here and not in containsCheckKeywords on purpose:
+// extractContainsDef answers both in arms that return before the gate is
+// consulted, so the extractor reads them while the gate must not admit them.
+func TestContainsGateNamesEveryKeywordTheChecksRead(t *testing.T) {
+	read := keywordsReadBy(t, "extractContainsDef", "containsSch", 8)
+
+	gate := map[string]bool{"const": true, "enum": true}
+	for key := range containsCheckKeywords {
+		gate[key] = true
+	}
+	assertSameKeywords(t, "containsCheckKeywords plus the const and enum arms", gate,
+		"extractContainsDef", read,
+		"A keyword extractContainsDef reads and the gate does not name sends every `contains` stating "+
+			"it to a materialized type for no reason; one the gate names and the extractor does not "+
+			"read is a sub-schema declared fully checked that nothing checks, which is issue #207 again.")
+}

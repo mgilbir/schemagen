@@ -15233,48 +15233,76 @@ func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
 // The exclusive bounds are asked for their *numeric* spelling, because draft 3
 // writes them as booleans modifying minimum/maximum and the check has no arm
 // for that. enum and const never reach here: the arms above return on both.
+//
+// Read through statedConstraints rather than off a list of struct fields, for
+// the reason propertyNamesDefReadsWholeSchema and dependentBranchReadWhole are:
+// a keyword the parser learns next arrives in the keyword set, is not in the
+// allow-list, and the sub-schema is delegated -- where a deny-list has to be
+// remembered, and the failure of forgetting is silent. This gate *was* a
+// deny-list, and `patternProperties` was the entry nobody wrote: it is not
+// `properties`, so hasProperties did not see it, and
+// {"contains":{"type":"object","patternProperties":{"^a":{"type":"integer"}}}}
+// counted every object and accepted [{"ab":"x"}]. That is issue #207, and it is
+// the object-shaped half of what #192 fixed for arrays. `dependencies`,
+// `divisibleBy` and `disallow` were remembered; a dozen others were only ever
+// covered by nothing else in the parser using them.
 func containsChecksCarryTheWholeSchema(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
-	if len(s.Type) > 1 || len(s.TypeSchemas) > 0 {
+	stated, ok := statedConstraints(s)
+	if !ok {
 		return false
 	}
-	if hasProperties(s) || len(s.Required) > 0 || s.AdditionalProperties != nil ||
-		s.PropertyNames != nil || s.MinProperties != nil || s.MaxProperties != nil ||
-		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 || len(s.Dependencies) > 0 {
-		return false
-	}
-	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
-		s.Contains != nil || s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil {
-		return false
-	}
-	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.Not != nil ||
-		s.If != nil || s.Then != nil || s.Else != nil {
-		return false
-	}
-	if s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" || len(s.Extends) > 0 {
-		return false
-	}
-	if s.UnevaluatedItems != nil || s.UnevaluatedProperties != nil {
-		return false
-	}
-	if s.Format != nil || s.ContentEncoding != "" || s.ContentMediaType != "" || s.ContentSchema != nil {
-		return false
-	}
-	if len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
-		return false
-	}
-	if s.DivisibleBy != nil || len(s.Disallow) > 0 {
-		return false
-	}
-	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number == nil {
-		return false
-	}
-	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number == nil {
-		return false
+	for _, key := range stated {
+		if !containsCheckKeywords[key] {
+			return false
+		}
+		switch key {
+		case "type":
+			// The check carries one JSON type name. A union has no single name
+			// to carry, and draft 3's schema-valued `type` -- which
+			// schemaKeywordSet also reports as "type" -- has none at all.
+			if len(s.Type) != 1 || len(s.TypeSchemas) > 0 {
+				return false
+			}
+		case "exclusiveMinimum":
+			if s.ExclusiveMinimum == nil || s.ExclusiveMinimum.Number == nil {
+				return false
+			}
+		case "exclusiveMaximum":
+			if s.ExclusiveMaximum == nil || s.ExclusiveMaximum.Number == nil {
+				return false
+			}
+		}
 	}
 	return true
+}
+
+// containsCheckKeywords names the keywords the flat per-element tests in
+// extractContainsDef read off a `contains` sub-schema, and is the list the gate
+// above switches on.
+//
+// It is data for the same reason propertyNamesKeywordsRead and
+// dependentBranchKeywordsRead are: a keyword the checks start reading without an
+// entry here would send every sub-schema stating it to a materialized type for
+// no reason, and one they stop reading while the entry stays would go unchecked
+// by both. See TestContainsGateNamesEveryKeywordTheChecksRead, which reads
+// extractContainsDef's own source.
+//
+// `enum` and `const` are deliberately absent: extractContainsDef answers both
+// before this gate is consulted, so a sub-schema that reaches here stating one
+// is one whose value would not marshal, and delegating it is right.
+var containsCheckKeywords = map[string]bool{
+	"type":             true,
+	"minimum":          true,
+	"maximum":          true,
+	"exclusiveMinimum": true,
+	"exclusiveMaximum": true,
+	"multipleOf":       true,
+	"minLength":        true,
+	"maxLength":        true,
+	"pattern":          true,
 }
 
 // extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.

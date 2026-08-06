@@ -12,21 +12,86 @@ import (
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
-// keywordPositionFixtures are the keywords that fired at one position and
-// vanished at a sibling, together with the controls that tell a fix from an
-// amputation.
+// keywordPositionFixtures are two keywords that fired at one position and
+// vanished at a sibling -- issues #206 and #207 -- together with the controls
+// that tell a fix from an amputation.
 //
 // They are run compiled rather than compared against a golden for the reason the
 // `not` and subschema-depth fixtures are: the symptom of each is a Validate that
-// accepts, which reads exactly like a schema with nothing more to check, and
-// #206's generated source differs from the fix by one character.
+// accepts, which reads exactly like a schema with nothing more to check. #207's
+// generated source even looks correct -- a loop counting elements whose first
+// byte is '{' -- and #206's differs from the fix by one character.
 //
 // Every document below turns on exactly one arm. #206's schemas pair `minimum: 5`
 // with `exclusiveMinimum: true` and put 5 to them, a value `minimum` alone
 // accepts, so only the exclusive bound can refuse it; 4 is there to show
-// `minimum` survived.
+// `minimum` survived. #207's positions are separate properties of one object, so
+// a document naming one exercises that position and no other.
 func keywordPositionFixtures() []notFixture {
 	return []notFixture{
+		{
+			// Issue #207 in the shape the issue reports it: `contains` whose
+			// sub-schema names an object by pattern. The gate deciding whether
+			// the flat per-element checks say everything the sub-schema says was
+			// a deny-list of struct fields, and patternProperties was not one of
+			// them -- so what survived was `type: object` alone, and every object
+			// counted.
+			Name:       "contains_object_subschema",
+			SchemaPath: "testdata/schemas/regression/contains_object_subschema.json",
+			Instances: []notInstance{
+				{Name: "matching key with the wrong value type", Doc: `[{"ab":"x"}]`, Valid: false,
+					Why: "\"ab\" matches ^a and its value is a string, so no element matches the contains schema; accepting this is issue #207"},
+				{Name: "matching key with the right value type", Doc: `[{"ab":1}]`, Valid: true,
+					Why: "the element satisfies the sub-schema; a fix that rejects this is an amputation"},
+				{Name: "no key the pattern names", Doc: `[{"b":"x"}]`, Valid: true,
+					Why: "patternProperties says nothing about a key no pattern matches, so this object matches"},
+				{Name: "one matching element among others", Doc: `[1,{"ab":2}]`, Valid: true,
+					Why: "contains asks for one element, not all of them"},
+				{Name: "no elements", Doc: `[]`, Valid: false,
+					Why: "control: contains refuses the empty array whatever its sub-schema says"},
+				{Name: "no object at all", Doc: `[1,"s"]`, Valid: false,
+					Why: "control: the declared type still narrows which elements can match"},
+			},
+		},
+		{
+			// The sibling positions a `contains` is written at. #192 fixed the
+			// array-shaped sub-schema at these same positions; this is the
+			// object-shaped case it did not reach, and all four were broken.
+			Name:       "contains_object_positions",
+			SchemaPath: "testdata/schemas/regression/contains_object_positions.json",
+			Instances: []notInstance{
+				{Name: "property rejects", Doc: `{"atProperty":[{"ab":"x"}]}`, Valid: false,
+					Why: "an array property's own contains"},
+				{Name: "property accepts", Doc: `{"atProperty":[{"ab":1}]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "element rejects", Doc: `{"atElement":[[{"ab":"x"}]]}`, Valid: false,
+					Why: "a contains inside an items sub-schema, the position #192 reached for arrays"},
+				{Name: "element accepts", Doc: `{"atElement":[[{"ab":1}]]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "map value rejects", Doc: `{"atMapValue":{"k":[{"ab":"x"}]}}`, Valid: false,
+					Why: "a contains inside a schema-valued additionalProperties"},
+				{Name: "map value accepts", Doc: `{"atMapValue":{"k":[{"ab":1}]}}`, Valid: true, Why: "control for the above"},
+
+				{Name: "tuple slot rejects", Doc: `{"atTupleSlot":[[{"ab":"x"}]]}`, Valid: false,
+					Why: "a contains inside a prefixItems slot"},
+				{Name: "tuple slot accepts", Doc: `{"atTupleSlot":[[{"ab":1}]]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "required rejects", Doc: `{"byRequired":[{"b":1}]}`, Valid: false,
+					Why: "control: an object shape named by `required` was already delegated and must stay so"},
+				{Name: "required accepts", Doc: `{"byRequired":[{"a":1}]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "scalar bound rejects", Doc: `{"byScalarBound":[1]}`, Valid: false,
+					Why: "control: a sub-schema the flat checks do say everything about must keep them"},
+				{Name: "scalar bound accepts", Doc: `{"byScalarBound":[7]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "annotated scalar bound rejects", Doc: `{"byDescribedBound":[1]}`, Valid: false,
+					Why: "control: a description constrains nothing, so the sub-schema is still one the flat checks cover; reading the keyword set naively would route this to a materialized type"},
+				{Name: "annotated scalar bound accepts", Doc: `{"byDescribedBound":[7]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "nothing present", Doc: `{}`, Valid: true,
+					Why: "every property is optional and none is present"},
+			},
+		},
 		{
 			// Issue #206. The boolean spelling of the exclusive bounds is what
 			// draft 3 and draft 4 write, and the patternProperties value path
