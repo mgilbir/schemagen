@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ForbiddenByEmptyNot",
+  "description": "Issue #177 in the shape whose answer needs no evaluator: a `not` over the accept-all schema admits nothing, and that holds whatever stands beside it. The sibling `type` sent this to the type arm, which answered `type ForbiddenByEmptyNot string` and accepted every string against a schema that admits none.",
+  "type": "string",
+  "not": {}
+}

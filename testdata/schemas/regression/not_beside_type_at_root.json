@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypedNot",
+  "description": "Issue #177: a root-level `not` written beside a `type`. The type arm produced `type RootTypedNot string` with a Validate that returned nil, so \"forbidden\" -- the one value named to be forbidden -- was accepted.",
+  "type": "string",
+  "not": {"const": "forbidden"}
+}

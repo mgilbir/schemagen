@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ItemsTypedNot",
+  "description": "Issue #177 at an array element written inline, with the array as the whole document. The element was typed from its `type` alone and []string accepted the value the `not` forbids.",
+  "type": "array",
+  "items": {"type": "string", "not": {"const": "forbidden"}}
+}
