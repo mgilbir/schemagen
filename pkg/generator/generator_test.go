@@ -7655,18 +7655,29 @@ func TestDependentSchemaBranchStaysUnderItsTrigger(t *testing.T) {
 	}
 }
 
-// TestDependentSchemaBranchKeywordItCannotExpressIsDropped is the second
-// over-reach guard. The branch is held to the same bar an object-level `then`
-// is: a keyword the evaluator cannot express is dropped, so the emitted check
-// demands a subset of what the branch says and refuses only documents the
-// schema refuses too. Guessing at one instead would reject conforming data,
-// which is worse than the missing check.
+// TestDependentSchemaBranchItCannotReadWholeGoesToTheEvaluator is the second
+// over-reach guard, and it changed sides with issue #181.
 //
-// `items` under a branch property is such a keyword, and a $ref on the branch
-// itself is the stronger case: before draft 2019-09 a $ref replaces the schema
-// object it sits in, so reading its siblings at all would enforce something the
-// schema never said.
-func TestDependentSchemaBranchKeywordItCannotExpressIsDropped(t *testing.T) {
+// It used to assert the partial reading: a branch stating a keyword the static
+// check cannot express kept the part that could be expressed, and a branch
+// carrying a $ref kept its own `required` while the reference went unread. Both
+// were the leniency an object-level `then` is allowed, and leniency was defended
+// on the grounds that a subset of a conjunction refuses only what the schema
+// refuses too.
+//
+// That defence holds only where nothing better is available, and something
+// better is: the runtime evaluator models the whole branch. So the rule is now
+// the opposite one -- a branch the static reduction cannot read whole is not
+// read in part, it is compiled and evaluated against the document. The old rule
+// is what left {"dependentSchemas":{"card":{"$ref":"#/$defs/NeedsCVV"}}}
+// enforcing nothing at all, since the reading it was lenient about was the whole
+// branch (issue #181).
+//
+// The $ref half also moved in the *rejecting* direction, which no amount of
+// leniency justified: through draft-07 a $ref replaces the schema object it sits
+// in, so the `required` written beside one says nothing -- and keeping it refused
+// documents the schema plainly permits.
+func TestDependentSchemaBranchItCannotReadWholeGoesToTheEvaluator(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
 		"type": "object",
@@ -7680,17 +7691,33 @@ func TestDependentSchemaBranchKeywordItCannotExpressIsDropped(t *testing.T) {
 	}`)
 
 	doc := structNamed(t, ir, "Doc")
-	dep := dependentSchemaFor(t, doc, "alpha")
-	if dep.Branch == nil {
-		t.Fatalf("the whole branch was dropped over one unexpressible property: %+v", dep)
+	if dep := dependentSchemaIfAny(doc, "alpha"); dep != nil {
+		t.Fatalf("the branch states `items`, which the static reading drops; it was read in part anyway: %+v", dep)
 	}
-	for _, p := range dep.Branch.Properties {
-		if p.JSONName == "arr" {
-			t.Fatalf("arr acquired checks from an unexpressible subschema: %+v", p.Checks)
+	lit := dependentSchemasNodeLiteral(t, doc)
+	for _, want := range []string{`{Key: "alpha"`, `Items:`, `Minimum:`} {
+		if !strings.Contains(lit, want) {
+			t.Fatalf("compiled branch does not name %s:\n%s", want, lit)
 		}
 	}
-	if len(dep.Branch.Properties) != 1 || dep.Branch.Properties[0].JSONName != "bravo" {
-		t.Fatalf("branch properties = %+v, want only bravo", dep.Branch.Properties)
+
+	// The same schema with the unexpressible property removed keeps the static
+	// reading it has today. Without this the arm above could be satisfied by
+	// sending every branch to the evaluator, which would be a different change.
+	plain := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"alpha": {"type": "string"}},
+		"dependentSchemas": {"alpha": {"properties": {"bravo": {"minimum": 5}}}}
+	}`)
+	plainDoc := structNamed(t, plain, "Doc")
+	plainDep := dependentSchemaFor(t, plainDoc, "alpha")
+	if plainDep.Branch == nil || len(plainDep.Branch.Properties) != 1 ||
+		plainDep.Branch.Properties[0].JSONName != "bravo" {
+		t.Fatalf("branch = %+v, want the static reading kept for a branch it reads whole", plainDep.Branch)
+	}
+	if len(plainDoc.RuntimeBranchChecks) != 0 {
+		t.Fatalf("RuntimeBranchChecks = %+v, want none for a branch the static reading covers", plainDoc.RuntimeBranchChecks)
 	}
 
 	refIR := generateForItemTest(t, `{
@@ -7706,13 +7733,43 @@ func TestDependentSchemaBranchKeywordItCannotExpressIsDropped(t *testing.T) {
 		}}
 	}`)
 	refDoc := structNamed(t, refIR, "Doc")
-	refDep := dependentSchemaFor(t, refDoc, "alpha")
-	if refDep.Branch != nil {
-		t.Fatalf("a branch carrying $ref was read in part: %+v", refDep.Branch)
+	if dep := dependentSchemaIfAny(refDoc, "alpha"); dep != nil {
+		t.Fatalf("a branch whose $ref replaces its siblings kept part of them: %+v", dep)
 	}
-	if !containsString(refDep.RequiredProps, "bravo") {
-		t.Fatalf("RequiredProps = %v, want the branch's own required entry kept", refDep.RequiredProps)
+	refLit := dependentSchemasNodeLiteral(t, refDoc)
+	if !strings.Contains(refLit, `Type: []string{"object"}`) {
+		t.Fatalf("compiled branch does not carry the reference target:\n%s", refLit)
 	}
+	for _, unwanted := range []string{"Required:", "Minimum:"} {
+		if strings.Contains(refLit, unwanted) {
+			t.Fatalf("compiled branch carries %s, which the $ref replaced:\n%s", unwanted, refLit)
+		}
+	}
+}
+
+// dependentSchemaIfAny is dependentSchemaFor without the failure: the absence of
+// an entry is the answer some callers are checking for.
+func dependentSchemaIfAny(sd *StructDef, trigger string) *DependentSchemaConstraint {
+	for i := range sd.DependentSchemas {
+		if sd.DependentSchemas[i].TriggerKey == trigger {
+			return &sd.DependentSchemas[i]
+		}
+	}
+	return nil
+}
+
+// dependentSchemasNodeLiteral returns the compiled literal of the struct's
+// dependentSchemas runtime check.
+func dependentSchemasNodeLiteral(t *testing.T, sd *StructDef) string {
+	t.Helper()
+	for _, c := range sd.RuntimeBranchChecks {
+		if c.Keyword == "dependentSchemas" {
+			return c.NodeLiteral
+		}
+	}
+	t.Fatalf("%s carries no dependentSchemas runtime check; the branch is enforced by nothing at all: %+v",
+		sd.Name, sd.RuntimeBranchChecks)
+	return ""
 }
 
 // fieldTupleFor is the prefixItems counterpart of fieldContainsFor.

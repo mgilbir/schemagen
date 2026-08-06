@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "definitions": {
+    "atMostTwo": {"maxProperties": 2}
+  },
+  "properties": {"alpha": {"type": "string"}},
+  "dependentSchemas": {
+    "alpha": {
+      "$ref": "#/definitions/atMostTwo",
+      "properties": {"bravo": {"minimum": 5}},
+      "required": ["bravo"]
+    }
+  }
+}

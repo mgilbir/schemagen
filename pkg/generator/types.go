@@ -219,6 +219,18 @@ type PropertyNamesDef struct {
 	MinLength   *int     // minimum length of property names
 	Pattern     string   // regex pattern property names must match
 	Enum        []string // allowed property name values (from enum or const)
+
+	// Format is the format keyword the sub-schema states, where the dialect
+	// asserts it and this generator has a check for it. Empty otherwise.
+	//
+	// A property name is a string in every draft, so a `format` under
+	// propertyNames is one of the few positions where the keyword's subject needs
+	// no inference at all -- and it was read by nothing, so
+	// {"propertyNames":{"format":"email"}} accepted every key under a dialect
+	// that asserts (issue #180). It is checked here rather than through the
+	// runtime evaluator because that evaluator deliberately does not model
+	// `format`; see validatorKeywords.
+	Format string
 }
 
 // DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
@@ -867,11 +879,14 @@ type BranchOverflowCheck struct {
 	TypeName string
 }
 
-// RuntimeBranchCheck is one applicator keyword -- an `anyOf` or a `oneOf` -- one
-// of whose branches states `unevaluatedProperties`, compiled to the runtime
-// evaluator and run against the document.
+// RuntimeBranchCheck is one keyword of an object schema compiled to the runtime
+// evaluator and run against the document, because the static reading of that
+// keyword is not the whole of what it says.
 //
-// It exists because that keyword cannot be answered at generation time. An
+// There are two reasons a keyword lands here, and they are opposite in kind.
+//
+// The first is an applicator -- an `anyOf` or a `oneOf` -- one of whose branches
+// states `unevaluatedProperties`, which cannot be answered at generation time. An
 // `allOf` branch always binds, so its `unevaluatedProperties` and the set of
 // keys it accounts for are both readable from the schema, which is what
 // BranchOverflowCheck carries. An `anyOf` or `oneOf` branch binds only if the
@@ -893,8 +908,20 @@ type BranchOverflowCheck struct {
 // evaluates, and only evaluating the branch produces that set. A subtree the
 // evaluator cannot model compiles to nothing and the check is dropped, which
 // leaves the keyword unchecked rather than checked wrongly.
+//
+// The second is a keyword whose argument is a sub-schema the static extractor
+// reads only in part -- `propertyNames` and `dependentSchemas`. Those extractors
+// read a hand-picked list of scalar fields off the sub-schema and had no gate
+// asking whether it stated anything else, so the idiomatic spelling -- the
+// sub-schema factored into `$defs` and reached by `$ref` -- was read as a
+// sub-schema stating nothing and the keyword enforced nothing at all (issues
+// #180 and #181). Where the gate says the reduction has not read the whole
+// sub-schema, the keyword is compiled here instead and the partial static
+// constraint is dropped rather than run beside it. See
+// collectSubschemaRuntimeChecks.
 type RuntimeBranchCheck struct {
-	// Keyword names the applicator in the error message: "anyOf" or "oneOf".
+	// Keyword names the keyword in the error message: "anyOf", "oneOf",
+	// "propertyNames" or "dependentSchemas".
 	Keyword string
 	// NodeLiteral is the Go composite literal for the _schemaNode holding that
 	// keyword and its branches.

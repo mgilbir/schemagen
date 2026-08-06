@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {"card": {"type": "string"}},
+  "dependentSchemas": {
+    "card": {"$ref": "#/$defs/needsCvv"},
+    "chain": {"$ref": "#/$defs/chainToCvv"},
+    "inlineReq": {"required": ["cvv"]},
+    "composed": {"allOf": [{"required": ["a"]}, {"required": ["b"]}]},
+    "alternated": {"anyOf": [{"required": ["p"]}, {"required": ["q"]}]},
+    "negated": {"not": {"required": ["banned"]}},
+    "conditional": {"if": {"required": ["x"]}, "then": {"required": ["y"]}},
+    "nested": {"dependentSchemas": {"inner": {"required": ["deep"]}}},
+    "bounded": {"maxProperties": 2},
+    "shaped": {"properties": {"amount": {"type": "integer"}}},
+    "listed": {"properties": {"arr": {"items": {"type": "integer"}}}},
+    "multi": {"properties": {"val": {"type": ["string", "integer"]}}},
+    "valued": {"additionalProperties": {"type": "integer"}},
+    "keyed": {
+      "additionalProperties": false,
+      "patternProperties": {"^p_": {}},
+      "properties": {"keyed": {}}
+    }
+  },
+  "$defs": {
+    "needsCvv": {"required": ["cvv"]},
+    "chainToCvv": {"$ref": "#/$defs/needsCvv"}
+  }
+}

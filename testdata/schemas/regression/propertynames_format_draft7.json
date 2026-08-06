@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "emailNames": {"type": "object", "propertyNames": {"format": "email"}},
+    "boundedEmail": {"type": "object", "propertyNames": {"format": "email", "maxLength": 12}}
+  }
+}

@@ -528,8 +528,8 @@ func (p PickOne) Validate() error {
 			}
 		}
 	}
-	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
-	// contributes depends on the document, so the applicator is evaluated here.
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
 	if p._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(p._jsonRawProps))
 		for _rbKey, _rbRaw := range p._jsonRawProps {
@@ -757,8 +757,8 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 			return fmt.Errorf("oneOf: matched %d variants, expected exactly 1", _oneOfMatches)
 		}
 	}
-	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
-	// contributes depends on the document, so the applicator is evaluated here.
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
 		for _rbKey, _rbRaw := range a._jsonRawProps {
