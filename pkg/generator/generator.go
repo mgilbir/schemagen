@@ -16066,11 +16066,36 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	if s.Maximum != nil {
 		rules = append(rules, ValidationRule{RuleType: "ppMaximum", Value: *s.Maximum})
 	}
-	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+	// exclusiveMinimum has two spellings: the number every draft from 6 on
+	// writes, and the boolean draft 3 and 4 write beside a `minimum` that
+	// carries the bound. Reading only the number is issue #206 -- the legitimate
+	// draft-4 spelling landed on neither arm, so `{"minimum":5,
+	// "exclusiveMinimum":true}` under a pattern accepted 5, a value the dialect
+	// that spelling belongs to forbids.
+	//
+	// patternValueScalarKeywords names `exclusiveMinimum` as a keyword the
+	// in-place rules cover, and the bucket is therefore given no type of its own
+	// to fall back to. That claim is what makes reading half the keyword a
+	// silent drop rather than a route to somewhere that would read it whole, and
+	// it is why the reading here has to match what extractValidationRules does
+	// at a property. Which dialects honour which spelling is a separate question
+	// and a separate issue (#203); this is the one position where the spelling
+	// the dialect does honour was going nowhere.
+	if s.ExclusiveMinimum != nil {
+		switch {
+		case s.ExclusiveMinimum.Number != nil:
+			rules = append(rules, ValidationRule{RuleType: "ppExclusiveMinimum", Value: *s.ExclusiveMinimum.Number})
+		case s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool && s.Minimum != nil:
+			rules = append(rules, ValidationRule{RuleType: "ppExclusiveMinimum", Value: *s.Minimum})
+		}
 	}
-	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppExclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+	if s.ExclusiveMaximum != nil {
+		switch {
+		case s.ExclusiveMaximum.Number != nil:
+			rules = append(rules, ValidationRule{RuleType: "ppExclusiveMaximum", Value: *s.ExclusiveMaximum.Number})
+		case s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool && s.Maximum != nil:
+			rules = append(rules, ValidationRule{RuleType: "ppExclusiveMaximum", Value: *s.Maximum})
+		}
 	}
 	if s.MultipleOf != nil {
 		rules = append(rules, ValidationRule{RuleType: "ppMultipleOf", Value: *s.MultipleOf})

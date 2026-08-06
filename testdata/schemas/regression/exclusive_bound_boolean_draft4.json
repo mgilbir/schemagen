@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "atProperty": {"type": "number", "minimum": 5, "exclusiveMinimum": true},
+    "nestedMin": {
+      "type": "object",
+      "patternProperties": {"^x$": {"minimum": 5, "exclusiveMinimum": true}}
+    },
+    "nestedMax": {
+      "type": "object",
+      "patternProperties": {"^y$": {"maximum": 5, "exclusiveMaximum": true}}
+    },
+    "notExclusive": {
+      "type": "object",
+      "patternProperties": {"^z$": {"minimum": 5, "exclusiveMinimum": false}}
+    }
+  },
+  "patternProperties": {"^p$": {"minimum": 5, "exclusiveMinimum": true}}
+}
