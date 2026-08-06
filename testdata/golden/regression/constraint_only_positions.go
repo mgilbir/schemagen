@@ -497,8 +497,8 @@ func (c ConstraintOnlyPositionsUnevaluated) MarshalJSON() ([]byte, error) {
 
 // Validate checks ConstraintOnlyPositionsUnevaluated against its JSON Schema constraints.
 func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
-	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
-	// contributes depends on the document, so the applicator is evaluated here.
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
 	if c._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(c._jsonRawProps))
 		for _rbKey, _rbRaw := range c._jsonRawProps {

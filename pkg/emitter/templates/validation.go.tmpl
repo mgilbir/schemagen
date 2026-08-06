@@ -1070,6 +1070,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("propertyNames: property name %q does not match pattern %q", _pnKey, {{printf "%q" $struct.PropertyNames.Pattern}})
 		}
 		{{- end}}
+		{{- if $struct.PropertyNames.Format}}
+		{{- template "string_format_check" (mkStringFormatCtxArgs "_pnKey" "propertyNames: property name %q" "_pnKey" $struct.PropertyNames.Format true)}}
+		{{- end}}
 		{{- if $struct.PropertyNames.Enum}}
 		{
 			_pnAllowed := map[string]bool{
@@ -1146,11 +1149,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if $struct.HasRuntimeBranchChecks}}
-	{{- /* An anyOf or oneOf one of whose branches states unevaluatedProperties.
-	       Which branches contribute is a fact about the document -- a branch the
-	       document fails asserts nothing and evaluates nothing -- so the keyword
-	       is held as data and interpreted here rather than approximated at
-	       generation time. See RuntimeBranchCheck.
+	{{- /* A keyword held as data and interpreted here rather than approximated at
+	       generation time. Two kinds reach this block: an anyOf or oneOf one of
+	       whose branches states unevaluatedProperties, where which branches
+	       contribute is a fact about the document; and a propertyNames or
+	       dependentSchemas whose sub-schema the static extractor reads only in
+	       part. See RuntimeBranchCheck.
 
 	       The document is rebuilt from the raw JSON the unmarshaler kept, which
 	       is the only place every key still exists together: the declared ones
@@ -1158,8 +1162,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       them. A value not built from JSON has no document to judge and is
 	       passed over, the way the required-property check treats untracked
 	       presence. */}}
-	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
-	// contributes depends on the document, so the applicator is evaluated here.
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
 	if {{$recv}}._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
 		for _rbKey, _rbRaw := range {{$recv}}._jsonRawProps {

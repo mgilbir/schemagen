@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "viaRef": {"type": "object", "propertyNames": {"$ref": "#/$defs/short"}},
+    "viaRefChain": {"type": "object", "propertyNames": {"$ref": "#/$defs/toShort"}},
+    "inline": {"type": "object", "propertyNames": {"maxLength": 3}},
+    "composed": {"type": "object", "propertyNames": {"allOf": [{"maxLength": 3}, {"pattern": "^a"}]}},
+    "alternated": {"type": "object", "propertyNames": {"anyOf": [{"const": "alpha"}, {"const": "beta"}]}},
+    "exclusive": {"type": "object", "propertyNames": {"oneOf": [{"maxLength": 3}, {"pattern": "^z"}]}},
+    "negated": {"type": "object", "propertyNames": {"not": {"const": "forbidden"}}},
+    "enumerated": {"type": "object", "propertyNames": {"enum": ["a", "b"]}},
+    "constNamed": {"type": "object", "propertyNames": {"const": "only"}},
+    "patterned": {"type": "object", "propertyNames": {"pattern": "^p"}},
+    "nonStringEnum": {"type": "object", "propertyNames": {"enum": [1, 2]}},
+    "typedName": {"type": "object", "propertyNames": {"type": "integer"}},
+    "constNonString": {"type": "object", "propertyNames": {"const": 7}},
+    "formatAnnotation": {"type": "object", "propertyNames": {"format": "email"}},
+    "constBesideEnum": {"type": "object", "propertyNames": {"enum": ["a", "b"], "const": "a"}},
+    "lengthBeside": {"type": "object", "propertyNames": {"minLength": 2, "$ref": "#/$defs/short"}}
+  },
+  "$defs": {
+    "short": {"maxLength": 3},
+    "toShort": {"$ref": "#/$defs/short"}
+  }
+}

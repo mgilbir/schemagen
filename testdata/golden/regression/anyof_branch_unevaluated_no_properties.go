@@ -201,8 +201,8 @@ func (a AnyOfBranchUnevaluatedNoProperties) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnyOfBranchUnevaluatedNoProperties against its JSON Schema constraints.
 func (a AnyOfBranchUnevaluatedNoProperties) Validate() error {
-	// anyOf/oneOf whose branch states unevaluatedProperties: which branch
-	// contributes depends on the document, so the applicator is evaluated here.
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
 		for _rbKey, _rbRaw := range a._jsonRawProps {

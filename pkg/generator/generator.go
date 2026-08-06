@@ -2937,17 +2937,22 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	if len(depRequired) > 0 {
 		needsUnmarshal = true
 	}
+	// A propertyNames or dependentSchemas sub-schema the static extractors below
+	// do not read whole is compiled to the evaluator instead, and the partial
+	// static reading of it is dropped rather than run beside it. See
+	// collectSubschemaRuntimeChecks.
+	subschemaChecks, subschemaTaken := g.collectSubschemaRuntimeChecks(s)
 	// Extract dependentSchemas constraints.
 	var depSchemas []DependentSchemaConstraint
 	if g.validationKeywordsEnabled() {
-		depSchemas = g.extractDependentSchemaConstraints(s)
+		depSchemas = g.extractDependentSchemaConstraints(s, subschemaTaken)
 	}
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true
 	}
 	// Extract propertyNames constraint.
 	var propNames *PropertyNamesDef
-	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
+	if s.PropertyNames != nil && g.validationKeywordsEnabled() && !subschemaTaken.propertyNames {
 		propNames = g.extractPropertyNamesDef(s.PropertyNames)
 		if propNames != nil {
 			needsUnmarshal = true // need _jsonKeys for validation
@@ -2967,7 +2972,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// The one the merge adopted is skipped by pointer identity, so the overflow
 	// map above and a check here never both answer for the same keyword.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
-	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+	runtimeBranchChecks := append(g.collectRuntimeBranchChecks(s), subschemaChecks...)
 	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
 	}
@@ -3895,10 +3900,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsUnmarshal = true
 	}
 
+	// A propertyNames or dependentSchemas sub-schema the static extractors do not
+	// read whole is compiled to the evaluator instead, and the partial static
+	// reading of it is dropped rather than run beside it. See
+	// collectSubschemaRuntimeChecks.
+	subschemaChecks, subschemaTaken := g.collectSubschemaRuntimeChecks(s)
+
 	// Extract dependent schema constraints.
 	var depSchemas []DependentSchemaConstraint
 	if g.validationKeywordsEnabled() {
-		depSchemas = g.extractDependentSchemaConstraints(s)
+		depSchemas = g.extractDependentSchemaConstraints(s, subschemaTaken)
 	}
 	if len(depSchemas) > 0 {
 		needsUnmarshal = true // need to capture _jsonKeys
@@ -3971,7 +3982,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// can be folded into this struct's overflow map. See
 	// collectBranchOverflowChecks and collectRuntimeBranchChecks.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
-	runtimeBranchChecks := g.collectRuntimeBranchChecks(s)
+	runtimeBranchChecks := append(g.collectRuntimeBranchChecks(s), subschemaChecks...)
 
 	// Where an applicator is evaluated exactly, the flattened approximation of
 	// that same applicator is dropped rather than run beside it, which is what
@@ -4048,7 +4059,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 
 	// Extract propertyNames constraint.
 	var propertyNamesDef *PropertyNamesDef
-	if s.PropertyNames != nil && g.validationKeywordsEnabled() {
+	if s.PropertyNames != nil && g.validationKeywordsEnabled() && !subschemaTaken.propertyNames {
 		propertyNamesDef = g.extractPropertyNamesDef(s.PropertyNames)
 		if propertyNamesDef != nil {
 			needsUnmarshal = true // need _jsonKeys for validation
@@ -14900,6 +14911,16 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 		def.Pattern = *pn.Pattern
 		hasConstraint = true
 	}
+	// A property name is a string wherever it appears, so the keyword's subject
+	// needs no inference here -- unlike a property value, where the rule is built
+	// only for a declared string or an undeclared type. The dialect still decides
+	// whether it asserts, and FormatCheckableOnString whether this generator has
+	// anything to judge it with; both answering no leaves `format` the annotation
+	// it is, which is nothing to read rather than something dropped.
+	if pn.Format != nil && g.formatAssertsFor(pn) && FormatCheckableOnString(*pn.Format) {
+		def.Format = *pn.Format
+		hasConstraint = true
+	}
 	// Handle const (convert to single-element enum) and enum.
 	enumValues := pn.Enum
 	if pn.Const != nil && len(enumValues) == 0 {
@@ -15063,12 +15084,20 @@ func containsChecksCarryTheWholeSchema(s *schema.Schema) bool {
 // $ref or an unrecognized keyword (refused whole, see objectConditionalBranchLenient),
 // and per-property keywords the dynamic evaluator does not model -- enum,
 // nested properties/items, and the applicators.
-func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema) []DependentSchemaConstraint {
+// A trigger the caller has already compiled to the runtime evaluator is skipped
+// entirely rather than read a second time in part. That is not only tidiness:
+// the allowed-key list this builds from `properties` alone is wrong whenever the
+// branch also names keys by pattern, so running it beside the exact check would
+// refuse documents the branch permits.
+func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken subschemaRuntimeTaken) []DependentSchemaConstraint {
 	if len(s.DependentSchemas) == 0 {
 		return nil
 	}
 	var result []DependentSchemaConstraint
 	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		if taken.dependent(trigger) {
+			continue
+		}
 		depSchema := s.DependentSchemas[trigger]
 		constraint := DependentSchemaConstraint{TriggerKey: trigger}
 		hasConstraint := false
@@ -16969,6 +16998,295 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 		collect(g.resolveSchemaForApplicator(sub))
 	}
 	return checks
+}
+
+// subschemaRuntimeTaken records which keywords collectSubschemaRuntimeChecks
+// compiled, so the caller drops the static reduction of those and keeps the rest.
+type subschemaRuntimeTaken struct {
+	propertyNames bool
+	// dependentTriggers holds the dependentSchemas keys whose branch went to the
+	// evaluator. A trigger is the unit rather than the keyword, because one
+	// schema's triggers are independent of each other: a branch the evaluator
+	// declines must keep the static reading it has today, and a branch beside it
+	// that the evaluator took must not be read twice.
+	dependentTriggers map[string]bool
+}
+
+func (t subschemaRuntimeTaken) dependent(trigger string) bool {
+	return t.dependentTriggers[trigger]
+}
+
+// collectSubschemaRuntimeChecks compiles `propertyNames` and `dependentSchemas`
+// to the runtime evaluator wherever their static extractors do not read the
+// whole sub-schema.
+//
+// Both extractors were written as a hand-picked read of scalar fields off the
+// sub-schema -- extractPropertyNamesDef reads five, extractDependentSchemaConstraints
+// reads `required`, the two property counts, `additionalProperties: false` and
+// the shape half of `properties` -- and neither had a gate asking whether the
+// sub-schema stated anything besides. A keyword outside the list was read as if
+// it were not written, and since a schema object's keywords are conjunctive,
+// dropping all of them leaves a keyword that asserts nothing:
+//
+//	{"type":"object","propertyNames":{"$ref":"#/$defs/N"},
+//	 "$defs":{"N":{"maxLength":3}}}
+//
+// accepted {"toolong":1}, and
+//
+//	{"dependentSchemas":{"card":{"$ref":"#/$defs/NeedsCVV"}},
+//	 "$defs":{"NeedsCVV":{"required":["cvv"]}}}
+//
+// accepted {"card":"x"}. Both reject when the sub-schema is written inline, so
+// where the sub-schema was written decided whether the keyword was enforced --
+// and factoring it into `$defs` is the ordinary way to write a schema, which
+// makes the broken spelling the normal one (issues #180 and #181).
+//
+// The same shape as `contains` (#183) and `not` (#177): a sub-schema read in
+// part by a reduction with no fail-closed gate. The gates below are the answer
+// containsChecksCarryTheWholeSchema is for `contains`, read through
+// statedConstraints so a keyword the parser learns next is caught by one
+// sentence rather than by remembering; the evaluator is the answer #195 gave for
+// `not`, and it already models both these keywords -- see validatorKeywords.
+//
+// Where the evaluator declines -- a sub-schema stating `format`, which it
+// deliberately does not model, or one past its size bound, or a cycle needing a
+// package-level variable this literal cannot have -- nothing is emitted and the
+// partial static check runs as before. That leaves the rest of the sub-schema
+// unenforced, which errs towards accepting a document the schema forbids: the
+// direction that costs an acceptance rather than a rejection.
+func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBranchCheck, subschemaRuntimeTaken) {
+	var taken subschemaRuntimeTaken
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil, taken
+	}
+	var checks []RuntimeBranchCheck
+
+	if pn := s.PropertyNames; pn != nil && !g.propertyNamesDefReadsWholeSchema(pn) {
+		// No hoistPrefix, for the reason collectRuntimeBranchChecks gives: this
+		// literal is a local variable inside a Validate method, and a recursive
+		// node needs a package-level variable to point back at.
+		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
+		// sub rather than literal: propertyNames judges a key, not the object, so
+		// crossing into it is a value-descending step -- the same one the whole-
+		// schema builder takes for this keyword.
+		if lit, ok := b.sub(pn, 2); ok {
+			checks = append(checks, RuntimeBranchCheck{
+				Keyword:     "propertyNames",
+				NodeLiteral: fmt.Sprintf("_schemaNode{\n\tPropertyNames: _node(%s),\n}", lit),
+				owner:       s,
+			})
+			taken.propertyNames = true
+		}
+	}
+
+	if len(s.DependentSchemas) > 0 {
+		routed := map[string]*schema.Schema{}
+		for _, trigger := range sortedKeys(s.DependentSchemas) {
+			dep := s.DependentSchemas[trigger]
+			if dep == nil || g.dependentBranchReadWhole(dep) {
+				continue
+			}
+			routed[trigger] = dep
+		}
+		if len(routed) > 0 {
+			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
+			if list, ok := b.memberList(routed, 2); ok {
+				checks = append(checks, RuntimeBranchCheck{
+					Keyword:     "dependentSchemas",
+					NodeLiteral: fmt.Sprintf("_schemaNode{\n\tDependentSchemas: %s,\n}", list),
+					owner:       s,
+				})
+				taken.dependentTriggers = map[string]bool{}
+				for trigger := range routed {
+					taken.dependentTriggers[trigger] = true
+				}
+			}
+		}
+	}
+
+	return checks, taken
+}
+
+// propertyNamesDefReadsWholeSchema reports whether extractPropertyNamesDef reads
+// everything a propertyNames sub-schema states.
+//
+// The allow-list is that function's own vocabulary, and the two extra conditions
+// are the places where it names a keyword and still drops what the keyword says.
+// It collects only the *string* members of an enum, so {"propertyNames":
+// {"enum":[1,2]}} -- a schema no property name satisfies, since names are
+// strings -- yielded no constraint and admitted every object; and it reads
+// `const` only when no enum stands beside it, so a const written next to one was
+// dropped whole. Both are false accepts of the same kind as the missing keywords,
+// and both are answered by routing the sub-schema to the evaluator.
+//
+// The arms extractPropertyNamesDef answers before this gate is consulted are
+// complete answers and are not re-asked here: schemaForbidsEveryValue for a
+// sub-schema admitting nothing, and the true/empty schema, which constrains
+// nothing whatever else it is spelled as. See TestPropertyNamesGateNamesEveryKeywordRead,
+// which reads the extractor's own source to check that this list is its vocabulary.
+func (g *Generator) propertyNamesDefReadsWholeSchema(pn *schema.Schema) bool {
+	if pn == nil {
+		return true
+	}
+	// The two complete answers, which no keyword can widen.
+	if g.schemaForbidsEveryValue(pn) || pn.IsTrueSchema() {
+		return true
+	}
+	stated, ok := statedConstraints(pn)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if !propertyNamesKeywordsRead[key] {
+			return false
+		}
+		switch key {
+		case "enum":
+			for _, member := range pn.Enum {
+				if _, isString := member.(string); !isString {
+					return false
+				}
+			}
+		case "const":
+			// An enum beside it wins, and the const is then read by nothing.
+			if pn.Enum != nil || pn.Const == nil {
+				return false
+			}
+			if _, isString := (*pn.Const).(string); !isString {
+				return false
+			}
+		case "format":
+			// Read whichever way it goes: where the dialect asserts it and this
+			// generator can judge it the extractor emits the check, and where it
+			// does not the keyword is an annotation with nothing to read. What
+			// must not happen is sending it to the evaluator, which does not model
+			// `format` at all and would decline the whole sub-schema over it.
+		}
+	}
+	return true
+}
+
+// propertyNamesKeywordsRead names the keywords extractPropertyNamesDef reads off
+// a propertyNames sub-schema, and is the list the gate above switches on.
+//
+// It exists as data so a test can compare it against the extractor's own source:
+// a keyword added to the extractor without an arm in the gate would go on being
+// read, and one removed from the extractor without leaving the gate would send
+// nothing to the evaluator that should have gone. Neither shows up as a build
+// failure, and both fail by accepting.
+var propertyNamesKeywordsRead = map[string]bool{
+	"maxLength": true, "minLength": true, "pattern": true,
+	"enum": true, "const": true, "format": true,
+}
+
+// dependentBranchReadWhole reports whether extractDependentSchemaConstraints
+// reads everything one dependentSchemas branch states.
+//
+// Three of the keywords it reads are read whole: `required`, `minProperties` and
+// `maxProperties` become the constraint's own fields. The other two are read only
+// in one of their spellings, and the conditions say which:
+//
+//   - `additionalProperties` is read only as the boolean `false`, which becomes
+//     the allowed-key list. Schema-valued, it is read by nothing.
+//   - `properties` is read through objectConditionalBranchLenient, which is
+//     lenient on purpose: it drops the per-property keywords the emitted check
+//     cannot express rather than costing the branch its other conjuncts. Lenient
+//     is sound where nothing better is available; here something better is, so a
+//     branch whose properties are not read whole goes to the evaluator instead.
+//
+// Everything else -- a `$ref`, a composition, a `not`, an `if`/`then`, a nested
+// `dependentSchemas`, `patternProperties`, an unrecognized keyword -- falls to
+// the default arm and routes the branch. `patternProperties` matters twice over:
+// beside an `additionalProperties: false` it widens the allowed keys, and the
+// static reading does not see it, so that branch forbade every key the schema
+// permits through a pattern.
+func (g *Generator) dependentBranchReadWhole(dep *schema.Schema) bool {
+	if dep == nil {
+		return true
+	}
+	// The two complete answers extractDependentSchemaConstraints gives before it
+	// reads any keyword: a branch admitting nothing rejects whenever the trigger
+	// is present, and a branch admitting everything asserts nothing.
+	if g.schemaForbidsEveryValue(dep) || dep.IsTrueSchema() || isAlwaysTrueSchema(dep) {
+		return true
+	}
+	stated, ok := statedConstraints(dep)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if !dependentBranchKeywordsRead[key] {
+			return false
+		}
+		switch key {
+		case "additionalProperties":
+			if dep.AdditionalProperties == nil || dep.AdditionalProperties.Bool == nil || *dep.AdditionalProperties.Bool {
+				return false
+			}
+		case "properties":
+			if !dependentBranchPropertiesReadWhole(dep) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// dependentBranchKeywordsRead names the keywords extractDependentSchemaConstraints
+// reads off a dependentSchemas branch, and is the list the gate above switches on.
+//
+// As with propertyNamesKeywordsRead, it is data so that a test can hold it
+// against the extractor's own source. A keyword the extractor starts reading
+// without an entry here would be sent to the evaluator needlessly; one it stops
+// reading while the entry stays would go unchecked by both.
+var dependentBranchKeywordsRead = map[string]bool{
+	"required": true, "minProperties": true, "maxProperties": true,
+	"additionalProperties": true, "properties": true,
+}
+
+// dependentBranchPropertiesReadWhole reports whether the lenient branch reading
+// keeps every keyword the branch's own properties state.
+//
+// The three refusals at the top are objectConditionalBranchLenient's and
+// objectPropertyChecksLenient's own: a boolean sub-schema, an extension keyword,
+// and a reference, each of which makes those functions answer nil and the
+// property or the branch vanish. modelledChecks' second result is the fourth --
+// it reports the keyword it saw and could not turn into a check, which is a
+// draft-3 schema-valued `type`, a multi-valued `type`, and draft 4's boolean
+// spelling of the exclusive bounds.
+func dependentBranchPropertiesReadWhole(dep *schema.Schema) bool {
+	if len(dep.Extensions) > 0 || schemaCarriesRef(dep) {
+		return false
+	}
+	for _, name := range sortedKeys(dep.Properties) {
+		prop := dep.Properties[name]
+		if prop == nil || prop.IsBooleanSchema() || len(prop.Extensions) > 0 || schemaCarriesRef(prop) {
+			return false
+		}
+		stated, ok := statedConstraints(prop)
+		if !ok {
+			return false
+		}
+		for _, key := range stated {
+			if !lenientPropertyCheckKeywords[key] {
+				return false
+			}
+		}
+		if _, whole := modelledChecks(prop); !whole {
+			return false
+		}
+	}
+	return true
+}
+
+// lenientPropertyCheckKeywords names the keywords objectPropertyChecksLenient
+// turns into a DynamicCheck. Everything modelledChecks builds, plus the `const`
+// that function appends after it.
+var lenientPropertyCheckKeywords = map[string]bool{
+	"type": true, "const": true,
+	"minimum": true, "maximum": true, "exclusiveMinimum": true, "exclusiveMaximum": true,
+	"multipleOf": true,
+	"minLength":  true, "maxLength": true, "pattern": true,
 }
 
 // runtimeBranchTaken reports whether one schema object's applicator keyword was
