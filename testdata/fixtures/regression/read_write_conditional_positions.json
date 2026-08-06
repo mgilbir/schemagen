@@ -1,0 +1,21 @@
+{
+  "mode": "m",
+  "roBindsInline": "a",
+  "roBindsBoth": "b",
+  "roBindsViaRef": "c",
+  "roBindsRefAndThen": "c2",
+  "roBindsViaAllOf": "d",
+  "roBindsAllOfAndThen": "d2",
+  "woBindsViaAllOf": "e",
+  "roCondThen": "f",
+  "woCondThen": "g",
+  "woCondGroup": {"name": "gn"},
+  "roCondElse": "h",
+  "roCondAnyOf": "i",
+  "woCondAnyOf": "j",
+  "roCondOneOf": "k",
+  "pickA": 1,
+  "roCondThenViaRef": "l",
+  "roCondDependent": "m",
+  "condObject": {"a": 1, "roCondNested": "n"}
+}

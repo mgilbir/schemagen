@@ -1094,10 +1094,26 @@ type FieldDef struct {
 }
 
 // OneOfDef represents a oneOf group on a struct.
+//
+// A property whose schema states a oneOf the union can carry becomes one of
+// these instead of a FieldDef, and it is a field of the same struct either way
+// -- so it carries what a FieldDef carries about its property. Until issue #175
+// it carried neither Description nor Annotations, and the two consequences were
+// the same class of gap: the property's doc comment was dropped outright, and
+// --strict-read-write, whose key lists are built by walking the fields, was a
+// silent no-op on it -- a writeOnly secret written straight back out with no
+// diagnostic. Both are set from the property schema, beside each other, on the
+// invariant Annotations states.
+//
+// Both stay empty on the top-level union, where the struct *is* the value: the
+// schema's own description and annotations are already on the StructDef, and
+// there is no property name for a key list to name.
 type OneOfDef struct {
 	InterfaceName      string // unexported: isTypeName_FieldName
 	FieldName          string // exported field name on parent struct
 	JSONName           string // JSON property name
+	Description        string
+	Annotations        Annotations
 	Variants           []OneOfVariant
 	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
 	DiscriminatorMap   map[string]int // maps discriminator value → variant index (when DiscriminatorField is set)
