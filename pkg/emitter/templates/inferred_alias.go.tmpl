@@ -856,17 +856,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					}
 					{{- end}}
 					{{- end}}
-					{{- range .UnevaluatedItems.Checks}}
-					{{- if eq .CheckType "minimum"}}
-					if _uiNumVal, ok := _uiElem.(float64); ok && _uiNumVal < {{.Value}} {
-						return fmt.Errorf("unevaluatedItems[%d]: must be >= {{.Value}}", _ui)
-					}
-					{{- else if eq .CheckType "maximum"}}
-					if _uiNumVal, ok := _uiElem.(float64); ok && _uiNumVal > {{.Value}} {
-						return fmt.Errorf("unevaluatedItems[%d]: must be <= {{.Value}}", _ui)
-					}
-					{{- end}}
-					{{- end}}
+					{{- template "uneval_item_checks" (mkUnevalItemsCtx "" "unevaluatedItems" .UnevaluatedItems)}}
 				}
 				{{- end}}
 			{{- end}}

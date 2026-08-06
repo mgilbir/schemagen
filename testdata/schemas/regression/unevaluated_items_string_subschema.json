@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "prefixItems": [{"type": "boolean"}],
+  "unevaluatedItems": {"type": "string", "minLength": 3, "pattern": "^a"}
+}
