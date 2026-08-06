@@ -6098,6 +6098,16 @@ func main() {
 	check(` + "`" + `{"viaAllOf":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `, true)
 	check(` + "`" + `{"viaAllOf":100}` + "`" + `, false)
 
+	// A oneOf branch and a tuple slot, the two positions that resolve a value
+	// without giving it a type of its own. Both answered "it is a string" and
+	// dropped the encoding -- issue #183.
+	check(` + "`" + `{"branch":"eyJmb28iOiAiYmFyIn0K"}` + "`" + `, false)
+	check(` + "`" + `{"branch":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `, true)
+	check(` + "`" + `{"branch":true}` + "`" + `, false)
+	check(` + "`" + `{"tuple":["eyJmb28iOiAiYmFyIn0K"]}` + "`" + `, false)
+	check(` + "`" + `{"tuple":["eyJmb28iOi%iYmFyIn0K"]}` + "`" + `, true)
+	check(` + "`" + `{"tuple":[]}` + "`" + `, false)
+
 	fmt.Println("PASS")
 }
 `
@@ -6131,6 +6141,9 @@ func main() {
 		` + "`" + `{"blob":100}` + "`" + `,
 		` + "`" + `{"list":["eyJmb28iOi%iYmFyIn0K"]}` + "`" + `,
 		` + "`" + `{"viaAllOf":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `,
+		` + "`" + `{"branch":"eyJmb28iOi%iYmFyIn0K"}` + "`" + `,
+		` + "`" + `{"branch":true}` + "`" + `,
+		` + "`" + `{"tuple":["eyJmb28iOi%iYmFyIn0K"]}` + "`" + `,
 	} {
 		var v ContentPosture2020
 		if err := json.Unmarshal([]byte(doc), &v); err != nil {
@@ -8315,6 +8328,83 @@ func TestRecursiveAnchorNestedResources(t *testing.T) {
 			`{"inner":{"i":1,"v":{"o":9}}}`,
 			// And the inner schema's does.
 			`{"o":1,"inner":{"v":{"o":9}}}`,
+		},
+	)
+}
+
+// TestArrayKeywordsSurviveEveryContainerPosition covers one array sub-schema --
+// {"type":"array","items":{"type":"string"},"uniqueItems":true,"minItems":2} --
+// written in every container position a sub-schema can sit in, plus the
+// `contains` family beside it.
+//
+// Five positions kept minItems and dropped uniqueItems, and three kept nothing
+// of `contains` at all. That asymmetry is the whole point of the fixture: the
+// minItems case in each position is listed here too, so a repair that moved the
+// check rather than adding one still fails. Issues #179, #182 and #183.
+//
+// The controls -- a property, a $ref and a patternProperties value -- are what
+// keeps a widened element rule from being mistaken for a fix. All three already
+// carried both keywords, and all three must go on carrying them.
+func TestArrayKeywordsSurviveEveryContainerPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/array_keywords_in_container_positions.json",
+		[]string{
+			`{}`,
+			// A conforming array, position by position.
+			`{"prop":["a","b"]}`,
+			`{"ref":["a","b"]}`,
+			`{"patternValue":{"pk":["a","b"]}}`,
+			`{"elem":[["a","b"]]}`,
+			`{"mapValue":{"k":["a","b"]}}`,
+			`{"deep":[[["a","b"]]]}`,
+			`{"tupleSlot":[["a","b"]]}`,
+			`{"tupleTail":[true,["a","b"]]}`,
+			`{"containsArray":[[1,2]]}`,
+			`{"elemContains":[[11]]}`,
+			`{"elemContainsObject":[[{"a":1}]]}`,
+			`{"elemContainsArray":[[[1,2]]]}`,
+			`{"mapContainsObject":{"k":[{"a":1}]}}`,
+			`{"elemMinContains":[[1,2]]}`,
+			`{"elemMaxContains":[[1]]}`,
+			// Empty containers, and a key no pattern claims: adding a check to a
+			// position must not make the position itself mandatory.
+			`{"elem":[]}`, `{"deep":[]}`, `{"mapValue":{}}`, `{"patternValue":{}}`,
+			`{"tupleSlot":[]}`, `{"tupleTail":[]}`, `{"elemContains":[]}`,
+			`{"patternValue":{"zz":["a","a"]}}`,
+		},
+		[]string{
+			// uniqueItems. The five positions this test is about come first.
+			`{"elem":[["a","a"]]}`,
+			`{"mapValue":{"k":["a","a"]}}`,
+			`{"deep":[[["a","a"]]]}`,
+			`{"tupleSlot":[["a","a"]]}`,
+			`{"tupleTail":[true,["a","a"]]}`,
+			// And the three that already worked, so a change that moved the
+			// check rather than adding one is still caught.
+			`{"prop":["a","a"]}`,
+			`{"ref":["a","a"]}`,
+			`{"patternValue":{"pk":["a","a"]}}`,
+			// minItems in the identical slots: the sibling keyword that fired
+			// throughout, and whose firing is what made each drop a defect
+			// rather than a position nobody had wired up.
+			`{"elem":[["a"]]}`,
+			`{"mapValue":{"k":["a"]}}`,
+			`{"deep":[[["a"]]]}`,
+			`{"tupleSlot":[["a"]]}`,
+			`{"tupleTail":[true,["a"]]}`,
+			`{"prop":["a"]}`,
+			`{"ref":["a"]}`,
+			`{"patternValue":{"pk":["a"]}}`,
+			// contains, and the cardinality bounds beside it.
+			`{"containsArray":[[1]]}`,
+			`{"containsArray":[]}`,
+			`{"elemContains":[[1]]}`,
+			`{"elemContains":[[]]}`,
+			`{"elemContainsObject":[[{}]]}`,
+			`{"elemContainsArray":[[[1]]]}`,
+			`{"mapContainsObject":{"k":[{}]}}`,
+			`{"elemMinContains":[[1]]}`,
+			`{"elemMaxContains":[[1,2]]}`,
 		},
 	)
 }

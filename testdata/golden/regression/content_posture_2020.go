@@ -241,27 +241,110 @@ type ContentPosture2020 struct {
 	Doc                  *string                       `json:"doc,omitempty"`
 	EncodedDoc           *ContentPosture2020EncodedDoc `json:"encodedDoc,omitempty"`
 	List                 []string                      `json:"list,omitzero"`
+	Tuple                []any                         `json:"tuple,omitzero"`
 	ViaAllOf             *ContentPosture2020ViaAllOf   `json:"viaAllOf,omitempty"`
 	WithSchema           *ContentPosture2020WithSchema `json:"withSchema,omitempty"`
+	Branch               isContentPosture2020_Branch   `json:"-"`
 	AdditionalProperties map[string]json.RawMessage    `json:"-"`
 	_jsonNulls           map[string]bool               // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+}
+
+// isContentPosture2020_Branch is a sealed interface for the Branch field of ContentPosture2020.
+// Exactly one variant must be set.
+type isContentPosture2020_Branch interface {
+	isContentPosture2020_Branch()
+}
+
+// ContentPosture2020_String wraps string as a Branch variant.
+type ContentPosture2020_String struct {
+	String string
+}
+
+func (*ContentPosture2020_String) isContentPosture2020_Branch() {}
+
+// ContentPosture2020_Boolean wraps bool as a Branch variant.
+type ContentPosture2020_Boolean struct {
+	Boolean bool
+}
+
+func (*ContentPosture2020_Boolean) isContentPosture2020_Branch() {}
+
+// GetString returns the String variant value, or the zero value if not set.
+func (c *ContentPosture2020) GetString() string {
+	if c != nil {
+		if v, ok := c.Branch.(*ContentPosture2020_String); ok {
+			return v.String
+		}
+	}
+	var zero string
+	return zero
+}
+
+// GetBoolean returns the Boolean variant value, or the zero value if not set.
+func (c *ContentPosture2020) GetBoolean() bool {
+	if c != nil {
+		if v, ok := c.Branch.(*ContentPosture2020_Boolean); ok {
+			return v.Boolean
+		}
+	}
+	var zero bool
+	return zero
 }
 
 func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 	c.AdditionalProperties = nil
 	c._jsonNulls = nil
+	c.Branch = nil
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type ContentPosture2020")
 	}
 	type Alias ContentPosture2020
 	aux := &struct {
 		*Alias
+		Branch json.RawMessage `json:"branch"`
 	}{
 		Alias: (*Alias)(c),
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
 		return err
+	}
+
+	{
+		oneofData := aux.Branch
+		if len(oneofData) > 0 && string(oneofData) != "null" {
+			var oneofMatched int
+			var oneofLastErr error
+
+			// Try variant: String
+			{
+				var candidate string
+				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					c.Branch = &ContentPosture2020_String{String: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
+			}
+
+			// Try variant: Boolean
+			{
+				var candidate bool
+				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					c.Branch = &ContentPosture2020_Boolean{Boolean: candidate}
+					oneofMatched++
+				} else {
+					oneofLastErr = err
+				}
+			}
+
+			if oneofMatched == 0 {
+				return fmt.Errorf("ContentPosture2020.Branch: no matching oneOf variant: %w", oneofLastErr)
+			}
+			if oneofMatched > 1 {
+				return fmt.Errorf("ContentPosture2020.Branch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+			}
+		}
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -275,7 +358,9 @@ func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 		// taken from the document's own keys. See jsonNullRule for the nested
 		// spelling of the same rule.
 		for _, _nullKey := range []string{
+			"branch",
 			"doc",
+			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
@@ -310,8 +395,10 @@ func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 			"doc":        true,
 			"encodedDoc": true,
 			"list":       true,
+			"tuple":      true,
 			"viaAllOf":   true,
 			"withSchema": true,
+			"branch":     true,
 		}
 		for rawKey, rawVal := range raw {
 			if knownFields[rawKey] {
@@ -330,8 +417,26 @@ func (c ContentPosture2020) MarshalJSON() ([]byte, error) {
 	type Alias ContentPosture2020
 	aux := struct {
 		Alias
+		Branch json.RawMessage `json:"branch,omitempty"`
 	}{
 		Alias: (Alias)(c),
+	}
+
+	if c.Branch != nil {
+		switch v := c.Branch.(type) {
+		case *ContentPosture2020_String:
+			raw, err := json.Marshal(v.String)
+			if err != nil {
+				return nil, fmt.Errorf("marshaling ContentPosture2020.Branch: %w", err)
+			}
+			aux.Branch = raw
+		case *ContentPosture2020_Boolean:
+			raw, err := json.Marshal(v.Boolean)
+			if err != nil {
+				return nil, fmt.Errorf("marshaling ContentPosture2020.Branch: %w", err)
+			}
+			aux.Branch = raw
+		}
 	}
 	data, err := json.Marshal(aux)
 	if err != nil {
@@ -392,6 +497,15 @@ func (c ContentPosture2020) Validate() error {
 	if c.WithSchema != nil {
 		if err := c.WithSchema.Validate(); err != nil {
 			return fmt.Errorf("withSchema.%w", err)
+		}
+	}
+	// Tuple items: validate each position against its schema type.
+	for _idx, _elem := range c.Tuple {
+		_ = _elem
+		if _idx == 0 {
+			if _, _cvOk := _elem.(string); !_cvOk {
+				return fmt.Errorf("tuple: items[%d]: expected string, got %T", _idx, _elem)
+			}
 		}
 	}
 	return nil

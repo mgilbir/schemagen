@@ -35,6 +35,18 @@
     "viaAllOf": {
       "$comment": "A branch stating only a content keyword. The merge has to carry it, or the merged schema has nothing left to name a type from and falls through to `any`.",
       "allOf": [{ "contentEncoding": "base64" }]
+    },
+    "branch": {
+      "$comment": "Issue #183: a oneOf branch. Selection resolved the branch to a bare Go string, which carries no Validate for the union's dispatch to call, so the encoding was asserted nowhere -- while the identical subschema written as a plain property was checked.",
+      "oneOf": [
+        { "type": "string", "contentEncoding": "base64" },
+        { "type": "boolean" }
+      ]
+    },
+    "tuple": {
+      "$comment": "The same reduction at the tuple slot, in the draft 4-7 spelling this document is written in: the position fell back to testing the JSON type, which answered \"string\" -- true, and silent about the encoding.",
+      "type": "array",
+      "items": [{ "type": "string", "contentEncoding": "base64" }]
     }
   }
 }
