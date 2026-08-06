@@ -1,6 +1,12 @@
 package generator
 
-import "strings"
+import (
+	"regexp"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+)
 
 // HelperSet records which shared helper functions a generated file depends on.
 //
@@ -15,6 +21,22 @@ type HelperSet struct {
 	DynamicConst       bool // _dynConstOK, only reached by object-level conditionals
 	Annotations        bool // _schemaNode and the runtime schema evaluator
 	AnnotationsPattern bool // the evaluator's ECMA-262 arms, and the engine they need
+
+	// AnnotationsFormats names the "format" arguments the evaluator's nodes
+	// carry, and AnnotationsContent says whether any node names the content
+	// vocabulary. Both add an arm to the evaluator, exactly as AnnotationsPattern
+	// does, and for the same reason: the arm interprets a field only some
+	// packages' nodes set.
+	//
+	// Formats are a list rather than a flag because the dispatcher is written
+	// with one case per format actually compiled. A switch naming every format
+	// this generator can check would name the four hostname helpers too, and so
+	// would put golang.org/x/net/idna on every package whose schemas compile any
+	// format at all -- the imposition FormatHostname exists to confine. With the
+	// list, a package naming only `format: date` gets a one-arm switch and no
+	// new dependency.
+	AnnotationsFormats []string
+	AnnotationsContent bool
 
 	// AnnotationsDynamic adds the two things a schema needs when it cannot be
 	// written as one finite tree: a node that refers to another node, so a
@@ -58,6 +80,8 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Annotations = h.Annotations || other.Annotations
 	h.AnnotationsPattern = h.AnnotationsPattern || other.AnnotationsPattern
 	h.AnnotationsDynamic = h.AnnotationsDynamic || other.AnnotationsDynamic
+	h.AnnotationsFormats = mergeSortedUnique(h.AnnotationsFormats, other.AnnotationsFormats)
+	h.AnnotationsContent = h.AnnotationsContent || other.AnnotationsContent
 	h.Integer = h.Integer || other.Integer
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
@@ -120,6 +144,26 @@ func HelpersReferencedBy(src string) HelperSet {
 		if strings.Contains(src, "Pattern: _strPtr(") || strings.Contains(src, "PatternProperties:") {
 			set.AnnotationsPattern = true
 		}
+		// "format" and the content vocabulary are read the same way, and are the
+		// same kind of signal: the node carries the argument and the arm that
+		// interprets it lives in the helper block, so what the file shows is the
+		// literal rather than a call. Each format found also pulls in the block
+		// that declares its checker -- and, where the checker is one of the four
+		// that need x/net/idna, the hostname block with it. That mapping is
+		// FormatHelperName's, so the dependency decision is made from the same
+		// table the emitted arm dispatches through rather than from a second
+		// list of names to keep in step.
+		for _, name := range annotationFormatNames(src) {
+			set.AnnotationsFormats = mergeSortedUnique(set.AnnotationsFormats, []string{name})
+			set.Format = true
+			if hostnameHelpers[FormatHelperName(name)] {
+				set.FormatHostname = true
+			}
+		}
+		if strings.Contains(src, "ContentEncoding: _strPtr(") || strings.Contains(src, "ContentMediaType: _strPtr(") {
+			set.AnnotationsContent = true
+			set.Content = true
+		}
 		// The recursive and dynamic arms are read the same way, off the three
 		// fields only a file needing them can carry: a node pointing at another
 		// node, a reference the dynamic scope resolves, and the frame a schema
@@ -174,4 +218,115 @@ var hostnameHelperCalls = []string{
 	"schemagenFormatIDNHostname(",
 	"schemagenFormatEmail(",
 	"schemagenFormatIDNEmail(",
+}
+
+// hostnameHelpers is hostnameHelperCalls as function names rather than call
+// prefixes, for the caller that holds a name instead of a piece of source.
+//
+// Derived from that list rather than written out again: the two must name the
+// same four functions, and a fifth added to the block has one place to be added.
+var hostnameHelpers = func() map[string]bool {
+	set := make(map[string]bool, len(hostnameHelperCalls))
+	for _, call := range hostnameHelperCalls {
+		set[strings.TrimSuffix(call, "(")] = true
+	}
+	return set
+}()
+
+// annotationNodeFormat matches the "format" argument a compiled _schemaNode
+// carries. The literal is written by nodeBuilder.literal with %q, so the value
+// is a Go-quoted string and strconv.Unquote is what reads it back.
+var annotationNodeFormat = regexp.MustCompile(`Format: _strPtr\((` + "`" + `[^` + "`" + `]*` + "`" + `|"(?:[^"\\]|\\.)*")\)`)
+
+// annotationFormatNames returns the format arguments the compiled nodes in src
+// name, deduplicated and in sorted order.
+//
+// Reading them out of the emitted source is the same choice HelpersReferencedBy
+// makes for every other helper, and for the reason given there: the thing being
+// asked is exactly the thing that matters -- which formats does this file's
+// generated code ask the evaluator to check -- so it cannot drift from an IR
+// walk that forgot a position. A name the regexp fails to read is skipped rather
+// than guessed at, which under-matches; the arm is then missing and the build
+// fails, rather than the check silently disappearing.
+func annotationFormatNames(src string) []string {
+	var names []string
+	for _, m := range annotationNodeFormat.FindAllStringSubmatch(src, -1) {
+		name, err := strconv.Unquote(m[1])
+		if err != nil {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return slices.Compact(names)
+}
+
+// mergeSortedUnique returns the sorted union of two name lists.
+func mergeSortedUnique(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	out := append(append([]string(nil), a...), b...)
+	sort.Strings(out)
+	return slices.Compact(out)
+}
+
+// FormatHelperName maps a "format" keyword to the shared helper that checks a
+// string against it, or "" when this generator has no check for it.
+//
+// It is the other half of FormatCheckableOnString: a format that answers true
+// there must have a name here, or a rule would be built and then render nothing.
+// TestFormatHelperNamesCoverCheckableFormats holds the two together.
+//
+// Exported from this package rather than the emitter's because two callers need
+// it and only one of them is a template: HelpersReferencedBy asks which helper
+// block a compiled format pulls in, which decides whether the package takes the
+// x/net/idna dependency, and that runs before any template does.
+func FormatHelperName(format string) string {
+	switch format {
+	case "date":
+		return "schemagenFormatDate"
+	case "time":
+		return "schemagenFormatTime"
+	case Draft3TimeFormat:
+		return "schemagenFormatDraft3Time"
+	case Draft3ColorFormat:
+		return "schemagenFormatDraft3Color"
+	case "date-time":
+		return "schemagenFormatDateTime"
+	case "duration":
+		return "schemagenFormatDuration"
+	case "email":
+		return "schemagenFormatEmail"
+	case "idn-email":
+		return "schemagenFormatIDNEmail"
+	case "hostname":
+		return "schemagenFormatHostname"
+	case "idn-hostname":
+		return "schemagenFormatIDNHostname"
+	case "uri":
+		return "schemagenFormatURI"
+	case "iri":
+		return "schemagenFormatIRI"
+	case "uri-reference":
+		return "schemagenFormatURIReference"
+	case "iri-reference":
+		return "schemagenFormatIRIReference"
+	case "uri-template":
+		return "schemagenFormatURITemplate"
+	case "uuid":
+		return "schemagenFormatUUID"
+	case "json-pointer":
+		return "schemagenFormatJSONPointer"
+	case "relative-json-pointer":
+		return "schemagenFormatRelativeJSONPointer"
+	case "regex":
+		return "schemagenFormatRegex"
+	case "ipv4":
+		return "schemagenFormatIPv4"
+	case "ipv6":
+		return "schemagenFormatIPv6"
+	default:
+		return ""
+	}
 }

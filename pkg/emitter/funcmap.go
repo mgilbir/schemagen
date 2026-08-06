@@ -342,10 +342,12 @@ func formatValueExprFunc(recv string, stringBacked bool) string {
 // formatHelperNameFunc maps a format keyword to the shared helper that checks
 // it, or "" when this generator has no check for it.
 //
-// The table is the emitter's half of formatCheckableOnString: a format that
-// answers true there must have a name here, or a rule would be built and then
-// render nothing. TestFormatHelperNamesCoverCheckableFormats holds the two
-// together.
+// The string-backed half is generator.FormatHelperName, which is where it has to
+// live: the same mapping decides which helper *block* a package needs, and that
+// question is asked by generator.HelpersReferencedBy before any template runs.
+// Two copies of a format-to-function table is the drift this repository has paid
+// for before, so there is one, next to FormatCheckableOnString, which is the
+// predicate it has to agree with.
 func formatHelperNameFunc(v any, stringBacked bool) string {
 	format, ok := v.(string)
 	if !ok {
@@ -365,52 +367,7 @@ func formatHelperNameFunc(v any, stringBacked bool) string {
 			return ""
 		}
 	}
-	switch format {
-	case "date":
-		return "schemagenFormatDate"
-	case "time":
-		return "schemagenFormatTime"
-	case generator.Draft3TimeFormat:
-		return "schemagenFormatDraft3Time"
-	case generator.Draft3ColorFormat:
-		return "schemagenFormatDraft3Color"
-	case "date-time":
-		return "schemagenFormatDateTime"
-	case "duration":
-		return "schemagenFormatDuration"
-	case "email":
-		return "schemagenFormatEmail"
-	case "idn-email":
-		return "schemagenFormatIDNEmail"
-	case "hostname":
-		return "schemagenFormatHostname"
-	case "idn-hostname":
-		return "schemagenFormatIDNHostname"
-	case "uri":
-		return "schemagenFormatURI"
-	case "iri":
-		return "schemagenFormatIRI"
-	case "uri-reference":
-		return "schemagenFormatURIReference"
-	case "iri-reference":
-		return "schemagenFormatIRIReference"
-	case "uri-template":
-		return "schemagenFormatURITemplate"
-	case "uuid":
-		return "schemagenFormatUUID"
-	case "json-pointer":
-		return "schemagenFormatJSONPointer"
-	case "relative-json-pointer":
-		return "schemagenFormatRelativeJSONPointer"
-	case "regex":
-		return "schemagenFormatRegex"
-	case "ipv4":
-		return "schemagenFormatIPv4"
-	case "ipv6":
-		return "schemagenFormatIPv6"
-	default:
-		return ""
-	}
+	return generator.FormatHelperName(format)
 }
 
 // itemRangeFunc renders what a level's loop ranges over: the slice itself at

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 nested: a `format` inside an `anyOf` inside a `then`. The per-property reading of a conditional branch models no applicator at all, so the whole `anyOf` was dropped and the format with it.",
+  "type": "object",
+  "properties": {
+    "t": {
+      "type": "integer"
+    }
+  },
+  "if": {
+    "properties": {
+      "t": {
+        "const": 1
+      }
+    },
+    "required": [
+      "t"
+    ]
+  },
+  "then": {
+    "properties": {
+      "p": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "email"
+          }
+        ]
+      }
+    },
+    "required": [
+      "p"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 at `propertyNames`. The gate sent the sub-schema to the evaluator because the extractor does not read the content keywords, and the evaluator then declined it over the same keywords, so nothing was emitted at all.",
+  "type": "object",
+  "propertyNames": {
+    "contentEncoding": "base64"
+  }
+}

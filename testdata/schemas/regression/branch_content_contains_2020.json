@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The annotating twin of branch_content_contains_draft7. From 2019-09 the content vocabulary is annotation-only, so the string that is not base64 satisfies the sub-schema.",
+  "type": "array",
+  "contains": {
+    "contentEncoding": "base64"
+  }
+}

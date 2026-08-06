@@ -1542,48 +1542,6 @@ func (a AnnotationReachPositions) Validate() error {
 			return fmt.Errorf("anyOf: no variant matched")
 		}
 	}
-	// object-level if/then/else: whichever branch the condition selects must
-	// hold. Both sides read the raw JSON the unmarshaler kept (_jsonRawProps),
-	// so the check is skipped for hand-constructed values, consistent with how
-	// the required-property and object-level oneOf/anyOf checks above treat
-	// untracked presence. A non-object document never reaches here either, and
-	// need not: `properties` and `required` are both vacuously satisfied by one.
-	if a._jsonRawProps != nil {
-		_condHolds := true
-		if _, _ok := a._jsonRawProps["mode"]; !_ok {
-			_condHolds = false
-		}
-		if _condHolds {
-			if _raw, _ok := a._jsonRawProps["dfltBindsBoth"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "dfltBindsBoth", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "dfltBindsBoth")
-				}
-			}
-			if _raw, _ok := a._jsonRawProps["dfltCondThen"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "dfltCondThen", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "dfltCondThen")
-				}
-			}
-		} else {
-			if _raw, _ok := a._jsonRawProps["dfltCondElse"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("else: property %q: cannot decode value: %w", "dfltCondElse", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("else: property %q does not satisfy the else schema", "dfltCondElse")
-				}
-			}
-		}
-	}
 	if a.AnnViaAllOf != nil {
 		if err := a.AnnViaAllOf.Validate(); err != nil {
 			return fmt.Errorf("annViaAllOf.%w", err)
@@ -1713,6 +1671,81 @@ func (a AnnotationReachPositions) Validate() error {
 		if _oneOfSel.ByID2 != nil {
 			if err := _oneOfSel.ByID2.Validate(); err != nil {
 				return fmt.Errorf("annGroupPlain.%w", err)
+			}
+		}
+	}
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
+	if a._jsonRawProps != nil {
+		_rbInstance := make(map[string]any, len(a._jsonRawProps))
+		for _rbKey, _rbRaw := range a._jsonRawProps {
+			var _rbVal any
+			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+			}
+			_rbInstance[_rbKey] = _rbVal
+		}
+		{
+			_rbNode0 := _schemaNode{
+				Else: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "dfltCondElse", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+					},
+				}),
+				If: _node(_schemaNode{
+					Required: []string{"mode"},
+				}),
+				Then: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "annCondGroup", Node: _schemaNode{
+							OneOf: []_schemaNode{
+								_schemaNode{
+									AllOf: []_schemaNode{
+										_schemaNode{
+											Properties: []_schemaMember{
+												{Key: "name", Node: _schemaNode{
+													Type: []string{"string"},
+												}},
+											},
+											Required: []string{"name"},
+											Type:     []string{"object"},
+										},
+									},
+								},
+								_schemaNode{
+									AllOf: []_schemaNode{
+										_schemaNode{
+											Properties: []_schemaMember{
+												{Key: "id", Node: _schemaNode{
+													Type: []string{"integer"},
+												}},
+											},
+											Required: []string{"id"},
+											Type:     []string{"object"},
+										},
+									},
+								},
+							},
+						}},
+						{Key: "annCondThen", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+						{Key: "dfltBindsBoth", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+						{Key: "dfltCondThen", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+					},
+				}),
+			}
+			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
+				if _rbRes.reason == "" {
+					return fmt.Errorf("if: value does not satisfy the schema")
+				}
+				return fmt.Errorf("if: %s", _rbRes.reason)
 			}
 		}
 	}

@@ -355,116 +355,6 @@ func (t Trigger) MarshalJSON() ([]byte, error) {
 
 // Validate checks Trigger against its JSON Schema constraints.
 func (t Trigger) Validate() error {
-	// object-level if/then/else: whichever branch the condition selects must
-	// hold. Both sides read the raw JSON the unmarshaler kept (_jsonRawProps),
-	// so the check is skipped for hand-constructed values, consistent with how
-	// the required-property and object-level oneOf/anyOf checks above treat
-	// untracked presence. A non-object document never reaches here either, and
-	// need not: `properties` and `required` are both vacuously satisfied by one.
-	if t._jsonRawProps != nil {
-		_condHolds := true
-		if _, _ok := t._jsonRawProps["type"]; !_ok {
-			_condHolds = false
-		}
-		if _condHolds {
-			if _raw, _ok := t._jsonRawProps["type"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil || !(_dynConstOK(_v, "\"tool\"")) {
-					_condHolds = false
-				}
-			}
-		}
-		if _condHolds {
-			if _, _ok := t._jsonRawProps["tool"]; !_ok {
-				return fmt.Errorf("then: required property %q is missing", "tool")
-			}
-			if _raw, _ok := t._jsonRawProps["default"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "default", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "default")
-				}
-			}
-			if _raw, _ok := t._jsonRawProps["tool"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "tool", _err)
-				}
-				if !(_dynIsArray(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "tool")
-				}
-			}
-		}
-	}
-	// object-level if/then/else: whichever branch the condition selects must
-	// hold. Both sides read the raw JSON the unmarshaler kept (_jsonRawProps),
-	// so the check is skipped for hand-constructed values, consistent with how
-	// the required-property and object-level oneOf/anyOf checks above treat
-	// untracked presence. A non-object document never reaches here either, and
-	// need not: `properties` and `required` are both vacuously satisfied by one.
-	if t._jsonRawProps != nil {
-		_condHolds := true
-		if _, _ok := t._jsonRawProps["type"]; !_ok {
-			_condHolds = false
-		}
-		if _condHolds {
-			if _raw, _ok := t._jsonRawProps["type"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil || !(_dynConstOK(_v, "\"notify\"")) {
-					_condHolds = false
-				}
-			}
-		}
-		if _condHolds {
-			if _, _ok := t._jsonRawProps["message"]; !_ok {
-				return fmt.Errorf("then: required property %q is missing", "message")
-			}
-			if _, _ok := t._jsonRawProps["notify"]; !_ok {
-				return fmt.Errorf("then: required property %q is missing", "notify")
-			}
-			if _, _ok := t._jsonRawProps["title"]; !_ok {
-				return fmt.Errorf("then: required property %q is missing", "title")
-			}
-			if _raw, _ok := t._jsonRawProps["default"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "default", _err)
-				}
-				if !(_dynIsBool(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "default")
-				}
-			}
-			if _raw, _ok := t._jsonRawProps["message"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "message", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "message")
-				}
-			}
-			if _raw, _ok := t._jsonRawProps["notify"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "notify", _err)
-				}
-				if !(_dynIsArray(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "notify")
-				}
-			}
-			if _raw, _ok := t._jsonRawProps["title"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
-					return fmt.Errorf("then: property %q: cannot decode value: %w", "title", _err)
-				}
-				if !(_dynIsString(_v)) {
-					return fmt.Errorf("then: property %q does not satisfy the then schema", "title")
-				}
-			}
-		}
-	}
 	for _i, _item := range t.Tool {
 		if err := _item.Validate(); err != nil {
 			return fmt.Errorf("tool[%d].%w", _i, err)
@@ -473,6 +363,100 @@ func (t Trigger) Validate() error {
 	if t.Type != nil {
 		if err := t.Type.Validate(); err != nil {
 			return fmt.Errorf("type.%w", err)
+		}
+	}
+	// Keywords the generated checks cannot state in full, held as schema data and
+	// evaluated against the document.
+	if t._jsonRawProps != nil {
+		_rbInstance := make(map[string]any, len(t._jsonRawProps))
+		for _rbKey, _rbRaw := range t._jsonRawProps {
+			var _rbVal any
+			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+			}
+			_rbInstance[_rbKey] = _rbVal
+		}
+		{
+			_rbNode0 := _schemaNode{
+				If: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "type", Node: _schemaNode{
+							Const: _strPtr("\"tool\""),
+						}},
+					},
+					Required: []string{"type"},
+				}),
+				Then: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "default", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+						{Key: "tool", Node: _schemaNode{
+							Items: _node(_schemaNode{
+								Properties: []_schemaMember{
+									{Key: "id", Node: _schemaNode{
+										Type: []string{"string"},
+									}},
+								},
+								Required: []string{"id"},
+								Type:     []string{"object"},
+							}),
+							Type: []string{"array"},
+						}},
+						{Key: "type", Node: _schemaNode{
+							Enum: []string{"\"tool\""},
+						}},
+					},
+					Required: []string{"tool"},
+				}),
+			}
+			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
+				if _rbRes.reason == "" {
+					return fmt.Errorf("if: value does not satisfy the schema")
+				}
+				return fmt.Errorf("if: %s", _rbRes.reason)
+			}
+		}
+		{
+			_rbNode1 := _schemaNode{
+				If: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "type", Node: _schemaNode{
+							Const: _strPtr("\"notify\""),
+						}},
+					},
+					Required: []string{"type"},
+				}),
+				Then: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "default", Node: _schemaNode{
+							Type: []string{"boolean"},
+						}},
+						{Key: "message", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+						{Key: "notify", Node: _schemaNode{
+							Items: _node(_schemaNode{
+								Type: []string{"string"},
+							}),
+							Type: []string{"array"},
+						}},
+						{Key: "title", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+						{Key: "type", Node: _schemaNode{
+							Enum: []string{"\"notify\""},
+						}},
+					},
+					Required: []string{"title", "message", "notify"},
+				}),
+			}
+			if _rbRes := _evalNode(&_rbNode1, _rbInstance); !_rbRes.ok {
+				if _rbRes.reason == "" {
+					return fmt.Errorf("if: value does not satisfy the schema")
+				}
+				return fmt.Errorf("if: %s", _rbRes.reason)
+			}
 		}
 	}
 	return nil

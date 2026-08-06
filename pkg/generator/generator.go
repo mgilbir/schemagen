@@ -1755,6 +1755,25 @@ func (g *Generator) formatRulesForDialect(s *schema.Schema, rules []ValidationRu
 	return rules
 }
 
+// formatNameForDialect is formatRulesForDialect for a caller holding a schema
+// rather than a rule set: the spelling of s.Format that this generator checks it
+// under, given s's own draft.
+//
+// The runtime evaluator compiles the name into a node instead of building a
+// ValidationRule, so it cannot reach the rewrite through formatRulesForDialect
+// and would otherwise compile draft 3's "time" as RFC 3339's full-time -- which
+// demands an offset draft 3 does not, turning a valid document into a rejection.
+// The two spell the rewrite once, here, rather than twice.
+func (g *Generator) formatNameForDialect(s *schema.Schema) string {
+	if s == nil || s.Format == nil {
+		return ""
+	}
+	if *s.Format == "time" && g.draftForSchema(s) == schema.Draft03 {
+		return Draft3TimeFormat
+	}
+	return *s.Format
+}
+
 // formatGoTypeForSchema returns the Go type the schema's "format" maps to, or
 // nil when the value must stay a string.
 //
@@ -4043,7 +4062,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// whole. Its branches are not folded into any one field's rules -- they only
 	// bind when the condition holds -- so they are checked here against the raw
 	// JSON the unmarshaler kept.
-	objectConditionals := g.extractObjectConditionalDefs(s)
+	objectConditionals := g.extractObjectConditionalDefs(s, runtimeBranchChecks)
 	if len(objectConditionals) > 0 {
 		needsUnmarshal = true
 	}
@@ -5210,16 +5229,26 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema, taken []RuntimeBran
 // that apply to a flattened object: the one written beside its properties, and
 // one from each allOf branch, since those branches are merged into this same
 // struct and their conditionals would otherwise land nowhere.
-func (g *Generator) extractObjectConditionalDefs(s *schema.Schema) []ObjectConditionalDef {
+//
+// A group already compiled to the evaluator is skipped, on the same per-owner
+// terms extractObjectAnyOfDefs takes: the exact check and the approximation are
+// the same keyword, so running both would report a group twice and, worse, let
+// the approximation's own reading contradict the exact one.
+func (g *Generator) extractObjectConditionalDefs(s *schema.Schema, taken []RuntimeBranchCheck) []ObjectConditionalDef {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return nil
 	}
 	var defs []ObjectConditionalDef
-	if def := objectConditionalDef(s); def != nil {
-		defs = append(defs, *def)
+	if !runtimeBranchTaken(taken, s, "if") {
+		if def := objectConditionalDef(s); def != nil {
+			defs = append(defs, *def)
+		}
 	}
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
+		if runtimeBranchTaken(taken, resolved, "if") {
+			continue
+		}
 		if def := objectConditionalDef(resolved); def != nil {
 			defs = append(defs, *def)
 		}
@@ -6353,7 +6382,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
 			Checks:         checks,
-			FullyChecked:   oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
+			FullyChecked:   g.oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
 			IntegerDecode:  g.integerDecodeFor(result.Type, variant),
 		})
 	}
@@ -6679,6 +6708,23 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 // $ref, enum, const, format, allOf, not -- is either enforced by the variant
 // type's own Validate or not enforced at all, and neither is something selection
 // can claim to have decided.
+// annotationVocabularyKeywords names the two vocabularies whose posture the
+// dialect decides: "format" and the content keywords. A keyword here constrains
+// a value only where its dialect asserts it and this generator can judge the
+// argument -- which is exactly what assertsAnnotationVocabulary answers.
+var annotationVocabularyKeywords = map[string]bool{
+	"format":          true,
+	"contentEncoding": true, "contentMediaType": true, "contentSchema": true,
+}
+
+// annotationVocabularyRuleTypes is annotationVocabularyKeywords as ValidationRule
+// types. The content keywords compose into a single "content" rule, because
+// contentMediaType judges the bytes contentEncoding produced, so there are two
+// rule types for four keywords.
+var annotationVocabularyRuleTypes = map[string]bool{
+	"format": true, "content": true,
+}
+
 var oneOfSelectableKeywords = map[string]bool{
 	"type": true, "required": true,
 	"minimum": true, "maximum": true,
@@ -6706,7 +6752,20 @@ var oneOfSelectableKeywords = map[string]bool{
 // function has not been taught about: the marshaled key set is what is
 // consulted, so a keyword the parser learns later arrives here as unknown rather
 // than as absent.
-func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFields []string, checks []ValidationRule) bool {
+//
+// `format` and the content vocabulary are the exception, and they are a method's
+// worth of exception: whether they are answered is the *dialect's* answer, not
+// the key set's. Where they annotate they demand nothing, so selection has
+// decided the branch as surely as if the keyword were absent -- and reading them
+// as unanswered instead cost {"oneOf":[{"type":"string","contentEncoding":
+// "base64"},{"type":"boolean"}]} its union on 2019-09 and 2020-12, where the
+// keyword is inert, while its draft-7 twin kept one. That the two produced the
+// same shape at all was luck: the union survived only because no evaluator could
+// read the branch either, and issue #205 gave the evaluator that reading. Where
+// they assert, the branch is not decided by selection -- but it does not reach
+// here, because declaredFormatStringSchema and declaredContentStringSchema give
+// it a named type first and oneOfBranchOutrunsSelection stops at the nil.
+func (g *Generator) oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFields []string, checks []ValidationRule) bool {
 	if variant == nil {
 		return false
 	}
@@ -6733,9 +6792,13 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 		return false
 	}
 	for key := range present {
-		if !oneOfSelectableKeywords[key] {
-			return false
+		if oneOfSelectableKeywords[key] {
+			continue
 		}
+		if annotationVocabularyKeywords[key] && !g.assertsAnnotationVocabulary(variant) {
+			continue
+		}
+		return false
 	}
 	if !sameStringSet(variant.Required, requiredFields) {
 		return false
@@ -6752,6 +6815,15 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 	}
 	for _, r := range extractValidationRules("", "", variant) {
 		if ruleVacuousForType(goType, r.RuleType) {
+			continue
+		}
+		// extractValidationRules builds a "format" and a "content" rule whatever
+		// the dialect says, and every caller that emits one drops it again when
+		// the posture is annotation -- see the two filters in generateStructDef.
+		// This caller emits nothing, it only counts, so it has to apply the same
+		// filter: a rule that will never be written is not a demand selection
+		// failed to answer.
+		if annotationVocabularyRuleTypes[r.RuleType] && !g.assertsAnnotationVocabulary(variant) {
 			continue
 		}
 		if !checked[r.RuleType] {
@@ -11799,7 +11871,53 @@ func (g *Generator) acceptsEveryInstance(s *schema.Schema) bool {
 	if s == nil || !isAcceptAllSchema(s) {
 		return false
 	}
-	return !(s.Format != nil && g.formatAssertsFor(s))
+	return !g.assertsAnnotationVocabulary(s)
+}
+
+// assertsAnnotationVocabulary reports whether s states a "format" or content
+// keyword that binds as an assertion on s's own dialect *and* names an argument
+// this generator can judge -- which together is the only way one of them
+// constrains a value here.
+//
+// Both halves are needed. The posture decides whether the keyword asserts at
+// all; the argument decides whether there is anything to assert with. A format
+// this generator does not recognise is one every draft says to ignore, and an
+// encoding outside ContentEncodingCheckable is documented as carried as an
+// annotation, so a schema stating either really does admit every value -- which
+// is what the callers below are asking.
+//
+// It is the one question the two hand-written "constrains nothing" predicates --
+// isAcceptAllSchema and isAlwaysTrueSchema -- cannot answer for themselves.
+// Both read a list of struct fields, and a field is either set or it is not;
+// whether a set `format` constrains anything is the *generator's* question,
+// because the dialect decides the posture and the two Config overrides can
+// reverse it. So both lists omit these keywords, and both therefore answer "this
+// schema constrains nothing" for {"format":"email"} and for
+// {"contentEncoding":"base64"} on every dialect, including the ones where those
+// are the whole of what the schema demands.
+//
+// That is issue #205 at `contains`: {"contains":{"format":"email"}} under draft 7
+// took the always-true arm, every element counted as a match, and an array of
+// non-addresses was accepted. The `not` callers had the format half of this
+// patched inline at acceptsEveryInstance; the content half was never patched and
+// the other predicate never was at all, which is why it is one function now
+// rather than a third copy of the condition.
+//
+// Only assertion is reported. Where the dialect annotates, the schema really
+// does constrain nothing and the always-true arm is right.
+func (g *Generator) assertsAnnotationVocabulary(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if s.Format != nil && g.formatAssertsFor(s) && FormatCheckableOnString(g.formatNameForDialect(s)) {
+		return true
+	}
+	if g.contentAssertsFor(s) {
+		if _, ok := contentCheckFor(s); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // declaredTypeAdmitsNoEnumMember reports whether a schema lists members its own
@@ -15526,7 +15644,13 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	}
 
 	// Boolean true or always-true schema: every element matches.
-	if isAlwaysTrueSchema(containsSch) {
+	//
+	// Except where the only thing it states is a `format` or a content keyword
+	// its dialect asserts: isAlwaysTrueSchema reads struct fields and has no
+	// posture to read those with, so it called {"contains":{"format":"email"}}
+	// an always-true schema and counted every element. See
+	// assertsAnnotationVocabulary.
+	if isAlwaysTrueSchema(containsSch) && !g.assertsAnnotationVocabulary(containsSch) {
 		return &ContainsDef{IsTrue: true}, minC, maxC
 	}
 
@@ -16978,7 +17102,7 @@ func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
 	if goType == nil {
 		return false
 	}
-	return !oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
+	return !g.oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
 }
 
 // oneOfUnionOutrunsBranches reports whether the sealed-interface union would
@@ -17424,6 +17548,25 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 		}
 	}
 
+	// The object-level if/then/else group, on the same terms. This is the fifth
+	// position to take #196's remedy and the last of the family issue #205
+	// names; see conditionalReadWhole for what the static reading drops.
+	for _, owner := range g.conditionalGroupOwners(s) {
+		if g.conditionalReadWhole(owner) {
+			continue
+		}
+		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
+		// literal rather than sub: the group judges the object this struct is,
+		// not a value inside it, so no descending step is taken.
+		if lit, ok := b.literal(conditionalGroupSchema(owner), 1); ok {
+			checks = append(checks, RuntimeBranchCheck{
+				Keyword:     "if",
+				NodeLiteral: lit,
+				owner:       owner,
+			})
+		}
+	}
+
 	if len(s.DependentSchemas) > 0 {
 		routed := map[string]*schema.Schema{}
 		for _, trigger := range sortedKeys(s.DependentSchemas) {
@@ -17450,6 +17593,118 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 	}
 
 	return checks, taken
+}
+
+// conditionalGroupOwners returns the schema objects whose object-level
+// if/then/else group lands in this struct: the one written beside the
+// properties, and one per allOf branch, since those branches are flattened into
+// the same struct.
+//
+// It is extractObjectConditionalDefs' own list of owners, so that the gate below
+// is asked about exactly the groups that function would otherwise read, and the
+// suppression can be keyed on the same pointer.
+func (g *Generator) conditionalGroupOwners(s *schema.Schema) []*schema.Schema {
+	if s == nil {
+		return nil
+	}
+	owners := []*schema.Schema{s}
+	for _, sub := range s.AllOf {
+		if resolved := g.resolveSchemaForApplicator(sub); resolved != nil {
+			owners = append(owners, resolved)
+		}
+	}
+	return owners
+}
+
+// conditionalGroupSchema is the if/then/else group on its own, as a schema the
+// evaluator can compile.
+//
+// Only the three keywords are carried. Everything else the owner states already
+// has its own generated check on this struct, and compiling it again would make
+// the same demand twice -- harmless for the verdict, but it would double every
+// error message and grow every literal. The resolution scope travels with it so
+// that a $ref inside a branch resolves against the document it was written in.
+func conditionalGroupSchema(owner *schema.Schema) *schema.Schema {
+	return &schema.Schema{
+		Schema:       owner.Schema,
+		If:           owner.If,
+		Then:         owner.Then,
+		Else:         owner.Else,
+		BaseURI:      owner.BaseURI,
+		DocumentRoot: owner.DocumentRoot,
+	}
+}
+
+// conditionalReadWhole reports whether objectConditionalDef reads everything an
+// object-level if/then/else group states.
+//
+// The group is read by two different rules, and each drops something:
+//
+//   - the condition is exact-or-nothing, and "nothing" means the whole group is
+//     dropped -- an `if` stating a keyword objectConditionalBranch cannot express
+//     leaves `then` and `else` asserting nothing at all;
+//   - `then` and `else` are read leniently, on the argument that a schema
+//     object's keywords are conjunctive so a subset can only under-enforce. True,
+//     and it is under-enforcement that issue #205 is about: the subset is
+//     `required` plus a per-property reading of nine scalar keywords, so a
+//     `format` the dialect asserts, a nested `anyOf`, a `propertyNames` and
+//     everything else vanished from the branch.
+//
+// Where either rule falls short the group goes to the evaluator, which models
+// all three keywords and now models `format` and the content vocabulary too --
+// which is what makes this remedy available here at all. Under-enforcement is
+// still the fallback if the evaluator declines in its turn, so nothing that
+// generates a check today loses one.
+//
+// The vacuous condition is one of the shortfalls rather than an exception to
+// them. objectConditionalDef returns nil for it, on the reading that a condition
+// every object matches makes `then` unconditional and so somebody else's
+// business -- but nobody else has it: {"if":{},"then":{"required":["p"],
+// "properties":{"p":{"format":"email"}}}} accepted {} and {"p":"2962"} alike,
+// which is `then` enforced by nothing at all. Reporting it here as read whole
+// was written first and kept that; it survived every plant, which is what said
+// so.
+func (g *Generator) conditionalReadWhole(s *schema.Schema) bool {
+	if s == nil || s.If == nil || (s.Then == nil && s.Else == nil) {
+		return true
+	}
+	_, ok := objectConditionalBranch("if", s.If)
+	return ok && g.conditionalBranchReadWhole(s.Then) && g.conditionalBranchReadWhole(s.Else)
+}
+
+// conditionalBranchReadWhole reports whether objectConditionalBranchLenient
+// keeps everything one side of a conditional states.
+//
+// That function reads exactly two keywords off the branch -- `required` and
+// `properties` -- and hands each property to objectPropertyChecksLenient, which
+// is the same per-property reading a dependentSchemas branch gets. So the
+// per-property half is dependentBranchPropertiesReadWhole's, shared rather than
+// restated: the two branches are read by the same code and must be judged by the
+// same gate, which is the drift #178 and #203 are both about.
+func (g *Generator) conditionalBranchReadWhole(b *schema.Schema) bool {
+	if b == nil {
+		return true
+	}
+	if b.IsBooleanSchema() {
+		return false
+	}
+	stated, ok := statedConstraints(b)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if !conditionalBranchKeywordsRead[key] {
+			return false
+		}
+	}
+	return dependentBranchPropertiesReadWhole(b)
+}
+
+// conditionalBranchKeywordsRead names the keywords objectConditionalBranchLenient
+// reads off a `then` or `else`. It is data for the same reason
+// dependentBranchKeywordsRead is: a test holds it against that function's source.
+var conditionalBranchKeywordsRead = map[string]bool{
+	"required": true, "properties": true,
 }
 
 // propertyNamesDefReadsWholeSchema reports whether extractPropertyNamesDef reads

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/v1",
+  "$comment": "Issue #205 at `unevaluatedProperties`. unevaluatedSubschemaKeywords does not list `format`, so the schema was offered to the evaluator, which declined it over that same keyword; the fall-through then built a rule the renderer has no arm for.",
+  "type": "object",
+  "properties": {
+    "a": {
+      "type": "integer"
+    }
+  },
+  "unevaluatedProperties": {
+    "type": "string",
+    "format": "email"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 nested the other way: a content assertion under a `propertyNames` under a `then`.",
+  "type": "object",
+  "properties": {
+    "t": {
+      "type": "integer"
+    }
+  },
+  "if": {
+    "properties": {
+      "t": {
+        "const": 1
+      }
+    },
+    "required": [
+      "t"
+    ]
+  },
+  "then": {
+    "properties": {
+      "o": {
+        "type": "object",
+        "propertyNames": {
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "required": [
+      "o"
+    ]
+  }
+}

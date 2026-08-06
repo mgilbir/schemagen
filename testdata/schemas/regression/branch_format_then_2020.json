@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The annotating twin of branch_format_then_draft7. 2020-12 declares the format-annotation vocabulary, so the same document is valid and a fix that refused it here would be a new false reject.",
+  "type": "object",
+  "properties": {
+    "t": {
+      "type": "integer"
+    }
+  },
+  "if": {
+    "properties": {
+      "t": {
+        "const": 1
+      }
+    },
+    "required": [
+      "t"
+    ]
+  },
+  "then": {
+    "properties": {
+      "p": {
+        "type": "string",
+        "format": "email"
+      }
+    },
+    "required": [
+      "p"
+    ]
+  }
+}

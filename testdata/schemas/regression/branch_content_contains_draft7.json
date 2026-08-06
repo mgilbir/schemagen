@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205's third repro: the content vocabulary at `contains`. Draft 7 is the one dialect that asserts it.",
+  "type": "array",
+  "contains": {
+    "contentEncoding": "base64"
+  }
+}

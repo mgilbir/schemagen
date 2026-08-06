@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$comment": "Issue #205 at a single-branch `anyOf` in a value position. anyOfIsSoleConstraint requires two branches, so the union arm never inspected this one, and the fail-closed net below it answered `any` because neither evaluator modelled `format`.",
+  "type": "object",
+  "properties": {
+    "p": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "email"
+        }
+      ]
+    }
+  },
+  "required": [
+    "p"
+  ]
+}
