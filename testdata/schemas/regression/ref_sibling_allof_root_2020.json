@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "str": {"type": "string"}
+  },
+  "$ref": "#/$defs/str",
+  "allOf": [{"minLength": 3}]
+}

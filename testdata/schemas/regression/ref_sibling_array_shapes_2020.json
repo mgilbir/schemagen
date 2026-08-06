@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "loose": {"type": "array"},
+    "anything": {}
+  },
+  "type": "object",
+  "properties": {
+    "narrowed": {"$ref": "#/$defs/loose", "items": {"type": "string"}},
+    "counted": {"$ref": "#/$defs/loose", "minItems": 2},
+    "slotted": {"type": "array", "prefixItems": [{"$ref": "#/$defs/anything"}]},
+    "everySlot": {"type": "array", "items": {"$ref": "#/$defs/anything"}}
+  }
+}

@@ -2380,8 +2380,20 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return g.generateAllOfDef(name, &synth)
 	}
 
-	// allOf → merge all sub-schemas into one struct
-	if len(s.AllOf) > 0 {
+	// allOf → merge all sub-schemas into one struct.
+	//
+	// Unless a $ref beside it says the allOf is not written at all. Through
+	// draft-07 a reference replaces every keyword in the schema object it sits
+	// in, and this arm never asked -- so {"$ref":"#/definitions/T",
+	// "allOf":[{"minLength":3}]} enforced the branch on draft 4, 6 and 7 and
+	// rejected a string the schema admits, a false rejection across three
+	// dialects. Where the target was untyped it was worse than wrong: the merge
+	// emitted the branch's minLength against `type T any` and the file did not
+	// compile at all. The arms above already ask -- refDisplacesSiblingValues
+	// holds the enum arms back on exactly these drafts -- and the ref-only arm
+	// below is what the schema then reaches, which is the whole of what the
+	// draft says it means. From 2019-09 on both bind and nothing changes here.
+	if len(s.AllOf) > 0 && !(s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)) {
 		return g.generateAllOfDef(name, s)
 	}
 
@@ -4274,31 +4286,32 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
-		// The parent's own property-count bounds bind the same object the allOf
-		// branches do. Seeding them before the merge lets mergeConstraints keep
-		// whichever bound is tighter; propagating them afterwards would instead
-		// let a branch's bound win by having got there first.
-		merged.MinProperties = s.MinProperties
-		merged.MaxProperties = s.MaxProperties
-		// Same for propertyNames, now that a branch's is merged too: seeding the
-		// parent's makes it the left-hand side of mergePropertyNames, so where
-		// only one pattern can be kept it is the parent's -- which is what #68
-		// established when a branch had none to offer.
-		merged.PropertyNames = s.PropertyNames
-		// And the same for enum and const, which say which values are legal at
-		// all. mergeConstraints reads a branch's onto a target that has none, so
-		// without this seeding a parent's list was dropped outright -- and from
-		// 2019-09 on {"$ref":T,"const":c} is rewritten into exactly this shape,
-		// with the reference as the only branch and the const on the parent, so
-		// the const vanished on the way in (issue #153).
+		// Everything the parent asserts about the same instance the branches do,
+		// seeded before the merge so that mergeConstraints -- the one function
+		// that knows how two allOf-scoped values of a keyword combine -- is what
+		// resolves each collision. Seeding rather than propagating afterwards is
+		// what makes the parent's the side that survives where only one value can
+		// be kept: `pattern`, `format` and `enum` each have a single slot and
+		// mergeConstraints keeps the first written, which is #68's answer for
+		// propertyNames and #153's for a const beside a reference.
 		//
-		// Seeded before the merge rather than propagated after it, for the reason
-		// the bounds above are: mergeConstraints keeps the first list it is given,
-		// so seeding is what makes the parent's the one that survives where a
-		// branch states one too. Both bind, one slot holds them, and keeping the
-		// parent's under-enforces rather than refusing values the schema allows --
-		// the direction mergeConstraints already documents for this pair.
-		merged.Enum, merged.Const, merged.ConstIsNull = s.Enum, s.Const, s.ConstIsNull
+		// It is the call and not a list of fields, because a list was the defect.
+		// This seeded property-count bounds, enum and const and nothing else, so
+		// every scalar assertion the parent stated was dropped the moment an allOf
+		// was written beside it: {"allOf":[{"type":"string"}],"minLength":3}
+		// accepted "a". That reached #204 through the front door, since a $ref
+		// carrying a sibling is rewritten into exactly this shape -- reference as
+		// the only branch, siblings on the parent -- so `minLength`, `pattern`,
+		// `minItems`, `uniqueItems`, `multipleOf` and the bounds beside a $ref all
+		// vanished here after generateTypeDef had correctly routed them in.
+		// mergeConstraints already carried all of them for a *branch*; only the
+		// parent had to be remembered separately, and was not. Now there is one
+		// reading, and a keyword added to mergeConstraints is seeded the same day.
+		mergeConstraints(merged, s)
+		// propertyNames is not one of mergeConstraints' keywords -- it merges
+		// sub-schemas rather than values, through mergePropertyNames -- so the
+		// parent's is seeded here to be that function's left-hand side.
+		merged.PropertyNames = s.PropertyNames
 	}
 
 	// Merge each allOf sub-schema, recursively flattening nested allOf chains.
@@ -4670,7 +4683,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				MinContains:      minContains,
 				MaxContains:      maxContains,
 				UnevaluatedItems: unevalItems,
-				ValidateAs:       g.firstAllOfArrayAliasValidateAs(s.AllOf),
+				ValidateAs:       g.firstAllOfArrayAliasValidateAs(s.AllOf, goType),
 				NeedsNullCheck:   !schemaAllowsNull(merged),
 				NullCheck:        g.aliasNullCheck(goType, merged),
 			})
@@ -4680,7 +4693,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			// Array type — extract item-level constraints and generate InferredAliasDef
 			// so that per-element validation works (items, prefixItems, contains, etc.).
 			goType := g.resolveType(merged, name)
-			validateAs := g.firstAllOfArrayAliasValidateAs(s.AllOf)
+			// The name only. Which type the delegation would convert *from* is
+			// not settled until inferredGoType is, further down, so the
+			// convertibility half of the question is put there -- but the search
+			// stays here, because it generates the branch's definition on demand
+			// and moving that would reorder the emitted file.
+			validateAs := g.firstAllOfArrayAliasName(s.AllOf)
 			var rules []ValidationRule
 			var anyOfVariants [][]ValidationRule
 			var oneOfVariants [][]ValidationRule
@@ -4733,6 +4751,14 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				addlItemsTypeName != "" || containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
+			// `_value` is declared as inferredGoType and the delegation is emitted
+			// as a Go conversion from it, so this is where the convertibility half
+			// of the question can finally be put. See
+			// firstAllOfArrayAliasValidateAs for what a mismatch produced.
+			validateAsConvertible := validateAs
+			if !g.aliasUnderlyingIs(validateAsConvertible, inferredGoType) {
+				validateAsConvertible = ""
+			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:                    name,
 				Description:             s.Description,
@@ -4742,7 +4768,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Validations:             rules,
 				AnyOfVariants:           anyOfVariants,
 				OneOfVariants:           oneOfVariants,
-				ValidateAs:              validateAs,
+				ValidateAs:              validateAsConvertible,
 				NeedsNullCheck:          !schemaAllowsNull(nullSchema),
 				ItemsFalse:              itemsFalse,
 				ItemsType:               itemsType,
@@ -10314,9 +10340,9 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 // draft split correct: draft-07 and earlier short-circuit before this is
 // reached, so they still suppress the sibling, and only 2019-09 onward changes.
 //
-// "enum" and "const" join it for exactly that reason, and that is #153. They are
-// what a type ladder reads first, so where the other keywords on this list lost
-// the *sibling* to the reference these lost the *reference* to the sibling:
+// "enum" and "const" were named on it for exactly that reason, and that is #153.
+// They are what a type ladder reads first, so where the other keywords lost the
+// *sibling* to the reference these lost the *reference* to the sibling:
 // {"$defs":{"Long":{"type":"string","minLength":5}},"$ref":"#/$defs/Long",
 // "const":"abc"} became the const's own enum type, the $ref was never followed,
 // and "abc" was accepted although the target forbids it. refMergesSiblingValues
@@ -10324,13 +10350,46 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 // reached; on draft-07 and earlier refDisplacesSiblingValues stands them down
 // instead and the short-circuit above keeps the reference alone, so #151's
 // answer there is untouched.
+//
+// The list those issues grew is gone, and that is #204. It named the keywords
+// that decide a *Go type* -- the properties and items families, "type", "enum",
+// "const" -- and nothing that merely asserts, so an assertion written beside a
+// reference was answered "no sibling here" and the ref-only arms aliased the
+// target and dropped it. {"$defs":{"S":{"type":"object"}},"$ref":"#/$defs/S",
+// "required":["r"]} accepted {} on 2020-12. Seven keywords were dropped at the
+// root and three more at a property, and where an assertion *did* survive it was
+// emitted against a field the reference had typed -- `maxLength` beside a $ref
+// to {} produced utf8.RuneCountInString on an interface, generated source that
+// does not compile.
+//
+// So the question is no longer "which keywords are structural" but the one the
+// draft actually asks: does this schema state anything at all besides the
+// reference? statedConstraints answers it from the marshaled keyword set, which
+// is the same truth-set unenforcedKeywords and the evaluator allow-lists read
+// (#178, #191) -- a keyword the parser learns next is on it the day it lands,
+// where the hand-written list had to be remembered. An unreadable schema counts
+// as having siblings: "I cannot tell" must not become "there is nothing here".
+//
+// The three reference spellings are what the question is *about*, so they are
+// not siblings of themselves. Only $ref reaches the merge arm -- mergeAllOfBranches
+// resolves neither a $dynamicRef nor a $recursiveRef's dynamic scope -- and the
+// callers pair this with a $ref test of their own for that reason.
 func hasRefStructuralSiblings(s *schema.Schema) bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Type) > 0 || hasProperties(s) || len(s.PatternProperties) > 0 || s.UnevaluatedProperties != nil || s.AdditionalProperties != nil ||
-		len(s.PrefixItems) > 0 || s.Items != nil || s.UnevaluatedItems != nil ||
-		statesEnumOrConst(s)
+	stated, ok := statedConstraints(s)
+	if !ok {
+		return true
+	}
+	for _, key := range stated {
+		switch key {
+		case "$ref", "$dynamicRef", "$recursiveRef":
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // primarySchemaType returns the primary (first non-null) type from the type list.
@@ -12857,7 +12916,50 @@ func (g *Generator) populateAliasDelegates() {
 // recover intercepts. nodesInProgress is the mark that says so, and skipping
 // such a branch costs nothing: a definition still in flight has emitted no
 // TypeDef, so isArrayAlias could only have answered no anyway.
-func (g *Generator) firstAllOfArrayAliasValidateAs(allOf []*schema.Schema) string {
+//
+// src is the Go type the emitted delegation converts *from* -- the alias's own
+// underlying slice. Both templates spell the delegation as a Go conversion,
+// `(S(r)).Validate()`, and Go permits that only between types with identical
+// underlying types. Nothing checked, so a branch alias whose element type
+// differed from the merged one produced source that did not compile:
+// {"$defs":{"S":{"type":"array"}},"$ref":"#/$defs/S","items":{"type":"string"}}
+// merged to `type Root []string` beside `type S []any` and emitted `S(r)` --
+// "cannot convert r (variable of slice type Root) to type S" (#204). The sibling
+// `items` is what made the two disagree, and #204's widening of
+// hasRefStructuralSiblings routes more schemas through this merge, so the check
+// belongs here rather than at the one shape that first showed it.
+//
+// Declining costs only the delegation to the branch's own Validate. The branch
+// is still merged into `merged`, so what it asserts is read from there; what is
+// lost is the target type's method, which could not have been called anyway.
+func (g *Generator) firstAllOfArrayAliasValidateAs(allOf []*schema.Schema, src GoType) string {
+	name := g.firstAllOfArrayAliasName(allOf)
+	if !g.aliasUnderlyingIs(name, src) {
+		return ""
+	}
+	return name
+}
+
+// aliasUnderlyingIs reports whether a named alias's underlying type is the one a
+// conversion to it would have to start from. It is the convertibility test
+// firstAllOfArrayAliasValidateAs applies, split out because the inferred-alias
+// caller cannot apply it until it knows which type its `_value` field will have.
+func (g *Generator) aliasUnderlyingIs(name string, src GoType) bool {
+	if name == "" || src == nil {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if d, ok := td.(*AliasDef); ok && d.Name == name {
+			return d.Underlying != nil && d.Underlying.GoTypeName() == src.GoTypeName()
+		}
+	}
+	return false
+}
+
+// firstAllOfArrayAliasName is the search half: the first branch of the allOf
+// that names an array alias, generating it on demand. It carries no judgement
+// about whether the delegation can be spelled -- that is aliasUnderlyingIs.
+func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 	for _, sub := range allOf {
 		if sub == nil {
 			continue
@@ -17840,9 +17942,22 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// Resolve $ref chain to find the target schema and its generated type name.
 	resolved := posSch
 	refName := ""
+
+	// A TypeName here becomes `var _typed <Name>` followed by _typed.Validate() in
+	// the emitted loop, so the name has to be one that *has* a Validate. A $ref to
+	// {} generates `type T any`, which is a defined type Go permits no methods on,
+	// and the tuple slot emitted the call regardless: every draft, with or without
+	// a sibling, produced a file that did not compile ("_typed.Validate undefined").
+	// namedTypeIsValidatable is the same question the array and map positions
+	// already put before delegating, and it walks the alias chain rather than
+	// reading the NoMethods flag, which is not set until long after this (#204).
+	//
+	// Declining only costs the delegation: the arms below still read what the
+	// position states directly, and a target with no Validate had no check to
+	// delegate in the first place.
 	if !g.refOverridesSiblingsForSchema(posSch) && hasRefStructuralSiblings(posSch) && (posSch.EffectiveRef() != "" || posSch.DynamicRef != "") {
 		_ = g.generateTypeDef(posName, posSch)
-		if g.generated[posName] {
+		if g.generated[posName] && g.namedTypeIsValidatable(posName) {
 			return TupleItemDef{TypeName: posName}, true
 		}
 	}
@@ -17858,7 +17973,7 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// parent type as generated BEFORE calling buildTupleItemDefs.
 	if refName != "" {
 		_ = g.generateTypeDef(refName, resolved)
-		if g.generated[refName] {
+		if g.generated[refName] && g.namedTypeIsValidatable(refName) {
 			return TupleItemDef{TypeName: refName}, true
 		}
 	}

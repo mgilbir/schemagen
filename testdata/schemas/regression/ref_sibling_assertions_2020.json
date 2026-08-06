@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "obj": {"type": "object"},
+    "str": {"type": "string"},
+    "num": {"type": "integer"},
+    "arr": {"type": "array"},
+    "anything": {}
+  },
+  "type": "object",
+  "properties": {
+    "req": {"$ref": "#/$defs/obj", "required": ["r"]},
+    "counted": {"$ref": "#/$defs/obj", "minProperties": 2},
+    "depends": {"$ref": "#/$defs/obj", "dependentRequired": {"a": ["b"]}},
+    "short": {"$ref": "#/$defs/str", "maxLength": 3},
+    "shaped": {"$ref": "#/$defs/str", "pattern": "^a"},
+    "even": {"$ref": "#/$defs/num", "multipleOf": 2},
+    "several": {"$ref": "#/$defs/arr", "minItems": 2},
+    "distinct": {"$ref": "#/$defs/arr", "uniqueItems": true},
+    "untyped": {"$ref": "#/$defs/anything", "maxLength": 3},
+    "elements": {"type": "array", "items": {"$ref": "#/$defs/str", "maxLength": 3}},
+    "values": {"type": "object", "additionalProperties": {"$ref": "#/$defs/str", "maxLength": 3}},
+    "slots": {"type": "array", "prefixItems": [{"$ref": "#/$defs/str", "maxLength": 3}]}
+  }
+}

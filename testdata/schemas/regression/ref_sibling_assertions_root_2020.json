@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "obj": {"type": "object"}
+  },
+  "$ref": "#/$defs/obj",
+  "required": ["r"],
+  "minProperties": 2,
+  "dependentRequired": {"a": ["b"]}
+}
