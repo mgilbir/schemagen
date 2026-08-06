@@ -7505,3 +7505,55 @@ func TestInferredArrayTupleUnderDraft7JudgesEachPosition(t *testing.T) {
 		},
 	)
 }
+
+// TestRecursiveAnchorNestedResources pins the case that decides whether
+// resolveRecursiveRef's scope walk matters.
+//
+// Two resources both carry $recursiveAnchor: true, and the inner one's
+// $recursiveRef: "#" is bookended by both. 2019-09 resolves such a reference to
+// the *outermost* anchored resource in the dynamic scope, so the value under
+// "v" is judged by the outer schema -- it must carry "o", not "i".
+//
+// The verdicts are not this project's reasoning. They were taken from
+// python-jsonschema, go-jsonschema and js-ajv through Bowtie, which agree
+// unanimously: the "o" document is valid and the "i" document is not. The suite
+// has no case of this shape, which is why it is written out here.
+//
+// What it does NOT guard is resolveRecursiveRef's scope walk, and that was
+// established rather than assumed. That walk is innermost-first where 2019-09
+// says outermost, so this fixture looked like the shape to catch it -- but
+// planting the wrong resolution leaves this test passing. resolveRecursiveRef is
+// called exactly once here and answers from the ordinary $ref resolution before
+// the walk decides anything; instrumented across all 832 schemas in testdata the
+// walk never selects a frame at all.
+//
+// So this is a behavioural pin on a shape three implementations agree about, and
+// nothing more. Anyone hardening the walk order needs a different fixture, and
+// should treat the absence of one as the open question it is -- see #167.
+func TestRecursiveAnchorNestedResources(t *testing.T) {
+	// ForType, not runValidationCases: extractRootTypeName picks the *last*
+	// struct carrying JSON tags, which here is the inner resource, and the
+	// document would then be judged by the schema this test exists to show is
+	// not the one that applies.
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/recursive_anchor_nested_resources.json",
+		"Root",
+		[]string{
+			// The inner $recursiveRef resolves outward, so "v" is an outer object.
+			`{"o":1,"inner":{"i":1,"v":{"o":9}}}`,
+			// No "inner" at all: nothing reaches the reference.
+			`{"o":1}`,
+			// "v" absent: the reference is never applied.
+			`{"o":1,"inner":{"i":1}}`,
+		},
+		[]string{
+			// "v" satisfies the *inner* schema, which is what an innermost-first
+			// walk would accept and what all three implementations reject.
+			`{"o":1,"inner":{"i":1,"v":{"i":9}}}`,
+			// The outer schema's own requirement still binds.
+			`{"inner":{"i":1,"v":{"o":9}}}`,
+			// And the inner schema's does.
+			`{"o":1,"inner":{"v":{"o":9}}}`,
+		},
+	)
+}

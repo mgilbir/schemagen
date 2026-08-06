@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/outer",
+  "$recursiveAnchor": true,
+  "type": "object",
+  "required": ["o"],
+  "properties": {
+    "o": { "type": "integer" },
+    "inner": { "$ref": "#/$defs/innerRes" }
+  },
+  "$defs": {
+    "innerRes": {
+      "$id": "https://example.com/inner",
+      "$recursiveAnchor": true,
+      "type": "object",
+      "required": ["i"],
+      "properties": {
+        "i": { "type": "integer" },
+        "v": { "$recursiveRef": "#" }
+      }
+    }
+  }
+}

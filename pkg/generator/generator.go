@@ -8156,6 +8156,36 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	if ref != "#" || ctx == nil || ctx.DocumentRoot == nil || ctx.DocumentRoot.RecursiveAnchor == nil || !*ctx.DocumentRoot.RecursiveAnchor {
 		return resolved
 	}
+	// This walk is innermost-first, and 2019-09 says a $recursiveRef resolves to
+	// the *outermost* resource in the dynamic scope whose $recursiveAnchor is
+	// true. The order is left as it is because the walk selects nothing at all:
+	// instrumented over all 832 schemas in testdata (the internal corpus plus
+	// the whole JSON Schema Test Suite), this function is called three times,
+	// reaches this loop three times, always with len(g.dynamicScope) == 1, and
+	// in every case the single frame carries no $recursiveAnchor -- so the loop
+	// falls through to `resolved`, the ordinary $ref answer, and the order it
+	// walked in never decided anything.
+	//
+	// Two things keep it that way rather than luck. A schema with two anchored
+	// resources in reach routes to the runtime evaluator instead (#160), and
+	// that evaluator walks outermost-first, which is where the spec's rule is
+	// actually implemented -- see _dynResolveRef and resolveDynamicRef. What is
+	// left here is the single-resource case, where the two orders name the same
+	// frame anyway.
+	//
+	// So this is not a latent false rejection, and swapping the order would not
+	// fix a reachable defect.
+	//
+	// It is worth knowing what does not cover it. The obvious shape -- two nested
+	// resources both carrying $recursiveAnchor, in
+	// testdata/schemas/regression/recursive_anchor_nested_resources.json -- calls
+	// this function exactly once and answers from `resolved` above, the ordinary
+	// $ref resolution, before this walk decides anything. Planting the opposite
+	// resolution leaves that fixture passing. It pins a verdict three independent
+	// implementations agree on, which is worth having, but it is not a guard on
+	// the order, and no fixture in the tree is. That absence is the open part of
+	// #167, and it should be closed by finding the shape rather than by assuming
+	// one exists.
 	for i := len(g.dynamicScope) - 1; i >= 0; i-- {
 		scope := g.dynamicScope[i]
 		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
