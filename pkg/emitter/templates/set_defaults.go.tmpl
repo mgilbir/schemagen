@@ -7,7 +7,19 @@
 func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
 	{{- range $struct.Fields}}
 	{{- if .DefaultLiteral}}
-	{{- if eq (goType .Type) "*string"}}
+	{{- if eq .DefaultShape "*named"}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := {{.DefaultLiteral}}
+		{{$recv}}.{{.Name}} = &_default
+	}
+	{{- else if eq .DefaultShape "named"}}
+	{
+		var _zero {{goType .Type}}
+		if {{$recv}}.{{.Name}} == _zero {
+			{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+		}
+	}
+	{{- else if eq (goType .Type) "*string"}}
 	if {{$recv}}.{{.Name}} == nil {
 		_default := {{.DefaultLiteral}}
 		{{$recv}}.{{.Name}} = &_default

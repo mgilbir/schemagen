@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnnotationReachPositions",
+  "description": "How far an annotation reaches through an applicator, asked once for every keyword that consumes one. $ref and allOf bind unconditionally -- a valid instance satisfies every one of them -- so what they say about a location is said about every instance, and the Dflt*/Ann* properties below are the spellings of that. anyOf, oneOf and if/then/else bind only on the documents that match them, so 2020-12 section 7.7.1 gives them no annotation to contribute at all, and every *Cond* property is the control that says so. Issue #186 is the default half: the keyword was read off the property node alone, so it survived being written inline and vanished behind either binder. Issue #187 is the doc-comment half, in the same position. The two answers had to agree with --strict-read-write, which had been reading the reach correctly since issues #172 and #174, and now all three read one walk. The one place a doc comment deliberately stops short is a $ref written on the property: it survives into the generated source as the field's own type, which carries the referenced schema's comment already, so annViaRef documents nothing on the field and everything on AnnotatedString -- while dfltViaRef, which has no such survivor to carry it, does follow the reference.",
+  "type": "object",
+  "required": ["dfltRequiredViaRef"],
+  "properties": {
+    "mode": {"type": "string"},
+
+    "dfltInline": {"type": "string", "default": "inline"},
+    "dfltViaRef": {"$ref": "#/$defs/DefaultedString"},
+    "dfltViaRefChain": {"$ref": "#/$defs/AliasOfDefaultedString"},
+    "dfltViaAllOf": {"allOf": [{"type": "string", "default": "viaAllOf"}]},
+    "dfltViaAllOfRef": {"allOf": [{"$ref": "#/$defs/DefaultedString"}]},
+    "dfltViaNestedAllOf": {"allOf": [{"allOf": [{"type": "string", "default": "viaNested"}]}]},
+    "dfltNearestWins": {"type": "string", "default": "own", "allOf": [{"default": "branch"}]},
+    "dfltRequiredViaRef": {"$ref": "#/$defs/DefaultedString"},
+    "dfltIntViaRef": {"$ref": "#/$defs/DefaultedInt"},
+    "dfltNumberViaRef": {"$ref": "#/$defs/DefaultedNumber"},
+    "dfltBoolViaRef": {"$ref": "#/$defs/DefaultedBool"},
+    "dfltObjectViaRef": {"$ref": "#/$defs/DefaultedObject"},
+    "dfltEmptyViaRef": {"$ref": "#/$defs/DefaultedEmptyString"},
+    "dfltMismatchViaRef": {"$ref": "#/$defs/MistypedDefaultInt"},
+    "dfltAnyViaRef": {"$ref": "#/$defs/UntypedDefault"},
+    "dfltMultiTypeViaRef": {"$ref": "#/$defs/MultiTypedDefault"},
+    "dfltViaCycle": {"$ref": "#/$defs/SelfReferential"},
+    "dfltNone": {"$ref": "#/$defs/PlainString"},
+
+    "annViaAllOf": {
+      "allOf": [{
+        "type": "string",
+        "description": "Prose written on an allOf branch of the property.",
+        "deprecated": true,
+        "readOnly": true,
+        "examples": ["from-the-branch"]
+      }]
+    },
+    "annViaNestedAllOf": {
+      "allOf": [{"allOf": [{
+        "type": "string",
+        "description": "Prose two allOf levels below the property.",
+        "deprecated": true,
+        "writeOnly": true
+      }]}]
+    },
+    "annViaRef": {"$ref": "#/$defs/AnnotatedString"},
+    "annPlain": {"type": "string"},
+    "annGroupPlain": {
+      "description": "Prose on a oneOf group written on the property.",
+      "deprecated": true,
+      "oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "dfltViaMergedAllOf": {"type": "string", "default": "merged"},
+        "dfltBindsBoth": {"type": "string", "default": "unconditional"},
+        "annViaMergedAllOf": {
+          "type": "string",
+          "description": "Prose an allOf branch states about a merged property.",
+          "deprecated": true
+        }
+      }
+    },
+    {
+      "if": {"required": ["mode"]},
+      "then": {
+        "properties": {
+          "dfltCondThen": {"type": "string", "default": "fromThen"},
+          "dfltBindsBoth": {"type": "string", "default": "fromThen"},
+          "annCondThen": {
+            "type": "string",
+            "description": "Prose only a then branch states.",
+            "deprecated": true,
+            "examples": ["from-the-then"]
+          },
+          "annCondGroup": {
+            "description": "Prose only a then branch states about a group.",
+            "deprecated": true,
+            "oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]
+          }
+        }
+      },
+      "else": {
+        "properties": {"dfltCondElse": {"type": "string", "default": "fromElse"}}
+      }
+    },
+    {
+      "anyOf": [
+        {"properties": {"dfltCondAnyOf": {"type": "string", "default": "fromAnyOf"}}},
+        {"properties": {
+          "annCondAnyOf": {
+            "type": "string",
+            "description": "Prose only an anyOf branch states.",
+            "deprecated": true
+          }
+        }}
+      ]
+    },
+    {
+      "oneOf": [
+        {"required": ["pickA"], "properties": {"pickA": {"type": "integer"}, "dfltCondOneOf": {"type": "string", "default": "fromOneOf"}}},
+        {"required": ["pickB"], "properties": {"pickB": {"type": "integer"}, "dfltCondOneOf": {"type": "string"}}}
+      ]
+    }
+  ],
+  "$defs": {
+    "DefaultedString": {"type": "string", "default": "viaRef", "description": "A string with a default, referenced from several positions."},
+    "AliasOfDefaultedString": {"$ref": "#/$defs/DefaultedString"},
+    "DefaultedInt": {"type": "integer", "minimum": 1, "default": 7},
+    "DefaultedNumber": {"type": "number", "default": 1.5},
+    "DefaultedBool": {"type": "boolean", "default": true},
+    "DefaultedObject": {"type": "object", "properties": {"n": {"type": "string"}}, "default": {"n": "x"}},
+    "DefaultedEmptyString": {"type": "string", "default": ""},
+    "MistypedDefaultInt": {"type": "integer", "default": "not-an-integer"},
+    "UntypedDefault": {"default": "untyped"},
+    "MultiTypedDefault": {"type": ["string", "integer"], "default": "multi"},
+    "SelfReferential": {"allOf": [{"$ref": "#/$defs/SelfReferential"}, {"type": "string", "default": "cycle"}]},
+    "PlainString": {"type": "string"},
+    "ByName": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+    "ById": {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    "AnnotatedString": {
+      "type": "string",
+      "description": "Prose on a referenced type, which is where the doc comment for it stays.",
+      "deprecated": true,
+      "readOnly": true
+    }
+  }
+}

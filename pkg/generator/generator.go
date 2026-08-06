@@ -399,6 +399,12 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// methods has nowhere to put a tolerant decode. And after
 	// populateAliasDelegates, whose UnmarshalAs it reads.
 	g.resolveIntegerDecodes()
+	// Must run after every type definition exists: the literal it writes is a
+	// conversion into a named type, and whether that conversion is sound is a
+	// property of the declaration, not of the property that references it.
+	if err := g.resolveNamedTypeDefaults(); err != nil {
+		return nil, err
+	}
 
 	// Publish validation info about this call's types so packages generated
 	// later in a cross-package run can emit correct guards for them.
@@ -3250,11 +3256,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// What the property schema says about itself, which a group
 				// carries for the same reasons a FieldDef does: the comment
 				// documents the field, and the annotations are what
-				// --strict-read-write acts on. Read off the property schema
-				// alone, exactly as FieldDef.Annotations is, and through the
-				// same provenance so that a keyword a conditional branch
-				// contributed is not asserted of every document (#174, #175).
-				oneOfDef.Description = propSchema.Description
+				// --strict-read-write acts on. Read over the same reach a
+				// FieldDef's are, so that a keyword a conditional branch
+				// contributed is not asserted of every document (#174, #175)
+				// and one an allOf on the property states is not dropped
+				// (#187).
+				oneOfDef.Description = g.propertyDescription(s, propName, propSchema)
 				oneOfDef.Annotations = g.propertyAnnotations(s, propName, propSchema)
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
@@ -3379,14 +3386,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 		}
 
-		// Compute default literal if schema provides a default value.
+		// Compute default literal if some schema unconditionally states one for
+		// this location. A default the field's own Go type cannot spell is kept
+		// for resolveNamedTypeDefaults, which runs once every declaration a
+		// $ref or an allOf may have named is there to be read.
 		var defaultLiteral string
-		if propSchema.Default != nil {
-			lit, err := defaultToGoLiteral(*propSchema.Default, goType)
+		var pendingDefault *any
+		defaultValue := g.propertyDefault(s, propName, propSchema)
+		if defaultValue != nil {
+			lit, err := defaultToGoLiteral(*defaultValue, goType)
 			if err != nil {
 				return fmt.Errorf("property %q: %w", propName, err)
 			}
 			defaultLiteral = lit
+			if lit == "" {
+				pendingDefault = defaultValue
+			}
 		}
 
 		fields = append(fields, FieldDef{
@@ -3396,11 +3411,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			OmitEmpty:      omitEmpty,
 			OmitZero:       omitZero,
 			Required:       required,
-			Description:    propSchema.Description,
+			Description:    g.propertyDescription(s, propName, propSchema),
 			Annotations:    g.propertyAnnotations(s, propName, propSchema),
 			ManualJSON:     manualJSON,
 			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
+			pendingDefault: pendingDefault,
 			IntegerDecode:  g.integerDecodeFor(goType, propSchema),
 		})
 		if needsUnmarshalForIntegers(fields[len(fields)-1]) {
@@ -8479,39 +8495,13 @@ func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readO
 	return readOnly, writeOnly
 }
 
-// propertyAnnotations reads the annotation vocabulary for a struct field.
+// unconditionalReachAt returns every schema that applies at an instance
+// location on every valid document: the node itself, whatever its $ref chain
+// reaches, and every allOf branch of any of them, transitively. The node itself
+// is always first, and the rest follow in the order they were written, so a
+// caller that wants "the nearest statement" can take the first one it finds.
 //
-// It is annotationsOf on the property schema, less any readOnly or writeOnly a
-// conditional branch alone put there. The other two keywords are left as the
-// merge produced them: "deprecated" and "examples" describe the location for a
-// reader and neither changes what the generated code accepts, whereas these two
-// are the pair --strict-read-write acts on, and a doc comment that disagreed
-// with the check beside it would document the wrong type. The comment and the
-// check are therefore taken from the same reading (issue #174).
-func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propSchema *schema.Schema) Annotations {
-	a := annotationsOf(propSchema)
-	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
-	if !narrowed {
-		return a
-	}
-	a.ReadOnly, a.WriteOnly = false, false
-	for _, src := range sources {
-		a.ReadOnly = a.ReadOnly || src.IsReadOnly()
-		a.WriteOnly = a.WriteOnly || src.IsWriteOnly()
-	}
-	return a
-}
-
-// readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by
-// any schema that applies at a property's instance location: the property schema
-// itself, whatever its $ref chain reaches, and every allOf branch of any of them.
-//
-// It exists for Config.StrictReadWrite and for nothing else. Both keywords are
-// annotations under every draft that defines them, so no verdict depends on this
-// and Validate() never asks; what it decides is which JSON property names the
-// generated decoder refuses and the generated encoder drops.
-//
-// The reach is the one the spec gives annotation collection, and the line it
+// This is the one reach every consumer of an annotation shares. The line it
 // draws is which applicators always apply:
 //
 //   - $ref and allOf are in-place applicators that bind unconditionally. A valid
@@ -8520,15 +8510,19 @@ func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propS
 //     2019-09 on $ref *is* one of them, which is why treating the two alike is
 //     the rule rather than two rules that happen to agree.
 //   - anyOf, oneOf and if/then/else are not. A branch contributes its annotations
-//     only when the instance matches it, so which of them apply is a property of
-//     the document, not of the schema, and a generator that read them would be
-//     asserting of every instance what the schema says of some. They are left
-//     alone deliberately: a check that fires on documents the schema never marked
-//     is a false rejection, which is worse than the missing one.
+//     only when the instance matches it (2020-12 §7.7.1: a subschema that was not
+//     selected, or that failed, contributes nothing), so which of them apply is a
+//     property of the document, not of the schema. A generator that read them
+//     would be asserting of every instance what the schema says of some.
 //
-// Only "true" is ever taken. An explicit "false" is the schema saying the keyword
-// does not apply, and OR-ing it in would be the same mistake as emitting on
-// presence rather than on value.
+// followRef says whether the $ref half of that reach is wanted. It is wanted
+// wherever the annotation has no home but this one -- the parent struct's
+// SetDefaults and its --strict-read-write key lists, neither of which the
+// referenced type can carry for it. It is not wanted for a doc comment: a $ref
+// survives into the generated source as the field's own type, which carries the
+// referenced schema's comment (issue #171), so repeating it on the field would
+// document the same schema twice. An allOf has no such survivor -- the merge
+// flattens it away -- which is why the allOf half is walked either way.
 //
 // Cycle-safe by the visited set, on the same reasoning as
 // resolveSchemaForApplicator: a $ref chain that closes on itself has no iteration
@@ -8536,24 +8530,141 @@ func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propS
 // is deliberately the uncounted form -- this is a second look at a reference the
 // type resolution has already followed, and recording it again would let the
 // unresolved-ref bookkeeping depend on a question about doc comments.
-func (g *Generator) readWriteAtLocation(s *schema.Schema) (readOnly, writeOnly bool) {
+func (g *Generator) unconditionalReachAt(s *schema.Schema, followRef bool) []*schema.Schema {
+	var reach []*schema.Schema
 	visited := map[*schema.Schema]bool{}
 	var walk func(*schema.Schema)
 	walk = func(node *schema.Schema) {
-		if node == nil || visited[node] || (readOnly && writeOnly) {
+		if node == nil || visited[node] {
 			return
 		}
 		visited[node] = true
-		readOnly = readOnly || node.IsReadOnly()
-		writeOnly = writeOnly || node.IsWriteOnly()
-		if ref := node.EffectiveRef(); ref != "" {
-			walk(g.resolveRefInContextUncounted(ref, node))
+		reach = append(reach, node)
+		if followRef {
+			if ref := node.EffectiveRef(); ref != "" {
+				walk(g.resolveRefInContextUncounted(ref, node))
+			}
 		}
 		for _, branch := range node.AllOf {
 			walk(branch)
 		}
 	}
 	walk(s)
+	return reach
+}
+
+// propertyDocSources returns the schemas whose annotations document a struct
+// field: the unconditional reach of every schema that describes the property on
+// every valid instance.
+//
+// The two narrowings compose. mergedPropertyOrigins removes the contributions a
+// conditional applicator made to a merge target (issue #174) -- without it the
+// merge would have folded a `then` branch's property schema into the struct's
+// property map and the reading below could not tell it from one the schema
+// states outright. unconditionalReachAt then adds what an allOf written *on* the
+// property says, which the merge never touches because there is no merge here at
+// all: {"f":{"allOf":[{"description":"prose"}]}} is one property schema with one
+// applicator on it (issue #187).
+//
+// The reaches are concatenated and not de-duplicated. Each is a set already --
+// the walk carries its own visited set -- and two unconditional contributions to
+// one property are two distinct parsed nodes, so there is nothing across them
+// for a de-duplication to remove that any planted fault could show.
+func (g *Generator) propertyDocSources(owner *schema.Schema, name string, propSchema *schema.Schema) []*schema.Schema {
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		sources = []*schema.Schema{propSchema}
+	}
+	var out []*schema.Schema
+	for _, src := range sources {
+		out = append(out, g.unconditionalReachAt(src, false)...)
+	}
+	return out
+}
+
+// propertyAnnotations reads the annotation vocabulary for a struct field, over
+// everything that unconditionally describes the field's location.
+//
+// All four keywords answer the same reach question, and they answer it here
+// together with Description (propertyDescription, over the same sources) so that
+// the whole comment block speaks for one set of schemas. Issue #174 narrowed
+// readOnly and writeOnly alone, on the ground that only those two change what
+// the code accepts; but "Deprecated:" is read by gopls and staticcheck as an
+// assertion about this field, so a deprecation only a `then` branch states is a
+// false claim with a tool-visible effect, and an "examples" entry from a branch
+// the document does not match is an example of something else. The narrowing is
+// therefore total.
+func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propSchema *schema.Schema) Annotations {
+	var a Annotations
+	for _, src := range g.propertyDocSources(owner, name, propSchema) {
+		b := annotationsOf(src)
+		a.Deprecated = a.Deprecated || b.Deprecated
+		a.ReadOnly = a.ReadOnly || b.ReadOnly
+		a.WriteOnly = a.WriteOnly || b.WriteOnly
+		a.Examples = append(a.Examples, b.Examples...)
+	}
+	return a
+}
+
+// propertyDescription is the prose above a struct field: the nearest
+// unconditional one, the property's own if it states one.
+func (g *Generator) propertyDescription(owner *schema.Schema, name string, propSchema *schema.Schema) string {
+	for _, src := range g.propertyDocSources(owner, name, propSchema) {
+		if src.Description != "" {
+			return src.Description
+		}
+	}
+	return ""
+}
+
+// propertyDefault is the "default" SetDefaults writes for a property: the
+// nearest one any schema states unconditionally about the field's location.
+//
+// This follows the $ref half of the reach as well, on the rule
+// unconditionalReachAt states -- a named type has no SetDefaults of its own, so
+// the parent struct is the only place a referenced schema's default can be
+// written, exactly as it is the only place a referenced readOnly can be checked
+// (issue #186).
+//
+// The nearest statement wins where several unconditional ones disagree. That is
+// the house rule for a merge (mergeConstraints keeps the first list it is
+// given), and the order it reads in is the written one: the property itself,
+// then its $ref chain, then its allOf branches left to right. 2020-12 collects
+// every one of them and leaves the choice to the consumer; a generator has one
+// slot and has to choose.
+func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchema *schema.Schema) *any {
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		sources = []*schema.Schema{propSchema}
+	}
+	for _, src := range sources {
+		for _, node := range g.unconditionalReachAt(src, true) {
+			if node.Default != nil {
+				return node.Default
+			}
+		}
+	}
+	return nil
+}
+
+// readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by
+// any schema that applies at a property's instance location: the property schema
+// itself, whatever its $ref chain reaches, and every allOf branch of any of them.
+// See unconditionalReachAt for why those and no others.
+//
+// It exists for Config.StrictReadWrite and for nothing else. Both keywords are
+// annotations under every draft that defines them, so no verdict depends on this
+// and Validate() never asks; what it decides is which JSON property names the
+// generated decoder refuses and the generated encoder drops.
+//
+// Only "true" is ever taken. An explicit "false" is the schema saying the keyword
+// does not apply, and OR-ing it in would be the same mistake as emitting on
+// presence rather than on value.
+func (g *Generator) readWriteAtLocation(s *schema.Schema) (readOnly, writeOnly bool) {
+	for _, node := range g.unconditionalReachAt(s, true) {
+		readOnly = readOnly || node.IsReadOnly()
+		writeOnly = writeOnly || node.IsWriteOnly()
+	}
 	return readOnly, writeOnly
 }
 

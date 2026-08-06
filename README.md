@@ -203,9 +203,31 @@ because which branch applies is the document's business and a check keyed on one
 would refuse documents the schema never marked. That holds however the branch is
 reached — including an object-level conditional inside an `allOf` branch, whose
 properties are merged into the same struct: the branch is where such a property
-gets its Go type, and only its `readOnly`/`writeOnly` is held back. The doc
-comment follows the same line, so the generated type does not document a
-contract it does not enforce.
+gets its Go type, and only its annotations are held back.
+
+The doc comment follows the same line, so the generated type does not document a
+contract it does not enforce. It stops short in one place: a `$ref` written on
+the property. That reference survives into the generated source as the field's
+own type, and the referenced type carries the comment already, so the field does
+not repeat it. An `allOf` has no such survivor — the merge flattens it away — so
+what its branches say about the property is written on the field.
+
+### `default`
+
+`default` answers the same reach question, and it answers it in the parent
+struct's `SetDefaults`, which is the only place a Go type has for it. So it is
+read through a `$ref` chain and through `allOf`, including the `$ref` inside an
+`allOf` branch, and it is *not* read from an `anyOf`, `oneOf` or `if`/`then`/
+`else` branch — a value written on every document from a branch that applies to
+some is not the schema's default. Where several unconditional schemas state one,
+the nearest wins: the property's own, then its `$ref` chain, then its `allOf`
+branches left to right.
+
+A default reached through a `$ref` lands on a field whose Go type is the
+referenced type, so the value is written as a conversion into it —
+`_default := ResourceID("unset")`. Types a JSON scalar does not convert to (a
+struct, a slice, a `time.Time` alias, a big-int wrapper) get no default, as
+before.
 
 How the property is typed makes no difference. A property whose `oneOf` becomes
 a sealed-interface group is checked exactly as a plain field is.

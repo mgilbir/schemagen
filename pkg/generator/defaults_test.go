@@ -1,6 +1,73 @@
 package generator
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/mgilbir/schemagen/pkg/schema"
+)
+
+// TestDefaultThroughRefReportsAnUnrepresentableValue holds the two spellings of
+// the same schema to the same answer.
+//
+// A fractional default on an integer field fails generation rather than being
+// truncated into a different value. Behind a $ref the keyword is found by the
+// same walk but written by a later pass, and dropping it quietly there would
+// mean whether the run failed depended on where the author put the keyword --
+// the spelling-dependence issue #172 was about.
+func TestDefaultThroughRefReportsAnUnrepresentableValue(t *testing.T) {
+	const doc = `{"type":"object","properties":{"n":{"$ref":"#/$defs/N"}},` +
+		`"$defs":{"N":{"type":"integer","default":4.5}}}`
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(doc), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	_, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+	if err == nil {
+		t.Fatalf("generation succeeded; the same default written inline is an error")
+	}
+	if !strings.Contains(err.Error(), "not an integer") {
+		t.Fatalf("generation failed for the wrong reason: %v", err)
+	}
+}
+
+// TestNamedDefaultDeclinesAForeignType is the guard no schema can reach from
+// here: a field typed by another generated package.
+//
+// The literal this pass writes is a conversion into the named type, and whether
+// that conversion compiles is read off the declaration this run holds under that
+// name. For a qualified type there is no such declaration -- and worse, a local
+// type of the same name would answer in its place and hand back the underlying
+// of something else. The IR is built directly because a cross-package run is the
+// only way to produce the shape, and the shape is one field.
+func TestNamedDefaultDeclinesAForeignType(t *testing.T) {
+	value := any("dflt")
+	g := New(Config{PackageName: "testpkg"})
+	g.output = &File{TypeDefs: []TypeDef{
+		&AliasDef{Name: "Token", Underlying: &PrimitiveType{Name: "string"}},
+		&StructDef{Name: "Holder", Fields: []FieldDef{
+			{Name: "Local", JSONName: "local",
+				Type: &NamedType{Name: "Token", Pointer: true}, pendingDefault: &value},
+			{Name: "Foreign", JSONName: "foreign",
+				Type: &NamedType{Name: "Token", Pointer: true, PkgAlias: "other"}, pendingDefault: &value},
+		}},
+	}}
+	if err := g.resolveNamedTypeDefaults(); err != nil {
+		t.Fatalf("resolveNamedTypeDefaults: %v", err)
+	}
+	holder := g.output.TypeDefs[1].(*StructDef)
+	// The local field is the control: without it a pass that declined
+	// everything would satisfy the assertion below.
+	if got := holder.Fields[0].DefaultLiteral; got != `Token("dflt")` {
+		t.Errorf("the local field got %q, want %q", got, `Token("dflt")`)
+	}
+	if got := holder.Fields[1].DefaultLiteral; got != "" {
+		t.Errorf("the field typed by another package got the literal %q, "+
+			"read off this package's declaration of the same name", got)
+	}
+}
 
 func TestDefaultToGoLiteral(t *testing.T) {
 	tests := []struct {

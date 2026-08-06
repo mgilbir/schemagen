@@ -167,6 +167,13 @@ func allGoldenTests() []goldenTestCase {
 		// names the cells. It is also what compiles the runtime-annotation kind
 		// as a $defs entry, which used to be emitted three times over.
 		{"regression/annotation_positions", "testdata/schemas/regression/annotation_positions.json", "testdata/golden/regression/annotation_positions.go"},
+		// How far each of those keywords reaches through an applicator. The
+		// golden is what pins the two halves together in one file: the
+		// SetDefaults body, which is where "default" is consumed, and the field
+		// comments, which is where the other five are, so a change that moved
+		// one reading without the other shows up as a diff in the same
+		// function. TestAnnotationReachThroughApplicators names the cells.
+		{"regression/annotation_reach_positions", "testdata/schemas/regression/annotation_reach_positions.json", "testdata/golden/regression/annotation_reach_positions.go"},
 		// Pins which oneOf groups keep the sealed-interface union and which
 		// leave it for the evaluator: a branch selection would count wrongly --
 		// a `false`, a `const`, an enum beside a `type` -- takes the group away,
