@@ -41,9 +41,15 @@ func allowing(modelled map[string]bool) map[string]bool {
 }
 
 // annotationKeywords are the keywords the unevaluatedItems path compiles to the
-// runtime evaluator. Anything outside this set makes a schema ineligible, so it
-// keeps today's static checks instead of being evaluated with a keyword silently
-// ignored.
+// runtime evaluator. Anything outside this set makes a schema ineligible here,
+// rather than being evaluated with a keyword silently ignored.
+//
+// Ineligible no longer means "keeps today's static checks". A schema this path
+// wanted and refused is offered next to the whole-schema evaluator, whose
+// allow-list is validatorKeywords -- because the static checks waiting below do
+// not enforce unevaluatedItems at all, so leaving it to them was a false accept
+// dressed as a conservative choice (issue #189). See
+// unevaluatedNeedsRuntimeEvaluator.
 //
 // The literal below names only the keywords this path *models*; allowing() adds
 // the ones that constrain nothing, which are not this list's business to decide.
@@ -975,6 +981,123 @@ func statesCousinUnevaluatedItems(s *schema.Schema) bool {
 		}
 	}
 	return false
+}
+
+// unevaluatedSubschemaKeywords are the keywords a schema-valued
+// `unevaluatedItems` or `unevaluatedProperties` may state and still be enforced
+// by the check emitted where it is written.
+//
+// One list for both keywords, and that is the whole point of it. The two run on
+// separate machinery -- `unevaluatedProperties` through
+// buildUnevaluatedPropertiesDef and the validation_rule_inline template,
+// `unevaluatedItems` through buildUnevaluatedItemsDef and uneval_items_check --
+// and each time one of them learned a keyword the other had not, the same
+// sub-schema bound a leftover property and was ignored for a leftover item.
+// {"type":"string","minLength":3} was exactly that: enforced as
+// `unevaluatedProperties`, dropped as `unevaluatedItems` (issue #184). Reading
+// one list is what makes a keyword checked in both positions or in neither.
+//
+// Everything outside the list routes the whole schema to the runtime evaluator,
+// which models the full vocabulary. `enum`, `const`, `$ref`, `required`, `not`
+// and the composition keywords are the ones that matters for -- both positions
+// dropped every one of them, which is the other half of #184.
+//
+// allowing() supplies the keywords that constrain nothing, for the reason it
+// does everywhere else: a `$comment` or a `title` on the sub-schema must not
+// decide how the sub-schema is compiled.
+var unevaluatedSubschemaKeywords = allowing(map[string]bool{
+	"type":             true,
+	"minimum":          true,
+	"maximum":          true,
+	"exclusiveMinimum": true,
+	"exclusiveMaximum": true,
+	"multipleOf":       true,
+	"minLength":        true,
+	"maxLength":        true,
+	"pattern":          true,
+})
+
+// unevaluatedNeedsRuntimeEvaluator reports whether the static path would enforce
+// less than s's own `unevaluatedItems`/`unevaluatedProperties` says, so that the
+// schema has to be compiled whole instead.
+//
+// It is called from generateTypeDef immediately after annotationSchemaDef, which
+// is why the first arm can read "the annotation path wanted this schema" as "the
+// annotation path declined it". That path compiles with reference inlining off,
+// so a `$ref` anywhere under it refuses the whole subtree and what caught the
+// schema next was the static tuple check, which does not enforce
+// `unevaluatedItems` at all -- {"allOf":[{"prefixItems":[{"$ref":"#/$defs/Str"}],
+// "unevaluatedItems":false}]} accepted ["a",1] while the inline spelling of the
+// same tuple rejected it (issue #189). Widening annotationKeywords to admit
+// `$ref` would change the shape of code that is not broken, which is what its
+// own comment warns against; sending the schema on to the evaluator that does
+// inline references leaves that path exactly as it was.
+//
+// The remaining arms are the schema-valued forms whose sub-schema states a
+// keyword the check for that position does not carry. See
+// unevaluatedSubschemaKeywords.
+//
+// A schema this returns true for is not guaranteed to reach the evaluator: it is
+// offered, and runtimeSchemaDef declines a schema past its size bounds or one
+// stating a keyword it does not model. The static path then runs as it does
+// today, which under-enforces exactly as much as it does today.
+func (g *Generator) unevaluatedNeedsRuntimeEvaluator(s *schema.Schema) bool {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return false
+	}
+	if s.UnevaluatedItems == nil && s.UnevaluatedProperties == nil &&
+		!g.hasCousinUnevaluatedItems(s) {
+		return false
+	}
+	if needsRuntimeAnnotations(s) || g.hasCousinUnevaluatedItems(s) {
+		return true
+	}
+	return !g.unevaluatedSubschemaIsCheckable(s.UnevaluatedItems) ||
+		!g.unevaluatedSubschemaIsCheckable(s.UnevaluatedProperties)
+}
+
+// unevaluatedSubschemaIsCheckable reports whether the check emitted for a
+// schema-valued `unevaluatedItems`/`unevaluatedProperties` carries everything
+// its sub-schema states.
+//
+// An absent keyword and the two boolean forms need no vocabulary at all: `true`
+// is a no-op, and `false` -- or any other sub-schema admitting no value, which
+// schemaForbidsEveryValue is the one reading of -- is the forbidding form, which
+// names no keyword to drop.
+func (g *Generator) unevaluatedSubschemaIsCheckable(sub *schema.Schema) bool {
+	if sub == nil || sub.IsBooleanSchema() || g.schemaForbidsEveryValue(sub) {
+		return true
+	}
+	// An extension keyword can demand anything at all, so only the inert ones
+	// leave the sub-schema readable -- the same reading eligible() takes.
+	for key := range sub.Extensions {
+		if !inertKeywords[key] {
+			return false
+		}
+	}
+	present, ok := schemaKeywordSet(sub)
+	if !ok {
+		return false
+	}
+	constrains := false
+	for key := range present {
+		if nonConstrainingKeywords[key] {
+			continue
+		}
+		if !unevaluatedSubschemaKeywords[key] {
+			return false
+		}
+		constrains = true
+	}
+	// Both checks decode each leftover value into the one Go type the sub-schema
+	// names, so a sub-schema that states a bound and no `type` has none to decode
+	// into. unevaluatedProperties guessed one from the bound and then refused
+	// every value of any other JSON kind: {"unevaluatedProperties":{"minLength":3}}
+	// rejected {"b":1}, which `minLength` says nothing about. The evaluator applies
+	// each keyword to the JSON types it is defined for, so the untyped sub-schema
+	// goes there instead -- a false rejection, and the one direction that costs a
+	// document the schema permits.
+	return !constrains || len(sub.Type) == 1
 }
 
 func formatFloatLiteral(f float64) string {

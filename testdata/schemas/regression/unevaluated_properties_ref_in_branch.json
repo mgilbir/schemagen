@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Str": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "properties": {"a": {"$ref": "#/$defs/Str"}},
+      "unevaluatedProperties": false
+    }
+  ]
+}

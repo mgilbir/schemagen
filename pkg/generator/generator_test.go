@@ -8130,15 +8130,56 @@ func TestArrayPropertyUnevaluatedItemsSeesThroughAllOf(t *testing.T) {
 		}
 	})
 
-	t.Run("static-count", func(t *testing.T) {
-		// minLength is outside the evaluator's keyword set, so this subtree
-		// cannot be modelled and the static count is what has to be right.
+	t.Run("second-route-for-a-keyword-the-narrow-path-declines", func(t *testing.T) {
+		// minLength is outside annotationKeywords, so the narrow evaluator
+		// declines this subtree. It used to fall to the static count, which is
+		// exact about *how many* positions the branch evaluates and says nothing
+		// about what the branch demands of them -- so {"arr":["a"]} was accepted
+		// by a schema whose prefix slot asks for two characters. The whole-schema
+		// evaluator models minLength, so the property goes there instead.
 		ir := generateForItemTest(t, `{
 			"title": "Doc",
 			"type": "object",
 			"properties": {
 				"arr": {"type":"array",
 				        "allOf":[{"prefixItems":[{"type":"string","minLength":2}]}],
+				        "unevaluatedItems": false}
+			},
+			"required": ["arr"]
+		}`)
+
+		doc := structNamed(t, ir, "Doc")
+		var wrapper *AnnotationSchemaDef
+		for _, td := range ir.TypeDefs {
+			if d, ok := td.(*AnnotationSchemaDef); ok && d.Name == "DocArr" {
+				wrapper = d
+			}
+		}
+		if wrapper == nil {
+			t.Fatalf("expected a DocArr wrapper from the whole-schema evaluator; got %v", ir.TypeDefs)
+		}
+		for _, want := range []string{"PrefixItems", "AllOf", "MinLength", "UnevaluatedItems"} {
+			if !strings.Contains(wrapper.NodeLiteral, want) {
+				t.Fatalf("DocArr node literal lost %s:\n%s", want, wrapper.NodeLiteral)
+			}
+		}
+		if !hasValidatableField(doc.ValidatableFields, "arr") {
+			t.Fatalf("Doc.Validate does not call arr.Validate; the wrapper's schema is interpreted for no one")
+		}
+	})
+
+	t.Run("static-count", func(t *testing.T) {
+		// `format` is outside validatorKeywords too, so neither evaluator can
+		// carry this subtree and the static count is what has to be right. This
+		// is the arm the subtest above used to exercise, and it is still live:
+		// an allOf branch has to match, so what it evaluates is evaluated for
+		// every value and no runtime choice enters.
+		ir := generateForItemTest(t, `{
+			"title": "Doc",
+			"type": "object",
+			"properties": {
+				"arr": {"type":"array",
+				        "allOf":[{"prefixItems":[{"type":"string","format":"email"}]}],
 				        "unevaluatedItems": false}
 			},
 			"required": ["arr"]

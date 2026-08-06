@@ -61,8 +61,45 @@ func TestStaticUnevaluatedItemsUnchanged(t *testing.T) {
 	}
 }
 
-// A keyword outside the evaluator's model must keep the static path rather than
-// be interpreted with that keyword silently ignored.
+// annotationPathDefFor is annotationDefFor for the narrow path alone.
+//
+// annotationDefFor reads the output, and two arms of generateTypeDef put an
+// AnnotationSchemaDef there: the annotation path, whose allow-list is
+// annotationKeywords, and the whole-schema evaluator, whose allow-list is
+// validatorKeywords. A schema the first declines and the second claims is
+// indistinguishable in the output, so a test about the first has to ask it.
+//
+// The generator is run first because annotationSchemaDef reads state Generate
+// builds -- the $defs index a branch's $ref resolves through, and the resource
+// graph under it.
+func annotationPathDefFor(t *testing.T, input string) *AnnotationSchemaDef {
+	t.Helper()
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	g := New(Config{PackageName: "testpkg"})
+	if _, err := g.Generate(&s); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return g.annotationSchemaDef("Probe", &s)
+}
+
+// A keyword outside the *annotation* path's model must not be interpreted there
+// with that keyword silently ignored.
+//
+// What changed since this was written is where such a schema goes instead. It
+// used to fall to the static path, which does not enforce unevaluatedItems at
+// all -- and for the properties case below did worse, giving an array-valued
+// schema a struct type that refused []. It now goes to the whole-schema
+// evaluator, whose allow-list does model uniqueItems, properties and $ref, so
+// the keywords bind rather than being dropped. See
+// unevaluatedNeedsRuntimeEvaluator.
+//
+// So the assertion is unchanged in what it is about and changed in how it asks:
+// through annotationSchemaDef itself, which still declines all three, rather
+// than through the output, where the second arm's answer now sits.
 func TestAnnotationModelFailsClosed(t *testing.T) {
 	tests := []string{
 		`{"allOf":[{"uniqueItems":true}],"unevaluatedItems":false}`,
@@ -71,8 +108,15 @@ func TestAnnotationModelFailsClosed(t *testing.T) {
 	}
 	for _, in := range tests {
 		t.Run(in[:36], func(t *testing.T) {
-			if d := annotationDefFor(t, in); d != nil {
-				t.Fatalf("unsupported keyword was routed to the evaluator: %s\n%s", in, d.NodeLiteral)
+			if d := annotationPathDefFor(t, in); d != nil {
+				t.Fatalf("unsupported keyword was routed to the annotation path: %s\n%s", in, d.NodeLiteral)
+			}
+			// And the other half of the same statement: the schema is not left
+			// to the static path either, which is what let issue #189 accept
+			// ["a",1]. Losing this is losing the fix, and the assertion above
+			// cannot see it.
+			if d := annotationDefFor(t, in); d == nil {
+				t.Fatalf("declined by the annotation path and not taken by the whole-schema evaluator, so unevaluatedItems is left to the static path: %s", in)
 			}
 		})
 	}
@@ -147,7 +191,10 @@ func TestKeywordAllowListsAgreeOnWhatConstrainsNothing(t *testing.T) {
 	const (
 		staticAlready = "the static path already generates a working check for it, and the annotation path only takes schemas over to fix unevaluatedItems"
 		objectShape   = "an object-shape keyword; a schema stating one gets a struct, which the annotation path must not replace"
-		refInlining   = "reference inlining is off on the annotation path (inlineRefs), so a schema stating it cannot be compiled there at all"
+		// A schema refused over one of these is not left to the static path: it
+		// is offered to the whole-schema evaluator, which does inline references.
+		// That is what settles #189 without widening this list.
+		refInlining = "reference inlining is off on the annotation path (inlineRefs), so a schema stating it cannot be compiled there at all"
 	)
 	wantNarrower := map[string]string{
 		"enum": staticAlready, "exclusiveMinimum": staticAlready, "exclusiveMaximum": staticAlready,

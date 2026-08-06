@@ -575,7 +575,7 @@ func noteItemValidationImports(defs []ItemValidationDef, needsFmt, needsJSON, ne
 			}
 			if level.UnevalItems != nil {
 				noteFieldUnevalItemsImports([]FieldUnevalItemsDef{{Def: level.UnevalItems}},
-					needsFmt, needsJSON, needsMath)
+					needsFmt, needsJSON, needsMath, needsUTF8, needsRegexp)
 			}
 		}
 	}
@@ -860,7 +860,7 @@ func (g *Generator) addRequiredImports() {
 			noteFieldContainsImports(sd.ContainsValidations,
 				&needsFmt, &needsJSON, &needsMath, &needsStdRegexp)
 			noteFieldTupleImports(sd.TupleValidations, &needsFmt, &needsJSON, &needsMath)
-			noteFieldUnevalItemsImports(sd.UnevalItemsValidations, &needsFmt, &needsJSON, &needsMath)
+			noteFieldUnevalItemsImports(sd.UnevalItemsValidations, &needsFmt, &needsJSON, &needsMath, &needsUTF8, &needsRegexp)
 			for _, f := range sd.Fields {
 				if usesTimeType(f.Type) {
 					needsTime = true
@@ -985,11 +985,7 @@ func (g *Generator) addRequiredImports() {
 				if ad.UnevaluatedItems.ValueType == "integer" {
 					needsMath = true
 				}
-				for _, chk := range ad.UnevaluatedItems.Checks {
-					if chk.CheckType == "multipleOf" {
-						needsMath = true
-					}
-				}
+				noteUnevalItemCheckImports(ad.UnevaluatedItems.Checks, &needsMath, &needsUTF8, &needsRegexp)
 			}
 			if len(ad.Validations) > 0 {
 				needsFmt = true
@@ -1234,6 +1230,15 @@ func (g *Generator) addRequiredImports() {
 				if chk.CheckType == "type" && chk.Value == "integer" {
 					needsMath = true
 				}
+			}
+			// The unevaluatedItems checks this alias renders. The block below is
+			// the second renderer of them (see uneval_item_checks), and it had no
+			// import arm at all: the only keywords it rendered were `minimum` and
+			// `maximum`, which need nothing beyond the fmt and json this type
+			// already imports, so nothing said so until the shared partial gave it
+			// the rest of the vocabulary.
+			if iad.UnevaluatedItems != nil {
+				noteUnevalItemCheckImports(iad.UnevaluatedItems.Checks, &needsMath, &needsUTF8, &needsRegexp)
 			}
 			// Contains validation imports.
 			if iad.Contains != nil {
@@ -2189,6 +2194,24 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, def)
 		return nil
+	}
+
+	// The rest of what the two unevaluated keywords say and the static path does
+	// not: a schema-valued sub-schema stating a keyword the emitted check has no
+	// arm for, and the shapes the arm above claims but its node builder refused.
+	// Both used to fall through to a static check that enforced part of the
+	// keyword or none of it, and said nothing about the difference.
+	//
+	// The same arm annotationSchemaDef, dynamicScopeSchemaDef and the
+	// sibling-bearing `not` already are: a keyword the static path cannot carry
+	// takes the schema to the evaluator instead of being dropped on the way past.
+	// See unevaluatedNeedsRuntimeEvaluator.
+	if g.unevaluatedNeedsRuntimeEvaluator(s) {
+		if def := g.runtimeSchemaDef(name, s); def != nil {
+			g.generated[name] = true
+			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			return nil
+		}
 	}
 
 	// A bookended $dynamicRef or $recursiveRef whose anchor is declared more than
@@ -6112,6 +6135,26 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 					sd.NeedsUnmarshal = true
 				}
 			}
+			// And the `unevaluatedProperties` the schema states *itself*, which is
+			// the same loss one level up and was not enforced at all: `merged`
+			// carries neither the keyword nor the anyOf it judges, so
+			// generateStructDef built no UnevaluatedPropertiesDef and
+			// {"type":"object","anyOf":[{"properties":{"a":{"type":"string"}}}],
+			//  "unevaluatedProperties":false} accepted {"a":"x","b":1} (issue #190).
+			//
+			// Built from `s` rather than from `merged`, because the evaluated set is
+			// what the branches evaluate and only `s` still has them.
+			// collectEvaluatedProperties then reads the anyOf exactly as it does for
+			// a schema that reaches generateStructDef with its own properties, so
+			// the two spellings of this schema now answer alike.
+			//
+			// The struct always has the overflow map the check reads: this function
+			// is only reached when a branch contributes a property, so the field
+			// list is non-empty and generateStructDef's overflow arm has run.
+			if sd.UnevaluatedProperties == nil && s.UnevaluatedProperties != nil && g.validationKeywordsEnabled() {
+				sd.UnevaluatedProperties = g.buildUnevaluatedPropertiesDef(s)
+				sd.NeedsUnmarshal = true
+			}
 		}
 	}
 	return nil
@@ -7301,7 +7344,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// the value and leave the keyword behind -- and unlike the static shapes
 	// there is no field-level check to fall back on, since which items count as
 	// evaluated depends on which branches matched the value in hand.
-	if g.inlineAnnotationWrapper(s) {
+	if g.inlineAnnotationWrapper(s) || g.inlineUnevaluatedWrapper(s) {
 		nestedName := parentName + fieldName
 		if err := g.generateTypeDef(nestedName, s); err != nil {
 			return nil, err
@@ -7693,6 +7736,26 @@ func (g *Generator) inlineAnnotationWrapper(s *schema.Schema) bool {
 		return false
 	}
 	return g.annotationSchemaDef("", s) != nil
+}
+
+// inlineUnevaluatedWrapper is inlineAnnotationWrapper for the rest of what the
+// two unevaluated keywords say and the checks emitted in place do not: a
+// schema-valued sub-schema stating a keyword outside unevaluatedSubschemaKeywords,
+// and the applicator shapes the narrow path above wanted and its node builder
+// refused. It is the inline half of the arm generateTypeDef gained for issues
+// #184 and #189, and it is needed for the reason that one is: the wrapper is
+// only built for a schema being given a name, and an array written inline as a
+// property never had one.
+//
+// The two predicates are asked together rather than merged. inlineAnnotationWrapper
+// answers with the narrower evaluator, which is what the applicator shapes have
+// been compiled to since they were first handled and what keeps their generated
+// code as it is; this one is the fallback, and only claims what that declines.
+func (g *Generator) inlineUnevaluatedWrapper(s *schema.Schema) bool {
+	if !g.unevaluatedNeedsRuntimeEvaluator(s) {
+		return false
+	}
+	return g.runtimeSchemaDef("", s) != nil
 }
 
 // inlineSiblingNotWrapper reports whether a schema written inline -- a property,
@@ -10059,7 +10122,7 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	// would be enforced nowhere. It matters here in particular because the
 	// per-element checks cannot stand in -- they read the element schema's own
 	// prefixItems, and a prefix behind an allOf is not that.
-	if g.inlineAnnotationWrapper(items) {
+	if g.inlineAnnotationWrapper(items) || g.inlineUnevaluatedWrapper(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		if g.generated[itemContext] {
 			return &NamedType{Name: itemContext}
@@ -10524,7 +10587,17 @@ func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItems
 	return def
 }
 
-// extractUnevalItemChecks extracts simple validation checks from a unevaluatedItems sub-schema.
+// extractUnevalItemChecks extracts the validation checks a schema-valued
+// `unevaluatedItems` puts on each leftover item.
+//
+// The keywords read here are unevaluatedSubschemaKeywords minus `type`, which
+// the caller reads separately into ValueType -- one list, so that a leftover
+// item and a leftover property are judged by the same vocabulary. The string
+// keywords were missing until #184: {"type":"string","minLength":3} bound a
+// leftover property and said nothing about a leftover item, and the numeric
+// bounds beside them made the gap look like a type-system limit rather than an
+// omission. A sub-schema stating anything outside the list never reaches here;
+// unevaluatedNeedsRuntimeEvaluator sends it to the evaluator instead.
 func extractUnevalItemChecks(ui *schema.Schema) []ContainsCheck {
 	var checks []ContainsCheck
 	if ui.Minimum != nil {
@@ -10542,7 +10615,36 @@ func extractUnevalItemChecks(ui *schema.Schema) []ContainsCheck {
 	if ui.ExclusiveMaximum != nil && ui.ExclusiveMaximum.Number != nil {
 		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *ui.ExclusiveMaximum.Number})
 	}
+	if ui.MinLength != nil {
+		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: ui.MinLength.Int()})
+	}
+	if ui.MaxLength != nil {
+		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: ui.MaxLength.Int()})
+	}
+	if ui.Pattern != nil {
+		checks = append(checks, ContainsCheck{CheckType: "pattern", Value: *ui.Pattern})
+	}
 	return checks
+}
+
+// noteUnevalItemCheckImports records what the checks extractUnevalItemChecks
+// builds need imported, for whichever of the three positions emits them.
+//
+// One function for the three, because the two templates that render these
+// checks used to disagree about which of them they rendered at all -- the
+// inferred-alias copy carried `minimum` and `maximum` and nothing else -- and an
+// import list per position is the next thing to drift the same way.
+func noteUnevalItemCheckImports(checks []ContainsCheck, needsMath, needsUTF8, needsRegexp *bool) {
+	for _, chk := range checks {
+		switch chk.CheckType {
+		case "multipleOf":
+			*needsMath = true
+		case "minLength", "maxLength":
+			*needsUTF8 = true
+		case "pattern":
+			*needsRegexp = true
+		}
+	}
 }
 
 // collectEvaluatedItems populates an UnevaluatedItemsDef with information about
@@ -12262,7 +12364,7 @@ func noteFieldTupleImports(defs []FieldTupleDef, needsFmt, needsJSON, needsMath 
 // noteFieldUnevalItemsImports records what the emitted unevaluatedItems checks
 // need. Anything past the forbidden form marshals each unevaluated element, and
 // the integer and multipleOf tests reach for math.
-func noteFieldUnevalItemsImports(defs []FieldUnevalItemsDef, needsFmt, needsJSON, needsMath *bool) {
+func noteFieldUnevalItemsImports(defs []FieldUnevalItemsDef, needsFmt, needsJSON, needsMath, needsUTF8, needsRegexp *bool) {
 	for _, fu := range defs {
 		*needsFmt = true
 		if fu.Def == nil {
@@ -12274,11 +12376,7 @@ func noteFieldUnevalItemsImports(defs []FieldUnevalItemsDef, needsFmt, needsJSON
 		if fu.Def.ValueType == "integer" {
 			*needsMath = true
 		}
-		for _, chk := range fu.Def.Checks {
-			if chk.CheckType == "multipleOf" {
-				*needsMath = true
-			}
-		}
+		noteUnevalItemCheckImports(fu.Def.Checks, needsMath, needsUTF8, needsRegexp)
 	}
 }
 

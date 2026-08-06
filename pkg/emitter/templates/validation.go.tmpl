@@ -2060,6 +2060,7 @@ declares a field for it at all.
 {{- $expr := .Expr}}
 {{- $path := .Path}}
 {{- $args := argPrefix .Args}}
+{{- $ctx := .}}
 {{- with .Def}}
 	// unevaluatedItems validation
 	{
@@ -2110,12 +2111,42 @@ declares a field for it at all.
 				}
 				{{- end}}
 				{{- end}}
-				{{- /* The numeric bounds a schema-valued unevaluatedItems may
-				       state alongside its type, or instead of one. Without these
-				       arms a sub-schema whose whole content is a bound -- say
-				       {"minimum":5} -- produced a loop that read the element and
-				       then checked nothing at all. */}}
-				{{- range .Checks}}
+				{{- template "uneval_item_checks" $ctx}}
+			}
+			{{- end}}
+		}
+	}
+{{- end}}
+{{- end}}
+
+{{- /* uneval_item_checks emits the per-item checks a schema-valued
+       `unevaluatedItems` states beside (or instead of) its `type`, over an
+       element already bound to _uiElem as an `any`.
+
+       It is one definition because there are two renderers of the keyword --
+       uneval_items_check above, for an array that keeps a Go slice, and the
+       block in inferred_alias.go.tmpl, for one that keeps []any -- and they had
+       drifted: the inferred-alias copy carried `minimum` and `maximum` and
+       nothing else, so `multipleOf` on an unevaluated item bound in one array
+       shape and not in the other. The context is the UnevalItemsContext its two
+       callers already build, for .Path, .Args and .Def.Checks.
+
+       Which keywords can appear here is unevaluatedSubschemaKeywords, the list
+       the leftover *property* check reads too. A sub-schema stating anything
+       else never reaches either renderer -- generateTypeDef sends the whole
+       schema to the runtime evaluator instead. That is what keeps the two
+       keywords enforcing the same vocabulary rather than each its own.
+
+       The string keywords read the element through json.Marshal rather than a
+       type assertion, because the slice element may be a json.RawMessage or a
+       named string type, neither of which a `.(string)` sees -- and a check that
+       silently does not fire is the defect this whole family keeps producing.
+       A value of any other JSON kind unmarshals into no string, and the keyword
+       says nothing about it, so it passes. */}}
+{{define "uneval_item_checks"}}
+{{- $path := .Path}}
+{{- $args := argPrefix .Args}}
+{{- range .Def.Checks}}
 				{{- if eq .CheckType "minimum"}}
 				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal < {{.Value}} {
 					return fmt.Errorf("{{$path}}[%d]: must be >= {{.Value}}", {{$args}}_ui)
@@ -2139,11 +2170,32 @@ declares a field for it at all.
 						return fmt.Errorf("{{$path}}[%d]: must be a multiple of {{.Value}}", {{$args}}_ui)
 					}
 				}
+				{{- else if eq .CheckType "minLength"}}
+				{
+					_uiStrBytes, _ := json.Marshal(_uiElem)
+					var _uiStrVal string
+					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil && utf8.RuneCountInString(_uiStrVal) < {{.Value}} {
+						return fmt.Errorf("{{$path}}[%d]: length %d is less than minimum {{.Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
+					}
+				}
+				{{- else if eq .CheckType "maxLength"}}
+				{
+					_uiStrBytes, _ := json.Marshal(_uiElem)
+					var _uiStrVal string
+					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil && utf8.RuneCountInString(_uiStrVal) > {{.Value}} {
+						return fmt.Errorf("{{$path}}[%d]: length %d exceeds maximum {{.Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
+					}
+				}
+				{{- else if eq .CheckType "pattern"}}
+				{
+					_uiStrBytes, _ := json.Marshal(_uiElem)
+					var _uiStrVal string
+					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil {
+						if _uiMatched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uiStrVal); !_uiMatched {
+							return fmt.Errorf("{{$path}}[%d]: value does not match pattern %s", {{$args}}_ui, {{printf "%q" .Value}})
+						}
+					}
+				}
 				{{- end}}
-				{{- end}}
-			}
-			{{- end}}
-		}
-	}
 {{- end}}
 {{- end}}
