@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InferredArrayAllOfBranchRoot",
+  "description": "Issue #166's composition row at the root, which is where the null tells the two readings apart. The merge types this schema \"array\" off the branch's `items` -- a guess, since nothing here declares one -- and read as a declaration it produced a plain slice: the string, the object and the number died in the decoder, and the null died in the type's own null check. Under a *property* the null never reaches that check, because the property is a pointer and the struct answers for it, so the root is the only position that pins it.",
+  "allOf": [{ "items": { "type": "object", "required": ["a"] } }]
+}

@@ -7240,3 +7240,268 @@ func TestDynamicAnchorDeclaredByAnEnteredResourceStillWins(t *testing.T) {
 		)
 	})
 }
+
+// TestInferredArrayJudgesItsElementByTheWholeSubSchema pins issue #166.
+//
+// An array *inferred* from `items` rather than declared with "type":"array"
+// reduced its element sub-schema to at most the one JSON type that sub-schema
+// declared, and dropped everything else written beside it. So
+// {"items":{"type":"object","required":["a"]}} accepted [{}] -- while the
+// identical sub-schema under an explicit "type":"array" rejected it, which is
+// the `declared` row here and the contrast the issue is named for. A $ref
+// element took the same reduction applied to its *target*, so the arm that
+// calls a named type's Validate was reached only when the target declared no
+// single type.
+//
+// The reduction sat on four keywords, not one: the element of `items`, each
+// slot of `prefixItems`, the tail `items` governs past a prefix, and the
+// sub-schema of `contains` -- and `contains` shares its extraction with the
+// declared array, which is why `declaredContains` moved with it.
+//
+// Two rows are false rejections rather than missing checks, and they are why
+// the fix is not simply "check more". `allOfBranch` is an inferred array the
+// merge types "array" off a branch's `items`; that guess was read as a
+// declaration, so the Go type was a plain slice and refused the string, the
+// object, the number and the null the schema permits. `nullableSlotOfDeclared`
+// is a tuple slot stating {"type":["object","null"]}: the lightweight position
+// check names one JSON kind and refuses every other, and answering "object"
+// for it refused the null.
+//
+// Every inferred position carries a non-array instance beside it. `items` says
+// nothing about a string, an object, a number or a null, so all four stay valid
+// at every one of them -- which is what a fix reaching for the element type too
+// eagerly would take away.
+//
+// Verdicts from Bowtie over python-jsonschema, go-jsonschema and js-ajv,
+// unanimous on all 109 documents listed. One further document was tried and is
+// deliberately not listed, because the three implementations disagree about it:
+// {"containsEvaluates":[{"a":1},{"b":2}]}, valid to js-ajv and invalid to the
+// other two. Nothing here asserts a verdict on it.
+func TestInferredArrayJudgesItsElementByTheWholeSubSchema(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/inferred_array_element_positions.json",
+		[]string{
+			`{}`,
+			// The reported position, with the four non-array instances it must
+			// go on accepting.
+			`{"prop":[{"a":1}]}`,
+			`{"prop":"str"}`,
+			`{"prop":{"k":1}}`,
+			`{"prop":7}`,
+			`{"prop":null}`,
+			`{"prop":[]}`,
+			`{"propRef":[{"a":1}]}`,
+			`{"propRef":"str"}`,
+			// The declared spelling, unchanged.
+			`{"declared":[{"a":1}]}`,
+			`{"declared":[]}`,
+			// The nesting positions.
+			`{"inDeclaredArray":[[{"a":1}]]}`,
+			`{"inDeclaredArray":["str"]}`,
+			`{"inInferredArray":[[{"a":1}]]}`,
+			`{"inInferredArray":"str"}`,
+			`{"inInferredArray":["str"]}`,
+			`{"mapValue":{"k":[{"a":1}]}}`,
+			`{"mapValue":{"k":"str"}}`,
+			`{"slotOfDeclared":[[{"a":1}]]}`,
+			`{"slotOfDeclared":["str"]}`,
+			`{"slotOfDeclared":[]}`,
+			`{"viaRef":[{"a":1}]}`,
+			`{"viaRef":"str"}`,
+			// The composition branches. The four non-array rows under
+			// allOfBranch are the false rejection.
+			`{"allOfBranch":[{"a":1}]}`,
+			`{"allOfBranch":"str"}`,
+			`{"allOfBranch":{"k":1}}`,
+			`{"allOfBranch":7}`,
+			`{"allOfBranch":null}`,
+			// Its control: a second branch declares the type, so the merge is
+			// no longer guessing and the plain slice is right.
+			`{"allOfDeclaringBranch":[{"a":1}]}`,
+			`{"allOfDeclaringBranch":[]}`,
+			`{"anyOfBranch":[{"a":1}]}`,
+			`{"anyOfBranch":"str"}`,
+			`{"oneOfBranch":[{"a":1}]}`,
+			`{"oneOfBranch":"str"}`,
+			// The keywords beside `items`.
+			`{"ownSlot":[{"a":1}]}`,
+			`{"ownSlot":"str"}`,
+			`{"ownSlot":[]}`,
+			`{"ownTail":[true,{"a":1}]}`,
+			`{"ownTail":"str"}`,
+			`{"ownTail":[true]}`,
+			`{"containsShape":[{"a":1}]}`,
+			`{"containsShape":"str"}`,
+			`{"declaredContains":[{"a":1}]}`,
+			// unevaluatedItems reads `contains` to learn which items it
+			// accounted for, so the delegation has to answer that reader too.
+			// Not listed: {"containsEvaluates":[{"a":1},{"b":2}]}, on which the
+			// oracle splits -- js-ajv calls it valid, python-jsonschema and
+			// go-jsonschema invalid -- so nothing here claims a verdict for it.
+			`{"containsEvaluates":[{"a":1}]}`,
+			`{"containsEvaluates":[{"a":1},{"a":2}]}`,
+			`{"containsEvaluates":"str"}`,
+			// Element sub-schemas the reduction could only half express.
+			`{"elemMinLength":["abcd"]}`,
+			`{"elemMinLength":[7]}`,
+			`{"elemMinLength":[null]}`,
+			`{"elemMinLength":"ab"}`,
+			`{"elemPattern":["aa"]}`,
+			`{"elemPattern":"b"}`,
+			`{"elemEnum":["x"]}`,
+			`{"elemEnum":"z"}`,
+			`{"elemNot":[7]}`,
+			`{"elemNot":"s"}`,
+			`{"elemUnion":["s"]}`,
+			`{"elemUnion":[7]}`,
+			`{"elemUnion":true}`,
+			// The nullable union, at the element and at the slot. [null] is the
+			// false rejection.
+			`{"elemNullableObject":[null]}`,
+			`{"elemNullableObject":[{}]}`,
+			`{"elemNullableObject":"str"}`,
+			`{"nullableSlotOfDeclared":[null]}`,
+			`{"nullableSlotOfDeclared":[{}]}`,
+			`{"nullableSlotOfDeclared":[]}`,
+			// What the reduction never touched, and must not lose.
+			`{"keptBounds":[{},{}]}`,
+			`{"keptBounds":"str"}`,
+			`{"keptUnique":[{"a":1},{"a":2}]}`,
+			`{"keptUnique":"str"}`,
+			`{"elemTrue":[1,"s",null]}`,
+			`{"elemFalse":[]}`,
+			`{"elemFalse":"str"}`,
+			`{"selfRef":["s"]}`,
+			`{"selfRef":"s"}`,
+		},
+		[]string{
+			`{"prop":[{}]}`,
+			`{"propRef":[{}]}`,
+			`{"declared":[{}]}`,
+			`{"inDeclaredArray":[[{}]]}`,
+			`{"inInferredArray":[[{}]]}`,
+			`{"mapValue":{"k":[{}]}}`,
+			`{"slotOfDeclared":[[{}]]}`,
+			`{"viaRef":[{}]}`,
+			`{"allOfBranch":[{}]}`,
+			`{"allOfDeclaringBranch":[{}]}`,
+			`{"allOfDeclaringBranch":"str"}`,
+			`{"allOfDeclaringBranch":7}`,
+			`{"allOfDeclaringBranch":null}`,
+			`{"anyOfBranch":[{}]}`,
+			`{"oneOfBranch":[{}]}`,
+			`{"ownSlot":[{}]}`,
+			`{"ownTail":[true,{}]}`,
+			// An array whose only element does not match the contains
+			// sub-schema contains no matching element, and neither does an
+			// empty one.
+			`{"containsShape":[{}]}`,
+			`{"containsShape":[]}`,
+			`{"declaredContains":[{}]}`,
+			`{"containsEvaluates":[]}`,
+			`{"containsEvaluates":[{}]}`,
+			`{"elemMinLength":["ab"]}`,
+			`{"elemPattern":["b"]}`,
+			`{"elemPattern":[7]}`,
+			`{"elemEnum":["z"]}`,
+			`{"elemNot":["s"]}`,
+			`{"elemUnion":[true]}`,
+			`{"elemNullableObject":["s"]}`,
+			`{"nullableSlotOfDeclared":["s"]}`,
+			`{"keptBounds":[{}]}`,
+			`{"keptUnique":[{"a":1},{"a":1}]}`,
+			`{"elemFalse":[1]}`,
+			// The recursion terminates on the data: the innermost array is the
+			// one that fails minItems.
+			`{"selfRef":[[[]]]}`,
+			`{"selfRef":[[]]}`,
+		},
+	)
+}
+
+// TestInferredArrayAtTheDocumentRootJudgesItsElement is issue #166 at the one
+// position a document has only one of.
+//
+// The whole schema is `items`, so the root type is the wrapper that accepts any
+// JSON value; the five non-array documents are what says the element check did
+// not turn into a type the decoder enforces.
+func TestInferredArrayAtTheDocumentRootJudgesItsElement(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/inferred_array_root.json", "InferredArrayRoot",
+		[]string{
+			`[{"a":1}]`,
+			`[]`,
+			`"str"`,
+			`{"k":1}`,
+			`7`,
+			`true`,
+			`null`,
+		},
+		[]string{
+			`[{}]`,
+			`[{"a":1},{}]`,
+		},
+	)
+}
+
+// TestInferredArrayFromAnAllOfBranchIsStillInferred is the composition row at
+// the root, and it is separate because the null only tells the two readings
+// apart there.
+//
+// The merge types this schema "array" off the branch's `items` so the merged
+// schema can be typed at all. Read as a declaration, the Go type became a plain
+// slice: the string, the object and the number died in the decoder and the null
+// died in the type's own null check, though the schema permits all four. Under
+// a *property* the null never reaches that check -- the property is a pointer
+// and the struct answers for it -- so a fixture that only had the property
+// position left the null rule unpinned.
+//
+// Verdicts from Bowtie over python-jsonschema, go-jsonschema and js-ajv,
+// unanimous on all nine documents.
+func TestInferredArrayFromAnAllOfBranchIsStillInferred(t *testing.T) {
+	runValidationCasesForType(t,
+		"testdata/schemas/regression/inferred_array_allof_branch_root.json", "InferredArrayAllOfBranchRoot",
+		[]string{
+			`[{"a":1}]`,
+			`[]`,
+			`"str"`,
+			`{"k":1}`,
+			`7`,
+			`true`,
+			`null`,
+		},
+		[]string{
+			`[{}]`,
+			`[{"a":1},{}]`,
+		},
+	)
+}
+
+// TestInferredArrayTupleUnderDraft7JudgesEachPosition is the same defect in the
+// tuple spelling drafts 4 to 7 use: `items` as an array of schemas, with
+// `additionalItems` governing everything past it.
+//
+// Neither keyword is reachable from a 2020-12 document, so the dialect is the
+// point: a fix pinned only by prefixItems cases would leave both of these.
+func TestInferredArrayTupleUnderDraft7JudgesEachPosition(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/inferred_array_tuple_draft7.json",
+		[]string{
+			`{}`,
+			`{"tup":[{"a":1}]}`,
+			`{"tup":[{"a":1},{"b":1}]}`,
+			`{"tup":"str"}`,
+			`{"tup":[]}`,
+			`{"one":[{"a":1}]}`,
+			`{"one":"str"}`,
+			`{"ref":[{"a":1}]}`,
+			`{"ref":"str"}`,
+		},
+		[]string{
+			`{"tup":[{}]}`,
+			`{"tup":[{"a":1},{}]}`,
+			`{"one":[{}]}`,
+			`{"ref":[{}]}`,
+		},
+	)
+}

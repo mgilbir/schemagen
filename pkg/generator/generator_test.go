@@ -899,18 +899,35 @@ func TestInferredArrayExtractsNestedRemoteItemType(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	var alias *InferredAliasDef
+	defs := map[string]TypeDef{}
 	for _, td := range ir.TypeDefs {
-		if d, ok := td.(*InferredAliasDef); ok && d.Name == "Root" {
-			alias = d
-			break
-		}
+		defs[td.TypeName()] = td
 	}
+	alias, _ := defs["Root"].(*InferredAliasDef)
 	if alias == nil {
 		t.Fatalf("expected root InferredAliasDef")
 	}
-	if alias.ItemsNested == nil || alias.ItemsNested.ItemsType != "integer" {
-		t.Fatalf("nested items = %#v, want integer", alias.ItemsNested)
+	// The outer array delegates its element to the type generated for the inner
+	// one, which delegates in turn to the type the remote $ref resolved to.
+	// Reading the inner schema here instead -- the ItemsNested this used to
+	// assert -- could only ever repeat the element's *declared type*, and
+	// dropped every other keyword beside it; see issue #166.
+	if alias.ItemsTypeName == "" {
+		t.Fatalf("root element delegates to no type: %#v", alias)
+	}
+	inner, _ := defs[alias.ItemsTypeName].(*InferredAliasDef)
+	if inner == nil {
+		t.Fatalf("root delegates to %q, which is no inferred array", alias.ItemsTypeName)
+	}
+	remoteName := inner.ItemsTypeName
+	if remoteName == "" {
+		if inner.ItemsType != "integer" {
+			t.Fatalf("nested items = %q, want integer", inner.ItemsType)
+		}
+	} else if got := defs[remoteName]; got == nil {
+		t.Fatalf("nested element delegates to %q, which is not generated", remoteName)
+	} else if ad, ok := got.(*AliasDef); !ok || ad.Underlying.GoTypeName() != "int64" {
+		t.Fatalf("nested element delegates to %q, which does not hold the remote integer: %#v", remoteName, got)
 	}
 	if alias.InferredGoType.GoTypeName() != "[]any" {
 		t.Fatalf("inferred Go type = %q, want []any", alias.InferredGoType.GoTypeName())

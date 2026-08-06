@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InferredArrayTupleDraft7",
+  "description": "Issue #166 in the tuple spelling drafts 4 to 7 use: `items` as an array of schemas, with `additionalItems` governing everything past it. Both took the same reduction as the 2020-12 prefixItems form -- each position kept its declared JSON type and dropped the rest -- and neither is reachable from a 2020-12 document, so the draft matters.",
+  "type": "object",
+  "properties": {
+    "tup": {
+      "$comment": "No \"type\":\"array\", so this is the inferred array. Position 0 names a shape and so does the tail.",
+      "items": [{ "type": "object", "required": ["a"] }],
+      "additionalItems": { "type": "object", "required": ["b"] }
+    },
+    "one": {
+      "$comment": "The single-schema form under the same dialect.",
+      "items": { "type": "object", "required": ["a"] }
+    },
+    "ref": {
+      "items": { "$ref": "#/definitions/needsA" }
+    }
+  },
+  "definitions": {
+    "needsA": { "type": "object", "required": ["a"] }
+  }
+}
