@@ -50,7 +50,7 @@ lint: fmt vet
 # the exact line to paste back here. Then re-run `make test-external` and triage
 # the delta before committing, because bumping the corpus is what makes every
 # figure in tests/external_known_failures.go and minValidatedGroups stale.
-JSTS_COMMIT := cf2e5e0ff2e3d90239c3b59e68ac4c080bd4ac92
+JSTS_COMMIT := cc73f5fa64c3b0d11f6c277db4edc22938994b54
 
 download-test-suite:
 	@if [ ! -d "$(JSTS_DIR)/.git" ]; then \

@@ -4247,6 +4247,43 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"link":"https://example.test/x"}`,
 			`{"id":"123e4567-e89b-12d3-a456-426614174000"}`,
 			`{"relPointer":"0"}`, `{"relPointer":"1/a"}`, `{"relPointer":"2#"}`,
+			// RFC 6570. These are the accept-controls for the expression
+			// rejections below, and the whole risk of issue #169's fix: this is
+			// the format where an over-strict reading turns a conforming
+			// template into a refused document.
+			//
+			// The corpus supplies four of them -- the two dictionary templates,
+			// "" and the two literal-boundary cases -- and nothing at either
+			// end of the max-length range, so "{v:1}" and "{v:9999}" are
+			// written here. Without those two a check that refused every prefix
+			// would satisfy the whole invalid list below.
+			`{"template":"http://example.com/dictionary/{term:1}/{term}"}`,
+			`{"template":"dictionary/{term:1}/{term}"}`,
+			`{"template":"http://example.com/dictionary"}`,
+			`{"template":""}`,
+			`{"template":"a%41b"}`, `{"template":"a😀b"}`,
+			// The two ends of max-length = %x31-39 0*3DIGIT.
+			`{"template":"{v:1}"}`, `{"template":"{v:9999}"}`,
+			// Every operator RFC 6570 defines -- op-level2, op-level3 and the
+			// five op-reserve characters. "{,x}" is the sharp one: "," is an
+			// operator there, so a check that split the body on "," before
+			// looking for one would report an empty leading varspec and refuse
+			// a template the grammar admits.
+			`{"template":"{+path}"}`, `{"template":"{#frag}"}`,
+			`{"template":"{.dom}"}`, `{"template":"{/seg}"}`,
+			`{"template":"{;p}"}`, `{"template":"{?a,b}"}`, `{"template":"{&q}"}`,
+			`{"template":"{=x}"}`, `{"template":"{,x}"}`, `{"template":"{!x}"}`,
+			`{"template":"{@x}"}`, `{"template":"{|x}"}`,
+			// A bare varspec, a list of them, and both modifiers.
+			`{"template":"{x,y,z}"}`, `{"template":"{v*}"}`, `{"template":"{.dom*}"}`,
+			`{"template":"{a_b.c%20d}"}`,
+			// The under-enforcement the check documents: varname is taken to be
+			// any non-empty run, and the literal character set is not checked.
+			// RFC 6570 refuses all five. They are here so the gap is a recorded
+			// verdict rather than something a later reader has to rediscover by
+			// planting it.
+			`{"template":"{v-w}"}`, `{"template":"{a b}"}`, `{"template":"{v%2}"}`,
+			`{"template":"a b"}`, `{"template":"a%zzb"}`,
 		},
 		[]string{
 			// The leap second is only the last second of the UTC day, so the
@@ -4370,6 +4407,29 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"intlHost":"xn--7a"}`,
 			`{"host":"xn--example-"}`,
 			`{"intlHost":"xn--example-"}`,
+			// RFC 6570, and the four forms issue #169 named. The check balanced
+			// braces and looked no further, so an expression could hold
+			// anything at all -- including nothing.
+			`{"template":"{}"}`,        // no variable-list
+			`{"template":"{a,,b}"}`,    // an empty varspec inside one
+			`{"template":"{v:0}"}`,     // max-length is 1..9999, so not zero
+			`{"template":"{v:10000}"}`, // ... and at most four digits
+			// The same three rules at their other edges. Each of the four above
+			// is one point of a rule, and a check written to refuse exactly
+			// those four strings would pass this test without implementing any
+			// of them.
+			`{"template":"{,}"}`,    // an operator with no variable-list after it
+			`{"template":"{+}"}`,    //
+			`{"template":"{a,}"}`,   // a trailing empty varspec
+			`{"template":"{v:}"}`,   // a prefix with no max-length
+			`{"template":"{v:01}"}`, // a leading zero, which %x31-39 excludes
+			`{"template":"{*}"}`,    // an explode with no varname
+			`{"template":"{v:1*}"}`, // modifier-level4 is a prefix or an explode, not both
+			// The two brace failures, which the balance check already refused
+			// and which the rewrite must keep refusing.
+			`{"template":"http://example.com/dictionary/{term:1}/{term"}`,
+			`{"template":"foo}bar"}`,
+			`{"template":"{a{b}"}`, // a "{" inside an expression body
 			// Still the ordinary failures.
 			`{"mail":"2962"}`,
 			`{"host":"-leading-hyphen"}`,

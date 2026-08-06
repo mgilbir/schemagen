@@ -16,6 +16,7 @@
     "span": {"type": "string", "format": "duration"},
     "link": {"type": "string", "format": "uri"},
     "linkRef": {"type": "string", "format": "uri-reference"},
+    "template": {"type": "string", "format": "uri-template"},
     "pointer": {"type": "string", "format": "json-pointer"},
     "relPointer": {"type": "string", "format": "relative-json-pointer"},
     "id": {"type": "string", "format": "uuid"}
