@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 at the schema form of `dependencies`. Normalize rewrites it into dependentSchemas, so it reaches the same reading -- on the four drafts that spell it this way and on v1, all of which assert `format`.",
+  "type": "object",
+  "dependencies": {
+    "t": {
+      "properties": {
+        "p": {
+          "type": "string",
+          "format": "email"
+        }
+      },
+      "required": [
+        "p"
+      ]
+    }
+  }
+}

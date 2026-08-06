@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/v1",
+  "$comment": "Issue #205's second repro. v1 reverses 2019-09 and asserts `format` again, which is why this cell is broken where its 2019-09 twin is correct.",
+  "type": "object",
+  "dependentSchemas": {
+    "t": {
+      "properties": {
+        "p": {
+          "format": "email"
+        }
+      },
+      "required": [
+        "p"
+      ]
+    }
+  }
+}

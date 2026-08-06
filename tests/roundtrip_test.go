@@ -7661,12 +7661,23 @@ func TestInlineForbiddingPositionsRejectEveryValue(t *testing.T) {
 // reading a format branch as accept-all refused every document there too --
 // which is why the fix is in one predicate rather than at the `not`.
 //
-// The documents whose verdict turns on the assertion itself are on neither list
-// under assertion, and deliberately: the negation forbids the conforming email
-// and the oneOf forbids "neither" and the number, and the generated code refuses
-// none of them. Those are missing checks rather than wrong ones, this change
-// does not claim them, and listing them as valid would pin the gap open against
-// the day somebody closes it. See acceptsEveryInstance.
+// The documents whose verdict turns on the assertion itself were on neither list
+// under assertion, because the generated code refused none of them: the
+// evaluator did not model `format`, so a negation over one was declined whole
+// (issue #194). Issue #205 closed that, and they are on the invalid list now --
+// the conforming e-mail, the oneOf's "neither", and the number that matches both
+// format branches.
+//
+// The number and the null moved the other way, from valid to invalid, and that
+// correction is the point of this note. `format` is a no-op on an instance that
+// is not a string -- the pinned suite says so outright, in
+// draft7/optional/format/email.json, whose cases "all string formats ignore
+// integers" and "... ignore nulls" mark 12 and null *valid* against
+// {"format":"email"}. So 5 and null satisfy the inner schema, and a `not` over
+// it must reject them. Listing them as valid did not describe the assertion
+// posture at all; it described a negation that had been declined, which is why
+// the same two documents are correctly valid on the annotating arm above only by
+// coincidence of a different route. See acceptsEveryInstance.
 func TestNotOverAFormatFollowsTheDialect(t *testing.T) {
 	t.Run("2020-12 annotates, so the negation forbids everything", func(t *testing.T) {
 		runValidationCases(t,
@@ -7696,19 +7707,36 @@ func TestNotOverAFormatFollowsTheDialect(t *testing.T) {
 			"testdata/schemas/regression/not_over_format.json",
 			formatAssertingConfig(),
 			[]string{
+				// The non-conforming string is the only value the inner schema
+				// refuses, so it is the only one the negation admits.
 				`{"notEmail":"not-an-email"}`,
-				`{"notEmail":5}`,
-				`{"notEmail":null}`,
 				`{"notEmailInItems":[]}`,
 				`{"notEmailInItems":["not-an-email"]}`,
-				`{"notEmailInItems":[5]}`,
 				// Each satisfies exactly one branch, and the whole schema
 				// refused every value of any kind before this.
 				`{"formatBranches":"a@b.com"}`,
 				`{"formatBranches":"1.2.3.4"}`,
 				`{}`,
 			},
-			nil,
+			[]string{
+				// The conforming e-mail: the inner schema accepts it, so the
+				// negation refuses it. This is the check issue #194 recorded as
+				// missing.
+				`{"notEmail":"a@b.com"}`,
+				`{"notEmailInItems":["a@b.com"]}`,
+				// A format says nothing about an instance that is not a string,
+				// so the number and the null *satisfy* {"format":"email"} and
+				// the negation refuses them. The suite's own "all string formats
+				// ignore integers" and "... ignore nulls" cases are what settle
+				// this; see the note above.
+				`{"notEmail":5}`,
+				`{"notEmail":null}`,
+				`{"notEmailInItems":[5]}`,
+				// Neither branch: zero matches, so the oneOf fails.
+				`{"formatBranches":"neither"}`,
+				// Both branches ignore a number, so it matches two of them.
+				`{"formatBranches":5}`,
+			},
 		)
 	})
 }

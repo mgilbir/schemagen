@@ -190,11 +190,23 @@ func TestUnmodelledKeywordsFailClosedAndAreReported(t *testing.T) {
 		// TestRefusedBranchesCompileToTheRuntimeEvaluator, in the other
 		// direction.
 		//
-		// "format" stays out of the evaluator's model on purpose: schemagen
-		// asserts a format only where the schema gives the position a string
-		// type, and a node evaluator that quietly ignored it would enforce a
-		// different schema here than the static path does two lines away.
-		{"format in a branch", `{"not":{"anyOf":[true],"format":"email"}}`, "not"},
+		// "format" used to sit here, on the grounds that a node evaluator
+		// quietly ignoring it would enforce a different schema than the static
+		// path did. Issue #205 is what that cost: every fail-closed gate in the
+		// generator hands a partially-read sub-schema to this evaluator, so a
+		// keyword it refuses is one nothing reads, and the assertion was lost at
+		// `then`, `dependentSchemas`, `propertyNames`, `unevaluated*` and every
+		// position reaching constraintOnlyNamedType. It is modelled now, from
+		// the same posture predicate and the same helper the static path uses,
+		// so the two agree by construction rather than by omission.
+		//
+		// A vendor keyword takes its place at this position, because the
+		// property under test is the *position* -- a `not` whose operand carries
+		// something unmodelled must fail closed, since inside a negation a
+		// dropped keyword widens the negation. An unknown keyword is the case
+		// that stays unmodelled by construction: nothing is known about what it
+		// demands.
+		{"an unmodelled keyword in a branch", `{"not":{"anyOf":[true],"x-vendor":1}}`, "not"},
 		{"an unknown keyword", `{"anyOf":[{"x-vendor":1},{"type":"string"}]}`, "anyOf"},
 		{"a vendor keyword at the root", `{"x-vendor":{"a":1}}`, "x-vendor"},
 	}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 at `contains` with an untyped sub-schema. isAlwaysTrueSchema reads a list of struct fields and has no posture to read `format` with, so it called this an always-true sub-schema and counted every element as a match.",
+  "type": "array",
+  "contains": {
+    "format": "email"
+  }
+}

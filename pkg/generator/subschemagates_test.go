@@ -94,6 +94,53 @@ func TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps(t *testing.T) {
 			"is a consequence declared fully read that nothing reads, which is issue #209 again.")
 }
 
+// TestContentSchemaNeverAssertsInAnyDialect is the claim keywordsOnly rests on
+// when it admits `contentSchema` to the evaluator's model without an arm to
+// evaluate it.
+//
+// The other three keywords of the two annotation vocabularies are safe to admit
+// and leave unchecked because an argument this generator cannot judge is one
+// every draft says to ignore. `contentSchema` is not like that: it applies a
+// sub-schema to the *decoded* document, which no node here evaluates, so
+// admitting it while asserting would be a conjunct dropped in silence -- and
+// inside a `not` a dropped conjunct widens the negation into a false reject.
+//
+// It is safe only because the two spans do not overlap: draft 7 is the one
+// dialect that asserts the content vocabulary, and `contentSchema` arrived in
+// 2019-09, where the vocabulary is annotation-only. The dialect pass clears the
+// keyword on every draft before 2019-09, so a node can never carry an asserting
+// one. That is an argument from two tables, which is exactly the kind that stops
+// being true when somebody edits one of them.
+func TestContentSchemaNeverAssertsInAnyDialect(t *testing.T) {
+	// Driven through the $schema URI rather than by setting DetectedDraft,
+	// because that is what decides the answer: draftForSchema reads
+	// schema.DetectDraft, which reads the URI. A schema built by assigning the
+	// enum answers DraftUnknown for every draft, contentAssertsFor is then false
+	// throughout, and the loop below would pass without ever asking the question.
+	for uri, draft := range map[string]schema.Draft{
+		"http://json-schema.org/draft-03/schema#":      schema.Draft03,
+		"http://json-schema.org/draft-04/schema#":      schema.Draft04,
+		"http://json-schema.org/draft-06/schema#":      schema.Draft06,
+		"http://json-schema.org/draft-07/schema#":      schema.Draft07,
+		"https://json-schema.org/draft/2019-09/schema": schema.Draft201909,
+		"https://json-schema.org/draft/2020-12/schema": schema.Draft202012,
+		"https://json-schema.org/v1":                   schema.DraftV1,
+	} {
+		s := &schema.Schema{Schema: uri}
+		if got := schema.DetectDraft(s); got != draft {
+			t.Fatalf("%s detected as %v, want %v; the rest of this test would be asking about the wrong dialect", uri, got, draft)
+		}
+		g := New(Config{PackageName: "testpkg"})
+		if schema.KeywordDefinedIn("contentSchema", draft) && g.contentAssertsFor(s) {
+			t.Errorf("%v both defines contentSchema and asserts the content vocabulary; "+
+				"keywordsOnly admits the keyword with nothing to evaluate it, so a schema stating "+
+				"it inside a `not` would have that conjunct dropped and the negation widened. "+
+				"Either give the evaluator an arm for it or refuse it where keywordsOnly admits "+
+				"the vocabularies.", draft)
+		}
+	}
+}
+
 func assertSameKeywords(t *testing.T, gateName string, gate map[string]bool, sourceName string, read map[string]bool, why string) {
 	t.Helper()
 	for _, key := range sortedBoolKeys(read) {

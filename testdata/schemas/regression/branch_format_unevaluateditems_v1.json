@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/v1",
+  "$comment": "Issue #205 at `unevaluatedItems`, by the same route as its properties twin.",
+  "type": "array",
+  "prefixItems": [
+    {
+      "type": "integer"
+    }
+  ],
+  "unevaluatedItems": {
+    "type": "string",
+    "format": "email"
+  }
+}

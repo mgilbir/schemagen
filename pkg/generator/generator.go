@@ -1755,6 +1755,25 @@ func (g *Generator) formatRulesForDialect(s *schema.Schema, rules []ValidationRu
 	return rules
 }
 
+// formatNameForDialect is formatRulesForDialect for a caller holding a schema
+// rather than a rule set: the spelling of s.Format that this generator checks it
+// under, given s's own draft.
+//
+// The runtime evaluator compiles the name into a node instead of building a
+// ValidationRule, so it cannot reach the rewrite through formatRulesForDialect
+// and would otherwise compile draft 3's "time" as RFC 3339's full-time -- which
+// demands an offset draft 3 does not, turning a valid document into a rejection.
+// The two spell the rewrite once, here, rather than twice.
+func (g *Generator) formatNameForDialect(s *schema.Schema) string {
+	if s == nil || s.Format == nil {
+		return ""
+	}
+	if *s.Format == "time" && g.draftForSchema(s) == schema.Draft03 {
+		return Draft3TimeFormat
+	}
+	return *s.Format
+}
+
 // formatGoTypeForSchema returns the Go type the schema's "format" maps to, or
 // nil when the value must stay a string.
 //
@@ -6369,7 +6388,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
 			Checks:         checks,
-			FullyChecked:   oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
+			FullyChecked:   g.oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
 			IntegerDecode:  g.integerDecodeFor(result.Type, variant),
 		})
 	}
@@ -6695,6 +6714,23 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 // $ref, enum, const, format, allOf, not -- is either enforced by the variant
 // type's own Validate or not enforced at all, and neither is something selection
 // can claim to have decided.
+// annotationVocabularyKeywords names the two vocabularies whose posture the
+// dialect decides: "format" and the content keywords. A keyword here constrains
+// a value only where its dialect asserts it and this generator can judge the
+// argument -- which is exactly what assertsAnnotationVocabulary answers.
+var annotationVocabularyKeywords = map[string]bool{
+	"format":          true,
+	"contentEncoding": true, "contentMediaType": true, "contentSchema": true,
+}
+
+// annotationVocabularyRuleTypes is annotationVocabularyKeywords as ValidationRule
+// types. The content keywords compose into a single "content" rule, because
+// contentMediaType judges the bytes contentEncoding produced, so there are two
+// rule types for four keywords.
+var annotationVocabularyRuleTypes = map[string]bool{
+	"format": true, "content": true,
+}
+
 var oneOfSelectableKeywords = map[string]bool{
 	"type": true, "required": true,
 	"minimum": true, "maximum": true,
@@ -6722,7 +6758,20 @@ var oneOfSelectableKeywords = map[string]bool{
 // function has not been taught about: the marshaled key set is what is
 // consulted, so a keyword the parser learns later arrives here as unknown rather
 // than as absent.
-func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFields []string, checks []ValidationRule) bool {
+//
+// `format` and the content vocabulary are the exception, and they are a method's
+// worth of exception: whether they are answered is the *dialect's* answer, not
+// the key set's. Where they annotate they demand nothing, so selection has
+// decided the branch as surely as if the keyword were absent -- and reading them
+// as unanswered instead cost {"oneOf":[{"type":"string","contentEncoding":
+// "base64"},{"type":"boolean"}]} its union on 2019-09 and 2020-12, where the
+// keyword is inert, while its draft-7 twin kept one. That the two produced the
+// same shape at all was luck: the union survived only because no evaluator could
+// read the branch either, and issue #205 gave the evaluator that reading. Where
+// they assert, the branch is not decided by selection -- but it does not reach
+// here, because declaredFormatStringSchema and declaredContentStringSchema give
+// it a named type first and oneOfBranchOutrunsSelection stops at the nil.
+func (g *Generator) oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFields []string, checks []ValidationRule) bool {
 	if variant == nil {
 		return false
 	}
@@ -6749,9 +6798,13 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 		return false
 	}
 	for key := range present {
-		if !oneOfSelectableKeywords[key] {
-			return false
+		if oneOfSelectableKeywords[key] {
+			continue
 		}
+		if annotationVocabularyKeywords[key] && !g.assertsAnnotationVocabulary(variant) {
+			continue
+		}
+		return false
 	}
 	if !sameStringSet(variant.Required, requiredFields) {
 		return false
@@ -6768,6 +6821,15 @@ func oneOfVariantFullyChecked(variant *schema.Schema, goType GoType, requiredFie
 	}
 	for _, r := range extractValidationRules("", "", variant) {
 		if ruleVacuousForType(goType, r.RuleType) {
+			continue
+		}
+		// extractValidationRules builds a "format" and a "content" rule whatever
+		// the dialect says, and every caller that emits one drops it again when
+		// the posture is annotation -- see the two filters in generateStructDef.
+		// This caller emits nothing, it only counts, so it has to apply the same
+		// filter: a rule that will never be written is not a demand selection
+		// failed to answer.
+		if annotationVocabularyRuleTypes[r.RuleType] && !g.assertsAnnotationVocabulary(variant) {
 			continue
 		}
 		if !checked[r.RuleType] {
@@ -11815,7 +11877,53 @@ func (g *Generator) acceptsEveryInstance(s *schema.Schema) bool {
 	if s == nil || !isAcceptAllSchema(s) {
 		return false
 	}
-	return !(s.Format != nil && g.formatAssertsFor(s))
+	return !g.assertsAnnotationVocabulary(s)
+}
+
+// assertsAnnotationVocabulary reports whether s states a "format" or content
+// keyword that binds as an assertion on s's own dialect *and* names an argument
+// this generator can judge -- which together is the only way one of them
+// constrains a value here.
+//
+// Both halves are needed. The posture decides whether the keyword asserts at
+// all; the argument decides whether there is anything to assert with. A format
+// this generator does not recognise is one every draft says to ignore, and an
+// encoding outside ContentEncodingCheckable is documented as carried as an
+// annotation, so a schema stating either really does admit every value -- which
+// is what the callers below are asking.
+//
+// It is the one question the two hand-written "constrains nothing" predicates --
+// isAcceptAllSchema and isAlwaysTrueSchema -- cannot answer for themselves.
+// Both read a list of struct fields, and a field is either set or it is not;
+// whether a set `format` constrains anything is the *generator's* question,
+// because the dialect decides the posture and the two Config overrides can
+// reverse it. So both lists omit these keywords, and both therefore answer "this
+// schema constrains nothing" for {"format":"email"} and for
+// {"contentEncoding":"base64"} on every dialect, including the ones where those
+// are the whole of what the schema demands.
+//
+// That is issue #205 at `contains`: {"contains":{"format":"email"}} under draft 7
+// took the always-true arm, every element counted as a match, and an array of
+// non-addresses was accepted. The `not` callers had the format half of this
+// patched inline at acceptsEveryInstance; the content half was never patched and
+// the other predicate never was at all, which is why it is one function now
+// rather than a third copy of the condition.
+//
+// Only assertion is reported. Where the dialect annotates, the schema really
+// does constrain nothing and the always-true arm is right.
+func (g *Generator) assertsAnnotationVocabulary(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if s.Format != nil && g.formatAssertsFor(s) && FormatCheckableOnString(g.formatNameForDialect(s)) {
+		return true
+	}
+	if g.contentAssertsFor(s) {
+		if _, ok := contentCheckFor(s); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // declaredTypeAdmitsNoEnumMember reports whether a schema lists members its own
@@ -15542,7 +15650,13 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	}
 
 	// Boolean true or always-true schema: every element matches.
-	if isAlwaysTrueSchema(containsSch) {
+	//
+	// Except where the only thing it states is a `format` or a content keyword
+	// its dialect asserts: isAlwaysTrueSchema reads struct fields and has no
+	// posture to read those with, so it called {"contains":{"format":"email"}}
+	// an always-true schema and counted every element. See
+	// assertsAnnotationVocabulary.
+	if isAlwaysTrueSchema(containsSch) && !g.assertsAnnotationVocabulary(containsSch) {
 		return &ContainsDef{IsTrue: true}, minC, maxC
 	}
 
@@ -16994,7 +17108,7 @@ func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
 	if goType == nil {
 		return false
 	}
-	return !oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
+	return !g.oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
 }
 
 // oneOfUnionOutrunsBranches reports whether the sealed-interface union would

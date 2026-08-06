@@ -5015,16 +5015,21 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 			}`,
 			wantInLiteral: []string{`Required: []string{"a"}`},
 		},
-		// The row where nothing is left to route to. The evaluator models no
-		// `format` (see validatorKeywords), so the group reaches neither reading
-		// and goes unenforced. That is under-enforcement chosen over a condition
-		// decided with a keyword ignored, which would reject documents the schema
-		// allows -- the trade this whole test exists to hold.
+		// The row where nothing is left to route to. Neither reading can judge a
+		// keyword nothing models, so the group reaches neither and goes
+		// unenforced. That is under-enforcement chosen over a condition decided
+		// with a keyword ignored, which would reject documents the schema allows
+		// -- the trade this whole test exists to hold.
+		//
+		// The keyword was `format` until issue #205 gave the evaluator an arm for
+		// it, at which point this row compiled and stopped testing the trade. A
+		// vendor keyword is what cannot stop being unmodelled: nothing is known
+		// about what it demands, so both readings must go on refusing it.
 		"if states what neither reading can judge": {
 			input: `{
 				"title": "Doc", "type": "object",
 				"properties": {"a": {"type":"string"}},
-				"if": {"properties": {"a": {"format": "email"}}},
+				"if": {"properties": {"a": {"x-vendor": 1}}},
 				"then": {"required": ["a"]}
 			}`,
 		},
@@ -5159,21 +5164,39 @@ func TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator(t *testing.T)
 // TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines is
 // the other half, and the one that keeps issue #64's answer alive.
 //
-// The evaluator deliberately models no `format` (see validatorKeywords), so a
-// group stating one is declined and there is nothing to route to. The lenient
-// reading is then the best on offer and runs exactly as #64 left it: the `type`
-// beside the format is enforced, the format is dropped, and the condition keeps
-// its check rather than the group being thrown away over one keyword.
+// Where the evaluator declines the group there is nothing to route to, so the
+// lenient reading is the best on offer and runs exactly as #64 left it: the
+// property it cannot read is dropped, the property beside it keeps its checks,
+// and the condition keeps its own rather than the group being thrown away over
+// one keyword.
+//
+// The probe was `format` until issue #205 taught the evaluator to model it, at
+// which point this group compiled and the leniency below stopped being reached.
+// A vendor keyword replaces it, for the reason
+// TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt gives: an unrecognised keyword
+// is the case that cannot become readable later, because nothing is known about
+// what it demands.
+//
+// That change moves what the row can claim, and the claim is written to the new
+// shape rather than around it. `format` was a keyword the lenient reading kept a
+// *sibling* of, so property "a" survived judged by its type alone; a vendor
+// keyword makes objectPropertyChecksLenient refuse the property whole. So the
+// surviving conjuncts are named by a second property, which is #64's own
+// sentence -- an inexpressible property does not take the others with it -- and
+// by the branch's `required`, which outlives both.
 func TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc", "type": "object",
 		"properties": {"kind": {"type":"string"}},
 		"if": {"required": ["kind"]},
-		"then": {"required": ["a"], "properties": {"a": {"type":"string","format":"email"}}}
+		"then": {"required": ["a"], "properties": {
+			"a": {"x-vendor": 1},
+			"b": {"type":"string","minLength":2}
+		}}
 	}`)
 	doc := structNamed(t, ir, "Doc")
 	if hasRuntimeBranchCheck(doc.RuntimeBranchChecks, "if") {
-		t.Fatalf("the group was compiled although the evaluator models no `format`: %+v", doc.RuntimeBranchChecks)
+		t.Fatalf("the group was compiled although the evaluator models no vendor keyword: %+v", doc.RuntimeBranchChecks)
 	}
 	if len(doc.ObjectConditionals) != 1 {
 		t.Fatalf("expected one conditional group; got %+v", doc.ObjectConditionals)
@@ -5193,8 +5216,8 @@ func TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines(
 		}
 		got[prop.JSONName] = kinds
 	}
-	if len(got) != 1 || !slicesEqualString(got["a"], []string{"type"}) {
-		t.Errorf("then constrains %v, want a judged by its type alone", got)
+	if len(got) != 1 || !slicesEqualString(got["b"], []string{"type", "minLength"}) {
+		t.Errorf("then constrains %v, want b judged by its type and minLength and a dropped", got)
 	}
 }
 
@@ -6319,9 +6342,16 @@ func TestAnyOfWithAVacuousBranchGainsNoCheck(t *testing.T) {
 // forbids methods on and which therefore enforces nothing at all -- so trading
 // one for the other would answer a false rejection with a false acceptance of
 // every document the schema forbids. rawWrapperDef is asked rather than reasoned
-// about, and `format` is a keyword it does not model, so this group keeps its
-// struct. The scalar branch stays unreachable here; that is the evaluator's
+// about. The scalar branch stays unreachable here; that is the evaluator's
 // coverage, not this arm's decision.
+//
+// The branch used to say {"type":"string","format":"ipv4"}, because `format` was
+// then outside validatorKeywords and so a cheap way to make the evaluator
+// decline. Issue #205 put `format` into the evaluator's model, which made this
+// input compile and stopped it testing anything. A vendor keyword replaces it:
+// what has to stay unreadable is *some* keyword, and an unknown one is the case
+// that cannot become readable later, since nothing is known about what it
+// demands.
 func TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt(t *testing.T) {
 	ir := generateForItemTest(t, `{
 		"title": "Doc",
@@ -6329,7 +6359,7 @@ func TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt(t *testing.T) {
 		"properties": {
 			"a": {"anyOf": [
 				{"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}}},
-				{"type": "string", "format": "ipv4"}
+				{"type": "string", "x-vendor": 1}
 			]}
 		}
 	}`)
@@ -7003,7 +7033,7 @@ func TestOneOfVariantStatingMoreThanSelectionTestsIsNotFullyChecked(t *testing.T
 	}
 	branch.Normalize()
 	anyType := &PrimitiveType{Name: "any"}
-	if oneOfVariantFullyChecked(&branch, anyType, branch.Required, nil) {
+	if New(Config{PackageName: "testpkg"}).oneOfVariantFullyChecked(&branch, anyType, branch.Required, nil) {
 		t.Fatalf("oneOfVariantFullyChecked(%s) = true; its enum is tested nowhere, so selection cannot claim to have judged the branch", branchJSON)
 	}
 }
@@ -8332,17 +8362,22 @@ func TestArrayPropertyUnevaluatedItemsSeesThroughAllOf(t *testing.T) {
 	})
 
 	t.Run("static-count", func(t *testing.T) {
-		// `format` is outside validatorKeywords too, so neither evaluator can
-		// carry this subtree and the static count is what has to be right. This
-		// is the arm the subtest above used to exercise, and it is still live:
-		// an allOf branch has to match, so what it evaluates is evaluated for
-		// every value and no runtime choice enters.
+		// A keyword outside validatorKeywords, so neither evaluator can carry
+		// this subtree and the static count is what has to be right. This is the
+		// arm the subtest above used to exercise, and it is still live: an allOf
+		// branch has to match, so what it evaluates is evaluated for every value
+		// and no runtime choice enters.
+		//
+		// The unreadable keyword was `format` until issue #205 taught the
+		// evaluator to model it, at which point this subtree compiled and the
+		// static count stopped being reached. A vendor keyword is the probe now,
+		// for the reason TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt gives.
 		ir := generateForItemTest(t, `{
 			"title": "Doc",
 			"type": "object",
 			"properties": {
 				"arr": {"type":"array",
-				        "allOf":[{"prefixItems":[{"type":"string","format":"email"}]}],
+				        "allOf":[{"prefixItems":[{"type":"string","x-vendor":1}]}],
 				        "unevaluatedItems": false}
 			},
 			"required": ["arr"]

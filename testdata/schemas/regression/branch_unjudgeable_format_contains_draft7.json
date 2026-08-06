@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205's other direction: a `format` the dialect asserts and this generator has no checker for. Every draft says to ignore a format it does not recognise, so the sub-schema really does admit every value and `contains` is satisfied by any element at all -- while the empty array still fails, because `contains` demands a match. Reading the posture without asking whether the argument can be judged makes the sub-schema look constraining, the always-true arm is skipped, the delegation finds nothing to generate, and the keyword is dropped whole -- which accepts the empty array. See assertsAnnotationVocabulary.",
+  "type": "array",
+  "contains": { "format": "x-unknown-format" }
+}

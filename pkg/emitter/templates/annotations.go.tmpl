@@ -48,6 +48,21 @@ type _schemaNode struct {
 	MinLength *int
 	MaxLength *int
 	Pattern   *string
+{{- if .AnnotationsFormats}}
+
+	// Format is set only where the schema's own dialect asserts "format" and
+	// this generator has a check for the name; on a dialect that annotates it,
+	// and for a format nothing here judges, the node carries no field, because
+	// there is nothing to judge rather than something skipped.
+	Format *string
+{{- end}}
+{{- if .AnnotationsContent}}
+
+	// The content vocabulary, on the one dialect that asserts it. Set under the
+	// same rule as Format: present only where a check is going to be made.
+	ContentEncoding  *string
+	ContentMediaType *string
+{{- end}}
 
 	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
 	Items       *_schemaNode  // items as a single schema: applies past the tuple
@@ -293,6 +308,23 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 {{- if .AnnotationsPattern}}
 	if n.Pattern != nil && !_dynStrOK(v, func(s string) bool { return _dynPatternOK(*n.Pattern, s) }) {
 		return res.fail("string does not match the required pattern")
+	}
+{{- end}}
+{{- if .AnnotationsFormats}}
+	// _dynStrOK, so a non-string passes: "format" is defined over strings and
+	// says nothing about a number, an object or a null. That is the same reading
+	// every other position takes -- a format check is built against a value the
+	// schema has already made a string, and propertyNames applies one to a key,
+	// which is a string wherever it appears.
+	if n.Format != nil && !_dynStrOK(v, func(s string) bool { return _dynFormatOK(*n.Format, s) }) {
+		return res.fail("string does not satisfy the required format")
+	}
+{{- end}}
+{{- if .AnnotationsContent}}
+	if (n.ContentEncoding != nil || n.ContentMediaType != nil) && !_dynStrOK(v, func(s string) bool {
+		return schemagenContentString(s, _dynStrOr(n.ContentEncoding), _dynStrOr(n.ContentMediaType)) == nil
+	}) {
+		return res.fail("string does not satisfy the content vocabulary")
 	}
 {{- end}}
 
@@ -707,6 +739,47 @@ func _dynMemberMatches(members []_schemaMember, key string) bool {
 		}
 	}
 	return false
+}
+{{- end}}
+{{- if .AnnotationsFormats}}
+
+// _dynFormatOK applies a "format" assertion, dispatching to the same helper
+// every other position in this package calls for the same format name.
+//
+// There is one arm per format the compiled schemas actually name, rather than
+// one per format schemagen can check. A switch over all of them would name the
+// four hostname helpers whatever the schemas said, and those live in the block
+// that needs golang.org/x/net/idna -- so a package asserting nothing but
+// `format: date` would acquire that dependency for an arm it never reaches.
+//
+// A name with no arm returns true. It cannot occur: the node carries a format
+// only where FormatCheckableOnString admitted it, and a format admitted there
+// and missing here is a build failure at the call rather than a silent pass.
+// The default exists because Go requires the function to return.
+func _dynFormatOK(format, s string) bool {
+	switch format {
+{{- range .AnnotationsFormats}}
+{{- $fn := formatHelperName . true}}
+{{- if $fn}}
+	case {{printf "%q" .}}:
+		return {{$fn}}(s) == nil
+{{- end}}
+{{- end}}
+	}
+	return true
+}
+{{- end}}
+{{- if .AnnotationsContent}}
+
+// _dynStrOr reads an optional node field as a string, with "" meaning the schema
+// stated no such keyword. schemagenContentString takes "" for either argument
+// and skips that half of the check, which is the same reading ContentCheck gives
+// the static path.
+func _dynStrOr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 {{- end}}
 {{- end}}

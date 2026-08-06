@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Issue #205 at the *condition* rather than the consequence. objectConditionalBranch holds an `if` to an exact-or-nothing bar over `properties` and `required`, and \"nothing\" means the whole group is dropped -- so a condition stating `minProperties`, which that reading cannot express, left `then` asserting nothing at all. That is the same false accept as the lenient consequence, one keyword earlier, and it is the arm conditionalReadWhole answers with `return false`.",
+  "type": "object",
+  "if": { "minProperties": 2 },
+  "then": {
+    "properties": { "p": { "type": "string", "format": "email" } },
+    "required": ["p"]
+  }
+}

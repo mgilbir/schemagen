@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$comment": "The annotating twin of branch_format_dependentschemas_v1.",
+  "type": "object",
+  "dependentSchemas": {
+    "t": {
+      "properties": {
+        "p": {
+          "format": "email"
+        }
+      },
+      "required": [
+        "p"
+      ]
+    }
+  }
+}

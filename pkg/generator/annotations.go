@@ -60,6 +60,16 @@ func allowing(modelled map[string]bool) map[string]bool {
 // over a schema that was about to become `type X any`.
 var annotationKeywords = allowing(map[string]bool{
 	"type": true, "const": true, "multipleOf": true, "minimum": true, "maximum": true,
+	// The two annotation vocabularies are here as well as in validatorKeywords,
+	// rather than recorded as a difference between the lists, because the reason
+	// the lists differ does not apply to them. The rest of the difference is
+	// "the static path already checks this", and for these two at a branch
+	// position it does not -- that absence is issue #205. A schema this list
+	// refuses is offered to the whole-schema evaluator, so leaving them out
+	// would only move the refusal, and TestKeywordAllowListsAgreeOnWhatConstrainsNothing
+	// requires anything validatorKeywords has and this does not to say why.
+	"format":          true,
+	"contentEncoding": true, "contentMediaType": true, "contentSchema": true,
 	"prefixItems": true, "items": true, "additionalItems": true,
 	"contains": true, "minContains": true, "maxContains": true,
 	"allOf": true, "anyOf": true, "oneOf": true,
@@ -71,13 +81,36 @@ var annotationKeywords = allowing(map[string]bool{
 // asked to enforce a whole schema, rather than only the array-annotation subset.
 //
 // The keywords that are absent are as much of the design as the ones present.
-// "format" is left out because schemagen asserts a format only where the schema
-// gives the position a string type, and a node evaluator that quietly ignored it
-// would enforce a different schema here than the static path does two lines
-// away. The content keywords are left out because nothing here models them.
 // "dependencies", "extends" and "disallow" are left out because Normalize
 // rewrites them into modern keywords but leaves the originals in place, so
 // accepting the key would risk reading a schema twice.
+//
+// "format" and the content vocabulary used to be left out, and issue #205 is
+// what that cost. The reason given was that a node evaluator quietly ignoring
+// `format` "would enforce a different schema here than the static path does two
+// lines away" -- which is an argument against an evaluator that *ignores* the
+// keyword, not against one that enforces it. Every gate that fails closed over a
+// partially-read sub-schema hands it to this evaluator (issue #196's remedy,
+// landed five times over), so a keyword this list refuses is not a keyword read
+// less exactly: it is a keyword not read at all, at `dependentSchemas`,
+// `propertyNames`, `unevaluated*` and every position that reaches
+// constraintOnlyNamedType. The evaluator declined, the partial static check ran
+// as before, and the assertion vanished with no warning.
+//
+// They are modelled now, and the divergence the old comment feared is answered
+// by construction rather than by omission: nodeBuilder.literal emits a check
+// from the same two predicates the static path uses -- formatAssertsFor for the
+// posture and FormatCheckableOnString for whether this generator can judge the
+// string at all -- and the generated arm calls the same schemagenFormat* helper
+// every other position calls. One posture, one helper, so the two lines cannot
+// say different things. The content vocabulary is the same arrangement over
+// contentAssertsFor and the two Checkable predicates.
+//
+// keywordsOnly is where that gating lives, because the question is not "is this
+// keyword in the list" but "will a check be emitted for it": a format the
+// dialect asserts and this generator cannot judge is still refused, since
+// dropping it inside a `not` widens the negation into a false reject. See
+// formatNodeAdmissible.
 //
 // "$dynamicRef" and "$recursiveRef" are here, but they are the two entries a
 // caller may still be refused over: the tree is inlined, and where such a
@@ -98,6 +131,8 @@ var validatorKeywords = allowing(map[string]bool{
 	"multipleOf": true, "minimum": true, "maximum": true,
 	"exclusiveMinimum": true, "exclusiveMaximum": true, "divisibleBy": true,
 	"minLength": true, "maxLength": true, "pattern": true,
+	"format":          true,
+	"contentEncoding": true, "contentMediaType": true, "contentSchema": true,
 	"prefixItems": true, "items": true, "additionalItems": true,
 	"minItems": true, "maxItems": true, "uniqueItems": true,
 	"contains": true, "minContains": true, "maxContains": true,
@@ -488,6 +523,31 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if s.Pattern != nil {
 		add(fmt.Sprintf("Pattern: _strPtr(%q),", *s.Pattern))
 		b.usesPattern = true
+	}
+
+	// "format" and the content vocabulary, on the dialects that assert them.
+	//
+	// keywordsOnly has already refused any schema stating one of these that
+	// asserts and cannot be judged, so reaching here with an argument no helper
+	// decides means the keyword annotates -- and an annotation compiles to no
+	// field, which is exact rather than partial. The posture is asked again
+	// rather than inferred from having got this far, because these two arms are
+	// what the generated code is, and a check emitted where the dialect says
+	// "annotation" is a false reject.
+	if s.Format != nil && b.g != nil && b.g.formatAssertsFor(s) {
+		if name := b.g.formatNameForDialect(s); FormatCheckableOnString(name) {
+			add(fmt.Sprintf("Format: _strPtr(%q),", name))
+		}
+	}
+	if b.g != nil && b.g.contentAssertsFor(s) {
+		if check, ok := contentCheckFor(s); ok {
+			if check.Encoding != "" {
+				add(fmt.Sprintf("ContentEncoding: _strPtr(%q),", check.Encoding))
+			}
+			if check.MediaType != "" {
+				add(fmt.Sprintf("ContentMediaType: _strPtr(%q),", check.MediaType))
+			}
+		}
 	}
 
 	if s.MinItems != nil {
@@ -918,6 +978,29 @@ func (b *nodeBuilder) keywordsOnly(s *schema.Schema) bool {
 			return false
 		}
 	}
+	// Nothing further is asked about `format` or the content vocabulary, and
+	// that is a claim rather than an omission.
+	//
+	// The worry a gate here would answer is the one #195 states for `not`: a
+	// node that admitted a keyword and then quietly ignored it would *widen* a
+	// negation into a false reject. It does not arise, because the argument this
+	// evaluator emits no check for is exactly the argument no position in this
+	// generator emits a check for. FormatCheckableOnString and FormatHelperName
+	// name the same set (TestFormatHelperNamesCoverCheckableFormats), and a
+	// format outside it is one schemagen does not recognise -- which every draft
+	// says to ignore, so the sub-schema really does demand nothing by it. The
+	// same holds for an encoding outside ContentEncodingCheckable and a media
+	// type outside ContentMediaTypeCheckable: both are documented as carried as
+	// annotations, here and everywhere else.
+	//
+	// So "the evaluator ignored it" and "the schema demanded nothing by it" are
+	// the same case, and admitting is exact rather than partial. `contentSchema`
+	// is the one keyword of the four that would genuinely demand something the
+	// nodes cannot do -- it applies a sub-schema to the *decoded* document -- and
+	// it cannot assert in any dialect: draft 7 is the only dialect that asserts
+	// the content vocabulary and does not define contentSchema, so the dialect
+	// pass has already cleared it by the time a node is built. See
+	// TestContentSchemaNeverAssertsInAnyDialect.
 	return true
 }
 
