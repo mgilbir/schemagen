@@ -30,6 +30,7 @@ type ConfigFile struct {
 	Package              *string `json:"package,omitempty"`
 	OmitEmpty            *bool   `json:"omitEmpty,omitempty"`
 	StrictProperties     *bool   `json:"strictProperties,omitempty"`
+	StrictReadWrite      *bool   `json:"strictReadWrite,omitempty"`
 	BigInt               *bool   `json:"bigInt,omitempty"`
 	FormatAssertion      *bool   `json:"formatAssertion,omitempty"`
 	FormatAnnotation     *bool   `json:"formatAnnotation,omitempty"`

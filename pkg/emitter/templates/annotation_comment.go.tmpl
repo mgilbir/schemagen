@@ -1,0 +1,25 @@
+{{/*
+annotation_comment renders the annotation vocabulary -- "deprecated",
+"readOnly", "writeOnly" and "examples" -- as doc comment lines.
+
+A code generator is the consumer these keywords were written for. They constrain
+nothing, so there is no verdict to change and no suite case to answer to; what
+they carry is meaning for whoever reads the generated type, and the only place
+that meaning can go is the comment above the declaration.
+
+"deprecated" is the one with an exact spelling rather than a chosen one. Go's
+convention is a paragraph beginning "Deprecated: ", which gopls, staticcheck,
+`go doc` and every editor built on them read -- so it is emitted last and with a
+blank comment line before it, because a notice that is not its own paragraph is
+not the convention and none of those tools sees it.
+
+The context is built in Go rather than here (see mkAnnotationCtxFunc): whether a
+paragraph break is needed depends on whether a description was already emitted
+above, which the template cannot ask about without repeating the caller's
+condition at every call site.
+*/}}
+{{define "annotation_comment"}}
+{{- range .Lines}}
+{{$.Indent}}//{{if .}} {{end}}{{.}}
+{{- end}}
+{{- end}}

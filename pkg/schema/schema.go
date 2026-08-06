@@ -358,6 +358,22 @@ type Schema struct {
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
 
+	// The rest of the annotation vocabulary. Pointers because the question each
+	// answers is three-valued: a generator has to tell "the schema says false"
+	// from "the schema does not say", and only the first of those is a statement
+	// worth writing into the generated source.
+	//
+	// None of them affects a validation verdict, in any draft. From 2019-09 they
+	// are the meta-data vocabulary and are annotations by definition; in draft 7
+	// they are described as hints to a user agent. A generator is the consumer
+	// they were written for, which is why they are read here at all -- and it is
+	// also why nothing downstream of this struct may let one reach Validate().
+	//
+	// "examples" is deliberately not among them. See Examples.
+	Deprecated *bool `json:"deprecated,omitempty"` // Draft 2019-09+
+	ReadOnly   *bool `json:"readOnly,omitempty"`   // Draft 7+
+	WriteOnly  *bool `json:"writeOnly,omitempty"`  // Draft 7+
+
 	// Definitions (Draft-07 uses "definitions", 2020-12 uses "$defs")
 	Definitions map[string]*Schema `json:"definitions,omitempty"`
 	Defs        map[string]*Schema `json:"$defs,omitempty"`
@@ -513,6 +529,49 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// Examples returns the "examples" annotation as the raw JSON of each element,
+// or nil when the schema has none.
+//
+// It reads Extensions rather than a field of its own, and that is load-bearing
+// rather than an omission. knownSchemaKeys is built by reflecting over the json
+// tags on this struct, so a field tagged "examples" would take the keyword out
+// of Extensions -- and Extensions is how the resolver reaches a JSON Pointer
+// into an unknown keyword. "#/examples/0" is exactly that pointer, and the
+// official suite's optional/refOfUnknownKeyword group resolves it in draft
+// 2019-09, 2020-12 and v1, as do two seeds under testdata/schemas/adversarial.
+// A field here would trade three groups of working $ref resolution for an
+// annotation that changes no verdict, so the annotation is read the other way
+// round instead.
+//
+// A non-array "examples" annotates nothing and is reported as nothing: the
+// keyword is defined over an array, and a scalar there is a schema saying
+// something this function has no reading of.
+func (s *Schema) Examples() []json.RawMessage {
+	raw, ok := s.Extensions["examples"]
+	if !ok {
+		return nil
+	}
+	var out []json.RawMessage
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+// annotationBool reads a three-valued annotation flag as the two-valued question
+// a generator actually asks: does the schema assert this? An absent keyword and
+// an explicit false are the same answer, and neither is worth emitting.
+func annotationBool(b *bool) bool { return b != nil && *b }
+
+// IsDeprecated reports whether the schema asserts "deprecated": true.
+func (s *Schema) IsDeprecated() bool { return annotationBool(s.Deprecated) }
+
+// IsReadOnly reports whether the schema asserts "readOnly": true.
+func (s *Schema) IsReadOnly() bool { return annotationBool(s.ReadOnly) }
+
+// IsWriteOnly reports whether the schema asserts "writeOnly": true.
+func (s *Schema) IsWriteOnly() bool { return annotationBool(s.WriteOnly) }
 
 // MarshalJSON implements custom marshaling for Schema to handle boolean schemas.
 func (s Schema) MarshalJSON() ([]byte, error) {

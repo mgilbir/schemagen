@@ -24,14 +24,15 @@ import (
 //   - "isOneOfRequired": returns true if the given oneOf field is required on its parent struct
 func FuncMap() template.FuncMap {
 	return template.FuncMap{
-		"comment":      commentFunc,
-		"goType":       goTypeFunc,
-		"enumValue":    enumValueFunc,
-		"receiverName": receiverNameFunc,
-		"lowerFirst":   lowerFirstFunc,
-		"add":          addFunc,
-		"wrapTypeDef":  wrapTypeDefFunc,
-		"mkOneOfCtx":   mkOneOfCtxFunc,
+		"comment":         commentFunc,
+		"goType":          goTypeFunc,
+		"enumValue":       enumValueFunc,
+		"receiverName":    receiverNameFunc,
+		"lowerFirst":      lowerFirstFunc,
+		"add":             addFunc,
+		"wrapTypeDef":     wrapTypeDefFunc,
+		"mkOneOfCtx":      mkOneOfCtxFunc,
+		"mkAnnotationCtx": mkAnnotationCtxFunc,
 		"isOneOfRequired": func(oof any) bool {
 			if o, ok := oof.(generator.OneOfDef); ok {
 				return o.Required
@@ -545,6 +546,68 @@ type OneOfContext struct {
 // mkOneOfCtxFunc creates a context object for oneOf templates.
 func mkOneOfCtxFunc(oneof any, parentName string) OneOfContext {
 	return OneOfContext{OneOf: oneof, ParentName: parentName}
+}
+
+// AnnotationContext is what the annotation_comment template renders: the comment
+// lines, already grouped into paragraphs, and the indent each sits at.
+type AnnotationContext struct {
+	Indent string
+	Lines  []string
+}
+
+// mkAnnotationCtxFunc turns the annotation vocabulary into comment lines.
+//
+// description is the prose already emitted above, and it is a parameter because
+// it decides whether the first paragraph here needs a blank comment line in
+// front of it. Two paragraphs run together read as one, and for "Deprecated: "
+// that is not cosmetic: the Go convention is a paragraph beginning with that
+// word, and a notice appended to the end of the description's paragraph is not
+// one -- gopls, staticcheck and `go doc` all miss it.
+//
+// The readOnly and writeOnly wording says what the keyword means rather than
+// what the generated code does, because by default the generated code does
+// nothing with them. See generator.Config.StrictReadWrite for the half that
+// does, and why it is off unless asked for.
+func mkAnnotationCtxFunc(a generator.Annotations, indent, description string) AnnotationContext {
+	ctx := AnnotationContext{Indent: indent}
+	if !a.Any() {
+		return ctx
+	}
+	paragraph := func(lines ...string) {
+		if len(lines) == 0 {
+			return
+		}
+		if len(ctx.Lines) > 0 || description != "" {
+			ctx.Lines = append(ctx.Lines, "")
+		}
+		ctx.Lines = append(ctx.Lines, lines...)
+	}
+
+	var body []string
+	if a.ReadOnly {
+		body = append(body,
+			`Read-only: the schema says "readOnly", so the owning authority manages`,
+			`this value and an application is not expected to send it.`)
+	}
+	if a.WriteOnly {
+		body = append(body,
+			`Write-only: the schema says "writeOnly", so the value is not expected`,
+			`to be present when the instance is retrieved.`)
+	}
+	if len(a.Examples) > 0 {
+		body = append(body, "Examples from the schema:")
+		for _, ex := range a.Examples {
+			body = append(body, "  "+ex)
+		}
+	}
+	paragraph(body...)
+
+	// Last, and alone in its paragraph. Both are the convention rather than a
+	// preference.
+	if a.Deprecated {
+		paragraph("Deprecated: the schema marks this deprecated.")
+	}
+	return ctx
 }
 
 // goTypeFunc accepts any value that implements GoTypeName() string and returns the

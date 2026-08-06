@@ -54,6 +54,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--package` | `-p` | `generated` | Go package name for generated code |
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output |
+| `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
 | `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
 | `--format-annotation` | | `false` | Treat `format` as an annotation on every draft. The opposite of `--format-assertion`, and mutually exclusive with it |
@@ -154,6 +155,52 @@ So an absent optional property stays absent, a present null comes back as a
 null, and a present empty collection comes back as `[]` or `{}`. All three are
 distinguishable. A value built in Go rather than decoded carries no such record,
 and its nil fields are simply omitted.
+
+### Annotations: `deprecated`, `readOnly`, `writeOnly`, `examples`
+
+These four constrain nothing — from 2019-09 they are the meta-data vocabulary
+and are annotations by definition, and in draft 7 they are described as hints to
+a user agent. A code generator is the consumer they were written for, so they are
+read at generation time and land in the generated source rather than in
+`Validate()`, which never sees them.
+
+By default all four become doc comments:
+
+```go
+// The identifier this resource used to carry.
+//
+// Examples from the schema:
+//   "abc-123"
+//   "def-456"
+//
+// Deprecated: the schema marks this deprecated.
+LegacyID *string `json:"legacyID,omitempty"`
+```
+
+`deprecated` uses Go's own spelling — a paragraph beginning `Deprecated: ` — so
+gopls, staticcheck and `go doc` report it like any other deprecation. Only
+`"deprecated": true` emits it; a schema writing `false` says the property is not
+deprecated, and nothing is emitted.
+
+`--strict-read-write` adds behaviour to the other two, and makes the generated
+type the **owning authority's** view of the resource, which is the only view in
+which they have a direction ([2020-12 §9.4][ro]):
+
+- `UnmarshalJSON` **rejects** a document that sets a `readOnly` property — the
+  spec says such an attempt is "expected to be ignored or rejected by an owning
+  authority", and this picks rejected.
+- `MarshalJSON` **omits** every `writeOnly` property — the spec says the value
+  "is never present when the instance is retrieved from the owning authority".
+
+It is opt-in for two reasons. A type built this way no longer round-trips, by
+design. And it picks a side: one Go type cannot be both the request shape and the
+response shape, and `MarshalJSON` is not told which it is being asked for, so a
+*client* building a request with the same type would have its `writeOnly`
+password dropped. The default declines to guess.
+
+Under neither setting do these keywords change a validation verdict.
+
+[ro]: https://json-schema.org/draft/2020-12/json-schema-validation#section-9.4
 
 ### Unresolvable References
 

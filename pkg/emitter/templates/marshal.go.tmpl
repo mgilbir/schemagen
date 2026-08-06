@@ -59,7 +59,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 
-	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls}}
+	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys}}
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
@@ -148,6 +148,23 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		}
 		obj[k] = raw
 		{{- end}}
+	}
+	{{- end}}
+	{{- if $struct.WriteOnlyKeys}}
+	// --strict-read-write. The schema marks these "writeOnly", which JSON Schema
+	// section 9.4 says is "never present when the instance is retrieved from the
+	// owning authority" -- so this type, which that flag makes the authority's
+	// view, does not write them.
+	//
+	// Deleted after every other contributor above has had its say, including the
+	// overflow map and the null record: a writeOnly property put back by one of
+	// those would be just as present as one the struct tag wrote.
+	for _, _woKey := range []string{
+		{{- range $struct.WriteOnlyKeys}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		delete(obj, _woKey)
 	}
 	{{- end}}
 	return json.Marshal(obj)

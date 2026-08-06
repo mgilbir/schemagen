@@ -2,7 +2,14 @@
 // representation (IR) of Go types for code generation.
 package generator
 
-import "github.com/mgilbir/schemagen/pkg/schema"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/mgilbir/schemagen/pkg/schema"
+)
 
 // GoType represents a Go type in the IR.
 type GoType interface {
@@ -85,8 +92,16 @@ type TypeDef interface {
 
 // StructDef represents a Go struct.
 type StructDef struct {
-	Name                   string
-	Description            string
+	Name        string
+	Description string
+	Annotations Annotations
+	// ReadOnlyKeys and WriteOnlyKeys are the JSON property names the annotation
+	// vocabulary marked, and they are populated only under
+	// Config.StrictReadWrite. Empty under the default configuration, so the
+	// templates emit nothing and generated output is byte-identical to what it
+	// was before the keywords were parsed at all.
+	ReadOnlyKeys           []string
+	WriteOnlyKeys          []string
 	Fields                 []FieldDef
 	OneOfs                 []OneOfDef
 	AdditionalProperties   *AdditionalPropertiesDef
@@ -966,6 +981,81 @@ type ValidationRule struct {
 func (d *StructDef) TypeName() string { return d.Name }
 func (d *StructDef) typeDef()         {}
 
+// Annotations carries the annotation-vocabulary keywords that describe a schema
+// position without constraining it: "deprecated", "readOnly", "writeOnly" and
+// "examples".
+//
+// They are held apart from Description because they are not prose. Description
+// is whatever the schema author wrote and is copied through; these four have a
+// defined meaning that the generator renders, and one of them -- deprecated --
+// has an exact Go spelling that gopls, staticcheck and `go doc` all read.
+//
+// Nothing here may reach a validation verdict. In 2019-09 and 2020-12 all four
+// belong to the meta-data vocabulary and are annotations by definition, and in
+// draft 7 they are hints to a user agent; a generated Validate() that consulted
+// one would be non-conformant, and the official suite has no case for any of
+// them, so nothing would notice. See the readOnly/writeOnly handling in
+// unmarshal.go.tmpl and marshal.go.tmpl for where behaviour is allowed to
+// depend on them, and why it is opt-in.
+type Annotations struct {
+	// Deprecated is "deprecated": true, and only that. An absent keyword and an
+	// explicit false are one answer.
+	Deprecated bool
+	ReadOnly   bool
+	WriteOnly  bool
+	// Examples holds one compact JSON document per "examples" element, already
+	// rendered and already made safe to sit inside a // comment.
+	Examples []string
+}
+
+// Any reports whether the schema said anything at all through this vocabulary,
+// which is what decides whether a comment is worth emitting.
+func (a Annotations) Any() bool {
+	return a.Deprecated || a.ReadOnly || a.WriteOnly || len(a.Examples) > 0
+}
+
+// maxRenderedExample bounds how much of one "examples" element reaches the doc
+// comment. The keyword takes arbitrary JSON, so an example can be the whole
+// document it exemplifies; a comment line the width of a schema is not
+// documentation, and truncating says so rather than pretending.
+const maxRenderedExample = 120
+
+// annotationsOf reads the annotation vocabulary off a schema.
+//
+// The examples are compacted here rather than in the template because compacting
+// is also what makes them safe to sit in a // comment: a source document may put
+// newlines between JSON tokens, and a newline inside a comment ends it. JSON
+// forbids a literal newline inside a string, so a compacted document is one line
+// by construction rather than by sanitising.
+func annotationsOf(s *schema.Schema) Annotations {
+	if s == nil {
+		return Annotations{}
+	}
+	a := Annotations{
+		Deprecated: s.IsDeprecated(),
+		ReadOnly:   s.IsReadOnly(),
+		WriteOnly:  s.IsWriteOnly(),
+	}
+	for _, raw := range s.Examples() {
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, raw); err != nil {
+			continue
+		}
+		text := buf.String()
+		// Cut on a rune boundary. Go source has to be valid UTF-8, and a byte
+		// slice through a multi-byte rune is not -- an example holding one
+		// non-ASCII character past the bound would emit a file the compiler
+		// refuses, which is the worst thing this generator can produce.
+		if utf8.RuneCountInString(text) > maxRenderedExample {
+			text = string([]rune(text)[:maxRenderedExample]) + "..."
+		}
+		// A compacted document holds no newline, and a lone "\r" would still end
+		// a comment line on the platforms that treat it as one.
+		a.Examples = append(a.Examples, strings.NewReplacer("\n", " ", "\r", " ").Replace(text))
+	}
+	return a
+}
+
 // FieldDef represents a struct field.
 type FieldDef struct {
 	Name           string // Go field name (PascalCase)
@@ -975,6 +1065,7 @@ type FieldDef struct {
 	OmitZero       bool // use ",omitzero" instead of ",omitempty" (optional slice/map fields, to preserve a present-but-empty collection while still omitting an absent one)
 	Required       bool
 	Description    string
+	Annotations    Annotations
 	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
 	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)

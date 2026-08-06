@@ -255,6 +255,17 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/present_null_positions.json",
 			FixturePath: "testdata/fixtures/regression/present_null_positions.json",
 		},
+		{
+			// The accept-control for --strict-read-write, and it costs nothing to
+			// have: under the default configuration "deprecated", "readOnly",
+			// "writeOnly" and "examples" are documentation, so a document
+			// carrying every one of them has to come back exactly as it went in.
+			// The flag's own test asserts the two ways that stops being true;
+			// this is what says the flag is the only thing that makes it stop.
+			Name:        "regression/annotation_vocabulary",
+			SchemaPath:  "testdata/schemas/regression/annotation_vocabulary.json",
+			FixturePath: "testdata/fixtures/regression/annotation_vocabulary.json",
+		},
 	}
 }
 
@@ -912,8 +923,124 @@ func runValidationCasesForType(t *testing.T, schemaPath, typeName string, valid,
 	}, valid, invalid)
 }
 
+// refuseRoundTripBreakingConfig stops a configuration that deliberately breaks
+// round-tripping from being measured by a helper whose whole assertion is that
+// round-tripping holds.
+//
+// runValidationCasesOn decodes each document and, for the valid half, requires
+// the decode to succeed; the round-trip harness above requires the bytes to come
+// back as they went in. Config.StrictReadWrite makes both false on purpose: it
+// refuses a document that sets a readOnly property, and drops every writeOnly
+// one on the way out. Handed such a config, this helper would either report a
+// fixture as broken or -- far worse -- grow an "unless strict mode is on"
+// branch, and that branch would weaken the assertion for every other fixture in
+// the tree. This repository has already paid for that once, when a golden pinned
+// {"gateway_ip":null} as valid against a format:ipv6 string and a real defect
+// survived as recorded behaviour.
+//
+// So the rule is a test failure rather than a convention. See
+// TestStrictReadWriteChangesDecodeAndEncode, which asserts the asymmetry by
+// name, and the regression/annotation_vocabulary round-trip case, which holds
+// the default configuration to the ordinary contract.
+//
+// runGeneratedMainProgramWithConfig is deliberately not guarded: it runs a
+// program that states its own contract, which is exactly where a caller who
+// wants the flag should go.
+// The decision is a pure function so it can be tested. A guard reached only by a
+// caller nobody has written yet is a guard nobody has watched fire: planting a
+// fault in the version that only called t.Fatalf left every test in the package
+// passing, because no fixture hands these helpers a strict config today and the
+// guard exists for the one somebody adds tomorrow.
+// TestRoundTripHelpersRefuseAConfigThatBreaksRoundTripping is what watches it.
+func roundTripBreakingReason(cfg generator.Config) string {
+	if cfg.StrictReadWrite {
+		return "generator.Config.StrictReadWrite deliberately breaks round-tripping: " +
+			"it refuses a document setting a readOnly property and omits every writeOnly one. " +
+			"Cover the flag in TestStrictReadWriteChangesDecodeAndEncode instead, " +
+			"which states the asymmetry rather than discovering it as a diff."
+	}
+	return ""
+}
+
+func refuseRoundTripBreakingConfig(t *testing.T, cfg generator.Config) {
+	t.Helper()
+	if reason := roundTripBreakingReason(cfg); reason != "" {
+		t.Fatalf("this helper asserts that a document comes back as it went in, and %s", reason)
+	}
+}
+
+// TestRoundTripHelpersRefuseAConfigThatBreaksRoundTripping holds the rule that
+// keeps --strict-read-write out of the round-trip fixtures.
+//
+// The hazard is not a fixture that fails. It is the repair somebody reaches for
+// when one does: an "unless strict mode is on" branch inside
+// runValidationCasesOn, which would weaken "a document comes back as it went in"
+// for every fixture in the tree at once, to accommodate one caller. This
+// repository has already paid for that kind of erosion, when a golden pinned
+// {"gateway_ip":null} as valid against a format:ipv6 string and a real defect
+// survived as recorded behaviour.
+//
+// The default configuration is the other half, and it is the half that would
+// catch a guard written too wide: a refusal that fired on every config would
+// take the entire package with it, which is a failure mode worth naming here
+// rather than discovering as 200 red tests.
+func TestRoundTripHelpersRefuseAConfigThatBreaksRoundTripping(t *testing.T) {
+	strict := generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true}
+	if roundTripBreakingReason(strict) == "" {
+		t.Errorf("a config carrying StrictReadWrite was accepted by the round-trip helpers, " +
+			"which assert that a document comes back as it went in -- and that flag is defined to break it")
+	}
+	for name, cfg := range map[string]generator.Config{
+		"default":           {PackageName: "testpkg", OmitEmpty: true},
+		"format asserting":  formatAssertingConfig(),
+		"format annotating": formatAnnotatingConfig(),
+		"strict properties": {PackageName: "testpkg", OmitEmpty: true, StrictProperties: true},
+	} {
+		if reason := roundTripBreakingReason(cfg); reason != "" {
+			t.Errorf("%s config was refused, and it round-trips like any other: %s", name, reason)
+		}
+	}
+
+	// And the decision is actually consulted. The two checks above hold what the
+	// answer is; this holds that the helper asks. Deleting the call passed every
+	// other test in this package -- there is no fixture handing a strict config
+	// to runValidationCasesOn today, and there will not be one until somebody
+	// makes exactly the mistake the guard is for, at which point the guard would
+	// no longer be there. Reading the source is how this repository already
+	// keeps that kind of rule from being a comment; see
+	// TestEveryKnownFailureMapIsClassified.
+	src, err := os.ReadFile("roundtrip_test.go")
+	if err != nil {
+		t.Fatalf("reading this file: %v", err)
+	}
+	body := string(src)
+	// Both needles carry their leading newline and indentation, so they match a
+	// declaration and a statement rather than the quoted copies of themselves
+	// three lines below. Without that, the first draft of this check found its
+	// own source line, measured the region between there and the end of this
+	// function, found the string it was looking for inside its own assertion,
+	// and passed under a planted deletion. A check that reads the file it is
+	// written in has to be told the difference between code and a string
+	// literal, and this is the cheapest way to say it.
+	const decl = "\nfunc runValidationCasesOn("
+	const call = "\n\trefuseRoundTripBreakingConfig(t, cfg)\n"
+	start := strings.Index(body, decl)
+	if start < 0 {
+		t.Fatalf("roundtrip_test.go declares no runValidationCasesOn")
+	}
+	end := strings.Index(body[start+1:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("cannot find the end of runValidationCasesOn")
+	}
+	if !strings.Contains(body[start:start+1+end], call) {
+		t.Errorf("runValidationCasesOn does not call refuseRoundTripBreakingConfig, " +
+			"so a config that breaks round-tripping reaches a harness whose whole assertion is that it holds")
+	}
+}
+
 func runValidationCasesOn(t *testing.T, schemaPath, typeName string, cfg generator.Config, valid, invalid []string) {
 	t.Helper()
+	refuseRoundTripBreakingConfig(t, cfg)
 	generated := generateFromSchemaWithConfig(t, schemaPath, cfg)
 	rootType := typeName
 	if rootType == "" {
@@ -1623,6 +1750,213 @@ func TestOneOfStringLengthVariants(t *testing.T) {
 			`"abc"`, // both branches → 2 matches
 			`3`,     // not a string
 		},
+	)
+}
+
+// TestAnnotationKeywordsReachTheDocComment covers the four annotation keywords
+// the generator used to drop on the floor: "deprecated", "readOnly",
+// "writeOnly" and "examples".
+//
+// pkg/schema.Schema held Title, Description and Default of the annotation
+// vocabulary and nothing else, so the other four fell into Extensions and were
+// never read. A property with "deprecated": true generated an ordinary field
+// with no trace of the keyword, beside a sibling whose "description" became a
+// doc comment correctly -- the annotation half of the vocabulary was half
+// implemented, and which half you got depended on which keyword you wrote.
+//
+// A code generator is the consumer these were written for: they constrain
+// nothing, so the only place their meaning can land is the generated source.
+// "deprecated" is the one with an exact spelling rather than a chosen one --
+// Go's convention is a paragraph beginning "Deprecated: ", which gopls,
+// staticcheck and `go doc` all read -- so this checks the paragraph break too,
+// not just the words.
+//
+// "plain" is the control, and it is the whole reason the keywords are held as
+// pointers rather than bools: it writes false for all three, and an
+// implementation that emitted on presence rather than on value would document a
+// property as deprecated because the schema said it was not.
+func TestAnnotationKeywordsReachTheDocComment(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/annotation_vocabulary.json"))
+
+	for _, want := range []string{
+		// The Go convention, and the blank comment line that makes it a
+		// paragraph. Without the break these tools see no deprecation at all.
+		"//\n\t// Deprecated: the schema marks this deprecated.\n\tLegacyID",
+		// The description the field already had is still above it.
+		"// The identifier this resource used to carry.",
+		// examples, compacted, one per line, under the property that names them.
+		"// Examples from the schema:\n\t//   \"abc-123\"\n\t//   \"def-456\"",
+		"// Examples from the schema:\n\t//   1\n\t//   2\n\tCount",
+		// readOnly and writeOnly say what the keyword means, since by default
+		// the generated code does nothing else with them.
+		`Read-only: the schema says "readOnly"`,
+		`Write-only: the schema says "writeOnly"`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("generated source does not contain %q:\n%s", want, src)
+		}
+	}
+
+	// The controls. "plain" writes false three times and must read as a field
+	// with nothing said about it; "untouched" writes nothing at all.
+	for _, field := range []string{"Plain", "Untouched"} {
+		idx := strings.Index(src, "\t"+field+" ")
+		if idx < 0 {
+			t.Fatalf("generated source declares no field %s:\n%s", field, src)
+		}
+		// Everything from the previous field's declaration to this one is this
+		// field's comment block.
+		start := strings.LastIndex(src[:idx], "`json:")
+		if start < 0 {
+			start = 0
+		}
+		block := src[start:idx]
+		for _, unwanted := range []string{"Deprecated:", "Read-only:", "Write-only:", "Examples from the schema:"} {
+			if strings.Contains(block, unwanted) {
+				t.Errorf("field %s carries %q, and its schema asserts no annotation:\n%s", field, unwanted, block)
+			}
+		}
+	}
+
+	// And the default configuration changes nothing but comments. Neither
+	// keyword may reach the decoder, the encoder or Validate unless the caller
+	// asked for it.
+	for _, unwanted := range []string{"read-only property may not be set", "_woKey"} {
+		if strings.Contains(src, unwanted) {
+			t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only:\n%s", unwanted, src)
+		}
+	}
+}
+
+// TestStrictReadWriteChangesDecodeAndEncode states the contract of
+// --strict-read-write, which is deliberately not a round-trip.
+//
+// It has its own program rather than a fixture because the two things it
+// asserts are asymmetries: a document that goes in and does not come back, and
+// a document that is refused outright. runValidationCases and the round-trip
+// harness both mean "a document comes back as it went in", and every fixture in
+// the tree leans on that -- teaching them about this flag would weaken the
+// assertion everywhere to accommodate one caller. refuseRoundTripBreakingConfig
+// is what makes that a test failure rather than a note.
+//
+// What the flag does *not* do is the other half of the contract, and it is
+// asserted here too: Validate() gives the same answer under both settings.
+// readOnly and writeOnly are the meta-data vocabulary in 2019-09 and 2020-12 and
+// are annotations by definition, the official suite has no case for either, and
+// a Validate that consulted one would be non-conformant with nothing in the
+// corpus to say so.
+func TestStrictReadWriteChangesDecodeAndEncode(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// A readOnly property present in the document is refused. JSON Schema
+	// section 9.4 says an owning authority is expected to ignore or reject an
+	// application's attempt to set one; this configuration rejects.
+	for _, doc := range []string{
+		` + "`" + `{"serverID":"srv-7"}` + "`" + `,
+		` + "`" + `{"both":"b"}` + "`" + `,
+		` + "`" + `{"untouched":"u","serverID":"srv-7"}` + "`" + `,
+		// Even written as null: the property is present, which is what the
+		// keyword is about, rather than what it was set to.
+		` + "`" + `{"serverID":null}` + "`" + `,
+	} {
+		var v AnnotationVocabulary
+		if err := json.Unmarshal([]byte(doc), &v); err == nil {
+			fail("strict mode decoded a document setting a readOnly property: %s", doc)
+		} else if !strings.Contains(err.Error(), "read-only property may not be set") {
+			fail("decoding %s failed for the wrong reason: %v", doc, err)
+		}
+	}
+
+	// Nothing else is refused. A property with readOnly:false, one with
+	// writeOnly, and one carrying no annotation all decode as they always did --
+	// the flag rejects one named set of keys and not a shape.
+	for _, doc := range []string{
+		` + "`" + `{}` + "`" + `,
+		` + "`" + `{"plain":"p"}` + "`" + `,
+		` + "`" + `{"secret":"hunter2"}` + "`" + `,
+		` + "`" + `{"untouched":"u","legacyID":"abc-123","count":4}` + "`" + `,
+	} {
+		var v AnnotationVocabulary
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("strict mode refused a document it has nothing to say about: %s: %v", doc, err)
+		}
+	}
+
+	// A writeOnly property goes in and does not come out. That is the
+	// asymmetry, stated rather than discovered: JSON Schema section 9.4 says
+	// the value "is never present when the instance is retrieved from the
+	// owning authority", and under this flag the generated type is that
+	// authority's view.
+	var v AnnotationVocabulary
+	// "both" cannot arrive through the decoder here -- it is readOnly too, and
+	// the loop above is what says so -- so it is set directly, which is the
+	// position a server populating its own response is in.
+	if err := json.Unmarshal([]byte(` + "`" + `{"secret":"hunter2","plain":"p","untouched":"u","count":4}` + "`" + `), &v); err != nil {
+		fail("decoding the writeOnly document: %v", err)
+	}
+	both := "b"
+	v.Both = &both
+
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshaling: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		fail("re-reading the output: %v", err)
+	}
+	for _, gone := range []string{"secret", "both"} {
+		if _, present := got[gone]; present {
+			fail("strict mode wrote the writeOnly property %q: %s", gone, out)
+		}
+	}
+	// And nothing else was taken with them. A delete that reached past the
+	// keys it names would satisfy the two lines above and be wrong about
+	// everything else in the document.
+	for _, kept := range []string{"plain", "untouched", "count"} {
+		if _, present := got[kept]; !present {
+			fail("strict mode dropped %q, which carries no writeOnly: %s", kept, out)
+		}
+	}
+
+	// Validate is not the flag's business, under either setting. Every one of
+	// these documents satisfies the schema, and readOnly/writeOnly are
+	// annotations that constrain none of them.
+	for _, doc := range []string{
+		` + "`" + `{}` + "`" + `,
+		` + "`" + `{"secret":"hunter2"}` + "`" + `,
+		` + "`" + `{"plain":"p","count":4}` + "`" + `,
+	} {
+		var w AnnotationVocabulary
+		if err := json.Unmarshal([]byte(doc), &w); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := w.Validate(); err != nil {
+			fail("Validate rejected %s, which the schema permits: %v", doc, err)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/annotation_vocabulary.json",
+		"strict_read_write_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true},
 	)
 }
 

@@ -91,9 +91,16 @@ var validatorKeywords = map[string]bool{
 //
 // The list is closed on purpose. Each entry is an annotation in every draft that
 // defines it, which is the property that makes ignoring it sound.
+//
+// "deprecated", "readOnly" and "writeOnly" were here and are not any more. They
+// have fields on schema.Schema now, so the parser no longer files them under
+// Extensions and the eligible() loop above can never see them; they moved to
+// nonConstrainingKeywords, which is the list that speaks for a keyword the
+// marshaled form shows. Removing them from here without adding them there is a
+// mistake that costs nothing visible -- see
+// TestAnnotationVocabularyConstrainsNothing, which is what caught it.
 var inertKeywords = map[string]bool{
 	"$comment": true, "examples": true,
-	"deprecated": true, "readOnly": true, "writeOnly": true,
 }
 
 // maxRuntimeNodes and maxRuntimeDepth bound how large a compiled schema may
@@ -1247,6 +1254,13 @@ var nonConstrainingKeywords = map[string]bool{
 	"$anchor": true, "$dynamicAnchor": true, "$recursiveAnchor": true,
 	"$defs": true, "definitions": true,
 	"title": true, "description": true, "default": true,
+	// The rest of the annotation vocabulary. They describe a position rather
+	// than constraining it, which puts them beside "title" and "description"
+	// here -- and they need saying here rather than in inertKeywords because
+	// they have fields on schema.Schema, so schemaKeywordSet reads them off the
+	// marshaled form instead of out of Extensions. "examples" has no field, by
+	// design, so it stays on the Extensions side and inertKeywords covers it.
+	"deprecated": true, "readOnly": true, "writeOnly": true,
 }
 
 // runtimeSchemaDef compiles a whole schema to the runtime evaluator, for the

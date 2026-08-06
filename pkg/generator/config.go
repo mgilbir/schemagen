@@ -49,6 +49,43 @@ type Config struct {
 	// rejection rather than inventing one.
 	FormatAnnotation bool
 
+	// StrictReadWrite makes the "readOnly" and "writeOnly" annotations change
+	// what the generated type decodes and encodes.
+	//
+	// Off, which is the default, they are documentation: the doc comment says
+	// what the schema said and nothing else changes, so the type stays a
+	// faithful shape for the document and round-trips exactly.
+	//
+	// On, the generated type becomes the *owning authority's* view of the
+	// resource, which is the only view in which the two keywords have a
+	// direction. RFC-wise this is JSON Schema 2020-12 section 9.4: readOnly says
+	// an application's attempt to set the value is "expected to be ignored or
+	// rejected by an owning authority", and this picks rejected -- UnmarshalJSON
+	// refuses a document that carries the property. writeOnly says the value "is
+	// never present when the instance is retrieved from the owning authority",
+	// so MarshalJSON leaves the property out.
+	//
+	// Two consequences are deliberate and are why it is opt-in rather than the
+	// default:
+	//
+	// A type built this way no longer round-trips. A writeOnly value goes in and
+	// does not come out, and a readOnly document does not decode at all. That is
+	// the flag doing its job, and it is why the round-trip helpers in tests/
+	// refuse a config carrying it outright rather than growing an exception.
+	//
+	// And it picks a side. One Go type cannot be both the request shape and the
+	// response shape, and MarshalJSON is not told which it is being asked for, so
+	// a *client* using the same type to build a request would have its writeOnly
+	// password dropped. The default declines to guess; the flag is the caller
+	// saying which side they are on.
+	//
+	// What it never does is change a validation verdict. Validate() does not see
+	// these keywords under either setting. In 2019-09 and 2020-12 they are the
+	// meta-data vocabulary and are annotations by definition; the official suite
+	// has no case for either keyword, so a Validate() that consulted one would be
+	// non-conformant with nothing in the corpus to say so.
+	StrictReadWrite bool
+
 	Validation   ValidationMode // Controls static vs hybrid/runtime validation planning.
 	FieldNames   FieldNameMap   // Optional per-type overrides pinning JSON properties to specific Go field names.
 	LenientRefs  bool           // When true, $refs that no resolver can serve degrade to any instead of failing generation.
