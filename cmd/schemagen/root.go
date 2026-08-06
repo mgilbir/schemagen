@@ -260,7 +260,13 @@ func newGenerateCmd() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("loading %s: %w", schemaPath, err)
 					}
-					s.Normalize()
+					// --draft is the caller's statement about the document, and it
+					// has to reach normalization as well as generation:
+					// normalization is where a keyword the dialect does not define
+					// is dropped, and answering "which dialect" in two places from
+					// two sources is issue #203 in miniature. Config.Draft below
+					// carries the same value on to the generator.
+					s.NormalizeForDraft(draft)
 					s.ComputeBaseURIs(nil, s)
 					inputByPath[schemaPath] = s
 					id := strings.TrimSuffix(s.ID, "#")
@@ -321,8 +327,9 @@ func newGenerateCmd() *cobra.Command {
 						return fmt.Errorf("loading %s: %w", schemaPath, err)
 					}
 
-					// 2. Normalize
-					s.Normalize()
+					// 2. Normalize, under the draft the caller named if it named
+					//    one -- see the shared-types branch above.
+					s.NormalizeForDraft(draft)
 
 					// 3. Create generator with config, including a file resolver
 					//    rooted at the schema file's directory.
@@ -629,7 +636,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		if err != nil {
 			return fmt.Errorf("loading %s: %w", schemaPath, err)
 		}
-		s.Normalize()
+		s.NormalizeForDraft(p.draft)
 		s.ComputeBaseURIs(nil, s)
 		id := strings.TrimSuffix(s.ID, "#")
 		if id == "" {

@@ -377,31 +377,50 @@ func TestContentOnlySchemaBecomesAStringWrapper(t *testing.T) {
 	}
 }
 
-// The dialect decides whether the wrapper carries a check, and only draft 7
-// does. From 2019-09 the content vocabulary is annotation-only by definition --
-// the official suite marks {"contentEncoding":"base64"} satisfied by a string
-// that is not base64 -- so a rule there would reject what the schema permits.
+// The dialect answers two separate questions about the content vocabulary, and
+// this pins both.
 //
-// Drafts before 7 do not define the keywords at all, which every draft says to
-// treat as an unknown keyword and ignore.
+// Does the dialect *have* the keywords? contentEncoding and contentMediaType
+// arrived in draft 7, so drafts 3, 4 and 6 have never heard of them and a
+// document writing one there is writing an unknown keyword -- which every draft
+// says to ignore. Ignoring it means the schema states nothing at all, so the
+// value is not a string either: {"contentEncoding":"base64"} declared as draft 4
+// admits an object, an array and a number, and typing it as a string wrapper was
+// a constraint invented out of a word the dialect has no meaning for. That half
+// is settled in normalization, off schema.keywordDialects, before the generator
+// looks (issue #203).
+//
+// Given that it has them, does the keyword assert or annotate? Only draft 7
+// asserts. From 2019-09 the content vocabulary is annotation-only by definition
+// -- the official suite marks {"contentEncoding":"base64"} satisfied by a string
+// that is not base64 -- so a rule there would reject what the schema permits.
+// That half is contentAssertsFor, and the 2019-09 and 2020-12 rows below are
+// what tell the two questions apart: the keyword is read, the value is a string,
+// and no check is emitted.
 func TestContentAssertionFollowsTheDialect(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
 		schema  string
+		defined bool
 		asserts bool
 	}{
-		{"draft 7", `"http://json-schema.org/draft-07/schema#"`, true},
-		{"draft 6", `"http://json-schema.org/draft-06/schema#"`, false},
-		{"draft 4", `"http://json-schema.org/draft-04/schema#"`, false},
-		{"2019-09", `"https://json-schema.org/draft/2019-09/schema"`, false},
-		{"2020-12", `"https://json-schema.org/draft/2020-12/schema"`, false},
+		{"draft 7", `"http://json-schema.org/draft-07/schema#"`, true, true},
+		{"2019-09", `"https://json-schema.org/draft/2019-09/schema"`, true, false},
+		{"2020-12", `"https://json-schema.org/draft/2020-12/schema"`, true, false},
+		{"draft 6", `"http://json-schema.org/draft-06/schema#"`, false, false},
+		{"draft 4", `"http://json-schema.org/draft-04/schema#"`, false, false},
+		{"draft 3", `"http://json-schema.org/draft-03/schema#"`, false, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			input := `{"$schema":` + tt.schema + `,"contentEncoding":"base64"}`
 			root := findDef(generateOne(t, input), "Root")
 			def, ok := root.(*InferredAliasDef)
-			if !ok {
-				t.Fatalf("Root is %T, want the string wrapper in every dialect", root)
+			if ok != tt.defined {
+				t.Fatalf("Root is %T (string wrapper = %v), want %v: a dialect that does not "+
+					"define the keyword must not narrow the value to a string either", root, ok, tt.defined)
+			}
+			if !tt.defined {
+				return
 			}
 			var hasContent bool
 			for _, r := range def.Validations {

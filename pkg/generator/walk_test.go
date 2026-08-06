@@ -11,8 +11,15 @@ import (
 // a missed dependency for callers that collect refs.
 func TestWalkSchemaVisitsEveryApplicatorPosition(t *testing.T) {
 	// Each ref value doubles as the name of the position it sits in.
+	//
+	// The document deliberately declares no $schema. The positions below span
+	// every draft -- prefixItems is 2020-12's and additionalItems was removed
+	// there, dependentSchemas is 2019-09's and definitions is draft 7's -- so no
+	// one dialect defines them all, and normalization drops the ones the declared
+	// dialect does not have. WalkSchema is asked whether it reaches a position,
+	// not whether a dialect has it; naming a dialect here would silently narrow
+	// the question to that dialect's keywords.
 	src := `{
-		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id": "https://ex.test/root.json",
 		"allOf":     [{"$ref": "allOf"}],
 		"anyOf":     [{"$ref": "anyOf"}],

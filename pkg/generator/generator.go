@@ -1702,10 +1702,10 @@ func (g *Generator) normalizeDialectRefKeywords(s *schema.Schema) {
 			return
 		}
 		seen[n] = true
-		if n.RecursiveRef != "" && !recursiveRefDefinedForDraft(g.draftForSchema(n)) {
+		if n.RecursiveRef != "" && !schema.KeywordDefinedIn("$recursiveRef", g.draftForSchema(n)) {
 			n.RecursiveRef = ""
 		}
-		if n.DynamicRef != "" && !dynamicRefDefinedForDraft(g.draftForSchema(n)) {
+		if n.DynamicRef != "" && !schema.KeywordDefinedIn("$dynamicRef", g.draftForSchema(n)) {
 			n.DynamicRef = ""
 		}
 		for _, sub := range allSubSchemas(n) {
@@ -1719,53 +1719,14 @@ func (g *Generator) normalizeDialectRefKeywords(s *schema.Schema) {
 	walk(s)
 }
 
-// recursiveRefDefinedForDraft reports whether $recursiveRef is a keyword of the
-// draft, rather than a word the draft has never heard of.
-//
-// It arrived in 2019-09, so drafts 3, 4, 6 and 7 do not have it and a schema
-// writing it there states an unknown keyword. That is the whole of what this
-// answers, and the four early drafts are the whole of what it says no to.
-//
-// 2020-12 is the interesting one and it is deliberately a yes. The keyword is
-// not in 2020-12's core vocabulary -- $dynamicRef replaced it -- so a reading of
-// the specification alone would drop it there too, and the reading was checked
-// rather than assumed: over {"additionalProperties":{"$recursiveRef":"#"}}
-// declared as 2020-12, python-jsonschema ignores the keyword and both
-// santhosh-tekuri implementations (go-jsonschema and rust-boon) go on honouring
-// it. Two answers from three implementations is not a settled question, and this
-// repository's rule for a split oracle is to record it rather than pick a
-// favourite. Dropping the keyword there would also be the one direction that
-// cannot be taken back cheaply: every document the target refused becomes
-// accepted. The four early drafts have no such split, because the keyword did
-// not exist for anything to disagree about.
-//
-// DraftUnknown answers true for a different reason again -- see
-// normalizeDialectRefKeywords.
-func recursiveRefDefinedForDraft(d schema.Draft) bool {
-	switch d {
-	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07:
-		return false
-	default:
-		return true
-	}
-}
-
-// dynamicRefDefinedForDraft reports whether $dynamicRef is a keyword of the
-// draft.
-//
-// It replaced $recursiveRef in 2020-12, so 2019-09 does not have it either and
-// the span this says no to is one draft wider. That is not an inference from the
-// specification alone: over {"additionalProperties":{"$dynamicRef":"#node"}}
-// declared as 2019-09, python-jsonschema, go-jsonschema and rust-boon all three
-// ignore the keyword, and all three ignore it on draft 6 and draft 7 as well.
-func dynamicRefDefinedForDraft(d schema.Draft) bool {
-	switch d {
-	case schema.Draft03, schema.Draft04, schema.Draft06, schema.Draft07, schema.Draft201909:
-		return false
-	default:
-		return true
-	}
-}
+// The two spans this pass reads are rows of schema.keywordDialects, not
+// predicates of their own. They used to be recursiveRefDefinedForDraft and
+// dynamicRefDefinedForDraft here, each stating for one keyword the rule every
+// draft states for all of them -- and that per-keyword shape is exactly what let
+// twenty-nine other spellings go ungated in both directions (issue #203). The
+// reasoning each carried, including the deliberate decision to keep
+// $recursiveRef in 2020-12 against a plain reading of the specification, moved
+// to the rows with them.
 
 // formatRulesForDialect rewrites a rule set's format keywords to the spelling
 // the schema's own draft gives them. Only "time" differs by draft under a name
@@ -13375,13 +13336,12 @@ func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 // A document that *does* declare a pre-2020 dialect is unaffected: draft-07 has
 // no prefixItems and still ignores it, which TestExplicitDraftOverridesDocumentSchemaKeyword
 // pins.
+//
+// The span itself is a row of schema.keywordDialects rather than a switch here;
+// this function is the reading of that row at the one question the generator
+// asks of it.
 func (g *Generator) supportsPrefixItems(s *schema.Schema) bool {
-	switch g.draftForSchema(s) {
-	case schema.Draft202012, schema.DraftV1, schema.DraftUnknown:
-		return true
-	default:
-		return false
-	}
+	return schema.KeywordDefinedIn("prefixItems", g.draftForSchema(s))
 }
 
 // isTupleArray reports whether prefixItems positions the array's elements, so
@@ -13399,8 +13359,18 @@ func (g *Generator) isTupleArray(s *schema.Schema) bool {
 	return s != nil && len(s.PrefixItems) > 0 && g.supportsPrefixItems(s)
 }
 
+// supportsDependentRequired reports whether the 2019-09 pair that replaced
+// "dependencies" are keywords of the dialect.
+//
+// It is a row of schema.keywordDialects read at the one site that asks -- the
+// merge of a $ref target's siblings into the referring schema. It used to
+// enumerate three dialects by name, which answered no for DraftUnknown; the row
+// answers yes there, as every other keyword's does, because a document naming no
+// dialect is read as a modern one and a custom metaschema may define anything.
+// See supportsPrefixItems, which was written the same way and had the same
+// silent default.
 func supportsDependentRequired(draft schema.Draft) bool {
-	return draft == schema.Draft201909 || draft == schema.Draft202012 || draft == schema.DraftV1
+	return schema.KeywordDefinedIn("dependentRequired", draft)
 }
 
 // extractValidationRules extracts validation rules from a property schema.

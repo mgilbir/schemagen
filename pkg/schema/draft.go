@@ -84,17 +84,89 @@ func DetectDraft(s *Schema) Draft {
 
 // Normalize ensures the schema is consistent regardless of which draft it was
 // authored in. It performs the following normalizations:
+//   - Drops every keyword the node's own dialect does not define
 //   - Copies definitions <-> $defs bidirectionally
 //   - Copies Draft 3/4 "id" to "$id"
 //   - Converts Draft 3 "extends" to allOf
 //   - Converts Draft 3 "divisibleBy" to multipleOf
 //   - Converts Draft 4-7 "dependencies" to dependentSchemas/dependentRequired
 //   - Recursively normalizes all nested schemas
+//
+// The dialect is the document's own $schema, inherited by every node that does
+// not declare one of its own. NormalizeForDraft is the same walk with the root's
+// dialect supplied from outside, which is what --draft does.
 func (s *Schema) Normalize() {
+	s.NormalizeForDraft(DraftUnknown)
+}
+
+// NormalizeForDraft normalizes under a dialect chosen from outside the document,
+// which stands in for the root's own $schema exactly as the --draft flag does.
+//
+// Only the root's dialect is supplied: a nested node declaring its own $schema
+// is an embedded resource and keeps it, for the subtree below it too. Passing
+// DraftUnknown is the same as calling Normalize -- it means "read the dialect
+// from the document" and not "this document has no dialect".
+func (s *Schema) NormalizeForDraft(d Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
+	if d == DraftUnknown {
+		d = DetectDraft(s)
+	}
 
+	// The dialect gate is a pass of its own, run over the whole tree before the
+	// first rewrite. Both halves of that sentence are load-bearing.
+	//
+	// *Before*, because five of the rewrites read a keyword one dialect alone
+	// defines and write one that dialect does not have -- extends into allOf,
+	// divisibleBy into multipleOf, disallow into not, the per-property boolean
+	// required into the parent's array, dependencies into the 2019-09 pair.
+	// Gating afterwards would delete what the rewrite had just legitimately
+	// produced: a draft-3 document's allOf, arrived at from its own "extends",
+	// dropped as a keyword draft 3 does not define. Gating first makes each
+	// rewrite fire exactly where its source keyword survived the gate, which is
+	// exactly the dialect that defines it.
+	//
+	// *A pass of its own*, because the rewrites also synthesize nodes -- draft
+	// 3's {"disallow":["a","b"]} becomes a "not" holding an "anyOf", and draft 3
+	// has no anyOf. A gate interleaved with the rewrites would reach that
+	// synthesized node on the way down and clear the branch list it had just
+	// built. The gate answers what the *document* states; the rewrites' output is
+	// this package's internal spelling of what it states, and is not re-read.
+	s.gateDialectKeywords(d)
+	s.normalizeNode(d)
+}
+
+// gateDialectKeywords clears, over the whole tree, every keyword a node's own
+// dialect does not define. A node declaring its own $schema takes that dialect,
+// for itself and everything below it.
+func (s *Schema) gateDialectKeywords(d Draft) {
+	if s == nil || s.IsBooleanSchema() {
+		return
+	}
+	s.dropKeywordsOutsideDialect(d)
+	s.eachChild(func(sub *Schema) {
+		child := d
+		if own := DetectDraft(sub); own != DraftUnknown {
+			child = own
+		}
+		sub.gateDialectKeywords(child)
+	})
+}
+
+// normalizeInherited normalizes a nested node under the dialect it inherits,
+// which its own $schema overrides for it and everything below it.
+func (s *Schema) normalizeInherited(d Draft) {
+	if s == nil || s.IsBooleanSchema() {
+		return
+	}
+	if own := DetectDraft(s); own != DraftUnknown {
+		d = own
+	}
+	s.normalizeNode(d)
+}
+
+func (s *Schema) normalizeNode(d Draft) {
 	// Copy Draft 3/4 "id" to "$id" if $id is empty.
 	if s.ID == "" && s.LegacyID != "" {
 		s.ID = s.LegacyID
@@ -122,7 +194,16 @@ func (s *Schema) Normalize() {
 	}
 
 	// Draft 3: convert per-property "required": true to parent Required array.
-	s.normalizeDraft3Required()
+	//
+	// The gate is consulted here rather than left to the property's own pass
+	// because the promotion happens on the parent: by the time the property is
+	// normalized its boolean would already have become an entry in this schema's
+	// required array, which no later dialect would recognise as draft 3's
+	// spelling any more. The property's own pass still clears the leftover
+	// sentinel where the promotion did not fire.
+	if BooleanRequiredDefinedIn(d) {
+		s.normalizeDraft3Required()
+	}
 
 	// Draft 3: convert "divisibleBy" to "multipleOf".
 	if s.DivisibleBy != nil && s.MultipleOf == nil {
@@ -142,7 +223,7 @@ func (s *Schema) Normalize() {
 	}
 
 	// Recursively normalize nested schemas.
-	s.normalizeChildren()
+	s.normalizeChildren(d)
 }
 
 // normalizeDisallow converts Draft 3's "disallow" to an equivalent "not" schema.
@@ -284,99 +365,73 @@ func (s *Schema) normalizeDependencies() {
 	s.Dependencies = nil
 }
 
-// normalizeChildren recursively normalizes all nested sub-schemas.
-func (s *Schema) normalizeChildren() {
-	for _, sub := range s.Properties {
+// normalizeChildren recursively normalizes all nested sub-schemas under the
+// dialect they inherit from this one.
+func (s *Schema) normalizeChildren(d Draft) {
+	s.eachChild(func(sub *Schema) { sub.normalizeInherited(d) })
+}
+
+// eachChild calls fn for every sub-schema this node holds directly.
+//
+// It is the one traversal the dialect gate and the legacy rewrites share, so
+// that a keyword position added to Schema cannot be reached by one and missed by
+// the other -- the failure that let a $recursiveRef under propertyNames escape
+// the pass that was meant to clear it.
+func (s *Schema) eachChild(fn func(*Schema)) {
+	visit := func(sub *Schema) {
 		if sub != nil {
-			sub.Normalize()
+			fn(sub)
 		}
+	}
+	for _, sub := range s.Properties {
+		visit(sub)
 	}
 	for _, sub := range s.TypeSchemas {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.PatternProperties {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.Defs {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.Definitions {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.AllOf {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.AnyOf {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.OneOf {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 	for _, sub := range s.PrefixItems {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
-	if s.Not != nil {
-		s.Not.Normalize()
-	}
+	visit(s.Not)
 	if s.Items != nil {
-		if s.Items.Schema != nil {
-			s.Items.Schema.Normalize()
-		}
+		visit(s.Items.Schema)
 		for _, sub := range s.Items.Schemas {
-			if sub != nil {
-				sub.Normalize()
-			}
+			visit(sub)
 		}
 	}
-	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		s.AdditionalProperties.Schema.Normalize()
+	if s.AdditionalProperties != nil {
+		visit(s.AdditionalProperties.Schema)
 	}
-	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
-		s.AdditionalItems.Schema.Normalize()
+	if s.AdditionalItems != nil {
+		visit(s.AdditionalItems.Schema)
 	}
-	if s.If != nil {
-		s.If.Normalize()
-	}
-	if s.Then != nil {
-		s.Then.Normalize()
-	}
-	if s.Else != nil {
-		s.Else.Normalize()
-	}
-	if s.Contains != nil {
-		s.Contains.Normalize()
-	}
-	if s.PropertyNames != nil {
-		s.PropertyNames.Normalize()
-	}
-	if s.ContentSchema != nil {
-		s.ContentSchema.Normalize()
-	}
-	if s.UnevaluatedItems != nil {
-		s.UnevaluatedItems.Normalize()
-	}
-	if s.UnevaluatedProperties != nil {
-		s.UnevaluatedProperties.Normalize()
-	}
+	visit(s.If)
+	visit(s.Then)
+	visit(s.Else)
+	visit(s.Contains)
+	visit(s.PropertyNames)
+	visit(s.ContentSchema)
+	visit(s.UnevaluatedItems)
+	visit(s.UnevaluatedProperties)
 	for _, sub := range s.DependentSchemas {
-		if sub != nil {
-			sub.Normalize()
-		}
+		visit(sub)
 	}
 }

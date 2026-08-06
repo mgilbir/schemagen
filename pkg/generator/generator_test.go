@@ -1232,6 +1232,14 @@ func TestDraft3IntegerAliasRequiresStrictIntegerToken(t *testing.T) {
 // An explicit Config.Draft is the caller's statement about the document, so it
 // must win over the document's own $schema in per-node draft decisions — not
 // just in the paths that read g.draft directly.
+//
+// It has to be made at both stages of the pipeline, which is why the schema is
+// normalized with NormalizeForDraft here and not Normalize. Normalization is
+// where a keyword the dialect does not define is dropped, so a document
+// normalized under its own draft-07 $schema has already lost its prefixItems by
+// the time the generator is told to read it as 2020-12 — and nothing downstream
+// can put a dropped keyword back. cmd/schemagen threads --draft into both for
+// this reason.
 func TestExplicitDraftOverridesDocumentSchemaKeyword(t *testing.T) {
 	input := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
@@ -1245,7 +1253,7 @@ func TestExplicitDraftOverridesDocumentSchemaKeyword(t *testing.T) {
 		if err := json.Unmarshal([]byte(input), &s); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		s.Normalize()
+		s.NormalizeForDraft(cfg.Draft)
 
 		ir, err := New(cfg).Generate(&s)
 		if err != nil {
@@ -1367,7 +1375,11 @@ func TestExplicitDraftDoesNotOverrideEmbeddedResourceDialect(t *testing.T) {
 	if err := json.Unmarshal([]byte(input), &s); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	s.Normalize()
+	// The override is made at both stages, as cmd/schemagen makes it; see
+	// TestExplicitDraftOverridesDocumentSchemaKeyword. NormalizeForDraft supplies
+	// the root's dialect only, so the embedded resource's own $schema still wins
+	// for it -- which is the half this test is about.
+	s.NormalizeForDraft(schema.Draft202012)
 
 	ir, err := New(Config{PackageName: "testpkg", Draft: schema.Draft202012}).Generate(&s)
 	if err != nil {
@@ -7720,13 +7732,18 @@ func TestDependentSchemaBranchItCannotReadWholeGoesToTheEvaluator(t *testing.T) 
 		t.Fatalf("RuntimeBranchChecks = %+v, want none for a branch the static reading covers", plainDoc.RuntimeBranchChecks)
 	}
 
+	// Draft 7 is the dialect where a $ref replaces what stands beside it, and it
+	// spells the keyword "dependencies"; "dependentSchemas" is 2019-09's name for
+	// the same thing and draft 7 does not define it, so writing that spelling here
+	// asked draft 7 to honour a keyword it has never heard of. Normalize maps the
+	// one onto the other, so the sub-schema this reaches is unchanged.
 	refIR := generateForItemTest(t, `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"title": "Doc",
 		"type": "object",
 		"definitions": {"Other": {"type": "object"}},
 		"properties": {"alpha": {"type": "string"}},
-		"dependentSchemas": {"alpha": {
+		"dependencies": {"alpha": {
 			"$ref": "#/definitions/Other",
 			"properties": {"bravo": {"minimum": 5}},
 			"required": ["bravo"]
