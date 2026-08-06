@@ -1211,12 +1211,27 @@ func schemaKeywordSet(s *schema.Schema) (map[string]bool, bool) {
 // only where something refers to them. What is left is the part of the schema a
 // bare `any` throws away.
 func unenforcedKeywords(s *schema.Schema) []string {
+	stated, _ := statedConstraints(s)
+	return stated
+}
+
+// statedConstraints is what unenforcedKeywords reads, with the one distinction
+// its own callers do not need: the second result is false when the keyword set
+// could not be read at all, which is not the same answer as "the schema states
+// nothing".
+//
+// A diagnostic may conflate the two -- an unreadable schema and an
+// unconstraining one both give it nothing to print. A gate may not, and the
+// gates inside a `not` least of all: there, a keyword read as absent widens the
+// negation rather than narrowing it, so "I could not tell" has to fail closed
+// where "there was nothing" may pass. See negationOperandStatesOnly.
+func statedConstraints(s *schema.Schema) ([]string, bool) {
 	if s == nil {
-		return nil
+		return nil, false
 	}
 	seen, ok := schemaKeywordSet(s)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	for key := range s.Extensions {
 		seen[key] = true
@@ -1244,7 +1259,7 @@ func unenforcedKeywords(s *schema.Schema) []string {
 		dropped = append(dropped, key)
 	}
 	sort.Strings(dropped)
-	return dropped
+	return dropped, true
 }
 
 // nonConstrainingKeywords are the keywords whose absence from a generated check

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotSiblings",
+  "description": "Issue #177 in every position a `not` can be written with a sibling keyword beside it. Each property held the sibling's Go type and dropped the negation.",
+  "type": "object",
+  "properties": {
+    "typed": {
+      "type": "string",
+      "not": {
+        "const": "forbidden"
+      }
+    },
+    "objectShape": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      },
+      "not": {
+        "required": [
+          "a"
+        ]
+      }
+    },
+    "viaRef": {
+      "$ref": "#/$defs/typedNot"
+    },
+    "element": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "not": {
+          "const": "forbidden"
+        }
+      }
+    },
+    "mapValue": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "not": {
+          "const": "forbidden"
+        }
+      }
+    },
+    "tupleSlot": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "not": {
+            "const": "forbidden"
+          }
+        }
+      ]
+    },
+    "enumSibling": {
+      "enum": [
+        "a",
+        "b"
+      ],
+      "not": {
+        "const": "b"
+      }
+    },
+    "forbiddenByEmptyNot": {
+      "$comment": "A `not` over the accept-all schema admits nothing, whatever stands beside it. The type arm answered `string` and accepted every string.",
+      "type": "string",
+      "not": {}
+    }
+  },
+  "$defs": {
+    "typedNot": {
+      "type": "string",
+      "not": {
+        "const": "forbidden"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MapValueTypedNot",
+  "description": "Issue #177 at a map value written inline, with the object as the whole document. The value was typed from its `type` alone and map[string]string accepted the value the `not` forbids.",
+  "type": "object",
+  "additionalProperties": {"type": "string", "not": {"const": "forbidden"}}
+}
