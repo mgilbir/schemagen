@@ -2129,12 +2129,30 @@ func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) Ty
 		Name:        name,
 		Underlying:  &PrimitiveType{Name: "any"},
 		Description: s.Description,
+		Annotations: annotationsOf(s),
 	}
 }
 
 // generateTypeDef creates the appropriate TypeDef for a schema and adds it to
 // the output File. It skips schemas that have already been generated.
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
+	// The re-entrancy guard comes first, ahead of both arms that claim a schema
+	// before the static ones. The same name arrives here more than once -- a
+	// $defs entry is generated in its own right and again through every $ref that
+	// reaches it -- and an arm in front of the guard emits its definition each
+	// time. That is not a duplicate comment or a wasted allocation: two
+	// declarations of one type name in one file is Go source that does not
+	// compile, and {"$defs":{"K":{"anyOf":[...],"unevaluatedItems":false}}} was
+	// enough to produce three of them.
+	//
+	// It costs the arms below nothing. The guard answers "this name already has a
+	// definition", and a second visit to a name that has one has nothing left to
+	// decide -- it is the same schema under the same name, so the arm that
+	// claimed it the first time is the arm that would claim it again.
+	if g.generated[name] {
+		return nil
+	}
+
 	// unevaluatedItems next to in-place applicators cannot be decided
 	// statically: which items count as evaluated depends on which branches
 	// match the value. Route those to the runtime evaluator before any other
@@ -2145,20 +2163,14 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return nil
 	}
 
-	if g.generated[name] {
-		return nil
-	}
-
 	// A bookended $dynamicRef or $recursiveRef whose anchor is declared more than
 	// once in reach cannot be decided statically either: which declaration wins
 	// is settled by the resources the *instance* evaluation entered. Route it
 	// here, ahead of the arms that would pick one of them and emit a type as if
 	// it were the answer.
 	//
-	// Behind the re-entrancy guard above rather than beside annotationSchemaDef,
-	// because the same name arrives here more than once -- a $defs entry is
-	// generated in its own right and again through every $ref that reaches it --
-	// and an arm in front of the guard emits its definition each time.
+	// Behind the re-entrancy guard, like annotationSchemaDef above and for the
+	// reason given there.
 	if def := g.dynamicScopeSchemaDef(name, s); def != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, def)
@@ -2200,6 +2212,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			IsForbidden: true,
 		})
 		return nil
@@ -2238,6 +2251,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			IsForbidden: true,
 		})
 		return nil
@@ -2287,6 +2301,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			IsForbidden: true,
 		})
 		return nil
@@ -2302,6 +2317,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 				IsForbidden: true,
 			})
 			return nil
@@ -2312,6 +2328,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 				IsForbidden: true,
 			})
 			return nil
@@ -2369,6 +2386,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:        name,
 				Underlying:  goType,
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 			})
 			return nil
 		}
@@ -2481,6 +2499,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:        name,
 				Underlying:  &NamedType{Name: refName},
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 			})
 			return nil
 		}
@@ -2511,6 +2530,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:        name,
 				Underlying:  &NamedType{Name: refName},
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 			})
 			return nil
 		}
@@ -2553,6 +2573,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 			Name:         name,
 			Description:  s.Description,
+			Annotations:  annotationsOf(s),
 			AllowedTypes: allowed,
 			TypeBranches: branches,
 		})
@@ -2586,6 +2607,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:             name,
 				Description:      s.Description,
+				Annotations:      annotationsOf(s),
 				InferredGoType:   goType,
 				InferredJSONType: primaryType,
 				Validations:      rules,
@@ -2598,6 +2620,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
 				Name:           name,
 				Description:    s.Description,
+				Annotations:    annotationsOf(s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -2610,6 +2633,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:           name,
 				Underlying:     goType,
 				Description:    s.Description,
+				Annotations:    annotationsOf(s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -2676,6 +2700,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:                    name,
 				Description:             s.Description,
+				Annotations:             annotationsOf(s),
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -2720,6 +2745,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:             name,
 				Underlying:       goType,
 				Description:      s.Description,
+				Annotations:      annotationsOf(s),
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
@@ -2889,6 +2915,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 		Name:                 name,
 		Description:          s.Description,
+		Annotations:          annotationsOf(s),
 		AdditionalProperties: additionalProps,
 		DependentSchemas:     depSchemas,
 		DependentRequired:    depRequired,
@@ -3966,10 +3993,29 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var readOnlyKeys, writeOnlyKeys []string
 	if g.config.StrictReadWrite {
 		for _, f := range fields {
-			if f.Annotations.ReadOnly {
+			// Read every schema that applies at the property's location, not the
+			// property schema alone. The keyword describes the location, and
+			// {"viaProp":{"type":"string","readOnly":true}} and
+			// {"viaDef":{"$ref":"#/$defs/SID"}} over a readOnly SID describe the
+			// same one; only the spelling differs. Until issue #172 the second
+			// generated no check at all, so the flag bound or did not bind
+			// depending on where the schema author put the keyword.
+			//
+			// The doc comment deliberately does not follow the reference -- see
+			// FieldDef.Annotations, which stays local so that it and Description
+			// answer for the same schema. The key list has no such choice: the
+			// parent struct is the only thing that ever sees the property name,
+			// so if the check is not keyed here it exists nowhere.
+			//
+			// f.Annotations stays in the condition as a floor. The walk starts at
+			// the same schema and so normally subsumes it, but it is looked up by
+			// JSON name and a field that came from anywhere but s.Properties would
+			// find nothing; OR-ing keeps every key the old reading produced.
+			readOnly, writeOnly := g.readWriteAtLocation(s.Properties[f.JSONName])
+			if f.Annotations.ReadOnly || readOnly {
 				readOnlyKeys = append(readOnlyKeys, f.JSONName)
 			}
-			if f.Annotations.WriteOnly {
+			if f.Annotations.WriteOnly || writeOnly {
 				writeOnlyKeys = append(writeOnlyKeys, f.JSONName)
 			}
 		}
@@ -4056,6 +4102,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			IsForbidden: true,
 		})
 		return nil
@@ -4323,6 +4370,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 					Name:         name,
 					Description:  s.Description,
+					Annotations:  annotationsOf(s),
 					AllowedTypes: merged.Type,
 					TypeBranches: g.extractTypeSchemaBranches(merged.TypeSchemas, name),
 				})
@@ -4458,6 +4506,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Name:             name,
 				Underlying:       goType,
 				Description:      s.Description,
+				Annotations:      annotationsOf(s),
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
@@ -4534,6 +4583,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:                    name,
 				Description:             s.Description,
+				Annotations:             annotationsOf(s),
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -4579,6 +4629,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 					Name:             name,
 					Description:      s.Description,
+					Annotations:      annotationsOf(s),
 					InferredGoType:   goType,
 					InferredJSONType: primaryType,
 					Validations:      rules,
@@ -4597,6 +4648,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
 					Name:           name,
 					Description:    s.Description,
+					Annotations:    annotationsOf(s),
 					Validations:    rules,
 					AnyOfVariants:  anyOfVariants,
 					OneOfVariants:  oneOfVariants,
@@ -4610,6 +4662,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Name:           name,
 				Underlying:     goType,
 				Description:    s.Description,
+				Annotations:    annotationsOf(s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -6901,6 +6954,7 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 				IsForbidden: true,
 			})
 			return nil
@@ -6947,6 +7001,7 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		BaseType:    baseType,
 		Values:      values,
 		Description: s.Description,
+		Annotations: annotationsOf(s),
 	})
 	return nil
 }
@@ -7040,6 +7095,7 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 		BaseType:    &PrimitiveType{Name: "json.RawMessage"},
 		Values:      values,
 		Description: s.Description,
+		Annotations: annotationsOf(s),
 		IsRaw:       true,
 	})
 	return nil
@@ -8158,6 +8214,61 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		}
 	}
 	return nil
+}
+
+// readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by
+// any schema that applies at a property's instance location: the property schema
+// itself, whatever its $ref chain reaches, and every allOf branch of any of them.
+//
+// It exists for Config.StrictReadWrite and for nothing else. Both keywords are
+// annotations under every draft that defines them, so no verdict depends on this
+// and Validate() never asks; what it decides is which JSON property names the
+// generated decoder refuses and the generated encoder drops.
+//
+// The reach is the one the spec gives annotation collection, and the line it
+// draws is which applicators always apply:
+//
+//   - $ref and allOf are in-place applicators that bind unconditionally. A valid
+//     instance satisfies every one of them, so what they say about the location
+//     is said about every instance that gets this far, and it is read. From
+//     2019-09 on $ref *is* one of them, which is why treating the two alike is
+//     the rule rather than two rules that happen to agree.
+//   - anyOf, oneOf and if/then/else are not. A branch contributes its annotations
+//     only when the instance matches it, so which of them apply is a property of
+//     the document, not of the schema, and a generator that read them would be
+//     asserting of every instance what the schema says of some. They are left
+//     alone deliberately: a check that fires on documents the schema never marked
+//     is a false rejection, which is worse than the missing one.
+//
+// Only "true" is ever taken. An explicit "false" is the schema saying the keyword
+// does not apply, and OR-ing it in would be the same mistake as emitting on
+// presence rather than on value.
+//
+// Cycle-safe by the visited set, on the same reasoning as
+// resolveSchemaForApplicator: a $ref chain that closes on itself has no iteration
+// that ends it, and an allOf branch can lead back to its own parent. Resolution
+// is deliberately the uncounted form -- this is a second look at a reference the
+// type resolution has already followed, and recording it again would let the
+// unresolved-ref bookkeeping depend on a question about doc comments.
+func (g *Generator) readWriteAtLocation(s *schema.Schema) (readOnly, writeOnly bool) {
+	visited := map[*schema.Schema]bool{}
+	var walk func(*schema.Schema)
+	walk = func(node *schema.Schema) {
+		if node == nil || visited[node] || (readOnly && writeOnly) {
+			return
+		}
+		visited[node] = true
+		readOnly = readOnly || node.IsReadOnly()
+		writeOnly = writeOnly || node.IsWriteOnly()
+		if ref := node.EffectiveRef(); ref != "" {
+			walk(g.resolveRefInContextUncounted(ref, node))
+		}
+		for _, branch := range node.AllOf {
+			walk(branch)
+		}
+	}
+	walk(s)
+	return readOnly, writeOnly
 }
 
 func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
@@ -13164,6 +13275,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		return &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			IsForbidden: true,
 		}
 	}
@@ -13179,6 +13291,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		return &NotSchemaDef{
 			Name:        name,
 			Description: s.Description,
+			Annotations: annotationsOf(s),
 			NotTypes:    not.Type,
 		}
 	}
@@ -13191,6 +13304,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 			return &NotSchemaDef{
 				Name:        name,
 				Description: s.Description,
+				Annotations: annotationsOf(s),
 				NotBranches: branches,
 			}
 		}
@@ -13324,6 +13438,7 @@ func (g *Generator) extractTypeOnlySchemaDef(name string, s *schema.Schema) *Typ
 	return &TypeOnlySchemaDef{
 		Name:         name,
 		Description:  s.Description,
+		Annotations:  annotationsOf(s),
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	}
@@ -13432,6 +13547,7 @@ func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType
 	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 		Name:         contextName,
 		Description:  s.Description,
+		Annotations:  annotationsOf(s),
 		TypeBranches: branches,
 	})
 	return &NamedType{Name: contextName}, true
@@ -13489,6 +13605,7 @@ func (g *Generator) typeUnionWrapper(s *schema.Schema, contextName string) (GoTy
 	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 		Name:         contextName,
 		Description:  s.Description,
+		Annotations:  annotationsOf(s),
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	})
@@ -13665,6 +13782,7 @@ func (g *Generator) stringAnnotationOnlyDef(name string, s *schema.Schema) *Infe
 	return &InferredAliasDef{
 		Name:             name,
 		Description:      s.Description,
+		Annotations:      annotationsOf(s),
 		InferredGoType:   &PrimitiveType{Name: "string"},
 		InferredJSONType: "string",
 		Validations:      rules,

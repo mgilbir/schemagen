@@ -6,6 +6,7 @@
 // {{.Name}} accepts any JSON value. The schema declares no type of its own, so
 // the constraints come entirely from its applicators and are checked against
 // the decoded value by Validate.
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {
 	_raw json.RawMessage
 }

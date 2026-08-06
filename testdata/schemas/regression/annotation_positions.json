@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnnotationPositions",
+  "description": "Every annotation-vocabulary keyword written on every kind of named type schemagen can generate. Before issue #171 only the two struct kinds carried them: an alias, an enum, an inferred alias, a type-only wrapper, a dynamic wrapper, a `not` wrapper and a runtime-annotation wrapper all took the description above their declaration and dropped `deprecated`, `readOnly`, `writeOnly` and `examples`, so a $defs entry the schema marked deprecated produced a Go type nothing warns about. The big-int alias is the one kind that needs a configuration to exist, and is generated from this same document under BigIntSupport. Each kind is written three times. AnnX carries all four keywords. PlainX is the control, writing the three booleans as false, and must read as a type with nothing said about it. DepX carries a description and `deprecated` alone, and it is the one that can see whether the notice is its own paragraph: beside `examples` gofmt inserts the blank comment line itself, around the indented block the example lines become, so a template that forgot the paragraph break would still look right there and be wrong everywhere else.",
+  "type": "object",
+  "properties": {
+    "alias": {"$ref": "#/$defs/AnnAlias"},
+    "aliasPlain": {"$ref": "#/$defs/PlainAlias"},
+    "enum": {"$ref": "#/$defs/AnnEnum"},
+    "enumPlain": {"$ref": "#/$defs/PlainEnum"},
+    "rawEnum": {"$ref": "#/$defs/AnnRawEnum"},
+    "struct": {"$ref": "#/$defs/AnnStruct"},
+    "structPlain": {"$ref": "#/$defs/PlainStruct"},
+    "inferred": {"$ref": "#/$defs/AnnInferred"},
+    "inferredPlain": {"$ref": "#/$defs/PlainInferred"},
+    "typeOnly": {"$ref": "#/$defs/AnnTypeOnly"},
+    "typeOnlyPlain": {"$ref": "#/$defs/PlainTypeOnly"},
+    "dynamic": {"$ref": "#/$defs/AnnDynamic"},
+    "dynamicPlain": {"$ref": "#/$defs/PlainDynamic"},
+    "not": {"$ref": "#/$defs/AnnNot"},
+    "notPlain": {"$ref": "#/$defs/PlainNot"},
+    "runtime": {"$ref": "#/$defs/AnnRuntime"},
+    "runtimePlain": {"$ref": "#/$defs/PlainRuntime"},
+    "bigInt": {"$ref": "#/$defs/AnnBigInt"},
+    "bigIntPlain": {"$ref": "#/$defs/PlainBigInt"}
+  },
+  "$defs": {
+    "AnnAlias": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A declared string, which becomes a plain named type.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": ["alias-1", "alias-2"]
+    },
+    "PlainAlias": {"type": "string", "minLength": 1, "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnEnum": {
+      "type": "string",
+      "enum": ["red", "green"],
+      "description": "A closed set of strings, which becomes a const enum.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": ["red"]
+    },
+    "PlainEnum": {"type": "string", "enum": ["up", "down"], "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnRawEnum": {
+      "enum": ["mixed", 7],
+      "description": "A heterogeneous enum, which becomes a json.RawMessage enum rather than a const one.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [7]
+    },
+
+    "AnnStruct": {
+      "type": "object",
+      "properties": {"a": {"type": "string"}},
+      "description": "An object, the kind that carried these keywords before #171.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [{"a": "x"}]
+    },
+    "PlainStruct": {"type": "object", "properties": {"b": {"type": "string"}}, "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnInferred": {
+      "minimum": 3,
+      "description": "Constraints with no declared type, so the Go type is inferred.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [4]
+    },
+    "PlainInferred": {"minimum": 3, "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnTypeOnly": {
+      "type": ["integer", "string"],
+      "description": "A type union no single Go type covers.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [1, "s"]
+    },
+    "PlainTypeOnly": {"type": ["integer", "string"], "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnDynamic": {
+      "oneOf": [{"type": "string", "minLength": 2}, {"type": "integer", "minimum": 5}],
+      "description": "Applicators and no type of its own, checked against the decoded value.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": ["ab"]
+    },
+    "PlainDynamic": {
+      "oneOf": [{"type": "string", "minLength": 2}, {"type": "integer", "minimum": 5}],
+      "deprecated": false, "readOnly": false, "writeOnly": false
+    },
+
+    "AnnNot": {
+      "not": {"type": "string"},
+      "description": "A root-level negation.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [1]
+    },
+    "PlainNot": {"not": {"type": "string"}, "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "AnnRuntime": {
+      "anyOf": [{"prefixItems": [{"type": "string"}]}],
+      "unevaluatedItems": false,
+      "description": "unevaluatedItems beside an in-place applicator, so the schema is held as data.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [["a"]]
+    },
+    "PlainRuntime": {
+      "anyOf": [{"prefixItems": [{"type": "string"}]}],
+      "unevaluatedItems": false,
+      "deprecated": false, "readOnly": false, "writeOnly": false
+    },
+
+    "AnnBigInt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "An integer, which becomes the arbitrary-precision wrapper under BigIntSupport.",
+      "deprecated": true,
+      "readOnly": true,
+      "writeOnly": true,
+      "examples": [7]
+    },
+    "PlainBigInt": {"type": "integer", "minimum": 0, "deprecated": false, "readOnly": false, "writeOnly": false},
+
+    "DepAlias": {"type": "string", "minLength": 1, "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepEnum": {"type": "string", "enum": ["on", "off"], "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepRawEnum": {"enum": ["either", 9], "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepStruct": {"type": "object", "properties": {"c": {"type": "string"}}, "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepInferred": {"minimum": 3, "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepTypeOnly": {"type": ["integer", "string"], "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepDynamic": {
+      "oneOf": [{"type": "string", "minLength": 2}, {"type": "integer", "minimum": 5}],
+      "description": "Deprecated, and nothing else.", "deprecated": true
+    },
+    "DepNot": {"not": {"type": "string"}, "description": "Deprecated, and nothing else.", "deprecated": true},
+    "DepRuntime": {
+      "anyOf": [{"prefixItems": [{"type": "string"}]}],
+      "unevaluatedItems": false,
+      "description": "Deprecated, and nothing else.", "deprecated": true
+    },
+    "DepBigInt": {"type": "integer", "minimum": 0, "description": "Deprecated, and nothing else.", "deprecated": true}
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "roInline": "a",
+  "woInline": "s",
+  "roViaRef": "b",
+  "woViaRef": "t",
+  "roViaChain": "c",
+  "roViaObject": {"n": "x"},
+  "roViaAllOf": "d",
+  "woViaAllOf": "e",
+  "roViaAnyOf": "f",
+  "nested": {"sid": "s", "keep": "k"},
+  "nestedList": [{"sid": "z", "keep": "y"}],
+  "roList": ["p"],
+  "roMap": {"k": "q"},
+  "woList": ["u"],
+  "plain": "p",
+  "untouched": "u"
+}

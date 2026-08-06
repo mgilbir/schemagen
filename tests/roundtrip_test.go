@@ -266,6 +266,26 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/annotation_vocabulary.json",
 			FixturePath: "testdata/fixtures/regression/annotation_vocabulary.json",
 		},
+		{
+			// The same accept-control one level up: the annotation keywords now
+			// reach every named-type kind's doc comment, and a comment is all
+			// they are. A document that exercises all nine kinds at once has to
+			// come back exactly as it went in.
+			Name:        "regression/annotation_positions",
+			SchemaPath:  "testdata/schemas/regression/annotation_positions.json",
+			FixturePath: "testdata/fixtures/regression/annotation_positions.json",
+		},
+		{
+			// The accept-control for issue #172's half. Every position
+			// "readOnly" and "writeOnly" can be written appears here at once,
+			// including the two the flag now binds that it did not before, and
+			// under the default configuration the whole document has to come
+			// back untouched. TestStrictReadWriteBindsWhereverThePropertyIs is
+			// what says the flag is the only thing that changes it.
+			Name:        "regression/read_write_positions",
+			SchemaPath:  "testdata/schemas/regression/read_write_positions.json",
+			FixturePath: "testdata/fixtures/regression/read_write_positions.json",
+		},
 	}
 }
 
@@ -1828,6 +1848,176 @@ func TestAnnotationKeywordsReachTheDocComment(t *testing.T) {
 	}
 }
 
+// annotationKindCells is the position matrix issue #171 asked for: every kind of
+// named type schemagen can generate, against the annotation vocabulary.
+//
+// It is a table rather than one assertion per keyword because the defect it
+// pins is per-cell. Before #171 the two struct kinds carried all four keywords
+// and the other seven carried none, while `description` reached all nine -- so
+// the plumbing was there and the annotations were simply not wired into it, and
+// a fix aimed at whichever kind was noticed first would have left the rest.
+//
+// Every kind is written twice in the schema: AnnX states all four keywords, and
+// PlainX writes the three booleans as false. The control half is not decoration.
+// The keywords are held as pointers precisely so that "absent" and "false" are
+// distinguishable, and an implementation that emitted on presence rather than on
+// value would mark a type deprecated because its schema said it was not.
+type annotationKindCell struct {
+	kind     string // the named-type kind, in the words the issue used
+	typeName string // the type carrying the keywords
+	control  string // the same kind, with the booleans written false
+	// decl is the line the doc comment has to sit above. It differs between the
+	// default and the big-int reading of the same $defs entry, so it is not
+	// derived from typeName.
+	decl string
+	// bigInt marks the one kind that does not exist under the default
+	// configuration: the same $defs entry is a plain int64 alias without it.
+	bigInt bool
+	// depOnlyDecl is the same kind again, from a $defs entry carrying a
+	// description and "deprecated" and nothing else. It is where the paragraph
+	// break is asserted, because it is the only place the break is this
+	// template's doing: beside "examples" gofmt puts a blank comment line in on
+	// its own account, to fence the indented block the example lines become, and
+	// a template that passed the wrong precededByProse would still come out
+	// looking right.
+	depOnlyDecl string
+}
+
+var annotationKindCells = []annotationKindCell{
+	{kind: "alias", typeName: "AnnAlias", control: "PlainAlias", decl: "type AnnAlias string",
+		depOnlyDecl: "type DepAlias string"},
+	{kind: "enum", typeName: "AnnEnum", control: "PlainEnum", decl: "type AnnEnum string",
+		depOnlyDecl: "type DepEnum string"},
+	{kind: "raw enum", typeName: "AnnRawEnum", decl: "type AnnRawEnum json.RawMessage",
+		depOnlyDecl: "type DepRawEnum json.RawMessage"},
+	{kind: "struct", typeName: "AnnStruct", control: "PlainStruct", decl: "type AnnStruct struct {",
+		depOnlyDecl: "type DepStruct struct {"},
+	{kind: "inferred alias", typeName: "AnnInferred", control: "PlainInferred", decl: "type AnnInferred struct {",
+		depOnlyDecl: "type DepInferred struct {"},
+	{kind: "type-only", typeName: "AnnTypeOnly", control: "PlainTypeOnly", decl: "type AnnTypeOnly struct {",
+		depOnlyDecl: "type DepTypeOnly struct {"},
+	{kind: "dynamic", typeName: "AnnDynamic", control: "PlainDynamic", decl: "type AnnDynamic struct {",
+		depOnlyDecl: "type DepDynamic struct {"},
+	{kind: "not", typeName: "AnnNot", control: "PlainNot", decl: "type AnnNot struct {",
+		depOnlyDecl: "type DepNot struct {"},
+	{kind: "annotation schema", typeName: "AnnRuntime", control: "PlainRuntime", decl: "type AnnRuntime struct {",
+		depOnlyDecl: "type DepRuntime struct {"},
+	{kind: "big-int alias", typeName: "AnnBigInt", control: "PlainBigInt", decl: "type AnnBigInt struct {",
+		bigInt: true, depOnlyDecl: "type DepBigInt struct {"},
+}
+
+// TestAnnotationKeywordsReachEveryNamedTypeKind is issue #171's matrix, run.
+//
+// The big-int alias is the ninth kind and the only one that needs a
+// configuration to exist, so it is read from the same document a second time
+// under BigIntSupport -- where the $defs entry that was `type AnnBigInt int64`
+// becomes the arbitrary-precision wrapper, a different template with a doc
+// comment of its own to get wrong.
+func TestAnnotationKeywordsReachEveryNamedTypeKind(t *testing.T) {
+	const schemaPath = "testdata/schemas/regression/annotation_positions.json"
+	defaultSrc := string(generateFromSchema(t, schemaPath))
+	bigIntSrc := string(generateFromSchemaWithConfig(t, schemaPath, generator.Config{
+		PackageName:   "testpkg",
+		OmitEmpty:     true,
+		BigIntSupport: true,
+	}))
+
+	for _, cell := range annotationKindCells {
+		src := defaultSrc
+		if cell.bigInt {
+			src = bigIntSrc
+		}
+		t.Run(cell.kind, func(t *testing.T) {
+			block := docCommentAbove(t, src, cell.decl)
+
+			// One assertion per keyword, so a failure names the cell that moved
+			// rather than "the annotation block changed".
+			for keyword, want := range map[string]string{
+				// The control for the whole matrix: description is what already
+				// reached all nine kinds, and the contrast with it is what said
+				// the plumbing existed and the annotations were not in it.
+				"description": "// " + cell.typeName + " - ",
+				"readOnly":    `Read-only: the schema says "readOnly"`,
+				"writeOnly":   `Write-only: the schema says "writeOnly"`,
+				"examples":    "Examples from the schema:",
+				"deprecated":  "Deprecated: the schema marks this deprecated.",
+			} {
+				if !strings.Contains(block, want) {
+					t.Errorf("%s: the %q comment above %s does not carry %s:\n%s",
+						cell.kind, cell.typeName, cell.decl, keyword, block)
+				}
+			}
+
+			// "Deprecated: " is the one with an exact spelling rather than a
+			// chosen one, and being a paragraph of its own is half of it. gopls,
+			// staticcheck and `go doc` all read the convention and all miss a
+			// notice glued to the end of the paragraph above it.
+			//
+			// Asserted on the deprecated-only type rather than on this one. Where
+			// "examples" is present, gofmt fences the indented block the example
+			// lines become with blank comment lines of its own, and that fence
+			// would satisfy this check whatever the template did.
+			depBlock := docCommentAbove(t, src, cell.depOnlyDecl)
+			if !strings.Contains(depBlock, "//\n// Deprecated: the schema marks this deprecated.") {
+				t.Errorf("%s: the deprecation notice above %s is not its own paragraph, "+
+					"so nothing that reads the Go convention will see it:\n%s",
+					cell.kind, cell.depOnlyDecl, depBlock)
+			}
+
+			// And it is last, in both. A paragraph after it would be read as
+			// part of the notice by `go doc`.
+			for _, b := range []string{block, depBlock} {
+				if got := strings.TrimSpace(b); !strings.HasSuffix(got, "// Deprecated: the schema marks this deprecated.") {
+					t.Errorf("%s: the deprecation notice is not the last paragraph:\n%s", cell.kind, b)
+				}
+			}
+
+			if cell.control == "" {
+				return
+			}
+			controlDecl := strings.Replace(cell.decl, cell.typeName, cell.control, 1)
+			controlBlock := docCommentAbove(t, src, controlDecl)
+			for _, unwanted := range []string{"Deprecated:", "Read-only:", "Write-only:", "Examples from the schema:"} {
+				if strings.Contains(controlBlock, unwanted) {
+					t.Errorf("%s: %s carries %q, and its schema writes that keyword false:\n%s",
+						cell.kind, cell.control, unwanted, controlBlock)
+				}
+			}
+		})
+	}
+
+	// The whole point of the vocabulary is that it says nothing about any
+	// document. Neither reading may have grown a check.
+	for _, src := range []string{defaultSrc, bigIntSrc} {
+		for _, unwanted := range []string{"read-only property may not be set", "_woKey"} {
+			if strings.Contains(src, unwanted) {
+				t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only", unwanted)
+			}
+		}
+	}
+}
+
+// docCommentAbove returns the run of // lines immediately above decl.
+//
+// It walks back from the declaration rather than forward from the type name,
+// because the name appears inside its own methods and inside every other type
+// that mentions it, and a search that found one of those would assert against a
+// comment belonging to something else.
+func docCommentAbove(t *testing.T, src, decl string) string {
+	t.Helper()
+	idx := strings.Index(src, "\n"+decl)
+	if idx < 0 {
+		t.Fatalf("generated source declares no %q", decl)
+	}
+	lines := strings.Split(src[:idx+1], "\n")
+	end := len(lines) - 1 // the empty element after the final newline
+	start := end
+	for start > 0 && strings.HasPrefix(lines[start-1], "//") {
+		start--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
 // TestStrictReadWriteChangesDecodeAndEncode states the contract of
 // --strict-read-write, which is deliberately not a round-trip.
 //
@@ -1958,6 +2148,183 @@ func main() {
 		mainGo,
 		generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true},
 	)
+}
+
+// TestStrictReadWriteBindsWhereverThePropertyIs is issue #172's position matrix.
+//
+// --strict-read-write keys on a parent struct's property names, and until this
+// was written it read the keyword off the property schema alone. So
+// {"roInline":{"type":"string","readOnly":true}} bound and
+// {"roViaRef":{"$ref":"#/$defs/ReadOnlyID"}} did not, though the two say the
+// same thing about the same instance location and differ only in where the
+// author wrote it. The chain and the object-level spellings are here for the
+// same reason: each is one more way to say it that used to be dropped.
+//
+// The other half of the matrix is the boundary, and it is asserted rather than
+// left implicit. Two things are on the far side of it.
+//
+// A readOnly array element and a readOnly map value generate no check,
+// deliberately: the check keys on a property name and an element has none, and
+// writeOnly has no coherent action there at all -- a property can be left out of
+// an object, but an element cannot be left out of an array without changing its
+// length, which is a thing minItems can see. Those positions are documentation,
+// and the doc comment on the element's own type is where they are documented.
+//
+// And a keyword inside an anyOf branch generates none either. $ref and allOf
+// bind whatever the document says, so what they state is stated of every
+// instance; an anyOf branch applies only to the documents that match it, so a
+// check keyed on one would refuse documents the schema never marked. See
+// readWriteAtLocation.
+//
+// Running rather than reading the generated source is the point: what these
+// keywords are worth is what the decoder and encoder do, and the test is a
+// program that decodes and encodes.
+func TestStrictReadWriteBindsWhereverThePropertyIs(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// Every spelling of "this property is readOnly" is refused, whether the
+	// keyword sits on the property, on the schema it references, at the far end
+	// of a chain of references, or on an object-typed definition's own level.
+	for _, doc := range []string{
+		` + "`" + `{"roInline":"a"}` + "`" + `,
+		` + "`" + `{"roViaRef":"a"}` + "`" + `,
+		` + "`" + `{"roViaChain":"a"}` + "`" + `,
+		` + "`" + `{"roViaObject":{"n":"a"}}` + "`" + `,
+		// An allOf branch binds unconditionally, exactly as a $ref does from
+		// 2019-09 on, so it is read the same way.
+		` + "`" + `{"roViaAllOf":"a"}` + "`" + `,
+		// And the recursion that already worked: the property is on a nested
+		// struct, which carries the check in its own UnmarshalJSON.
+		` + "`" + `{"nested":{"sid":"s"}}` + "`" + `,
+		` + "`" + `{"nestedList":[{"sid":"s"}]}` + "`" + `,
+	} {
+		var v ReadWritePositions
+		if err := json.Unmarshal([]byte(doc), &v); err == nil {
+			fail("strict mode decoded a document setting a readOnly property: %s", doc)
+		} else if !strings.Contains(err.Error(), "read-only property may not be set") {
+			fail("decoding %s failed for the wrong reason: %v", doc, err)
+		}
+	}
+
+	// The boundary. A readOnly array element and a readOnly map value are
+	// documentation: there is no property name for the check to key on, so
+	// nothing is refused, and that is stated here so a change to it is a test
+	// failure rather than a surprise.
+	//
+	// The controls sit in the same list. A property writing readOnly:false, one
+	// carrying no annotation at all, and a writeOnly property all decode, which
+	// is what says the flag refuses a named set of keys and not a shape.
+	for _, doc := range []string{
+		` + "`" + `{}` + "`" + `,
+		` + "`" + `{"roList":["a","b"]}` + "`" + `,
+		` + "`" + `{"roMap":{"k":"a"}}` + "`" + `,
+		` + "`" + `{"woList":["s"]}` + "`" + `,
+		// An anyOf branch is the control for how far the applicator reach goes.
+		// Which branch applies is the document's business, so a readOnly written
+		// inside one binds nothing: a check keyed on it would refuse this
+		// document, which the schema never marked.
+		` + "`" + `{"roViaAnyOf":"a"}` + "`" + `,
+		` + "`" + `{"roViaAnyOf":3}` + "`" + `,
+		` + "`" + `{"nested":{"keep":"k"}}` + "`" + `,
+		` + "`" + `{"plain":"p"}` + "`" + `,
+		` + "`" + `{"untouched":"u"}` + "`" + `,
+		` + "`" + `{"woInline":"s","woViaRef":"s"}` + "`" + `,
+	} {
+		var v ReadWritePositions
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fail("strict mode refused a document it has nothing to say about: %s: %v", doc, err)
+		}
+	}
+
+	// writeOnly, the same way round. Both spellings of the property go in and
+	// do not come out; the array of writeOnly elements is untouched, for the
+	// reason above.
+	var v ReadWritePositions
+	if err := json.Unmarshal([]byte(` + "`" + `{"woInline":"s1","woViaRef":"s2","woViaAllOf":"s4","woList":["s3"],"untouched":"u","plain":"p"}` + "`" + `), &v); err != nil {
+		fail("decoding the writeOnly document: %v", err)
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshaling: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		fail("re-reading the output: %v", err)
+	}
+	for _, gone := range []string{"woInline", "woViaRef", "woViaAllOf"} {
+		if _, present := got[gone]; present {
+			fail("strict mode wrote the writeOnly property %q: %s", gone, out)
+		}
+	}
+	for _, kept := range []string{"woList", "untouched", "plain"} {
+		if _, present := got[kept]; !present {
+			fail("strict mode dropped %q: %s", kept, out)
+		}
+	}
+
+	// And none of it is a verdict. Every document here satisfies the schema
+	// under either setting, because both keywords are annotations and Validate
+	// does not consult them.
+	for _, doc := range []string{
+		` + "`" + `{}` + "`" + `,
+		` + "`" + `{"roList":["a"],"roMap":{"k":"b"},"woList":["s"],"roViaAnyOf":"a"}` + "`" + `,
+		` + "`" + `{"plain":"p","untouched":"u","woInline":"s"}` + "`" + `,
+		` + "`" + `{"nested":{"keep":"k"}}` + "`" + `,
+	} {
+		var w ReadWritePositions
+		if err := json.Unmarshal([]byte(doc), &w); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := w.Validate(); err != nil {
+			fail("Validate rejected %s, which the schema permits: %v", doc, err)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgramWithConfig(t,
+		"testdata/schemas/regression/read_write_positions.json",
+		"strict_read_write_positions_test",
+		mainGo,
+		generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true},
+	)
+}
+
+// TestReadWritePositionsAreDocumentationByDefault is the other setting of the
+// same matrix, and it is what says the flag is the only thing that makes any of
+// it happen.
+//
+// Under the default configuration none of the positions above may reach the
+// decoder or the encoder -- not the property, not the reference, not the chain.
+// The document round-trips instead, which the round-trip case asserts; this
+// asserts that the generated source has nowhere for a rejection to come from.
+func TestReadWritePositionsAreDocumentationByDefault(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/read_write_positions.json"))
+	for _, unwanted := range []string{"read-only property may not be set", "_woKey", "_roKey"} {
+		if strings.Contains(src, unwanted) {
+			t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only:\n%s", unwanted, src)
+		}
+	}
+	// The keywords still reach the reader, on the type that carries them. That
+	// is the whole of what they do by default, and it is issue #171's half of
+	// the same schema.
+	if !strings.Contains(src, `Read-only: the schema says "readOnly"`) {
+		t.Errorf("the default configuration dropped the readOnly doc comment entirely:\n%s", src)
+	}
 }
 
 // runGeneratedMainProgram compiles the generated types for schemaPath together

@@ -10,6 +10,7 @@
 // is what a literal 0 decodes to and a nil *big.Int is what every int64-sized
 // value leaves behind. IsNull reports it, and the zero value is 0, not null.
 {{- end}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {
 	_int64    int64
 	_bigInt   *big.Int

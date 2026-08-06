@@ -975,7 +975,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !ok {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Description: s.Description, NodeLiteral: lit, NeedsPattern: b.usesPattern}
+	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern}
 }
 
 // dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
@@ -1149,6 +1149,7 @@ func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef 
 		Name:        name,
 		Underlying:  &PrimitiveType{Name: "any"},
 		Description: s.Description,
+		Annotations: annotationsOf(s),
 	}
 	if len(dropped) > 0 {
 		def.Unenforced = strings.Join(dropped, ", ")
@@ -1299,6 +1300,7 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 	return &AnnotationSchemaDef{
 		Name:         name,
 		Description:  s.Description,
+		Annotations:  annotationsOf(s),
 		NodeLiteral:  lit,
 		Nodes:        nodes,
 		NeedsPattern: b.usesPattern,

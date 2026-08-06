@@ -557,18 +557,26 @@ type AnnotationContext struct {
 
 // mkAnnotationCtxFunc turns the annotation vocabulary into comment lines.
 //
-// description is the prose already emitted above, and it is a parameter because
-// it decides whether the first paragraph here needs a blank comment line in
-// front of it. Two paragraphs run together read as one, and for "Deprecated: "
-// that is not cosmetic: the Go convention is a paragraph beginning with that
-// word, and a notice appended to the end of the description's paragraph is not
-// one -- gopls, staticcheck and `go doc` all miss it.
+// precededByProse says whether the caller has already written comment lines
+// above this point, and it is a parameter because it decides whether the first
+// paragraph here needs a blank comment line in front of it. Two paragraphs run
+// together read as one, and for "Deprecated: " that is not cosmetic: the Go
+// convention is a paragraph beginning with that word, and a notice appended to
+// the end of an existing paragraph is not one -- gopls, staticcheck and `go doc`
+// all miss it.
+//
+// It is a bool rather than the description itself because the description is not
+// the only prose that can be above. Every named-type kind but the two struct
+// ones writes a sentence of its own explaining what the generated wrapper is
+// ("X accepts any JSON value and validates ..."), and that sentence needs the
+// same break the description does; a caller that passed only the description
+// would run "Deprecated: " onto the end of it.
 //
 // The readOnly and writeOnly wording says what the keyword means rather than
 // what the generated code does, because by default the generated code does
 // nothing with them. See generator.Config.StrictReadWrite for the half that
 // does, and why it is off unless asked for.
-func mkAnnotationCtxFunc(a generator.Annotations, indent, description string) AnnotationContext {
+func mkAnnotationCtxFunc(a generator.Annotations, indent string, precededByProse bool) AnnotationContext {
 	ctx := AnnotationContext{Indent: indent}
 	if !a.Any() {
 		return ctx
@@ -577,7 +585,7 @@ func mkAnnotationCtxFunc(a generator.Annotations, indent, description string) An
 		if len(lines) == 0 {
 			return
 		}
-		if len(ctx.Lines) > 0 || description != "" {
+		if len(ctx.Lines) > 0 || precededByProse {
 			ctx.Lines = append(ctx.Lines, "")
 		}
 		ctx.Lines = append(ctx.Lines, lines...)
