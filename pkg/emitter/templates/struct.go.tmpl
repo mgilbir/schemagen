@@ -16,6 +16,10 @@ type {{.Name}} struct {
 	{{- end}}
 {{- end}}
 {{- range .OneOfs}}
+	{{- if .Description}}
+	// {{comment "\t" .Description}}
+	{{- end}}
+	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" (ne .Description "")}}
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`
 {{- end}}
 {{- if .AdditionalProperties}}

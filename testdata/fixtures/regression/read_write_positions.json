@@ -13,6 +13,9 @@
   "roList": ["p"],
   "roMap": {"k": "q"},
   "woList": ["u"],
+  "roGroup": {"name": "n"},
+  "woGroup": {"id": 7},
+  "plainGroup": {"name": "g"},
   "plain": "p",
   "untouched": "u"
 }

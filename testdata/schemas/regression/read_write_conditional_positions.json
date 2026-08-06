@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReadWriteConditionalPositions",
+  "description": "A conditional applicator reached through an in-place one, which is the position issue #174 reports and the one read_write_positions.json cannot express. That document writes its anyOf control on the property (\"roViaAnyOf\":{\"anyOf\":[...]}), where readWriteAtLocation sees the applicator and declines to walk it. Here the conditional is on the *object*, inside an allOf branch or behind a $ref, so the allOf merge folds the branch's property schemas into this struct's property map before anything asks about readOnly -- and the answer then came off a branch schema as though the property had been written that way. The merge itself is right and stays: the branch is where the field's type comes from, and without it the value has nowhere to go. What may not follow the property in is the annotation, because a subschema that was not selected contributes none (2020-12 section 7.7.1), and asserting one anyway refuses documents the schema accepts and silently drops values the schema never marked writeOnly. Every RoCond*/WoCond* property below is a spelling of that. The RoBinds*/WoBinds* properties are the other side and are equally the point: $ref and allOf bind on every valid instance, so a fix that stopped reading them would trade a false rejection for a missing check. roBindsBoth and roBindsAllOfAndThen are the sharp cases, one for each place an unconditional contribution can come from -- the parent and an allOf branch -- with a conditional branch naming the same property beside it. A rule keyed on \"a conditional mentioned this property\" rather than on which schema said what would drop a check the schema states outright.",
+  "type": "object",
+  "properties": {
+    "mode": {"type": "string"},
+    "roBindsInline": {"type": "string", "readOnly": true},
+    "roBindsBoth": {"type": "string", "readOnly": true},
+    "roBindsViaRef": {"$ref": "#/$defs/ReadOnlyID"},
+    "roBindsRefAndThen": {"$ref": "#/$defs/ReadOnlyID"},
+    "condObject": {
+      "type": "object",
+      "anyOf": [
+        {"required": ["a"], "properties": {"a": {"type": "integer"}, "roCondNested": {"type": "string", "readOnly": true}}},
+        {"required": ["b"], "properties": {"b": {"type": "integer"}, "roCondNested": {"type": "string"}}}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "roBindsViaAllOf": {"type": "string", "readOnly": true},
+        "woBindsViaAllOf": {"type": "string", "writeOnly": true},
+        "roBindsAllOfAndThen": {"type": "string", "readOnly": true}
+      }
+    },
+    {
+      "if": {"required": ["mode"]},
+      "then": {
+        "properties": {
+          "roCondThen": {"type": "string", "readOnly": true},
+          "woCondThen": {"type": "string", "writeOnly": true},
+          "roBindsBoth": {"type": "string"},
+          "roBindsAllOfAndThen": {"type": "string"},
+          "roBindsRefAndThen": {"type": "string"},
+          "woCondGroup": {"writeOnly": true, "oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]}
+        }
+      },
+      "else": {
+        "properties": {"roCondElse": {"type": "string", "readOnly": true}}
+      }
+    },
+    {
+      "anyOf": [
+        {"properties": {"roCondAnyOf": {"type": "string", "readOnly": true}}},
+        {"properties": {"woCondAnyOf": {"type": "string", "writeOnly": true}}}
+      ]
+    },
+    {
+      "oneOf": [
+        {"required": ["pickA"], "properties": {"pickA": {"type": "integer"}, "roCondOneOf": {"type": "string", "readOnly": true}}},
+        {"required": ["pickB"], "properties": {"pickB": {"type": "integer"}, "roCondOneOf": {"type": "string"}}}
+      ]
+    },
+    {"$ref": "#/$defs/ConditionalThroughRef"},
+    {"not": {"required": ["roCondNot"], "properties": {"roCondNot": {"type": "string", "readOnly": true}}}}
+  ],
+  "dependentSchemas": {
+    "mode": {"properties": {"roCondDependent": {"type": "string", "readOnly": true}}}
+  },
+  "$defs": {
+    "ReadOnlyID": {"type": "string", "readOnly": true, "description": "Assigned by the server."},
+    "ByName": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+    "ById": {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    "ConditionalThroughRef": {
+      "if": {"required": ["mode"]},
+      "then": {"properties": {"roCondThenViaRef": {"type": "string", "readOnly": true}}}
+    }
+  }
+}

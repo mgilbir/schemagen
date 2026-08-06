@@ -126,6 +126,24 @@ type Generator struct {
 	// per allOf and so cannot collide with another schema's answer.
 	arrayTypeInferredFromBranch map[*schema.Schema]bool
 
+	// mergedPropertyOrigins remembers, per synthesized merge target and property
+	// name, which applicator each contribution to that property arrived through.
+	//
+	// The merge deliberately erases the distinction: an allOf branch's `then`
+	// gives a property a type, and the merged struct has to declare a field for
+	// it or the value has nowhere to go. But `then` binds only on the documents
+	// its `if` selects, so what that branch *says* about the location is not said
+	// about every instance -- and readOnly/writeOnly are exactly the keywords
+	// where saying it anyway refuses documents the schema accepts (issue #174).
+	//
+	// So the type keeps coming from the merged property schema and the two
+	// annotations are read back through this instead. Keyed on the merge target,
+	// which is synthesized per allOf/anyOf and so cannot collide with another
+	// schema's answer, and on the property name rather than on the contributed
+	// node -- the same node reached unconditionally elsewhere ($defs entry used
+	// both ways) must keep its check there.
+	mergedPropertyOrigins map[*schema.Schema]map[string]*mergedPropertyOrigin
+
 	// patternMintedTypes maps a name minted for a patternProperties bucket to the
 	// node it was minted from. Only names invented here are listed -- a bucket
 	// whose sub-schema is a $ref uses the target's own name, which this mechanism
@@ -180,6 +198,7 @@ func New(cfg Config) *Generator {
 		nullChecked:        make(map[*schema.Schema]bool),
 
 		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
+		mergedPropertyOrigins:       make(map[*schema.Schema]map[string]*mergedPropertyOrigin),
 	}
 }
 
@@ -3188,6 +3207,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 			if oneOfDef != nil {
 				oneOfDef.Required = required
+				// What the property schema says about itself, which a group
+				// carries for the same reasons a FieldDef does: the comment
+				// documents the field, and the annotations are what
+				// --strict-read-write acts on. Read off the property schema
+				// alone, exactly as FieldDef.Annotations is, and through the
+				// same provenance so that a keyword a conditional branch
+				// contributed is not asserted of every document (#174, #175).
+				oneOfDef.Description = propSchema.Description
+				oneOfDef.Annotations = g.propertyAnnotations(s, propName, propSchema)
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
 				needsUnmarshal = true
@@ -3329,7 +3357,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			OmitZero:       omitZero,
 			Required:       required,
 			Description:    propSchema.Description,
-			Annotations:    annotationsOf(propSchema),
+			Annotations:    g.propertyAnnotations(s, propName, propSchema),
 			ManualJSON:     manualJSON,
 			ManualOmit:     manualOmit,
 			DefaultLiteral: defaultLiteral,
@@ -4010,8 +4038,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			// f.Annotations stays in the condition as a floor. The walk starts at
 			// the same schema and so normally subsumes it, but it is looked up by
 			// JSON name and a field that came from anywhere but s.Properties would
-			// find nothing; OR-ing keeps every key the old reading produced.
-			readOnly, writeOnly := g.readWriteAtLocation(s.Properties[f.JSONName])
+			// find nothing; OR-ing keeps every key the old reading produced. Both
+			// sides are now taken through the same reading of where the property
+			// came from, so the floor cannot re-admit what the walk declined.
+			readOnly, writeOnly := g.readWriteBindingAt(s, f.JSONName)
 			if f.Annotations.ReadOnly || readOnly {
 				readOnlyKeys = append(readOnlyKeys, f.JSONName)
 			}
@@ -4019,6 +4049,36 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				writeOnlyKeys = append(writeOnlyKeys, f.JSONName)
 			}
 		}
+		// A property whose oneOf the union can carry is compiled to a sealed
+		// interface rather than to a FieldDef, and a loop over the fields alone
+		// therefore emitted no key list for it at all -- so the flag was a silent
+		// no-op on exactly the shape a "credentials: oneOf [...]" property has,
+		// and a writeOnly secret was written straight back out (issue #175).
+		//
+		// It is the same property of the same object, so it is read the same way,
+		// and both templates key on the JSON name -- the decoder on the document's
+		// own keys and the encoder on the assembled map -- so neither cares how
+		// the value was typed on the way through.
+		for _, o := range oneOfs {
+			// The top-level union has no property name: the struct is the value.
+			// Its annotations reached StructDef instead.
+			if o.JSONName == "" {
+				continue
+			}
+			readOnly, writeOnly := g.readWriteBindingAt(s, o.JSONName)
+			if o.Annotations.ReadOnly || readOnly {
+				readOnlyKeys = append(readOnlyKeys, o.JSONName)
+			}
+			if o.Annotations.WriteOnly || writeOnly {
+				writeOnlyKeys = append(writeOnlyKeys, o.JSONName)
+			}
+		}
+		// Both loops walk the properties in sorted order, but a group's keys
+		// arrive after every field's, so the concatenation is sorted only when one
+		// of the two is empty. Sorting says what the order is rather than leaving
+		// it to which shape a property compiled to.
+		sort.Strings(readOnlyKeys)
+		sort.Strings(writeOnlyKeys)
 		// A struct that would otherwise have taken the default decoder or
 		// encoder needs its own, or the check has nowhere to be.
 		if len(readOnlyKeys) > 0 {
@@ -4118,6 +4178,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
+		g.recordMergedProperty(merged, k, v, false)
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
@@ -4921,9 +4982,12 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 			// be a $ref-only schema; follow it.
 			resolved = r
 		}
-		// Copy direct properties.
+		// Copy direct properties. allOf is an in-place applicator: every branch
+		// binds on every valid instance, so what it says about a property is said
+		// about all of them and the annotation reading records it as such.
 		for k, v := range resolved.Properties {
 			target.Properties[k] = v
+			g.recordMergedProperty(target, k, v, false)
 		}
 		target.Required = append(target.Required, resolved.Required...)
 		// Merge patternProperties from allOf sub-schemas.
@@ -5295,12 +5359,19 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 		}
 	}
 
+	// Every route into this function is a conditional applicator -- a oneOf or
+	// anyOf variant, a `then` or an `else` -- and anything reached from inside one
+	// is conditional too, which is why the flag is a constant here rather than a
+	// parameter threaded down. The property is still merged: the branch is where
+	// the field's type comes from, and dropping it would leave the value nowhere
+	// to go. Only the two annotations are held back. See mergedPropertyOrigins.
 	for k, v := range resolved.Properties {
 		if existing, exists := target.Properties[k]; exists {
 			target.Properties[k] = mergeVariantPropertySchemas(existing, v)
 		} else {
 			target.Properties[k] = v
 		}
+		g.recordMergedProperty(target, k, v, true)
 	}
 	for k, v := range resolved.PatternProperties {
 		if target.PatternProperties == nil {
@@ -5908,6 +5979,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
+		g.recordMergedProperty(merged, k, v, false)
 	}
 
 	// Merge each anyOf sub-schema's properties.
@@ -5918,10 +5990,16 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 				resolved = r
 			}
 		}
+		// One struct stands in for every branch here, so which branch a document
+		// matched is not a thing this type can know afterwards -- and a branch
+		// contributes its annotations only to the documents that match it. The
+		// property is merged for its type and recorded as conditional, on the same
+		// reasoning as mergeVariantObjectPropertiesInto.
 		for k, v := range resolved.Properties {
 			if _, exists := merged.Properties[k]; !exists {
 				merged.Properties[k] = v
 			}
+			g.recordMergedProperty(merged, k, v, true)
 		}
 		// Propagate type from sub-schemas if the parent doesn't have one.
 		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
@@ -8214,6 +8292,117 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		}
 	}
 	return nil
+}
+
+// mergedPropertyOrigin records how one property of a synthesized merge target
+// came to be there. See Generator.mergedPropertyOrigins.
+//
+// conditional and unconditional are not exclusive. A property may be declared
+// beside an allOf and given a further type by one of its branches' `then`, and
+// then both are true of the same field: the location always exists, and one of
+// the schemas describing it applies only sometimes.
+type mergedPropertyOrigin struct {
+	// conditional is set once any contribution has arrived through anyOf, oneOf,
+	// then or else -- at any depth, since everything below a conditional is
+	// conditional too.
+	conditional bool
+	// unconditional holds the contributed schemas that bind on every valid
+	// instance: the parent's own property, and an allOf branch's. These are the
+	// nodes an annotation may still be read off once conditional is set. The
+	// merged schema in target.Properties[name] may not, because it is the two
+	// kinds folded together.
+	unconditional []*schema.Schema
+}
+
+// recordMergedProperty notes one contribution to target.Properties[name].
+//
+// Called from the merge itself rather than reconstructed afterwards, which is
+// the point: what a merge did is not always recoverable from what it produced
+// -- mergeVariantPropertySchemas may return a node that is neither input -- and
+// a second walk that tried would be a second opinion about the same document,
+// free to drift from the first.
+func (g *Generator) recordMergedProperty(target *schema.Schema, name string, contributed *schema.Schema, conditional bool) {
+	if target == nil {
+		return
+	}
+	byName := g.mergedPropertyOrigins[target]
+	if byName == nil {
+		byName = make(map[string]*mergedPropertyOrigin)
+		g.mergedPropertyOrigins[target] = byName
+	}
+	origin := byName[name]
+	if origin == nil {
+		origin = &mergedPropertyOrigin{}
+		byName[name] = origin
+	}
+	if conditional {
+		origin.conditional = true
+		return
+	}
+	if contributed != nil {
+		origin.unconditional = append(origin.unconditional, contributed)
+	}
+}
+
+// unconditionalPropertySchemas returns the schemas that describe owner's
+// property name on every valid instance, and whether the answer had to be
+// narrowed from the merged schema at all.
+//
+// narrowed is false for every schema that is not a merge target and for every
+// merged property no conditional applicator contributed to, and there the
+// caller reads owner.Properties[name] exactly as before -- so nothing outside
+// the merge-through-a-conditional shape moves.
+func (g *Generator) unconditionalPropertySchemas(owner *schema.Schema, name string) (schemas []*schema.Schema, narrowed bool) {
+	origin := g.mergedPropertyOrigins[owner][name]
+	if origin == nil || !origin.conditional {
+		return nil, false
+	}
+	return origin.unconditional, true
+}
+
+// readWriteBindingAt is readWriteAtLocation for a property of a struct, asked
+// through whatever the merge recorded about where that property came from.
+//
+// A conditional branch's schema is read for its type and not for these two
+// keywords, so a property the branch alone contributed answers false and one
+// that also exists unconditionally answers for its unconditional part. 2020-12
+// §7.7.1 is the rule being kept: a subschema that was not selected contributes
+// no annotations, and asserting one anyway is a false rejection in the readOnly
+// direction and a silently dropped value in the writeOnly one.
+func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readOnly, writeOnly bool) {
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		return g.readWriteAtLocation(owner.Properties[name])
+	}
+	for _, src := range sources {
+		ro, wo := g.readWriteAtLocation(src)
+		readOnly = readOnly || ro
+		writeOnly = writeOnly || wo
+	}
+	return readOnly, writeOnly
+}
+
+// propertyAnnotations reads the annotation vocabulary for a struct field.
+//
+// It is annotationsOf on the property schema, less any readOnly or writeOnly a
+// conditional branch alone put there. The other two keywords are left as the
+// merge produced them: "deprecated" and "examples" describe the location for a
+// reader and neither changes what the generated code accepts, whereas these two
+// are the pair --strict-read-write acts on, and a doc comment that disagreed
+// with the check beside it would document the wrong type. The comment and the
+// check are therefore taken from the same reading (issue #174).
+func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propSchema *schema.Schema) Annotations {
+	a := annotationsOf(propSchema)
+	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
+	if !narrowed {
+		return a
+	}
+	a.ReadOnly, a.WriteOnly = false, false
+	for _, src := range sources {
+		a.ReadOnly = a.ReadOnly || src.IsReadOnly()
+		a.WriteOnly = a.WriteOnly || src.IsWriteOnly()
+	}
+	return a
 }
 
 // readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by

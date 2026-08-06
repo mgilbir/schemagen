@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ReadWritePositions",
-  "description": "Every position \"readOnly\" and \"writeOnly\" can be written, against what --strict-read-write does with it. The keywords are annotations under every draft that defines them, so this document changes no verdict at all: Validate() gives the same answer for every instance under both settings, and the default configuration decodes and encodes it unchanged. What moves is which JSON property names the generated decoder refuses and the generated encoder drops, and the answer is the same for a keyword written on the property and for one the property reaches through a $ref or an allOf branch, which are the applicators that bind unconditionally (issue #172). An anyOf branch is not one of them and is the control for that: which branch applies is a property of the document, so a check keyed on it would refuse documents the schema never marked. The array-element and map-value positions are the other boundary: an element has no property name for the check to key on, and there is no way to omit an element from an array without changing its length, so both are documentation there and the doc comment on the element type is where they are said.",
+  "description": "Every position \"readOnly\" and \"writeOnly\" can be written, against what --strict-read-write does with it. The keywords are annotations under every draft that defines them, so this document changes no verdict at all: Validate() gives the same answer for every instance under both settings, and the default configuration decodes and encodes it unchanged. What moves is which JSON property names the generated decoder refuses and the generated encoder drops, and the answer is the same for a keyword written on the property and for one the property reaches through a $ref or an allOf branch, which are the applicators that bind unconditionally (issue #172). An anyOf branch is not one of them and is the control for that: which branch applies is a property of the document, so a check keyed on it would refuse documents the schema never marked. The array-element and map-value positions are the other boundary: an element has no property name for the check to key on, and there is no way to omit an element from an array without changing its length, so both are documentation there and the doc comment on the element type is where they are said. roGroup, woGroup and plainGroup are the twelfth kind of named type and issue #175: a property whose oneOf the union can carry compiles to a sealed interface rather than to a struct field, and the key lists, built by walking the fields, therefore named it nowhere at all -- so the flag was a silent no-op on exactly the shape a credential has, and a writeOnly secret was written straight back out with no diagnostic. It is the same property of the same object however it was typed, so it is read the same way and the doc comment goes above it like any other field's.",
   "type": "object",
   "properties": {
     "roInline": {"type": "string", "readOnly": true},
@@ -18,10 +18,15 @@
     "roMap": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ReadOnlyID"}},
     "woList": {"type": "array", "items": {"$ref": "#/$defs/WriteOnlySecret"}},
     "nestedList": {"type": "array", "items": {"$ref": "#/$defs/HasReadOnlyProperty"}},
+    "roGroup": {"readOnly": true, "description": "Chosen by the server.", "oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]},
+    "woGroup": {"writeOnly": true, "oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]},
+    "plainGroup": {"oneOf": [{"$ref": "#/$defs/ByName"}, {"$ref": "#/$defs/ById"}]},
     "plain": {"type": "string", "readOnly": false, "writeOnly": false},
     "untouched": {"type": "string"}
   },
   "$defs": {
+    "ByName": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}},
+    "ById": {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
     "ReadOnlyID": {"type": "string", "readOnly": true, "description": "Assigned by the server."},
     "WriteOnlySecret": {"type": "string", "writeOnly": true},
     "ChainInner": {"$ref": "#/$defs/ReadOnlyID"},
