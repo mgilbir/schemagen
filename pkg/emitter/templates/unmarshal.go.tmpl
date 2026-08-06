@@ -333,12 +333,33 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks $struct.NeedsJSONNulls}}
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks $struct.NeedsJSONNulls $struct.ReadOnlyKeys}}
 	{
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		{{- if $struct.ReadOnlyKeys}}
+		// --strict-read-write. The schema marks these "readOnly", which JSON
+		// Schema section 9.4 says an owning authority is expected to ignore or
+		// reject when an application sets them; this configuration rejects.
+		//
+		// A rejection here rather than in Validate is the whole of the
+		// distinction. readOnly is an annotation in every draft that defines it
+		// and constrains no document, so a Validate that refused one of these
+		// would be answering a question the schema did not ask. Refusing to
+		// *decode* is this program declining to accept input, which is the
+		// caller's decision and is what the flag asked for.
+		for _, _roKey := range []string{
+			{{- range $struct.ReadOnlyKeys}}
+			{{printf "%q" .}},
+			{{- end}}
+		} {
+			if _, ok := raw[_roKey]; ok {
+				return fmt.Errorf("%s: read-only property may not be set", _roKey)
+			}
+		}
+		{{- end}}
 		{{- if $struct.FlatNullNames}}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null

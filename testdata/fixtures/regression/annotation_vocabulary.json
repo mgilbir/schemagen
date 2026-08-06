@@ -1,0 +1,9 @@
+{
+  "legacyID": "abc-123",
+  "serverID": "srv-7",
+  "secret": "hunter2",
+  "both": "b",
+  "plain": "p",
+  "count": 4,
+  "untouched": "u"
+}

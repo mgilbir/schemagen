@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AnnotationVocabulary",
+  "description": "One property per annotation keyword the generator consumes at generation time. 2020-12 because that is the draft where all four are the meta-data vocabulary, which is what makes them annotations by definition rather than by this generator's choice.",
+  "type": "object",
+  "properties": {
+    "legacyID": {
+      "type": "string",
+      "description": "The identifier this resource used to carry.",
+      "deprecated": true,
+      "examples": ["abc-123", "def-456"]
+    },
+    "serverID": {
+      "type": "string",
+      "description": "Assigned by the server.",
+      "readOnly": true
+    },
+    "secret": {
+      "type": "string",
+      "writeOnly": true
+    },
+    "both": {
+      "type": "string",
+      "readOnly": true,
+      "writeOnly": true
+    },
+    "plain": {
+      "type": "string",
+      "deprecated": false,
+      "readOnly": false,
+      "writeOnly": false
+    },
+    "count": {
+      "type": "integer",
+      "examples": [1, 2]
+    },
+    "untouched": {
+      "type": "string",
+      "description": "Carries no annotation at all."
+    }
+  }
+}

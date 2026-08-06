@@ -39,6 +39,7 @@ func newGenerateCmd() *cobra.Command {
 		pkgName          string
 		omitEmpty        bool
 		strictProperties bool
+		strictReadWrite  bool
 		bigInt           bool
 		formatAssertion  bool
 		formatAnnotation bool
@@ -83,6 +84,7 @@ func newGenerateCmd() *cobra.Command {
 				applyString(cmd, "validation", cfg.Validation, &validationStr)
 				applyBool(cmd, "omit-empty", cfg.OmitEmpty, &omitEmpty)
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
+				applyBool(cmd, "strict-read-write", cfg.StrictReadWrite, &strictReadWrite)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
 				applyBool(cmd, "format-assertion", cfg.FormatAssertion, &formatAssertion)
 				applyBool(cmd, "format-annotation", cfg.FormatAnnotation, &formatAnnotation)
@@ -214,6 +216,7 @@ func newGenerateCmd() *cobra.Command {
 					outputDir:        outputDir,
 					omitEmpty:        omitEmpty,
 					strictProperties: strictProperties,
+					strictReadWrite:  strictReadWrite,
 					bigInt:           bigInt,
 					formatAssertion:  formatAssertion,
 					formatAnnotation: formatAnnotation,
@@ -284,6 +287,7 @@ func newGenerateCmd() *cobra.Command {
 					OutputDir:        outputDir,
 					OmitEmpty:        omitEmpty,
 					StrictProperties: strictProperties,
+					StrictReadWrite:  strictReadWrite,
 					BigIntSupport:    bigInt,
 					FormatAssertion:  formatAssertion,
 					FormatAnnotation: formatAnnotation,
@@ -339,6 +343,7 @@ func newGenerateCmd() *cobra.Command {
 						OutputDir:        outputDir,
 						OmitEmpty:        omitEmpty,
 						StrictProperties: strictProperties,
+						StrictReadWrite:  strictReadWrite,
 						BigIntSupport:    bigInt,
 						FormatAssertion:  formatAssertion,
 						FormatAnnotation: formatAnnotation,
@@ -439,6 +444,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&pkgName, "package", "p", "generated", "Go package name for generated code")
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
+	cmd.Flags().BoolVar(&strictReadWrite, "strict-read-write", false, "Make \"readOnly\" and \"writeOnly\" change what the type accepts and emits, rather than only its doc comment. The generated type becomes the owning authority's view: UnmarshalJSON rejects a document that sets a readOnly property, and MarshalJSON omits every writeOnly one. Validation is unaffected under either setting -- both keywords are annotations in every draft that defines them. A type built this way deliberately does not round-trip")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
 	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 and v1 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows 2020-12. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
 	cmd.Flags().BoolVar(&formatAnnotation, "format-annotation", false, "Treat \"format\" as an annotation on every draft, including the ones whose dialect asserts (draft 3-7 and v1). The opposite of --format-assertion, and mutually exclusive with it")
@@ -580,6 +586,7 @@ type multiPackageParams struct {
 	outputDir        string
 	omitEmpty        bool
 	strictProperties bool
+	strictReadWrite  bool
 	bigInt           bool
 	formatAssertion  bool
 	formatAnnotation bool
@@ -730,6 +737,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			OutputDir:        p.outputDir,
 			OmitEmpty:        p.omitEmpty,
 			StrictProperties: p.strictProperties,
+			StrictReadWrite:  p.strictReadWrite,
 			BigIntSupport:    p.bigInt,
 			FormatAssertion:  p.formatAssertion,
 			FormatAnnotation: p.formatAnnotation,
