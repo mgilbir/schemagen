@@ -324,6 +324,20 @@ func (d *StructDef) FlatNullNames() []string {
 	return names
 }
 
+// NullChecksNameAPosition reports whether any null rule this struct emits
+// writes the offending position itself, rather than handing the document to the
+// shared walker.
+//
+// The two arms differ in what they reach for: a flat rule is a fmt.Errorf
+// naming the key, and the overflow rule is a fmt.Errorf or a fmt.Sprintf
+// depending on its depth, but a nested rule is a call to checkJSONNulls, whose
+// own error text is built in the helper file. So a struct whose only null rules
+// are nested needs no fmt on this account -- and claiming it anyway is issue
+// #202, a file with an import nothing refers to, which does not compile.
+func (d *StructDef) NullChecksNameAPosition() bool {
+	return len(d.FlatNullNames()) > 0 || d.OverflowNullCheck != nil
+}
+
 // NestedNullChecks lists the properties whose rule reaches below the property
 // itself -- an array, a map, or a nest of them, whose elements the schema
 // forbids a null at. Each is walked by the shared helper.

@@ -646,7 +646,9 @@ func (g *Generator) addRequiredImports() {
 			}
 			if sd.HasNullChecks() {
 				needsJSON = true // the raw properties are decoded before they are judged
-				needsFmt = true  // UnmarshalJSON uses fmt.Errorf to name the position
+				if sd.NullChecksNameAPosition() {
+					needsFmt = true // UnmarshalJSON names the position itself
+				}
 			}
 			if len(sd.OneOfs) > 0 {
 				needsJSON = true

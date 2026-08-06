@@ -228,6 +228,22 @@ func TestEmitMultipleTypeDefs(t *testing.T) {
 						Type:      &generator.PrimitiveType{Name: "int64"},
 						OmitEmpty: true,
 					},
+					// The two fields below are what make the imports above
+					// real. Emit drops an import the rendered file never
+					// qualifies (see keepReferencedImports), so a fixture that
+					// declares one and then names no type from it is asserting
+					// the emitter copies a list, not that it writes a file that
+					// compiles.
+					{
+						Name:     "Payload",
+						JSONName: "payload",
+						Type:     &generator.PrimitiveType{Name: "json.RawMessage"},
+					},
+					{
+						Name:     "Since",
+						JSONName: "since",
+						Type:     &generator.PrimitiveType{Name: "time.Time"},
+					},
 				},
 			},
 			&generator.EnumDef{
@@ -1285,5 +1301,103 @@ func TestFormatHelperSetTracksTheFormatsUsed(t *testing.T) {
 			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v\n%s",
 				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost, src)
 		}
+	}
+}
+
+// TestEmitDropsAnImportTheFileNeverNames pins the last line of defence against
+// issue #202: the import list is a hand-written model of what the templates
+// emit, and Go does not tolerate an import nothing refers to -- the file that
+// carries one does not compile at all.
+//
+// The IR below is deliberately over-claiming in every direction the model can:
+// a stdlib package, one whose local name is not the last path element unless
+// aliased, and one that IS referred to and must survive. Emitting the list
+// verbatim is what shipped `"fmt" imported and not used`.
+func TestEmitDropsAnImportTheFileNeverNames(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "testpkg",
+		Imports: []generator.Import{
+			{Path: "encoding/json"}, // named below
+			{Path: "fmt"},           // named by nothing
+			{Path: "unicode/utf8"},  // named by nothing
+			{Path: "github.com/mgilbir/goecma262", Alias: "ecma262"}, // aliased, named by nothing
+		},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Holder",
+				Fields: []generator.FieldDef{
+					{Name: "Raw", JSONName: "raw", Type: &generator.PrimitiveType{Name: "json.RawMessage"}},
+				},
+			},
+		},
+	}
+
+	src, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	got := string(src)
+	if !strings.Contains(got, `"encoding/json"`) {
+		t.Errorf("encoding/json is named by the file and must survive, got:\n%s", got)
+	}
+	for _, gone := range []string{`"fmt"`, `"unicode/utf8"`, `"github.com/mgilbir/goecma262"`} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%s is referred to by nothing in the file and must not be imported, got:\n%s", gone, got)
+		}
+	}
+	assertCompiles(t, got)
+}
+
+// TestEmitKeepsAnImportOnlyAQualifierNames guards the other direction: the scan
+// looks for package qualifiers, which appear in type positions and in nothing
+// else this file does. A scan that only looked at call expressions would drop
+// time here and emit a file that does not compile.
+func TestEmitKeepsAnImportOnlyAQualifierNames(t *testing.T) {
+	e := mustNew(t)
+
+	f := &generator.File{
+		PackageName: "testpkg",
+		Imports:     []generator.Import{{Path: "time"}},
+		TypeDefs: []generator.TypeDef{
+			&generator.StructDef{
+				Name: "Stamped",
+				Fields: []generator.FieldDef{
+					{Name: "At", JSONName: "at", Type: &generator.PrimitiveType{Name: "time.Time"}},
+				},
+			},
+		},
+	}
+
+	src, err := e.Emit(f)
+	if err != nil {
+		t.Fatalf("Emit() error: %v", err)
+	}
+	if !strings.Contains(string(src), `"time"`) {
+		t.Errorf("time is named by a field type and must be imported, got:\n%s", src)
+	}
+	assertCompiles(t, string(src))
+}
+
+// assertCompiles builds emitted source on its own, in a throwaway module. It is
+// the only check here that sees the defect class the import pass exists for: an
+// unused import is a hard compile error, and every assertion above about the
+// *text* of an import block would pass just as happily on a file that cannot
+// build. The IRs it is given name stdlib packages only, so the module needs no
+// requirements and the build is a fraction of a second.
+func assertCompiles(t *testing.T, src string) {
+	t.Helper()
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module emitted\n\ngo 1.23\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "types.go"), []byte(src), 0o644); err != nil {
+		t.Fatalf("write types.go: %v", err)
+	}
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = tmp
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("emitted source does not compile: %v\n%s\n%s", err, out, src)
 	}
 }
