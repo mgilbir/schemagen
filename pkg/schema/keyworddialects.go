@@ -42,11 +42,19 @@ const (
 	gateDrop keywordGate = iota
 
 	// gateKeep records the span and deliberately does not act on it. Every
-	// gateKeep row carries a why, and there are only two reasons for one: the
-	// keyword establishes identity or resolution scope, or it is the target of a
-	// reference. Clearing either does not make the generator ignore a keyword --
-	// it makes a $ref stop resolving, which is a different and worse answer than
-	// the one the specification asks for.
+	// gateKeep row carries a why, and there are three reasons for one.
+	//
+	// Two are structural: the keyword establishes identity or resolution scope,
+	// or it is the target of a reference. Clearing either does not make the
+	// generator ignore a keyword -- it makes a $ref stop resolving, which is a
+	// different and worse answer than the one the specification asks for.
+	//
+	// The third is a measured disagreement between the specification and the
+	// corpus this repository is held to. "dependencies" is the one, and its row
+	// carries the measurement: reading the specification alone and gating it
+	// failed twenty-five suite groups. A row taking this arm is not an exemption
+	// from the rule; it is the rule applied to the oracle this project actually
+	// uses.
 	gateKeep
 )
 
@@ -244,11 +252,36 @@ var keywordDialects = map[string]keywordDialect{
 	}},
 
 	// "dependencies" was split into dependentRequired and dependentSchemas in
-	// 2019-09 and removed. Normalize performs that split, and -- as with draft
-	// 3's spellings above -- it fires only where this pass has left the source
-	// keyword standing, so a draft-7 document keeps its "dependencies" and a
-	// draft-7 document writing "dependentRequired" states nothing.
-	"dependencies":      {From: Draft03, To: Draft07, Gate: gateDrop},
+	// 2019-09, and the specification removed it there. This row does not, and the
+	// reason is a measurement rather than a reading.
+	//
+	// The pinned suite ships optional/dependencies-compatibility.json for exactly
+	// the three dialects that removed the keyword --
+	// tests/draft2019-09/optional/dependencies-compatibility.json,
+	// tests/draft2020-12/optional/dependencies-compatibility.json and
+	// tests/v1/optional/dependencies-compatibility.json -- and every case in them
+	// marks the keyword binding. (tests/latest/optional/ holds a fourth copy of
+	// the path, but tests/latest is a symlink to draft2020-12 and so is the same
+	// corpus, not another dialect.) Upstream's position is that implementations
+	// should go on honouring the keyword after its removal, and this repository
+	// treats those files as corpus.
+	//
+	// Gating this row to 3..7 was measured against that corpus and failed 25
+	// groups -- six on each of the three dialects plus their parent nodes --
+	// taking coverage from 2237/2252 to 2216/2252 and rejections from 4034 to
+	// 3992. Nothing else moved. So the span here is every draft, and the
+	// specification's own answer is recorded in this comment rather than in the
+	// row: the row is what the generator is held to, and what it is held to is
+	// the suite.
+	//
+	// Normalize performs the split, and -- as with draft 3's spellings above --
+	// it fires wherever this pass leaves the source keyword standing, which is now
+	// everywhere. The 2019-09 spellings stay gated in the other direction: a
+	// draft-7 document writing "dependentRequired" still states nothing, because
+	// no compatibility file asks for the reverse.
+	"dependencies": {From: Draft03, To: DraftV1, Gate: gateKeep,
+		Why: "2019-09 removed it, but the suite ships optional/dependencies-compatibility.json for 2019-09, " +
+			"2020-12 and v1 and marks the keyword binding in all three; gating it to 3..7 fails 25 suite groups"},
 	"dependentRequired": {From: Draft201909, To: DraftV1, Gate: gateDrop},
 	"dependentSchemas":  {From: Draft201909, To: DraftV1, Gate: gateDrop},
 

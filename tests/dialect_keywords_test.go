@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,6 +192,9 @@ func dialectKeywordFixtures() []dialectFixture {
 					"dr": {"type": "object",
 					       "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
 					       "dependentRequired": {"a": ["b"]}},
+					"dep": {"type": "object",
+					        "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
+					        "dependencies": {"a": ["b"]}},
 					"ds": {"type": "object",
 					       "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
 					       "dependentSchemas": {"a": {"required": ["b"]}}},
@@ -206,11 +210,19 @@ func dialectKeywordFixtures() []dialectFixture {
 			With:    dialectArm{"2019-09", uriDraft19},
 			Instances: []dialectInstance{
 				{Doc: `{"dr":{"a":1}}`, Without: true, With: false, Why: "dependentRequired arrived in 2019-09"},
+				{Doc: `{"dep":{"a":1}}`, Without: false, With: false,
+					Why: "the exception, and the only row in these fixtures where both arms enforce. 2019-09 " +
+						"removed `dependencies` in favour of the pair above, so a reading of the specification " +
+						"alone gates it -- and that reading was measured against the pinned suite and failed 25 " +
+						"groups: upstream ships optional/dependencies-compatibility.json for 2019-09, 2020-12 " +
+						"and v1 and marks the keyword binding in all three. This is what holds that decision " +
+						"without waiting for `make test-external`; see the `dependencies` row in " +
+						"pkg/schema/keyworddialects.go"},
 				{Doc: `{"ds":{"a":1}}`, Without: true, With: false, Why: "dependentSchemas arrived in 2019-09"},
 				{Doc: `{"mc":[1]}`, Without: true, With: false, Why: "minContains arrived in 2019-09"},
 				{Doc: `{"up":{"b":1}}`, Without: true, With: false, Why: "unevaluatedProperties arrived in 2019-09"},
 				{Doc: `{"ui":[1,2]}`, Without: true, With: false, Why: "unevaluatedItems arrived in 2019-09"},
-				{Doc: `{"dr":{"a":1,"b":2},"ds":{"a":1,"b":2},"mc":[1,2],"up":{"a":1},"ui":[1]}`,
+				{Doc: `{"dr":{"a":1,"b":2},"ds":{"a":1,"b":2},"dep":{"a":1,"b":2},"mc":[1,2],"up":{"a":1},"ui":[1]}`,
 					Without: true, With: true, Why: "the control: every keyword satisfied"},
 			},
 		},
@@ -274,16 +286,33 @@ func TestKeywordAvailabilityFollowsTheDialect(t *testing.T) {
 // every document against the result.
 func runDialectArm(t *testing.T, body, uri string, instances []notInstance) {
 	t.Helper()
+	mainGo, err := notInstanceMain("Root", instances)
+	if err != nil {
+		t.Fatalf("building main.go: %v", err)
+	}
+	runDialectProgram(t, body, uri, generator.Config{
+		PackageName: "testpkg", OmitEmpty: true, RootTypeName: "Root",
+	}, mainGo)
+}
+
+// runDialectProgram generates from body with the given $schema under cfg,
+// compiles it beside mainGo and runs the result, which must print PASS.
+//
+// The body is the unit rather than a fixture file because these tests vary one
+// thing: two arms of the same schema under two dialects. A file per arm is two
+// files that have to be kept identical by hand, and the assertion is only worth
+// anything while they are.
+func runDialectProgram(t *testing.T, body, uri string, cfg generator.Config, mainGo string) {
+	t.Helper()
 
 	src := withSchemaKeyword(t, body, uri)
 	var s schema.Schema
 	if err := json.Unmarshal([]byte(src), &s); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, src)
 	}
-	s.Normalize()
+	s.NormalizeForDraft(cfg.Draft)
 
-	gen := generator.New(generator.Config{PackageName: "testpkg", OmitEmpty: true, RootTypeName: "Root"})
-	ir, err := gen.Generate(&s)
+	ir, err := generator.New(cfg).Generate(&s)
 	if err != nil {
 		t.Fatalf("generate: %v\n%s", err, src)
 	}
@@ -302,11 +331,6 @@ func runDialectArm(t *testing.T, body, uri string, instances []notInstance) {
 		t.Fatalf("writing types.go: %v", err)
 	}
 	writeSharedHelpers(t, tmpDir, generatedMain)
-
-	mainGo, err := notInstanceMain("Root", instances)
-	if err != nil {
-		t.Fatalf("building main.go: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatalf("writing main.go: %v", err)
 	}
@@ -345,4 +369,116 @@ func withSchemaKeyword(t *testing.T, body, uri string) string {
 		t.Fatalf("re-marshalling fixture body: %v", err)
 	}
 	return string(out)
+}
+
+// TestAnnotationVocabularyStrictModeFollowsTheDialect is the running-program
+// half of the annotation-keyword spans, and the reason it exists is that
+// `make test-external` cannot supply one.
+//
+// readOnly, writeOnly and deprecated change no validation verdict in any draft
+// that defines them, so the official suite has no case for any of the three --
+// an audit of the pinned checkout found them stated by no suite schema at all,
+// in any draft directory. The external run therefore passes whatever span the
+// table gives them, in either direction. A gate nothing can falsify is a gate
+// that proves nothing, so the falsification is written here.
+//
+// --strict-read-write is what makes two of them observable from outside: it
+// turns readOnly into a decode that refuses the property and writeOnly into an
+// encode that omits it. Both keywords arrived in draft 7, so a draft-6 document
+// writing them states two words its dialect has never heard of, and the
+// generated type must behave as though neither were there. deprecated reaches
+// only a doc comment and is held on the IR instead, by
+// TestAnnotationVocabularyFollowsTheDialect.
+func TestAnnotationVocabularyStrictModeFollowsTheDialect(t *testing.T) {
+	const body = `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"serverID": {"type": "string", "readOnly": true},
+			"secret":   {"type": "string", "writeOnly": true},
+			"plain":    {"type": "string"}
+		}
+	}`
+
+	// The program is one text with the expected verdict passed in, so the two
+	// arms cannot drift into asserting different things about the same schema.
+	program := func(keywordsBind bool) string {
+		return `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+const bind = ` + fmt.Sprintf("%t", keywordsBind) + `
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	// readOnly: under a dialect that defines it, --strict-read-write refuses a
+	// document that sets the property. Under one that does not, the keyword is
+	// not there to refuse anything.
+	var v Doc
+	err := json.Unmarshal([]byte(` + "`" + `{"serverID":"srv-7"}` + "`" + `), &v)
+	switch {
+	case bind && err == nil:
+		fail("a readOnly property was accepted although the dialect defines readOnly")
+	case bind && !strings.Contains(err.Error(), "read-only property may not be set"):
+		fail("decode failed for the wrong reason: %v", err)
+	case !bind && err != nil:
+		fail("a dialect with no readOnly keyword refused the property anyway: %v", err)
+	}
+
+	// A property carrying no annotation decodes under both, so the arm above
+	// cannot be satisfied by a type that refuses everything.
+	var control Doc
+	if err := json.Unmarshal([]byte(` + "`" + `{"plain":"p"}` + "`" + `), &control); err != nil {
+		fail("control document refused: %v", err)
+	}
+
+	// writeOnly: under a dialect that defines it, MarshalJSON omits the property.
+	var w Doc
+	if err := json.Unmarshal([]byte(` + "`" + `{"secret":"hunter2","plain":"p"}` + "`" + `), &w); err != nil {
+		fail("decoding a writeOnly property failed: %v", err)
+	}
+	out, err := json.Marshal(w)
+	if err != nil {
+		fail("marshal: %v", err)
+	}
+	emitted := strings.Contains(string(out), "hunter2")
+	if bind && emitted {
+		fail("writeOnly property was emitted although the dialect defines writeOnly: %s", out)
+	}
+	if !bind && !emitted {
+		fail("a dialect with no writeOnly keyword omitted the property anyway: %s", out)
+	}
+	// The sibling must survive either way, so "omitted" is not "emitted nothing".
+	if !strings.Contains(string(out), "\"plain\"") {
+		fail("the unannotated property went missing too: %s", out)
+	}
+
+	fmt.Println("PASS")
+}
+`
+	}
+
+	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, StrictReadWrite: true}
+	for _, tt := range []struct {
+		name string
+		uri  string
+		bind bool
+	}{
+		{"draft 6 has neither keyword", uriDraft06, false},
+		{"draft 7 introduced both", uriDraft07, true},
+		{"2019-09 keeps both", uriDraft19, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runDialectProgram(t, body, tt.uri, cfg, program(tt.bind))
+		})
+	}
 }

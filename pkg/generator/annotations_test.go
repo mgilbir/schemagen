@@ -267,3 +267,98 @@ func TestUnusedDefinitionsDoNotDisableUnevaluatedItems(t *testing.T) {
 		}
 	}
 }
+
+// TestAnnotationVocabularyFollowsTheDialect pins the spans of the three
+// annotation keywords that no corpus can hold.
+//
+// readOnly and writeOnly arrived in draft 7 and deprecated in 2019-09, so a
+// draft-4 document writing any of them is writing a word its dialect has never
+// heard of -- the same rule schema.keywordDialects applies to every other
+// keyword (issue #203).
+//
+// It exists because `make test-external` structurally cannot see these. The three
+// keywords change no validation verdict, so the suite has no case for any of
+// them; an audit of the pinned checkout found them used by no suite schema at
+// all, in any draft directory. A gate on them therefore passes the external run
+// whatever the span says -- including a span that is simply wrong -- which is a
+// guard that has never been seen to fail. This is what makes the span
+// falsifiable, and TestAnnotationVocabularyStrictModeFollowsTheDialect is the
+// same question asked of a running program.
+//
+// The columns are what stop the assertion collapsing. Each keyword has a dialect
+// that must read it and one that must not, so a change that stopped reading the
+// keyword everywhere fails the first column and a change that dropped the gate
+// fails the second.
+func TestAnnotationVocabularyFollowsTheDialect(t *testing.T) {
+	for _, tt := range []struct {
+		keyword string
+		read    []string // dialects that define it
+		ignored []string // dialects that predate it
+		get     func(Annotations) bool
+	}{
+		{
+			keyword: "readOnly",
+			read: []string{"http://json-schema.org/draft-07/schema#",
+				"https://json-schema.org/draft/2019-09/schema", "https://json-schema.org/v1"},
+			ignored: []string{"http://json-schema.org/draft-03/schema#",
+				"http://json-schema.org/draft-04/schema#", "http://json-schema.org/draft-06/schema#"},
+			get: func(a Annotations) bool { return a.ReadOnly },
+		},
+		{
+			keyword: "writeOnly",
+			read: []string{"http://json-schema.org/draft-07/schema#",
+				"https://json-schema.org/draft/2019-09/schema", "https://json-schema.org/v1"},
+			ignored: []string{"http://json-schema.org/draft-03/schema#",
+				"http://json-schema.org/draft-04/schema#", "http://json-schema.org/draft-06/schema#"},
+			get: func(a Annotations) bool { return a.WriteOnly },
+		},
+		{
+			// One draft later than the other two, which is the row a gate
+			// written as "the modern drafts" would get wrong: draft 7 reads
+			// readOnly and writeOnly and does not read deprecated.
+			keyword: "deprecated",
+			read: []string{"https://json-schema.org/draft/2019-09/schema",
+				"https://json-schema.org/draft/2020-12/schema", "https://json-schema.org/v1"},
+			ignored: []string{"http://json-schema.org/draft-03/schema#",
+				"http://json-schema.org/draft-04/schema#", "http://json-schema.org/draft-06/schema#",
+				"http://json-schema.org/draft-07/schema#"},
+			get: func(a Annotations) bool { return a.Deprecated },
+		},
+	} {
+		t.Run(tt.keyword, func(t *testing.T) {
+			check := func(uri string, want bool) {
+				t.Helper()
+				input := `{"$schema":"` + uri + `","title":"Doc","type":"object",` +
+					`"properties":{"alpha":{"type":"string","` + tt.keyword + `":true}}}`
+				var s schema.Schema
+				if err := json.Unmarshal([]byte(input), &s); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				s.Normalize()
+				ir, err := New(Config{PackageName: "testpkg"}).Generate(&s)
+				if err != nil {
+					t.Fatalf("generate: %v", err)
+				}
+				doc := structNamed(t, ir, "Doc")
+				var found *FieldDef
+				for i := range doc.Fields {
+					if doc.Fields[i].JSONName == "alpha" {
+						found = &doc.Fields[i]
+					}
+				}
+				if found == nil {
+					t.Fatalf("no alpha field on %s: %+v", doc.Name, doc.Fields)
+				}
+				if got := tt.get(found.Annotations); got != want {
+					t.Errorf("%s under %s: annotation read = %v, want %v", tt.keyword, uri, got, want)
+				}
+			}
+			for _, uri := range tt.read {
+				check(uri, true)
+			}
+			for _, uri := range tt.ignored {
+				check(uri, false)
+			}
+		})
+	}
+}

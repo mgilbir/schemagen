@@ -553,3 +553,63 @@ func TestConstNullIsGatedWithConst(t *testing.T) {
 		}
 	}
 }
+
+// TestDependenciesIsHonouredAfterItsRemoval holds the one row where the table
+// and the specification disagree.
+//
+// 2019-09 split "dependencies" into dependentRequired and dependentSchemas and
+// removed it, so gating it to drafts 3-7 is what a plain reading gives. That
+// reading was measured against the pinned suite and failed 25 groups: upstream
+// ships optional/dependencies-compatibility.json for draft2019-09, draft2020-12
+// and v1 -- tests/latest holds a fourth copy of the path but is a symlink to
+// draft2020-12, so it is the same corpus rather than another dialect -- and
+// every case in those files marks the keyword binding. This repository treats
+// them as corpus, so the keyword is honoured in every dialect.
+//
+// The point of asserting it here as well is speed of failure. Re-gating the row
+// is a one-word edit whose only alarm was a `make test-external` run that takes
+// minutes and is not part of `go test ./...`; this fails in milliseconds and
+// says why.
+func TestDependenciesIsHonouredAfterItsRemoval(t *testing.T) {
+	for _, uri := range []string{
+		"http://json-schema.org/draft-03/schema#",
+		"http://json-schema.org/draft-04/schema#",
+		"http://json-schema.org/draft-06/schema#",
+		"http://json-schema.org/draft-07/schema#",
+		"https://json-schema.org/draft/2019-09/schema",
+		"https://json-schema.org/draft/2020-12/schema",
+		"https://json-schema.org/v1",
+	} {
+		var s Schema
+		doc := `{"$schema":"` + uri + `","dependencies":{"bar":["foo"]}}`
+		if err := json.Unmarshal([]byte(doc), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+		got := s.DependentRequired["bar"]
+		if len(got) != 1 || got[0] != "foo" {
+			t.Errorf("dependentRequired[bar] = %v under %s, want [foo].\n"+
+				"`dependencies` must reach the split in every dialect: the suite ships "+
+				"optional/dependencies-compatibility.json for 2019-09, 2020-12 and v1, and gating the "+
+				"keyword to drafts 3-7 fails 25 of its groups", got, uri)
+		}
+		if !KeywordDefinedIn("dependencies", DetectDraft(&s)) {
+			t.Errorf("KeywordDefinedIn(dependencies, %s) = false; the row and the pass must agree, or a "+
+				"later caller reading the table gets the answer the corpus rejects", uri)
+		}
+	}
+
+	// The reverse compatibility is deliberately not granted: no suite file asks
+	// draft 7 to honour the 2019-09 spellings, and inventing it would be the
+	// forward direction of #203 all over again.
+	var s Schema
+	if err := json.Unmarshal([]byte(`{"$schema":"http://json-schema.org/draft-07/schema#",`+
+		`"dependentRequired":{"bar":["foo"]}}`), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	if len(s.DependentRequired) != 0 {
+		t.Errorf("draft 7 honoured dependentRequired = %v; the compatibility the suite ships runs one way",
+			s.DependentRequired)
+	}
+}
