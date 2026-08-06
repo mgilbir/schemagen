@@ -254,6 +254,17 @@ func allGoldenTests() []goldenTestCase {
 		// The roundtrip tests say what the code decides; this says what it looks
 		// like, which is where a frame published by the wrong resource shows up.
 		{"regression/recursive_ref_outermost_anchor", "testdata/schemas/regression/recursive_ref_outermost_anchor.json", "testdata/golden/regression/recursive_ref_outermost_anchor.go"},
+		// Issue #166, in the two smallest shapes that show what the fix emits
+		// rather than what it decides: the wrapper for an inferred array now
+		// carries a type for its element and delegates to that type's Validate,
+		// where it used to inline a test naming the element's JSON type and
+		// nothing else. The draft-7 file adds the tuple spelling, where the
+		// same delegation appears once per position and once for the tail --
+		// the arm no 2020-12 document reaches. The positions fixture the
+		// roundtrip tests use is deliberately *not* here: 28 properties of it
+		// would pin a great deal that has nothing to do with the element.
+		{"regression/inferred_array_root", "testdata/schemas/regression/inferred_array_root.json", "testdata/golden/regression/inferred_array_root.go"},
+		{"regression/inferred_array_tuple_draft7", "testdata/schemas/regression/inferred_array_tuple_draft7.json", "testdata/golden/regression/inferred_array_tuple_draft7.go"},
 	}
 }
 
@@ -688,12 +699,29 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	// The outer array delegates one element to the type generated for the inner
+	// array, whose own Validate carries the remote integer. That replaced the
+	// ItemsNested this used to assert, which could only repeat the inner
+	// element's declared type and dropped every other keyword beside it (#166).
+	aliases := map[string]*generator.InferredAliasDef{}
 	for _, td := range ir.TypeDefs {
-		if alias, ok := td.(*generator.InferredAliasDef); ok && alias.Name == "Root" {
-			if alias.ItemsNested == nil {
-				t.Fatalf("root IR missing nested item validation: %#v", alias)
-			}
+		if alias, ok := td.(*generator.InferredAliasDef); ok {
+			aliases[alias.Name] = alias
 		}
+	}
+	root := aliases["Root"]
+	if root == nil {
+		t.Fatalf("no root InferredAliasDef in IR")
+	}
+	if root.ItemsTypeName == "" {
+		t.Fatalf("root IR missing nested item validation: %#v", root)
+	}
+	inner := aliases[root.ItemsTypeName]
+	if inner == nil {
+		t.Fatalf("root delegates to %q, which is no inferred array", root.ItemsTypeName)
+	}
+	if inner.ItemsType != "integer" && inner.ItemsTypeName == "" {
+		t.Fatalf("nested element checks nothing: %#v", inner)
 	}
 	em, err := emitter.New()
 	if err != nil {
@@ -703,7 +731,7 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	if !strings.Contains(string(generated), "items[%d][%d]") {
+	if !strings.Contains(string(generated), "var _typed "+root.ItemsTypeName) {
 		t.Fatalf("generated code missing nested item validation:\n%s", string(generated))
 	}
 

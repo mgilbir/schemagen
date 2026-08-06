@@ -518,6 +518,27 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("additionalItems: %d extra items are not allowed", len({{$recv}}._value) - {{len .TupleItems}})
 	}
 	{{- end}}
+	{{- if .AdditionalItemsTypeName}}
+	{{- /*
+	The tail's own generated type answers for everything its sub-schema states.
+	AdditionalItemsType below can only say which JSON type the tail declares, so
+	{"prefixItems":[...],"items":{"type":"object","required":["a"]}} accepted a
+	trailing {} -- the element half of issue #166, one position along.
+	*/}}
+	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
+		_raw, _mErr := json.Marshal({{$recv}}._value[_i])
+		if _mErr != nil {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, _mErr)
+		}
+		var _typed {{.AdditionalItemsTypeName}}
+		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, _uErr)
+		}
+		if _vErr := _typed.Validate(); _vErr != nil {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, _vErr)
+		}
+	}
+	{{- end}}
 	{{- if .AdditionalItemsType}}
 	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
 		_elem := {{$recv}}._value[_i]
@@ -681,6 +702,23 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					_cBytes, _cErr := json.Marshal(_uiElem)
 					if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
 						_evaluatedByContains = true
+					}
+				}
+				{{- else if .Contains.TypeName}}
+				{{- /*
+				The same test the cardinality check makes, asked of one item:
+				an item `contains` matches is an item `contains` evaluated, and
+				a delegated sub-schema has to answer that too. Without this arm
+				the item counted as unevaluated and unevaluatedItems: false
+				refused a document its own contains had accounted for.
+				*/}}
+				{
+					_cBytes, _cErr := json.Marshal(_uiElem)
+					if _cErr == nil {
+						var _cTyped {{.Contains.TypeName}}
+						if json.Unmarshal(_cBytes, &_cTyped) == nil && _cTyped.Validate() == nil {
+							_evaluatedByContains = true
+						}
 					}
 				}
 				{{- else if .Contains.Checks}}

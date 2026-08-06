@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InferredArrayElementPositions",
+  "description": "Issue #166: an array inferred from `items` rather than declared with \"type\":\"array\" reduced its element sub-schema to at most the one JSON type that sub-schema declared, and dropped every other keyword beside it -- so {\"items\":{\"type\":\"object\",\"required\":[\"a\"]}} accepted [{}] while the identical sub-schema under \"type\":\"array\" rejected it. The same reduction sat on a $ref element, on a prefixItems slot, on the tail `items` governs past a prefix, and on the sub-schema of `contains`. Every position an inferred array can occupy is here, each beside the declared spelling that has always been right, and each beside a non-array instance -- which `items` says nothing about and which must keep being accepted.",
+  "type": "object",
+  "properties": {
+    "prop": {
+      "$comment": "The reported position: an inferred array as a declared property.",
+      "items": { "type": "object", "required": ["a"] }
+    },
+    "propRef": {
+      "$comment": "The same element written as a $ref. The reduction was applied to the *target*, so the arm that calls the named type's Validate was reached only when the target declared no single type -- and this target declares one.",
+      "items": { "$ref": "#/$defs/needsA" }
+    },
+    "declared": {
+      "$comment": "The accept-control and the contrast the issue is named for: the same element sub-schema under an explicit \"type\":\"array\", which rejected [{}] all along and must go on doing so.",
+      "type": "array",
+      "items": { "type": "object", "required": ["a"] }
+    },
+    "inDeclaredArray": {
+      "$comment": "An inferred array as the element of a declared one.",
+      "type": "array",
+      "items": { "items": { "type": "object", "required": ["a"] } }
+    },
+    "inInferredArray": {
+      "$comment": "An inferred array as the element of another inferred one.",
+      "items": { "items": { "type": "object", "required": ["a"] } }
+    },
+    "mapValue": {
+      "$comment": "An inferred array as the value of a map.",
+      "type": "object",
+      "additionalProperties": { "items": { "type": "object", "required": ["a"] } }
+    },
+    "slotOfDeclared": {
+      "$comment": "The working sibling: a tuple slot of a *declared* array already walked the ladder that materializes a named type, so this rejected [[{}]] before the fix and must not move.",
+      "type": "array",
+      "prefixItems": [{ "items": { "type": "object", "required": ["a"] } }]
+    },
+    "viaRef": {
+      "$comment": "The inferred array reached through a $ref of its own.",
+      "$ref": "#/$defs/inferredArr"
+    },
+    "allOfBranch": {
+      "$comment": "An inferred array contributed by an allOf branch. The merge types it \"array\" off the branch's `items` so the merged schema can be typed at all, and that guess was read as a declaration: the Go type became a plain slice, which refused the string, the object, the number and the null this schema all permit.",
+      "allOf": [{ "items": { "type": "object", "required": ["a"] } }]
+    },
+    "allOfDeclaringBranch": {
+      "$comment": "The control for the row above, and the one shape that decides which way it reads. A *second* branch declares \"type\":\"array\", so the merge is no longer guessing and the plain slice is right -- \"str\" must be refused here, and accepted one property up. The branches are in this order on purpose: the guess is recorded by the first, and only a rule that keeps looking after it withdraws the guess when the second arrives.",
+      "allOf": [
+        { "items": { "type": "object", "required": ["a"] } },
+        { "type": "array" }
+      ]
+    },
+    "anyOfBranch": {
+      "$comment": "The other two composition spellings are judged by branch matching rather than by a merged type, and were already right. Controls.",
+      "anyOf": [{ "items": { "type": "object", "required": ["a"] } }]
+    },
+    "oneOfBranch": {
+      "oneOf": [{ "items": { "type": "object", "required": ["a"] } }]
+    },
+    "ownSlot": {
+      "$comment": "A prefixItems slot of the inferred array itself, which took the reduction rather than the ladder.",
+      "prefixItems": [{ "type": "object", "required": ["a"] }]
+    },
+    "ownTail": {
+      "$comment": "Draft 2020-12's `items` beside a prefix is the tail every position past it must satisfy, and it kept only the tail's declared JSON type.",
+      "prefixItems": [{ "type": "boolean" }],
+      "items": { "type": "object", "required": ["a"] }
+    },
+    "containsShape": {
+      "$comment": "`contains` reduced its sub-schema the same way, to a JSON type and the scalar bounds, so it counted every object and this accepted an array with no matching element.",
+      "contains": { "type": "object", "required": ["a"] }
+    },
+    "declaredContains": {
+      "$comment": "The declared spelling of the same keyword. It shares extractContainsDef, so it dropped `required` too -- the one row here where the declared array was no better off than the inferred one.",
+      "type": "array",
+      "contains": { "type": "object", "required": ["a"] }
+    },
+    "containsEvaluates": {
+      "$comment": "`contains` is also read by unevaluatedItems, which counts an item contains matched as evaluated. That reader had arms for a const, an enum and the flat checks, so a delegated sub-schema left every item looking unevaluated and this refused the array its own contains had accounted for -- a false rejection introduced by the delegation itself, which is why it is here.",
+      "contains": { "type": "object", "required": ["a"] },
+      "unevaluatedItems": false
+    },
+    "elemMinLength": {
+      "$comment": "An element stating a keyword and no type at all. minLength says nothing about a number, so [7] stays valid.",
+      "items": { "minLength": 3 }
+    },
+    "elemPattern": {
+      "$comment": "An element stating a type *and* a keyword: the reduction kept the type and dropped the pattern.",
+      "items": { "type": "string", "pattern": "^a+$" }
+    },
+    "elemEnum": {
+      "items": { "enum": ["x", "y"] }
+    },
+    "elemNot": {
+      "items": { "not": { "type": "string" } }
+    },
+    "elemUnion": {
+      "$comment": "An element whose \"type\" names two JSON kinds. The reduction asks len(type) == 1 and so said nothing at all.",
+      "items": { "type": ["string", "number"] }
+    },
+    "elemNullableObject": {
+      "$comment": "The same shape with null as the second member. The lightweight check names a single JSON kind and refuses every other, so answering \"object\" for it would refuse the null -- which is why the JSON-type arm is taken only when the type list has one entry.",
+      "items": { "type": ["object", "null"] }
+    },
+    "nullableSlotOfDeclared": {
+      "$comment": "That same reading in the *declared* array's tuple slot, where it was a false rejection rather than a missing check: [null] was refused by a position that permits it.",
+      "type": "array",
+      "prefixItems": [{ "type": ["object", "null"] }]
+    },
+    "keptBounds": {
+      "$comment": "The array-level keywords, which the reduction never touched and which must keep rejecting what they always did.",
+      "items": { "type": "object" },
+      "minItems": 2
+    },
+    "keptUnique": {
+      "items": { "type": "object" },
+      "uniqueItems": true
+    },
+    "elemTrue": {
+      "$comment": "The two degenerate element sub-schemas. `true` constrains nothing and `false` admits nothing; both already worked and are here so a widening cannot quietly take either.",
+      "items": true
+    },
+    "elemFalse": {
+      "items": false
+    },
+    "selfRef": {
+      "$comment": "A recursive element. The delegation has to terminate on the data rather than on the schema, and the type it names is still being generated when the reference is made.",
+      "items": { "$ref": "#/$defs/selfArr" }
+    }
+  },
+  "$defs": {
+    "needsA": { "type": "object", "required": ["a"] },
+    "inferredArr": { "items": { "type": "object", "required": ["a"] } },
+    "selfArr": { "items": { "$ref": "#/$defs/selfArr" }, "minItems": 1 }
+  }
+}

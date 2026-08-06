@@ -1401,6 +1401,10 @@ type InferredAliasDef struct {
 	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
 	AdditionalItemsFalse bool                // additionalItems: false (or items: false in draft 2020-12 with prefixItems)
 	AdditionalItemsType  string              // additionalItems as simple JSON type
+	// AdditionalItemsTypeName is the generated type standing for one element
+	// past the tuple, whose Validate carries everything the tail sub-schema
+	// states. AdditionalItemsType can only carry its declared JSON type.
+	AdditionalItemsTypeName string
 
 	// Contains validation for inferred arrays:
 	Contains    *ContainsDef // contains sub-schema validation
@@ -1425,6 +1429,13 @@ type ContainsDef struct {
 	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
 	EnumJSON  []string        // JSON-encoded enum values for multi-value matching
 	Checks    []ContainsCheck // per-element validation checks
+	// TypeName is the generated type standing for a matching element: an
+	// element matches when it decodes into it and its Validate passes. Checks
+	// can carry a JSON type and the scalar bounds and nothing else, so a
+	// sub-schema saying more than that -- `required`, `properties`, its own
+	// `items`, a composition -- is delegated here instead of being reduced to
+	// the part Checks can express.
+	TypeName string
 }
 
 // ContainsCheck describes one validation check applied to each element
@@ -1498,7 +1509,8 @@ type InferredTupleItem struct {
 func (d *InferredAliasDef) HasItemValidation() bool {
 	return d.ItemsFalse || d.ItemsType != "" || d.ItemsTypeName != "" ||
 		len(d.ItemsChecks) > 0 || d.ItemsNested != nil ||
-		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != ""
+		len(d.TupleItems) > 0 || d.AdditionalItemsFalse || d.AdditionalItemsType != "" ||
+		d.AdditionalItemsTypeName != ""
 }
 
 // HasContainsValidation returns true if the InferredAliasDef has contains validation.

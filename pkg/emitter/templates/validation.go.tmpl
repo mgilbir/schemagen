@@ -1725,6 +1725,27 @@ declares a field for it at all.
 				{{- end}}
 			}
 		}
+		{{- else if .Def.TypeName}}
+		{{- /*
+		A sub-schema richer than the checks below can express. An element
+		matches when it decodes into the type generated for that sub-schema and
+		that type's own Validate passes; a failure at either step is not an
+		error here, only an element that does not count. See ContainsDef.TypeName.
+		*/}}
+		for _, _cElem := range {{$expr}} {
+			_cBytes, _cErr := json.Marshal(_cElem)
+			if _cErr != nil {
+				continue
+			}
+			var _cTyped {{.Def.TypeName}}
+			if json.Unmarshal(_cBytes, &_cTyped) != nil {
+				continue
+			}
+			if _cTyped.Validate() != nil {
+				continue
+			}
+			_containsCount++
+		}
 		{{- else if .Def.Checks}}
 		for _, _cElem := range {{$expr}} {
 			_cMatch := true

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InferredArrayRoot",
+  "description": "Issue #166 at the one position a document has only one of: the root. The whole schema is `items` and nothing else, so the root type is the wrapper that accepts any JSON value and applies the element check only to an array -- which is what the four non-array documents below are for.",
+  "items": { "type": "object", "required": ["a"] }
+}

@@ -117,6 +117,15 @@ type Generator struct {
 	// generation never terminates.
 	nodeTypeNames map[*schema.Schema]string
 
+	// arrayTypeInferredFromBranch lists the schemas mergeAllOfBranches synthesized
+	// and then typed "array" off a branch's items/prefixItems/contains, rather
+	// than off a "type" anything declared. The distinction is the same one
+	// generateTypeDef draws with inferTypeFromConstraints, and it decides
+	// whether the Go type may refuse a non-array outright or has to be the
+	// wrapper that accepts one. Keyed on the merged node, which is synthesized
+	// per allOf and so cannot collide with another schema's answer.
+	arrayTypeInferredFromBranch map[*schema.Schema]bool
+
 	// patternMintedTypes maps a name minted for a patternProperties bucket to the
 	// node it was minted from. Only names invented here are listed -- a bucket
 	// whose sub-schema is a $ref uses the target's own name, which this mechanism
@@ -169,6 +178,8 @@ func New(cfg Config) *Generator {
 		patternMintedTypes: make(map[string]*schema.Schema),
 		nodesInProgress:    make(map[*schema.Schema]bool),
 		nullChecked:        make(map[*schema.Schema]bool),
+
+		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
 	}
 }
 
@@ -1023,6 +1034,9 @@ func (g *Generator) addRequiredImports() {
 				if len(ad.Contains.EnumJSON) > 0 {
 					needsJSON = true
 				}
+				if ad.Contains.TypeName != "" {
+					needsJSON = true // marshal the element, decode it into the type
+				}
 				for _, chk := range ad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
 						needsMath = true
@@ -1200,6 +1214,9 @@ func (g *Generator) addRequiredImports() {
 				}
 				if len(iad.Contains.EnumJSON) > 0 {
 					needsJSON = true // json.Marshal for per-element enum comparison
+				}
+				if iad.Contains.TypeName != "" {
+					needsJSON = true // marshal the element, decode it into the type
 				}
 				for _, chk := range iad.Contains.Checks {
 					if chk.CheckType == "multipleOf" {
@@ -2624,9 +2641,10 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
 			// Extract item-level validation constraints.
-			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(s, name)
+			elemGoType, _ := containerElem(goType)
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(s, name, elemGoType)
 			// Extract contains/minContains/maxContains constraints.
-			containsDef, minContains, maxContains := g.extractContainsDef(s)
+			containsDef, minContains, maxContains := g.extractContainsDef(s, name)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
@@ -2638,6 +2656,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				tupleItems = nil
 				addlItemsFalse = false
 				addlItemsType = ""
+				addlItemsTypeName = ""
 				containsDef = nil
 				minContains = nil
 				maxContains = nil
@@ -2651,35 +2670,36 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
 				len(itemsChecks) > 0 || itemsNested != nil ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
-				containsDef != nil || unevalItems != nil {
+				addlItemsTypeName != "" || containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
-				Name:                 name,
-				Description:          s.Description,
-				InferredGoType:       inferredGoType,
-				InferredJSONType:     primaryType,
-				Validations:          rules,
-				AnyOfVariants:        anyOfVariants,
-				OneOfVariants:        oneOfVariants,
-				NeedsNullCheck:       !schemaAllowsNull(s),
-				ItemsFalse:           itemsFalse,
-				ItemsType:            itemsType,
-				ItemsTypeName:        itemsTypeName,
-				ItemsChecks:          itemsChecks,
-				ItemsNested:          itemsNested,
-				TupleItems:           tupleItems,
-				AdditionalItemsFalse: addlItemsFalse,
-				AdditionalItemsType:  addlItemsType,
-				Contains:             containsDef,
-				MinContains:          minContains,
-				MaxContains:          maxContains,
-				UnevaluatedItems:     unevalItems,
+				Name:                    name,
+				Description:             s.Description,
+				InferredGoType:          inferredGoType,
+				InferredJSONType:        primaryType,
+				Validations:             rules,
+				AnyOfVariants:           anyOfVariants,
+				OneOfVariants:           oneOfVariants,
+				NeedsNullCheck:          !schemaAllowsNull(s),
+				ItemsFalse:              itemsFalse,
+				ItemsType:               itemsType,
+				ItemsTypeName:           itemsTypeName,
+				ItemsChecks:             itemsChecks,
+				ItemsNested:             itemsNested,
+				TupleItems:              tupleItems,
+				AdditionalItemsFalse:    addlItemsFalse,
+				AdditionalItemsType:     addlItemsType,
+				AdditionalItemsTypeName: addlItemsTypeName,
+				Contains:                containsDef,
+				MinContains:             minContains,
+				MaxContains:             maxContains,
+				UnevaluatedItems:        unevalItems,
 			})
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			tupleTail := g.buildTupleTailDef(s, name)
-			containsDef, minContains, maxContains := g.extractContainsDef(s)
+			containsDef, minContains, maxContains := g.extractContainsDef(s, name)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -3627,7 +3647,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 			// `contains` counts across the whole array rather than judging each
 			// element, so it needs its own definition beside the per-element one.
-			if fc := g.buildFieldContains(goFieldName, propName, fieldTypes[goFieldName], propSchema, !requiredSet[propName]); fc != nil {
+			if fc := g.buildFieldContains(name, goFieldName, propName, fieldTypes[goFieldName], propSchema, !requiredSet[propName]); fc != nil {
 				containsValidations = append(containsValidations, *fc)
 			}
 			// prefixItems names each position separately, so it is neither a
@@ -4327,6 +4347,22 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				inferredFromConstraints = true
 			}
 		}
+		// The merge infers "array" from a branch's array keywords so that the
+		// merged schema can be typed at all (see mergeAllOfBranches). That is
+		// the same guess inferTypeFromConstraints makes, and it has to be read
+		// as one: nothing here *declared* an array, so the arm below refused
+		// every instance that is not one, and {"allOf":[{"items":{...}}]}
+		// rejected the string, the object, the number and the null it permits
+		// -- while the identical schema without the allOf around it accepted
+		// all four. Same rule as the scalar case above, one keyword along.
+		// len(s.Type) == 0 is the other half: the parent's own declaration is
+		// copied onto `merged` further up, and only when the merge left it
+		// empty -- which the guess does not, so a parent stating "array" beside
+		// a branch stating `contains` still reaches here carrying the mark.
+		if primaryType == "array" && !inferredFromConstraints &&
+			len(s.Type) == 0 && g.arrayTypeInferredFromBranch[merged] {
+			inferredFromConstraints = true
+		}
 		if primaryType == "array" && !inferredFromConstraints {
 			// A *declared* array type is carried by the Go type itself, exactly
 			// as it is when there is no allOf: `type X []any` refuses a string
@@ -4345,6 +4381,29 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			// allOf -- the same split the inferred arm makes.
 			g.generated[name] = true
 			goType := g.resolveType(merged, name)
+			// The merge leaves a branch's array keywords where they are on
+			// purpose, so when a branch is what supplies `items` the slice
+			// resolved from `merged` holds `any` -- and the per-element descent
+			// below, alone among the array arms here, then had nothing to walk
+			// and {"allOf":[{"items":{"type":"object","required":["a"]}},
+			// {"type":"array"}]} accepted [{}]. The branch's own answer is
+			// borrowed for the element, and only for the element: it may
+			// replace an `any` with something narrower and may do nothing else.
+			//
+			// Narrow because the branch is not the schema this type is being
+			// built from. It is read under its own dialect and states only what
+			// it states, so a branch whose keywords that dialect ignores
+			// resolves to no array at all -- which, taken wholesale, turned a
+			// {"type":"array","$ref":<2019-09 doc>} into `type X any` and lost
+			// the array check the parent had declared.
+			if _, holdsAny := anyElementSliceField(goType); arraySchema != merged && holdsAny {
+				alt := g.resolveType(arraySchema, name)
+				if _, altHoldsAny := anyElementSliceField(alt); !altHoldsAny {
+					if _, isSlice := alt.(*ArrayType); isSlice {
+						goType = alt
+					}
+				}
+			}
 			var rules []ValidationRule
 			var anyOfVariants [][]ValidationRule
 			var oneOfVariants [][]ValidationRule
@@ -4360,7 +4419,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
-				containsDef, minContains, maxContains = g.extractContainsDef(arraySchema)
+				containsDef, minContains, maxContains = g.extractContainsDef(arraySchema, name)
 				unevalItems = g.buildUnevaluatedItemsDef(merged)
 				// The alias *is* the slice, so the per-element checks hang off
 				// the receiver rather than off a field.
@@ -4402,8 +4461,26 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
 			g.generated[name] = true
-			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType := g.extractInferredItemConstraints(arraySchema, name)
-			containsDef, minContains, maxContains := g.extractContainsDef(arraySchema)
+			// A JSON null is refused by a *declared* array and permitted by an
+			// inferred one, so the question has to be put to the schema without
+			// the merge's guess in it. Nothing here said "array"; a branch's
+			// items did, and `items` says nothing about a null.
+			nullSchema := merged
+			if g.arrayTypeInferredFromBranch[merged] {
+				withoutGuess := *merged
+				withoutGuess.Type = nil
+				nullSchema = &withoutGuess
+			}
+			// Only when the merge itself describes the positions does the Go
+			// type resolveType built from it speak about this array's element.
+			// A lone branch supplying them is a different node, and `merged`
+			// resolved to []any.
+			var elemGoType GoType
+			if arraySchema == merged {
+				elemGoType, _ = containerElem(goType)
+			}
+			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(arraySchema, name, elemGoType)
+			containsDef, minContains, maxContains := g.extractContainsDef(arraySchema, name)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -4414,6 +4491,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				tupleItems = nil
 				addlItemsFalse = false
 				addlItemsType = ""
+				addlItemsTypeName = ""
 				containsDef = nil
 				minContains = nil
 				maxContains = nil
@@ -4423,31 +4501,32 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			if itemsFalse || itemsType != "" || itemsTypeName != "" ||
 				len(itemsChecks) > 0 || itemsNested != nil ||
 				len(tupleItems) > 0 || addlItemsFalse || addlItemsType != "" ||
-				containsDef != nil || unevalItems != nil {
+				addlItemsTypeName != "" || containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
-				Name:                 name,
-				Description:          s.Description,
-				InferredGoType:       inferredGoType,
-				InferredJSONType:     primaryType,
-				Validations:          rules,
-				AnyOfVariants:        anyOfVariants,
-				OneOfVariants:        oneOfVariants,
-				ValidateAs:           validateAs,
-				NeedsNullCheck:       !schemaAllowsNull(merged),
-				ItemsFalse:           itemsFalse,
-				ItemsType:            itemsType,
-				ItemsTypeName:        itemsTypeName,
-				ItemsChecks:          itemsChecks,
-				ItemsNested:          itemsNested,
-				TupleItems:           tupleItems,
-				AdditionalItemsFalse: addlItemsFalse,
-				AdditionalItemsType:  addlItemsType,
-				Contains:             containsDef,
-				MinContains:          minContains,
-				MaxContains:          maxContains,
-				UnevaluatedItems:     unevalItems,
+				Name:                    name,
+				Description:             s.Description,
+				InferredGoType:          inferredGoType,
+				InferredJSONType:        primaryType,
+				Validations:             rules,
+				AnyOfVariants:           anyOfVariants,
+				OneOfVariants:           oneOfVariants,
+				ValidateAs:              validateAs,
+				NeedsNullCheck:          !schemaAllowsNull(nullSchema),
+				ItemsFalse:              itemsFalse,
+				ItemsType:               itemsType,
+				ItemsTypeName:           itemsTypeName,
+				ItemsChecks:             itemsChecks,
+				ItemsNested:             itemsNested,
+				TupleItems:              tupleItems,
+				AdditionalItemsFalse:    addlItemsFalse,
+				AdditionalItemsType:     addlItemsType,
+				AdditionalItemsTypeName: addlItemsTypeName,
+				Contains:                containsDef,
+				MinContains:             minContains,
+				MaxContains:             maxContains,
+				UnevaluatedItems:        unevalItems,
 			})
 			return nil
 		}
@@ -4776,6 +4855,11 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 				target.PatternProperties[k] = v
 			}
 		}
+		// A branch that states a "type" settles what an earlier branch's array
+		// keywords only let the merge guess, whichever order the two arrive in.
+		if len(resolved.Type) > 0 {
+			delete(g.arrayTypeInferredFromBranch, target)
+		}
 		// Propagate type from sub-schemas if the target doesn't have one.
 		if len(resolved.Type) > 0 && len(target.Type) == 0 {
 			target.Type = resolved.Type
@@ -4807,6 +4891,12 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		if len(target.Type) == 0 {
 			if resolved.Items != nil || len(resolved.PrefixItems) > 0 || resolved.Contains != nil || resolved.AdditionalItems != nil {
 				target.Type = []string{"array"}
+				// Recorded, because "array" here is a guess about what the
+				// branch is *about* and not something any schema on the merge
+				// stated. generateAllOfDef reads this to tell the two apart;
+				// without it a merged type read as declared, and the array arm
+				// it picked refuses every instance that is not an array.
+				g.arrayTypeInferredFromBranch[target] = true
 			}
 		}
 		// Recursively merge nested allOf chains.
@@ -11489,7 +11579,7 @@ func itemLevelVar(isMap bool, level int) string {
 // a named type carries the very same constraint in its own Validate, which the
 // struct already dispatches to through ValidatableFields, so emitting here as
 // well would count the elements twice and report the failure twice over.
-func (g *Generator) buildFieldContains(fieldName, jsonName string, fieldType GoType, s *schema.Schema, optional bool) *FieldContainsDef {
+func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, fieldType GoType, s *schema.Schema, optional bool) *FieldContainsDef {
 	if fieldType == nil || s == nil || s.Contains == nil {
 		return nil
 	}
@@ -11502,7 +11592,7 @@ func (g *Generator) buildFieldContains(fieldName, jsonName string, fieldType GoT
 	if _, ok := base.(*ArrayType); !ok {
 		return nil
 	}
-	def, minContains, maxContains := g.extractContainsDef(s)
+	def, minContains, maxContains := g.extractContainsDef(s, parentName+fieldName)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil
 	}
@@ -13803,7 +13893,13 @@ func isNilCheckable(t GoType) bool {
 // Returns nil if the Go type is "any" (untyped schemas can't be validated).
 // extractInferredItemConstraints extracts item-level validation info from an inferred
 // array schema. It returns the fields needed for InferredAliasDef item validation.
-func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName string) (
+//
+// elemGoType is what resolveType made of one element of this array, before the
+// caller replaced the slice with []any so a non-array instance can still decode.
+// It is read, not recomputed: when it names a generated type, that type was
+// built from this very element sub-schema and its Validate is the whole of what
+// the sub-schema says. See inferredItemTypeName.
+func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName string, elemGoType GoType) (
 	itemsFalse bool,
 	itemsType string,
 	itemsTypeName string,
@@ -13812,6 +13908,7 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	tupleItems []InferredTupleItem,
 	additionalItemsFalse bool,
 	additionalItemsType string,
+	additionalItemsTypeName string,
 ) {
 	hasPrefixItems := len(s.PrefixItems) > 0
 	hasTupleItems := s.Items != nil && s.Items.Schemas != nil
@@ -13819,14 +13916,16 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 
 	// Draft 2020-12: prefixItems defines tuple positions. Older drafts ignore it.
 	if hasPrefixItems && g.supportsPrefixItems(s) {
-		for _, sub := range s.PrefixItems {
-			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		for i, sub := range s.PrefixItems {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i)))
 		}
 		// In draft 2020-12, "items" (as single schema) acts as additionalItems.
 		if hasSingleItems {
 			itemSchema := s.Items.Schema
 			if g.schemaForbidsEveryValue(itemSchema) {
 				additionalItemsFalse = true
+			} else if name := g.inferredItemTypeName(itemSchema, nil, parentName+"Rest"); name != "" {
+				additionalItemsTypeName = name
 			} else if len(itemSchema.Type) == 1 {
 				additionalItemsType = itemSchema.Type[0]
 			}
@@ -13836,16 +13935,17 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 
 	// Pre-2020-12: items as array of schemas = tuple form.
 	if hasTupleItems {
-		for _, sub := range s.Items.Schemas {
-			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub))
+		for i, sub := range s.Items.Schemas {
+			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i)))
 		}
 		// additionalItems constrains elements beyond the tuple.
 		if s.AdditionalItems != nil {
 			if s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
 				additionalItemsFalse = true
-			} else if s.AdditionalItems.Schema != nil {
-				addlSchema := s.AdditionalItems.Schema
-				if len(addlSchema.Type) == 1 {
+			} else if addlSchema := s.AdditionalItems.Schema; addlSchema != nil {
+				if name := g.inferredItemTypeName(addlSchema, nil, parentName+"Rest"); name != "" {
+					additionalItemsTypeName = name
+				} else if len(addlSchema.Type) == 1 {
 					additionalItemsType = addlSchema.Type[0]
 				}
 			}
@@ -13860,6 +13960,16 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 			itemsFalse = true
 		} else if itemSchema.IsBooleanSchema() {
 			// items: true — no constraint
+		} else if name := g.inferredItemTypeName(itemSchema, elemGoType, parentName+"Item"); name != "" {
+			// The element's own generated type carries everything the
+			// sub-schema states. Reaching for it first is what makes an
+			// inferred array agree with the declared one written beside it:
+			// the arms below can each say one thing about the element -- its
+			// JSON type, a numeric bound, the type one level further in -- and
+			// every other keyword was dropped, so {"items":{"type":"object",
+			// "required":["a"]}} accepted [{}] while the same sub-schema under
+			// an explicit "type":"array" rejected it. Issue #166.
+			itemsTypeName = name
 		} else if effRef := itemSchema.EffectiveRef(); effRef != "" {
 			// $ref — resolve and check for simple type or named type.
 			resolved := g.resolveRefInContext(effRef, itemSchema)
@@ -13885,6 +13995,83 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	return
 }
 
+// inferredItemTypeName answers with the generated Go type that stands for one
+// element of an inferred array -- the type whose Validate the wrapper delegates
+// to -- or "" when the element has none and the lightweight arms must answer.
+//
+// Two sources, in this order:
+//
+//   - elemGoType, what resolveType already made of the element. A named type
+//     there was built from this very sub-schema node, so it is the canonical
+//     name for it, and asking for a second one under the position's own name
+//     would either be refused (constraintOnlyNamedType declines a name already
+//     generated -- which is how an element {"enum":["x","y"]} kept its dropped
+//     enum) or emit the same declaration twice.
+//   - failing that, the ladder every other element, map value, property and
+//     tuple slot walks. It is what reaches the shapes resolveType types without
+//     naming: {"type":"string","pattern":"^a+$"} is a Go string, and the string
+//     carries no pattern.
+//
+// Only the ladder's *named* answer is taken. Its JSONType answer is left alone
+// deliberately: it reads primarySchemaType, which calls {"type":["object",
+// "null"]} an object, and the caller's arms ask len(Type) == 1 instead -- so
+// taking it would start refusing the null such a sub-schema permits.
+func (g *Generator) inferredItemTypeName(itemSchema *schema.Schema, elemGoType GoType, posName string) string {
+	if itemSchema == nil || itemSchema.IsBooleanSchema() || !g.validationKeywordsEnabled() {
+		return ""
+	}
+	if name := namedTypeName(elemGoType); name != "" && g.namedTypeIsValidatable(name) {
+		return name
+	}
+	if def, ok := g.tupleItemDefFor(itemSchema, posName); ok && g.namedTypeIsValidatable(def.TypeName) {
+		return def.TypeName
+	}
+	return ""
+}
+
+// namedTypeIsValidatable reports whether name is safe to delegate a check to,
+// which for a generated type means it has a Validate method to call.
+//
+// Go forbids methods on a type whose underlying is an interface, so `type X
+// any` -- what a schema constraining nothing resolves to, and what a bookended
+// $dynamicRef's permissive anchor resolves to -- has none, and code calling
+// X.Validate does not compile.
+//
+// A name with no definition yet is taken as validatable: that is the recursive
+// case, where the type is still being generated further up the stack and will
+// carry whatever its own arm gives it. Answering false there would drop the
+// check on every self-referential array, which is the one shape that has always
+// had it.
+//
+// An alias is judged by walking its underlying chain here rather than by asking
+// CanHaveMethods, because the flag that answers reads is not set until
+// resolveAliasMethodability runs, long after this. Asking the unresolved flag
+// answers "yes" for every alias, including `type ItemType any` -- the type a
+// bookended $dynamicRef's permissive anchor produces -- and the generated file
+// then called Validate on it and did not compile.
+func (g *Generator) namedTypeIsValidatable(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, td := range g.output.TypeDefs {
+		if td.TypeName() != name {
+			continue
+		}
+		ad, ok := td.(*AliasDef)
+		if !ok {
+			return localTypeIsValidatable(td)
+		}
+		aliases := make(map[string]*AliasDef, len(g.output.TypeDefs))
+		for _, other := range g.output.TypeDefs {
+			if oad, ok := other.(*AliasDef); ok {
+				aliases[oad.Name] = oad
+			}
+		}
+		return canHaveMethodsResolved(ad.Underlying, aliases)
+	}
+	return true
+}
+
 func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
 	if s == nil || s.Items == nil || s.Items.Schema == nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil {
 		return nil
@@ -13906,12 +14093,21 @@ func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
 
 // inferredTupleItemFromSchema converts a sub-schema to an InferredTupleItem.
 // The generator is needed to resolve $ref sub-schemas.
-func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema) InferredTupleItem {
+//
+// posName is the type name the position mints if it has to. There is no
+// resolveType answer to read here -- an inferred array's Go type is the slice,
+// not the tuple -- so the ladder is the only source, and it is asked before the
+// JSON-type arms for the reason the element position asks it first: a slot
+// reduced to its declared type drops every other keyword the slot states.
+func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName string) InferredTupleItem {
 	if g.schemaForbidsEveryValue(sub) {
 		return InferredTupleItem{IsFalse: true}
 	}
 	if sub.IsTrueSchema() || sub.IsBooleanSchema() {
 		return InferredTupleItem{} // true schema — no constraint
+	}
+	if name := g.inferredItemTypeName(sub, nil, posName); name != "" {
+		return InferredTupleItem{TypeName: name}
 	}
 	// If the sub-schema has a $ref, resolve it and check the resolved type.
 	if effRef := sub.EffectiveRef(); effRef != "" {
@@ -14075,6 +14271,64 @@ func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
 	return checks
 }
 
+// containsChecksCarryTheWholeSchema reports whether the flat per-element tests
+// extractContainsDef collects say everything the sub-schema says.
+//
+// They can carry one declared JSON type, the numeric bounds, multipleOf, and
+// the two string lengths with a pattern -- and nothing else. Every other
+// keyword was read as if it were not written, so a `contains` naming a shape
+// counted every value of the right JSON kind: {"contains":{"type":"object",
+// "required":["a"]}} matched {} and accepted an array with no matching element.
+// A sub-schema this answers false for is delegated to its own generated type
+// instead; see ContainsDef.TypeName.
+//
+// The exclusive bounds are asked for their *numeric* spelling, because draft 3
+// writes them as booleans modifying minimum/maximum and the check has no arm
+// for that. enum and const never reach here: the arms above return on both.
+func containsChecksCarryTheWholeSchema(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	if len(s.Type) > 1 || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if hasProperties(s) || len(s.Required) > 0 || s.AdditionalProperties != nil ||
+		s.PropertyNames != nil || s.MinProperties != nil || s.MaxProperties != nil ||
+		len(s.DependentRequired) > 0 || len(s.DependentSchemas) > 0 || len(s.Dependencies) > 0 {
+		return false
+	}
+	if s.Items != nil || len(s.PrefixItems) > 0 || s.AdditionalItems != nil ||
+		s.Contains != nil || s.MinItems != nil || s.MaxItems != nil || s.UniqueItems != nil {
+		return false
+	}
+	if len(s.AllOf) > 0 || len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.Not != nil ||
+		s.If != nil || s.Then != nil || s.Else != nil {
+		return false
+	}
+	if s.Ref != "" || s.DynamicRef != "" || s.RecursiveRef != "" || len(s.Extends) > 0 {
+		return false
+	}
+	if s.UnevaluatedItems != nil || s.UnevaluatedProperties != nil {
+		return false
+	}
+	if s.Format != nil || s.ContentEncoding != "" || s.ContentMediaType != "" || s.ContentSchema != nil {
+		return false
+	}
+	if len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull {
+		return false
+	}
+	if s.DivisibleBy != nil || len(s.Disallow) > 0 {
+		return false
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number == nil {
+		return false
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number == nil {
+		return false
+	}
+	return true
+}
+
 // extractDependentSchemaConstraints extracts dependentSchemas constraints from a schema.
 // It handles boolean false schemas, additionalProperties:false (allowed-keys check),
 // required properties, minProperties/maxProperties, and the rest of what the
@@ -14172,7 +14426,9 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema) []Depend
 	return result
 }
 
-func (g *Generator) extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *int) {
+// parentName names the type a sub-schema too rich for Checks is materialized
+// under; see ContainsDef.TypeName.
+func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
 	if s.Contains == nil {
 		return nil, nil, nil
 	}
@@ -14243,6 +14499,26 @@ func (g *Generator) extractContainsDef(s *schema.Schema) (*ContainsDef, *int, *i
 		}
 		if allOK {
 			def.EnumJSON = enumValues
+			return def, minC, maxC
+		}
+	}
+
+	// A sub-schema the checks below cannot say: `required`, `properties`, its
+	// own `items`, a $ref, a composition. Every one of those was silently
+	// dropped, and what survived was the declared type on its own -- so
+	// {"contains":{"type":"object","required":["a"]}} counted every object and
+	// accepted [{}], which contains no matching element at all. The element
+	// position's answer to the same reduction is issue #166; this is the
+	// keyword beside it, and it delegates to the same generated type.
+	//
+	// Ahead of the checks rather than behind them, because a sub-schema this
+	// arm claims is one the checks would have answered *partly* -- and a
+	// partial answer is what the defect is. A sub-schema they answer whole is
+	// left to them: it gets the same verdict either way, and a delegation there
+	// would only trade a readable inline test for a decode and a method call.
+	if !containsChecksCarryTheWholeSchema(containsSch) {
+		if name := g.inferredItemTypeName(containsSch, nil, parentName+"Contains"); name != "" {
+			def.TypeName = name
 			return def, minC, maxC
 		}
 	}
@@ -16321,7 +16597,16 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 
 	// Simple type-only schema (no structural keywords) — record the JSON type
 	// for lightweight runtime type checking.
-	if jsonType := primarySchemaType(resolved); jsonType != "" {
+	//
+	// Only when that one type is the whole of what the position allows. The
+	// check this produces names a single JSON kind and refuses every other, and
+	// primarySchemaType answers "object" for {"type":["object","null"]} because
+	// that is the Go type such a schema takes -- a *T, or a map, either of which
+	// holds the null. The position has no pointer to hold it, so the answer was
+	// read as "object and nothing else" and {"prefixItems":[{"type":["object",
+	// "null"]}]} refused the null it permits. Falling through instead reaches
+	// the wrapper below, which carries the whole type list.
+	if jsonType := primarySchemaType(resolved); jsonType != "" && len(resolved.Type) == 1 {
 		return TupleItemDef{JSONType: jsonType}, true
 	}
 
