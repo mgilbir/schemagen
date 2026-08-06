@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "obj": {"type": "object"},
+    "str": {"type": "string"},
+    "num": {"type": "integer"},
+    "arr": {"type": "array"},
+    "anything": {}
+  },
+  "type": "object",
+  "properties": {
+    "req": {"$ref": "#/definitions/obj", "required": ["r"]},
+    "counted": {"$ref": "#/definitions/obj", "minProperties": 2},
+    "short": {"$ref": "#/definitions/str", "maxLength": 3},
+    "shaped": {"$ref": "#/definitions/str", "pattern": "^a"},
+    "even": {"$ref": "#/definitions/num", "multipleOf": 2},
+    "several": {"$ref": "#/definitions/arr", "minItems": 2},
+    "distinct": {"$ref": "#/definitions/arr", "uniqueItems": true},
+    "untyped": {"$ref": "#/definitions/anything", "maxLength": 3},
+    "composed": {"$ref": "#/definitions/str", "allOf": [{"minLength": 3}]},
+    "elements": {"type": "array", "items": {"$ref": "#/definitions/str", "maxLength": 3}},
+    "values": {"type": "object", "additionalProperties": {"$ref": "#/definitions/str", "maxLength": 3}},
+    "slots": {"type": "array", "items": [{"$ref": "#/definitions/str", "maxLength": 3}]}
+  }
+}

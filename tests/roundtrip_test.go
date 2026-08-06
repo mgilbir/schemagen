@@ -5233,6 +5233,217 @@ func TestRefSiblingTypeSuppressedBeforeDraft2019(t *testing.T) {
 	)
 }
 
+// TestRefSiblingAssertionsBindFrom2019 is #118 and #153's question asked of the
+// keywords that only ever assert, which is issue #204.
+//
+// The sibling list those issues grew named the keywords that decide a Go type --
+// the properties and items families, "type", "enum", "const" -- so a keyword
+// that merely constrains was answered "nothing is written beside this reference"
+// and the ref-only arms aliased the target and dropped it. Every property here
+// was accepted with any value the target admitted: `required` said nothing,
+// `maxLength` said nothing, and nothing in the generated type recorded that they
+// had been read at all.
+//
+// `untyped` is the half that did not merely under-enforce. Its target is {}, so
+// the reference types the property `any`, and where the assertion *was* emitted
+// it was emitted against that: utf8.RuneCountInString on an interface, a
+// generated file that does not compile. It is here rather than in a compile-only
+// test because the check has to be shown working as well as building -- and
+// working means saying nothing about the 5, which no string keyword constrains.
+//
+// The four positions are all covered because "fixed at a property, not at an
+// element" has been the shape of this defect's every recurrence.
+func TestRefSiblingAssertionsBindFrom2019(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_assertions_2020.json",
+		[]string{
+			`{}`,
+			`{"req":{"r":1}}`,
+			`{"counted":{"a":1,"b":2}}`,
+			`{"depends":{}}`,
+			`{"depends":{"a":1,"b":2}}`,
+			`{"short":"abc"}`,
+			`{"shaped":"aa"}`,
+			`{"even":4}`,
+			`{"several":[1,2]}`,
+			`{"distinct":[1,2]}`,
+			`{"untyped":"abc"}`,
+			// maxLength constrains a string and says nothing about a number, and
+			// the target admits both.
+			`{"untyped":5}`,
+			`{"elements":["abc"]}`,
+			`{"values":{"k":"abc"}}`,
+			`{"slots":["abc"]}`,
+		},
+		[]string{
+			`{"req":{}}`,
+			`{"counted":{"a":1}}`,
+			`{"depends":{"a":1}}`,
+			`{"short":"abcd"}`,
+			`{"shaped":"bb"}`,
+			`{"even":3}`,
+			`{"several":[1]}`,
+			`{"distinct":[1,1]}`,
+			`{"untyped":"abcd"}`,
+			`{"elements":["abcd"]}`,
+			`{"values":{"k":"abcd"}}`,
+			`{"slots":["abcd"]}`,
+		},
+	)
+}
+
+// TestRefSiblingAssertionsSuppressedBeforeDraft2019 is the narrowness control
+// for the test above, and the half a fix that ignored the draft would break.
+//
+// Through draft-07 a $ref replaces every keyword beside it, so every one of
+// these assertions says nothing and enforcing it would refuse a document the
+// schema admits -- a false rejection across four dialects, worse than the missed
+// check it would replace. The valid list is therefore exactly the invalid list
+// of the 2020-12 test: the same documents, the opposite verdict, decided by the
+// $schema alone.
+//
+// `composed` covers the same rule for an `allOf` written beside the reference.
+// That one was not merely dropped: generateTypeDef's allOf arm ran ahead of its
+// ref arms and never asked the draft, so the branch was enforced and "a" was
+// rejected on draft 4, 6 and 7 -- and where the target was untyped the merge
+// emitted the branch's minLength against an interface and the file did not
+// compile.
+//
+// The invalid list is what keeps this from passing under a generator that had
+// simply stopped reading these schemas: the reference itself still binds, and
+// the type each target declares still refuses the values it always did.
+func TestRefSiblingAssertionsSuppressedBeforeDraft2019(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_assertions_draft7.json",
+		[]string{
+			`{}`,
+			`{"req":{}}`,
+			`{"counted":{"a":1}}`,
+			`{"short":"abcd"}`,
+			`{"shaped":"bb"}`,
+			`{"even":3}`,
+			`{"several":[1]}`,
+			`{"distinct":[1,1]}`,
+			`{"untyped":"abcd"}`,
+			`{"composed":"a"}`,
+			`{"elements":["abcd"]}`,
+			`{"values":{"k":"abcd"}}`,
+			`{"slots":["abcd"]}`,
+		},
+		[]string{
+			// The reference is the whole schema, and its type still binds.
+			`{"short":5}`,
+			`{"shaped":5}`,
+			`{"even":"x"}`,
+			`{"several":"x"}`,
+			`{"composed":5}`,
+			`{"elements":[5]}`,
+		},
+	)
+}
+
+// TestRefSiblingAssertionsBindAtTheRoot is the same question one position up.
+//
+// A root is where the defect was reported, and it is the position with no field
+// to hang a check on: {"$defs":{"S":{"type":"object"}},"$ref":"#/$defs/S",
+// "required":["r"]} became `type Root S` and accepted {}, which the schema
+// forbids. Three keywords are written together so that a fix reaching one of
+// them and not the others cannot pass.
+func TestRefSiblingAssertionsBindAtTheRoot(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_assertions_root_2020.json",
+		[]string{
+			`{"r":1,"x":2}`,
+			`{"r":1,"a":2,"b":3}`,
+		},
+		[]string{
+			`{}`,            // required, and minProperties
+			`{"r":1}`,       // minProperties
+			`{"r":1,"a":2}`, // dependentRequired
+		},
+	)
+}
+
+// TestRefSiblingAllOfFollowsTheDraftAtTheRoot is the draft split for an `allOf`
+// written beside a $ref, in the position where generateTypeDef decides it.
+//
+// Its allOf arm ran ahead of its ref arms and never asked the draft, so through
+// draft-07 -- where the reference replaces everything beside it -- the branch was
+// merged and enforced anyway: "a" was rejected on draft 4, 6 and 7 by a schema
+// that admits it, a false rejection across three dialects. The 2020-12 twin is
+// what stops the fix from becoming "ignore an allOf beside a reference": there
+// both bind, and "a" must still be refused.
+//
+// The untyped fixture is the same rule where getting it wrong costs the build
+// rather than the verdict. Its target is {}, so the merge had `type Anything
+// any` to emit the branch's minLength against, and produced a `string()`
+// conversion of an interface -- source Go refuses. Suppressing the branch is
+// what leaves the reference alone, which is all the draft ever said.
+//
+// The invalid rows are what keep all three honest: the reference itself binds in
+// every draft, so a generator that had stopped reading these schemas fails here.
+func TestRefSiblingAllOfFollowsTheDraftAtTheRoot(t *testing.T) {
+	t.Run("draft7SuppressesTheBranch", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_allof_root_draft7.json",
+			[]string{`"a"`, `"abc"`},
+			[]string{`5`}, // the target's own type still binds
+		)
+	})
+	t.Run("draft7SuppressesTheBranchOverAnUntypedTarget", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_allof_root_untyped_draft7.json",
+			// The target admits everything and the branch is not written at all.
+			[]string{`{}`, `{"c":"a"}`, `{"c":"abc"}`, `{"c":5}`},
+			nil,
+		)
+	})
+	t.Run("2020AppliesTheBranch", func(t *testing.T) {
+		runValidationCases(t,
+			"testdata/schemas/regression/ref_sibling_allof_root_2020.json",
+			[]string{`"abc"`},
+			[]string{`"a"`, `5`},
+		)
+	})
+}
+
+// TestRefSiblingArrayShapesCompile covers the three array shapes beside a $ref
+// that generated source Go refuses, which is the half of #204 no amount of
+// validation testing catches.
+//
+// `narrowed` is the merge emitting its delegation as a Go conversion: the branch
+// alias was `S []any` and the merged type `[]string`, and `(S(r)).Validate()`
+// between those is not a conversion Go has -- "cannot convert r (variable of
+// slice type Root) to type S".
+//
+// `slotted` and `everySlot` are a reference to {}, which generates `type
+// Anything any`. A tuple slot emitted `_typed.Validate()` for it regardless, and
+// Go permits no method on an interface underlying type: "_typed.Validate
+// undefined". That one needed no sibling at all -- a bare $ref to {} at a tuple
+// slot was enough -- and it was reached on every draft, since through draft-07 a
+// sibling is suppressed and what is left is exactly the bare reference.
+//
+// The documents matter as much as the compile: a shape that stopped building by
+// being dropped would pass a compile-only test.
+func TestRefSiblingArrayShapesCompile(t *testing.T) {
+	runValidationCases(t,
+		"testdata/schemas/regression/ref_sibling_array_shapes_2020.json",
+		[]string{
+			`{}`,
+			`{"narrowed":["a"]}`,
+			`{"counted":[1,2]}`,
+			// The target admits every value, so the slot constrains nothing.
+			`{"slotted":[1]}`,
+			`{"slotted":["a"]}`,
+			`{"everySlot":[1,"a"]}`,
+		},
+		[]string{
+			`{"narrowed":[1]}`,
+			`{"counted":[1]}`,
+		},
+	)
+}
+
 // TestNullableFormatIsAssertedEverywhere covers the nullable spelling of a
 // formatted string -- {"type":["string","null"],"format":"ipv4"} -- in every
 // position it can be written.

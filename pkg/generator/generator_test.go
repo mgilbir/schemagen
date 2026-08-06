@@ -4924,12 +4924,30 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 		// The one keyword leniency must not read past. Before draft 2019-09 a
 		// `$ref` replaces the schema object it sits in, so this `required` does
 		// not apply and enforcing it would reject a document the schema allows.
+		//
+		// The $schema is declared, and that is the whole point of the row. It was
+		// absent, which is DraftUnknown, which every reference predicate here
+		// reads as *modern* -- so the case was justified by a rule that was not in
+		// force and asserted the opposite of what the dialect it actually ran
+		// under says. From 2019-09 on the reference and the `required` both bind
+		// and dropping the group is a false accept: {"kind":"x"} is admitted by a
+		// schema that demands "a" (#204). Pinning the draft is what makes this a
+		// narrowness control rather than a defect wearing one's comment.
+		//
+		// The modern reading is *not* covered here, and no row below covers it.
+		// objectConditionalBranchLenient refuses a ref-carrying branch outright
+		// and the caller drops it with no delegation, so on 2019-09 and later that
+		// false accept stands. Closing it is #196's remedy -- a fail-closed gate
+		// over statedConstraints handing the position to the runtime evaluator,
+		// the way propertyNames and dependentSchemas already do -- and not the
+		// sibling reading this test is about.
 		"then carries a ref beside its constraints": `{
+			"$schema": "http://json-schema.org/draft-07/schema#",
 			"title": "Doc", "type": "object",
-			"$defs": {"other": {"type": "object"}},
+			"definitions": {"other": {"type": "object"}},
 			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
 			"if": {"required": ["kind"]},
-			"then": {"$ref": "#/$defs/other", "required": ["a"]}
+			"then": {"$ref": "#/definitions/other", "required": ["a"]}
 		}`,
 		"if constrains nothing": `{
 			"title": "Doc", "type": "object",
@@ -8969,13 +8987,26 @@ func TestRefMergesSiblingValuesFollowsTheDraft(t *testing.T) {
 	}
 }
 
-// TestHasRefStructuralSiblingsReadsValueKeywords pins the addition #153 makes to
-// the sibling list, in every spelling.
+// TestHasRefStructuralSiblingsReadsValueKeywords pins what counts as something
+// written beside a reference, in every spelling.
 //
-// The list is what points a ref arm at the merge instead of at an alias. `enum`
-// and `const` were absent from it, so a schema stating one was described by the
-// sibling alone and the reference was dropped; `type` was absent before #118 and
-// the same schema was described by the reference alone.
+// The answer is what points a ref arm at the merge instead of at an alias.
+// `enum` and `const` were missing from it, so a schema stating one was described
+// by the sibling alone and the reference was dropped (#153); `type` was missing
+// before #118 and the same schema was described by the reference alone.
+//
+// Then it was a *list* of those keywords and nothing else, so a keyword that
+// only asserts answered "nothing is written here" and was dropped whole: #204,
+// and the second block of rows below. They are asked one keyword at a time
+// because the defect was per-keyword -- seven were dropped at a root and three
+// more at a property, and a list can be widened in one place and not the other.
+//
+// The false rows are the boundary and matter as much: an annotation describes a
+// position rather than constraining it, and $defs holds schemas that apply only
+// where something refers to them, so neither turns an alias into a merge. A root
+// carrying its own $defs beside a $ref is the commonest schema there is, and
+// sending every one of them through the merge would be a change of shape for no
+// stated constraint at all.
 func TestHasRefStructuralSiblingsReadsValueKeywords(t *testing.T) {
 	cases := []struct {
 		doc  string
@@ -8986,11 +9017,49 @@ func TestHasRefStructuralSiblingsReadsValueKeywords(t *testing.T) {
 		{`{"$ref":"#/$defs/T","enum":["a"]}`, true},
 		{`{"$ref":"#/$defs/T","enum":[]}`, true},
 		{`{"$ref":"#/$defs/T","type":"string"}`, true},
+		// The keywords that only ever assert (#204). Every one of these was
+		// answered false and dropped.
+		{`{"$ref":"#/$defs/T","required":["r"]}`, true},
+		{`{"$ref":"#/$defs/T","minProperties":2}`, true},
+		{`{"$ref":"#/$defs/T","maxProperties":2}`, true},
+		{`{"$ref":"#/$defs/T","dependentRequired":{"a":["b"]}}`, true},
+		{`{"$ref":"#/$defs/T","dependencies":{"a":["b"]}}`, true},
+		{`{"$ref":"#/$defs/T","propertyNames":{"maxLength":1}}`, true},
+		{`{"$ref":"#/$defs/T","minItems":2}`, true},
+		{`{"$ref":"#/$defs/T","maxItems":2}`, true},
+		{`{"$ref":"#/$defs/T","uniqueItems":true}`, true},
+		{`{"$ref":"#/$defs/T","contains":{"type":"string"}}`, true},
+		{`{"$ref":"#/$defs/T","pattern":"^a"}`, true},
+		{`{"$ref":"#/$defs/T","minLength":3}`, true},
+		{`{"$ref":"#/$defs/T","maxLength":3}`, true},
+		{`{"$ref":"#/$defs/T","multipleOf":2}`, true},
+		{`{"$ref":"#/$defs/T","minimum":3}`, true},
+		{`{"$ref":"#/$defs/T","maximum":3}`, true},
+		{`{"$ref":"#/$defs/T","format":"ipv4"}`, true},
+		{`{"$ref":"#/$defs/T","not":{"const":"a"}}`, true},
+		{`{"$ref":"#/$defs/T","allOf":[{"minLength":3}]}`, true},
+		{`{"$ref":"#/$defs/T","anyOf":[{"minLength":3}]}`, true},
+		{`{"$ref":"#/$defs/T","oneOf":[{"minLength":3}]}`, true},
+		{`{"$ref":"#/$defs/T","if":{"minLength":1},"then":{"minLength":3}}`, true},
 		// Nothing beside the reference: the alias describes the target and is
 		// the whole of what the schema says.
 		{`{"$ref":"#/$defs/T"}`, false},
 		{`{"$ref":"#/$defs/T","title":"t","description":"d"}`, false},
 		{`{"$ref":"#/$defs/T","default":"a"}`, false},
+		{`{"$ref":"#/$defs/T","deprecated":true,"readOnly":true}`, false},
+		{`{"$ref":"#/$defs/T","$comment":"c","examples":[1]}`, false},
+		{`{"$ref":"#/$defs/T","$defs":{"T":{"type":"string"}}}`, false},
+		{`{"$ref":"#/$defs/T","definitions":{"T":{"type":"string"}}}`, false},
+		{`{"$ref":"#/$defs/T","$anchor":"a"}`, false},
+		// A keyword whose partner is absent asserts nothing, which is
+		// statedConstraints' own reading and not a second copy of it.
+		{`{"$ref":"#/$defs/T","minContains":2}`, false},
+		{`{"$ref":"#/$defs/T","then":{"minLength":3}}`, false},
+		// The reference is what the question is about, so it is not a sibling of
+		// itself -- in any of its three spellings.
+		{`{"$ref":"#/$defs/T","$dynamicRef":"#A"}`, false},
+		{`{"$dynamicRef":"#A"}`, false},
+		{`{"$recursiveRef":"#"}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.doc, func(t *testing.T) {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "str": {"type": "string"}
+  },
+  "$ref": "#/definitions/str",
+  "allOf": [{"minLength": 3}]
+}
