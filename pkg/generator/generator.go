@@ -2986,6 +2986,10 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// map above and a check here never both answer for the same keyword.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
 	runtimeBranchChecks := append(g.collectRuntimeBranchChecks(s), subschemaChecks...)
+	// This struct builds no ObjectConditionals, so an if/then/else here is read by
+	// nothing at all rather than read in part; the group goes to the evaluator
+	// whenever it demands anything. See collectConditionalRuntimeChecks.
+	runtimeBranchChecks = append(runtimeBranchChecks, g.collectConditionalRuntimeChecks(s, false)...)
 	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
 	}
@@ -4006,6 +4010,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// collectBranchOverflowChecks and collectRuntimeBranchChecks.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
 	runtimeBranchChecks := append(g.collectRuntimeBranchChecks(s), subschemaChecks...)
+	runtimeBranchChecks = append(runtimeBranchChecks, g.collectConditionalRuntimeChecks(s, true)...)
 
 	// Where an applicator is evaluated exactly, the flattened approximation of
 	// that same applicator is dropped rather than run beside it, which is what
@@ -4043,7 +4048,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// whole. Its branches are not folded into any one field's rules -- they only
 	// bind when the condition holds -- so they are checked here against the raw
 	// JSON the unmarshaler kept.
-	objectConditionals := g.extractObjectConditionalDefs(s)
+	objectConditionals := g.extractObjectConditionalDefs(s, runtimeBranchChecks)
 	if len(objectConditionals) > 0 {
 		needsUnmarshal = true
 	}
@@ -5210,16 +5215,27 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema, taken []RuntimeBran
 // that apply to a flattened object: the one written beside its properties, and
 // one from each allOf branch, since those branches are merged into this same
 // struct and their conditionals would otherwise land nowhere.
-func (g *Generator) extractObjectConditionalDefs(s *schema.Schema) []ObjectConditionalDef {
+//
+// taken names the groups collectConditionalRuntimeChecks already compiled to an
+// exact check. Each is skipped here rather than approximated as well, which is
+// the same per-slice suppression extractObjectOneOfDefs takes: a group the
+// evaluator took over is one whose static reading was declined for dropping
+// something, and running the two side by side would keep whatever it dropped.
+func (g *Generator) extractObjectConditionalDefs(s *schema.Schema, taken []RuntimeBranchCheck) []ObjectConditionalDef {
 	if s == nil || !g.validationKeywordsEnabled() {
 		return nil
 	}
 	var defs []ObjectConditionalDef
-	if def := objectConditionalDef(s); def != nil {
-		defs = append(defs, *def)
+	if !runtimeBranchTaken(taken, s, "if") {
+		if def := objectConditionalDef(s); def != nil {
+			defs = append(defs, *def)
+		}
 	}
 	for _, sub := range s.AllOf {
 		resolved := g.resolveSchemaForApplicator(sub)
+		if runtimeBranchTaken(taken, resolved, "if") {
+			continue
+		}
 		if def := objectConditionalDef(resolved); def != nil {
 			defs = append(defs, *def)
 		}
@@ -17569,7 +17585,7 @@ func (g *Generator) dependentBranchReadWhole(dep *schema.Schema) bool {
 				return false
 			}
 		case "properties":
-			if !dependentBranchPropertiesReadWhole(dep) {
+			if !lenientBranchPropertiesReadWhole(dep) {
 				return false
 			}
 		}
@@ -17589,8 +17605,12 @@ var dependentBranchKeywordsRead = map[string]bool{
 	"additionalProperties": true, "properties": true,
 }
 
-// dependentBranchPropertiesReadWhole reports whether the lenient branch reading
+// lenientBranchPropertiesReadWhole reports whether the lenient branch reading
 // keeps every keyword the branch's own properties state.
+//
+// It speaks for objectConditionalBranchLenient wherever that function is used --
+// a dependentSchemas branch, and a `then` or `else` -- because the reading is the
+// same one in both positions and so is what it drops.
 //
 // The three refusals at the top are objectConditionalBranchLenient's and
 // objectPropertyChecksLenient's own: a boolean sub-schema, an extension keyword,
@@ -17599,7 +17619,7 @@ var dependentBranchKeywordsRead = map[string]bool{
 // it reports the keyword it saw and could not turn into a check, which is a
 // draft-3 schema-valued `type`, a multi-valued `type`, and draft 4's boolean
 // spelling of the exclusive bounds.
-func dependentBranchPropertiesReadWhole(dep *schema.Schema) bool {
+func lenientBranchPropertiesReadWhole(dep *schema.Schema) bool {
 	if len(dep.Extensions) > 0 || schemaCarriesRef(dep) {
 		return false
 	}
@@ -17622,6 +17642,196 @@ func dependentBranchPropertiesReadWhole(dep *schema.Schema) bool {
 		}
 	}
 	return true
+}
+
+// collectConditionalRuntimeChecks compiles an object-level `if`/`then`/`else` to
+// the runtime evaluator wherever objectConditionalDef does not read the whole
+// group.
+//
+// The same shape as the two keywords above, and the last of the major
+// applicators to carry it (#209). objectConditionalDef reduces the group to a
+// list of required keys and per-property scalar checks, and where the reduction
+// cannot say what a branch says the branch is dropped -- with nothing behind it.
+// A `$ref` is the spelling that costs the most, because it is how a sub-schema is
+// ordinarily written: objectConditionalBranchLenient refuses a ref-carrying
+// branch outright (see schemaCarriesRef), so
+//
+//	{"if":{"required":["kind"]},
+//	 "then":{"$ref":"#/$defs/other","required":["a"]}}
+//
+// accepted {"kind":"x"} on every draft. From 2019-09 the reference and the
+// `required` beside it both apply and both were dropped; before it the reference
+// replaces its siblings, and the target it replaces them with was dropped too.
+// #210 read the siblings everywhere else and named this position as the one it
+// did not reach, because the sibling reading is not what is missing here --
+// delegation is.
+//
+// The condition is the other half. objectConditionalDef answers nil for an `if`
+// outside what the checks model, and nil for one that constrains nothing, and in
+// both cases the *consequence* goes unenforced -- so a group the static reading
+// declines is as unchecked as a branch it refuses. The gate asks about the group
+// rather than about the branch for that reason.
+//
+// The allOf reach is extractObjectConditionalDefs', because a branch's group is
+// merged into this same struct and lands here or nowhere. Owners are recorded on
+// the check so that the static reading of the group taken over is dropped and no
+// other, which is the distinction #135 drew for `anyOf`.
+//
+// Where the evaluator declines -- a `format` inside the group, a size bound, a
+// cycle needing a package-level variable this literal cannot have -- nothing is
+// emitted and the static reading runs as before. That leaves the group where it
+// already was rather than making it worse.
+//
+// staticReading says whether the caller runs objectConditionalDef over the same
+// schema at all. generateStructDef does; generatePropertylessObjectDef builds no
+// ObjectConditionals whatever the schema says, so there every group that demands
+// anything is unread and the gate has nothing to subtract. Passing the caller's
+// own answer is what keeps one schema from being judged by the other caller's
+// reading -- {"type":"object","if":{"required":["kind"]},"then":{"required":["a"]}}
+// accepted {"kind":"x"} for want of a struct with a property in it.
+func (g *Generator) collectConditionalRuntimeChecks(s *schema.Schema, staticReading bool) []RuntimeBranchCheck {
+	if s == nil || !g.validationKeywordsEnabled() {
+		return nil
+	}
+	var checks []RuntimeBranchCheck
+	seen := make(map[*schema.Schema]bool, 1+len(s.AllOf))
+	collect := func(owner *schema.Schema) {
+		if owner == nil || seen[owner] {
+			return
+		}
+		seen[owner] = true
+		if staticReading && g.objectConditionalReadWhole(owner) {
+			return
+		}
+		if objectConditionalGroupIsInert(owner) {
+			return
+		}
+		// No hoistPrefix, for the reason collectRuntimeBranchChecks gives: this
+		// literal is a local variable inside a Validate method, and a recursive
+		// node needs a package-level variable to point back at.
+		b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
+		// literal rather than sub: all three apply to the object itself, not to a
+		// member of it, which is the step the whole-schema builder takes for them.
+		fields := make([]string, 0, 3)
+		for _, branch := range []struct {
+			field string
+			sub   *schema.Schema
+		}{{"If", owner.If}, {"Then", owner.Then}, {"Else", owner.Else}} {
+			if branch.sub == nil {
+				continue
+			}
+			lit, ok := b.literal(branch.sub, 2)
+			if !ok {
+				return
+			}
+			fields = append(fields, fmt.Sprintf("\t%s: _node(%s),", branch.field, lit))
+		}
+		checks = append(checks, RuntimeBranchCheck{
+			Keyword:     "if",
+			NodeLiteral: "_schemaNode{\n" + strings.Join(fields, "\n") + "\n}",
+			owner:       owner,
+		})
+	}
+	collect(s)
+	for _, sub := range s.AllOf {
+		collect(g.resolveSchemaForApplicator(sub))
+	}
+	return checks
+}
+
+// objectConditionalGroupIsInert reports whether an if/then/else group demands
+// nothing of any document, so that no reading of it can lose anything.
+//
+// `then` and `else` say nothing without an `if`, an `if` alone selects between
+// two consequences that are not there, and a consequence every value satisfies
+// adds no demand to the branch the condition selected.
+func objectConditionalGroupIsInert(s *schema.Schema) bool {
+	if s == nil || s.If == nil || (s.Then == nil && s.Else == nil) {
+		return true
+	}
+	inert := func(branch *schema.Schema) bool {
+		return branch == nil || branch.IsTrueSchema() || isAlwaysTrueSchema(branch)
+	}
+	return inert(s.Then) && inert(s.Else)
+}
+
+// objectConditionalReadWhole reports whether objectConditionalDef reads
+// everything an object-level if/then/else group states.
+//
+// Three things can be lost, and all three are asked here rather than remembered:
+//
+//   - A consequence stating a keyword the lenient branch reading drops. That
+//     reading is sound where nothing better is available -- a subset of a
+//     conjunction can only under-enforce -- but where the evaluator can take the
+//     group whole, something better is available, so a branch it does not read
+//     whole routes. This is the arm a `$ref` reaches.
+//   - A condition outside objectConditionalBranch's exact vocabulary. The group
+//     is dropped there, consequence included.
+//   - A condition that constrains nothing, which objectConditionalDef also
+//     answers nil for. Every object matches it, so the `then` applies
+//     unconditionally and nothing applies it.
+//
+// The last two only lose something where a consequence demands something, which
+// is why the group and not the condition is the unit: {"if":{},"then":{}} states
+// nothing for anyone to drop.
+func (g *Generator) objectConditionalReadWhole(s *schema.Schema) bool {
+	if s == nil || s.If == nil || (s.Then == nil && s.Else == nil) {
+		// No group, or one the spec gives no consequence to: `then` and `else`
+		// mean nothing without an `if`, and an `if` alone constrains nothing.
+		return true
+	}
+	if !conditionalBranchReadWhole(s.Then) || !conditionalBranchReadWhole(s.Else) {
+		return false
+	}
+	// Both consequences are read whole, so the only thing left to lose is the
+	// group. objectConditionalDef is asked rather than its conditions restated,
+	// so that an arm added to it is answered here the day it lands.
+	if objectConditionalDef(s) != nil {
+		return true
+	}
+	// It declined. That costs nothing only where the consequences demand nothing
+	// either, which is exactly what the lenient reading it would have used says.
+	return objectConditionalBranchLenient("then", s.Then).Empty() &&
+		objectConditionalBranchLenient("else", s.Else).Empty()
+}
+
+// conditionalBranchReadWhole reports whether objectConditionalBranchLenient
+// keeps every keyword one `then` or `else` states.
+//
+// A boolean branch is refused by that function and is the one refusal that
+// depends on which boolean: `true` demands nothing, so losing it loses nothing,
+// while `false` forbids every document the condition selects and losing it loses
+// all of it.
+func conditionalBranchReadWhole(branch *schema.Schema) bool {
+	if branch == nil {
+		return true
+	}
+	if branch.IsBooleanSchema() {
+		return branch.IsTrueSchema()
+	}
+	stated, ok := statedConstraints(branch)
+	if !ok {
+		return false
+	}
+	for _, key := range stated {
+		if !conditionalBranchKeywordsRead[key] {
+			return false
+		}
+	}
+	// `properties` is the one of the two that is read property by property, and
+	// each property only in part; the branch-level refusals -- an extension
+	// keyword, a reference -- are in there too.
+	return lenientBranchPropertiesReadWhole(branch)
+}
+
+// conditionalBranchKeywordsRead names the keywords objectConditionalBranchLenient
+// reads off a `then` or an `else`, and is the list the gate above switches on.
+//
+// Data for the reason propertyNamesKeywordsRead and dependentBranchKeywordsRead
+// are: see TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps, which holds
+// it against that function's own source.
+var conditionalBranchKeywordsRead = map[string]bool{
+	"required": true, "properties": true,
 }
 
 // lenientPropertyCheckKeywords names the keywords objectPropertyChecksLenient

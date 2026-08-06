@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConditionalBranchRefDraft7",
+  "description": "The draft where a $ref replaces what stands beside it. The branch means its target and nothing else, so the target's cap has to bind and the sibling `required` must not -- and dropping the branch whole got the first wrong while enforcing the sibling would get the second wrong.",
+  "type": "object",
+  "properties": {
+    "kind": {"type": "string"},
+    "a": {"type": "string"}
+  },
+  "if": {"required": ["kind"]},
+  "then": {"$ref": "#/definitions/capped", "required": ["a"]},
+  "else": {"$ref": "#/definitions/needsB", "required": ["c"]},
+  "definitions": {
+    "capped": {"maxProperties": 2},
+    "needsB": {"required": ["b"]}
+  }
+}

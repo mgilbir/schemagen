@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalElseBranchViaRef",
+  "description": "The `else` mirror of conditional_branch_via_ref. The condition is written so that the else is the interesting side: a document carrying \"kind\" takes the empty `then`, and every other document takes the `else`.",
+  "type": "object",
+  "properties": {
+    "kind": {"type": "string"},
+    "a": {"type": "string"}
+  },
+  "if": {"required": ["kind"]},
+  "then": {},
+  "else": {"$ref": "#/$defs/needsA", "required": ["b"]},
+  "$defs": {
+    "needsA": {"required": ["a"]}
+  }
+}
