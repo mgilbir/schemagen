@@ -4896,43 +4896,70 @@ func TestObjectLevelIfThenElseInsideAllOfIsChecked(t *testing.T) {
 // group rather than approximate it.
 //
 // This is the half that stayed exact when issue #64 relaxed `then` and `else`
-// (see TestObjectLevelConditionalThenKeepsItsExpressiblePart). Relaxing the
-// condition the same way is what would turn under-enforcement into false
+// (see TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator). Relaxing
+// the condition the same way is what would turn under-enforcement into false
 // rejection, so every case below is an `if`, or a `then` that leaves nothing at
 // all behind.
+//
+// "No ObjectConditional" is no longer the same claim as "no check": since #209 a
+// group the static reading declines is compiled to the evaluator instead, and
+// every row here would pass on an empty ObjectConditionals list while the
+// evaluator did the work. Each row therefore says which of the two it is, and
+// the ones that route say what the compiled group must carry -- otherwise this
+// test would go on passing after the condition stopped being read at all.
 func TestObjectLevelConditionalFailsClosed(t *testing.T) {
-	for name, input := range map[string]string{
-		"if uses an unmodelled keyword": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}},
-			"if": {"properties": {"a": {"items": {"type":"string"}}}},
-			"then": {"required": ["a"]}
-		}`,
-		"if carries a keyword beyond object shape": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}},
-			"if": {"minProperties": 2},
-			"then": {"required": ["a"]}
-		}`,
+	for name, tc := range map[string]struct {
+		input string
+		// wantInLiteral names what the compiled group has to carry. Empty means
+		// the group reaches neither reading, which is the one answer left where
+		// the evaluator declines too.
+		wantInLiteral    []string
+		wantNotInLiteral []string
+	}{
+		"if uses an unmodelled keyword": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}},
+				"if": {"properties": {"a": {"items": {"type":"string"}}}},
+				"then": {"required": ["a"]}
+			}`,
+			wantInLiteral: []string{"Items:", `Required: []string{"a"}`},
+		},
+		"if carries a keyword beyond object shape": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}},
+				"if": {"minProperties": 2},
+				"then": {"required": ["a"]}
+			}`,
+			wantInLiteral: []string{"MinProperties: _intPtr(2)"},
+		},
 		// The dangerous shape: an `if` that is partly expressible. Keeping the
 		// part we model and ignoring the rest widens the condition, so `then`
 		// binds to objects the schema never pointed it at and valid documents
-		// are rejected.
-		"if is only partly expressible": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
-			"if": {"required": ["kind"], "minProperties": 2},
-			"then": {"required": ["a"]}
-		}`,
-		// `then` is lenient now, but leniency leaves nothing here: `enum` is the
-		// property's only keyword, so the property carries no check, the branch
-		// carries no property, and a group with neither branch is no group.
-		"then is left with nothing to check": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}},
-			"if": {"required": ["a"]},
-			"then": {"properties": {"a": {"enum": ["p","q"]}}}
-		}`,
+		// are rejected. The compiled group carries both halves of the condition,
+		// which is what makes it exact rather than wide.
+		"if is only partly expressible": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"], "minProperties": 2},
+				"then": {"required": ["a"]}
+			}`,
+			wantInLiteral: []string{"MinProperties: _intPtr(2)", `Required: []string{"kind"}`},
+		},
+		// `enum` is the property's only keyword, so the lenient reading carried no
+		// check for it, the branch carried no property, and the group was dropped
+		// -- {"a":"z"} passed a `then` naming two values. It is compiled now.
+		"then is left with nothing the checks can spell": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}},
+				"if": {"required": ["a"]},
+				"then": {"properties": {"a": {"enum": ["p","q"]}}}
+			}`,
+			wantInLiteral: []string{`Enum: []string{"\"p\"", "\"q\""}`},
+		},
 		// The one keyword leniency must not read past. Before draft 2019-09 a
 		// `$ref` replaces the schema object it sits in, so this `required` does
 		// not apply and enforcing it would reject a document the schema allows.
@@ -4941,190 +4968,273 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 		// absent, which is DraftUnknown, which every reference predicate here
 		// reads as *modern* -- so the case was justified by a rule that was not in
 		// force and asserted the opposite of what the dialect it actually ran
-		// under says. From 2019-09 on the reference and the `required` both bind
-		// and dropping the group is a false accept: {"kind":"x"} is admitted by a
-		// schema that demands "a" (#204). Pinning the draft is what makes this a
-		// narrowness control rather than a defect wearing one's comment.
+		// under says (#204).
 		//
-		// The modern reading is *not* covered here, and no row below covers it.
-		// objectConditionalBranchLenient refuses a ref-carrying branch outright
-		// and the caller drops it with no delegation, so on 2019-09 and later that
-		// false accept stands. Closing it is #196's remedy -- a fail-closed gate
-		// over statedConstraints handing the position to the runtime evaluator,
-		// the way propertyNames and dependentSchemas already do -- and not the
-		// sibling reading this test is about.
-		"then carries a ref beside its constraints": `{
-			"$schema": "http://json-schema.org/draft-07/schema#",
-			"title": "Doc", "type": "object",
-			"definitions": {"other": {"type": "object"}},
-			"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
-			"if": {"required": ["kind"]},
-			"then": {"$ref": "#/definitions/other", "required": ["a"]}
-		}`,
-		"if constrains nothing": `{
-			"title": "Doc", "type": "object",
-			"properties": {"a": {"type":"string"}},
-			"if": {},
-			"then": {"required": ["a"]}
-		}`,
+		// Since #209 the branch is not dropped: it is compiled, and the compiled
+		// form is where the draft is honoured. nodeBuilder asks
+		// refOverridesSiblingsForSchema before it reads a single sibling, so what
+		// binds here is the target and only the target -- the `maxProperties`
+		// arrives and the `required` written beside the reference does not. Both
+		// directions are asserted, because keeping the sibling would be a false
+		// reject across four dialects and losing the target is the false accept
+		// #209 is.
+		"then carries a ref beside its constraints on a replacing draft": {
+			input: `{
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"title": "Doc", "type": "object",
+				"definitions": {"other": {"maxProperties": 2}},
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"$ref": "#/definitions/other", "required": ["a"]}
+			}`,
+			wantInLiteral:    []string{"MaxProperties: _intPtr(2)"},
+			wantNotInLiteral: []string{`Required: []string{"a"}`},
+		},
+		// The mirror of the row above on a draft where the reference applies
+		// alongside its siblings. Both bind, so both must be in the compiled
+		// group; dropping either is a defect, and dropping the pair is #209.
+		"then carries a ref beside its constraints on a merging draft": {
+			input: `{
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"title": "Doc", "type": "object",
+				"$defs": {"other": {"maxProperties": 2}},
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"$ref": "#/$defs/other", "required": ["a"]}
+			}`,
+			wantInLiteral: []string{"MaxProperties: _intPtr(2)", `Required: []string{"a"}`},
+		},
+		// A condition every object matches. `else` is unreachable and `then` is
+		// unconditional -- and nothing applied it, so the `required` was dropped.
+		"if constrains nothing": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}},
+				"if": {},
+				"then": {"required": ["a"]}
+			}`,
+			wantInLiteral: []string{`Required: []string{"a"}`},
+		},
+		// The row where nothing is left to route to. Neither reading can judge a
+		// keyword nothing models, so the group reaches neither and goes
+		// unenforced. That is under-enforcement chosen over a condition decided
+		// with a keyword ignored, which would reject documents the schema allows
+		// -- the trade this whole test exists to hold.
+		//
+		// The keyword was `format` until issue #205 gave the evaluator an arm for
+		// it, at which point this row compiled and stopped testing the trade. A
+		// vendor keyword is what cannot stop being unmodelled: nothing is known
+		// about what it demands, so both readings must go on refusing it.
+		"if states what neither reading can judge": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}},
+				"if": {"properties": {"a": {"x-vendor": 1}}},
+				"then": {"required": ["a"]}
+			}`,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ir := generateForItemTest(t, input)
+			ir := generateForItemTest(t, tc.input)
 			doc := structNamed(t, ir, "Doc")
 			if len(doc.ObjectConditionals) != 0 {
-				t.Fatalf("expected no conditional group; got %+v", doc.ObjectConditionals)
+				t.Fatalf("the condition was approximated rather than dropped or compiled: %+v", doc.ObjectConditionals)
+			}
+			if len(tc.wantInLiteral) == 0 && len(tc.wantNotInLiteral) == 0 {
+				if hasRuntimeBranchCheck(doc.RuntimeBranchChecks, "if") {
+					t.Fatalf("a group the evaluator cannot model was compiled anyway: %+v", doc.RuntimeBranchChecks)
+				}
+				return
+			}
+			lit := conditionalNodeLiteral(t, doc)
+			for _, want := range tc.wantInLiteral {
+				if !strings.Contains(lit, want) {
+					t.Errorf("compiled group does not carry %q, so it is enforced by nothing:\n%s", want, lit)
+				}
+			}
+			for _, unwanted := range tc.wantNotInLiteral {
+				if strings.Contains(lit, unwanted) {
+					t.Errorf("compiled group carries %q, which the draft says does not apply:\n%s", unwanted, lit)
+				}
 			}
 		})
 	}
 }
 
-// TestObjectLevelConditionalThenKeepsItsExpressiblePart pins issue #64. A
-// `then` or `else` used to be held to the `if`'s exact-or-nothing bar, so one
-// keyword the checks do not model -- an `items` inside a property, say -- cost
-// the whole group its check, the condition included.
+// TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator is what
+// TestObjectLevelConditionalThenKeepsItsExpressiblePart became, and the four
+// rows are the four that test wrote.
 //
-// The property that must hold is unchanged: an unmodelled keyword must not
-// silence the group. What answers it changed with issue #205. Enforcing the
-// expressible part was the answer while the alternative was nothing at all; it
-// is under-enforcement, and at these very inputs it was losing a `format` the
-// dialect asserts, a nested `anyOf` and a `propertyNames`. So a group whose
-// static reading is partial now goes to the runtime evaluator, which reads it
-// whole -- #196's remedy, at its fifth position -- and the lenient reading is
-// what is left for a group the evaluator declines in its turn.
+// Issue #64 took `then` and `else` off the `if`'s exact-or-nothing bar: a schema
+// object's keywords are conjunctive, so enforcing part of a consequence accepts
+// a superset of what the whole one accepts and can only ever under-enforce,
+// which beats a single `items` costing the group its condition as well. That
+// reasoning is sound where a partial reading is the best on offer -- and since
+// #209 it usually is not. A group the reduction cannot read whole is compiled to
+// the runtime evaluator, which enforces every keyword rather than the handful
+// the per-property checks can spell, so each row below now has its dropped
+// keyword *enforced*: the `items`, the `minProperties`, the two `enum`s, the
+// `not`.
 //
-// Both routes are exercised below, because both are live and the interesting
-// thing is which one a group takes. A group must take exactly one: the exact
-// check and the approximation are the same keyword, so running both would judge
-// it twice.
-func TestObjectLevelConditionalThenKeepsItsExpressiblePart(t *testing.T) {
-	t.Run("a partial static reading goes to the evaluator, whole", func(t *testing.T) {
-		for name, tc := range map[string]struct {
-			input string
-			// wantInNode are substrings the compiled node must carry: the
-			// keyword the lenient reading used to drop, and the condition it
-			// used to keep, so the assertion fails if the group is compiled
-			// without either half.
-			wantInNode []string
-		}{
-			// The reproducer from the issue, reduced: the `then` types a
-			// property with `items`, which the flat checks cannot express. The
-			// lenient route kept the `type` beside it and dropped `items`, so
-			// {"kind":"tool","tool":[5]} was accepted.
-			"property typed with items": {
-				input: `{
-					"title": "Doc", "type": "object",
-					"properties": {"kind": {"type":"string"}},
-					"if": {"properties": {"kind": {"const":"tool"}}, "required": ["kind"]},
-					"then": {
-						"properties": {"tool": {"type":"array","items":{"type":"object"}}},
-						"required": ["tool"]
-					}
-				}`,
-				wantInNode: []string{"Items", "Const", "Required"},
-			},
-			// A branch-level keyword outside object shape. minProperties is a
-			// conjunct of the `then` and the lenient route ignored it, so
-			// {"kind":"k","a":"x"} was accepted against a branch demanding three
-			// properties.
-			"branch keyword outside object shape": {
-				input: `{
-					"title": "Doc", "type": "object",
-					"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
-					"if": {"required": ["kind"]},
-					"then": {"required": ["a"], "minProperties": 3}
-				}`,
-				wantInNode: []string{"MinProperties", "Required"},
-			},
-			// An `enum` on a branch property: outside the nine scalar keywords
-			// the per-property reading carries, so it was dropped whole.
-			"a property the flat checks cannot carry": {
-				input: `{
-					"title": "Doc", "type": "object",
-					"properties": {"kind": {"type":"string"}},
-					"then": {"properties": {
-						"a": {"type":"string","minLength":2},
-						"b": {"enum": ["p","q"]}
-					}},
-					"if": {"required": ["kind"]}
-				}`,
-				wantInNode: []string{"Enum", "MinLength"},
-			},
-			// `else` is the same rule, and the branch it is paired with being
-			// unusable does not stop it.
-			"else is read on the same terms as then": {
-				input: `{
-					"title": "Doc", "type": "object",
-					"properties": {"kind": {"type":"string"}},
-					"if": {"required": ["kind"]},
-					"then": {"properties": {"a": {"enum": ["p","q"]}}},
-					"else": {"required": ["b"], "not": {"required": ["c"]}}
-				}`,
-				wantInNode: []string{"Not", "Else"},
-			},
-		} {
-			t.Run(name, func(t *testing.T) {
-				doc := structNamed(t, generateForItemTest(t, tc.input), "Doc")
-				if len(doc.ObjectConditionals) != 0 {
-					t.Fatalf("the group was compiled to the evaluator and approximated as well, so it is judged twice: %+v",
-						doc.ObjectConditionals)
+// What the rows asserted before was the reading that dropped them, so this test
+// was pinning the under-enforcement half of #209 in the same breath as #64's
+// fix. #64's own requirement is stronger here than it was: the group keeps a
+// check, and the check is now exact.
+//
+// The leniency has not gone away; see
+// TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines.
+func TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input string
+		// wantInLiteral names what the compiled node has to carry: the keyword
+		// the static reading dropped. Without it "no ObjectConditionals" would be
+		// satisfied by the group vanishing again, which is the defect.
+		wantInLiteral []string
+	}{
+		// #64's own reproducer, reduced: the `then` types a property with
+		// `items`. The static reading kept the `type` beside it and dropped the
+		// `items`, so a `tool` holding strings passed a branch demanding objects.
+		"property typed with items": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"properties": {"kind": {"const":"tool"}}, "required": ["kind"]},
+				"then": {
+					"properties": {"tool": {"type":"array","items":{"type":"object"}}},
+					"required": ["tool"]
 				}
-				var node string
-				for _, check := range doc.RuntimeBranchChecks {
-					if check.Keyword == "if" {
-						node = check.NodeLiteral
-					}
-				}
-				if node == "" {
-					t.Fatalf("no runtime check for the if/then/else group; it is enforced by neither route: %+v",
-						doc.RuntimeBranchChecks)
-				}
-				for _, want := range tc.wantInNode {
-					if !strings.Contains(node, want) {
-						t.Fatalf("compiled group lost %s:\n%s", want, node)
-					}
-				}
-			})
-		}
-	})
-
-	t.Run("a group the flat checks read whole keeps the static route", func(t *testing.T) {
-		// Every keyword here is one objectConditionalBranchLenient reads and
-		// objectPropertyChecksLenient can carry, so there is nothing for the
-		// evaluator to add and the group keeps the inline check it has always
-		// had. Without this the routing above could swallow every conditional in
-		// the generator and no test would notice.
-		doc := structNamed(t, generateForItemTest(t, `{
-			"title": "Doc", "type": "object",
-			"properties": {"kind": {"type":"string"}},
-			"if": {"properties": {"kind": {"const":"tool"}}, "required": ["kind"]},
-			"then": {"required": ["a"], "properties": {"a": {"type":"string","minLength":2}}}
-		}`), "Doc")
-
-		for _, check := range doc.RuntimeBranchChecks {
-			if check.Keyword == "if" {
-				t.Fatalf("a group the static checks read whole was sent to the evaluator anyway:\n%s", check.NodeLiteral)
+			}`,
+			wantInLiteral: []string{"Items:", `Required: []string{"tool"}`},
+		},
+		// A branch-level keyword outside object shape. minProperties is a
+		// conjunct of the `then` and was read by nothing.
+		"branch keyword outside object shape": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"a": {"type":"string"}, "kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"required": ["a"], "minProperties": 3}
+			}`,
+			wantInLiteral: []string{"MinProperties: _intPtr(3)", `Required: []string{"a"}`},
+		},
+		// Per-property mixing: one property the checks can spell, one they
+		// cannot. Both are carried now, where before only the first was.
+		"one property the checks cannot spell": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"then": {"properties": {
+					"a": {"type":"string","minLength":2},
+					"b": {"enum": ["p","q"]}
+				}},
+				"if": {"required": ["kind"]}
+			}`,
+			wantInLiteral: []string{"MinLength: _intPtr(2)", `Enum: []string{"\"p\"", "\"q\""}`},
+		},
+		// `else` is the same rule, and it is the mirror this codebase leaves
+		// half-done: the `not` inside it was dropped exactly as the `then`'s
+		// keywords were.
+		"else states what the checks cannot": {
+			input: `{
+				"title": "Doc", "type": "object",
+				"properties": {"kind": {"type":"string"}},
+				"if": {"required": ["kind"]},
+				"then": {"properties": {"a": {"enum": ["p","q"]}}},
+				"else": {"required": ["b"], "not": {"required": ["c"]}}
+			}`,
+			wantInLiteral: []string{"Not: _node(", `Required: []string{"c"}`, `Required: []string{"b"}`},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ir := generateForItemTest(t, tc.input)
+			doc := structNamed(t, ir, "Doc")
+			if len(doc.ObjectConditionals) != 0 {
+				t.Fatalf("the partial reading was kept beside the exact check: %+v", doc.ObjectConditionals)
 			}
-		}
-		if len(doc.ObjectConditionals) != 1 {
-			t.Fatalf("expected one statically checked conditional group; got %+v", doc.ObjectConditionals)
-		}
-		branch := doc.ObjectConditionals[0].Then
-		if branch == nil {
-			t.Fatalf("group carries no then: %+v", doc.ObjectConditionals[0])
-		}
-		if !slicesEqualString(branch.RequiredKeys, []string{"a"}) {
-			t.Fatalf("then.RequiredKeys = %v, want [a]", branch.RequiredKeys)
-		}
+			lit := conditionalNodeLiteral(t, doc)
+			for _, want := range tc.wantInLiteral {
+				if !strings.Contains(lit, want) {
+					t.Errorf("compiled group does not carry %q, so the keyword is enforced by nothing:\n%s", want, lit)
+				}
+			}
+		})
+	}
+}
+
+// TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines is
+// the other half, and the one that keeps issue #64's answer alive.
+//
+// Where the evaluator declines the group there is nothing to route to, so the
+// lenient reading is the best on offer and runs exactly as #64 left it: the
+// property it cannot read is dropped, the property beside it keeps its checks,
+// and the condition keeps its own rather than the group being thrown away over
+// one keyword.
+//
+// The probe was `format` until issue #205 taught the evaluator to model it, at
+// which point this group compiled and the leniency below stopped being reached.
+// A vendor keyword replaces it, for the reason
+// TestAnyOfMergeStaysWhenTheEvaluatorCannotReadIt gives: an unrecognised keyword
+// is the case that cannot become readable later, because nothing is known about
+// what it demands.
+//
+// That change moves what the row can claim, and the claim is written to the new
+// shape rather than around it. `format` was a keyword the lenient reading kept a
+// *sibling* of, so property "a" survived judged by its type alone; a vendor
+// keyword makes objectPropertyChecksLenient refuse the property whole. So the
+// surviving conjuncts are named by a second property, which is #64's own
+// sentence -- an inexpressible property does not take the others with it -- and
+// by the branch's `required`, which outlives both.
+func TestObjectLevelConditionalKeepsItsExpressiblePartWhereTheEvaluatorDeclines(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc", "type": "object",
+		"properties": {"kind": {"type":"string"}},
+		"if": {"required": ["kind"]},
+		"then": {"required": ["a"], "properties": {
+			"a": {"x-vendor": 1},
+			"b": {"type":"string","minLength":2}
+		}}
+	}`)
+	doc := structNamed(t, ir, "Doc")
+	if hasRuntimeBranchCheck(doc.RuntimeBranchChecks, "if") {
+		t.Fatalf("the group was compiled although the evaluator models no vendor keyword: %+v", doc.RuntimeBranchChecks)
+	}
+	if len(doc.ObjectConditionals) != 1 {
+		t.Fatalf("expected one conditional group; got %+v", doc.ObjectConditionals)
+	}
+	then := doc.ObjectConditionals[0].Then
+	if then == nil {
+		t.Fatalf("group carries no then: %+v", doc.ObjectConditionals[0])
+	}
+	if !slicesEqualString(then.RequiredKeys, []string{"a"}) {
+		t.Errorf("then.RequiredKeys = %v, want [a]", then.RequiredKeys)
+	}
+	got := map[string][]string{}
+	for _, prop := range then.Properties {
 		var kinds []string
-		for _, prop := range branch.Properties {
-			for _, c := range prop.Checks {
-				kinds = append(kinds, c.Kind)
-			}
+		for _, c := range prop.Checks {
+			kinds = append(kinds, c.Kind)
 		}
-		if !slicesEqualString(kinds, []string{"type", "minLength"}) {
-			t.Fatalf("then property checks = %v, want [type minLength]", kinds)
+		got[prop.JSONName] = kinds
+	}
+	if len(got) != 1 || !slicesEqualString(got["b"], []string{"type", "minLength"}) {
+		t.Errorf("then constrains %v, want b judged by its type and minLength and a dropped", got)
+	}
+}
+
+// conditionalNodeLiteral returns the compiled if/then/else the struct carries,
+// failing loudly when it carries none: a group that reached neither reading is
+// enforced by nothing at all, which is the defect and not a shape to assert
+// around.
+func conditionalNodeLiteral(t *testing.T, sd *StructDef) string {
+	t.Helper()
+	for _, c := range sd.RuntimeBranchChecks {
+		if c.Keyword == "if" {
+			return c.NodeLiteral
 		}
-	})
+	}
+	t.Fatalf("%s carries no if/then/else runtime check and no ObjectConditional; the group is enforced by nothing: %+v",
+		sd.Name, sd.RuntimeBranchChecks)
+	return ""
 }
 
 func slicesEqualString(a, b []string) bool {

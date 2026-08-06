@@ -897,7 +897,8 @@ type BranchOverflowCheck struct {
 // evaluator and run against the document, because the static reading of that
 // keyword is not the whole of what it says.
 //
-// There are two reasons a keyword lands here, and they are opposite in kind.
+// There are three reasons a keyword lands here, and the first is opposite in
+// kind to the two below it.
 //
 // The first is an applicator -- an `anyOf` or a `oneOf` -- one of whose branches
 // states `unevaluatedProperties`, which cannot be answered at generation time. An
@@ -933,9 +934,20 @@ type BranchOverflowCheck struct {
 // sub-schema, the keyword is compiled here instead and the partial static
 // constraint is dropped rather than run beside it. See
 // collectSubschemaRuntimeChecks.
+//
+// The third is the same shape at the object-level `if`/`then`/`else`, which is
+// where that family ends (#209). objectConditionalDef reduces a group to a list
+// of required keys and per-property scalar checks, and a branch it cannot say --
+// the ordinary one being a `$ref`, which it refuses outright -- was dropped with
+// nothing behind it, as was the whole group whenever the condition fell outside
+// its vocabulary. The compiled form is also where the draft is honoured: from
+// 2019-09 a reference in a branch applies alongside its siblings, and before it
+// replaces them, and nodeBuilder asks refOverridesSiblingsForSchema rather than
+// reading either rule into the reduction. The Keyword is "if", naming the group
+// by the keyword that selects it. See collectConditionalRuntimeChecks.
 type RuntimeBranchCheck struct {
 	// Keyword names the keyword in the error message: "anyOf", "oneOf",
-	// "propertyNames" or "dependentSchemas".
+	// "propertyNames", "dependentSchemas" or "if".
 	Keyword string
 	// NodeLiteral is the Go composite literal for the _schemaNode holding that
 	// keyword and its branches.
@@ -946,7 +958,8 @@ type RuntimeBranchCheck struct {
 	// dropped while a sibling slice that got no exact check keeps its own. Keyed
 	// on the node rather than on the slice because a slice is not comparable and
 	// a schema object states at most one anyOf and one oneOf, so the pair
-	// (node, keyword) names the slice exactly.
+	// (node, keyword) names the slice exactly. A schema object states at most one
+	// if/then/else group as well, so "if" names one the same way.
 	owner *schema.Schema
 }
 

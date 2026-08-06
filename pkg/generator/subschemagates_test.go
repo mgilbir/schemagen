@@ -78,23 +78,20 @@ func TestLenientPropertyGateNamesEveryKeywordTheChecksCarry(t *testing.T) {
 			"property read in part while the branch is declared fully read.")
 }
 
-// TestConditionalBranchGateNamesEveryKeywordTheBranchReadingReads holds
-// conditionalBranchKeywordsRead against objectConditionalBranchLenient.
+// TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps holds
+// conditionalBranchKeywordsRead against objectConditionalBranchLenient, the
+// function that reduces a `then` or an `else`.
 //
-// That function is the `then`/`else` twin of the dependentSchemas branch reader
-// above, and it reads two keywords where that one reads five: `required` and
-// `properties`, and nothing else. Issue #205 is what the missing gate cost --
-// a `minProperties` on the branch, an `anyOf` inside one of its properties and a
-// `format` the dialect asserts were all read as if they were not written, and
-// the branch went on asserting the rest.
-func TestConditionalBranchGateNamesEveryKeywordTheBranchReadingReads(t *testing.T) {
+// The branch level only: what the reading keeps of each property it names is
+// lenientPropertyCheckKeywords' business, and the test above holds that. The two
+// together are what objectConditionalReadWhole means by "read whole".
+func TestConditionalBranchGateNamesEveryKeywordTheReadingKeeps(t *testing.T) {
 	read := keywordsReadBy(t, "objectConditionalBranchLenient", "s", 2)
 	assertSameKeywords(t, "conditionalBranchKeywordsRead", conditionalBranchKeywordsRead,
 		"objectConditionalBranchLenient", read,
-		"A branch keyword the lenient reading takes and the gate does not name would send every "+
-			"conditional stating it to the evaluator for no reason; one the gate names and the "+
-			"reading does not take is a branch declared fully read that nothing reads, which is "+
-			"issue #205 again.")
+		"A branch keyword the reduction keeps and the gate does not name sends every `then` stating "+
+			"it to the evaluator needlessly; one the gate names and the reduction has stopped keeping "+
+			"is a consequence declared fully read that nothing reads, which is issue #209 again.")
 }
 
 // TestContentSchemaNeverAssertsInAnyDialect is the claim keywordsOnly rests on

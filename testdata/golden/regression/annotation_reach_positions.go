@@ -1687,13 +1687,6 @@ func (a AnnotationReachPositions) Validate() error {
 		}
 		{
 			_rbNode0 := _schemaNode{
-				Else: _node(_schemaNode{
-					Properties: []_schemaMember{
-						{Key: "dfltCondElse", Node: _schemaNode{
-							Type: []string{"string"},
-						}},
-					},
-				}),
 				If: _node(_schemaNode{
 					Required: []string{"mode"},
 				}),
@@ -1736,6 +1729,13 @@ func (a AnnotationReachPositions) Validate() error {
 							Type: []string{"string"},
 						}},
 						{Key: "dfltCondThen", Node: _schemaNode{
+							Type: []string{"string"},
+						}},
+					},
+				}),
+				Else: _node(_schemaNode{
+					Properties: []_schemaMember{
+						{Key: "dfltCondElse", Node: _schemaNode{
 							Type: []string{"string"},
 						}},
 					},

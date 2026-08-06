@@ -1150,11 +1150,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if $struct.HasRuntimeBranchChecks}}
 	{{- /* A keyword held as data and interpreted here rather than approximated at
-	       generation time. Two kinds reach this block: an anyOf or oneOf one of
+	       generation time. Three kinds reach this block: an anyOf or oneOf one of
 	       whose branches states unevaluatedProperties, where which branches
-	       contribute is a fact about the document; and a propertyNames or
+	       contribute is a fact about the document; a propertyNames or
 	       dependentSchemas whose sub-schema the static extractor reads only in
-	       part. See RuntimeBranchCheck.
+	       part; and an object-level if/then/else whose group the same reduction
+	       does not read whole. See RuntimeBranchCheck.
 
 	       The document is rebuilt from the raw JSON the unmarshaler kept, which
 	       is the only place every key still exists together: the declared ones
