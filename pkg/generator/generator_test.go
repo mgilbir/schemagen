@@ -9522,3 +9522,107 @@ func TestInertNotBesideATypeKeepsTheGoType(t *testing.T) {
 		})
 	}
 }
+
+// TestConditionalOnlyPropertyKeepsItsTypeAndDropsItsRules is issue #213 on the
+// IR, where the two halves of the answer are separately visible: the field's Go
+// type still comes from the branch that named it, and nothing the branch says is
+// asserted of the field.
+//
+// It is asked here as well as through a compiled document because the two are
+// different questions. The compiled fixture says which documents the type
+// accepts; this says *why*, and it is what a change that dropped the merge
+// altogether -- leaving the value in the overflow map with no field and no type,
+// which accepts the same documents -- would fail.
+func TestConditionalOnlyPropertyKeepsItsTypeAndDropsItsRules(t *testing.T) {
+	ir := generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {"declared": {"type": "string", "minLength": 2}},
+		"allOf": [
+			{"if": {"required": ["trigger"]},
+			 "then": {"properties": {"branchOnly": {"type": "string", "minLength": 5}}}},
+			{"if": {"required": ["declTrigger"]},
+			 "then": {"properties": {"declared": {"type": "string", "maxLength": 9}}}}
+		]
+	}`)
+
+	doc := structNamed(t, ir, "Doc")
+
+	branchOnly := fieldNamedJSON(t, doc, "branchOnly")
+	if !branchOnly.ConditionalOnly {
+		t.Errorf("branchOnly is not marked conditional-only; the `then` is the only schema that describes it")
+	}
+	// The merge is what the mark is protecting: without it the property is not a
+	// field at all, and every document below would pass for the wrong reason.
+	if got := branchOnly.Type.GoTypeName(); got != "*string" {
+		t.Errorf("branchOnly type = %q, want *string -- the branch is where the field's type comes from", got)
+	}
+	if got := fieldRuleTypes(doc, "branchOnly"); len(got) != 0 {
+		t.Errorf("branchOnly rules = %v -- a `then`'s keyword became a field rule, which asserts it of every document", got)
+	}
+	for _, nc := range doc.NullChecks {
+		if nc.JSONName == "branchOnly" {
+			t.Errorf("branchOnly refuses a null: the branch typed it, and only where its condition holds")
+		}
+	}
+	if !containsString(doc.NullPresenceKeys, "branchOnly") {
+		t.Errorf("NullPresenceKeys = %v, want branchOnly -- a null the type no longer refuses has to be recorded or the round trip drops it",
+			doc.NullPresenceKeys)
+	}
+
+	// The sharp control. "declared" is stated on the root as well as named by a
+	// consequence, so it is not conditional-only and its own rules still bind.
+	declared := fieldNamedJSON(t, doc, "declared")
+	if declared.ConditionalOnly {
+		t.Errorf("declared is marked conditional-only, but the root states minLength about it outright")
+	}
+	if got := fieldRuleTypes(doc, "declared"); !containsString(got, "minLength") {
+		t.Errorf("declared rules = %v, want minLength -- a rule keyed on \"a conditional mentioned this property\" withdraws what the schema states", got)
+	}
+}
+
+// TestConditionalOnlyNarrowingStandsDownWhereNothingElseChecksTheGroup is the
+// fail-closed half of the change above.
+//
+// The narrowing is only ever taken because something else applies the group with
+// its condition in front of it. Where that is not so the field's rules are all
+// there is, and withdrawing them turns issue #213's false rejection into a false
+// acceptance -- so they stay, and the rejection stays with them.
+//
+// Two shapes reach that state. A group two allOf levels down is merged by
+// mergeAllOfBranches and read by neither collectConditionalRuntimeChecks nor
+// extractObjectConditionalDefs, which look at the schema and its direct branches
+// only. And an anyOf variant is merged the same way a `then` is, but the static
+// anyOf reading decides which variant matched from its required keys and never
+// applies a variant's property schemas at all.
+func TestConditionalOnlyNarrowingStandsDownWhereNothingElseChecksTheGroup(t *testing.T) {
+	deep := structNamed(t, generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"allOf": [{"allOf": [
+			{"if": {"required": ["trigger"]},
+			 "then": {"properties": {"deepOnly": {"type": "string", "minLength": 5}}}}
+		]}]
+	}`), "Doc")
+	if fieldNamedJSON(t, deep, "deepOnly").ConditionalOnly {
+		t.Errorf("deepOnly was narrowed, but no reading of its group reaches two allOf levels down")
+	}
+	if got := fieldRuleTypes(deep, "deepOnly"); !containsString(got, "minLength") {
+		t.Errorf("deepOnly rules = %v, want minLength -- the field is the only check the group has there", got)
+	}
+
+	variant := structNamed(t, generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"allOf": [{"anyOf": [
+			{"required": ["a"], "properties": {"branchOnly": {"type": "string", "minLength": 5}}},
+			{"required": ["b"]}
+		]}]
+	}`), "Doc")
+	if fieldNamedJSON(t, variant, "branchOnly").ConditionalOnly {
+		t.Errorf("branchOnly was narrowed through an anyOf, which nothing applies property by property")
+	}
+	if got := fieldRuleTypes(variant, "branchOnly"); !containsString(got, "minLength") {
+		t.Errorf("branchOnly rules = %v, want minLength -- the anyOf reduction does not check it", got)
+	}
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalOnlyPropertyPositions",
+  "description": "Every way a property can reach a merged struct through a conditional consequence and nothing else. The allOf merge folds a `then` or an `else` branch's `properties` into the parent's property map so the branch can give the field a Go type, and until issue #213 the field's rules came from that same fold -- so a keyword only a consequence stated was asserted of every document, and the schema refused documents it permits. The wrapper is essential: written straight on the root the same group reaches no field and always accepted. One trigger key per group so that a document naming one exercises that group and no other, except for the `else` group, whose consequence is what applies when its trigger is absent. Every group here states a per-property keyword, which is what tells this fixture apart from conditional_branch_subschema_shapes.json: there the branch-level half is pinned and the per-property half could not be, because the field enforced it either way.",
+  "type": "object",
+  "properties": {
+    "declared": { "type": "string", "minLength": 2 }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["thenTrigger"] },
+      "then": { "properties": { "thenOnly": { "enum": ["x", "y"] } } }
+    },
+    {
+      "if": { "required": ["elseTrigger"] },
+      "else": { "properties": { "elseOnly": { "enum": ["p", "q"] } } }
+    },
+    {
+      "if": { "required": ["nestedTrigger"] },
+      "then": {
+        "if": { "required": ["inner"] },
+        "then": { "properties": { "nestedOnly": { "enum": ["m", "n"] } } }
+      }
+    },
+    {
+      "if": { "required": ["declTrigger"] },
+      "then": { "properties": { "declared": { "enum": ["ok", "fine"] } } }
+    },
+    {
+      "if": { "required": ["refTrigger"] },
+      "then": { "$ref": "#/$defs/refConsequence" }
+    },
+    {
+      "if": { "required": ["itemsTrigger"] },
+      "then": {
+        "properties": {
+          "itemsOnly": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "id": { "type": "string" } },
+              "required": ["id"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "required": ["falseTrigger"] },
+      "then": { "properties": { "forbiddenOnly": false } }
+    },
+    {
+      "if": { "required": ["elemTrigger"] },
+      "then": {
+        "properties": {
+          "elemOnly": { "type": "array", "items": { "type": "string", "minLength": 3 } }
+        }
+      }
+    },
+    {
+      "if": { "required": ["declineTrigger"] },
+      "then": {
+        "properties": { "declineOnly": { "type": "string", "minLength": 5 } },
+        "x-unmodelled": { "demands": "something nothing here can read" }
+      }
+    },
+    { "$ref": "#/$defs/refGroup" },
+    {
+      "allOf": [
+        {
+          "if": { "required": ["deepTrigger"] },
+          "then": { "properties": { "deepOnly": { "enum": ["u", "v"] } } }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "refConsequence": {
+      "properties": { "refOnly": { "enum": ["r", "s"] } }
+    },
+    "refGroup": {
+      "if": { "required": ["groupRefTrigger"] },
+      "then": { "properties": { "groupRefOnly": { "enum": ["j", "k"] } } }
+    }
+  }
+}

@@ -3201,6 +3201,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// Sort property names for deterministic output.
 	propNames := sortedKeys(s.Properties)
 
+	// The if/then/else groups this struct compiles to the evaluator, decided
+	// before any field is built because it is what says whether a field may stop
+	// enforcing what a branch put in it. The same slice is used further down for
+	// the checks themselves rather than collected twice, so the answer a field
+	// was narrowed on and the check standing in for it are the one thing.
+	conditionalRuntimeChecks := g.collectConditionalRuntimeChecks(s, true)
+	conditionalOnly := g.conditionalOnlyProperties(s, g.conditionalGroupsEnforcedInFull(s, conditionalRuntimeChecks))
+
 	// First pass: compute Go field names, honoring configured overrides.
 	goFieldNames := make(map[string]string, len(propNames)) // JSON name → Go name
 	overridden := make(map[string]bool, len(propNames))     // JSON name → came from an override
@@ -3440,19 +3448,20 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 
 		fields = append(fields, FieldDef{
-			Name:           goFieldName,
-			JSONName:       propName,
-			Type:           goType,
-			OmitEmpty:      omitEmpty,
-			OmitZero:       omitZero,
-			Required:       required,
-			Description:    g.propertyDescription(s, propName, propSchema),
-			Annotations:    g.propertyAnnotations(s, propName, propSchema),
-			ManualJSON:     manualJSON,
-			ManualOmit:     manualOmit,
-			DefaultLiteral: defaultLiteral,
-			pendingDefault: pendingDefault,
-			IntegerDecode:  g.integerDecodeFor(goType, propSchema),
+			Name:            goFieldName,
+			JSONName:        propName,
+			Type:            goType,
+			OmitEmpty:       omitEmpty,
+			OmitZero:        omitZero,
+			Required:        required,
+			Description:     g.propertyDescription(s, propName, propSchema),
+			Annotations:     g.propertyAnnotations(s, propName, propSchema),
+			ManualJSON:      manualJSON,
+			ManualOmit:      manualOmit,
+			DefaultLiteral:  defaultLiteral,
+			pendingDefault:  pendingDefault,
+			IntegerDecode:   g.integerDecodeFor(goType, propSchema),
+			ConditionalOnly: conditionalOnly[propName],
 		})
 		if needsUnmarshalForIntegers(fields[len(fields)-1]) {
 			needsUnmarshal = true
@@ -3601,6 +3610,20 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			continue
 		}
 		goFieldName := goFieldNames[propName]
+		// Nothing this property's own schema states binds on every document that
+		// gets this far: it is here because a `then` or an `else` named it, and
+		// the group that consequence hangs off is applied to the document, with
+		// its condition in front of it, somewhere else. Read as a field rule the
+		// same keyword would apply to every document, which is a false rejection
+		// of the ones the condition does not select (issue #213). Every reading
+		// of propSchema below is held back for that reason, the forbidding arm
+		// included -- a `false` consequence forbids the property only where its
+		// condition holds.
+		//
+		// The property's own schema only. patternProperties is written on this
+		// object and binds unconditionally whatever put the key in the property
+		// map, so those rules are collected below either way.
+		conditionalOnlyProp := conditionalOnly[propName]
 		// Boolean schema false → property is forbidden (any value is invalid).
 		// Also check if a $ref/$dynamicRef resolves to a false boolean schema.
 		//
@@ -3612,7 +3635,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// from here like any other field's -- says the same thing more
 		// completely: `!= nil` misses a property present with a JSON null, which
 		// a `false` schema forbids too.
-		if propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema) {
+		if !conditionalOnlyProp && (propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema)) {
 			if !g.isRawValueWrapperType(fieldTypes[goFieldName]) {
 				validations = append(validations, ValidationRule{
 					FieldName: goFieldName, JSONName: propName,
@@ -3629,12 +3652,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		var rules []ValidationRule
 		if g.validationKeywordsEnabled() {
-			rules = extractValidationRules(goFieldName, propName, propSchema)
-			// An allOf on the property itself tightens the same value. When the
-			// branches carry object shape it is generateAllOfDef that flattens
-			// them, but a branch that only bounds a scalar leaves the property a
-			// plain Go string or int64 and its keywords reach nothing.
-			rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
+			if !conditionalOnlyProp {
+				rules = extractValidationRules(goFieldName, propName, propSchema)
+				// An allOf on the property itself tightens the same value. When the
+				// branches carry object shape it is generateAllOfDef that flattens
+				// them, but a branch that only bounds a scalar leaves the property a
+				// plain Go string or int64 and its keywords reach nothing.
+				rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
+			}
 			// Also apply constraints from patternProperties whose pattern matches this property name.
 			for pattern, patSchema := range s.PatternProperties {
 				if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
@@ -3787,8 +3812,11 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		validations = append(validations, filtered...)
 
 		// Constraints under `items` land on no field of their own, so they are
-		// collected separately and checked element by element.
-		if g.validationKeywordsEnabled() {
+		// collected separately and checked element by element. All four read the
+		// property's own schema, so all four are held back for the same reason
+		// the rules above are: a `then` describing an array says what its
+		// elements must be only where the condition holds.
+		if g.validationKeywordsEnabled() && !conditionalOnlyProp {
 			if iv := g.buildItemValidation(name, goFieldName, propName, fieldTypes[goFieldName], propSchema); iv != nil {
 				itemValidations = append(itemValidations, *iv)
 			}
@@ -3826,6 +3854,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if propSchema == nil {
 			continue
 		}
+		// A property no schema describes unconditionally forbids nothing
+		// unconditionally either, null included. The `then` that gave it a type
+		// says "string" only of the documents its condition selects, and the
+		// group says that itself where it is checked; refusing the null here
+		// would refuse it in every document (issue #213). The other half is
+		// below: a null the schema now permits has to be recorded, or it is
+		// erased from the round trip.
+		if conditionalOnly[propName] {
+			continue
+		}
 		if ft, ok := fieldTypes[goFieldNames[propName]]; ok {
 			if nc := g.buildNullCheck(propName, ft, propSchema); nc != nil {
 				nullChecks = append(nullChecks, *nc)
@@ -3856,7 +3894,16 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// vacuously, and MarshalJSON writes the null back.
 	var nullPresenceKeys []string
 	for _, propName := range propNames {
-		if g.nullPresenceTracked(s.Properties[propName], fieldTypes[goFieldNames[propName]]) {
+		ft := fieldTypes[goFieldNames[propName]]
+		tracked := g.nullPresenceTracked(s.Properties[propName], ft)
+		// A conditional-only property permits a null however its branch typed
+		// it, since the branch may not apply -- so it is tracked on the second
+		// half of the same test alone, which asks whether the field's own Go
+		// type already holds the null itself.
+		if conditionalOnly[propName] {
+			tracked = g.nullPresenceRecordable(ft)
+		}
+		if tracked {
 			nullPresenceKeys = append(nullPresenceKeys, propName)
 		}
 	}
@@ -4029,7 +4076,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// collectBranchOverflowChecks and collectRuntimeBranchChecks.
 	branchChecks := g.collectBranchOverflowChecks(s, name)
 	runtimeBranchChecks := append(g.collectRuntimeBranchChecks(s), subschemaChecks...)
-	runtimeBranchChecks = append(runtimeBranchChecks, g.collectConditionalRuntimeChecks(s, true)...)
+	runtimeBranchChecks = append(runtimeBranchChecks, conditionalRuntimeChecks...)
 
 	// Where an applicator is evaluated exactly, the flattened approximation of
 	// that same applicator is dropped rather than run beside it, which is what
@@ -4276,7 +4323,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
-		g.recordMergedProperty(merged, k, v, false)
+		g.recordMergedProperty(merged, k, v, nil)
 	}
 	if g.validationKeywordsEnabled() {
 		merged.Required = append(merged.Required, s.Required...)
@@ -5099,7 +5146,7 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		// about all of them and the annotation reading records it as such.
 		for k, v := range resolved.Properties {
 			target.Properties[k] = v
-			g.recordMergedProperty(target, k, v, false)
+			g.recordMergedProperty(target, k, v, nil)
 		}
 		target.Required = append(target.Required, resolved.Required...)
 		// Merge patternProperties from allOf sub-schemas.
@@ -5169,9 +5216,9 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		// a node the allOf chain merely passed through has no bearing on whether
 		// the variant walk is looping.
 		variantPath := make(map[*schema.Schema]bool)
-		g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf, variantPath)
-		g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf, variantPath)
-		g.mergeConditionalBranchPropertiesInto(target, resolved, variantPath)
+		g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf, conditionalContribution{owner: resolved, keyword: "oneOf"}, variantPath)
+		g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf, conditionalContribution{owner: resolved, keyword: "anyOf"}, variantPath)
+		g.mergeConditionalBranchPropertiesInto(target, resolved, conditionalContribution{owner: resolved, keyword: "if"}, variantPath)
 		for i := 0; i < pushedCount; i++ {
 			g.popDynamicScope()
 		}
@@ -5181,20 +5228,35 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 	}
 }
 
-func (g *Generator) mergeApplicatorVariantPropertiesInto(target *schema.Schema, variants []*schema.Schema, onPath map[*schema.Schema]bool) {
+// mergeApplicatorVariantPropertiesInto folds every variant of one anyOf or
+// oneOf into target. via names that group, and is carried unchanged into
+// whatever the variants themselves apply: a property reached through a oneOf
+// inside a `then` is contributed by the outer group, because the outer group is
+// what a check is compiled from and looked up by. See conditionalContribution.
+func (g *Generator) mergeApplicatorVariantPropertiesInto(target *schema.Schema, variants []*schema.Schema, via conditionalContribution, onPath map[*schema.Schema]bool) {
 	for _, variant := range variants {
-		g.mergeVariantObjectPropertiesInto(target, variant, onPath)
+		g.mergeVariantObjectPropertiesInto(target, variant, via, onPath)
 	}
 }
 
-func (g *Generator) mergeConditionalBranchPropertiesInto(target *schema.Schema, s *schema.Schema, onPath map[*schema.Schema]bool) {
+// mergeConditionalBranchPropertiesInto folds both consequences of s's
+// if/then/else into target.
+//
+// via is the group the contributions are recorded against, and it is the
+// caller's rather than one made from s here, because a group inside a branch is
+// compiled and looked up as part of the branch that contains it: the evaluator
+// takes a `then` whole, nested conditionals and all. Only the outermost caller
+// -- mergeAllOfBranches, where the group is the allOf branch itself -- names a
+// group of its own. An `else` is recorded against the same group as its `then`:
+// one condition selects between them, and one check carries both.
+func (g *Generator) mergeConditionalBranchPropertiesInto(target *schema.Schema, s *schema.Schema, via conditionalContribution, onPath map[*schema.Schema]bool) {
 	if s == nil {
 		return
 	}
 	// Conditional branch required lists are not globally required. They are only
 	// required when their corresponding if condition matches at validation time.
-	g.mergeVariantObjectPropertiesInto(target, s.Then, onPath)
-	g.mergeVariantObjectPropertiesInto(target, s.Else, onPath)
+	g.mergeVariantObjectPropertiesInto(target, s.Then, via, onPath)
+	g.mergeVariantObjectPropertiesInto(target, s.Else, via, onPath)
 }
 
 // extractObjectOneOfDefs collects the object-level oneOf groups that apply to a
@@ -5443,7 +5505,7 @@ func mergeStringSets(a, b []string) []string {
 // The marks come off again on the way out, so this is the path and not
 // everything ever seen. Two variants that legitimately name the same node --
 // oneOf: [{$ref: X}, {$ref: X}] -- must each merge it, exactly as before.
-func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, variant *schema.Schema, onPath map[*schema.Schema]bool) {
+func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, variant *schema.Schema, via conditionalContribution, onPath map[*schema.Schema]bool) {
 	if target == nil || variant == nil || variant.IsBooleanSchema() {
 		return
 	}
@@ -5484,17 +5546,20 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 
 	// Every route into this function is a conditional applicator -- a oneOf or
 	// anyOf variant, a `then` or an `else` -- and anything reached from inside one
-	// is conditional too, which is why the flag is a constant here rather than a
-	// parameter threaded down. The property is still merged: the branch is where
-	// the field's type comes from, and dropping it would leave the value nowhere
-	// to go. Only the two annotations are held back. See mergedPropertyOrigins.
+	// is conditional too, which is why every contribution below is recorded
+	// against `via` and the descent passes the same one down. The property is
+	// still merged: the branch is where the field's type comes from, and dropping
+	// it would leave the value nowhere to go. What is held back is what the
+	// branch *asserts* -- the two annotations (#174) and, where the group is
+	// applied in full elsewhere, the field's own rules (#213). See
+	// mergedPropertyOrigins.
 	for k, v := range resolved.Properties {
 		if existing, exists := target.Properties[k]; exists {
 			target.Properties[k] = mergeVariantPropertySchemas(existing, v)
 		} else {
 			target.Properties[k] = v
 		}
-		g.recordMergedProperty(target, k, v, true)
+		g.recordMergedProperty(target, k, v, &via)
 	}
 	for k, v := range resolved.PatternProperties {
 		if target.PatternProperties == nil {
@@ -5509,11 +5574,11 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	}
 
 	for _, sub := range resolved.AllOf {
-		g.mergeVariantObjectPropertiesInto(target, sub, onPath)
+		g.mergeVariantObjectPropertiesInto(target, sub, via, onPath)
 	}
-	g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf, onPath)
-	g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf, onPath)
-	g.mergeConditionalBranchPropertiesInto(target, resolved, onPath)
+	g.mergeApplicatorVariantPropertiesInto(target, resolved.OneOf, via, onPath)
+	g.mergeApplicatorVariantPropertiesInto(target, resolved.AnyOf, via, onPath)
+	g.mergeConditionalBranchPropertiesInto(target, resolved, via, onPath)
 
 	for i := 0; i < pushedCount; i++ {
 		g.popDynamicScope()
@@ -6102,7 +6167,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
-		g.recordMergedProperty(merged, k, v, false)
+		g.recordMergedProperty(merged, k, v, nil)
 	}
 
 	// Merge each anyOf sub-schema's properties.
@@ -6122,7 +6187,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 			if _, exists := merged.Properties[k]; !exists {
 				merged.Properties[k] = v
 			}
-			g.recordMergedProperty(merged, k, v, true)
+			g.recordMergedProperty(merged, k, v, &conditionalContribution{owner: s, keyword: "anyOf"})
 		}
 		// Propagate type from sub-schemas if the parent doesn't have one.
 		if len(resolved.Type) > 0 && len(merged.Type) == 0 {
@@ -8575,16 +8640,45 @@ type mergedPropertyOrigin struct {
 	// merged schema in target.Properties[name] may not, because it is the two
 	// kinds folded together.
 	unconditional []*schema.Schema
+	// via names the applicator group each conditional contribution came through,
+	// one entry per contribution. `conditional` says a branch is in the answer;
+	// this says *which* group it hangs off, which is what a caller asking
+	// whether the group is checked somewhere else has to know (issue #213).
+	//
+	// The outermost group, not the nearest one. A `then` containing a nested
+	// if/then is compiled to the evaluator whole, so the record that matters is
+	// the group a check can be looked up by; the descent passes its own entry
+	// down rather than making a new one at each level.
+	via []conditionalContribution
+}
+
+// conditionalContribution names one applicator group a merged property arrived
+// through: the schema object carrying the keyword, and the keyword itself.
+//
+// The keyword is kept because the three are not interchangeable to a caller
+// asking whether the group is enforced elsewhere. An if/then/else is compiled
+// to the evaluator, or read whole by objectConditionalDef, and either way the
+// consequence is applied only where the condition holds. The approximation
+// extractObjectAnyOfDefs and extractObjectOneOfDefs build decides which branch
+// matched from its required keys and its consts, and never applies a branch's
+// property schemas at all -- so it does not stand in for anything.
+type conditionalContribution struct {
+	owner   *schema.Schema
+	keyword string
 }
 
 // recordMergedProperty notes one contribution to target.Properties[name].
+//
+// via is nil for a contribution that binds on every valid instance -- the
+// parent's own property, an allOf branch's -- and names the applicator group
+// otherwise.
 //
 // Called from the merge itself rather than reconstructed afterwards, which is
 // the point: what a merge did is not always recoverable from what it produced
 // -- mergeVariantPropertySchemas may return a node that is neither input -- and
 // a second walk that tried would be a second opinion about the same document,
 // free to drift from the first.
-func (g *Generator) recordMergedProperty(target *schema.Schema, name string, contributed *schema.Schema, conditional bool) {
+func (g *Generator) recordMergedProperty(target *schema.Schema, name string, contributed *schema.Schema, via *conditionalContribution) {
 	if target == nil {
 		return
 	}
@@ -8598,8 +8692,9 @@ func (g *Generator) recordMergedProperty(target *schema.Schema, name string, con
 		origin = &mergedPropertyOrigin{}
 		byName[name] = origin
 	}
-	if conditional {
+	if via != nil {
 		origin.conditional = true
+		origin.via = append(origin.via, *via)
 		return
 	}
 	if contributed != nil {
@@ -8621,6 +8716,115 @@ func (g *Generator) unconditionalPropertySchemas(owner *schema.Schema, name stri
 		return nil, false
 	}
 	return origin.unconditional, true
+}
+
+// conditionalOnlyProperties names the properties of a merge target that no
+// schema describes on every valid instance -- every contribution to them
+// arrived through an if/then/else -- and whose groups are all enforced in full
+// somewhere that applies them conditionally.
+//
+// This is issue #213. The merge folds a `then` branch's property schemas into
+// the struct's property map so that the branch can give the field a Go type,
+// and until this the field's *rules* came from that same fold: the enum a
+// branch stated became the field's own, and a field enforces what it states
+// whatever the condition says. So
+//
+//	{"allOf":[{"if":{"properties":{"kind":{"const":"a"}},"required":["kind"]},
+//	          "then":{"properties":{"ev":{"enum":["x","y"]}}}}]}
+//
+// refused {"kind":"b","ev":"z"}, a document it permits -- the condition fails,
+// the consequence never applies, and "ev" is unconstrained. Written without the
+// allOf around it the same schema accepts, because there is no merge and the
+// branch reaches no field.
+//
+// What replaces the field's reading is not a weaker reading: it is the group
+// itself, applied to the document with its condition in front of it. The two
+// arms below are the two places that happens, and a group in neither is not
+// narrowed at all -- the field goes on over-enforcing there, which is the
+// pre-existing false rejection and not a new false acceptance. That is the
+// fail-closed half, and it is why the answer is computed from the checks this
+// struct actually emits rather than from what the schema looks like.
+//
+// Only if/then/else. An anyOf or a oneOf contributes properties the same way and
+// has the same defect, but its static reading approximates which branch matched
+// and never applies a branch's property schemas, so nothing yet stands in for
+// the field there; a contribution through one leaves the property out of this
+// answer entirely, whatever else contributed it.
+//
+// A property with any unconditional contribution is out too, and that is the
+// sharp case rather than an edge: a property declared beside the allOf and
+// mentioned again by a `then` is stated outright, and dropping its checks would
+// trade this false rejection for the worse bug. unconditionalPropertySchemas
+// already draws that line for readOnly/writeOnly (#174) and it is the same line.
+func (g *Generator) conditionalOnlyProperties(target *schema.Schema, enforced map[*schema.Schema]bool) map[string]bool {
+	byName := g.mergedPropertyOrigins[target]
+	if len(byName) == 0 {
+		return nil
+	}
+	var out map[string]bool
+	for name, origin := range byName {
+		// via rather than the `conditional` flag beside it, though the merge
+		// sets the two together: a contribution whose group was not named
+		// cannot be looked up, so it can never be shown to be checked anywhere,
+		// and reading the flag would answer "conditional, and no group to ask
+		// about" as though every group had been asked.
+		if origin == nil || len(origin.via) == 0 || len(origin.unconditional) > 0 {
+			continue
+		}
+		covered := true
+		for _, v := range origin.via {
+			if v.keyword != "if" || !enforced[v.owner] {
+				covered = false
+				break
+			}
+		}
+		if !covered {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]bool, len(byName))
+		}
+		out[name] = true
+	}
+	return out
+}
+
+// conditionalGroupsEnforcedInFull returns the if/then/else groups reachable from
+// s that are applied to the document in full, with their condition in front of
+// them, by something other than the merged fields.
+//
+// Two arms, and they are the two states collectConditionalRuntimeChecks leaves a
+// group in:
+//
+//   - routed: the group was compiled to the evaluator, which reads it whole and
+//     evaluates `if` before it applies `then` or `else`. A group the evaluator
+//     declined to compile is not in that slice, so it is not here either.
+//   - read whole by the static reading: objectConditionalReadWhole is the same
+//     question collectConditionalRuntimeChecks asks before declining to route,
+//     so exactly one of the two arms answers for any group in the walk.
+//
+// The walk is extractObjectConditionalDefs' and collectConditionalRuntimeChecks'
+// -- the schema itself and its allOf branches, resolved. A group the merge
+// reached that this does not (one nested inside a second allOf, say) is absent
+// from the answer, and absence is what the caller treats as "not enforced".
+func (g *Generator) conditionalGroupsEnforcedInFull(s *schema.Schema, routed []RuntimeBranchCheck) map[*schema.Schema]bool {
+	if s == nil {
+		return nil
+	}
+	enforced := make(map[*schema.Schema]bool, 1+len(s.AllOf))
+	consider := func(owner *schema.Schema) {
+		if owner == nil {
+			return
+		}
+		if runtimeBranchTaken(routed, owner, "if") || g.objectConditionalReadWhole(owner) {
+			enforced[owner] = true
+		}
+	}
+	consider(s)
+	for _, sub := range s.AllOf {
+		consider(g.resolveSchemaForApplicator(sub))
+	}
+	return enforced
 }
 
 // readWriteBindingAt is readWriteAtLocation for a property of a struct, asked
@@ -10585,6 +10789,17 @@ func (g *Generator) nullPresenceTracked(propSchema *schema.Schema, t GoType) boo
 	if propSchema == nil || g.schemaForbidsNull(propSchema) {
 		return false
 	}
+	return g.nullPresenceRecordable(t)
+}
+
+// nullPresenceRecordable is the half of the question above that is about the Go
+// type rather than the schema: whether a null at this position would be lost if
+// it were not recorded.
+//
+// It is asked on its own by the caller that already knows the schema permits the
+// null for a reason the schema text does not show -- a property whose only
+// describing schema is a conditional consequence (issue #213).
+func (g *Generator) nullPresenceRecordable(t GoType) bool {
 	if t != nil && !t.IsPointer() && (g.isRawValueWrapperType(t) || g.isInferredAliasType(t)) {
 		return false
 	}
@@ -11432,6 +11647,16 @@ func (g *Generator) populateValidatableFields() {
 			nullKeys[k] = true
 		}
 		for _, f := range sd.Fields {
+			// A field whose type came from a conditional consequence alone does
+			// not dispatch to that type's Validate. The type is still the
+			// branch's -- a merged `then` is where a materialized enum or item
+			// struct comes from at all -- but calling its Validate here would
+			// apply the branch to every document, and the group that branch
+			// hangs off is checked with its condition in front of it elsewhere.
+			// See FieldDef.ConditionalOnly (issue #213).
+			if f.ConditionalOnly {
+				continue
+			}
 			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
 			if typeName != "" && (validatableTypes[typeName] || crossPackageValidatable(f.Type)) {

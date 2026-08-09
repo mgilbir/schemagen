@@ -243,6 +243,18 @@ func allRoundTripTests() []roundTripTestCase {
 			FixturePath: "testdata/fixtures/regression/allof_if_then_branches.json",
 		},
 		{
+			// Issue #213's round-trip half. A property that only a `then` or an
+			// `else` describes no longer refuses a null -- the branch typed it,
+			// but only for the documents its condition selects -- and a null that
+			// is no longer refused has to be recorded, or it comes back as an
+			// absence. The document writes one in two such positions, and puts a
+			// value the branch's enum would refuse in two more, which is the
+			// state the type has to be able to hold at all.
+			Name:        "regression/conditional_only_property_positions",
+			SchemaPath:  "testdata/schemas/regression/conditional_only_property_positions.json",
+			FixturePath: "testdata/fixtures/regression/conditional_only_property_positions.json",
+		},
+		{
 			// Issue #110, and the reason it is here rather than only in the
 			// goldens: this harness compares the document against itself after
 			// a decode and a re-encode, which is exactly what the defect broke.

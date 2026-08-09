@@ -209,7 +209,22 @@ func notRegressionFixtures() []notFixture {
 // a schema with nothing to check produces too, and #185's is a check that reads
 // correctly and fires on more values than the schema names.
 func TestNotIsEnforcedAndDoesNotOverNegate(t *testing.T) {
-	for _, fx := range notRegressionFixtures() {
+	runInstanceFixtures(t, "not_regression_test", notRegressionFixtures())
+}
+
+// runInstanceFixtures compiles each fixture's schema and puts every document in
+// it to the generated root type, reporting the ones whose verdict disagrees.
+//
+// One runner for every group of fixtures written this way. The three that exist
+// differed only in the module name written into the throwaway go.mod, and a
+// fourth copy is how the next one starts drifting from the rest.
+//
+// module names the temporary module the compiled program lives in. It has no
+// effect on the verdict and exists so that a failure names which group's
+// throwaway directory it came from.
+func runInstanceFixtures(t *testing.T, module string, fixtures []notFixture) {
+	t.Helper()
+	for _, fx := range fixtures {
 		t.Run(fx.Name, func(t *testing.T) {
 			// The root type is named rather than recovered from the emitted
 			// source. extractRootTypeName looks for the last top-level struct,
@@ -238,7 +253,7 @@ func TestNotIsEnforcedAndDoesNotOverNegate(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
 				t.Fatalf("writing main.go: %v", err)
 			}
-			if err := writeTestGoMod(tmpDir, "not_regression_test"); err != nil {
+			if err := writeTestGoMod(tmpDir, module); err != nil {
 				t.Fatalf("writing go.mod: %v", err)
 			}
 

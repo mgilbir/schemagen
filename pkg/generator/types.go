@@ -1160,6 +1160,13 @@ type FieldDef struct {
 	// IntegerDecode is set when the field's type holds an int64 that the
 	// document's draft lets be written in float notation. See IntegerDecodeDef.
 	IntegerDecode *IntegerDecodeDef
+	// ConditionalOnly marks a field whose every describing schema arrived
+	// through an if/then/else consequence that is applied in full elsewhere. The
+	// branch still supplies the Go type -- that is what the merge is for -- but
+	// nothing it says is asserted of the field, because the branch applies only
+	// to the documents its condition selects and a field's rules apply to all of
+	// them. See Generator.conditionalOnlyProperties (issue #213).
+	ConditionalOnly bool
 }
 
 // OneOfDef represents a oneOf group on a struct.
