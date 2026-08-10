@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VariantPropertyMergePositions",
+  "description": "A property the root declares outright and a conditional consequence names again. The allOf merge folds the consequence's schema into the same property map slot, and when the two schemas disagree about the JSON type it folded by *erasing* -- so the root's own `type` and its bounds went with it and the field asserted nothing at all (issue #225). This is the mirror of #213: there a branch's constraint bound on every document, here the root's bound on none. Each property below is a separate slot with a trigger of its own, so a document naming one exercises that merge and no other, and every one carries both directions -- the root's constraint with no trigger present, and the consequence's with it.",
+  "type": "object",
+  "properties": {
+    "untypedBranch": {"type": "string", "minLength": 2},
+    "typedBranch": {"type": "string", "minLength": 2},
+    "compatibleBranch": {"type": "string", "minLength": 2},
+    "enumBoth": {"enum": ["a", "b"]},
+    "untypedRoot": {"minLength": 2}
+  },
+  "allOf": [
+    {
+      "if": {"required": ["untypedTrigger"]},
+      "then": {"properties": {"untypedBranch": {"maxLength": 9}}}
+    },
+    {
+      "if": {"required": ["typedTrigger"]},
+      "then": {"properties": {"typedBranch": {"type": "integer"}}}
+    },
+    {
+      "if": {"required": ["compatibleTrigger"]},
+      "then": {"properties": {"compatibleBranch": {"type": "string", "maxLength": 3}}}
+    },
+    {
+      "if": {"required": ["enumTrigger"]},
+      "then": {"properties": {"enumBoth": {"enum": ["b", "c"]}}}
+    },
+    {
+      "if": {"required": ["untypedRootTrigger"]},
+      "then": {"properties": {"untypedRoot": {"type": "string"}}}
+    }
+  ]
+}

@@ -1404,7 +1404,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- if $uneval.IsForbidden}}
 				return fmt.Errorf("unevaluated property %q is not allowed", k)
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
-				{{- if $uneval.ValueType}}
+				{{- if $uneval.ValueIsNull}}
+				{{- /* No Go type holds only null, so the raw bytes are what
+				       decides -- the same reading uneval_items_check takes for
+				       the same sub-schema. Both overflow maps hold
+				       json.RawMessage, which is the value's own bytes. */}}
+				if string(v) != "null" {
+					return fmt.Errorf("unevaluated property %q: must be null", k)
+				}
+				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
 					return fmt.Errorf("unevaluated property %q: %w", k, _uErr)
@@ -1439,7 +1447,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- if $uneval.IsForbidden}}
 				return fmt.Errorf("unevaluated property %q is not allowed", k)
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
-				{{- if $uneval.ValueType}}
+				{{- if $uneval.ValueIsNull}}
+				{{- /* No Go type holds only null, so the raw bytes are what
+				       decides -- the same reading uneval_items_check takes for
+				       the same sub-schema. Both overflow maps hold
+				       json.RawMessage, which is the value's own bytes. */}}
+				if string(v) != "null" {
+					return fmt.Errorf("unevaluated property %q: must be null", k)
+				}
+				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
 					return fmt.Errorf("unevaluated property %q: %w", k, _uErr)

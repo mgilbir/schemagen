@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClosedTupleInAllOf",
+  "description": "A tuple whose tail is closed -- prefixItems beside items:false -- written inside an allOf branch, at every position such a branch can sit. The merge deliberately leaves array keywords on the branch and reads the array's positions off it, but reads the array's bounds off the merged schema, and the closed tail is both: it names the positions and it fixes the length. So the length half fell between the two and every one of these accepted a longer array, while the identical branch written without the allOf around it rejects it (issue #222).",
+  "type": "object",
+  "properties": {
+    "atRoot": {"type": "array", "prefixItems": [{"type": "integer"}], "items": false},
+    "atProperty": {"allOf": [{"type": "array", "prefixItems": [{"type": "integer"}], "items": false}]},
+    "atElement": {
+      "type": "array",
+      "items": {"allOf": [{"type": "array", "prefixItems": [{"type": "integer"}], "items": false}]}
+    },
+    "atMapValue": {
+      "type": "object",
+      "additionalProperties": {"allOf": [{"type": "array", "prefixItems": [{"type": "integer"}], "items": false}]}
+    },
+    "besideASecondBranch": {
+      "allOf": [
+        {"type": "array", "prefixItems": [{"type": "integer"}], "items": false},
+        {"type": "array"}
+      ]
+    },
+    "widerMaxItems": {
+      "allOf": [{"type": "array", "prefixItems": [{"type": "integer"}], "items": false, "maxItems": 3}]
+    },
+    "openTail": {
+      "allOf": [{"type": "array", "prefixItems": [{"type": "integer"}]}]
+    }
+  }
+}

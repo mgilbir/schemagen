@@ -440,7 +440,7 @@ func (d *StructDef) HasObjectEnum() bool {
 // HasSchemaValuedUnevalProps returns true if the unevaluatedProperties constraint
 // is a schema (not just true/false) with validation rules for each unevaluated value.
 func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
-	return u.ValueType != "" || len(u.Validations) > 0
+	return u.ValueType != "" || u.ValueIsNull || len(u.Validations) > 0
 }
 
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
@@ -798,7 +798,8 @@ type UnevaluatedPropertiesDef struct {
 	EvaluatedPatterns []string          // regex patterns from patternProperties in allOf/$ref (always-true sources)
 	AllEvaluated      bool              // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
 	Validations       []ValidationRule  // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
-	ValueType         string            // JSON type required for unevaluated property values (e.g., "string", "number"); empty if no type constraint
+	ValueType         string            // Go type each unevaluated value is decoded into (e.g., "string", "float64"); empty if no type constraint
+	ValueIsNull       bool              // true when the sub-schema is {"type":"null"}, which no Go type expresses -- see buildUnevaluatedPropertiesDef
 	ConditionalEvals  []ConditionalEval // runtime-conditional evaluation branches (if/then/else, dependentSchemas, anyOf, oneOf)
 }
 

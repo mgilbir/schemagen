@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClosedTupleInAllOfDraft7",
+  "description": "The other spelling of the same statement: draft-07 writes the tuple as an array-valued `items` and closes it with additionalItems:false. It needs a document of its own because the dialect is a property of the document, and it was dropped inside an allOf exactly as the 2020-12 spelling was. The plain root spelling is here too: no test in the tree pinned it, so the shared reading of the two spellings could have been broken for both by one edit and only the allOf half would have said so.",
+  "type": "object",
+  "properties": {
+    "atRoot": {
+      "type": "array",
+      "items": [
+        {
+          "type": "integer"
+        }
+      ],
+      "additionalItems": false
+    },
+    "atProperty": {
+      "allOf": [
+        {
+          "type": "array",
+          "items": [
+            {
+              "type": "integer"
+            }
+          ],
+          "additionalItems": false
+        }
+      ]
+    },
+    "openTail": {
+      "allOf": [
+        {
+          "type": "array",
+          "items": [
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
