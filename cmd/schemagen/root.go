@@ -250,40 +250,74 @@ func newGenerateCmd() *cobra.Command {
 			// file. See packageDecls.
 			decls := newPackageDecls(pkgName)
 
+			// Every input of the run is loaded once, up front, and indexed by
+			// $id. Two things need that index.
+			//
 			// In shared-types mode all schemas run through one generator so
 			// types materialized by an earlier schema are referenced, not
-			// re-emitted. The inputs are pre-loaded and indexed by $id so a
-			// cross-input $ref resolves to the same loaded instance as the
-			// input itself (instance identity is what the generated-types
-			// registry keys on).
-			var sharedGen *generator.Generator
+			// re-emitted, and a cross-input $ref has to resolve to the same
+			// loaded instance as the input itself (instance identity is what
+			// the generated-types registry keys on).
+			//
+			// Under the default configuration nothing is shared between the
+			// per-input generators, but the index is still what makes a $ref
+			// that addresses a document by its own $id resolve at all: no
+			// resolver derives a file name from an absolute URI, so
+			// {"$ref":"https://ex.test/c.json"} reached only the file resolver,
+			// which refuses the scheme. --shared-types and --schema-package
+			// both resolved it and the default did not, for no reason a caller
+			// could see (issue #223).
 			inputByPath := make(map[string]*schema.Schema)
-			if sharedTypes {
-				inputByID := make(map[string]*schema.Schema)
-				for _, schemaPath := range args {
-					s, err := schema.LoadFromFile(schemaPath)
-					if err != nil {
-						return fmt.Errorf("loading %s: %w", schemaPath, err)
-					}
-					// --draft is the caller's statement about the document, and it
-					// has to reach normalization as well as generation:
-					// normalization is where a keyword the dialect does not define
-					// is dropped, and answering "which dialect" in two places from
-					// two sources is issue #203 in miniature. Config.Draft below
-					// carries the same value on to the generator.
-					s.NormalizeForDraft(draft)
-					s.ComputeBaseURIs(nil, s)
-					inputByPath[schemaPath] = s
-					id := strings.TrimSuffix(s.ID, "#")
-					if id == "" {
-						id = strings.TrimSuffix(s.LegacyID, "#")
-					}
-					if id != "" {
-						if _, ok := inputByID[id]; ok {
+			inputByID := make(map[string]*schema.Schema)
+			for _, schemaPath := range args {
+				s, err := schema.LoadFromFile(schemaPath)
+				if err != nil {
+					return fmt.Errorf("loading %s: %w", schemaPath, err)
+				}
+				// --draft is the caller's statement about the document, and it
+				// has to reach normalization as well as generation:
+				// normalization is where a keyword the dialect does not define
+				// is dropped, and answering "which dialect" in two places from
+				// two sources is issue #203 in miniature. Config.Draft below
+				// carries the same value on to the generator.
+				s.NormalizeForDraft(draft)
+				s.ComputeBaseURIs(nil, s)
+				inputByPath[schemaPath] = s
+				id := docIDOf(s)
+				if id != "" {
+					if prev, ok := inputByID[id]; ok && prev != s {
+						if sharedTypes {
 							return fmt.Errorf("duplicate $id %q across input schemas", id)
 						}
+						// Outside shared-types mode two inputs may legitimately
+						// declare one $id (the same document listed twice under
+						// different paths, or two revisions generated into
+						// separate files). The identity is then ambiguous, so it
+						// answers no $ref: leaving it out restores exactly the
+						// pre-#223 behaviour for that URI rather than picking a
+						// document for the caller.
+						inputByID[id] = nil
+						continue
+					}
+					if _, ok := inputByID[id]; !ok {
 						inputByID[id] = s
 					}
+				}
+			}
+			for id, s := range inputByID {
+				if s == nil {
+					delete(inputByID, id)
+				}
+			}
+
+			var sharedGen *generator.Generator
+			if sharedTypes {
+				// One package, one generator, and therefore one pass over the
+				// inputs in the order given. A $ref chain that runs in a circle
+				// has no such order, and the failure it used to produce named
+				// the root type names instead — see checkInputRefCycle.
+				if err := checkInputRefCycle(args, inputByPath); err != nil {
+					return err
 				}
 				absPath, _ := filepath.Abs(args[0])
 				resolvers := []schema.SchemaResolver{
@@ -320,34 +354,30 @@ func newGenerateCmd() *cobra.Command {
 				processedFiles[fileKey] = true
 
 				var gen *generator.Generator
-				var s *schema.Schema
+				s := inputByPath[schemaPath]
 				if sharedTypes {
 					gen = sharedGen
-					s = inputByPath[schemaPath]
 				} else {
-					// 1. Load schema
-					var err error
-					s, err = schema.LoadFromFile(schemaPath)
-					if err != nil {
-						return fmt.Errorf("loading %s: %w", schemaPath, err)
-					}
-
-					// 2. Normalize, under the draft the caller named if it named
-					//    one -- see the shared-types branch above.
-					s.NormalizeForDraft(draft)
-
-					// 3. Create generator with config, including a file resolver
-					//    rooted at the schema file's directory.
+					// Create generator with config. The resolver chain matches
+					// the one shared-types mode builds: the run's own documents
+					// by $id first, then a file resolver rooted at this schema
+					// file's directory, then HTTP if --allow-remote-refs asked
+					// for it. Consulting the loaded inputs first is what makes a
+					// $ref by document $id resolve here as it does there (issue
+					// #223); a relative ref still reaches the file resolver,
+					// since nothing relative matches an absolute $id.
 					absPath, _ := filepath.Abs(schemaPath)
-					fileResolver := schema.NewFileResolver(filepath.Dir(absPath))
-
-					// Build resolver chain. File resolver is always available;
-					// HTTP resolver is opt-in via --allow-remote-refs.
-					var resolver schema.SchemaResolver
+					resolvers := make([]schema.SchemaResolver, 0, 3)
+					if len(inputByID) > 0 {
+						resolvers = append(resolvers, schema.NewMappingResolver(inputByID))
+					}
+					resolvers = append(resolvers, schema.NewFileResolver(filepath.Dir(absPath)))
 					if allowRemoteRefs {
-						resolver = schema.NewCompositeResolver(fileResolver, schema.NewHTTPResolver())
-					} else {
-						resolver = fileResolver
+						resolvers = append(resolvers, schema.NewHTTPResolver())
+					}
+					var resolver schema.SchemaResolver = resolvers[0]
+					if len(resolvers) > 1 {
+						resolver = schema.NewCompositeResolver(resolvers...)
 					}
 
 					gen = generator.New(generator.Config{
@@ -385,12 +415,22 @@ func newGenerateCmd() *cobra.Command {
 				if err != nil {
 					var unresolved *generator.UnresolvedRefsError
 					if errors.As(err, &unresolved) {
-						return fmt.Errorf("generating IR for %s: %w\n(place the referenced documents alongside the schema, enable --allow-remote-refs for http(s) refs, or pass --lenient-refs to degrade unresolved refs to any)", schemaPath, err)
+						// Two resolution routes exist and the advice has to name
+						// both, or it is wrong for whichever one the caller
+						// used: the old text said "place the referenced
+						// documents alongside the schema", which is no help at
+						// all for a $ref by absolute URI -- the document can be
+						// sitting right next to the schema and still not be
+						// found, because nothing derives a file name from a URI
+						// (issue #223).
+						return fmt.Errorf("generating IR for %s: %w\n(a $ref by absolute URI is matched against the $id of the documents given to this run, so pass the referenced document as an input too; a $ref by relative path is read from that path next to the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead, and --lenient-refs generates anyway, degrading the unresolved ref to any)", schemaPath, err)
 					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
 
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
+				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs())
+				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 
 				// Record applied overrides for unused-entry reporting.
 				if applied := gen.AppliedOverrides(); len(applied) > 0 {
@@ -498,6 +538,45 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 	for _, u := range unenforced {
 		fmt.Fprintf(w, "warning: %s: type %s is `any` and validates nothing, but the schema states %s\n",
 			schemaPath, u.TypeName, strings.Join(u.Keywords, ", "))
+	}
+}
+
+// warnUnresolvedRefs reports the $refs --lenient-refs degraded to nothing.
+//
+// The flag exists so a schema whose references cannot be served still produces
+// a package, and that is a reasonable thing to ask for. What it must not do is
+// let the caller believe the result checks what the schema says: the referenced
+// constraints are simply gone, and the position that held the ref is `any` --
+// which has no Validate to be missing and no decode that can fail -- or names a
+// type that was never generated. Same reasoning as warnUnenforcedSchemas, same
+// place to say it. The generated source carries the matching statement as a
+// file-level comment; this puts it in front of whoever ran the command. Issue
+// #224.
+func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string) {
+	if w == nil {
+		return
+	}
+	for _, ref := range refs {
+		fmt.Fprintf(w, "warning: %s: $ref %q could not be resolved; --lenient-refs generated the file anyway, so nothing that reference stated is checked -- the position it held is `any`, or names a type this package does not declare\n",
+			schemaPath, ref)
+	}
+}
+
+// warnUnsatisfiableRequired reports the properties --strict-read-write left no
+// document able to supply.
+//
+// Generation-time only, and deliberately not an error: both halves of the
+// generated type do what they were asked to, the runtime behaviour is
+// unchanged, and reconciling "the client may not set this" with "the document
+// must contain this" is the schema author's decision, not schemagen's. Issue
+// #176.
+func warnUnsatisfiableRequired(w io.Writer, schemaPath string, props []generator.UnsatisfiableRequired) {
+	if w == nil {
+		return
+	}
+	for _, p := range props {
+		fmt.Fprintf(w, "warning: %s: %s.%s is both required and readOnly, so under --strict-read-write no document satisfies it: one that sets %q fails to decode (read-only property may not be set), one that omits it fails Validate (required property is missing). SetDefaults does not help -- the required check reads the keys of the document as it arrived, not the field. Drop %q from \"required\", drop \"readOnly\", or generate this type without --strict-read-write\n",
+			schemaPath, p.TypeName, p.Property, p.Property, p.Property)
 	}
 }
 
@@ -805,6 +884,8 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			}
 
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
+			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs())
+			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 
 			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
 				if p.appliedByFile[fileKey] == nil {

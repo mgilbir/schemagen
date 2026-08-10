@@ -2060,6 +2060,19 @@ type File struct {
 	TypeDefs             []TypeDef
 	Imports              []Import
 	ValidationCapability ValidationCapability
+
+	// UnresolvedRefs lists the $ref values no resolver could serve, sorted.
+	// Only ever non-empty under Config.LenientRefs, which is the one setting
+	// that lets generation continue past one: without it Generate returns
+	// UnresolvedRefsError and there is no file.
+	//
+	// It reaches the emitted source as a comment. A ref that could not be
+	// resolved takes the constraints behind it with it -- the position becomes
+	// `any`, or names a type nothing declares -- and unlike an unenforced `type
+	// X any` there is no single declaration to hang the notice on: the damage
+	// is wherever the ref appeared. So it is stated once for the file, which is
+	// the smallest unit that certainly contains it. See issue #224.
+	UnresolvedRefs []string
 }
 
 // Import represents a Go import.
