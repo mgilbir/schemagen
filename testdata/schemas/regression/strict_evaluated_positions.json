@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StrictEvaluatedPositions",
+  "description": "The positions --strict-properties reaches an object schema through without the static reading producing a struct for it. Each of viaThen, viaElse, viaDependent and viaNotNot is a sub-schema the generator compiles to schema data and interprets at validation time, and that lowering carried no ban at all -- so the flag's own sentence, 'absent additionalProperties is treated as false', held where an object compiled to a struct and not where it compiled to a node (issue #221). `pooled` is the control that a ban synthesised per allOf branch would break: additionalProperties reads the properties of the schema object it sits in, and the static path pools an allOf branch's into the merged struct before the ban goes on, so {\"a\":1,\"b\":2} conforms and {\"a\":1,\"b\":2,\"x\":3} does not. A ban written once per branch would refuse both, and no document would satisfy the composition.",
+  "type": "object",
+  "properties": {
+    "viaThen": {
+      "if": {"type": "object"},
+      "then": {"type": "object", "properties": {"a": {"type": "integer"}}}
+    },
+    "viaElse": {
+      "if": {"type": "string"},
+      "else": {"type": "object", "properties": {"a": {"type": "integer"}}}
+    },
+    "viaDependent": {
+      "type": "object",
+      "dependentSchemas": {
+        "a": {"type": "object", "properties": {"a": {"type": "integer"}}}
+      }
+    },
+    "viaNotNot": {
+      "not": {"not": {"type": "object", "properties": {"a": {"type": "integer"}}}}
+    },
+    "pooled": {
+      "not": {
+        "not": {
+          "type": "object",
+          "properties": {"a": {"type": "integer"}},
+          "allOf": [{"properties": {"b": {"type": "integer"}}}]
+        }
+      }
+    }
+  }
+}
