@@ -211,6 +211,15 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Content, "encoding/base64")
 	add(helpers.Content, "encoding/json")
 	add(helpers.Content, "fmt")
+	// --strict-read-write's walker. `errors` is the one import here nothing else
+	// in a helper file needs, and it is what lets a Validate check tell the
+	// flag's refusal from a real decode failure by type rather than by message.
+	add(helpers.Access, "encoding/json")
+	add(helpers.Access, "errors")
+	add(helpers.Access, "fmt")
+	add(helpers.Access, "sort")
+	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 
 	data := helperFileData{
 		PackageName: packageName,

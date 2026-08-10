@@ -197,7 +197,22 @@ which they have a direction ([2020-12 §9.4][ro]):
 
 Both bind on a **property**, whichever way the schema says so: written on the
 property, reached through its `$ref` (however long the chain), or stated in one
-of its `allOf` branches all name the same instance location and all bind. An
+of its `allOf` branches all name the same instance location and all bind. That
+holds wherever the property is, including the places the generated code keeps
+the value as raw JSON and never decodes it into the type built for the
+sub-schema — a `prefixItems` slot, a `contains` element, a `patternProperties`
+value, and a schema whose whole shape is `unevaluatedProperties` or
+`unevaluatedItems`. Those positions carry a path table rather than a key list,
+because there is no Go field at them to key on.
+
+Neither keyword ever changes a validation verdict, at any of those positions. It
+is worth stating twice because three of them used to: the type the generator
+builds for such a sub-schema is decoded into by a `Validate` check, so the
+decoder's refusal came back out of `Validate()` as `read-only property may not
+be set`. `readOnly` constrains no document, so that was a verdict about a
+question the schema did not ask.
+
+An
 `anyOf`, `oneOf`, `if`/`then`/`else` or `dependentSchemas` branch does not,
 because which branch applies is the document's business and a check keyed on one
 would refuse documents the schema never marked. That holds however the branch is

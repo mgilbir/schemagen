@@ -12,7 +12,22 @@ type {{.Name}} struct {
 	_raw json.RawMessage
 }
 
+{{- if .AccessRules}}
+
+// {{.Name}}AccessRules is what --strict-read-write has to say about this value.
+// This type has no fields at all -- its whole schema is held as data -- so the
+// key lists a struct's decoder and encoder carry have nowhere to live here, and
+// until issue #219 the flag did nothing to a value that reached this type: a
+// readOnly property was accepted and a writeOnly one written straight back out.
+var {{.Name}}AccessRules = {{accessRules .AccessRules}}
+{{- end}}
+
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- if .AccessRules}}
+	if _err := _accessRefuseReadOnly(data, {{.Name}}AccessRules); _err != nil {
+		return _err
+	}
+	{{- end}}
 	{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
 	return nil
 }
@@ -21,7 +36,12 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	if len({{$recv}}._raw) == 0 {
 		return []byte("null"), nil
 	}
+	{{- if .AccessRules}}
+	return _accessStripWriteOnly({{$recv}}._raw, {{.Name}}AccessRules)
+	{{- end}}
+	{{- if not .AccessRules}}
 	return {{$recv}}._raw, nil
+	{{- end}}
 }
 
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }

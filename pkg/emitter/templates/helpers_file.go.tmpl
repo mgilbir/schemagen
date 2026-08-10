@@ -39,3 +39,6 @@ import (
 {{- if .Helpers.Content}}
 {{template "content_helpers"}}
 {{- end}}
+{{- if .Helpers.Access}}
+{{template "access_helpers" .Helpers}}
+{{- end}}

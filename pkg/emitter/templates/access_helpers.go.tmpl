@@ -1,0 +1,287 @@
+{{define "access_helpers"}}
+// --strict-read-write's reach below a value the generated code keeps as raw
+// JSON.
+//
+// A struct's own members are named in the two key lists its UnmarshalJSON and
+// MarshalJSON carry, which is what a Go field can answer for. The positions
+// below one of them cannot be: a prefixItems slot, a contains element and a
+// patternProperties value are all held as raw JSON or as `any`, so the type the
+// generator built for the sub-schema is decoded into by nothing but a Validate
+// check -- and a type whose whole schema is held as data has no fields at all.
+// At those positions the flag used to do nothing, and a `writeOnly` secret was
+// written straight back out (issue #219).
+//
+// The rules below are paths rather than names for that reason. Each names the
+// route from the value in hand down to one object member, and only an object
+// member: "do not accept this" and "do not write this" have no action at a
+// location with no name -- an array element cannot be left out without changing
+// the array's length, which minItems can see.
+//
+// Everything is walked as json.RawMessage. Decoding into `any` would turn every
+// number into a float64 and write it back rounded, so a leaf this walker does
+// not touch is copied through byte for byte.
+const (
+	_accessProperty = iota
+	_accessPattern
+	_accessOther
+	_accessItems
+	_accessTuple
+)
+
+type _accessStep struct {
+	Kind  int
+	Name  string
+	Index int
+	// Except and ExceptPatterns are what an _accessOther step steps past: the
+	// members the same schema object declares by name and by pattern, which are
+	// exactly the ones additionalProperties and unevaluatedProperties do not
+	// reach.
+	Except         []string
+	ExceptPatterns []string
+}
+
+type _accessRule struct {
+	Path      []_accessStep
+	ReadOnly  bool
+	WriteOnly bool
+}
+
+// _readOnlyRefusal is the error --strict-read-write's decoder returns for a
+// document that sets a readOnly property.
+//
+// It is a type rather than a formatted string because two callers have to tell
+// it from every other decode failure. The decoder holds one arriving from a
+// nested type and goes on filling the value, so that a refusal is the answer
+// rather than a half-decoded struct; and a Validate check that decodes raw JSON
+// into a generated type has to ignore it outright, because readOnly is an
+// annotation and constrains no document -- a Validate that consulted one would
+// answer a question the schema did not ask.
+type _readOnlyRefusal struct {
+	Path string
+}
+
+func (e *_readOnlyRefusal) Error() string {
+	return e.Path + ": read-only property may not be set"
+}
+
+// _isReadOnlyRefusal reports whether err is, or wraps, the refusal above.
+func _isReadOnlyRefusal(err error) bool {
+	var target *_readOnlyRefusal
+	return err != nil && errors.As(err, &target)
+}
+
+// _decodeIgnoringReadOnly decodes for a *validation* check.
+//
+// The generated Validate methods decode raw JSON into the type the sub-schema
+// produced, so that the type's own decoder enforces the shape and its Validate
+// enforces the rest. Under --strict-read-write that decoder also refuses a
+// document setting a readOnly property, and a check that let the refusal through
+// would put an annotation into a validation verdict -- which is the one thing
+// both keywords must never do. The decode is left to run to the end and the
+// refusal dropped, so the value is fully populated and the verdict is about the
+// schema.
+func _decodeIgnoringReadOnly(data []byte, dst any) error {
+	if err := json.Unmarshal(data, dst); err != nil && !_isReadOnlyRefusal(err) {
+		return err
+	}
+	return nil
+}
+
+// _accessKeyMatches reports whether one object member is the one a step names.
+func _accessKeyMatches(step _accessStep, key string) bool {
+	switch step.Kind {
+	case _accessProperty:
+		return key == step.Name
+	case _accessPattern:
+{{- if .AccessPattern}}
+		return _accessPatternMatches(step.Name, key)
+{{- else}}
+		return false
+{{- end}}
+	case _accessOther:
+		for _, name := range step.Except {
+			if key == name {
+				return false
+			}
+		}
+{{- if .AccessPattern}}
+		for _, pat := range step.ExceptPatterns {
+			if _accessPatternMatches(pat, key) {
+				return false
+			}
+		}
+{{- end}}
+		return true
+	}
+	return false
+}
+{{- if .AccessPattern}}
+
+// _accessPatternMatches is patternProperties' key test. A pattern that does not
+// compile matches nothing rather than everything: the alternative is a rule
+// silently applying to every member of the object.
+func _accessPatternMatches(pattern, key string) bool {
+	matched, err := ecma262.MatchString(pattern, ecmaflags.Unicode, key)
+	return err == nil && matched
+}
+{{- end}}
+
+// _accessApply walks one rule's path over raw.
+//
+// strip deletes the member the path ends at and returns the rebuilt document;
+// otherwise the document is returned untouched and the second result says
+// whether the member was present. The third is where it was found, for the
+// message.
+//
+// A value of the wrong JSON kind is not an error and not a match: a rule
+// descends where the schema described an object or an array, and a document
+// putting something else there has already failed or will, by a check that is
+// about the document rather than about who owns which field.
+func _accessApply(raw json.RawMessage, path []_accessStep, prefix string, strip bool) (json.RawMessage, string, error) {
+	if len(path) == 0 {
+		return raw, "", nil
+	}
+	step := path[0]
+	switch step.Kind {
+	case _accessProperty, _accessPattern, _accessOther:
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(raw, &obj) != nil {
+			return raw, "", nil
+		}
+		found := ""
+		changed := false
+		for _, key := range _accessSortedKeys(obj) {
+			if !_accessKeyMatches(step, key) {
+				continue
+			}
+			at := key
+			if prefix != "" {
+				at = prefix + "." + key
+			}
+			if len(path) == 1 {
+				if found == "" {
+					found = at
+				}
+				if strip {
+					delete(obj, key)
+					changed = true
+				}
+				continue
+			}
+			next, deeper, err := _accessApply(obj[key], path[1:], at, strip)
+			if err != nil {
+				return raw, "", err
+			}
+			if deeper != "" && found == "" {
+				found = deeper
+			}
+			if strip && !_accessSameBytes(next, obj[key]) {
+				obj[key] = next
+				changed = true
+			}
+		}
+		if strip && changed {
+			out, err := json.Marshal(obj)
+			if err != nil {
+				return raw, "", err
+			}
+			return out, found, nil
+		}
+		return raw, found, nil
+	case _accessItems, _accessTuple:
+		var arr []json.RawMessage
+		if json.Unmarshal(raw, &arr) != nil {
+			return raw, "", nil
+		}
+		found := ""
+		changed := false
+		for i := range arr {
+			if step.Kind == _accessTuple && i != step.Index {
+				continue
+			}
+			if step.Kind == _accessItems && i < step.Index {
+				continue
+			}
+			at := fmt.Sprintf("%s[%d]", prefix, i)
+			next, deeper, err := _accessApply(arr[i], path[1:], at, strip)
+			if err != nil {
+				return raw, "", err
+			}
+			if deeper != "" && found == "" {
+				found = deeper
+			}
+			if strip && !_accessSameBytes(next, arr[i]) {
+				arr[i] = next
+				changed = true
+			}
+		}
+		if strip && changed {
+			out, err := json.Marshal(arr)
+			if err != nil {
+				return raw, "", err
+			}
+			return out, found, nil
+		}
+		return raw, found, nil
+	}
+	return raw, "", nil
+}
+
+func _accessSameBytes(a, b json.RawMessage) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// _accessSortedKeys fixes the order the walker visits an object's members in, so
+// that a document offending several rules fails the same way every time.
+func _accessSortedKeys(obj map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// _accessRefuseReadOnly is the decoder's half: a document that sets any location
+// the schema marked readOnly is refused outright.
+func _accessRefuseReadOnly(data []byte, rules []_accessRule) error {
+	for _, rule := range rules {
+		if !rule.ReadOnly {
+			continue
+		}
+		_, at, err := _accessApply(json.RawMessage(data), rule.Path, "", false)
+		if err != nil {
+			return err
+		}
+		if at != "" {
+			return &_readOnlyRefusal{Path: at}
+		}
+	}
+	return nil
+}
+
+// _accessStripWriteOnly is the encoder's half: every location the schema marked
+// writeOnly is deleted on the way out.
+func _accessStripWriteOnly(data []byte, rules []_accessRule) ([]byte, error) {
+	out := json.RawMessage(data)
+	for _, rule := range rules {
+		if !rule.WriteOnly {
+			continue
+		}
+		next, _, err := _accessApply(out, rule.Path, "", true)
+		if err != nil {
+			return nil, err
+		}
+		out = next
+	}
+	return out, nil
+}
+{{- end}}

@@ -636,7 +636,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv {{$pp.TypeName}}
-					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(v, &_pv); _uErr != nil {
 						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, k, _uErr)
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
@@ -1795,7 +1795,7 @@ declares a field for it at all.
 				continue
 			}
 			var _cTyped {{.Def.TypeName}}
-			if json.Unmarshal(_cBytes, &_cTyped) != nil {
+			if {{if .Def.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped) != nil {
 				continue
 			}
 			if _cTyped.Validate() != nil {
@@ -2012,7 +2012,7 @@ declares a field for it at all.
 				return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_idx, _mErr)
 			}
 			var _typed {{.TypeName}}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+			if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 				return fmt.Errorf("{{$path}}[%d]: %w", {{$args}}_idx, _uErr)
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {

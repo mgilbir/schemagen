@@ -1384,7 +1384,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !ok {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern}
+	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1)}
 }
 
 // dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
@@ -1737,6 +1737,10 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 		NodeLiteral:  lit,
 		Nodes:        nodes,
 		NeedsPattern: b.usesPattern,
+		// A type holding raw JSON has no fields, so --strict-read-write's flat
+		// key lists have nowhere to live and the flag did nothing here at all.
+		// minDepth is 1 rather than 2 for exactly that reason.
+		AccessRules: g.accessRulesFor(s, 1),
 	}
 }
 
