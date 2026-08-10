@@ -212,13 +212,41 @@ decoder's refusal came back out of `Validate()` as `read-only property may not
 be set`. `readOnly` constrains no document, so that was a verdict about a
 question the schema did not ask.
 
-An
-`anyOf`, `oneOf`, `if`/`then`/`else` or `dependentSchemas` branch does not,
-because which branch applies is the document's business and a check keyed on one
-would refuse documents the schema never marked. That holds however the branch is
-reached — including an object-level conditional inside an `allOf` branch, whose
-properties are merged into the same struct: the branch is where such a property
-gets its Go type, and what it *asserts* is held back.
+At a **conditional** branch — `anyOf`, `oneOf`, `if`/`then`/`else`,
+`dependentSchemas`, `not` — the two keywords part company, and the asymmetry is
+deliberate.
+
+`readOnly` does not follow one. Which branch applies is the document's business,
+and a refusal keyed on one would reject documents the schema accepts; a `not`
+that *succeeds* is a subschema that *failed*, so nothing inside it marks anything
+either. That holds however the branch is reached — including an object-level
+conditional inside an `allOf` branch, whose properties are merged into the same
+struct: the branch is where such a property gets its Go type, and what it
+*asserts* is held back.
+
+`writeOnly` does follow one, at every position and at any depth — including the
+plainest spelling of all, where the conditional is written on the object whose own
+properties carry the keyword:
+
+```json
+{"type": "object", "properties": {"t": {"type": "integer"}},
+ "if": {"required": ["t"]},
+ "then": {"properties": {"secret": {"type": "string", "writeOnly": true}}}}
+```
+
+`secret` is named by no schema that applies to every valid instance, so no Go
+field is built for it and it arrives in the overflow map; it is deleted from the
+output all the same. The two keywords fail in opposite directions. Over-stripping omits a field: the value is still in hand,
+the omission is visible in the payload, and the flag can be turned off.
+Under-stripping writes out a property whose whole meaning is "never present when
+the instance is retrieved" — the shape a password, a token or a private key has —
+and nothing anywhere reports that it happened. `--strict-read-write` is a policy
+the caller chose rather than spec validation, so it is allowed to be stricter
+than §7.7.1's annotation rules in the direction that fails safe. The cost is
+named rather than hidden: a `writeOnly` inside a branch the document does not
+match is stripped anyway, because the rules are a static table of locations and
+cannot evaluate a condition. `Validate` is untouched by any of it — no verdict
+has ever depended on either keyword and none does now.
 
 That last part is not only about annotations. A property an `if`/`then`/`else`
 consequence names and no other schema describes gets its Go type from the branch

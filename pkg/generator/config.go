@@ -70,8 +70,15 @@ type Config struct {
 	// that ever see a property name. Where the keyword is written does not
 	// matter -- on the property, at the end of its $ref chain, or in one of its
 	// allOf branches, all of which apply at the same instance location. See
-	// readWriteAtLocation for that reach, and for why an anyOf branch is not part
-	// of it.
+	// readWriteAtLocation for that reach.
+	//
+	// A conditional branch -- anyOf, oneOf, if/then/else, dependentSchemas, not
+	// -- is where the two keywords part company. readOnly does not follow one: a
+	// refusal keyed on a branch the document did not select rejects a document the
+	// schema accepts. writeOnly does: over-stripping omits a field visibly and
+	// recoverably, under-stripping emits a secret silently, and this flag is a
+	// policy its caller chose rather than spec validation. conditionalReachAt
+	// argues it in full.
 	//
 	// Outside a property it stays documentation, and that is the boundary rather
 	// than a gap. A readOnly array element or map value has no property name for

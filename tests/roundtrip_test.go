@@ -2460,7 +2460,8 @@ func stringListAfter(t *testing.T, src, anchor, opener string) []string {
 	return keys
 }
 
-// TestStrictReadWriteDeclinesAConditionalReachedInPlace is issue #174.
+// TestStrictReadWriteDeclinesAConditionalReachedInPlace is issue #174, and the
+// two keywords part company here.
 //
 // --strict-read-write must never refuse a document the schema accepts, and it
 // did, for every way of reaching a conditional applicator through an in-place
@@ -2473,8 +2474,19 @@ func stringListAfter(t *testing.T, src, anchor, opener string) []string {
 //
 // The distinction the merge erases is restored rather than the merge undone.
 // Each branch property below still becomes a typed field -- the round-trip case
-// on this schema is what says so -- and only the two annotations are read
-// through where the property came from.
+// on this schema is what says so -- and only the annotation is read through where
+// the property came from.
+//
+// readOnly is read through it and writeOnly is not, and the whole readOnly half
+// below is unchanged since #174: a refusal keyed on a branch the document did not
+// select rejects a document the schema accepts, which is not recoverable inside
+// the program. A writeOnly not stripped writes out the property whose whole
+// meaning is "never present when the instance is retrieved" (§9.4) -- the shape a
+// password or a token has -- with no diagnostic anywhere. Over-stripping loses a
+// field visibly and the caller can turn the flag off; under-stripping leaks
+// silently. conditionalReachAt is where that asymmetry is argued in full, and it
+// is a policy this flag's caller chose rather than a reading of §7.7.1: Validate
+// is unmoved by any of it, which the last block here asserts.
 //
 // The RoBinds*/WoBinds* half is not decoration. $ref and allOf bind on every
 // valid instance and issue #172 established that they feed the key list; a fix
@@ -2563,11 +2575,19 @@ func main() {
 		}
 	}
 
-	// writeOnly is the same defect with no diagnostic: the value decodes, it
-	// validates, and MarshalJSON drops it. So the branch-contributed ones have
-	// to come back out, and the allOf-contributed one still may not.
+	// writeOnly is the same reach asked the other way round, and it is answered
+	// the other way round. A property a branch alone marks writeOnly is stripped,
+	// exactly as one an allOf branch marks is; see conditionalReachAt for the
+	// argument, which is that the two keywords fail in opposite directions and
+	// only one of them can leak.
+	//
+	// The two readOnly properties in the same document are the control that says
+	// this is keyed on the keyword and not on "a conditional touched this
+	// property": both are contributed by a branch, neither is marked writeOnly,
+	// and both come back out.
 	var v ReadWriteConditionalPositions
-	in := ` + "`" + `{"pickA":1,"woBindsViaAllOf":"a","woCondThen":"b","woCondAnyOf":"c","woCondGroup":{"id":4}}` + "`" + `
+	in := ` + "`" + `{"pickA":1,"woBindsViaAllOf":"a","woCondThen":"b","woCondAnyOf":"c",` +
+		`"woCondGroup":{"id":4},"roCondThen":"keep","roCondAnyOf":"keep2"}` + "`" + `
 	if err := json.Unmarshal([]byte(in), &v); err != nil {
 		fail("decoding the writeOnly document: %v", err)
 	}
@@ -2582,9 +2602,14 @@ func main() {
 	if _, present := got["woBindsViaAllOf"]; present {
 		fail("strict mode wrote a property an allOf branch marks writeOnly: %s", out)
 	}
-	for _, kept := range []string{"woCondThen", "woCondAnyOf", "woCondGroup"} {
+	for _, gone := range []string{"woCondThen", "woCondAnyOf", "woCondGroup"} {
+		if _, present := got[gone]; present {
+			fail("strict mode wrote %q, which a conditional branch marks writeOnly: %s", gone, out)
+		}
+	}
+	for _, kept := range []string{"pickA", "roCondThen", "roCondAnyOf"} {
 		if _, present := got[kept]; !present {
-			fail("strict mode dropped %q, which only a conditional branch marks writeOnly: %s", kept, out)
+			fail("strict mode dropped %q, which nothing marks writeOnly: %s", kept, out)
 		}
 	}
 

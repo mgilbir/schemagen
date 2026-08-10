@@ -4282,12 +4282,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				writeOnlyKeys = append(writeOnlyKeys, o.JSONName)
 			}
 		}
+		// And every writeOnly property name at this location, which is what
+		// catches the ones no field was built for -- a property only a conditional
+		// applicator on this object ever names becomes no field and arrives in the
+		// overflow map, so both loops above, being over things a Go field carries,
+		// walk straight past it. See writeOnlyKeysAtLocation, and note that
+		// readOnly deliberately gets no equivalent line here.
+		writeOnlyKeys = append(writeOnlyKeys, g.writeOnlyKeysAtLocation(s)...)
 		// Both loops walk the properties in sorted order, but a group's keys
 		// arrive after every field's, so the concatenation is sorted only when one
 		// of the two is empty. Sorting says what the order is rather than leaving
 		// it to which shape a property compiled to.
 		sort.Strings(readOnlyKeys)
 		sort.Strings(writeOnlyKeys)
+		// A property that is a field *and* is marked by a branch is named by both
+		// readings, and the encoder's delete loop would then be told twice.
+		writeOnlyKeys = dedupeStrings(writeOnlyKeys)
 		// A struct that would otherwise have taken the default decoder or
 		// encoder needs its own, or the check has nowhere to be.
 		if len(readOnlyKeys) > 0 {
@@ -9027,12 +9037,33 @@ func (g *Generator) conditionalGroupsEnforcedInFull(s *schema.Schema, routed []R
 // readWriteBindingAt is readWriteAtLocation for a property of a struct, asked
 // through whatever the merge recorded about where that property came from.
 //
-// A conditional branch's schema is read for its type and not for these two
-// keywords, so a property the branch alone contributed answers false and one
-// that also exists unconditionally answers for its unconditional part. 2020-12
-// §7.7.1 is the rule being kept: a subschema that was not selected contributes
-// no annotations, and asserting one anyway is a false rejection in the readOnly
-// direction and a silently dropped value in the writeOnly one.
+// readOnly is read off the unconditional contributions alone, so a property a
+// conditional branch alone contributed answers false and one that also exists
+// unconditionally answers for its unconditional part. 2020-12 §7.7.1 is the rule
+// being kept: a subschema that was not selected contributes no annotations, and
+// asserting one anyway is a false rejection.
+//
+// writeOnly is narrowed here the same way, and is then widened again outside: the
+// key list this feeds also gets writeOnlyKeysAtLocation, whose reach covers every
+// schema describing the object, branches included, so a property a branch alone
+// marks is named there. An earlier version of this change read the branches here
+// too, off a record the merge kept of what each contribution was; planting that
+// record away broke nothing once the wider reading existed, so it is gone and one
+// mechanism answers for the key list.
+//
+// The writeOnly result below survived the same plant -- narrowing it to nothing
+// leaves every test in the tree passing, because writeOnlyKeysAtLocation names
+// the same keys. It is kept as a floor rather than deleted, on the ground the
+// f.Annotations floor at the call site already states: the two readings are
+// keyed differently, this one by the merge's own record of what was contributed
+// and that one by walking schema nodes, and where they could still part company
+// is a fold. mergeVariantPropertySchemas keeps `existing` and discards `next`, so
+// a property whose first contribution says nothing and whose second marks
+// writeOnly has a folded node that says nothing; the walk reads the contributing
+// node directly and is unaffected, and a dynamic scope pushed by the merge but
+// not by the uncounted resolution here is the one place that could invert. No
+// fixture in the tree distinguishes them, and this is recorded so that the choice
+// to keep it is visible rather than assumed.
 func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readOnly, writeOnly bool) {
 	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
 	if !narrowed {
@@ -9044,6 +9075,64 @@ func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readO
 		writeOnly = writeOnly || wo
 	}
 	return readOnly, writeOnly
+}
+
+// writeOnlyKeysAtLocation returns every JSON property name that some schema
+// describing this object marks writeOnly, whether or not a Go field was ever
+// built for it.
+//
+// This is the plainest spelling of the position and the one neither reading
+// above can see:
+//
+//	{"type":"object","properties":{"t":{"type":"integer"}},
+//	 "if":{"required":["t"]},
+//	 "then":{"properties":{"secret":{"type":"string","writeOnly":true}}}}
+//
+// The field loop cannot see it, because "secret" is named by no schema that
+// applies on every valid instance and so becomes no field at all -- it arrives in
+// the overflow map, where a Go field's key list has nothing to key on.
+// mergedPropertyOrigins cannot see it either: that record is written by the allOf
+// and variant merges, and a conditional written directly on the object goes
+// through neither, so there is no contribution recorded for anything to read.
+// accessRulesFor does reach it, and then drops it, because a struct asks for
+// minDepth 2 on the ground that its own members are covered by the key lists --
+// which is true of its *fields* and not of this.
+//
+// The names go into the writeOnly key list, which is where they can act: the
+// encoder deletes them from the assembled object after the overflow map has been
+// merged in, so a property that never became a field is deleted just the same.
+// See the marshal template, where that ordering is stated for this reason.
+//
+// readOnly gets no equivalent and must not: the decoder's list is a refusal, and
+// refusing a document because some branch it need not match names the property is
+// the false rejection §7.7.1 forbids. conditionalReachAt argues the asymmetry.
+//
+// The reach is conditionalReachAt's whole, unconditional half included, and the
+// overlap with the field loop above is deliberate rather than tolerated. A first
+// version subtracted unconditionalReachAt so that this answered for the branches
+// alone; planting the subtraction away broke nothing, because a property some
+// schema states writeOnly outright is either already a field the loop named or is
+// one dedupeStrings then removes, so the narrower reach was a branch nobody could
+// watch. It is gone, and what is left is one rule with no arm to get wrong: every
+// writeOnly property name at this location, named once.
+func (g *Generator) writeOnlyKeysAtLocation(s *schema.Schema) []string {
+	if s == nil {
+		return nil
+	}
+	var out []string
+	seen := make(map[string]bool)
+	for _, node := range g.conditionalReachAt(s) {
+		for _, name := range sortedKeys(node.Properties) {
+			if seen[name] {
+				continue
+			}
+			if _, wo := g.readWriteAtLocation(node.Properties[name]); wo {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // unconditionalReachAt returns every schema that applies at an instance
@@ -9098,6 +9187,95 @@ func (g *Generator) unconditionalReachAt(s *schema.Schema, followRef bool) []*sc
 		}
 		for _, branch := range node.AllOf {
 			walk(branch)
+		}
+	}
+	walk(s)
+	return reach
+}
+
+// conditionalReachAt returns every schema that describes s's instance location
+// at all -- the whole of unconditionalReachAt, and on top of it the applicators
+// that describe the location only sometimes: anyOf, oneOf, if/then/else, not and
+// dependentSchemas, transitively through all of them.
+//
+// It has exactly one caller: --strict-read-write's writeOnly half. Nothing else
+// may use it, because for every other consumer of an annotation the narrower
+// reach is the correct one and this would be a false claim about the document.
+//
+// # Why writeOnly reads a wider reach than readOnly
+//
+// 2020-12 §7.7.1 is not in dispute: a subschema that was not selected, or that
+// failed, contributes no annotation, and `not` is the sharp case -- a `not` that
+// succeeds is a subschema that failed. unconditionalReachAt keeps that line, and
+// readOnly is read across it and only across it. Validate() is unaffected either
+// way: both keywords are annotations under every draft that defines them, no
+// verdict has ever depended on one, and none does now.
+//
+// What differs is the cost of being wrong, and the two directions are opposite.
+//
+//   - readOnly wrong in the permissive direction accepts a field; wrong in the
+//     strict direction it *refuses a document the schema permits*. A refusal is
+//     the program declining input it was given, and a refusal keyed on a branch
+//     the document never matched is a false rejection with no recovery inside the
+//     program at all. So readOnly is read only where the schema says it applies
+//     to every valid instance.
+//   - writeOnly wrong in the strict direction omits a field from output. The
+//     field's value is still in hand, the omission is visible in the payload, and
+//     the caller can turn the flag off. Wrong in the permissive direction it
+//     writes out a property whose whole meaning is "never present when the
+//     instance is retrieved" (§9.4) -- the shape a password, a token or a private
+//     key has -- and nothing anywhere reports that it happened. A silent leak is
+//     not recoverable and is not visible.
+//
+// --strict-read-write is a caller-chosen policy and not spec validation. A caller
+// who passes it has asked this program not to emit the properties the schema
+// marks writeOnly, and "the schema marks it, but only inside a branch" is not a
+// distinction that makes emitting a secret safe. So the policy is allowed to be
+// stricter than §7.7.1's annotation rules in the direction that fails safe, while
+// Validate stays exactly conformant. Widening readOnly the same way would be the
+// opposite trade and is not done: see the roViaAnyOf control in
+// TestStrictReadWriteBindsWhereverThePropertyIs.
+//
+// The reach is every applicator that describes *this* location, with no line
+// drawn inside that set. `if` is in it beside `then` and `else`, and a single
+// `not` beside a doubled one: once the reason for descending is "the keyword was
+// written about this location and the caller asked not to emit what it marks",
+// each of those is the same case, and a line between them would be a rule with no
+// fail-safe content behind it. propertyNames is not in it -- it describes the key
+// strings of an object, not any value -- and neither are the applicators that
+// describe some *other* location (properties, items, contains and the rest),
+// which are steps in accessRulesFor rather than part of a reach.
+//
+// Cycle-safe by the visited set, and resolution is the uncounted form, both on
+// unconditionalReachAt's reasoning.
+func (g *Generator) conditionalReachAt(s *schema.Schema) []*schema.Schema {
+	var reach []*schema.Schema
+	visited := map[*schema.Schema]bool{}
+	var walk func(*schema.Schema)
+	walk = func(node *schema.Schema) {
+		if node == nil || visited[node] {
+			return
+		}
+		visited[node] = true
+		reach = append(reach, node)
+		if ref := node.EffectiveRef(); ref != "" {
+			walk(g.resolveRefInContextUncounted(ref, node))
+		}
+		for _, branch := range node.AllOf {
+			walk(branch)
+		}
+		for _, branch := range node.AnyOf {
+			walk(branch)
+		}
+		for _, branch := range node.OneOf {
+			walk(branch)
+		}
+		walk(node.If)
+		walk(node.Then)
+		walk(node.Else)
+		walk(node.Not)
+		for _, branch := range sortedKeys(node.DependentSchemas) {
+			walk(node.DependentSchemas[branch])
 		}
 	}
 	walk(s)
@@ -9198,10 +9376,20 @@ func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchem
 	return nil
 }
 
-// readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by
-// any schema that applies at a property's instance location: the property schema
-// itself, whatever its $ref chain reaches, and every allOf branch of any of them.
-// See unconditionalReachAt for why those and no others.
+// readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by a
+// schema that applies at a property's instance location, over a different reach
+// for each keyword.
+//
+// readOnly is read over unconditionalReachAt: the property schema itself,
+// whatever its $ref chain reaches, and every allOf branch of any of them, and
+// nothing that applies only to some documents. See unconditionalReachAt for why
+// those and no others.
+//
+// writeOnly is read over conditionalReachAt, which is that plus the branches --
+// anyOf, oneOf, if/then/else, not, dependentSchemas. The asymmetry is deliberate
+// and conditionalReachAt is where it is argued: the two keywords fail in opposite
+// directions, and over-stripping a field is visible and recoverable where
+// emitting a secret is neither.
 //
 // It exists for Config.StrictReadWrite and for nothing else. Both keywords are
 // annotations under every draft that defines them, so no verdict depends on this
@@ -9214,6 +9402,8 @@ func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchem
 func (g *Generator) readWriteAtLocation(s *schema.Schema) (readOnly, writeOnly bool) {
 	for _, node := range g.unconditionalReachAt(s, true) {
 		readOnly = readOnly || node.IsReadOnly()
+	}
+	for _, node := range g.conditionalReachAt(s) {
 		writeOnly = writeOnly || node.IsWriteOnly()
 	}
 	return readOnly, writeOnly

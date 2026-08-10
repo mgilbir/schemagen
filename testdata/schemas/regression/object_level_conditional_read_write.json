@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ObjectLevelConditionalReadWrite",
+  "description": "The conditional written on the object whose own properties carry the keyword -- which is the plainest way to spell it and the one no reading of a Go field can see. A property named only by a `then`, an `else`, a `dependentSchemas` branch or a `not` is named by no schema that applies to every valid instance, so the generator builds no field for it and it arrives in the overflow map; the flat key lists are built by walking the fields, so they never ask about it, and mergedPropertyOrigins is written by the allOf and variant merges, which a conditional written directly on the object goes through at all. strict_conditional_read_write.json puts each applicator on a *property's* schema instead, where the value is held as raw JSON and a path table answers -- a real position, but a different one, and passing there says nothing about here. `declaredThenObj` is the other half: the property is declared at object level so it does become a field, and only the annotation is stated in the branch. The root itself carries an if/then for the same reason, because a root schema is the one object that is not reached through a property. Every position carries the same three members -- one writeOnly, one readOnly, one the schema constrains -- so a position that regresses names itself. writeOnly is stripped at all of them; readOnly is refused at none of them, and is refused at `allOfObj` and `inlineObj`, which is what tells the decision apart from the flag being off.",
+  "type": "object",
+  "properties": {
+    "anyOfObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "seen": {
+              "type": "string",
+              "readOnly": true
+            },
+            "lim": {
+              "type": "integer",
+              "maximum": 5
+            }
+          }
+        },
+        {}
+      ]
+    },
+    "oneOfObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "seen": {
+              "type": "string",
+              "readOnly": true
+            },
+            "lim": {
+              "type": "integer",
+              "maximum": 5
+            }
+          },
+          "required": [
+            "secret"
+          ]
+        },
+        {
+          "not": {
+            "required": [
+              "secret"
+            ]
+          }
+        }
+      ]
+    },
+    "ifObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "if": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "seen": {
+            "type": "string",
+            "readOnly": true
+          },
+          "lim": {
+            "type": "integer",
+            "maximum": 5
+          }
+        },
+        "required": [
+          "t"
+        ]
+      },
+      "then": {
+        "type": "object"
+      }
+    },
+    "thenObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "if": {
+        "required": [
+          "t"
+        ]
+      },
+      "then": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "seen": {
+            "type": "string",
+            "readOnly": true
+          },
+          "lim": {
+            "type": "integer",
+            "maximum": 5
+          }
+        }
+      }
+    },
+    "elseObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "if": {
+        "required": [
+          "zz"
+        ]
+      },
+      "else": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "seen": {
+            "type": "string",
+            "readOnly": true
+          },
+          "lim": {
+            "type": "integer",
+            "maximum": 5
+          }
+        }
+      }
+    },
+    "depObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "dependentSchemas": {
+        "t": {
+          "properties": {
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "seen": {
+              "type": "string",
+              "readOnly": true
+            },
+            "lim": {
+              "type": "integer",
+              "maximum": 5
+            }
+          }
+        }
+      }
+    },
+    "notObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "not": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "seen": {
+            "type": "string",
+            "readOnly": true
+          },
+          "lim": {
+            "type": "integer",
+            "maximum": 5
+          }
+        },
+        "required": [
+          "nope"
+        ]
+      }
+    },
+    "notNotObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "not": {
+        "not": {
+          "properties": {
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "seen": {
+              "type": "string",
+              "readOnly": true
+            },
+            "lim": {
+              "type": "integer",
+              "maximum": 5
+            }
+          }
+        }
+      }
+    },
+    "declaredThenObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        },
+        "secret": {
+          "type": "string"
+        },
+        "seen": {
+          "type": "string"
+        },
+        "lim": {
+          "type": "integer",
+          "maximum": 5
+        }
+      },
+      "if": {
+        "required": [
+          "t"
+        ]
+      },
+      "then": {
+        "properties": {
+          "secret": {
+            "writeOnly": true
+          },
+          "seen": {
+            "readOnly": true
+          }
+        }
+      }
+    },
+    "allOfObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        }
+      },
+      "allOf": [
+        {
+          "properties": {
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "seen": {
+              "type": "string",
+              "readOnly": true
+            },
+            "lim": {
+              "type": "integer",
+              "maximum": 5
+            }
+          }
+        }
+      ]
+    },
+    "inlineObj": {
+      "type": "object",
+      "properties": {
+        "t": {
+          "type": "integer"
+        },
+        "secret": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "seen": {
+          "type": "string",
+          "readOnly": true
+        },
+        "lim": {
+          "type": "integer",
+          "maximum": 5
+        }
+      }
+    },
+    "rootTrigger": {
+      "type": "integer"
+    }
+  },
+  "if": {
+    "required": [
+      "rootTrigger"
+    ]
+  },
+  "then": {
+    "properties": {
+      "rootSecret": {
+        "type": "string",
+        "writeOnly": true
+      },
+      "rootSeen": {
+        "type": "string",
+        "readOnly": true
+      }
+    }
+  }
+}

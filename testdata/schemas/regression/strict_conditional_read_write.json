@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StrictConditionalReadWrite",
+  "description": "The five positions --strict-read-write reaches a sub-schema through a conditional applicator: anyOf, then, else, dependentSchemas, and a doubled not. Every property below carries the same sub-schema -- one readOnly member, one writeOnly member, one that says nothing, and one the schema constrains -- so a position that regresses names itself. The two keywords are answered differently here and that is the whole point of the document. writeOnly binds: the property is stripped on the way out at all five, because a property marked \"never present when the instance is retrieved\" is the shape a password or a token has, and a caller who passed the flag asked not to emit it -- \"the schema marks it, but only inside a branch\" is not a distinction that makes emitting a secret safe, and over-stripping loses a field visibly where under-stripping leaks silently. readOnly does not bind: a refusal keyed on a branch the document did not select refuses a document the schema accepts, which is 2020-12 section 7.7.1 read the way it has to be read, and `not` is the sharp case since a `not` that succeeds is a subschema that failed. `lim` is what makes the Validate half checkable: it is a constraint rather than an annotation, so its verdict is the schema's business and must be exactly the same at every position under both settings of the flag. The `via*` properties put the sub-schema inside the branch, so what is marked is a member of a value the generated code keeps as raw JSON and the rules are paths. The `on*` properties write the keyword on the branch that describes the property itself, so what is marked is a member of the root struct and the rule is a key in its list -- two mechanisms, one question, and each arm of each is a property here so that removing it fails something. `viaThenAnyOf` is a branch inside a branch. `viaAllOf` and `plain` are the unconditional controls, where readOnly does bind, and `roOnAnyOf` is the readOnly control on the `on*` side: it is `onAnyOf` with the other keyword and it stays exactly where it was written. `bothWays` is the sharp case: one tuple slot's `ro` member is marked readOnly by an `allOf` and writeOnly by an `anyOf`, so the path table reaches that location twice with a different answer each time and has to keep the union -- a branch may add a strip and may not take away a refusal the in-place applicator stated, which is #174's roBindsBoth one level further down. `viaThenOneOf` is the `oneOf` arm of the path walk: written on the property a `oneOf` compiles to a variant type per branch and answers for itself, so the only place the walk has to reach one is inside a value held as raw JSON.",
+  "type": "object",
+  "properties": {
+    "viaAnyOf": {"anyOf": [{"$ref": "#/$defs/Access"}]},
+    "viaThen": {"if": {"type": "object"}, "then": {"$ref": "#/$defs/Access"}},
+    "viaElse": {"if": {"type": "string"}, "else": {"$ref": "#/$defs/Access"}},
+    "viaDependent": {"type": "object", "dependentSchemas": {"ok": {"$ref": "#/$defs/Access"}}},
+    "viaNotNot": {"not": {"not": {"$ref": "#/$defs/Access"}}},
+
+    "viaThenAnyOf": {"if": {"type": "object"}, "then": {"anyOf": [{"$ref": "#/$defs/Access"}]}},
+    "viaIf": {"if": {"$ref": "#/$defs/Access"}, "then": {"type": "object"}},
+    "viaOneOf": {"oneOf": [{"$ref": "#/$defs/Access"}, {"type": "string"}]},
+    "viaThenOneOf": {"if": {"type": "object"}, "then": {"oneOf": [{"$ref": "#/$defs/Access"}, {"type": "string"}]}},
+
+    "onAnyOf": {"anyOf": [{"type": "string", "writeOnly": true}, {"type": "integer"}]},
+    "onOneOf": {"oneOf": [{"type": "string", "writeOnly": true}, {"type": "integer"}]},
+    "onIf": {"if": {"type": "string", "writeOnly": true}, "then": {"maxLength": 40}},
+    "onThen": {"if": {"type": "string"}, "then": {"writeOnly": true}},
+    "onElse": {"if": {"type": "integer"}, "else": {"writeOnly": true}},
+    "onNotNot": {"not": {"not": {"writeOnly": true}}},
+    "onDependent": {"type": "object", "dependentSchemas": {"k": {"writeOnly": true}}},
+    "roOnAnyOf": {"anyOf": [{"type": "string", "readOnly": true}, {"type": "integer"}]},
+
+    "bothWays": {"type": "array", "prefixItems": [{"allOf": [{"$ref": "#/$defs/Access"}], "anyOf": [{"properties": {"ro": {"type": "integer", "writeOnly": true}}}]}]},
+
+    "viaAllOf": {"allOf": [{"$ref": "#/$defs/Access"}]},
+    "plain": {"$ref": "#/$defs/Access"},
+    "untouched": {"type": "string"}
+  },
+  "$defs": {
+    "Access": {
+      "type": "object",
+      "properties": {
+        "ro": {"type": "integer", "readOnly": true},
+        "wo": {"type": "integer", "writeOnly": true},
+        "ok": {"type": "integer"},
+        "lim": {"type": "integer", "maximum": 5}
+      }
+    }
+  }
+}
