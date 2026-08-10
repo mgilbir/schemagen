@@ -1,7 +1,6 @@
 package generator
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -1571,12 +1570,15 @@ func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef 
 // gate in this package that decides "can this schema be represented" and "does
 // this schema state anything" is built on.
 //
-// The re-marshaled key set is the base, and that is deliberate: a keyword the
-// parser learns later arrives with a struct field that marshals, so it lands in
-// the set and the gate reading it fails closed. A hand-written list of struct
-// fields has the opposite default -- the field nobody remembered is missed
-// silently -- which is why the gates were written this way and why they stay
-// this way.
+// The marshaled key set is the base, and that is deliberate: a keyword the parser
+// learns later arrives with a struct field that marshals, so it lands in the set
+// and the gate reading it fails closed. A hand-written list of struct fields has
+// the opposite default -- the field nobody remembered is missed silently -- which
+// is why the gates were written this way and why they stay this way.
+// Schema.MarshaledKeywords derives that set from the struct's own json tags
+// rather than by serializing the node, which keeps the property and costs O(1)
+// instead of the size of the subtree; see the comment there, and issue #233 for
+// what the serializing form cost.
 //
 // What the base cannot do is show a field whose *presence* its encoding erases,
 // and Schema.KeywordsMarshaledFormOmits is the one place that knows which those
@@ -1587,29 +1589,19 @@ func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef 
 // is issue #154. Sharing the reading is the point -- a per-gate patch is what has
 // to be remembered five times and was remembered once.
 //
-// The second result is false when the schema cannot be marshaled. No gate may
-// read that as "states nothing": the set is unknown, not empty.
+// The second result is false for a schema with no such key set at all: a nil one,
+// and a boolean one, which marshals to `true` or `false`. No gate may read that
+// as "states nothing": the set is unknown, not empty, and `false` in particular
+// admits no value whatsoever.
 func schemaKeywordSet(s *schema.Schema) (map[string]bool, bool) {
-	if s == nil {
+	present, ok := s.MarshaledKeywords()
+	if !ok {
 		return nil, false
 	}
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return nil, false
+	for _, key := range s.KeywordsMarshaledFormOmits() {
+		present[key] = true
 	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
-		return nil, false
-	}
-	hidden := s.KeywordsMarshaledFormOmits()
-	seen := make(map[string]bool, len(present)+len(hidden))
-	for key := range present {
-		seen[key] = true
-	}
-	for _, key := range hidden {
-		seen[key] = true
-	}
-	return seen, true
+	return present, true
 }
 
 // unenforcedKeywords lists the keywords on a schema that state a constraint,

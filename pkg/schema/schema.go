@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -581,6 +582,26 @@ type Schema struct {
 // via reflection so it stays in sync with the struct definition automatically.
 var knownSchemaKeys map[string]bool
 
+// marshaledKeywordField describes one Schema field in the terms MarshaledKeywords
+// needs: the JSON key the encoder writes for it, where to find it, and the
+// conditions under which the encoder leaves it out.
+//
+// omitZero is read with reflect.Value.IsZero, which is what encoding/json does
+// for every type that does not carry an IsZero method of its own. No field on
+// Schema is tagged omitzero at all today; if one ever is, and its type has such
+// a method, TestMarshaledKeywordsMatchesMarshaling is what will say so.
+type marshaledKeywordField struct {
+	index     int
+	key       string
+	omitEmpty bool
+	omitZero  bool
+}
+
+// marshaledKeywordFields is every field the encoder can write, in struct order.
+// Like knownSchemaKeys it is built from the json tags themselves, so a keyword
+// added as a struct field joins it without anyone having to remember to.
+var marshaledKeywordFields []marshaledKeywordField
+
 func init() {
 	knownSchemaKeys = make(map[string]bool)
 	t := reflect.TypeOf(Schema{})
@@ -590,13 +611,89 @@ func init() {
 			continue
 		}
 		// Strip ",omitempty" etc.
-		if idx := strings.IndexByte(tag, ','); idx != -1 {
-			tag = tag[:idx]
+		name, opts, _ := strings.Cut(tag, ",")
+		if name == "" || name == "-" {
+			continue
 		}
-		if tag != "" && tag != "-" {
-			knownSchemaKeys[tag] = true
-		}
+		knownSchemaKeys[name] = true
+		marshaledKeywordFields = append(marshaledKeywordFields, marshaledKeywordField{
+			index:     i,
+			key:       name,
+			omitEmpty: slices.Contains(strings.Split(opts, ","), "omitempty"),
+			omitZero:  slices.Contains(strings.Split(opts, ","), "omitzero"),
+		})
 	}
+}
+
+// isEmptyForJSON is encoding/json's isEmptyValue, which is what decides whether
+// an omitempty field is written. It is reproduced rather than approximated: the
+// whole value of MarshaledKeywords is that it answers what a marshal would have
+// answered, and TestMarshaledKeywordsMatchesMarshaling holds the two together
+// field by field.
+func isEmptyForJSON(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Interface, reflect.Pointer:
+		return v.IsZero()
+	}
+	return false
+}
+
+// MarshaledKeywords returns the set of top-level keys s.MarshalJSON would write,
+// and reports whether s has such a form at all.
+//
+// The second result is false for a nil schema and for a boolean schema, which
+// marshals to `true` or `false` and so has no keys. Neither may be read as "this
+// schema states nothing": the key set is unknown, not empty. A boolean schema
+// states a great deal -- `false` admits no value -- and every caller asks
+// IsBooleanSchema for that.
+//
+// This is the reading every gate that decides "can this schema be represented"
+// and "does this schema state anything" is built on, so what it must not do is
+// miss a keyword. It is derived from the struct's own json tags, exactly as
+// knownSchemaKeys is, which is the property that makes it fail closed: a keyword
+// this package learns later arrives as a tagged field and lands in the set on
+// its own. A list written by hand has the opposite default -- the field nobody
+// remembered is missed silently -- and that is why the set has never been one.
+//
+// It is computed rather than serialized, and that is not an optimization detail
+// but the fix for issue #233. The obvious implementation, json.Marshal followed
+// by a decode into map[string]json.RawMessage, costs the size of the node's
+// whole *subtree* for an answer about the node alone; and because Schema has a
+// MarshalJSON of its own, encoding/json re-validates each level's output into
+// its parent's buffer, so one such marshal of a chain of depth d is already
+// O(d^2). Asking it once per node made the generator cubic in nesting depth: the
+// 2000-deep `not` under testdata/schemas/adversarial/deep took five seconds to
+// generate, past the ten-second per-input deadline Go's fuzzing worker enforces
+// once the binary is coverage-instrumented, which killed the worker and left the
+// whole fuzz gate unable to get past its seed corpus. Reading the keys off the
+// struct is O(1) per node and answers the same question.
+//
+// What it cannot show is a field whose *presence* the encoding erases, and
+// KeywordsMarshaledFormOmits is the one place that knows which those are. Every
+// gate reads both.
+func (s *Schema) MarshaledKeywords() (map[string]bool, bool) {
+	if s == nil || s.BooleanSchema != nil {
+		return nil, false
+	}
+	v := reflect.ValueOf(s).Elem()
+	present := make(map[string]bool, len(marshaledKeywordFields))
+	for _, f := range marshaledKeywordFields {
+		fv := v.Field(f.index)
+		if f.omitEmpty && isEmptyForJSON(fv) {
+			continue
+		}
+		if f.omitZero && fv.IsZero() {
+			continue
+		}
+		present[f.key] = true
+	}
+	return present, true
 }
 
 // UnmarshalJSON implements custom unmarshaling for Schema to handle boolean schemas.
