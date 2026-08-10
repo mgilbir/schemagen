@@ -205,6 +205,16 @@ value, and a schema whose whole shape is `unevaluatedProperties` or
 `unevaluatedItems`. Those positions carry a path table rather than a key list,
 because there is no Go field at them to key on.
 
+A property that is both `required` and `readOnly` is refused twice under this
+flag and satisfied by nothing: a document that sets it fails to decode
+(`read-only property may not be set`), and one that omits it decodes and then
+fails `Validate` (`required property is missing`). `SetDefaults` does not rescue
+it — the required check reads the keys of the document as it arrived, not the
+field — and a `default` on the property is inert for the same reason.
+`schemagen generate` warns when it generates one. The runtime behaviour is
+unchanged: both halves are doing what the schema and the flag say, and which of
+the two to give up is the schema author's call.
+
 Neither keyword ever changes a validation verdict, at any of those positions. It
 is worth stating twice because three of them used to: the type the generator
 builds for such a sub-schema is decoded into by a `Validate` check, so the
@@ -307,12 +317,23 @@ Under neither setting do these keywords change a validation verdict.
 
 ### Unresolvable References
 
+A `$ref` is resolved two ways. By **absolute URI**, matched against the `$id` of
+the documents given to the same run — so a document a `$ref` names by its `$id`
+has to be one of the inputs, in every configuration. And by **relative path**,
+read from that path next to the referring schema file. `--allow-remote-refs`
+adds a third route, fetching `http(s)` refs over the network.
+
 A `$ref` that no resolver can serve fails generation by default, naming the
 refs it could not resolve. Previously such refs degraded silently: property and
 items positions became `any`, ref-only definitions emitted references to types
 that were never generated, and validation lost the referenced constraints — so
 the output looked plausible while dropping type information. Pass
 `--lenient-refs` to restore the degrading behaviour.
+
+`--lenient-refs` does not degrade quietly. Every ref it could not serve gets a
+`warning:` line on stderr, and the generated file carries a `NOT VALIDATED`
+comment naming them: whatever those references said is not in the file, and the
+positions that held them check nothing.
 
 ### Root Type Names
 
@@ -359,6 +380,13 @@ schemagen generate person.json address.json \
   -o out -p models --shared-types \
   --root-name person.json=Person --root-name address.json=Address
 ```
+
+One generator means one pass over the inputs, so a document has to be listed
+after every document it `$ref`s. Documents that reference each other in a circle
+have no such order: that set cannot be generated this way and is refused, naming
+the refs that form the cycle. Merge them into one document — a `$ref` cycle
+*within* a document is supported — or generate each in its own run and package,
+which gives each package its own copy of the other's types.
 
 ### Several Schemas, Several Packages
 

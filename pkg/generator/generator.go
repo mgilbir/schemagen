@@ -87,6 +87,12 @@ type Generator struct {
 	// kind of dropped check a caller has no way to notice.
 	unenforced []UnenforcedSchema
 
+	// unsatisfiableRequired records the properties that --strict-read-write
+	// made impossible to supply: required at their location and readOnly there
+	// too, so the decoder refuses a document that sets one and Validate refuses
+	// a document that does not. See noteUnsatisfiableRequired.
+	unsatisfiableRequired []UnsatisfiableRequired
+
 	// unresolvedRefs records $ref values that resolveRefInContext could not
 	// resolve anywhere (local defs, anchors, document roots, or the external
 	// resolver). Unless Config.LenientRefs is set, Generate fails when this
@@ -277,6 +283,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.unresolvedRefs = make(map[string]bool)
 	g.resolvedRefs = make(map[string]bool)
 	g.crossPackageMisses = make(map[crossPackageMiss]bool)
+	// Per schema for the same reason: in shared-types mode one generator runs
+	// several documents, and a warning left over from an earlier one would be
+	// reported against the file being written now.
+	g.unsatisfiableRequired = nil
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -467,10 +477,17 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Unless lenient, refuse to hand back an IR that was degraded by
 	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
-	if !g.config.LenientRefs {
-		if refs := g.neverResolvedRefs(); len(refs) > 0 {
+	if refs := g.neverResolvedRefs(); len(refs) > 0 {
+		if !g.config.LenientRefs {
 			return nil, &UnresolvedRefsError{Refs: refs}
 		}
+		// Lenient: the degradation is accepted, but not hidden. Carrying the
+		// list on the File is what puts it in the emitted source, and
+		// UnresolvedRefs() is what puts it on the caller's stderr. Before this
+		// the flag simply produced `any` and said nothing anywhere, which is
+		// the silent degradation the NOT VALIDATED banner exists to prevent
+		// elsewhere (issue #224).
+		g.output.UnresolvedRefs = refs
 	}
 
 	if len(g.crossPackageMisses) > 0 {
@@ -3239,6 +3256,70 @@ func (g *Generator) UnenforcedSchemas() []UnenforcedSchema {
 	return kept
 }
 
+// UnresolvedRefs returns the $ref values of the last Generate call that no
+// resolver could serve, sorted.
+//
+// It is empty unless Config.LenientRefs was set: without that flag Generate
+// refuses such a schema outright and there is nothing to report. With it, this
+// is the only place the caller can learn that the output is weaker than the
+// schema asked for -- the ref's constraints are gone, the position is `any` or
+// names an undeclared type, and no generated Validate is missing in a way
+// anyone could notice. See File.UnresolvedRefs for the same statement in the
+// generated source.
+func (g *Generator) UnresolvedRefs() []string {
+	if g.output == nil {
+		return nil
+	}
+	return g.output.UnresolvedRefs
+}
+
+// UnsatisfiableRequired names a property that --strict-read-write made
+// impossible to supply: the document may not set it, because the schema marks
+// the location readOnly and the flag makes the decoder refuse one that does,
+// and the document must set it, because the schema lists it in "required" and
+// the required check reads the keys of the document as it arrived.
+type UnsatisfiableRequired struct {
+	TypeName string // the generated Go type carrying both rules
+	Property string // the JSON property name
+}
+
+// UnsatisfiableRequiredProperties returns the required-and-readOnly properties
+// found during the last Generate call, in type then property order.
+//
+// Empty unless Config.StrictReadWrite is set: without the flag readOnly is an
+// annotation and changes nothing a document has to satisfy, which is why the
+// plain combination is not reported. See noteUnsatisfiableRequired.
+func (g *Generator) UnsatisfiableRequiredProperties() []UnsatisfiableRequired {
+	return g.unsatisfiableRequired
+}
+
+// noteUnsatisfiableRequired records a property that no document can supply
+// under --strict-read-write, for the CLI to warn about.
+//
+// The two rules are emitted by different halves of the generated type and each
+// is right on its own. UnmarshalJSON refuses a document that sets a readOnly
+// property, which is the flag doing what it says. Validate refuses a document
+// whose keys lack a required property, reading _jsonKeys -- the keys as they
+// arrived -- because that is the only record of what the document actually
+// said. Together they refuse every document: one with the property fails to
+// decode, one without it decodes and fails to validate.
+//
+// SetDefaults cannot rescue it. It assigns the Go field, and the required check
+// is not about the field's value; a "default" on the readOnly property is inert
+// for exactly the same reason.
+//
+// This is a warning and not an error on purpose. The runtime behaviour is
+// unchanged -- both halves keep doing what the schema and the flag say -- and
+// the combination is the schema author's to resolve. Issue #176.
+func (g *Generator) noteUnsatisfiableRequired(typeName, property string) {
+	for _, u := range g.unsatisfiableRequired {
+		if u.TypeName == typeName && u.Property == property {
+			return
+		}
+	}
+	g.unsatisfiableRequired = append(g.unsatisfiableRequired, UnsatisfiableRequired{TypeName: typeName, Property: property})
+}
+
 // generateStructDef produces a StructDef from an object schema.
 // It also handles oneOf properties within the struct.
 // When acceptNonObject is true and the schema has no explicit "type":"object",
@@ -4298,6 +4379,28 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// A property that is a field *and* is marked by a branch is named by both
 		// readings, and the encoder's delete loop would then be told twice.
 		writeOnlyKeys = dedupeStrings(writeOnlyKeys)
+		// A required property this struct will also refuse to decode can be
+		// supplied by no document at all. Reported rather than repaired: see
+		// noteUnsatisfiableRequired for why both halves stay as they are.
+		//
+		// Both sides are read off the very lists the two halves of the generated
+		// type are given -- readOnlyKeys, which the decoder refuses, and
+		// requiredJSON, which Validate demands -- so the warning fires exactly
+		// where the pair of refusals does and nowhere else. Deriving either from
+		// the schema again would be a second reading that could disagree with
+		// the code actually emitted, which is the whole failure mode here: a
+		// property made required only by a conditional applicator is in neither
+		// list, and must not be warned about, because that requirement binds
+		// only on the documents its `if` selects.
+		requiredHere := make(map[string]bool, len(requiredJSON))
+		for _, r := range requiredJSON {
+			requiredHere[r] = true
+		}
+		for _, key := range readOnlyKeys {
+			if requiredHere[key] {
+				g.noteUnsatisfiableRequired(name, key)
+			}
+		}
 		// A struct that would otherwise have taken the default decoder or
 		// encoder needs its own, or the check has nowhere to be.
 		if len(readOnlyKeys) > 0 {

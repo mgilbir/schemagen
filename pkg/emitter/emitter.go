@@ -39,6 +39,7 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 		Imports:              f.Imports,
 		TypeDefs:             wrapTypeDefs(f.TypeDefs),
 		ValidationCapability: f.ValidationCapability,
+		UnresolvedRefs:       f.UnresolvedRefs,
 	}
 
 	var buf bytes.Buffer
@@ -258,6 +259,9 @@ type fileData struct {
 	Imports              []generator.Import
 	TypeDefs             []typeDefWrapper
 	ValidationCapability generator.ValidationCapability
+	// UnresolvedRefs renders the file-level NOT VALIDATED banner. See
+	// generator.File.UnresolvedRefs.
+	UnresolvedRefs []string
 }
 
 func (d fileData) HasValidationCapability() bool {
