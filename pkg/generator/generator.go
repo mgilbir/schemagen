@@ -2979,10 +2979,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 			Forbidden: true,
 		}
 	} else if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		valueType, ok := g.boxedInferredType(s.AdditionalProperties.Schema, name+"Value")
-		if !ok {
-			valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
-		}
+		valueType := g.overflowValueType(s.AdditionalProperties.Schema, name+"Value")
 		additionalProps = &AdditionalPropertiesDef{ValueType: valueType}
 		overflowValidation = g.buildOverflowValidation(name, valueType, s.AdditionalProperties.Schema)
 	} else {
@@ -3577,12 +3574,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				needsUnmarshal = true
 			}
 		} else if s.AdditionalProperties.Schema != nil {
-			valueType, ok := g.boxedInferredType(s.AdditionalProperties.Schema, name+"Value")
-			if !ok {
-				valueType = g.resolveType(s.AdditionalProperties.Schema, name+"Value")
-			}
 			additionalProps = &AdditionalPropertiesDef{
-				ValueType: valueType,
+				ValueType: g.overflowValueType(s.AdditionalProperties.Schema, name+"Value"),
 			}
 			needsMarshal = true
 			needsUnmarshal = true
@@ -4766,6 +4759,24 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
 				rules = g.aliasValidationRules(merged, goType)
+				// A closed tuple states a maximum length as well as a set of
+				// positions, and the two halves are read off different schemas
+				// here: the positions off `arraySchema`, the bounds off
+				// `merged`. When a branch is what supplies the positions the
+				// length statement is on the branch too, and `merged` -- which
+				// the merge deliberately leaves array keywords off -- carries no
+				// trace of it, so the tail was enforced nowhere and
+				// {"allOf":[{"type":"array","prefixItems":[...],"items":false}]}
+				// accepted a longer array (issue #222). Only when the merge did
+				// not already state one: an explicit maxItems on either schema
+				// has already reached `rules` through aliasValidationRules, and
+				// buildTupleTailDef reads the same MaxItems to decide whether a
+				// wider bound leaves a tail to check.
+				if arraySchema != merged && merged.MaxItems == nil {
+					if n, ok := closedTupleMaxItems(arraySchema); ok {
+						rules = append(rules, ValidationRule{RuleType: "maxItems", Value: n})
+					}
+				}
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
@@ -5148,6 +5159,41 @@ func statesArrayStructure(s *schema.Schema) bool {
 		return false
 	}
 	return len(s.PrefixItems) > 0 || s.Items != nil || s.AdditionalItems != nil || s.Contains != nil
+}
+
+// closedTupleMaxItems returns the length a tuple with a closed tail fixes, and
+// whether the schema is one.
+//
+// Two spellings of the same statement: 2020-12 writes prefixItems beside
+// items:false, and draft-07 and earlier write the tuple form of items beside
+// additionalItems:false. Both say "these positions and nothing after them",
+// which is a maximum length as well as a per-position schema, and the per-
+// position checks alone do not say it -- they judge the positions the tuple
+// names and are silent about every index past the end.
+//
+// Extracted so the answer can be asked of a schema other than the one the rules
+// are being built from. An allOf branch is exactly that: the merge leaves array
+// keywords on the branch deliberately, and generateAllOfDef then reads the
+// array's positions off the branch and its bounds off the merge -- so this
+// statement, which is both, fell between them and
+// {"allOf":[{"type":"array","prefixItems":[{"type":"integer"}],"items":false}]}
+// accepted [1,2] where the identical schema without the allOf around it rejects
+// it (issue #222). Both spellings were dropped there.
+func closedTupleMaxItems(s *schema.Schema) (int, bool) {
+	if s == nil {
+		return 0, false
+	}
+	// additionalItems: false with tuple-form items → maxItems = tuple length.
+	if s.AdditionalItems != nil && s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
+		if s.Items != nil && len(s.Items.Schemas) > 0 {
+			return len(s.Items.Schemas), true
+		}
+	}
+	// Draft 2020-12: prefixItems + items:false → maxItems = len(prefixItems).
+	if len(s.PrefixItems) > 0 && s.Items != nil && s.Items.Schema != nil && s.Items.Schema.IsFalseSchema() {
+		return len(s.PrefixItems), true
+	}
+	return 0, false
 }
 
 // mergeAllOfInto recursively merges properties, required fields, and validation
@@ -5624,7 +5670,7 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	// mergedPropertyOrigins.
 	for k, v := range resolved.Properties {
 		if existing, exists := target.Properties[k]; exists {
-			target.Properties[k] = mergeVariantPropertySchemas(existing, v)
+			target.Properties[k] = mergeVariantPropertySchemas(existing, v, g.propertyBindsUnconditionally(target, k))
 		} else {
 			target.Properties[k] = v
 		}
@@ -5657,11 +5703,41 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	}
 }
 
-func mergeVariantPropertySchemas(existing, next *schema.Schema) *schema.Schema {
+// mergeVariantPropertySchemas folds what one conditional variant says about a
+// property into what the merge target already holds for it.
+//
+// existingBinds says the schema already there applies to every valid instance --
+// the parent declared the property outright, or an allOf branch did. Then it is
+// the answer, and `next` may not touch it. Both of the foldings below assume two
+// *variants*, each of which applies only sometimes:
+//
+//   - the enum union widens the permitted set, which is right when neither list
+//     binds alone and wrong when one of them is the schema's own;
+//   - the erasure at the end drops every assertion the two disagree about the
+//     type of, which is how a variant that describes a different JSON type stops
+//     the field over-enforcing -- and how a root-stated constraint disappeared.
+//
+// {"properties":{"declared":{"type":"string","minLength":2}},"allOf":[{"if":...,
+// "then":{"properties":{"declared":{"maxLength":9}}}}]} is the second: the `then`
+// schema states no type, so the signatures differ, and the erasure took the
+// root's `type` and `minLength` with it -- {"declared":"z"} and {"declared":1}
+// were both accepted, neither of which the root permits (issue #225). The
+// consequence's own `maxLength` is unaffected: it is applied by the group, with
+// its condition in front of it, which is what #213 put there.
+//
+// Nothing is lost by keeping `existing` here. It binds on every valid instance,
+// so every value the field can legally hold satisfies it, and the Go type read
+// off it is one that value fits. A variant demanding some other JSON type is
+// then unsatisfiable wherever it applies, and the group -- not the field -- is
+// what says so.
+func mergeVariantPropertySchemas(existing, next *schema.Schema, existingBinds bool) *schema.Schema {
 	if existing == nil {
 		return next
 	}
 	if next == nil {
+		return existing
+	}
+	if existingBinds {
 		return existing
 	}
 	if canUnionEnumLikeSchemas(existing, next) {
@@ -8807,6 +8883,19 @@ func (g *Generator) unconditionalPropertySchemas(owner *schema.Schema, name stri
 	return origin.unconditional, true
 }
 
+// propertyBindsUnconditionally reports whether something that applies to every
+// valid instance has already contributed target's property name.
+//
+// The same record unconditionalPropertySchemas reads, asked during the merge
+// rather than after it, which is why it does not wait for `conditional` to be
+// set: the caller is the conditional contribution, and what it needs to know is
+// whether it is folding into a schema that binds regardless. See
+// mergeVariantPropertySchemas.
+func (g *Generator) propertyBindsUnconditionally(target *schema.Schema, name string) bool {
+	origin := g.mergedPropertyOrigins[target][name]
+	return origin != nil && len(origin.unconditional) > 0
+}
+
 // conditionalOnlyProperties names the properties of a merge target that no
 // schema describes on every valid instance -- every contribution to them
 // arrived through an if/then/else -- and whose groups are all enforced in full
@@ -10569,6 +10658,35 @@ func (g *Generator) objectShapeNeedsNamedType(s *schema.Schema) bool {
 		return false
 	}
 	return objectIsStruct(s) || mapValueSchema(s, g.effectiveType(s)) != nil
+}
+
+// overflowValueType resolves the Go type of the values an object's overflow map
+// holds, when a schema-valued `additionalProperties` governs them.
+//
+// It is the same position resolveType's map arm answers for -- one schema over
+// every value of an object -- so it is answered by the same two calls, in the
+// same order. Until this existed the two disagreed: a map reached as a *property*
+// went through resolveArrayItemType and got every arm that function has, while
+// an object whose own additionalProperties describes its keys went straight to
+// resolveType and got none of them.
+//
+// That cost two false accepts at the default config. resolveType answers *any
+// for a null-only sub-schema, and *any decodes a null and every other JSON value
+// besides, so {"type":"object","additionalProperties":{"type":"null"}} accepted
+// {"k":1} (issue #222); and nothing below resolveType builds the wrapper an
+// out-of-vocabulary `unevaluatedItems` needs, so the same sub-schema that
+// rejects at a property and at an element was dropped here (issue #201, whose
+// open question was which arm owns this position -- this one).
+//
+// Both call sites are object *definitions* rather than the map arm: the struct
+// with declared properties beside its additionalProperties, and the propertyless
+// object whose whole shape it is. Neither is reachable from resolveType's map
+// arm, which is why fixing that arm never reached them.
+func (g *Generator) overflowValueType(values *schema.Schema, contextName string) GoType {
+	if goType, ok := g.boxedInferredType(values, contextName); ok {
+		return goType
+	}
+	return g.resolveArrayItemType(values, contextName)
 }
 
 // resolveArrayItemType resolves the Go type for an array's items schema.
@@ -13971,22 +14089,14 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			RuleType: "maxItems", Value: s.MaxItems.Int(),
 		})
 	}
-	// additionalItems: false with tuple-form items → implicit maxItems = tuple length.
-	// Draft 2020-12 uses prefixItems + items:false instead.
-	if s.MaxItems == nil && s.AdditionalItems != nil && s.AdditionalItems.Bool != nil && !*s.AdditionalItems.Bool {
-		if s.Items != nil && len(s.Items.Schemas) > 0 {
+	// A tuple whose tail is closed fixes the array's length, in either spelling.
+	if s.MaxItems == nil {
+		if n, ok := closedTupleMaxItems(s); ok {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
-				RuleType: "maxItems", Value: len(s.Items.Schemas),
+				RuleType: "maxItems", Value: n,
 			})
 		}
-	}
-	// Draft 2020-12: prefixItems + items:false → implicit maxItems = len(prefixItems).
-	if s.MaxItems == nil && len(s.PrefixItems) > 0 && s.Items != nil && s.Items.Schema != nil && s.Items.Schema.IsFalseSchema() {
-		rules = append(rules, ValidationRule{
-			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "maxItems", Value: len(s.PrefixItems),
-		})
 	}
 	// unevaluatedItems:false with a fixed tuple and no extending applicators →
 	// implicit maxItems = tuple length. Only applied when the schema is a simple
@@ -16717,7 +16827,20 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 		if unevalType == "" {
 			unevalType = g.inferTypeFromConstraints(uneval)
 		}
-		if unevalType != "" {
+		if unevalType == "null" {
+			// The one JSON type no Go type stands for. Every other type here is
+			// enforced by decoding the leftover value into the Go type that
+			// holds it and letting the decoder refuse the rest, and "null" has
+			// none: PrimitiveTypeFromSchema answers nil for it, which fell to
+			// the "allow permissively" arm below -- so
+			// {"unevaluatedProperties":{"type":"null"}} accepted every leftover
+			// key of every JSON type (issue #222). `unevaluatedItems` has always
+			// checked the same sub-schema, by keeping the JSON type name and
+			// comparing the raw bytes, and unevaluatedSubschemaKeywords lists
+			// `type` as a keyword *both* positions carry. This is the half that
+			// was missing.
+			def.ValueIsNull = true
+		} else if unevalType != "" {
 			goType := PrimitiveTypeFromSchema(unevalType)
 			if goType != nil {
 				def.ValueType = goType.GoTypeName()

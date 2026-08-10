@@ -211,6 +211,76 @@ func unevaluatedFixtures() []notFixture {
 			},
 		},
 		{
+			// Issue #201: the third inline site, a map value. It is the position
+			// #198 left open, because it resolves its type through neither arm
+			// that change wired -- an object's own `additionalProperties` is
+			// typed by generateStructDef and generatePropertylessObjectDef,
+			// which went straight to resolveType and reached none of the
+			// wrappers resolvePropertyType and resolveArrayItemType offer. So
+			// the map value kept []any and the sub-schema was dropped, while the
+			// same sub-schema at a property and at an element rejected.
+			//
+			// The overflow map of a struct that also declares properties is the
+			// same arm's sibling and was broken identically, so it is a fixture
+			// of its own rather than a row here: the two are separate functions.
+			Name:       "items_enum_subschema_in_map_value",
+			SchemaPath: "testdata/schemas/regression/unevaluated_items_enum_subschema_in_map_value.json",
+			Instances: []notInstance{
+				{Name: "outside the enum", Doc: `{"k":[true,"zzz"]}`, Valid: false,
+					Why: "enum on the sub-schema of a map value; accepting it is issue #201"},
+				{Name: "inside the enum", Doc: `{"k":[true,"x"]}`, Valid: true,
+					Why: "a listed value must still be accepted"},
+				{Name: "evaluated slot only", Doc: `{"k":[true]}`, Valid: true,
+					Why: "prefixItems evaluates index 0, so the sub-schema judges nothing"},
+			},
+		},
+		{
+			// The pair's other half. It already rejected before #201 was fixed --
+			// an object-shaped value is materialized as a named type and answers
+			// for itself through its own Validate, where the array-shaped one
+			// resolved to []any -- so this is the control the row above is
+			// measured against, and the halves disagreeing again is a failure
+			// rather than something nobody looks at.
+			Name:       "properties_enum_subschema_in_map_value",
+			SchemaPath: "testdata/schemas/regression/unevaluated_properties_enum_subschema_in_map_value.json",
+			Instances: []notInstance{
+				{Name: "outside the enum", Doc: `{"k":{"a":true,"b":"zzz"}}`, Valid: false,
+					Why: "the pair's other half at the same position, which already worked"},
+				{Name: "inside the enum", Doc: `{"k":{"a":true,"b":"x"}}`, Valid: true,
+					Why: "a listed value must still be accepted"},
+				{Name: "declared key only", Doc: `{"k":{"a":true}}`, Valid: true,
+					Why: "properties evaluates a, so the sub-schema judges nothing"},
+			},
+		},
+		{
+			// The same schema-valued additionalProperties on a struct that also
+			// declares a property, which is the other function typing that
+			// position. Both were broken; a fix to one is silent about the other.
+			Name:       "items_enum_subschema_in_overflow_value",
+			SchemaPath: "testdata/schemas/regression/unevaluated_items_enum_subschema_in_overflow_value.json",
+			Instances: []notInstance{
+				{Name: "outside the enum", Doc: `{"k":[true,"zzz"]}`, Valid: false,
+					Why: "the overflow map of a struct with declared properties beside its additionalProperties"},
+				{Name: "inside the enum", Doc: `{"k":[true,"x"]}`, Valid: true,
+					Why: "a listed value must still be accepted"},
+				{Name: "declared property beside it", Doc: `{"decl":"s","k":[true,"x"]}`, Valid: true,
+					Why: "control: the declared property is not an additional one and the sub-schema says nothing about it"},
+			},
+		},
+		{
+			// Already rejecting for the reason the map-value half above gives.
+			Name:       "properties_enum_subschema_in_overflow_value",
+			SchemaPath: "testdata/schemas/regression/unevaluated_properties_enum_subschema_in_overflow_value.json",
+			Instances: []notInstance{
+				{Name: "outside the enum", Doc: `{"k":{"a":true,"b":"zzz"}}`, Valid: false,
+					Why: "the pair's other half at the same position, which already worked"},
+				{Name: "inside the enum", Doc: `{"k":{"a":true,"b":"x"}}`, Valid: true,
+					Why: "a listed value must still be accepted"},
+				{Name: "declared property beside it", Doc: `{"decl":"s","k":{"a":true}}`, Valid: true,
+					Why: "control for the above"},
+			},
+		},
+		{
 			// The false rejection in the same surface, and the reason the gate
 			// asks for a stated `type` rather than guessing one from a bound.
 			// The static check decodes each leftover value into one Go type, so

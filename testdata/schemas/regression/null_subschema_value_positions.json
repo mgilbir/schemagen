@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NullSubschemaValuePositions",
+  "description": "A {\"type\":\"null\"} sub-schema at every value position one can be written at. It is the type no Go type expresses -- *any decodes a null and every other JSON value besides -- so a position that types its values through resolveType alone drops it silently, and the generated Validate reads like a schema with nothing more to say. Two positions did: the overflow map of a struct with declared properties beside its additionalProperties, and a leftover key judged by unevaluatedProperties (issue #222). The rest are here as controls, because \"fixed here, not one position over\" is what this family keeps doing.",
+  "type": "object",
+  "properties": {
+    "atProperty": {"type": "null"},
+    "atElement": {"type": "array", "items": {"type": "null"}},
+    "atMapValue": {"type": "object", "additionalProperties": {"type": "null"}},
+    "atPattern": {"type": "object", "patternProperties": {"^a": {"type": "null"}}},
+    "atTupleSlot": {"type": "array", "prefixItems": [{"type": "null"}]},
+    "atUnevaluatedItem": {
+      "type": "array",
+      "prefixItems": [{"type": "boolean"}],
+      "unevaluatedItems": {"type": "null"}
+    },
+    "atUnevaluatedProperty": {
+      "type": "object",
+      "properties": {"q": {"type": "string"}},
+      "unevaluatedProperties": {"type": "null"}
+    },
+    "atContains": {"type": "array", "contains": {"type": "null"}}
+  },
+  "additionalProperties": {"type": "null"}
+}
