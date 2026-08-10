@@ -8,6 +8,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -5459,7 +5460,7 @@ func objectPropertyCheckFromSchema(jsonName string, s *schema.Schema) *ObjectPro
 	values := enumLikeValues(s)
 	if len(values) > 0 {
 		for _, value := range values {
-			b, err := json.Marshal(value)
+			b, err := constJSONValue(value)
 			if err != nil {
 				continue
 			}
@@ -5675,7 +5676,7 @@ func unionEnumValues(values ...[]any) []any {
 }
 
 func enumValueKey(value any) string {
-	b, err := json.Marshal(value)
+	b, err := constJSONValue(value)
 	if err != nil {
 		return fmt.Sprintf("%T:%v", value, value)
 	}
@@ -5701,7 +5702,7 @@ func enumValueJSONType(value any) string {
 		return "string"
 	case bool:
 		return "boolean"
-	case float64, int, int64:
+	case json.Number, schema.Number, float64, int, int64:
 		return "number"
 	case nil:
 		return "null"
@@ -6002,28 +6003,33 @@ func mergePropertyNames(dst, src *schema.Schema) *schema.Schema {
 
 // tighterLowerFloat returns the larger of two lower bounds (the tighter one).
 // The returned pointer is one of the inputs; neither is mutated.
-func tighterLowerFloat(a, b *float64) *float64 {
+//
+// The comparison is exact rather than through float64: two bounds one apart at
+// the top of the int64 range are one float64, and picking either of them as
+// "the tighter" would be a coin toss. A bound neither side can read leaves the
+// first in place, which is the direction that never invents a rejection.
+func tighterLowerFloat(a, b *schema.Number) *schema.Number {
 	if a == nil {
 		return b
 	}
 	if b == nil {
 		return a
 	}
-	if *b > *a {
+	if c, ok := numCmp(*b, *a); ok && c > 0 {
 		return b
 	}
 	return a
 }
 
 // tighterUpperFloat returns the smaller of two upper bounds (the tighter one).
-func tighterUpperFloat(a, b *float64) *float64 {
+func tighterUpperFloat(a, b *schema.Number) *schema.Number {
 	if a == nil {
 		return b
 	}
 	if b == nil {
 		return a
 	}
-	if *b < *a {
+	if c, ok := numCmp(*b, *a); ok && c < 0 {
 		return b
 	}
 	return a
@@ -6073,13 +6079,17 @@ func tighterExclusive(a, b *schema.SchemaOrFloat, lower bool) *schema.SchemaOrFl
 	if a.Number == nil || b.Number == nil {
 		return a
 	}
+	c, ok := numCmp(*b.Number, *a.Number)
+	if !ok {
+		return a
+	}
 	if lower {
-		if *b.Number > *a.Number {
+		if c > 0 {
 			return b
 		}
 		return a
 	}
-	if *b.Number < *a.Number {
+	if c < 0 {
 		return b
 	}
 	return a
@@ -6089,21 +6099,32 @@ func tighterExclusive(a, b *schema.SchemaOrFloat, lower bool) *schema.SchemaOrFl
 // by both. For integral divisors this is their least common multiple. When one
 // divisor is an exact multiple of the other, the larger (tighter) one is kept.
 // Otherwise (incompatible non-integral divisors) the first is retained.
-func combineMultipleOf(a, b *float64) *float64 {
+func combineMultipleOf(a, b *schema.Number) *schema.Number {
 	if a == nil {
 		return b
 	}
 	if b == nil {
 		return a
 	}
-	av, bv := *a, *b
-	if av == 0 || bv == 0 {
+	// The integral case is settled on the integers themselves. Reading them
+	// through float64 first would take the lcm of two roundings, which is a
+	// divisor neither schema wrote.
+	if ai, aok := a.Int64(); aok {
+		if bi, bok := b.Int64(); bok {
+			if ai == 0 || bi == 0 {
+				return a
+			}
+			n := schema.Number(strconv.FormatInt(lcmInt64(ai, bi), 10))
+			return &n
+		}
+	}
+	av, aok := numFloat(*a)
+	bv, bok := numFloat(*b)
+	if !aok || !bok {
 		return a
 	}
-	if av == math.Trunc(av) && bv == math.Trunc(bv) {
-		l := lcmInt64(int64(av), int64(bv))
-		f := float64(l)
-		return &f
+	if av == 0 || bv == 0 {
+		return a
 	}
 	if q := av / bv; q == math.Trunc(q) { // av is a multiple of bv → av is tighter
 		return a
@@ -7354,10 +7375,10 @@ func isHeterogeneousEnum(values []any) bool {
 			} else if seenType != "string" {
 				return true
 			}
-		case float64:
+		case json.Number, schema.Number, float64:
 			if seenType == "" {
-				seenType = "float64"
-			} else if seenType != "float64" {
+				seenType = "number"
+			} else if seenType != "number" {
 				return true
 			}
 		case bool:
@@ -7393,7 +7414,7 @@ func isHeterogeneousEnum(values []any) bool {
 func canonicalJSONValues(values []any) []string {
 	out := make([]string, 0, len(values))
 	for _, v := range values {
-		b, err := json.Marshal(v)
+		b, err := constJSONValue(v)
 		if err != nil {
 			continue
 		}
@@ -7411,7 +7432,7 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 	constNames := enumConstNames(name, s.Enum)
 	values := make([]EnumValue, len(s.Enum))
 	for i, v := range s.Enum {
-		rawBytes, err := json.Marshal(v)
+		rawBytes, err := constJSONValue(v)
 		if err != nil {
 			rawBytes = []byte(fmt.Sprintf("%v", v))
 		}
@@ -9634,7 +9655,7 @@ func (g *Generator) resolveBaseType(s *schema.Schema) GoType {
 		switch s.Enum[0].(type) {
 		case string:
 			return &PrimitiveType{Name: "string"}
-		case float64:
+		case json.Number, schema.Number, float64:
 			return &PrimitiveType{Name: "float64"}
 		case bool:
 			return &PrimitiveType{Name: "bool"}
@@ -11276,7 +11297,7 @@ func (g *Generator) extractIfItemConstChecks(ifSchema *schema.Schema) []IfItemCo
 			continue // boolean true — no constraint at this position
 		}
 		if itemSchema.Const != nil {
-			b, err := json.Marshal(*itemSchema.Const)
+			b, err := constJSONValue(*itemSchema.Const)
 			if err == nil {
 				checks = append(checks, IfItemConstCheck{Index: i, JSONValue: string(b)})
 			}
@@ -11291,7 +11312,7 @@ func (g *Generator) extractIfItemConstChecks(ifSchema *schema.Schema) []IfItemCo
 				continue
 			}
 			if itemSchema.Const != nil {
-				b, err := json.Marshal(*itemSchema.Const)
+				b, err := constJSONValue(*itemSchema.Const)
 				if err == nil {
 					checks = append(checks, IfItemConstCheck{Index: i, JSONValue: string(b)})
 				}
@@ -11577,17 +11598,20 @@ func enumConstNames(typeName string, values []any) []string {
 
 // enumValueSuffix returns a suffix for an enum constant name from the value.
 func enumValueSuffix(v any) string {
-	switch val := v.(type) {
-	case string:
-		return SchemaNameToGoName(val)
-	case float64:
+	if s, ok := v.(string); ok {
+		return SchemaNameToGoName(s)
+	}
+	if lit := GoNumberLiteral(v); lit != "" {
 		// Sanitize numeric values for Go identifiers:
-		// replace '-' with "Neg", '.' with "_", '+' with "", 'e' with "e"
-		s := fmt.Sprintf("%v", val)
-		s = strings.ReplaceAll(s, "-", "Neg")
-		s = strings.ReplaceAll(s, ".", "_")
-		s = strings.ReplaceAll(s, "+", "")
-		return s
+		// replace '-' with "Neg", '.' with "_", '+' with "", 'e' with "e".
+		// The literal is the one the constant is declared with, so the name a
+		// member is known by and the value it holds cannot drift apart.
+		lit = strings.ReplaceAll(lit, "-", "Neg")
+		lit = strings.ReplaceAll(lit, ".", "_")
+		lit = strings.ReplaceAll(lit, "+", "")
+		return lit
+	}
+	switch val := v.(type) {
 	case bool:
 		if val {
 			return "True"
@@ -11597,7 +11621,7 @@ func enumValueSuffix(v any) string {
 		return "Null"
 	default:
 		// For objects/arrays, serialize to JSON and sanitize for Go identifier.
-		raw, err := json.Marshal(val)
+		raw, err := constJSONValue(val)
 		if err != nil {
 			return "Value"
 		}
@@ -12270,8 +12294,7 @@ func jsonValueMatchesSchemaType(v any, t string) bool {
 		_, ok := jsonNumericValue(v)
 		return ok
 	case "integer":
-		f, ok := jsonNumericValue(v)
-		return ok && !math.IsInf(f, 0) && !math.IsNaN(f) && f == math.Trunc(f)
+		return jsonValueIsInteger(v)
 	default:
 		return true
 	}
@@ -12279,39 +12302,27 @@ func jsonValueMatchesSchemaType(v any, t string) bool {
 
 // jsonNumericValue reads a schema-supplied value as a number.
 //
-// float64 is what encoding/json produces and is the only case a schema read
-// from a document reaches. The integer kinds are for a Schema built in Go --
-// this package's own callers do that, and a caller who wrote Enum: []any{5}
-// beside Type: "integer" must not have the member read as a non-number and
-// filtered away.
+// See schemaNumber for the spellings that reach here. This answers the float64
+// reading, which is what the callers that ask "is this a number at all" and
+// "which of two is larger" want; a caller that has to write the number into Go
+// source asks numGoFloatLiteral or numInt64 instead, because those are the
+// questions float64 cannot answer for every number a schema may state.
 func jsonNumericValue(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int8:
-		return float64(n), true
-	case int16:
-		return float64(n), true
-	case int32:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case uint:
-		return float64(n), true
-	case uint8:
-		return float64(n), true
-	case uint16:
-		return float64(n), true
-	case uint32:
-		return float64(n), true
-	case uint64:
-		return float64(n), true
+	return numFloat(v)
+}
+
+// jsonValueIsInteger reports whether a schema-supplied number names an integer.
+//
+// Asked of the literal rather than of its float64 reading: 9223372036854775807
+// is an integer, and so is 1e2, and a float64 that has already rounded cannot
+// be asked which of the two it was.
+func jsonValueIsInteger(v any) bool {
+	n, ok := schemaNumber(v)
+	if !ok {
+		return false
 	}
-	return 0, false
+	r, ok := n.Rat()
+	return ok && r.IsInt()
 }
 
 // enumFitsConstForm reports whether every member can be declared as a Go
@@ -12341,8 +12352,11 @@ func enumFitsConstForm(base GoType, values []any) bool {
 				return false
 			}
 		case "int64":
-			f, ok := jsonNumericValue(v)
-			if !ok || math.IsInf(f, 0) || math.IsNaN(f) || f != math.Trunc(f) {
+			// Exactly, not through float64: a member of 9223372036854775807 is
+			// an int64 constant and a float64 it is not, and asking float64
+			// first both accepts 9223372036854775808 (which no int64 holds) and
+			// loses the difference between the two.
+			if _, ok := numInt64(v); !ok {
 				return false
 			}
 		default:
@@ -13854,12 +13868,14 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "minimum", Value: *s.Minimum,
+			IntegerCompare: integerComparable(s, *s.Minimum),
 		})
 	}
 	if s.Maximum != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "maximum", Value: *s.Maximum,
+			IntegerCompare: integerComparable(s, *s.Maximum),
 		})
 	}
 	if s.Pattern != nil {
@@ -13917,11 +13933,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number,
+				IntegerCompare: integerComparable(s, *s.ExclusiveMinimum.Number),
 			})
 		} else if s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool && s.Minimum != nil {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMinimum", Value: *s.Minimum,
+				IntegerCompare: integerComparable(s, *s.Minimum),
 			})
 		}
 	}
@@ -13931,11 +13949,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number,
+				IntegerCompare: integerComparable(s, *s.ExclusiveMaximum.Number),
 			})
 		} else if s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool && s.Maximum != nil {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMaximum", Value: *s.Maximum,
+				IntegerCompare: integerComparable(s, *s.Maximum),
 			})
 		}
 	}
@@ -13943,6 +13963,7 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "multipleOf", Value: *s.MultipleOf,
+			IntegerCompare: integerComparable(s, *s.MultipleOf),
 		})
 	}
 	if s.UniqueItems != nil && *s.UniqueItems {
@@ -14027,7 +14048,7 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	if (s.Const != nil || s.ConstIsNull) && len(s.Enum) == 0 {
 		var constJSON string
 		if s.Const != nil {
-			b, err := json.Marshal(*s.Const)
+			b, err := constJSONValue(*s.Const)
 			if err == nil {
 				constJSON = string(b)
 			}
@@ -15889,7 +15910,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 
 	// Const → marshal to JSON for exact matching.
 	if containsSch.Const != nil {
-		b, err := json.Marshal(*containsSch.Const)
+		b, err := constJSONValue(*containsSch.Const)
 		if err == nil {
 			def.ConstJSON = string(b)
 			return def, minC, maxC
@@ -15898,7 +15919,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 
 	// Single-value enum → treat as const.
 	if len(containsSch.Enum) == 1 {
-		b, err := json.Marshal(containsSch.Enum[0])
+		b, err := constJSONValue(containsSch.Enum[0])
 		if err == nil {
 			def.ConstJSON = string(b)
 			return def, minC, maxC
@@ -15910,7 +15931,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 		var enumValues []string
 		allOK := true
 		for _, v := range containsSch.Enum {
-			b, err := json.Marshal(v)
+			b, err := constJSONValue(v)
 			if err != nil {
 				allOK = false
 				break
@@ -17086,7 +17107,7 @@ func (g *Generator) collectBranchEval(s *schema.Schema) *EvalBranchDef {
 	sort.Strings(branch.RequiredKeys)
 	for propName, propSchema := range s.Properties {
 		if propSchema != nil && propSchema.Const != nil {
-			jsonVal, err := json.Marshal(*propSchema.Const)
+			jsonVal, err := constJSONValue(*propSchema.Const)
 			if err == nil {
 				branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
 					PropertyName: propName,
@@ -17115,7 +17136,7 @@ func (g *Generator) extractIfCondition(s *schema.Schema) *IfConditionDef {
 	var constChecks []ConstCheck
 	for propName, propSchema := range s.Properties {
 		if propSchema != nil && propSchema.Const != nil {
-			jsonVal, err := json.Marshal(*propSchema.Const)
+			jsonVal, err := constJSONValue(*propSchema.Const)
 			if err == nil {
 				constChecks = append(constChecks, ConstCheck{
 					PropertyName: propName,
@@ -17491,7 +17512,7 @@ func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBran
 		}
 		for propName, propSchema := range sub.Properties {
 			if propSchema != nil && propSchema.Const != nil {
-				jsonVal, err := json.Marshal(*propSchema.Const)
+				jsonVal, err := constJSONValue(*propSchema.Const)
 				if err == nil {
 					// Check if this const check already exists from resolved schema.
 					found := false

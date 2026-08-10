@@ -470,7 +470,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		add(fmt.Sprintf("Type: %s,", goStringSliceLiteral([]string(s.Type))))
 	}
 	if s.Const != nil {
-		raw, err := json.Marshal(*s.Const)
+		raw, err := constJSONValue(*s.Const)
 		if err != nil {
 			return "", false
 		}
@@ -481,7 +481,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if len(s.Enum) > 0 {
 		encoded := make([]string, 0, len(s.Enum))
 		for _, value := range s.Enum {
-			raw, err := json.Marshal(value)
+			raw, err := constJSONValue(value)
 			if err != nil {
 				return "", false
 			}
@@ -498,20 +498,20 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		return "", false
 	}
 	if s.MultipleOf != nil {
-		add(fmt.Sprintf("MultipleOf: _floatPtr(%s),", formatFloatLiteral(*s.MultipleOf)))
+		add(fmt.Sprintf("MultipleOf: _floatPtr(%s),", numGoFloatLiteral(*s.MultipleOf)))
 	}
 	minimum, maximum, exclusiveMin, exclusiveMax := numericBounds(s)
 	if minimum != nil {
-		add(fmt.Sprintf("Minimum: _floatPtr(%s),", formatFloatLiteral(*minimum)))
+		add(fmt.Sprintf("Minimum: _floatPtr(%s),", numGoFloatLiteral(*minimum)))
 	}
 	if maximum != nil {
-		add(fmt.Sprintf("Maximum: _floatPtr(%s),", formatFloatLiteral(*maximum)))
+		add(fmt.Sprintf("Maximum: _floatPtr(%s),", numGoFloatLiteral(*maximum)))
 	}
 	if exclusiveMin != nil {
-		add(fmt.Sprintf("ExclusiveMinimum: _floatPtr(%s),", formatFloatLiteral(*exclusiveMin)))
+		add(fmt.Sprintf("ExclusiveMinimum: _floatPtr(%s),", numGoFloatLiteral(*exclusiveMin)))
 	}
 	if exclusiveMax != nil {
-		add(fmt.Sprintf("ExclusiveMaximum: _floatPtr(%s),", formatFloatLiteral(*exclusiveMax)))
+		add(fmt.Sprintf("ExclusiveMaximum: _floatPtr(%s),", numGoFloatLiteral(*exclusiveMax)))
 	}
 
 	if s.MinLength != nil {
@@ -928,7 +928,7 @@ func goStringSliceLiteral(values []string) string {
 // `minimum`/`maximum`, so {"minimum":3,"exclusiveMinimum":true} means "> 3" and
 // the sibling must not also be enforced as ">= 3". Written without that sibling
 // it constrains nothing at all, and is dropped rather than guessed at.
-func numericBounds(s *schema.Schema) (minimum, maximum, exclusiveMin, exclusiveMax *float64) {
+func numericBounds(s *schema.Schema) (minimum, maximum, exclusiveMin, exclusiveMax *schema.Number) {
 	minimum, maximum = s.Minimum, s.Maximum
 	if s.ExclusiveMinimum != nil {
 		switch {

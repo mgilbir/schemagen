@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type AllOfTightestConstraints int64
@@ -27,26 +26,25 @@ func (a *AllOfTightestConstraints) UnmarshalJSON(data []byte) error {
 		*a = AllOfTightestConstraints(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*a = AllOfTightestConstraints(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*a = AllOfTightestConstraints(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }
 
 // Validate checks AllOfTightestConstraints against its JSON Schema constraints.
 func (a AllOfTightestConstraints) Validate() error {
-	if float64(a) < 10 {
+	if a < 10 {
 		return fmt.Errorf("value: %v is less than minimum 10", a)
 	}
-	{
-		q := float64(a) / 6
-		if math.Abs(q-math.Round(q)) > 1e-9 {
-			return fmt.Errorf("value: %v is not a multiple of 6", a)
-		}
+	// Exact: both operands are int64, so divisibility is a remainder rather
+	// than a float64 quotient compared against a tolerance.
+	if a%6 != 0 {
+		return fmt.Errorf("value: %v is not a multiple of 6", a)
 	}
 	return nil
 }

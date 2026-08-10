@@ -211,7 +211,7 @@ func (o OneOfObjectVariantConstraintsAOption1) Validate() error {
 			}
 		}
 	}
-	if float64(o.Y) < 10 {
+	if o.Y < 10 {
 		return fmt.Errorf("y: value %v is less than minimum 10", o.Y)
 	}
 	return nil

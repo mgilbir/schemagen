@@ -75,12 +75,12 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if .StrictInteger}}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 	{{- end}}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*{{$recv}} = {{.Name}}(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*{{$recv}} = {{.Name}}(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 	{{- else}}
@@ -140,32 +140,40 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
-	if float64({{$recv}}) < {{.Value}} {
-		return fmt.Errorf("value: %v is less than minimum {{.Value}}", {{$recv}})
+	if {{numOperand . $recv}} < {{numBound .}} {
+		return fmt.Errorf("value: %v is less than minimum {{numBound .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
-	if float64({{$recv}}) > {{.Value}} {
-		return fmt.Errorf("value: %v exceeds maximum {{.Value}}", {{$recv}})
+	if {{numOperand . $recv}} > {{numBound .}} {
+		return fmt.Errorf("value: %v exceeds maximum {{numBound .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
-	if float64({{$recv}}) <= {{.Value}} {
-		return fmt.Errorf("value: %v must be greater than {{.Value}}", {{$recv}})
+	if {{numOperand . $recv}} <= {{numBound .}} {
+		return fmt.Errorf("value: %v must be greater than {{numBound .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
-	if float64({{$recv}}) >= {{.Value}} {
-		return fmt.Errorf("value: %v must be less than {{.Value}}", {{$recv}})
+	if {{numOperand . $recv}} >= {{numBound .}} {
+		return fmt.Errorf("value: %v must be less than {{numBound .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
+	{{- if .IntegerCompare}}
+	// Exact: both operands are int64, so divisibility is a remainder rather
+	// than a float64 quotient compared against a tolerance.
+	if {{$recv}} % {{numBound .}} != 0 {
+		return fmt.Errorf("value: %v is not a multiple of {{numBound .}}", {{$recv}})
+	}
+	{{- else}}
 	{
-		q := float64({{$recv}}) / {{.Value}}
+		q := float64({{$recv}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("value: %v is not a multiple of {{.Value}}", {{$recv}})
+			return fmt.Errorf("value: %v is not a multiple of {{numBound .}}", {{$recv}})
 		}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched {

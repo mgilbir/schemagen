@@ -512,8 +512,8 @@ func TestExclusiveMinimumAsNumber(t *testing.T) {
 	if s.ExclusiveMinimum.Number == nil {
 		t.Fatal("expected exclusiveMinimum.Number to be set")
 	}
-	if *s.ExclusiveMinimum.Number != 0 {
-		t.Errorf("expected exclusiveMinimum to be 0, got %f", *s.ExclusiveMinimum.Number)
+	if *s.ExclusiveMinimum.Number != "0" {
+		t.Errorf("expected exclusiveMinimum to be 0, got %s", *s.ExclusiveMinimum.Number)
 	}
 	if s.ExclusiveMinimum.Bool != nil {
 		t.Errorf("expected exclusiveMinimum.Bool to be nil")
@@ -648,13 +648,13 @@ func TestNumericConstraints(t *testing.T) {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 
-	if s.Minimum == nil || *s.Minimum != 0 {
+	if s.Minimum == nil || *s.Minimum != "0" {
 		t.Errorf("expected minimum 0, got %v", s.Minimum)
 	}
-	if s.Maximum == nil || *s.Maximum != 100 {
+	if s.Maximum == nil || *s.Maximum != "100" {
 		t.Errorf("expected maximum 100, got %v", s.Maximum)
 	}
-	if s.MultipleOf == nil || *s.MultipleOf != 5 {
+	if s.MultipleOf == nil || *s.MultipleOf != "5" {
 		t.Errorf("expected multipleOf 5, got %v", s.MultipleOf)
 	}
 }
@@ -1136,7 +1136,7 @@ func TestHTTPResolverInComposite(t *testing.T) {
 	if len(resolved.Type) != 1 || resolved.Type[0] != "integer" {
 		t.Errorf("expected type [integer], got %v", resolved.Type)
 	}
-	if resolved.Minimum == nil || *resolved.Minimum != 0 {
+	if resolved.Minimum == nil || *resolved.Minimum != "0" {
 		t.Error("expected minimum 0")
 	}
 }

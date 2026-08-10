@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type Root int64
@@ -27,12 +26,12 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 		*r = Root(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*r = Root(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*r = Root(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }

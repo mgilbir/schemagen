@@ -3,11 +3,14 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +46,139 @@ func (f FlexInt) MarshalJSON() ([]byte, error) {
 // Int returns the FlexInt as a plain int.
 func (f FlexInt) Int() int {
 	return int(f)
+}
+
+// Number is the value of a numeric keyword -- minimum, maximum, multipleOf and
+// their relatives -- kept exactly as the schema wrote it.
+//
+// JSON has one number type and no precision limit; float64 has both. Reading
+// these keywords into a float64 loses the difference between 2^63-1 and 2^63
+// before the generator has seen either, and every consumer downstream then
+// works from the rounded value: a bound re-emitted as its shortest decimal is
+// a *different* number to big.Float, and an integer const that fits int64
+// exactly comes back as a float literal that will not compile. Keeping the
+// literal means each consumer decides for itself what the number has to become
+// -- a float64 comparison, an int64 constant, an arbitrary-precision bound --
+// rather than being handed one reading of it.
+//
+// It is a distinct type rather than json.Number so that it can refuse a JSON
+// string: json.Number is a string underneath and would take {"minimum": "5"},
+// which the float64 field it replaces rejected.
+type Number string
+
+// UnmarshalJSON stores the number as written.
+//
+// Precision comes from the literal; range still comes from float64. A keyword
+// whose magnitude overflows float64 -- {"minimum": 1e400} -- is refused, which
+// is what the float64 field this replaces did, and refusing it here is what
+// keeps the generator from writing a constant into Go source that the Go
+// compiler then rejects. Nothing is lost that was ever held: no draft's
+// numeric keyword had a reading beyond float64's range before this type
+// existed.
+func (n *Number) UnmarshalJSON(data []byte) error {
+	trimmed := trimJSONWhitespace(data)
+	if trimmed == "" || trimmed[0] == '"' {
+		return fmt.Errorf("expected a number, got: %s", string(data))
+	}
+	var jn json.Number
+	if err := json.Unmarshal([]byte(trimmed), &jn); err != nil {
+		return fmt.Errorf("expected a number, got: %s", string(data))
+	}
+	if _, err := strconv.ParseFloat(string(jn), 64); err != nil {
+		return fmt.Errorf("number out of range: %s", string(data))
+	}
+	*n = Number(jn)
+	return nil
+}
+
+// MarshalJSON writes the literal back out unchanged, so a schema that is read
+// and written again carries the same number it arrived with.
+func (n Number) MarshalJSON() ([]byte, error) {
+	if n == "" {
+		return []byte("null"), nil
+	}
+	return []byte(n), nil
+}
+
+// String returns the literal as written.
+func (n Number) String() string { return string(n) }
+
+// Float64 returns the number as a float64, and reports whether it is
+// representable as one. A literal whose magnitude overflows float64 (1e400) is
+// not, and neither is an empty Number.
+func (n Number) Float64() (float64, bool) {
+	f, err := strconv.ParseFloat(string(n), 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
+}
+
+// Int64 returns the number as an int64 when it names an integer that int64
+// holds exactly, and reports whether it does. The literal is read as an exact
+// decimal, so 1e2, 100.0 and 100 all answer 100, and 9223372036854775807
+// answers itself rather than the float64 it rounds to.
+func (n Number) Int64() (int64, bool) {
+	r, ok := n.Rat()
+	if !ok || !r.IsInt() {
+		return 0, false
+	}
+	num := r.Num()
+	if !num.IsInt64() {
+		return 0, false
+	}
+	return num.Int64(), true
+}
+
+// ratExponentLimit bounds how far a literal's exponent may reach before Rat
+// refuses to build the number.
+//
+// big.Rat holds an exact decimal by writing out its digits, so 1e1000000000 is
+// not a large number to it but a several-hundred-megabyte one. Nothing this
+// package answers needs an exponent beyond float64's range, which stops at 308:
+// a numeric keyword is refused past it by Number's own decode, and a const or
+// enum member past it is compared as JSON text and never asked for its value.
+// The limit is set well above 308 so that no question a caller can usefully ask
+// is refused, and well below where the allocation matters.
+const ratExponentLimit = 5000
+
+// Rat reads the number as an exact rational, and reports whether it could.
+//
+// This is the exact reading every question about the number's *value* goes
+// through -- is it an integer, does int64 hold it, is it larger than that other
+// one -- because big.Rat parses the whole JSON number grammar without rounding
+// any of it.
+func (n Number) Rat() (*big.Rat, bool) {
+	if i := strings.IndexAny(string(n), "eE"); i >= 0 {
+		exp, err := strconv.Atoi(string(n)[i+1:])
+		if err != nil || exp > ratExponentLimit || exp < -ratExponentLimit {
+			return nil, false
+		}
+	}
+	r, ok := new(big.Rat).SetString(string(n))
+	if !ok {
+		return nil, false
+	}
+	return r, true
+}
+
+// NumberFromFloat builds a Number from a float64, for a Schema assembled in Go
+// rather than read from a document.
+//
+// A float64 that names an integer is written out in full rather than as its
+// shortest round-tripping decimal, because those are different numbers to
+// everything downstream that reads the literal exactly: -2^63 prints as
+// -9.223372036854776e+18, and that decimal is 192 larger than the int64 it came
+// from and does not fit in one.
+func NumberFromFloat(f float64) Number {
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return Number(strconv.FormatFloat(f, 'g', -1, 64))
+	}
+	if bf := new(big.Float).SetFloat64(f); bf.IsInt() {
+		i, _ := bf.Int(nil)
+		return Number(i.String())
+	}
+	return Number(strconv.FormatFloat(f, 'g', -1, 64))
 }
 
 // TypeList represents a JSON Schema "type" value, which can be either a single
@@ -155,7 +291,7 @@ func (s SchemaOrBool) MarshalJSON() ([]byte, error) {
 // SchemaOrFloat represents a value that can be either a number (Draft 2020-12)
 // or a boolean (Draft-07) for exclusiveMinimum/exclusiveMaximum.
 type SchemaOrFloat struct {
-	Number *float64
+	Number *Number
 	Bool   *bool
 }
 
@@ -169,8 +305,8 @@ func (s *SchemaOrFloat) UnmarshalJSON(data []byte) error {
 	}
 
 	// Try number.
-	var n float64
-	if err := json.Unmarshal(data, &n); err != nil {
+	var n Number
+	if err := n.UnmarshalJSON(data); err != nil {
 		return fmt.Errorf("must be a boolean or number: %s", string(data))
 	}
 	s.Number = &n
@@ -342,11 +478,11 @@ type Schema struct {
 	Format    *string  `json:"format,omitempty"`
 
 	// Numeric keywords
-	Minimum          *float64       `json:"minimum,omitempty"`
-	Maximum          *float64       `json:"maximum,omitempty"`
+	Minimum          *Number        `json:"minimum,omitempty"`
+	Maximum          *Number        `json:"maximum,omitempty"`
 	ExclusiveMinimum *SchemaOrFloat `json:"exclusiveMinimum,omitempty"`
 	ExclusiveMaximum *SchemaOrFloat `json:"exclusiveMaximum,omitempty"`
-	MultipleOf       *float64       `json:"multipleOf,omitempty"`
+	MultipleOf       *Number        `json:"multipleOf,omitempty"`
 
 	// Enum and const
 	Enum        []any `json:"enum,omitempty"`
@@ -386,7 +522,7 @@ type Schema struct {
 	// Draft 3 specific
 	Extends     json.RawMessage `json:"extends,omitempty"`     // Schema or array of schemas
 	Disallow    json.RawMessage `json:"disallow,omitempty"`    // string or array of strings
-	DivisibleBy *float64        `json:"divisibleBy,omitempty"` // precursor to multipleOf
+	DivisibleBy *Number         `json:"divisibleBy,omitempty"` // precursor to multipleOf
 
 	// Draft 4/6/7: dependencies (object where values are schemas or string arrays)
 	Dependencies json.RawMessage `json:"dependencies,omitempty"`
@@ -481,9 +617,20 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 	}
 
 	// Use an alias to avoid infinite recursion.
+	//
+	// The decode goes through a json.Decoder with UseNumber rather than
+	// json.Unmarshal so that the keywords typed `any` -- const, enum, default,
+	// and anything nested inside them -- hold the number the schema wrote
+	// instead of the float64 it rounds to. An enum member of 9223372036854775807
+	// is an int64 exactly and a float64 not at all, and the generator has to emit
+	// it as a Go constant; float64 is a reading of the number, not the number.
+	// Numeric keywords with a type of their own (Number, FlexInt) decode from the
+	// raw bytes either way, so UseNumber neither helps nor hinders them.
 	type schemaAlias Schema
 	var alias schemaAlias
-	if err := json.Unmarshal(data, &alias); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&alias); err != nil {
 		return err
 	}
 	*s = Schema(alias)

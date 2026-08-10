@@ -125,12 +125,12 @@ func (u UserProfile) Validate() error {
 		}
 	}
 	if u._jsonKeys["age"] {
-		if u.Age != nil && float64(*u.Age) < 0 {
+		if u.Age != nil && *u.Age < 0 {
 			return fmt.Errorf("age: value %v is less than minimum 0", *u.Age)
 		}
 	}
 	if u._jsonKeys["age"] {
-		if u.Age != nil && float64(*u.Age) > 150 {
+		if u.Age != nil && *u.Age > 150 {
 			return fmt.Errorf("age: value %v exceeds maximum 150", *u.Age)
 		}
 	}

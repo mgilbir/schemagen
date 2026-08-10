@@ -324,19 +324,19 @@ func (a *AllOfBranchOverflowBareBranch0Value) UnmarshalJSON(data []byte) error {
 		*a = AllOfBranchOverflowBareBranch0Value(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*a = AllOfBranchOverflowBareBranch0Value(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*a = AllOfBranchOverflowBareBranch0Value(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowBareBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowBareBranch0Value) Validate() error {
-	if float64(a) < 5 {
+	if a < 5 {
 		return fmt.Errorf("value: %v is less than minimum 5", a)
 	}
 	return nil
@@ -855,19 +855,19 @@ func (a *AllOfBranchOverflowNestedAllOfBranch0Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowNestedAllOfBranch0Value(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*a = AllOfBranchOverflowNestedAllOfBranch0Value(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*a = AllOfBranchOverflowNestedAllOfBranch0Value(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowNestedAllOfBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowNestedAllOfBranch0Value) Validate() error {
-	if float64(a) < 5 {
+	if a < 5 {
 		return fmt.Errorf("value: %v is less than minimum 5", a)
 	}
 	return nil
@@ -1182,7 +1182,7 @@ func (a AllOfBranchOverflowObjectValueBranch0Value) Validate() error {
 			}
 		}
 	}
-	if float64(a.N) < 5 {
+	if a.N < 5 {
 		return fmt.Errorf("n: value %v is less than minimum 5", a.N)
 	}
 	return nil
@@ -1622,19 +1622,19 @@ func (a *AllOfBranchOverflowTwoBranchesBranch0Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowTwoBranchesBranch0Value(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*a = AllOfBranchOverflowTwoBranchesBranch0Value(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*a = AllOfBranchOverflowTwoBranchesBranch0Value(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowTwoBranchesBranch0Value) Validate() error {
-	if float64(a) < 5 {
+	if a < 5 {
 		return fmt.Errorf("value: %v is less than minimum 5", a)
 	}
 	return nil
@@ -1659,19 +1659,19 @@ func (a *AllOfBranchOverflowTwoBranchesBranch1Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowTwoBranchesBranch1Value(_i)
 		return nil
 	}
-	// Try float with zero fractional part (e.g., 1.0).
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*a = AllOfBranchOverflowTwoBranchesBranch1Value(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// so it cannot be asked whether a literal is an int64.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*a = AllOfBranchOverflowTwoBranchesBranch1Value(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch1Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowTwoBranchesBranch1Value) Validate() error {
-	if float64(a) > 9 {
+	if a > 9 {
 		return fmt.Errorf("value: %v exceeds maximum 9", a)
 	}
 	return nil
