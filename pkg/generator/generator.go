@@ -4282,12 +4282,22 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				writeOnlyKeys = append(writeOnlyKeys, o.JSONName)
 			}
 		}
+		// And every writeOnly property name at this location, which is what
+		// catches the ones no field was built for -- a property only a conditional
+		// applicator on this object ever names becomes no field and arrives in the
+		// overflow map, so both loops above, being over things a Go field carries,
+		// walk straight past it. See writeOnlyKeysAtLocation, and note that
+		// readOnly deliberately gets no equivalent line here.
+		writeOnlyKeys = append(writeOnlyKeys, g.writeOnlyKeysAtLocation(s)...)
 		// Both loops walk the properties in sorted order, but a group's keys
 		// arrive after every field's, so the concatenation is sorted only when one
 		// of the two is empty. Sorting says what the order is rather than leaving
 		// it to which shape a property compiled to.
 		sort.Strings(readOnlyKeys)
 		sort.Strings(writeOnlyKeys)
+		// A property that is a field *and* is marked by a branch is named by both
+		// readings, and the encoder's delete loop would then be told twice.
+		writeOnlyKeys = dedupeStrings(writeOnlyKeys)
 		// A struct that would otherwise have taken the default decoder or
 		// encoder needs its own, or the check has nowhere to be.
 		if len(readOnlyKeys) > 0 {
@@ -8824,17 +8834,6 @@ type mergedPropertyOrigin struct {
 	// merged schema in target.Properties[name] may not, because it is the two
 	// kinds folded together.
 	unconditional []*schema.Schema
-	// branch holds the contributed schemas that arrived through a conditional
-	// applicator -- the mirror of `unconditional` above. Nothing may read an
-	// annotation off these as a statement about every document; the one caller is
-	// readWriteBindingAt's writeOnly half, which is a policy about what this
-	// program emits rather than a claim about the instance. See conditionalReachAt.
-	//
-	// Kept beside `via` rather than recovered from it: `via` names the group a
-	// contribution hung off, which is not the same thing as the property schema
-	// the branch contributed, and target.Properties[name] is the contributions
-	// folded together and can be a node that was neither input.
-	branch []*schema.Schema
 	// via names the applicator group each conditional contribution came through,
 	// one entry per contribution. `conditional` says a branch is in the answer;
 	// this says *which* group it hangs off, which is what a caller asking
@@ -8890,9 +8889,6 @@ func (g *Generator) recordMergedProperty(target *schema.Schema, name string, con
 	if via != nil {
 		origin.conditional = true
 		origin.via = append(origin.via, *via)
-		if contributed != nil {
-			origin.branch = append(origin.branch, contributed)
-		}
 		return
 	}
 	if contributed != nil {
@@ -9047,13 +9043,27 @@ func (g *Generator) conditionalGroupsEnforcedInFull(s *schema.Schema, routed []R
 // being kept: a subschema that was not selected contributes no annotations, and
 // asserting one anyway is a false rejection.
 //
-// writeOnly is read off the branches too. Their contributions are the same
-// schemas the merge folded in for the field's *type*, and reading them for this
-// one keyword is not a claim that the branch applied -- it is this program
-// declining to emit a property the schema marks "never present when the instance
-// is retrieved" wherever the marking was written. conditionalReachAt argues the
-// asymmetry; here it is the merge's own record rather than a walk, because what a
-// merge did is not recoverable from what it produced.
+// writeOnly is narrowed here the same way, and is then widened again outside: the
+// key list this feeds also gets writeOnlyKeysAtLocation, whose reach covers every
+// schema describing the object, branches included, so a property a branch alone
+// marks is named there. An earlier version of this change read the branches here
+// too, off a record the merge kept of what each contribution was; planting that
+// record away broke nothing once the wider reading existed, so it is gone and one
+// mechanism answers for the key list.
+//
+// The writeOnly result below survived the same plant -- narrowing it to nothing
+// leaves every test in the tree passing, because writeOnlyKeysAtLocation names
+// the same keys. It is kept as a floor rather than deleted, on the ground the
+// f.Annotations floor at the call site already states: the two readings are
+// keyed differently, this one by the merge's own record of what was contributed
+// and that one by walking schema nodes, and where they could still part company
+// is a fold. mergeVariantPropertySchemas keeps `existing` and discards `next`, so
+// a property whose first contribution says nothing and whose second marks
+// writeOnly has a folded node that says nothing; the walk reads the contributing
+// node directly and is unaffected, and a dynamic scope pushed by the merge but
+// not by the uncounted resolution here is the one place that could invert. No
+// fixture in the tree distinguishes them, and this is recorded so that the choice
+// to keep it is visible rather than assumed.
 func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readOnly, writeOnly bool) {
 	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
 	if !narrowed {
@@ -9064,26 +9074,65 @@ func (g *Generator) readWriteBindingAt(owner *schema.Schema, name string) (readO
 		readOnly = readOnly || ro
 		writeOnly = writeOnly || wo
 	}
-	for _, src := range g.branchPropertySchemas(owner, name) {
-		if _, wo := g.readWriteAtLocation(src); wo {
-			writeOnly = true
-		}
-	}
 	return readOnly, writeOnly
 }
 
-// branchPropertySchemas returns the schemas a conditional applicator contributed
-// to owner's property name. Empty for every property no branch contributed to,
-// and for every schema that is not a merge target.
+// writeOnlyKeysAtLocation returns every JSON property name that some schema
+// describing this object marks writeOnly, whether or not a Go field was ever
+// built for it.
 //
-// Only --strict-read-write's writeOnly half may read these. See
-// mergedPropertyOrigin.branch and conditionalReachAt.
-func (g *Generator) branchPropertySchemas(owner *schema.Schema, name string) []*schema.Schema {
-	origin := g.mergedPropertyOrigins[owner][name]
-	if origin == nil {
+// This is the plainest spelling of the position and the one neither reading
+// above can see:
+//
+//	{"type":"object","properties":{"t":{"type":"integer"}},
+//	 "if":{"required":["t"]},
+//	 "then":{"properties":{"secret":{"type":"string","writeOnly":true}}}}
+//
+// The field loop cannot see it, because "secret" is named by no schema that
+// applies on every valid instance and so becomes no field at all -- it arrives in
+// the overflow map, where a Go field's key list has nothing to key on.
+// mergedPropertyOrigins cannot see it either: that record is written by the allOf
+// and variant merges, and a conditional written directly on the object goes
+// through neither, so there is no contribution recorded for anything to read.
+// accessRulesFor does reach it, and then drops it, because a struct asks for
+// minDepth 2 on the ground that its own members are covered by the key lists --
+// which is true of its *fields* and not of this.
+//
+// The names go into the writeOnly key list, which is where they can act: the
+// encoder deletes them from the assembled object after the overflow map has been
+// merged in, so a property that never became a field is deleted just the same.
+// See the marshal template, where that ordering is stated for this reason.
+//
+// readOnly gets no equivalent and must not: the decoder's list is a refusal, and
+// refusing a document because some branch it need not match names the property is
+// the false rejection §7.7.1 forbids. conditionalReachAt argues the asymmetry.
+//
+// The reach is conditionalReachAt's whole, unconditional half included, and the
+// overlap with the field loop above is deliberate rather than tolerated. A first
+// version subtracted unconditionalReachAt so that this answered for the branches
+// alone; planting the subtraction away broke nothing, because a property some
+// schema states writeOnly outright is either already a field the loop named or is
+// one dedupeStrings then removes, so the narrower reach was a branch nobody could
+// watch. It is gone, and what is left is one rule with no arm to get wrong: every
+// writeOnly property name at this location, named once.
+func (g *Generator) writeOnlyKeysAtLocation(s *schema.Schema) []string {
+	if s == nil {
 		return nil
 	}
-	return origin.branch
+	var out []string
+	seen := make(map[string]bool)
+	for _, node := range g.conditionalReachAt(s) {
+		for _, name := range sortedKeys(node.Properties) {
+			if seen[name] {
+				continue
+			}
+			if _, wo := g.readWriteAtLocation(node.Properties[name]); wo {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // unconditionalReachAt returns every schema that applies at an instance
