@@ -245,6 +245,11 @@ func newGenerateCmd() *cobra.Command {
 			// that happens to need them.
 			var helpers generator.HelperSet
 
+			// Every input writes into one Go package here, so what the files
+			// declare between them is a property of the run, not of any one
+			// file. See packageDecls.
+			decls := newPackageDecls(pkgName)
+
 			// In shared-types mode all schemas run through one generator so
 			// types materialized by an earlier schema are referenced, not
 			// re-emitted. The inputs are pre-loaded and indexed by $id so a
@@ -414,6 +419,12 @@ func newGenerateCmd() *cobra.Command {
 				// emitted the call without the declaration -- generated code
 				// that did not compile. See HelpersReferencedBy.
 				helpers.Merge(generator.HelpersReferencedBy(string(src)))
+
+				// Checked before the file is written, so a run that cannot
+				// produce a compiling package does not leave one behind.
+				if err := decls.add(schemaPath, src); err != nil {
+					return err
+				}
 
 				// 6. Write output file
 				outFile := deriveOutputFilename(schemaPath)
@@ -762,6 +773,11 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		// directory (enforced above), so one file per package is enough.
 		var helpers generator.HelperSet
 		var pkgDir string
+		// No packageDecls check here, unlike the single-package run: every
+		// document of a package goes through one generator with SharedTypes
+		// set, so a name is materialized at most once per package and the
+		// collision the check exists for cannot arise. A guard nothing can make
+		// fail is worse than none.
 		for _, in := range pkgInputs[pkg] {
 			if p.verbose {
 				fmt.Fprintf(out, "Processing %s -> %s\n", in.path, pkg)
