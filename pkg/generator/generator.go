@@ -2768,6 +2768,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:             name,
 				Description:      s.Description,
 				Annotations:      annotationsOf(s),
+				StrictReadWrite:  g.config.StrictReadWrite,
 				InferredGoType:   goType,
 				InferredJSONType: primaryType,
 				Validations:      rules,
@@ -2828,7 +2829,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 			elemGoType, _ := containerElem(goType)
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(s, name, elemGoType)
 			// Extract contains/minContains/maxContains constraints.
-			containsDef, minContains, maxContains := g.extractContainsDef(s, name)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
@@ -2861,6 +2862,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 				Name:                    name,
 				Description:             s.Description,
 				Annotations:             annotationsOf(s),
+				StrictReadWrite:         g.config.StrictReadWrite,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -2884,7 +2886,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			tupleTail := g.buildTupleTailDef(s, name)
-			containsDef, minContains, maxContains := g.extractContainsDef(s, name)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -4012,7 +4014,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var patternProps []PatternPropertyDef
 	for i, pattern := range sortedKeys(s.PatternProperties) {
 		ppSchema := s.PatternProperties[pattern]
-		ppDef := PatternPropertyDef{Pattern: pattern}
+		ppDef := PatternPropertyDef{Pattern: pattern, StrictReadWrite: g.config.StrictReadWrite}
 		// A sub-schema admitting nothing forbids every key the pattern matches.
 		// `{"enum":[]}` says that as much as `false` does, and reached neither
 		// this arm nor patternValueTypeName below -- so
@@ -4296,12 +4298,27 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 
+	// The flat lists above answer for this struct's own members, which is what a
+	// Go field can carry. Everything below one of them -- a tuple slot, a
+	// contains element, a patternProperties value, and whatever those hold in
+	// turn -- has no field and no nested decode, so it needs a path of its own.
+	// Issue #219: three positions enforced the flag through Validate instead,
+	// which readOnly must never reach, and `writeOnly` was emitted straight back
+	// out at all of them.
+	accessRules := g.accessRulesFor(s, 2)
+	if len(accessRules) > 0 {
+		needsUnmarshal = true
+		needsMarshal = true
+	}
+
 	structDef := &StructDef{
 		Name:                   name,
 		Description:            s.Description,
 		Annotations:            annotationsOf(s),
 		ReadOnlyKeys:           readOnlyKeys,
 		WriteOnlyKeys:          writeOnlyKeys,
+		AccessRules:            accessRules,
+		StrictReadWrite:        g.config.StrictReadWrite,
 		Fields:                 fields,
 		OneOfs:                 oneOfs,
 		AdditionalProperties:   additionalProps,
@@ -4781,7 +4798,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
-				containsDef, minContains, maxContains = g.extractContainsDef(arraySchema, name)
+				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name)
 				unevalItems = g.buildUnevaluatedItemsDef(merged)
 				// The alias *is* the slice, so the per-element checks hang off
 				// the receiver rather than off a field.
@@ -4848,7 +4865,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				elemGoType, _ = containerElem(goType)
 			}
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(arraySchema, name, elemGoType)
-			containsDef, minContains, maxContains := g.extractContainsDef(arraySchema, name)
+			containsDef, minContains, maxContains := g.containsDefFor(arraySchema, name)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -4884,6 +4901,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				Name:                    name,
 				Description:             s.Description,
 				Annotations:             annotationsOf(s),
+				StrictReadWrite:         g.config.StrictReadWrite,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -4930,6 +4948,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 					Name:             name,
 					Description:      s.Description,
 					Annotations:      annotationsOf(s),
+					StrictReadWrite:  g.config.StrictReadWrite,
 					InferredGoType:   goType,
 					InferredJSONType: primaryType,
 					Validations:      rules,
@@ -12862,7 +12881,7 @@ func (g *Generator) elemContainsDef(s *schema.Schema, parentName string) (*Conta
 	if s == nil || s.Contains == nil || !g.validationKeywordsEnabled() {
 		return nil, nil, nil
 	}
-	def, minContains, maxContains := g.extractContainsDef(s, parentName)
+	def, minContains, maxContains := g.containsDefFor(s, parentName)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil, nil, nil
 	}
@@ -12890,7 +12909,7 @@ func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, f
 	if _, ok := base.(*ArrayType); !ok {
 		return nil
 	}
-	def, minContains, maxContains := g.extractContainsDef(s, parentName+fieldName)
+	def, minContains, maxContains := g.containsDefFor(s, parentName+fieldName)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil
 	}
@@ -15148,6 +15167,7 @@ func (g *Generator) stringAnnotationOnlyDef(name string, s *schema.Schema) *Infe
 		Name:             name,
 		Description:      s.Description,
 		Annotations:      annotationsOf(s),
+		StrictReadWrite:  g.config.StrictReadWrite,
 		InferredGoType:   &PrimitiveType{Name: "string"},
 		InferredJSONType: "string",
 		Validations:      rules,
@@ -16046,6 +16066,28 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 	return result
 }
 
+// containsDefFor is extractContainsDef with the configuration stamped on.
+//
+// The stamp is here rather than at each of the extractor's arms, which return
+// from a dozen places and would each have to remember; and the extractor keeps
+// its name because TestContainsGateNamesEveryKeywordTheChecksRead reads that
+// function's source to hold containsCheckKeywords against what it actually
+// consults, and a wrapper is not what that gate is about.
+func (g *Generator) containsDefFor(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
+	def, minC, maxC := g.extractContainsDef(s, parentName)
+	if def != nil {
+		// What the flag decides is how a candidate element is decoded for the
+		// check. Under --strict-read-write the type named by TypeName refuses a
+		// document setting a readOnly property, and a `contains` that let the
+		// refusal through counted the element as non-matching -- so Validate
+		// answered "no element matches the contains schema" for a document the
+		// schema permits (issue #219).
+		def.StrictReadWrite = g.config.StrictReadWrite
+	}
+	return def, minC, maxC
+}
+
+// extractContainsDef resolves a `contains` sub-schema into the check it carries.
 // parentName names the type a sub-schema too rich for Checks is materialized
 // under; see ContainsDef.TypeName.
 func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
@@ -18663,10 +18705,26 @@ func (g *Generator) tupleTailSchema(s *schema.Schema) *schema.Schema {
 }
 
 // tupleItemDefFor resolves one tuple position's sub-schema into the check that
+// position carries, with the configuration stamped on.
+//
+// The stamp is here rather than at each of tupleItemCheckFor's arms, which
+// return from a dozen places and would each have to remember. What the flag
+// decides is how the position's value is decoded for the check: under
+// --strict-read-write the type named below refuses a document setting a readOnly
+// property, and a tuple check that let the refusal through answered
+// `items[0]: ro: read-only property may not be set` out of Validate() -- a
+// verdict about an annotation that constrains no document (issue #219).
+func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (TupleItemDef, bool) {
+	def, ok := g.tupleItemCheckFor(posSch, posName)
+	def.StrictReadWrite = g.config.StrictReadWrite
+	return def, ok
+}
+
+// tupleItemCheckFor resolves one tuple position's sub-schema into the check that
 // position carries. posName is the type name to materialize under when the
 // sub-schema needs one. Returns the zero def when the position constrains
 // nothing, and reports whether anything is left to check.
-func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (TupleItemDef, bool) {
+func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (TupleItemDef, bool) {
 	if posSch == nil {
 		return TupleItemDef{}, false
 	}

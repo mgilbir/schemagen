@@ -236,6 +236,14 @@ type nodeBuilder struct {
 	nodes       int
 	usesPattern bool
 
+	// inConjunct is set while an allOf branch (or the $ref that is one from
+	// 2019-09 on) is being rendered. --strict-properties synthesises its ban
+	// once, on the schema object the branches are pooled into, rather than once
+	// per branch: a branch declaring only its own properties would otherwise
+	// forbid every property its siblings declare, and no document could satisfy
+	// the composition at all. See strictBanApplies.
+	inConjunct bool
+
 	// hoisted names the schemas rendered as variables of their own, in the order
 	// they were found, so the names and the emitted order are the same on every
 	// run. rendering is the one whose body is being produced right now, which is
@@ -261,6 +269,10 @@ func (b *nodeBuilder) reset() {
 	b.descents = 0
 	b.depth = 0
 	b.nodes = 0
+	// A literal starts at an instance location -- the root of the type being
+	// compiled, or a hoisted node a value-descending reference reaches -- rather
+	// than inside an allOf.
+	b.inConjunct = false
 	// Nothing has been entered at the start of a literal, so the first node
 	// publishes its own resource -- which is right for the root and right for a
 	// hoisted node, since a reference reaching one enters whatever resource it
@@ -354,22 +366,72 @@ func (b *nodeBuilder) needAnchor(name string) {
 // having crossed one.
 func (b *nodeBuilder) sub(s *schema.Schema, indent int) (string, bool) {
 	b.descents++
+	conjunct := b.inConjunct
+	b.inConjunct = false
 	lit, ok := b.literal(s, indent)
+	b.inConjunct = conjunct
 	b.descents--
 	return lit, ok
 }
 
 func (b *nodeBuilder) subList(subs []*schema.Schema, indent int) (string, bool) {
 	b.descents++
+	conjunct := b.inConjunct
+	b.inConjunct = false
 	lit, ok := b.list(subs, indent)
+	b.inConjunct = conjunct
 	b.descents--
 	return lit, ok
 }
 
 func (b *nodeBuilder) subMemberList(members map[string]*schema.Schema, indent int) (string, bool) {
 	b.descents++
+	conjunct := b.inConjunct
+	b.inConjunct = false
 	lit, ok := b.memberList(members, indent)
+	b.inConjunct = conjunct
 	b.descents--
+	return lit, ok
+}
+
+// branch renders a subschema applied in place, to the same value, by an
+// applicator that is *not* allOf: anyOf, oneOf, not, if/then/else,
+// dependentSchemas. Each of those is a schema object in its own right, so
+// --strict-properties reads it on its own terms; only an allOf conjunct is
+// pooled with its parent. See strictBanApplies.
+func (b *nodeBuilder) branch(s *schema.Schema, indent int) (string, bool) {
+	conjunct := b.inConjunct
+	b.inConjunct = false
+	lit, ok := b.literal(s, indent)
+	b.inConjunct = conjunct
+	return lit, ok
+}
+
+func (b *nodeBuilder) branchList(subs []*schema.Schema, indent int) (string, bool) {
+	conjunct := b.inConjunct
+	b.inConjunct = false
+	lit, ok := b.list(subs, indent)
+	b.inConjunct = conjunct
+	return lit, ok
+}
+
+func (b *nodeBuilder) branchMemberList(members map[string]*schema.Schema, indent int) (string, bool) {
+	conjunct := b.inConjunct
+	b.inConjunct = false
+	lit, ok := b.memberList(members, indent)
+	b.inConjunct = conjunct
+	return lit, ok
+}
+
+// conjunctList renders the allOf branches -- and, from 2019-09 on, the $ref
+// beside them, which is an allOf by another name. What they declare is pooled
+// into the parent's known-member set, so a branch does not state a ban of its
+// own; see strictBanApplies.
+func (b *nodeBuilder) conjunctList(subs []*schema.Schema, indent int) (string, bool) {
+	conjunct := b.inConjunct
+	b.inConjunct = true
+	lit, ok := b.list(subs, indent)
+	b.inConjunct = conjunct
 	return lit, ok
 }
 
@@ -631,17 +693,40 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if s.MaxProperties != nil {
 		add(fmt.Sprintf("MaxProperties: _intPtr(%d),", s.MaxProperties.Int()))
 	}
+	// --strict-properties. The flag reads "absent additionalProperties is
+	// treated as false", and until issue #221 it was read on the static path
+	// only: a sub-schema the evaluator carries was compiled with no ban at all,
+	// so the same object refused an undeclared key when it compiled to a struct
+	// and accepted one when it compiled to schema data. pooledProps and
+	// pooledPatterns are the members an allOf conjunct declares, folded in here
+	// for the reason strictBanApplies gives.
+	ban, pooledProps, pooledPatterns := b.strictBanApplies(s)
+
 	// dependentSchemas is not in this group, and the difference is the one sub
 	// draws: its branches apply to the object itself, where a property's or a
 	// pattern's apply to a member of it.
 	for _, group := range []struct {
 		name    string
 		members map[string]*schema.Schema
-	}{{"Properties", s.Properties}, {"PatternProperties", s.PatternProperties}} {
-		if len(group.members) == 0 {
+		pooled  []string
+	}{{"Properties", s.Properties, pooledProps}, {"PatternProperties", s.PatternProperties, pooledPatterns}} {
+		members := group.members
+		if len(group.pooled) > 0 {
+			merged := make(map[string]*schema.Schema, len(members)+len(group.pooled))
+			for k, v := range members {
+				merged[k] = v
+			}
+			for _, k := range group.pooled {
+				if _, ok := merged[k]; !ok {
+					merged[k] = trueSchema()
+				}
+			}
+			members = merged
+		}
+		if len(members) == 0 {
 			continue
 		}
-		list, ok := b.subMemberList(group.members, indent+2)
+		list, ok := b.subMemberList(members, indent+2)
 		if !ok {
 			return "", false
 		}
@@ -650,8 +735,16 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 			b.usesPattern = true
 		}
 	}
+	if ban {
+		add("AdditionalProperties: _node(_schemaNode{Boolean: _boolPtr(false)}),")
+		if len(s.PatternProperties) > 0 || len(pooledPatterns) > 0 {
+			// The ban is what is left once the patterns have claimed their keys,
+			// so the evaluator has to run them to know what that is.
+			b.usesPattern = true
+		}
+	}
 	if len(s.DependentSchemas) > 0 {
-		list, ok := b.memberList(s.DependentSchemas, indent+2)
+		list, ok := b.branchMemberList(s.DependentSchemas, indent+2)
 		if !ok {
 			return "", false
 		}
@@ -742,7 +835,11 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if len(group.subs) == 0 {
 			continue
 		}
-		list, ok := b.list(group.subs, indent+2)
+		render := b.branchList
+		if group.name == "AllOf" {
+			render = b.conjunctList
+		}
+		list, ok := render(group.subs, indent+2)
 		if !ok {
 			return "", false
 		}
@@ -756,7 +853,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if branch.sub == nil {
 			continue
 		}
-		lit, ok := b.literal(branch.sub, indent+1)
+		lit, ok := b.branch(branch.sub, indent+1)
 		if !ok {
 			return "", false
 		}
@@ -911,6 +1008,87 @@ func dependentRequiredLiteral(deps map[string][]string, indent int) string {
 		parts = append(parts, fmt.Sprintf("%s{Key: %q, Keys: %s},", pad, key, goStringSliceLiteral(deps[key])))
 	}
 	return "[]_schemaDependency{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}"
+}
+
+// trueSchema is the boolean `true` schema, which admits every value.
+//
+// strictBanApplies uses it to name a member an allOf conjunct declares without
+// restating what the conjunct says about it: the ban needs the *name* on the
+// parent so the key is not additional, and the conjunct is still evaluated
+// beside it and still enforces the member's real schema.
+func trueSchema() *schema.Schema {
+	t := true
+	return &schema.Schema{BooleanSchema: &t}
+}
+
+// strictBanApplies decides whether --strict-properties synthesises
+// "additionalProperties: false" on this node, and returns the member names an
+// allOf conjunct contributes to the node's own known set.
+//
+// The rule is generateStructDef's, in the model the evaluator uses. There, the
+// ban goes on the merged struct: allOf branches are flattened into it first, so
+// a property an allOf declares is one of the struct's known fields and is not
+// overflow. Here there is no merge, so the pooling is done by naming those
+// members on the parent -- and a conjunct states no ban of its own, which is
+// what b.inConjunct records. Without that, {"properties":{"a":{}},
+// "allOf":[{"properties":{"b":{}}}]} would compile to a branch forbidding "a"
+// and a parent forbidding "b", and no document could satisfy both. The static
+// path accepts {"a":1,"b":2} there, and the two readings of one flag have to
+// agree.
+//
+// Every other in-place applicator is read on its own terms, which is the flag's
+// documented sentence applied literally: additionalProperties sees the
+// `properties` and `patternProperties` of the schema object it sits in and
+// nothing else, so a key an anyOf branch or a `then` declares is additional to
+// the object itself. That is not an oversight of this function -- it is the
+// property of the flag the co-generation harness already names and works
+// around, in coStripDiscriminators and coStripConditionals -- and the same
+// reading now holds whether the sub-schema compiled to a struct or to schema
+// data.
+func (b *nodeBuilder) strictBanApplies(s *schema.Schema) (ban bool, props, patterns []string) {
+	if b.g == nil || !b.g.config.StrictProperties || b.inConjunct {
+		return false, nil, nil
+	}
+	// An object that states additionalProperties has nothing absent to treat as
+	// false; the flag adds no rule there at all.
+	if s.AdditionalProperties != nil {
+		return false, nil, nil
+	}
+	seenProp := map[string]bool{}
+	for name := range s.Properties {
+		seenProp[name] = true
+	}
+	seenPattern := map[string]bool{}
+	for name := range s.PatternProperties {
+		seenPattern[name] = true
+	}
+	declared := len(seenProp) > 0 || len(seenPattern) > 0
+	// The node itself is first in the reach and is already accounted for above.
+	for _, node := range b.g.unconditionalReachAt(s, true)[1:] {
+		for name := range node.Properties {
+			if !seenProp[name] {
+				seenProp[name] = true
+				props = append(props, name)
+			}
+			declared = true
+		}
+		for name := range node.PatternProperties {
+			if !seenPattern[name] {
+				seenPattern[name] = true
+				patterns = append(patterns, name)
+			}
+			declared = true
+		}
+	}
+	// unevaluatedProperties without an additionalProperties beside it is the
+	// arm generateStructDef takes for issue #71: the two bans are not the same
+	// rule, so an object carrying one still gets the other.
+	if !declared && s.UnevaluatedProperties == nil {
+		return false, nil, nil
+	}
+	sort.Strings(props)
+	sort.Strings(patterns)
+	return true, props, patterns
 }
 
 func goStringSliceLiteral(values []string) string {
@@ -1206,7 +1384,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !ok {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern}
+	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1)}
 }
 
 // dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
@@ -1559,6 +1737,10 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 		NodeLiteral:  lit,
 		Nodes:        nodes,
 		NeedsPattern: b.usesPattern,
+		// A type holding raw JSON has no fields, so --strict-read-write's flat
+		// key lists have nowhere to live and the flag did nothing here at all.
+		// minDepth is 1 rather than 2 for exactly that reason.
+		AccessRules: g.accessRulesFor(s, 1),
 	}
 }
 

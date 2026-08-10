@@ -100,8 +100,22 @@ type StructDef struct {
 	// Config.StrictReadWrite. Empty under the default configuration, so the
 	// templates emit nothing and generated output is byte-identical to what it
 	// was before the keywords were parsed at all.
-	ReadOnlyKeys           []string
-	WriteOnlyKeys          []string
+	ReadOnlyKeys  []string
+	WriteOnlyKeys []string
+	// AccessRules says the same thing for every location *below* a member of
+	// this struct, and is populated under the same flag. The two lists above are
+	// what a Go field can answer for; these are the positions where the value
+	// stays raw JSON and no nested type is ever decoded -- a prefixItems slot, a
+	// contains element, a patternProperties value -- which is where the flag was
+	// a silent no-op until issue #219. See accessRulesFor.
+	AccessRules []AccessRule
+	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
+	// The decoder needs to know even where this struct carries no key of its own:
+	// a refusal arriving from a nested type has to be held rather than returned,
+	// so that the value is fully populated and a Validate check -- which must
+	// never see the refusal at all -- can decode into it and get an answer about
+	// the schema. See accessRulesFor and issue #219.
+	StrictReadWrite        bool
 	Fields                 []FieldDef
 	OneOfs                 []OneOfDef
 	AdditionalProperties   *AdditionalPropertiesDef
@@ -759,6 +773,13 @@ type ObjectPropertyCheck struct {
 type PatternPropertyDef struct {
 	Pattern     string // regex pattern (e.g., "^v", "f.o")
 	IsForbidden bool   // true when sub-schema is boolean false (matching keys rejected)
+	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
+	// See TupleItemDef.StrictReadWrite: a matched value is decoded into TypeName
+	// below, and under the flag that decoder refuses a document setting a
+	// readOnly property -- which arrived out of Validate() as
+	// `patternProperties ^k: key "k1": ro: read-only property may not be set`,
+	// a verdict about an annotation that constrains no document (issue #219).
+	StrictReadWrite bool
 	// TypeName is the generated type a matching value is decoded into and
 	// validated through. It is how everything beyond a scalar keyword reaches a
 	// matched value: nested properties, a $ref, an enum, items, a composition.
@@ -1313,6 +1334,13 @@ type TupleItemDef struct {
 	TypeName string // Go type name for this position (e.g., "Item", "SubItem")
 	JSONType string // simple JSON type constraint (e.g., "integer", "string", "number", "boolean", "null", "array", "object")
 	IsFalse  bool   // boolean false schema — reject any value at this position
+	// StrictReadWrite says the file was generated under Config.StrictReadWrite,
+	// which is what decides how this position's value is decoded for the check.
+	// The type named above carries the flag's readOnly refusal in its own
+	// decoder, and a Validate that let it through would put an annotation into a
+	// validation verdict -- issue #219's middle group, where a tuple slot
+	// answered `read-only property may not be set` from Validate().
+	StrictReadWrite bool
 }
 
 // AliasDef represents a defined type (type Name Underlying).
@@ -1629,6 +1657,10 @@ type InferredAliasDef struct {
 	ValidateAs       string
 	NeedsNullCheck   bool
 
+	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
+	// See TupleItemDef.StrictReadWrite.
+	StrictReadWrite bool
+
 	// Item-level validation for inferred arrays:
 	ItemsFalse           bool                // items: false — reject any non-empty array
 	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
@@ -1673,6 +1705,12 @@ type ContainsDef struct {
 	// `items`, a composition -- is delegated here instead of being reduced to
 	// the part Checks can express.
 	TypeName string
+	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
+	// See TupleItemDef.StrictReadWrite: a `contains` counted an element as
+	// non-matching because the flag's decoder refused it, so Validate reported
+	// "no element matches the contains schema" for a document the schema
+	// permits.
+	StrictReadWrite bool
 }
 
 // ContainsCheck describes one validation check applied to each element
@@ -1925,6 +1963,13 @@ type AnnotationSchemaDef struct {
 	// NeedsPattern reports whether the literal names an ECMA-262 pattern, which
 	// is what pulls the regexp engine into the package's helper file.
 	NeedsPattern bool
+
+	// AccessRules is --strict-read-write's reach into a value this type keeps as
+	// raw JSON. A type whose whole schema is held as data has no fields at all,
+	// so the flat key lists a struct carries have nowhere to live here and the
+	// flag did nothing: issue #219's unevaluatedProperties and unevaluatedItems
+	// positions are both this type. See accessRulesFor.
+	AccessRules []AccessRule
 }
 
 // RuntimeNodeVar is one node of a recursive compiled schema, emitted as a

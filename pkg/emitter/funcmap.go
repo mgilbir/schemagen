@@ -57,6 +57,7 @@ func FuncMap() template.FuncMap {
 		"deref":                  derefIntFunc,
 		"validationFeatures":     validationFeaturesFunc,
 		"stringList":             stringListFunc,
+		"accessRules":            accessRulesFunc,
 		"validationValue":        validationValueFunc,
 		"validationNonNil":       validationNonNilFunc,
 		"validationStringSet":    validationStringSetFunc,
@@ -502,6 +503,73 @@ func stringListFunc(features []generator.ValidationFeature) string {
 	parts := make([]string, len(features))
 	for i, feature := range features {
 		parts[i] = fmt.Sprintf("%q", string(feature))
+	}
+	return "[]string{" + strings.Join(parts, ", ") + "}"
+}
+
+// accessRulesFunc renders --strict-read-write's path table as a Go literal.
+//
+// The order is the generator's, which sorted it: the rules refuse and delete the
+// same things whichever way round they are read, but a generated file that
+// changed between runs of one input would be unusable.
+func accessRulesFunc(rules []generator.AccessRule) string {
+	if len(rules) == 0 {
+		return "nil"
+	}
+	var b strings.Builder
+	b.WriteString("[]_accessRule{\n")
+	for _, rule := range rules {
+		b.WriteString("\t{Path: []_accessStep{")
+		for i, step := range rule.Path {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("{Kind: " + accessStepKindName(step.Kind))
+			if step.Name != "" {
+				fmt.Fprintf(&b, ", Name: %q", step.Name)
+			}
+			if step.Index != 0 {
+				fmt.Fprintf(&b, ", Index: %d", step.Index)
+			}
+			if len(step.Except) > 0 {
+				b.WriteString(", Except: " + goStringSlice(step.Except))
+			}
+			if len(step.ExceptPatterns) > 0 {
+				b.WriteString(", ExceptPatterns: " + goStringSlice(step.ExceptPatterns))
+			}
+			b.WriteString("}")
+		}
+		b.WriteString("}")
+		if rule.ReadOnly {
+			b.WriteString(", ReadOnly: true")
+		}
+		if rule.WriteOnly {
+			b.WriteString(", WriteOnly: true")
+		}
+		b.WriteString("},\n")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
+func accessStepKindName(k generator.AccessStepKind) string {
+	switch k {
+	case generator.AccessPattern:
+		return "_accessPattern"
+	case generator.AccessOther:
+		return "_accessOther"
+	case generator.AccessItems:
+		return "_accessItems"
+	case generator.AccessTuple:
+		return "_accessTuple"
+	}
+	return "_accessProperty"
+}
+
+func goStringSlice(values []string) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = fmt.Sprintf("%q", v)
 	}
 	return "[]string{" + strings.Join(parts, ", ") + "}"
 }

@@ -59,7 +59,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 
-	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys}}
+	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,23 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		delete(obj, _woKey)
 	}
 	{{- end}}
+	{{- if $struct.AccessRules}}
+	// The same, for the locations no Go field answers for: a tuple slot, a
+	// contains element, a patternProperties value, and whatever those hold in
+	// turn. The loop above can only name a member of this object; these are
+	// paths down to one. Until issue #219 the flag reached none of them, and a
+	// writeOnly secret one level below a struct field was written straight back
+	// out. See _accessStripWriteOnly.
+	{
+		_out, err := json.Marshal(obj)
+		if err != nil {
+			return nil, err
+		}
+		return _accessStripWriteOnly(_out, {{$struct.Name}}AccessRules)
+	}
+	{{- else}}
 	return json.Marshal(obj)
+	{{- end}}
 	{{- else}}
 	return json.Marshal(aux)
 	{{- end}}

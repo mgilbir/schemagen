@@ -54,6 +54,18 @@ type HelperSet struct {
 	Format             bool // schemagenFormat* -- one function per asserted format
 	Content            bool // schemagenContentString -- the content vocabulary's decode-and-parse check
 
+	// Access is --strict-read-write's raw-JSON walker: the path model that
+	// reaches the readOnly/writeOnly locations no Go field answers for, and the
+	// refusal type a Validate check has to be able to tell from a real decode
+	// failure. Conditional like every other block here -- the default
+	// configuration emits none of it, and generated output is byte-identical to
+	// what it was before the keywords were parsed at all.
+	Access bool
+	// AccessPattern is the walker's ECMA-262 arm, split off for the reason
+	// AnnotationsPattern is: the engine is a third-party dependency, and a
+	// package whose rules match no key by pattern should not acquire it.
+	AccessPattern bool
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -68,7 +80,7 @@ type HelperSet struct {
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname &&
-		!h.Content
+		!h.Content && !h.Access
 }
 
 // Merge folds another set into this one.
@@ -87,6 +99,8 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
 	h.FormatHostname = h.FormatHostname || other.FormatHostname
+	h.Access = h.Access || other.Access
+	h.AccessPattern = h.AccessPattern || other.AccessPattern
 }
 
 // HelpersReferencedBy reports which shared helpers a generated file calls, read
@@ -173,6 +187,20 @@ func HelpersReferencedBy(src string) HelperSet {
 		// type the helpers do not declare, which does not compile.
 		if strings.Contains(src, "Ref: &_rt") || strings.Contains(src, "DynamicRef:") || strings.Contains(src, "DynamicAnchors:") {
 			set.AnnotationsDynamic = true
+		}
+	}
+	// --strict-read-write's walker. Three signals rather than one, because the
+	// three callers are independent: a type may carry rules and never be decoded
+	// from a Validate check, and a Validate check may have to ignore the refusal
+	// in a file whose own types carry no rules at all. The pattern arm is read
+	// off the emitted table for the same reason the evaluator's is -- it is a
+	// literal in the data rather than a call.
+	if strings.Contains(src, "_accessRefuseReadOnly(") || strings.Contains(src, "_accessStripWriteOnly(") ||
+		strings.Contains(src, "_decodeIgnoringReadOnly(") || strings.Contains(src, "_isReadOnlyRefusal(") ||
+		strings.Contains(src, "_readOnlyRefusal{") {
+		set.Access = true
+		if strings.Contains(src, "Kind: _accessPattern") {
+			set.AccessPattern = true
 		}
 	}
 	// jsonInteger and its three container rebuilders come as one block, and the

@@ -3,6 +3,25 @@
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
+	{{- if $struct.StrictReadWrite}}
+	{{- /* --strict-read-write's refusal is decided over the document's own bytes
+	       and applied once the value is whole, rather than returned from the
+	       middle of the decode.
+
+	       Two things need that. The refusal has to win over whatever else the
+	       document is wrong about -- a readOnly property written as null is
+	       present, which is what the keyword is about, and the null rule must not
+	       report first. And a Validate check that decodes raw JSON into this type
+	       has to be able to ignore the refusal and still get a fully populated
+	       value: readOnly is an annotation and constrains no document, so a
+	       verdict that consulted one would answer a question the schema did not
+	       ask. That was issue #219's middle group -- `patternProperties ^k: key
+	       "k1": ro: read-only property may not be set` came back from Validate().
+
+	       See _decodeIgnoringReadOnly and _accessRefuseReadOnly. */}}
+	var _roErr error
+	_bodyErr := func() error {
+	{{- end}}
 	{{- /* Reset synthesized state first so reusing a value across Unmarshal
 	       calls does not resurrect overflow maps, presence tracking, or the
 	       sticky non-object flag from a previous document. */}}
@@ -72,7 +91,21 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
+		{{- if $struct.StrictReadWrite}}
+		// A refusal arriving from a nested type is held rather than returned.
+		// encoding/json records an Unmarshaler's error and goes on filling the
+		// rest of the value, so what is in hand here is complete; returning at
+		// once would leave the presence maps unset and a Validate check reading
+		// this value would under-enforce.
+		if !_isReadOnlyRefusal(err) {
+			return err
+		}
+		if _roErr == nil {
+			_roErr = err
+		}
+		{{- else}}
 		return err
+		{{- end}}
 	}
 	{{- end}}
 	{{- if $struct.HasIntegerDecodes}}
@@ -356,7 +389,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 		} {
 			if _, ok := raw[_roKey]; ok {
-				return fmt.Errorf("%s: read-only property may not be set", _roKey)
+				if _roErr == nil {
+					_roErr = &_readOnlyRefusal{Path: _roKey}
+				}
+				break
 			}
 		}
 		{{- end}}
@@ -502,5 +538,22 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{{- /* _jsonKeys for dependentSchemas and optional validation is populated in the raw block above */}}
 
 	return nil
+	{{- if $struct.StrictReadWrite}}
+	}()
+	{{- if $struct.AccessRules}}
+	// The locations below this struct's own members, which no Go field answers
+	// for: a tuple slot, a contains element, a patternProperties value. See
+	// _accessRefuseReadOnly.
+	if _roErr == nil {
+		if _err := _accessRefuseReadOnly(data, {{$struct.Name}}AccessRules); _err != nil {
+			_roErr = _err
+		}
+	}
+	{{- end}}
+	if _roErr != nil {
+		return _roErr
+	}
+	return _bodyErr
+	{{- end}}
 }
 {{- end}}

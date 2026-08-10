@@ -344,7 +344,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			return fmt.Errorf("items[%d]: %w", _i, _mErr)
 		}
 		var _typed {{.ItemsTypeName}}
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+		if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, _uErr)
 		}
 		if _vErr := _typed.Validate(); _vErr != nil {
@@ -503,7 +503,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				return fmt.Errorf("items[{{$idx}}]: %w", _mErr)
 			}
 			var _typed {{$item.TypeName}}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+			if _uErr := {{if $.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 				return fmt.Errorf("items[{{$idx}}]: %w", _uErr)
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
@@ -532,7 +532,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			return fmt.Errorf("additionalItems[%d]: %w", _i, _mErr)
 		}
 		var _typed {{.AdditionalItemsTypeName}}
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
+		if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 			return fmt.Errorf("additionalItems[%d]: %w", _i, _uErr)
 		}
 		if _vErr := _typed.Validate(); _vErr != nil {
@@ -717,7 +717,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					_cBytes, _cErr := json.Marshal(_uiElem)
 					if _cErr == nil {
 						var _cTyped {{.Contains.TypeName}}
-						if json.Unmarshal(_cBytes, &_cTyped) == nil && _cTyped.Validate() == nil {
+						if {{if .Contains.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped) == nil && _cTyped.Validate() == nil {
 							_evaluatedByContains = true
 						}
 					}

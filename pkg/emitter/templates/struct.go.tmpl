@@ -42,6 +42,16 @@ type {{.Name}} struct {
 	_jsonNulls map[string]bool // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 {{- end}}
 }
+{{- if .AccessRules}}
+
+// {{.Name}}AccessRules is what --strict-read-write has to say about the values
+// below this struct's own members: which of them a document may not set, and
+// which are never written back out. The two key lists in UnmarshalJSON and
+// MarshalJSON answer for the members themselves, which is what a Go field can
+// carry; these are paths down to a member of a value the generated code keeps as
+// raw JSON, where there is no field and no nested decode. See _accessRule.
+var {{.Name}}AccessRules = {{accessRules .AccessRules}}
+{{- end}}
 {{- range .OneOfs}}
 {{template "oneof_interface" mkOneOfCtx . $.Name}}
 {{template "oneof_getters" mkOneOfCtx . $.Name}}
