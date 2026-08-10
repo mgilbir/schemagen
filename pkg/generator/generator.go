@@ -171,6 +171,26 @@ type Generator struct {
 	// each node is walked once however many refs reach it.
 	nullChecked map[*schema.Schema]bool
 
+	// priorTypeDefs holds the type definitions emitted by earlier Generate
+	// calls on this generator, which in shared-types mode are declarations of
+	// the same Go package written to other files.
+	//
+	// g.output is per call, so without this every question of the form "what
+	// kind of type is X" -- does it carry a Validate, what is its zero, does it
+	// reject null, is it an enum -- answers "no such type" for anything an
+	// earlier schema of the package materialized. The name registry
+	// (g.generated, g.nodeTypeNames) already spans the calls, so a $ref into an
+	// earlier document is correctly *typed* as that type and then treated as
+	// unknown by every one of those predicates: issue #218, where a
+	// cross-document $ref produced a field of the right type whose constraints
+	// the parent's Validate never dispatched to.
+	//
+	// Only the lookups read this. The post-passes that mutate definitions stay
+	// on g.output.TypeDefs: an earlier call's defs have been emitted already,
+	// and rewriting them would change nothing in the file and could only
+	// disagree with what is on disk.
+	priorTypeDefs []TypeDef
+
 	// nullSubschemaErr holds the first null-subschema defect found in a
 	// document that arrived through ref resolution rather than through
 	// Generate's argument. Such a document never passed the up-front check --
@@ -471,7 +491,44 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		g.output.Imports = append(g.output.Imports, Import{Path: importPath, Alias: alias})
 	}
 
+	// Keep this call's declarations in scope for the next one. In shared-types
+	// mode they are other files of the same Go package, and the lookups below
+	// have to be able to see them; see priorTypeDefs.
+	if g.config.SharedTypes {
+		g.priorTypeDefs = append(g.priorTypeDefs, g.output.TypeDefs...)
+	}
+
 	return g.output, nil
+}
+
+// typeDefsInScope lists the type definitions the current call may refer to:
+// the ones it has generated so far, followed by those earlier schemas of the
+// same package generated (shared-types mode only; empty otherwise).
+//
+// Current-call definitions come first so a name declared by this call wins,
+// which is the order the single-schema case has always had.
+//
+// Not every lookup over g.output.TypeDefs was widened, only the ones a
+// two-document input can be shown to reach: each call site here has a fixture
+// in cmd/schemagen/crossdocument_test.go or pkg/generator/sharedtypes_test.go
+// that fails without it, or is one of a group asked in a single expression with
+// a site that has (the wrapper-kind chain generateTypeDef asks of a $ref target,
+// the alias-chain
+// resolution canHaveMethodsResolved performs in two places, and the
+// collection/interface pair behind the omitzero decision). The lookups left on
+// g.output.TypeDefs are ones no input reached: isEnumType only suppresses a
+// check another already makes, typeRejectsNull's answer is reached only for a
+// null the decoder has already refused, and primitiveUnderlyingOf and
+// isStringBackedTypeName produced identical output either way. They are the same
+// blindness and would want the same treatment the moment a shape reaches them --
+// but a change nothing can make fail is not one to carry.
+func (g *Generator) typeDefsInScope() []TypeDef {
+	if len(g.priorTypeDefs) == 0 {
+		return g.output.TypeDefs
+	}
+	all := make([]TypeDef, 0, len(g.output.TypeDefs)+len(g.priorTypeDefs))
+	all = append(all, g.output.TypeDefs...)
+	return append(all, g.priorTypeDefs...)
 }
 
 // UnresolvedRefsError reports $refs that no resolver could serve during
@@ -1332,7 +1389,7 @@ func (g *Generator) addRequiredImports() {
 
 // isInferredAlias returns true if a type name was generated as an InferredAliasDef.
 func (g *Generator) isInferredAlias(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, ok := td.(*InferredAliasDef)
 			return ok
@@ -1343,7 +1400,7 @@ func (g *Generator) isInferredAlias(name string) bool {
 
 // isBigIntAlias returns true if a type name was generated as a BigIntAliasDef.
 func (g *Generator) isBigIntAlias(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, ok := td.(*BigIntAliasDef)
 			return ok
@@ -1370,7 +1427,7 @@ func (g *Generator) isInferredAliasType(t GoType) bool {
 
 // isNotSchema returns true if a type name was generated as a NotSchemaDef.
 func (g *Generator) isNotSchema(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, ok := td.(*NotSchemaDef)
 			return ok
@@ -1381,7 +1438,7 @@ func (g *Generator) isNotSchema(name string) bool {
 
 // isTypeOnlySchema returns true if a type name was generated as a TypeOnlySchemaDef.
 func (g *Generator) isTypeOnlySchema(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, ok := td.(*TypeOnlySchemaDef)
 			return ok
@@ -1392,7 +1449,7 @@ func (g *Generator) isTypeOnlySchema(name string) bool {
 
 // isDynamicSchema returns true if a type name was generated as a DynamicSchemaDef.
 func (g *Generator) isDynamicSchema(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, ok := td.(*DynamicSchemaDef)
 			return ok
@@ -1407,17 +1464,28 @@ func (g *Generator) isDynamicSchema(name string) bool {
 // Go does not allow methods on types whose ultimate underlying type is
 // a pointer or interface type.
 func (g *Generator) resolveAliasMethodability() {
-	// Build a map of type name → AliasDef for cross-referencing.
+	// Build a map of type name → AliasDef for cross-referencing. The chain may
+	// leave this file: `type Root Common` where Common came from an earlier
+	// schema of a shared-types package is resolved through that declaration, not
+	// treated as an unknown name (which canHaveMethodsResolvedImpl reads as
+	// method-bearing).
 	aliases := make(map[string]*AliasDef)
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if ad, ok := td.(*AliasDef); ok {
-			aliases[ad.Name] = ad
+			if _, seen := aliases[ad.Name]; !seen {
+				aliases[ad.Name] = ad
+			}
 		}
 	}
 
-	// For each alias, walk the underlying type chain to check if it
-	// ultimately resolves to a pointer or interface.
-	for _, ad := range aliases {
+	// For each alias *of this file*, walk the underlying type chain to check if
+	// it ultimately resolves to a pointer or interface. An earlier call's
+	// aliases already had their flag settled when they were emitted.
+	for _, td := range g.output.TypeDefs {
+		ad, ok := td.(*AliasDef)
+		if !ok {
+			continue
+		}
 		if !canHaveMethodsResolved(ad.Underlying, aliases) {
 			ad.NoMethods = true
 		}
@@ -9708,7 +9776,7 @@ func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	if !ok {
 		return false
 	}
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == nt.Name {
 			switch td.(type) {
 			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
@@ -9802,7 +9870,7 @@ func (g *Generator) isEnumType(name string) bool {
 
 // isStructType returns true if a type name corresponds to an already-generated struct.
 func (g *Generator) isStructType(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == name {
 			_, isStruct := td.(*StructDef)
 			return isStruct
@@ -9880,7 +9948,7 @@ func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
 	if depth > 16 {
 		return false
 	}
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() != name {
 			continue
 		}
@@ -11628,9 +11696,12 @@ func localTypeIsValidatable(td TypeDef) bool {
 }
 
 func (g *Generator) populateValidatableFields() {
-	// Build set of type names that have Validate() methods.
+	// Build set of type names that have Validate() methods. Read from the whole
+	// package, not just this call's file: a field whose type a $ref reached into
+	// another document of a shared-types run is that document's type, and asking
+	// only this file would answer "not validatable" and drop the dispatch.
 	validatableTypes := make(map[string]bool)
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if localTypeIsValidatable(td) {
 			validatableTypes[td.TypeName()] = true
 		}
@@ -13015,7 +13086,7 @@ func elementGoKind(t GoType) string {
 // it, so its own definition has to make the call.
 func (g *Generator) resolveItemValidations() {
 	validatableTypes := make(map[string]bool)
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if localTypeIsValidatable(td) {
 			validatableTypes[td.TypeName()] = true
 		}
@@ -13092,10 +13163,14 @@ func (g *Generator) populateAliasDelegates() {
 		}
 	}
 
+	// The tables answer questions about a *declaration*, so they are built over
+	// the whole package: an alias whose underlying type an earlier schema of a
+	// shared-types run materialized borrows that type's methods on exactly the
+	// same terms as one declared in this file.
 	validatableTypes := make(map[string]bool)
 	unmarshalTypes := make(map[string]bool)
 	marshalTypes := make(map[string]bool)
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		switch d := td.(type) {
 		case *StructDef:
 			validatableTypes[d.Name] = true
@@ -13310,7 +13385,7 @@ func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 }
 
 func (g *Generator) isArrayAlias(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if d, ok := td.(*AliasDef); ok && d.Name == name {
 			_, ok := d.Underlying.(*ArrayType)
 			return ok
@@ -13321,7 +13396,7 @@ func (g *Generator) isArrayAlias(name string) bool {
 
 // isMapAlias reports whether a named type is an alias whose underlying type is a map.
 func (g *Generator) isMapAlias(name string) bool {
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if d, ok := td.(*AliasDef); ok && d.Name == name {
 			_, ok := d.Underlying.(*MapType)
 			return ok
@@ -13351,7 +13426,7 @@ func (g *Generator) isInterfaceType(t GoType) bool {
 	case *PrimitiveType:
 		return v.Name == "any"
 	case *NamedType:
-		for _, td := range g.output.TypeDefs {
+		for _, td := range g.typeDefsInScope() {
 			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
 				pt, isPrim := d.Underlying.(*PrimitiveType)
 				return isPrim && pt.Name == "any"
@@ -13503,7 +13578,7 @@ func (g *Generator) zeroLiteralForType(t GoType) string {
 		return zeroForPrimitive(v.Name)
 	case *NamedType:
 		// Look up the generated type to find the underlying type.
-		for _, td := range g.output.TypeDefs {
+		for _, td := range g.typeDefsInScope() {
 			if td.TypeName() == v.Name {
 				switch d := td.(type) {
 				case *EnumDef:
@@ -15421,7 +15496,7 @@ func (g *Generator) namedTypeIsValidatable(name string) bool {
 	if name == "" {
 		return false
 	}
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() != name {
 			continue
 		}
@@ -15429,8 +15504,8 @@ func (g *Generator) namedTypeIsValidatable(name string) bool {
 		if !ok {
 			return localTypeIsValidatable(td)
 		}
-		aliases := make(map[string]*AliasDef, len(g.output.TypeDefs))
-		for _, other := range g.output.TypeDefs {
+		aliases := make(map[string]*AliasDef, len(g.typeDefsInScope()))
+		for _, other := range g.typeDefsInScope() {
 			if oad, ok := other.(*AliasDef); ok {
 				aliases[oad.Name] = oad
 			}
@@ -16440,7 +16515,7 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 // document the schema admits.
 func (g *Generator) resolvePatternPropertyTypes() {
 	validatable := make(map[string]bool)
-	for _, td := range g.output.TypeDefs {
+	for _, td := range g.typeDefsInScope() {
 		if localTypeIsValidatable(td) {
 			validatable[td.TypeName()] = true
 		}
