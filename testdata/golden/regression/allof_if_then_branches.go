@@ -249,22 +249,9 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 		for _, _nullKey := range []string{
 			"condition",
 			"delay",
-			"message",
-			"title",
-			"type",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
-			}
-		}
-		if _v, ok := raw["notify"]; ok {
-			if err := checkJSONNulls(_v, "notify", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
-			}
-		}
-		if _v, ok := raw["tool"]; ok {
-			if err := checkJSONNulls(_v, "tool", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
 			}
 		}
 		t._jsonRawProps = raw
@@ -276,6 +263,11 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 		// vacuously, and MarshalJSON to write the null back. See issue #110.
 		for _, _nullKey := range []string{
 			"default",
+			"message",
+			"notify",
+			"title",
+			"tool",
+			"type",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				if t._jsonNulls == nil {
@@ -355,16 +347,6 @@ func (t Trigger) MarshalJSON() ([]byte, error) {
 
 // Validate checks Trigger against its JSON Schema constraints.
 func (t Trigger) Validate() error {
-	for _i, _item := range t.Tool {
-		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("tool[%d].%w", _i, err)
-		}
-	}
-	if t.Type != nil {
-		if err := t.Type.Validate(); err != nil {
-			return fmt.Errorf("type.%w", err)
-		}
-	}
 	// Keywords the generated checks cannot state in full, held as schema data and
 	// evaluated against the document.
 	if t._jsonRawProps != nil {

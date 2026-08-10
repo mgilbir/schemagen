@@ -1,16 +1,6 @@
 package tests
 
-import (
-	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/mgilbir/schemagen/pkg/generator"
-)
+import "testing"
 
 // conditionalSubschemaFixtures are the `then` and `else` of an object-level
 // if/then/else read whole, which is issue #209 and the last of the major
@@ -72,16 +62,17 @@ func conditionalSubschemaFixtures() []notFixture {
 			// The neighbouring spellings, one group per allOf branch so that a
 			// document naming one trigger exercises that group and no other.
 			//
-			// Every case here is branch-level. The per-property half of the reading
-			// has no case that can fail: a branch's `properties` are merged into the
-			// struct as fields, and a field enforces its own type and rules whatever
-			// the condition says, so a document constrained by a `then` property is
-			// judged the same before and after this change. Two rows written that
-			// way passed on the unfixed tree, which is what removed them; the
-			// per-property half is pinned on the IR instead. (That the merged field
-			// binds unconditionally is a false reject of its own -- the schema
-			// permits the value where the condition fails -- and it is not this
-			// change's: it is the same on both sides of it.)
+			// Every case here is branch-level, and that was once for want of a
+			// per-property case that could fail: a branch's `properties` were
+			// merged into the struct as fields, and a field enforced its own type
+			// and rules whatever the condition said, so a document constrained by
+			// a `then` property was judged the same before and after #209. That
+			// unconditional binding was a false rejection of its own -- the schema
+			// permits the value where the condition fails -- and issue #213 is it.
+			// Since then a `then` property's rules are held back where this group
+			// is applied in full, so the per-property half does discriminate;
+			// conditional_only_property_positions.json is where it is asked, one
+			// row per position, and this fixture stays what it was.
 			Name:       "conditional_branch_subschema_shapes",
 			SchemaPath: "testdata/schemas/regression/conditional_branch_subschema_shapes.json",
 			Instances: []notInstance{
@@ -186,42 +177,5 @@ func conditionalSubschemaFixtures() []notFixture {
 // TestConditionalBranchesAreReadWhole compiles each fixture and puts every
 // document to the generated type.
 func TestConditionalBranchesAreReadWhole(t *testing.T) {
-	for _, fx := range conditionalSubschemaFixtures() {
-		t.Run(fx.Name, func(t *testing.T) {
-			generated := generateFromSchemaWithConfig(t, fx.SchemaPath, generator.Config{
-				PackageName:  "testpkg",
-				OmitEmpty:    true,
-				RootTypeName: "Root",
-			})
-			const rootType = "Root"
-
-			tmpDir := t.TempDir()
-			generatedMain := strings.Replace(string(generated), "package testpkg", "package main", 1)
-			if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(generatedMain), 0o644); err != nil {
-				t.Fatalf("writing types.go: %v", err)
-			}
-			writeSharedHelpers(t, tmpDir, generatedMain)
-
-			mainGo, err := notInstanceMain(rootType, fx.Instances)
-			if err != nil {
-				t.Fatalf("building main.go: %v", err)
-			}
-			if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(mainGo), 0o644); err != nil {
-				t.Fatalf("writing main.go: %v", err)
-			}
-			if err := writeTestGoMod(tmpDir, "conditional_subschema_test"); err != nil {
-				t.Fatalf("writing go.mod: %v", err)
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, "go", "run", ".")
-			cmd.Dir = tmpDir
-			out, runErr := cmd.CombinedOutput()
-			text := programOutput(out)
-			if runErr != nil || text != "PASS" {
-				t.Fatalf("%s:\n%s", fx.SchemaPath, text)
-			}
-		})
-	}
+	runInstanceFixtures(t, "conditional_subschema_test", conditionalSubschemaFixtures())
 }

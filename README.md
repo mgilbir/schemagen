@@ -203,7 +203,22 @@ because which branch applies is the document's business and a check keyed on one
 would refuse documents the schema never marked. That holds however the branch is
 reached — including an object-level conditional inside an `allOf` branch, whose
 properties are merged into the same struct: the branch is where such a property
-gets its Go type, and only its annotations are held back.
+gets its Go type, and what it *asserts* is held back.
+
+That last part is not only about annotations. A property an `if`/`then`/`else`
+consequence names and no other schema describes gets its Go type from the branch
+— a merged `then` is where a materialized enum or item struct comes from at all
+— but none of the branch's keywords become rules on the field, because a field's
+rules apply to every document and the consequence applies only to the ones its
+condition selects. The consequence is still enforced, in the one place that can
+put the condition in front of it: the object-level `if`/`then`/`else` check, or
+the runtime evaluator where that check cannot read the group whole. Where a group
+reaches neither — one nested below a second `allOf`, or one carrying a keyword
+the evaluator declines — the field goes on enforcing it, because withdrawing the
+only check there is would be the worse bug. An `anyOf` or `oneOf` variant's
+properties are merged the same way and are *not* narrowed at all: the static
+reading of those decides which variant matched from its required keys and never
+applies a variant's property schemas, so nothing yet stands in for the field.
 
 The doc comment follows the same line, so the generated type does not document a
 contract it does not enforce. It stops short in one place: a `$ref` written on

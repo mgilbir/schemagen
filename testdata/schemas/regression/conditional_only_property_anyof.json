@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConditionalOnlyPropertyAnyOf",
+  "description": "The other applicator that contributes a property conditionally, kept beside conditional_only_property_positions.json as the line issue #213 stopped at. An anyOf variant's `properties` are merged into the struct exactly as a `then`'s are, and the field asserts them of every document exactly as it did there -- but nothing stands in for the field here: extractObjectAnyOfDefs decides which variant matched from its required keys and its consts, and never applies a variant's property schemas at all. So the narrowing is not taken, the field goes on over-enforcing, and the rows below say which of those two facts each document is measuring.",
+  "type": "object",
+  "allOf": [
+    {
+      "anyOf": [
+        { "required": ["a"], "properties": { "branchOnly": { "enum": ["g", "h"] } } },
+        { "required": ["b"] }
+      ]
+    }
+  ]
+}

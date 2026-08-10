@@ -1009,8 +1009,6 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 		// spelling of the same rule.
 		for _, _nullKey := range []string{
 			"annCondAnyOf",
-			"annCondGroup",
-			"annCondThen",
 			"annGroupPlain",
 			"annPlain",
 			"annViaAllOf",
@@ -1020,9 +1018,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 			"dfltBindsBoth",
 			"dfltBoolViaRef",
 			"dfltCondAnyOf",
-			"dfltCondElse",
 			"dfltCondOneOf",
-			"dfltCondThen",
 			"dfltEmptyViaRef",
 			"dfltInline",
 			"dfltIntViaRef",
@@ -1060,7 +1056,11 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 		// Validate reads this to pass over the keywords a null satisfies
 		// vacuously, and MarshalJSON to write the null back. See issue #110.
 		for _, _nullKey := range []string{
+			"annCondGroup",
+			"annCondThen",
 			"dfltAnyViaRef",
+			"dfltCondElse",
+			"dfltCondThen",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				if a._jsonNulls == nil {

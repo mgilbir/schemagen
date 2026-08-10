@@ -1,0 +1,10 @@
+{
+  "declared": "zz",
+  "thenOnly": null,
+  "elseTrigger": 1,
+  "elseOnly": "unconstrained here",
+  "nestedOnly": null,
+  "refOnly": "also unconstrained",
+  "itemsOnly": [{ "id": "a" }],
+  "deepOnly": "u"
+}
