@@ -1030,6 +1030,23 @@ type ValidationRule struct {
 	// carries no keys and no property to speak of, so a rule reaching one keeps
 	// the nil test alone.
 	PresenceTracked bool
+
+	// IntegerCompare is set on a numeric rule whose instance is held as an
+	// int64 and whose bound names an integer int64 holds exactly. The check is
+	// then made in int64 rather than by converting the value to float64 first.
+	//
+	// The conversion is not a formality above 2^53, which is where consecutive
+	// integers stop having distinct float64s. {"type":"integer","minimum":
+	// 9223372036854775807} compared as float64 admits 9223372036854775806, and
+	// {"exclusiveMaximum": -9007199254740992} refuses -9007199254740993: in each
+	// case the value and the bound arrive as one float64 and the comparison has
+	// nothing left to tell them apart. int64 holds both operands exactly, so
+	// asking it is not an optimisation -- it is the only way to get the answer.
+	//
+	// It is false wherever either half of that is untrue: a "number" instance is
+	// a float64 and has no int64 reading, and a bound of 1.5 is not an integer.
+	// The emitted code is unchanged there.
+	IntegerCompare bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }

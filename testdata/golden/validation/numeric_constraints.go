@@ -117,11 +117,8 @@ func (m Measurement) Validate() error {
 			}
 		}
 	}
-	{
-		q := float64(m.Count) / 5
-		if math.Abs(q-math.Round(q)) > 1e-9 {
-			return fmt.Errorf("count: value %v is not a multiple of 5", m.Count)
-		}
+	if m.Count%5 != 0 {
+		return fmt.Errorf("count: value %v is not a multiple of 5", m.Count)
 	}
 	if m._jsonKeys["rating"] {
 		if m.Rating != nil && float64(*m.Rating) < 0 {

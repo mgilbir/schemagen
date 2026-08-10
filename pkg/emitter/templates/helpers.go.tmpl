@@ -174,16 +174,90 @@ func (j *jsonInteger) UnmarshalJSON(data []byte) error {
 		*j = jsonInteger(_i)
 		return nil
 	}
-	// Float notation with nothing after the point (1.0, 1e2). The bounds are the
-	// int64 range as a float64, which the value has to survive to be
-	// representable at all.
-	if _f, _fErr := _n.Float64(); _fErr == nil {
-		if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-			*j = jsonInteger(int64(_f))
-			return nil
-		}
+	// Float notation with nothing after the point (1.0, 1e2), read exactly.
+	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+		*j = jsonInteger(_i)
+		return nil
 	}
 	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+}
+
+// jsonIntegerFromLiteral reads a JSON number literal as an int64, exactly.
+//
+// It is decimal arithmetic on the digits, not a parse into float64 and a
+// conversion back. float64 cannot be asked this question: it holds 2^63 and
+// 2^63-1 as the same number, so a guard written over it either accepts
+// 9223372036854775808 -- which no int64 holds, and which int64(float64) turns
+// into its own negation -- or rejects 9223372036854775807, which is MaxInt64
+// written out. Both were true here in turn, and only the first was visible.
+//
+// Zero fractional part is what makes a number an integer from draft 6 on, so
+// 1.0, 1e2 and 100 all answer, and 1.5 does not. A magnitude no int64 holds
+// answers false rather than a wrapped value.
+func jsonIntegerFromLiteral(s string) (int64, bool) {
+	_mant, _exp := s, 0
+	if _i := strings.IndexAny(s, "eE"); _i >= 0 {
+		_mant = s[:_i]
+		_e, _err := strconv.Atoi(s[_i+1:])
+		if _err != nil {
+			// An exponent this large names no int64, unless the mantissa is
+			// zero -- which is decided below, without building the number.
+			_exp = 0
+			_mant = strings.TrimLeft(_mant, "+-")
+			if strings.Trim(strings.Replace(_mant, ".", "", 1), "0") == "" {
+				return 0, true
+			}
+			return 0, false
+		}
+		_exp = _e
+	}
+	_neg := false
+	if len(_mant) > 0 && (_mant[0] == '-' || _mant[0] == '+') {
+		_neg = _mant[0] == '-'
+		_mant = _mant[1:]
+	}
+	_digits := _mant
+	if _i := strings.IndexByte(_mant, '.'); _i >= 0 {
+		_digits = _mant[:_i] + _mant[_i+1:]
+		_exp -= len(_mant) - _i - 1
+	}
+	if _digits == "" {
+		return 0, false
+	}
+	for _i := 0; _i < len(_digits); _i++ {
+		if _digits[_i] < '0' || _digits[_i] > '9' {
+			return 0, false
+		}
+	}
+	if strings.Trim(_digits, "0") == "" {
+		return 0, true
+	}
+	switch {
+	case _exp < 0:
+		// The dropped digits are fractional: the value is an integer only when
+		// every one of them is zero.
+		_cut := len(_digits) + _exp
+		if _cut < 0 {
+			return 0, false
+		}
+		if strings.Trim(_digits[_cut:], "0") != "" {
+			return 0, false
+		}
+		_digits = _digits[:_cut]
+	case _exp > 0:
+		// 10^19 is already past int64, so a shift that large cannot land inside
+		// it -- the mantissa is known non-zero by here. Refusing before padding
+		// also keeps a hostile 1e999999999 from allocating the zeros.
+		if _exp > 19 {
+			return 0, false
+		}
+		_digits += strings.Repeat("0", _exp)
+	}
+	if _neg {
+		_digits = "-" + _digits
+	}
+	_v, _err := strconv.ParseInt(_digits, 10, 64)
+	return _v, _err == nil
 }
 
 // jsonIntegerSlice, jsonIntegerMap and jsonIntegerPtr rebuild a container of

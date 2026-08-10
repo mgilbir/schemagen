@@ -81,17 +81,15 @@ func (a *AnnBigInt) UnmarshalJSON(data []byte) error {
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
 	if strings.ContainsAny(_s, ".eE") {
-		if _f, _fErr := _n.Float64(); _fErr == nil {
-			if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-				_i64 := int64(_f)
-				// Verify no precision loss: int64 → float64 must round-trip.
-				if float64(_i64) == _f {
-					a._int64 = _i64
-					a._isBigInt = false
-					a._bigInt = nil
-					return nil
-				}
-			}
+		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
+		// The round-trip check this replaces asked float64 whether it had lost
+		// anything, which is the one question it cannot answer -- 2^53+1 comes
+		// back as 2^53 and round-trips perfectly.
+		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+			a._int64 = _i64
+			a._isBigInt = false
+			a._bigInt = nil
+			return nil
 		}
 	}
 	// Try big.Int for values that overflow int64.
@@ -194,7 +192,7 @@ var AnnDynamicSchema = _schemaNode{
 			Type:      []string{"string"},
 		},
 		_schemaNode{
-			Minimum: _floatPtr(5.0),
+			Minimum: _floatPtr(5),
 			Type:    []string{"integer"},
 		},
 	},
@@ -722,17 +720,15 @@ func (d *DepBigInt) UnmarshalJSON(data []byte) error {
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
 	if strings.ContainsAny(_s, ".eE") {
-		if _f, _fErr := _n.Float64(); _fErr == nil {
-			if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-				_i64 := int64(_f)
-				// Verify no precision loss: int64 → float64 must round-trip.
-				if float64(_i64) == _f {
-					d._int64 = _i64
-					d._isBigInt = false
-					d._bigInt = nil
-					return nil
-				}
-			}
+		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
+		// The round-trip check this replaces asked float64 whether it had lost
+		// anything, which is the one question it cannot answer -- 2^53+1 comes
+		// back as 2^53 and round-trips perfectly.
+		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+			d._int64 = _i64
+			d._isBigInt = false
+			d._bigInt = nil
+			return nil
 		}
 	}
 	// Try big.Int for values that overflow int64.
@@ -1283,17 +1279,15 @@ func (p *PlainBigInt) UnmarshalJSON(data []byte) error {
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
 	if strings.ContainsAny(_s, ".eE") {
-		if _f, _fErr := _n.Float64(); _fErr == nil {
-			if _f == math.Trunc(_f) && !math.IsInf(_f, 0) && _f >= -9.223372036854776e+18 && _f <= 9.223372036854776e+18 {
-				_i64 := int64(_f)
-				// Verify no precision loss: int64 → float64 must round-trip.
-				if float64(_i64) == _f {
-					p._int64 = _i64
-					p._isBigInt = false
-					p._bigInt = nil
-					return nil
-				}
-			}
+		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
+		// The round-trip check this replaces asked float64 whether it had lost
+		// anything, which is the one question it cannot answer -- 2^53+1 comes
+		// back as 2^53 and round-trips perfectly.
+		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+			p._int64 = _i64
+			p._isBigInt = false
+			p._bigInt = nil
+			return nil
 		}
 	}
 	// Try big.Int for values that overflow int64.

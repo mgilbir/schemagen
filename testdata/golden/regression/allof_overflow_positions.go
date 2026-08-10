@@ -196,12 +196,12 @@ var AllOfOverflowPositionsItemsItemSchema = _schemaNode{
 	AllOf: []_schemaNode{
 		_schemaNode{
 			AdditionalProperties: _node(_schemaNode{
-				Minimum: _floatPtr(5.0),
+				Minimum: _floatPtr(5),
 			}),
 		},
 		_schemaNode{
 			AdditionalProperties: _node(_schemaNode{
-				Maximum: _floatPtr(9.0),
+				Maximum: _floatPtr(9),
 			}),
 		},
 	},
@@ -646,12 +646,12 @@ var AllOfOverflowPositionsTwoBranchesSchema = _schemaNode{
 	AllOf: []_schemaNode{
 		_schemaNode{
 			AdditionalProperties: _node(_schemaNode{
-				Minimum: _floatPtr(5.0),
+				Minimum: _floatPtr(5),
 			}),
 		},
 		_schemaNode{
 			AdditionalProperties: _node(_schemaNode{
-				Maximum: _floatPtr(9.0),
+				Maximum: _floatPtr(9),
 			}),
 		},
 	},
@@ -714,14 +714,14 @@ var AllOfOverflowPositionsViaRefSchema = _schemaNode{
 			AllOf: []_schemaNode{
 				_schemaNode{
 					AdditionalProperties: _node(_schemaNode{
-						Minimum: _floatPtr(5.0),
+						Minimum: _floatPtr(5),
 					}),
 				},
 			},
 		},
 		_schemaNode{
 			AdditionalProperties: _node(_schemaNode{
-				Maximum: _floatPtr(9.0),
+				Maximum: _floatPtr(9),
 			}),
 		},
 	},

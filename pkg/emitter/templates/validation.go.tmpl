@@ -198,64 +198,78 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{.Value}}", *{{$recv}}.{{.FieldName}})
+	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} < {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBound .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if float64({{$recv}}.{{.FieldName}}) < {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{.Value}}", {{$recv}}.{{.FieldName}})
+	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} < {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBound .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{.Value}}", *{{$recv}}.{{.FieldName}})
+	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} > {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBound .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if float64({{$recv}}.{{.FieldName}}) > {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{.Value}}", {{$recv}}.{{.FieldName}})
+	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} > {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBound .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) <= {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{.Value}}", *{{$recv}}.{{.FieldName}})
+	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} <= {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBound .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if float64({{$recv}}.{{.FieldName}}) <= {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{.Value}}", {{$recv}}.{{.FieldName}})
+	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} <= {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBound .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && float64(*{{$recv}}.{{.FieldName}}) >= {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{.Value}}", *{{$recv}}.{{.FieldName}})
+	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} >= {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBound .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if float64({{$recv}}.{{.FieldName}}) >= {{.Value}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{.Value}}", {{$recv}}.{{.FieldName}})
+	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} >= {{numBound .}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBound .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
+	{{- if .IntegerCompare}}
+	{{- /* Exact: both operands are int64, so divisibility is a remainder
+	       rather than a float64 quotient compared against a tolerance. */}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && *{{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
+	if {{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- else}}
 	{
 		{{- if .IsPointer}}
 		if {{$recv}}.{{.FieldName}} != nil {
-		q := float64(*{{$recv}}.{{.FieldName}}) / {{.Value}}
+		q := float64(*{{$recv}}.{{.FieldName}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{.Value}}", *{{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", *{{$recv}}.{{.FieldName}})
 		}
 		}
 		{{- else}}
-		q := float64({{$recv}}.{{.FieldName}}) / {{.Value}}
+		q := float64({{$recv}}.{{.FieldName}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{.Value}}", {{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", {{$recv}}.{{.FieldName}})
 		}
 		{{- end}}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	{{- if .IsPointer}}

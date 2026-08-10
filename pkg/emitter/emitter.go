@@ -155,7 +155,11 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
 	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.Format, "fmt")
-	add(helpers.Dynamic || helpers.Integer, "math")
+	add(helpers.Dynamic, "math")
+	// jsonIntegerFromLiteral reads the number as decimal digits, which is what
+	// makes it exact where a parse into float64 could not be.
+	add(helpers.Integer, "strconv")
+	add(helpers.Integer, "strings")
 	add(helpers.Annotations, "reflect")
 	add(helpers.Annotations, "strconv")
 	// The regexp engine only comes in when a compiled schema actually names a

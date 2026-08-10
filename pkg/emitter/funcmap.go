@@ -2,7 +2,6 @@ package emitter
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"text/template"
 	"unicode"
@@ -49,6 +48,8 @@ func FuncMap() template.FuncMap {
 		"goStringQuote":          goStringQuoteFunc,
 		"ecmaPattern":            ecmaPatternLiteralFunc,
 		"dynNum":                 dynNumFunc,
+		"numOperand":             numOperandFunc,
+		"numBound":               numBoundFunc,
 		"hasManualFields":        hasManualFieldsFunc,
 		"ppTypeValue":            ppTypeValueFunc,
 		"ppTypeValues":           ppTypeValuesFunc,
@@ -596,24 +597,24 @@ func goTypeFunc(v any) string {
 }
 
 // enumValueFunc formats an enum value as a Go literal.
-// Strings are quoted, numeric types are left as-is.
+// Strings are quoted; a number is written as the schema wrote it.
+//
+// The number goes to generator.GoNumberLiteral rather than through float64.
+// It used to be rendered by converting to int64 and back to test whether the
+// float was whole, which decided two things wrongly for one and the same
+// reason: 9223372036854775807 had already become 2^63 by the time it arrived,
+// the round trip through int64 then said "not whole", and the constant was
+// emitted as 9.223372036854776e+18 -- a float literal in an int64 constant
+// declaration, which does not compile. Below that threshold the same rounding
+// declared a neighbouring integer instead, silently.
 func enumValueFunc(v any) string {
-	switch val := v.(type) {
-	case string:
-		return fmt.Sprintf("%q", val)
-	case int:
-		return fmt.Sprintf("%d", val)
-	case int64:
-		return fmt.Sprintf("%d", val)
-	case float64:
-		// If the float is an integer value, emit without decimal.
-		if val == float64(int64(val)) {
-			return fmt.Sprintf("%d", int64(val))
-		}
-		return fmt.Sprintf("%g", val)
-	default:
-		return fmt.Sprintf("%v", val)
+	if s, ok := v.(string); ok {
+		return fmt.Sprintf("%q", s)
 	}
+	if lit := generator.GoNumberLiteral(v); lit != "" {
+		return lit
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // receiverNameFunc takes a type name and returns a single lowercase character
@@ -790,25 +791,40 @@ func requiredFieldsListFunc(fields []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+// numOperandFunc renders the instance side of a numeric check: converted to
+// float64 ordinarily, and left as it is for a rule the generator settled as an
+// int64 comparison. See ValidationRule.IntegerCompare.
+//
+// A rule that never sets the flag -- every one built for a "number" -- emits
+// the source it emitted before.
+func numOperandFunc(rule generator.ValidationRule, expr string) string {
+	if rule.IntegerCompare {
+		return expr
+	}
+	return "float64(" + expr + ")"
+}
+
+// numBoundFunc renders a rule's bound as the Go constant its comparison needs:
+// integer notation when the check is made in int64, and the literal the schema
+// wrote otherwise.
+func numBoundFunc(rule generator.ValidationRule) string {
+	if lit := generator.GoNumberLiteral(rule.Value); lit != "" {
+		return lit
+	}
+	return fmt.Sprintf("%v", rule.Value)
+}
+
 // dynNumFunc renders a JSON Schema numeric constraint as a Go float64 literal.
-// strconv with 'g' and -1 precision round-trips the value exactly, and the
-// explicit decimal point keeps whole numbers typed as float64 rather than an
-// untyped integer constant.
+//
+// The literal the schema wrote is used, so a bound keeps every digit it was
+// given; the trailing ".0" is added when the literal has no decimal point or
+// exponent, which is what keeps a whole number typed as float64 rather than as
+// an untyped integer constant in the expressions these appear in.
 func dynNumFunc(v any) string {
-	var f float64
-	switch n := v.(type) {
-	case float64:
-		f = n
-	case float32:
-		f = float64(n)
-	case int:
-		f = float64(n)
-	case int64:
-		f = float64(n)
-	default:
+	s := generator.GoNumberLiteral(v)
+	if s == "" {
 		return fmt.Sprintf("%v", v)
 	}
-	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}

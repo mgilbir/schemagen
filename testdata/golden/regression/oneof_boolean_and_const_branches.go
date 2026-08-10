@@ -465,7 +465,7 @@ var OneOfBooleanAndConstBranchesTypedEnumBranchSchema = _schemaNode{
 		_schemaNode{
 			Properties: []_schemaMember{
 				{Key: "k", Node: _schemaNode{
-					Minimum: _floatPtr(10.0),
+					Minimum: _floatPtr(10),
 					Type:    []string{"integer"},
 				}},
 			},

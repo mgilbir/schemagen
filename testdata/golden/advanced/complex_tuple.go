@@ -171,12 +171,12 @@ func (e EventRecordItem2) Validate() error {
 		}
 	}
 	if e._jsonKeys["code"] {
-		if e.Code != nil && float64(*e.Code) < 100 {
+		if e.Code != nil && *e.Code < 100 {
 			return fmt.Errorf("code: value %v is less than minimum 100", *e.Code)
 		}
 	}
 	if e._jsonKeys["code"] {
-		if e.Code != nil && float64(*e.Code) > 599 {
+		if e.Code != nil && *e.Code > 599 {
 			return fmt.Errorf("code: value %v exceeds maximum 599", *e.Code)
 		}
 	}

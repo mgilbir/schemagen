@@ -1,7 +1,6 @@
 package generator
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -271,7 +270,7 @@ func objectPropertyChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if s.Const != nil {
 		value = *s.Const
 	}
-	encoded, err := json.Marshal(value)
+	encoded, err := constJSONValue(value)
 	if err != nil {
 		return nil, false
 	}
@@ -374,7 +373,7 @@ func objectPropertyChecksLenient(s *schema.Schema) []DynamicCheck {
 		if s.Const != nil {
 			value = *s.Const
 		}
-		encoded, err := json.Marshal(value)
+		encoded, err := constJSONValue(value)
 		if err != nil {
 			return nil
 		}

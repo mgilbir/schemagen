@@ -233,12 +233,12 @@ func (c CompanyEmployeesItem) Validate() error {
 		}
 	}
 	if c._jsonKeys["age"] {
-		if c.Age != nil && float64(*c.Age) < 18 {
+		if c.Age != nil && *c.Age < 18 {
 			return fmt.Errorf("age: value %v is less than minimum 18", *c.Age)
 		}
 	}
 	if c._jsonKeys["age"] {
-		if c.Age != nil && float64(*c.Age) > 130 {
+		if c.Age != nil && *c.Age > 130 {
 			return fmt.Errorf("age: value %v exceeds maximum 130", *c.Age)
 		}
 	}

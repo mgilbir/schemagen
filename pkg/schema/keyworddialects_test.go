@@ -273,7 +273,7 @@ func TestDialectGateRunsBeforeTheLegacyRewrites(t *testing.T) {
 		if len(s.AllOf) != 1 {
 			t.Errorf("allOf = %v, want the one branch `extends` produced; the gate deleted the rewrite's output", s.AllOf)
 		}
-		if s.MultipleOf == nil || *s.MultipleOf != 2 {
+		if s.MultipleOf == nil || *s.MultipleOf != "2" {
 			t.Errorf("multipleOf = %v, want 2 from `divisibleBy`", s.MultipleOf)
 		}
 		if s.Not == nil {
@@ -354,12 +354,12 @@ func TestDialectGateFollowsAnEmbeddedResourcesOwnSchema(t *testing.T) {
 	s.Normalize()
 
 	legacy := s.Defs["legacy"]
-	if legacy.MultipleOf == nil || *legacy.MultipleOf != 2 {
+	if legacy.MultipleOf == nil || *legacy.MultipleOf != "2" {
 		t.Errorf("embedded draft-3 resource: multipleOf = %v, want 2 from its own `divisibleBy` "+
 			"(and its `multipleOf`, which draft 3 does not define, dropped)", legacy.MultipleOf)
 	}
 	modern := s.Defs["modern"]
-	if modern.MultipleOf == nil || *modern.MultipleOf != 3 {
+	if modern.MultipleOf == nil || *modern.MultipleOf != "3" {
 		t.Errorf("2020-12 node: multipleOf = %v, want 3; its `divisibleBy` is draft 3's alone", modern.MultipleOf)
 	}
 	if modern.DivisibleBy != nil {

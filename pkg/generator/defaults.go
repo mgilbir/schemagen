@@ -31,43 +31,38 @@ func defaultToGoLiteral(defaultVal any, goType GoType) (string, error) {
 			return strconv.Quote(s), nil
 		}
 	case "int64", "*int64":
-		switch v := defaultVal.(type) {
-		case float64:
-			// JSON numbers are always float64 from json.Unmarshal.
-			if math.IsNaN(v) || v != math.Trunc(v) {
-				return "", fmt.Errorf("default value %v is not an integer", v)
-			}
-			// Converting an out-of-range float64 to int64 is undefined in Go, so
-			// reject rather than emit an arbitrary literal. -2^63 is exactly
-			// representable and is a valid int64, hence the asymmetric bounds.
-			const int64Bound = float64(1 << 63) // 2^63
-			if v >= int64Bound || v < -int64Bound {
-				return "", fmt.Errorf("default value %v does not fit in int64", v)
-			}
-			intVal := int64(v)
-			if typeName == "int64" && intVal == 0 {
-				return "", nil // zero value, no-op (for non-pointer)
-			}
-			return fmt.Sprintf("%d", intVal), nil
-		case int:
-			if typeName == "int64" && v == 0 {
-				return "", nil
-			}
-			return fmt.Sprintf("%d", v), nil
+		n, isNum := schemaNumber(defaultVal)
+		if !isNum {
+			break
 		}
+		// Read as an exact integer rather than through float64. A default of
+		// 9223372036854775807 is an int64 and is not a float64, and asking
+		// float64 first both loses it and accepts 9223372036854775808, which no
+		// int64 holds.
+		intVal, ok := n.Int64()
+		if !ok {
+			if f, fine := n.Float64(); fine && f == math.Trunc(f) && !math.IsNaN(f) {
+				return "", fmt.Errorf("default value %s does not fit in int64", n)
+			}
+			return "", fmt.Errorf("default value %s is not an integer", n)
+		}
+		if typeName == "int64" && intVal == 0 {
+			return "", nil // zero value, no-op (for non-pointer)
+		}
+		return strconv.FormatInt(intVal, 10), nil
 	case "float64", "*float64":
-		switch v := defaultVal.(type) {
-		case float64:
-			if typeName == "float64" && v == 0 {
-				return "", nil // zero value, no-op (for non-pointer)
-			}
-			return strconv.FormatFloat(v, 'f', -1, 64), nil
-		case int:
-			if typeName == "float64" && v == 0 {
-				return "", nil
-			}
-			return fmt.Sprintf("%d.0", v), nil
+		n, isNum := schemaNumber(defaultVal)
+		if !isNum {
+			break
 		}
+		f, ok := n.Float64()
+		if !ok {
+			return "", fmt.Errorf("default value %s is not a float64", n)
+		}
+		if typeName == "float64" && f == 0 {
+			return "", nil // zero value, no-op (for non-pointer)
+		}
+		return strconv.FormatFloat(f, 'f', -1, 64), nil
 	case "bool", "*bool":
 		if b, ok := defaultVal.(bool); ok {
 			if typeName == "bool" && !b {

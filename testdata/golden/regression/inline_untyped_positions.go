@@ -658,7 +658,7 @@ func (i InlineUntypedPositionsSlotItem0) String() string { return string(i._raw)
 
 // InlineUntypedPositionsSlotItem0Schema is the schema InlineUntypedPositionsSlotItem0 validates against.
 var InlineUntypedPositionsSlotItem0Schema = _schemaNode{
-	Minimum: _floatPtr(5.0),
+	Minimum: _floatPtr(5),
 }
 
 // Validate checks InlineUntypedPositionsSlotItem0 against its JSON Schema constraints.
