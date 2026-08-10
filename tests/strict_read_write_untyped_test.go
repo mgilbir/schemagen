@@ -97,9 +97,13 @@ func main() {
 		` + "`" + `{"patterned":{"zz":{"ro":1}}}` + "`" + `,
 		// The other boundary, and it is a decision rather than a gap: a
 		// subschema that was not selected contributes no annotation (2020-12
-		// section 7.7.1), so neither of these binds. readWriteAtLocation draws
-		// the same line for a struct's own members, and
-		// TestStrictReadWriteBindsWhereverThePropertyIs is the control there.
+		// section 7.7.1), so readOnly does not bind through either of these.
+		// readWriteAtLocation draws the same line for a struct's own members,
+		// and TestStrictReadWriteBindsWhereverThePropertyIs is the control
+		// there. writeOnly is the half that does bind through a conditional --
+		// the two fail in opposite directions and only one of them can leak --
+		// and TestStrictWriteOnlyFollowsAConditionalAndReadOnlyDoesNot is where
+		// that whole matrix is asserted, position by position.
 		` + "`" + `{"viaThen":{"ro":1}}` + "`" + `,
 		` + "`" + `{"viaAnyOf":{"ro":1}}` + "`" + `,
 	} {

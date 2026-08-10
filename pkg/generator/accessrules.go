@@ -1,7 +1,9 @@
 package generator
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -12,8 +14,11 @@ import (
 // the schema object they are written in. The in-place ones -- allOf and $ref --
 // are not steps at all: unconditionalReachAt folds them into the node being
 // walked, because what they say is said about the same location. anyOf, oneOf,
-// if/then/else, dependentSchemas and not are not steps either, and that is a
-// decision rather than an omission: see accessRulesFor.
+// if/then/else, dependentSchemas and not are not steps either, for the same
+// reason: they describe the value in hand, and differ from the two above only in
+// describing it on some documents rather than all. accessRulesFor walks them at
+// the same path, and what that difference costs is which keyword may be read
+// below one.
 type AccessStepKind int
 
 const (
@@ -87,24 +92,51 @@ const (
 // and has no fields for a list to name.
 //
 // The walk descends through the applicators that name a value inside the one in
-// hand, and through allOf and $ref, which name the same one. It does not descend
-// through anyOf, oneOf, if/then/else, dependentSchemas or not, and that is the
-// line 2020-12 §7.7.1 draws rather than a gap: a subschema that was not selected,
-// or that failed, contributes no annotations, so a rule keyed on one would refuse
-// a document the schema never marked, and drop a value the schema never said to
-// drop. readWriteAtLocation and unconditionalReachAt draw the same line for the
-// flat lists, and TestStrictReadWriteBindsWhereverThePropertyIs is the control
-// that says so. A `not` is the sharper case of the same rule: a `not` that
-// succeeds is a subschema that failed, and a failed subschema contributes
-// nothing at all.
+// hand, and through allOf and $ref, which name the same one.
+//
+// It descends through the conditional applicators too -- anyOf, oneOf,
+// if/then/else, dependentSchemas, not -- but a rule found only below one carries
+// WriteOnly and never ReadOnly, which is the `branched` flag below. That is not a
+// softening of 2020-12 §7.7.1: readOnly is still read only where the schema says
+// it applies to every valid instance, because a refusal keyed on a branch the
+// document never matched refuses a document the schema permits, and a `not` that
+// succeeds is a subschema that failed. writeOnly is a policy in the other
+// direction -- over-stripping loses a field visibly, under-stripping emits a
+// secret silently -- and conditionalReachAt is where that is argued in full.
+// TestStrictReadWriteBindsWhereverThePropertyIs' roViaAnyOf is the control on the
+// readOnly half and it still holds.
+//
+// The `Except` lists an AccessOther step carries are computed from the
+// unconditional reach only, at both settings of the flag. So a branch's
+// `properties` never narrows what an additionalProperties rule covers: narrowing
+// it would take a location *out* of the readOnly walker's reach on the strength
+// of a branch, which is the direction that under-enforces.
 func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule {
 	if s == nil || !g.config.StrictReadWrite {
 		return nil
 	}
 	var out []AccessRule
+	// A location the walk reaches twice -- unconditionally and again through a
+	// branch -- is one rule, not two: the flags are OR-ed onto the entry already
+	// emitted, so a readOnly the unconditional pass found is never overwritten by
+	// a branch that says nothing about it.
+	at := map[string]int{}
+	emit := func(path []AccessStep, ro, wo bool) {
+		if !ro && !wo {
+			return
+		}
+		key := accessRuleKey(path)
+		if i, seen := at[key]; seen {
+			out[i].ReadOnly = out[i].ReadOnly || ro
+			out[i].WriteOnly = out[i].WriteOnly || wo
+			return
+		}
+		at[key] = len(out)
+		out = append(out, AccessRule{Path: path, ReadOnly: ro, WriteOnly: wo})
+	}
 	onPath := map[*schema.Schema]bool{}
-	var walk func(node *schema.Schema, path []AccessStep)
-	walk = func(node *schema.Schema, path []AccessStep) {
+	var walk func(node *schema.Schema, path []AccessStep, branched bool)
+	walk = func(node *schema.Schema, path []AccessStep, branched bool) {
 		if node == nil || len(path) >= maxAccessDepth || len(out) >= maxAccessRules {
 			return
 		}
@@ -157,14 +189,15 @@ func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule 
 				next := step(AccessProperty, name, 0)
 				if len(next) >= minDepth {
 					ro, wo := g.readWriteAtLocation(ps)
-					if ro || wo {
-						out = append(out, AccessRule{Path: next, ReadOnly: ro, WriteOnly: wo})
+					if branched {
+						ro = false
 					}
+					emit(next, ro, wo)
 				}
-				walk(ps, next)
+				walk(ps, next, branched)
 			}
 			for _, pat := range sortedKeys(r.PatternProperties) {
-				walk(r.PatternProperties[pat], step(AccessPattern, pat, 0))
+				walk(r.PatternProperties[pat], step(AccessPattern, pat, 0), branched)
 			}
 			// additionalProperties and unevaluatedProperties reach the same set
 			// of members here. They are not the same keyword -- unevaluated also
@@ -173,7 +206,7 @@ func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule 
 			// does reach, the two名 the same leftovers.
 			for _, value := range []*schema.Schema{additionalPropertiesSchema(r), r.UnevaluatedProperties} {
 				if value != nil {
-					walk(value, step(AccessOther, "", 0))
+					walk(value, step(AccessOther, "", 0), branched)
 				}
 			}
 			tuple := r.PrefixItems
@@ -189,16 +222,16 @@ func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule 
 				}
 			}
 			for i, slot := range tuple {
-				walk(slot, step(AccessTuple, "", i))
+				walk(slot, step(AccessTuple, "", i), branched)
 			}
 			if itemsSchema != nil {
-				walk(itemsSchema, step(AccessItems, "", len(tuple)))
+				walk(itemsSchema, step(AccessItems, "", len(tuple)), branched)
 			}
 			if r.AdditionalItems != nil && len(tuple) > 0 && itemsSchema == nil {
-				walk(r.AdditionalItems.AsSchema(), step(AccessItems, "", len(tuple)))
+				walk(r.AdditionalItems.AsSchema(), step(AccessItems, "", len(tuple)), branched)
 			}
 			if r.UnevaluatedItems != nil {
-				walk(r.UnevaluatedItems, step(AccessItems, "", len(tuple)))
+				walk(r.UnevaluatedItems, step(AccessItems, "", len(tuple)), branched)
 			}
 			// `contains` describes the elements it matches. Which those are is
 			// the document's business, so this is the one descent here that is
@@ -209,11 +242,29 @@ func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule 
 			// decodes into, so `writeOnly` inside a `contains` was emitted
 			// straight back out.
 			if r.Contains != nil {
-				walk(r.Contains, step(AccessItems, "", 0))
+				walk(r.Contains, step(AccessItems, "", 0), branched)
+			}
+			// The conditional applicators, at the same path: each describes the
+			// value in hand rather than a value inside it, exactly as allOf and
+			// $ref do, and differs from them only in applying to some documents
+			// instead of all. Everything found below here is marked `branched`,
+			// which is what holds readOnly to the unconditional reach while
+			// letting writeOnly follow the branch. See conditionalReachAt.
+			for _, branch := range r.AnyOf {
+				walk(branch, path, true)
+			}
+			for _, branch := range r.OneOf {
+				walk(branch, path, true)
+			}
+			for _, branch := range []*schema.Schema{r.If, r.Then, r.Else, r.Not} {
+				walk(branch, path, true)
+			}
+			for _, key := range sortedKeys(r.DependentSchemas) {
+				walk(r.DependentSchemas[key], path, true)
 			}
 		}
 	}
-	walk(s, nil)
+	walk(s, nil, false)
 	if len(out) == 0 {
 		return nil
 	}
@@ -229,6 +280,23 @@ func additionalPropertiesSchema(s *schema.Schema) *schema.Schema {
 		return nil
 	}
 	return s.AdditionalProperties.Schema
+}
+
+// accessRuleKey identifies a location, so that a path the walk reaches twice --
+// once outright and once through a branch -- is one entry in the table whose
+// flags are the union, rather than two entries the generated walker would apply
+// one after the other.
+//
+// The Except lists are not in the key, and cannot be: they are a property of the
+// schema object the step was taken from, so two AccessOther steps at the same
+// path have the same ones by construction. Only Kind, Name and Index say where a
+// step goes.
+func accessRuleKey(path []AccessStep) string {
+	var b strings.Builder
+	for _, s := range path {
+		fmt.Fprintf(&b, "%d\x00%s\x00%d\x00", s.Kind, s.Name, s.Index)
+	}
+	return b.String()
 }
 
 // accessRuleLess orders the emitted table. The rules refuse and delete the same
