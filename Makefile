@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz cogen validate-seeds
+.PHONY: build test lint clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz fuzz-seeds cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -215,8 +215,24 @@ FUZZTIME ?= 60s
 # schemas against 1956 locally, missing all 2241 suite schemas, which are the
 # most realistic shapes available. Making the dependency explicit stops the
 # weaker run from looking like the same run.
-fuzz: download-test-suite
+#
+# fuzz-seeds runs first, and the ordering is the point. `go test -fuzz` gathers
+# baseline coverage over every seed before it mutates anything, and a seed the
+# worker process cannot survive stops the whole run there -- reported as
+# "fuzzing process hung or terminated unexpectedly: exit status 2" against a
+# corpus *position*, with the worker's stderr discarded and no crasher file
+# written. That is what issue #233 was, and read cold it says nothing about
+# which seed or why. fuzz-seeds asks the same question in a form that answers
+# it, in about fifteen seconds, before FUZZTIME is committed to a search that
+# cannot start.
+fuzz: download-test-suite fuzz-seeds
 	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
+
+# The seed corpus, replayed and timed, with no mutation. This is what `go test
+# ./...` runs too -- it is here so that a fuzz run reports a bad seed as a bad
+# seed rather than as a dead worker.
+fuzz-seeds:
+	go test ./tests/... -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline)$$' -count=1
 
 # Layer 2 of the fuzzing effort. FuzzGenerate only proves the pipeline does not
 # panic, which says nothing about whether the code it emits is correct. This

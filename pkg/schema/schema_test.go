@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -1816,4 +1817,354 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 func flexIntPtr(v int) *FlexInt {
 	f := FlexInt(v)
 	return &f
+}
+
+// marshaledKeywordsBySerializing is the reading MarshaledKeywords replaced: send
+// the schema through its own MarshalJSON and decode the result back into an
+// object. It is the definition of the answer, and it is kept here as the oracle
+// the fast implementation is held to, because the fast one is only worth having
+// while the two agree.
+//
+// It is not usable outside a test. It costs the size of the node's whole subtree
+// per call, which is what made the generator cubic in nesting depth and left the
+// fuzz gate unable to get past its own seed corpus -- issue #233.
+func marshaledKeywordsBySerializing(s *Schema) (map[string]bool, bool) {
+	if s == nil {
+		return nil, false
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return nil, false
+	}
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &present); err != nil {
+		return nil, false
+	}
+	seen := make(map[string]bool, len(present))
+	for key := range present {
+		seen[key] = true
+	}
+	return seen, true
+}
+
+// nonZeroFieldValues holds a value for the field types where the generic
+// construction below would build something that is non-empty but not valid JSON.
+// A json.RawMessage of one zero byte is exactly that: encoding/json refuses it,
+// so the oracle would report "cannot be marshaled" and the comparison would be
+// against nothing.
+var nonZeroFieldValues = map[reflect.Type]any{
+	reflect.TypeOf(json.RawMessage(nil)): json.RawMessage(`1`),
+}
+
+// nonZeroFieldValue builds a value of type t that encoding/json will not drop
+// for omitempty: a non-nil pointer, a one-element slice or map, a non-empty
+// string. What it holds does not matter -- omitempty asks about the container.
+func nonZeroFieldValue(t reflect.Type) (reflect.Value, bool) {
+	if v, ok := nonZeroFieldValues[t]; ok {
+		return reflect.ValueOf(v), true
+	}
+	switch t.Kind() {
+	case reflect.Pointer:
+		return reflect.New(t.Elem()), true
+	case reflect.Slice:
+		return reflect.MakeSlice(t, 1, 1), true
+	case reflect.Map:
+		m := reflect.MakeMap(t)
+		key, ok := nonZeroFieldValue(t.Key())
+		if !ok {
+			return reflect.Value{}, false
+		}
+		m.SetMapIndex(key, reflect.Zero(t.Elem()))
+		return m, true
+	case reflect.String:
+		return reflect.ValueOf("x").Convert(t), true
+	case reflect.Bool:
+		return reflect.ValueOf(true).Convert(t), true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflect.ValueOf(int64(1)).Convert(t), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return reflect.ValueOf(uint64(1)).Convert(t), true
+	case reflect.Float32, reflect.Float64:
+		return reflect.ValueOf(float64(1)).Convert(t), true
+	case reflect.Struct:
+		return reflect.Zero(t), true
+	}
+	return reflect.Value{}, false
+}
+
+// TestMarshaledKeywordsMatchesMarshaling is what makes MarshaledKeywords worth
+// trusting.
+//
+// The method answers "which top-level keys would marshaling this schema produce"
+// without marshaling anything, by reading encoding/json's own rules off the
+// struct tags. That is only sound while it agrees with encoding/json, and the two
+// can drift for reasons nobody in this package controls: a field added with a tag
+// option the reader does not model, a field type that grows an IsZero method, a
+// change in what the encoder considers empty. So every field is compared against
+// a real marshal, one at a time and all together, and the corpus is compared node
+// by node.
+//
+// The gates in pkg/generator that decide what a schema states are built on this
+// reading. A field this method silently stops reporting is a constraint the
+// generator silently stops enforcing.
+func TestMarshaledKeywordsMatchesMarshaling(t *testing.T) {
+	same := func(t *testing.T, what string, s *Schema) {
+		t.Helper()
+		want, wantOK := marshaledKeywordsBySerializing(s)
+		got, gotOK := s.MarshaledKeywords()
+		if wantOK != gotOK {
+			t.Fatalf("%s: MarshaledKeywords reported ok=%v, marshaling reported ok=%v", what, gotOK, wantOK)
+		}
+		if !wantOK {
+			return
+		}
+		if !reflect.DeepEqual(want, got) {
+			for key := range want {
+				if !got[key] {
+					t.Errorf("%s: MarshaledKeywords is missing %q, which marshaling writes. Every gate that "+
+						"decides what a schema states reads this set, so a keyword missing here is a "+
+						"constraint the generator stops seeing", what, key)
+				}
+			}
+			for key := range got {
+				if !want[key] {
+					t.Errorf("%s: MarshaledKeywords reports %q, which marshaling does not write", what, key)
+				}
+			}
+			t.FailNow()
+		}
+	}
+
+	t.Run("no key set at all", func(t *testing.T) {
+		if _, ok := (*Schema)(nil).MarshaledKeywords(); ok {
+			t.Fatal("MarshaledKeywords on a nil schema must report ok=false: the set is unknown, not empty")
+		}
+		for _, b := range []bool{true, false} {
+			s := &Schema{BooleanSchema: &b}
+			// The oracle agrees for its own reason: `true` and `false` do not
+			// decode into an object, so it cannot read a key set off them either.
+			if _, ok := marshaledKeywordsBySerializing(s); ok {
+				t.Fatalf("a %v boolean schema marshals to an object?", b)
+			}
+			if _, ok := s.MarshaledKeywords(); ok {
+				t.Fatalf("MarshaledKeywords on the %v boolean schema must report ok=false: `%v` states "+
+					"everything about the values it admits and names no keyword to say it with", b, b)
+			}
+		}
+	})
+
+	tp := reflect.TypeOf(Schema{})
+	all := &Schema{}
+	allValue := reflect.ValueOf(all).Elem()
+
+	t.Run("one field at a time", func(t *testing.T) {
+		for i := range tp.NumField() {
+			f := tp.Field(i)
+			tag := f.Tag.Get("json")
+			if tag == "" || tag == "-" || !f.IsExported() {
+				continue
+			}
+			value, ok := nonZeroFieldValue(f.Type)
+			if !ok {
+				t.Fatalf("field %s is of type %s, which this test does not know how to fill. It cannot "+
+					"compare MarshaledKeywords against marshaling for a field it cannot set, so teach "+
+					"nonZeroFieldValue that kind rather than leaving the field unchecked", f.Name, f.Type)
+			}
+
+			// Zero, then set. Both directions matter: a reader that reported every
+			// tagged field unconditionally would pass the second check alone.
+			bare := &Schema{}
+			same(t, "no field set, asking about "+f.Name, bare)
+
+			one := &Schema{}
+			reflect.ValueOf(one).Elem().Field(i).Set(value)
+			if _, ok := marshaledKeywordsBySerializing(one); !ok {
+				t.Fatalf("a schema stating only %s does not marshal, so this test has no oracle for it. "+
+					"Give nonZeroFieldValues an entry for %s that marshals", f.Name, f.Type)
+			}
+			same(t, "only "+f.Name+" set", one)
+
+			allValue.Field(i).Set(value)
+		}
+	})
+
+	t.Run("every field at once", func(t *testing.T) {
+		if _, ok := marshaledKeywordsBySerializing(all); !ok {
+			t.Fatal("a schema with every field set does not marshal, so this test has no oracle for it")
+		}
+		same(t, "every field set", all)
+	})
+
+	t.Run("corpus", func(t *testing.T) {
+		root := filepath.Join("..", "..", "testdata", "schemas")
+		files := 0
+		nodes := 0
+		err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			var s Schema
+			if json.Unmarshal(data, &s) != nil {
+				return nil // not a schema document; the corpus holds malformed ones on purpose
+			}
+			files++
+			eachSchemaNode(reflect.ValueOf(&s), map[*Schema]bool{}, func(node *Schema) {
+				nodes++
+				// The oracle is asked about the node with its subschemas pruned,
+				// and the answer is held against MarshaledKeywords on the node
+				// itself. Pruning is what keeps this affordable: the oracle costs
+				// the size of the whole subtree, so asking it at all 2000 levels
+				// of testdata/schemas/adversarial/deep/deep-not-2000.json is the
+				// very cubic behaviour issue #233 was. Nothing is given up. The
+				// values a subschema keyword holds are schemas, and each is
+				// compared in its own right when the walk reaches it; every other
+				// field keeps the value the document wrote, which is the part a
+				// marshal can disagree about. And the comparison is across the
+				// pruning, so a prune that changed which keywords are present
+				// fails here rather than hiding a difference.
+				want, wantOK := marshaledKeywordsBySerializing(pruneSubschemas(node))
+				got, gotOK := node.MarshaledKeywords()
+				if wantOK != gotOK || !reflect.DeepEqual(want, got) {
+					t.Fatalf("%s: MarshaledKeywords = %v (ok=%v), marshaling = %v (ok=%v)",
+						path, keywordNames(got), gotOK, keywordNames(want), wantOK)
+				}
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walking %s: %v", root, err)
+		}
+		// The corpus is what makes this check about real documents rather than
+		// synthesized ones, so an empty walk must fail rather than pass silently.
+		if files == 0 || nodes < files {
+			t.Fatalf("walked %s and found %d documents and %d schema nodes; the comparison checked nothing",
+				root, files, nodes)
+		}
+		t.Logf("compared %d schema nodes across %d corpus documents", nodes, files)
+	})
+}
+
+func keywordNames(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for key := range set {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// schemaBearingFields are the indices of the Schema fields whose type can hold
+// another Schema. Computed by reflection, so a subschema keyword added later is
+// included without anyone remembering to.
+var schemaBearingFields = func() []int {
+	var out []int
+	tp := reflect.TypeOf(Schema{})
+	for i := range tp.NumField() {
+		f := tp.Field(i)
+		tag := f.Tag.Get("json")
+		if tag == "" || tag == "-" || !f.IsExported() {
+			continue
+		}
+		if typeReaches(f.Type, reflect.TypeOf(Schema{}), map[reflect.Type]bool{}) {
+			out = append(out, i)
+		}
+	}
+	return out
+}()
+
+func typeReaches(t, target reflect.Type, seen map[reflect.Type]bool) bool {
+	if t == target {
+		return true
+	}
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array:
+		return typeReaches(t.Elem(), target, seen)
+	case reflect.Map:
+		return typeReaches(t.Key(), target, seen) || typeReaches(t.Elem(), target, seen)
+	case reflect.Struct:
+		for i := range t.NumField() {
+			if typeReaches(t.Field(i).Type, target, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pruneSubschemas returns a copy of s in which every keyword whose value can
+// hold a subschema is replaced by the smallest value of its type that
+// encoding/json still writes. Which keywords the copy states is unchanged; what
+// they say is thrown away.
+func pruneSubschemas(s *Schema) *Schema {
+	pruned := *s
+	v := reflect.ValueOf(&pruned).Elem()
+	for _, i := range schemaBearingFields {
+		field := v.Field(i)
+		if isEmptyForJSON(field) {
+			continue
+		}
+		stand, ok := nonZeroFieldValue(field.Type())
+		if !ok {
+			continue // left whole; the comparison is still correct, only slower
+		}
+		field.Set(stand)
+	}
+	return &pruned
+}
+
+// eachSchemaNode calls visit for every *Schema reachable from v, once each.
+//
+// It navigates by reflection rather than by a list of the keywords that hold
+// subschemas, so a keyword added later is walked without anyone remembering to
+// add it here. Unexported fields are skipped: the only one that reaches a Schema
+// is extensionSchemas, a parse cache whose entries are reachable through
+// Extensions anyway.
+func eachSchemaNode(v reflect.Value, seen map[*Schema]bool, visit func(*Schema)) {
+	if !v.IsValid() || !v.CanInterface() {
+		return
+	}
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		if node, ok := v.Interface().(*Schema); ok {
+			if seen[node] {
+				return
+			}
+			seen[node] = true
+			visit(node)
+		}
+		eachSchemaNode(v.Elem(), seen, visit)
+	case reflect.Interface:
+		if !v.IsNil() {
+			eachSchemaNode(v.Elem(), seen, visit)
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if !v.Type().Field(i).IsExported() {
+				continue
+			}
+			eachSchemaNode(v.Field(i), seen, visit)
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			eachSchemaNode(v.Index(i), seen, visit)
+		}
+	case reflect.Map:
+		for _, key := range v.MapKeys() {
+			eachSchemaNode(v.MapIndex(key), seen, visit)
+		}
+	}
 }
