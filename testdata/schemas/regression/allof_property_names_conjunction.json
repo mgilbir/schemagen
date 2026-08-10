@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfPropertyNamesConjunction",
+  "type": "object",
+  "properties": {
+    "narrowed": {
+      "type": "object",
+      "propertyNames": {"enum": ["a", "b"]},
+      "allOf": [{"propertyNames": {"enum": ["b", "c"]}}]
+    },
+    "empty": {
+      "type": "object",
+      "propertyNames": {"enum": ["a"]},
+      "allOf": [{"propertyNames": {"enum": ["b"]}}]
+    }
+  }
+}

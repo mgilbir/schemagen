@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfPropertyConjunction",
+  "type": "object",
+  "properties": {
+    "declared": {"type": "string", "minLength": 2},
+    "reversed": {"type": "string", "maxLength": 9},
+    "lenRootTighter": {"type": "string", "minLength": 4},
+    "lowBound": {"type": "integer", "minimum": 5},
+    "lowBoundRootTighter": {"type": "integer", "minimum": 10},
+    "highBound": {"type": "integer", "maximum": 100},
+    "highBoundRootTighter": {"type": "integer", "maximum": 50},
+    "enumBranchNarrower": {"enum": ["a", "b", "c"]},
+    "enumRootNarrower": {"enum": ["b"]},
+    "constAgainstEnum": {"enum": ["p", "q"]},
+    "typeBranchNarrower": {"type": ["string", "integer"]},
+    "typeRootNarrower": {"type": "integer"},
+    "numberMeetsInteger": {"type": "number"},
+    "twice": {"type": "string", "minLength": 2},
+    "viaRef": {"type": "string", "minLength": 2},
+    "patternFirstWins": {"type": "string", "pattern": "^a"},
+    "numberSpelling": {"type": "number", "enum": [1.0, 2]},
+    "documented": {
+      "type": "string",
+      "title": "Documented",
+      "description": "carried onto the conjunction",
+      "default": "abc",
+      "deprecated": true,
+      "readOnly": true,
+      "minLength": 2
+    },
+    "documentedWriteOnly": {"type": "string", "writeOnly": true, "minLength": 2},
+    "nested": {
+      "type": "object",
+      "properties": {"a": {"type": "string", "minLength": 2}},
+      "required": ["a"]
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "declared": {"maxLength": 9},
+        "reversed": {"minLength": 2},
+        "lenRootTighter": {"minLength": 2},
+        "lowBound": {"minimum": 10},
+        "lowBoundRootTighter": {"minimum": 5},
+        "highBound": {"maximum": 50},
+        "highBoundRootTighter": {"maximum": 100},
+        "enumBranchNarrower": {"enum": ["b"]},
+        "enumRootNarrower": {"enum": ["a", "b", "c"]},
+        "constAgainstEnum": {"const": "q"},
+        "typeBranchNarrower": {"type": "integer"},
+        "typeRootNarrower": {"type": ["string", "integer"]},
+        "numberMeetsInteger": {"type": "integer"},
+        "twice": {"maxLength": 9},
+        "patternFirstWins": {"pattern": "^b"},
+        "numberSpelling": {"enum": [1, 3]},
+        "documented": {"maxLength": 9},
+        "documentedWriteOnly": {"maxLength": 9},
+        "nested": {
+          "properties": {"a": {"maxLength": 9}, "b": {"type": "integer"}},
+          "required": ["b"]
+        },
+        "branchOnly": {"type": "string", "minLength": 2}
+      }
+    },
+    {"properties": {"twice": {"minLength": 4}}},
+    {"$ref": "#/$defs/CapBranch"}
+  ],
+  "$defs": {
+    "CapBranch": {"properties": {"viaRef": {"maxLength": 9}}}
+  }
+}

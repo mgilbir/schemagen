@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfBranchTypeSettlesInference",
+  "type": "object",
+  "properties": {
+    "arrayFirst": {
+      "allOf": [
+        {"items": {"type": "string"}},
+        {"type": "string", "minLength": 2}
+      ]
+    },
+    "typeFirst": {
+      "allOf": [
+        {"type": "string", "minLength": 2},
+        {"items": {"type": "string"}}
+      ]
+    },
+    "bothArrays": {
+      "allOf": [
+        {"items": {"type": "string"}},
+        {"type": "array", "minItems": 2}
+      ]
+    }
+  }
+}

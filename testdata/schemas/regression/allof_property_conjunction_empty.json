@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfPropertyConjunctionEmpty",
+  "type": "object",
+  "properties": {
+    "disjointTypes": {"type": "string"},
+    "disjointEnums": {"enum": ["a"]},
+    "enumOutsideType": {"type": "string"},
+    "typedDisjointEnums": {"type": "string", "enum": ["a"]},
+    "bigIntegerEnums": {"type": "integer", "enum": [9007199254740992]},
+    "satisfiable": {"type": "string", "minLength": 2}
+  },
+  "allOf": [
+    {
+      "properties": {
+        "disjointTypes": {"type": "integer"},
+        "disjointEnums": {"enum": ["b"]},
+        "enumOutsideType": {"enum": [1, 2]},
+        "typedDisjointEnums": {"type": "string", "enum": ["b"]},
+        "bigIntegerEnums": {"type": "integer", "enum": [9007199254740993]},
+        "satisfiable": {"maxLength": 9}
+      }
+    }
+  ]
+}
