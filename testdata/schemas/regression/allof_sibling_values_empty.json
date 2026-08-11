@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfSiblingValuesEmpty",
+  "type": "object",
+  "properties": {
+    "disjointEnums": {"type": "string", "enum": ["a"], "allOf": [{"enum": ["b"]}]},
+    "constAgainstDisjointEnum": {"type": "string", "const": "a", "allOf": [{"enum": ["b"]}]},
+    "enumAgainstDisjointConst": {"type": "string", "enum": ["a"], "allOf": [{"const": "b"}]},
+    "bigIntegers": {"type": "integer", "enum": [9007199254740992], "allOf": [{"enum": [9007199254740993]}]},
+    "emptyBranchEnum": {"type": "string", "enum": ["a"], "allOf": [{"enum": []}]},
+    "chainEmptiesLate": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b"]}, {"enum": ["a"]}]},
+    "mapValues": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "enum": ["a"], "allOf": [{"enum": ["b"]}]}
+    },
+    "listItems": {
+      "type": "array",
+      "items": {"type": "string", "enum": ["a"], "allOf": [{"enum": ["b"]}]}
+    },
+    "satisfiable": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b"]}]}
+  }
+}

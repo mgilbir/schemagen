@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfSiblingValues",
+  "type": "object",
+  "properties": {
+    "branchNarrows": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b"]}]},
+    "rootNarrows": {"type": "string", "enum": ["b"], "allOf": [{"enum": ["a", "b"]}]},
+    "constInBranch": {"type": "string", "enum": ["p", "q"], "allOf": [{"const": "q"}]},
+    "constOnProperty": {"type": "string", "const": "q", "allOf": [{"enum": ["p", "q"]}]},
+    "chain": {"type": "string", "enum": ["a", "b", "c"], "allOf": [{"enum": ["a", "b"]}, {"enum": ["b", "c"]}]},
+    "laterBranchNarrows": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["a", "b"]}, {"enum": ["b"]}]},
+    "nestedChain": {"type": "string", "enum": ["a", "b", "c"], "allOf": [{"allOf": [{"enum": ["b", "c"]}, {"enum": ["c"]}]}]},
+    "viaRef": {"type": "string", "enum": ["a", "b"], "allOf": [{"$ref": "#/$defs/OnlyB"}]},
+    "allOfThroughRef": {"type": "string", "enum": ["a", "b", "c"], "allOf": [{"$ref": "#/$defs/NarrowingAllOf"}]},
+    "numberSpelling": {"type": "number", "enum": [1.0, 2], "allOf": [{"enum": [1, 3]}]},
+    "agrees": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b", "a"]}]},
+    "silentBranch": {"type": "string", "enum": ["a", "b"], "allOf": [{"minLength": 1}]},
+    "mapValues": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b"]}]}
+    },
+    "listItems": {
+      "type": "array",
+      "items": {"type": "string", "enum": ["a", "b"], "allOf": [{"enum": ["b"]}]}
+    }
+  },
+  "$defs": {
+    "OnlyB": {"enum": ["b"]},
+    "NarrowingAllOf": {"allOf": [{"enum": ["b", "c"]}, {"enum": ["c"]}]}
+  }
+}
