@@ -249,10 +249,27 @@ type docRefEdge struct {
 // Only genuine cycles are reported. A document referencing itself is not one:
 // a $ref back into the document being generated is resolved inside that
 // document and materializes nothing new. A set that merely needs reordering is
-// not one either, and keeps its existing failure.
-func checkInputRefCycle(args []string, byPath map[string]*schema.Schema) error {
+// not one either — an order exists there, so the run is attempted and the
+// collision it may hit is explained by explainRootTypeCollision.
+func checkInputRefCycle(args []string, edges map[string][]docRefEdge) error {
+	cycle := findDocRefCycle(args, edges)
+	if cycle == nil {
+		return nil
+	}
+	return docRefCycleError(cycle)
+}
+
+// buildDocRefEdges maps each input document to the other input documents it
+// $refs, keyed and valued by the paths the caller gave.
+//
+// Both the cycle refusal and the wrong-order diagnostic read this graph, and
+// both are about the same relation -- "this document has to be generated after
+// that one" -- so they must agree on which refs form it. Self-edges are left
+// out: a $ref back into the document being generated is resolved inside that
+// document and materializes nothing new.
+func buildDocRefEdges(args []string, byPath map[string]*schema.Schema) map[string][]docRefEdge {
 	// A ref can name another input two ways, and both have to be indexed or the
-	// cycle is only found for some of the spellings. By $id, which is what an
+	// edge is only found for some of the spellings. By $id, which is what an
 	// absolute-URI ref resolves to; and by file path, which is what a relative
 	// ref reaches when neither document declares an $id -- the shape of the
 	// reproducer in issue #228 that carries no $id at all.
@@ -299,12 +316,7 @@ func checkInputRefCycle(args []string, byPath map[string]*schema.Schema) error {
 			}
 		}
 	}
-
-	cycle := findDocRefCycle(args, edges)
-	if cycle == nil {
-		return nil
-	}
-	return docRefCycleError(cycle)
+	return edges
 }
 
 // refTargetFile returns the absolute path a relative $ref reads, or "" when the
@@ -398,6 +410,120 @@ func docRefCycleError(cycle []docRefEdge) error {
 			"--shared-types emits each type once and generates the inputs in one pass, so every document must be generated after the documents it references. A cycle has no such order, so this set cannot be generated and nothing was written. "+
 			"Merge the mutually-referencing documents into one document (a $ref cycle *within* a document is supported), or generate each of them in its own run and Go package, which gives each package its own copy of the other's types",
 		strings.Join(lines, "\n  "))
+}
+
+// explainRootTypeCollision turns a --shared-types root type collision into the
+// message for whichever of its two causes actually applies.
+//
+// A collision says only that the name was taken; it does not say by what. Two
+// unrelated documents can claim one root name, and then the generator's own
+// message is right: rename one. But the name is equally taken when an earlier
+// input $refs this document, because reaching a document materializes its root
+// type — and there the names are already distinct, so "give each schema a
+// distinct root name" sends the caller to fix something that is not broken. It
+// is the input order that is wrong. Issue #228.
+//
+// Which one it is, is decided from what the run has already generated rather
+// than guessed: generatedRoots holds the root type name each earlier input
+// claimed for itself, so a name found there is a genuine duplicate. That test
+// comes first, because a set can be both — an earlier document that references
+// this one *and* claims its name is not fixed by reordering — and only the
+// duplicate message is right about it then.
+//
+// Cycles never arrive here: checkInputRefCycle refuses them before any document
+// is generated.
+func explainRootTypeCollision(collided string, collision *generator.RootTypeCollisionError, generated []string, generatedRoots map[string]string, edges map[string][]docRefEdge) error {
+	wrapped := fmt.Errorf("generating IR for %s: %w", collided, collision)
+	if _, duplicate := generatedRoots[collision.Name]; duplicate {
+		return wrapped
+	}
+	chain := findRefChainTo(collided, generated, edges)
+	if chain == nil {
+		// The name was materialized by something other than a root or a ref
+		// into this document -- a definition inside an earlier document that
+		// happens to be named the same. Nothing here is better informed than
+		// the generator's own message.
+		return wrapped
+	}
+	return docRefOrderError(collided, collision.Name, chain)
+}
+
+// findRefChainTo returns the $ref chain by which one of the already generated
+// inputs reaches target, starting from the earliest input that reaches it at
+// all, or nil when none does. Inputs are tried in the order the caller gave
+// them, and each search takes a shortest route, so the chain reported for a set
+// is the same on every run.
+//
+// target is never itself in generated: an input that generated cannot then
+// collide, and an input listed twice collides on its own root name, which the
+// duplicate test in explainRootTypeCollision answers before this runs.
+func findRefChainTo(target string, generated []string, edges map[string][]docRefEdge) []docRefEdge {
+	for _, from := range generated {
+		if chain := refChain(from, target, edges); chain != nil {
+			return chain
+		}
+	}
+	return nil
+}
+
+// refChain returns the edges of a shortest path from one document to another.
+func refChain(from, target string, edges map[string][]docRefEdge) []docRefEdge {
+	visited := map[string]bool{from: true}
+	var queue [][]docRefEdge
+	extend := func(prefix []docRefEdge, at string) {
+		for _, e := range edges[at] {
+			if visited[e.ToPath] {
+				continue
+			}
+			visited[e.ToPath] = true
+			queue = append(queue, append(append([]docRefEdge{}, prefix...), e))
+		}
+	}
+	extend(nil, from)
+	for len(queue) > 0 {
+		path := queue[0]
+		queue = queue[1:]
+		last := path[len(path)-1]
+		if last.ToPath == target {
+			return path
+		}
+		extend(path, last.ToPath)
+	}
+	return nil
+}
+
+// docRefOrderError phrases the wrong-order refusal: which document went first,
+// what that materialized, which input then collided, and the order that works.
+//
+// The order it names is the chain read backwards, which is the constraint the
+// chain itself states and nothing more. Deriving an order for the whole input
+// set is deliberately not attempted.
+//
+// The claim that renaming will not help is likewise held to what is known: the
+// document that went first has already been generated under a name that is not
+// the one that collided, so those two are certainly distinct. Whether some
+// input still to come also wants this name is not known here, and is not
+// claimed.
+func docRefOrderError(collided, rootType string, chain []docRefEdge) error {
+	lines := make([]string, 0, len(chain))
+	for _, e := range chain {
+		lines = append(lines, fmt.Sprintf("%s references %s via %q", e.FromPath, e.ToPath, e.Ref))
+	}
+	order := make([]string, 0, len(chain)+1)
+	for i := len(chain) - 1; i >= 0; i-- {
+		order = append(order, chain[i].ToPath)
+	}
+	order = append(order, chain[0].FromPath)
+
+	first := chain[0].FromPath
+	return fmt.Errorf(
+		"input documents are in the wrong order: %s was generated before %s, which it reaches:\n  %s\n"+
+			"Generating %s materialized %s's root type %q, so the later pass over %s found that name already taken and stopped -- after the earlier inputs had been written. "+
+			"--shared-types emits each type once and generates the inputs in the order given, so a document must be listed before every document that references it. "+
+			"%s and %s already claim different root names, so renaming them will not help; list these documents in the order: %s",
+		first, collided, strings.Join(lines, "\n  "),
+		first, collided, rootType, collided,
+		first, collided, strings.Join(order, ", "))
 }
 
 func quotedList(ss []string) []string {

@@ -311,12 +311,24 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			var sharedGen *generator.Generator
+			// The $refs between the inputs, in shared-types mode only, where
+			// they decide the order the inputs have to be generated in. Two
+			// diagnostics read them: the cycle refusal below, and the
+			// wrong-order explanation for a root type collision.
+			var refEdges map[string][]docRefEdge
+			// The root type name each input has already claimed for itself,
+			// and the inputs generated so far in order. Both exist to tell a
+			// genuine duplicate root name from a collision caused by the input
+			// order; see explainRootTypeCollision.
+			generatedRoots := make(map[string]string, len(args))
+			generatedInputs := make([]string, 0, len(args))
 			if sharedTypes {
 				// One package, one generator, and therefore one pass over the
 				// inputs in the order given. A $ref chain that runs in a circle
 				// has no such order, and the failure it used to produce named
 				// the root type names instead — see checkInputRefCycle.
-				if err := checkInputRefCycle(args, inputByPath); err != nil {
+				refEdges = buildDocRefEdges(args, inputByPath)
+				if err := checkInputRefCycle(args, refEdges); err != nil {
 					return err
 				}
 				absPath, _ := filepath.Abs(args[0])
@@ -425,7 +437,31 @@ func newGenerateCmd() *cobra.Command {
 						// (issue #223).
 						return fmt.Errorf("generating IR for %s: %w\n(a $ref by absolute URI is matched against the $id of the documents given to this run, so pass the referenced document as an input too; a $ref by relative path is read from that path next to the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead, and --lenient-refs generates anyway, degrading the unresolved ref to any)", schemaPath, err)
 					}
+					// A root type name that is already taken has two causes
+					// needing opposite advice, and only this loop knows which
+					// one it is: it holds the order the inputs were given and
+					// the refs between them. See explainRootTypeCollision.
+					var collision *generator.RootTypeCollisionError
+					if errors.As(err, &collision) {
+						return explainRootTypeCollision(schemaPath, collision, generatedInputs, generatedRoots, refEdges)
+					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
+				}
+
+				// Recorded from the same two sources the generator names a root
+				// from: the per-document override, or the document's own title.
+				// Only a name a document claimed for its *root* belongs here —
+				// that is exactly what distinguishes a duplicate root name from
+				// a name some earlier document's $ref materialized.
+				if sharedTypes {
+					claimed := rootTypeName
+					if claimed == "" {
+						claimed = generator.DefaultRootTypeName(s)
+					}
+					if _, taken := generatedRoots[claimed]; !taken {
+						generatedRoots[claimed] = schemaPath
+					}
+					generatedInputs = append(generatedInputs, schemaPath)
 				}
 
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
