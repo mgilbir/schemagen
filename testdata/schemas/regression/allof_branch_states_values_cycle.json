@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "throughCycle": { "type": "string", "allOf": [{ "$ref": "#/$defs/CycleWithValues" }] },
+    "cycleOnly": { "type": "string", "allOf": [{ "$ref": "#/$defs/CycleWithout" }] }
+  },
+  "$defs": {
+    "CycleWithValues": { "enum": ["a", "b"], "allOf": [{ "$ref": "#/$defs/CycleWithValues" }] },
+    "CycleWithout": { "allOf": [{ "$ref": "#/$defs/CycleWithout" }] }
+  }
+}

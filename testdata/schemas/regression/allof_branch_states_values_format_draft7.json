@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "stampMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "format": "date-time",
+        "allOf": [{ "const": "2020-01-01T00:00:00Z" }]
+      }
+    },
+    "stampList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "date-time",
+        "allOf": [{ "const": "2020-01-01T00:00:00Z" }]
+      }
+    },
+    "plainMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "allOf": [{ "const": "keep" }] }
+    }
+  }
+}

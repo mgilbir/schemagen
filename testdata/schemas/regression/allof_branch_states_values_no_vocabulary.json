@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2020-12/vocab/core": true,
+    "https://json-schema.org/draft/2020-12/vocab/applicator": true
+  },
+  "type": "object",
+  "properties": {
+    "branchValues": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] },
+    "ownValues": { "type": "string", "enum": ["a", "b"] }
+  }
+}

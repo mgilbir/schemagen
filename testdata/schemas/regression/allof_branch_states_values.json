@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "propEnum": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] },
+    "propConst": { "type": "string", "allOf": [{ "const": "x" }] },
+    "mapValue": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] }
+    },
+    "items": {
+      "type": "array",
+      "items": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] }
+    },
+    "tupleSlot": {
+      "type": "array",
+      "prefixItems": [{ "type": "string", "allOf": [{ "enum": ["a", "b"] }] }]
+    },
+    "namedEntry": { "$ref": "#/$defs/BranchValued" },
+
+    "intEnum": { "type": "integer", "allOf": [{ "enum": [1, 2] }] },
+    "numberConst": { "type": "number", "allOf": [{ "const": 1.5 }] },
+    "boolConst": { "type": "boolean", "allOf": [{ "const": true }] },
+
+    "branchIsRef": { "type": "string", "allOf": [{ "$ref": "#/$defs/Values" }] },
+    "branchNestsAllOf": { "type": "string", "allOf": [{ "allOf": [{ "enum": ["a", "b"] }] }] },
+    "refTargetNestsAllOf": { "type": "string", "allOf": [{ "$ref": "#/$defs/WrapsValues" }] },
+    "laterBranchStatesValues": {
+      "type": "string",
+      "allOf": [{ "minLength": 1 }, { "enum": ["a", "b"] }]
+    },
+    "firstBranchStatesValues": {
+      "type": "string",
+      "allOf": [{ "enum": ["a", "b"] }, { "minLength": 1 }]
+    },
+    "twoBranchesStateValues": {
+      "type": "string",
+      "allOf": [{ "enum": ["a", "b"] }, { "enum": ["b", "c"] }]
+    },
+    "numberSpellings": {
+      "type": "number",
+      "allOf": [{ "enum": [1.0, 2] }, { "enum": [1, 3] }]
+    },
+
+    "nonValueBranch": { "type": "string", "allOf": [{ "minLength": 5 }] },
+    "branchAgreesWithType": { "type": "string", "allOf": [{ "type": "string" }] },
+    "objectShaped": { "type": "object", "allOf": [{ "enum": [{ "k": 1 }] }] },
+    "arrayShaped": { "type": "array", "allOf": [{ "enum": [[1, 2]] }] },
+    "nullableScalar": { "type": ["string", "null"], "allOf": [{ "enum": ["a", "b"] }] },
+    "typeUnion": { "type": ["string", "integer"], "allOf": [{ "enum": ["a", 1] }] },
+    "untypedBranchValues": { "allOf": [{ "enum": ["a", "b"] }] },
+    "unknownTypeName": { "type": "weird", "allOf": [{ "enum": ["a", "b"] }] },
+    "oneOfBeside": {
+      "type": "string",
+      "oneOf": [{ "minLength": 2 }, { "maxLength": 1 }],
+      "allOf": [{ "enum": ["a", "bb"] }]
+    },
+    "anyOfBeside": {
+      "type": "string",
+      "anyOf": [{ "minLength": 2 }],
+      "allOf": [{ "enum": ["a", "bb"] }]
+    }
+  },
+  "$defs": {
+    "BranchValued": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] },
+    "Values": { "enum": ["a", "b"] },
+    "WrapsValues": { "allOf": [{ "enum": ["a", "b"] }] }
+  }
+}
