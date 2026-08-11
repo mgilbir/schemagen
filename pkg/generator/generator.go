@@ -2427,8 +2427,18 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		s = promoteConstToEnum(s)
 	}
 
-	// Enum type
-	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
+	// Enum type.
+	//
+	// Unless an allOf beside it names fewer values than it does. The enum arm
+	// answers from this schema's own list and returns, so the allOf arm below is
+	// never reached and everything the branches assert -- including which values
+	// they admit -- was dropped:
+	// {"type":"string","enum":["a","b"],"allOf":[{"enum":["b"]}]} came out an enum
+	// naming a and b and accepted "a", which the branch forbids (issue #238).
+	// Standing down sends the schema to generateAllOfDef, which intersects the two
+	// sets and answers an empty result with the forbidding wrapper.
+	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 &&
+		!g.allOfNarrowsStatedValues(s) {
 		return g.generateEnumDef(name, s)
 	}
 
@@ -6476,6 +6486,82 @@ func sameEnumValueSet(a, b []any) bool {
 	return len(keys) == 0
 }
 
+// allOfNarrowsStatedValues reports whether the allOf written beside a schema's
+// own `enum` or `const` admits fewer values than that keyword names.
+//
+// allOf is an in-place applicator: a branch is asserted of the very instance the
+// schema itself is asserted of, so a branch that also says which values are
+// legal narrows the set rather than restating it. The three ladders that turn a
+// schema into a Go type -- generateTypeDef, resolvePropertyType and resolveType
+// -- each read the enum before they read the allOf, so
+// {"type":"string","enum":["a","b"],"allOf":[{"enum":["b"]}]} produced an enum
+// type naming a and b and accepted "a", which the branch forbids (issue #238).
+// #231 fixed the neighbouring spelling, where the *object* carries the allOf and
+// a branch names one of its properties: that path reaches the merge, and this one
+// never did.
+//
+// The answer is what stands those arms down and routes the schema to
+// generateAllOfDef, which is this repository's one reading of what a conjunction
+// of two schemas means -- it intersects the value sets through mergeEnumAndConst
+// and answers an empty result with the forbidding wrapper. So this decides only
+// *whether* an arm stands down and never what the conjunction is. The
+// intersection below is the same intersectEnumValues the merge will run, asked
+// here so that a schema whose branches name no fewer values than it does keeps
+// the type it has always had: the arms are wrong only where the two sets differ,
+// and only there may the answer move.
+//
+// A schema spelled `"enum": []` needs no arm of its own: it names no member, so
+// no branch can take one away and the answer is no. The forbidding arms claim
+// that schema anyway, and this leaves it to them.
+func (g *Generator) allOfNarrowsStatedValues(s *schema.Schema) bool {
+	if s == nil || len(s.AllOf) == 0 || !statesEnumOrConst(s) {
+		return false
+	}
+	own := enumLikeValues(s)
+	return !sameEnumValueSet(g.allOfNarrowedValues(own, s.AllOf, make(map[*schema.Schema]bool)), own)
+}
+
+// allOfNarrowedValues folds what an allOf's branches say about which values are
+// legal into values.
+//
+// It follows a branch's $ref and its nested allOf because mergeAllOfBranches
+// does, and the two have to agree on which branches speak: a branch this misses
+// is a narrowing the merge would perform and the arm above would not stand down
+// for. onPath is that function's cycle guard for the same reason --
+// {"allOf":[{"$ref":"#"}]} would otherwise re-enter forever.
+func (g *Generator) allOfNarrowedValues(values []any, allOf []*schema.Schema, onPath map[*schema.Schema]bool) []any {
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		values = g.branchNarrowedValues(values, sub, onPath)
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil && !onPath[r] {
+				onPath[r] = true
+				values = g.branchNarrowedValues(values, r, onPath)
+				delete(onPath, r)
+			}
+		}
+		delete(onPath, sub)
+	}
+	return values
+}
+
+// branchNarrowedValues intersects values with what one branch states, then
+// descends that branch's own allOf.
+//
+// A branch spelled `"enum": []` states members and lists none, so enumLikeValues
+// answers nil for it while statesEnumOrConst answers yes -- and the intersection
+// with nil is empty, which is exactly what such a branch asserts. Reading the
+// values alone would mistake it for a branch that says nothing.
+func (g *Generator) branchNarrowedValues(values []any, branch *schema.Schema, onPath map[*schema.Schema]bool) []any {
+	if statesEnumOrConst(branch) {
+		values = intersectEnumValues(values, enumLikeValues(branch))
+	}
+	return g.allOfNarrowedValues(values, branch.AllOf, onPath)
+}
+
 // exactEnumValueKey identifies a value for the purpose of comparing two
 // enumerations, without folding a number through float64 on the way.
 //
@@ -8176,6 +8262,45 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// where both bind and only the merge can say so (issue #153).
 	refDisplacesEnum := g.refDisplacesSiblingValues(s)
 	refMergesEnum := g.refMergesSiblingValues(s)
+
+	// An allOf beside the property's own `enum` or `const`, naming fewer values
+	// than it does. Ahead of both arms below, because each answers from the
+	// property's own list and leaves the allOf behind -- the enum arm by building
+	// the type from that list, the promotion by handing it one. So
+	// {"properties":{"p":{"type":"string","enum":["a","b"],
+	// "allOf":[{"enum":["b"]}]}}} typed p as an enum naming a and b and accepted
+	// "a", which the branch forbids, and the same property written with a `const`
+	// the branch excludes kept the const check and accepted the one value the
+	// conjunction admits nothing of (issue #238).
+	//
+	// The position is materialized rather than narrowed in place, so that the
+	// conjunction is read by generateAllOfDef -- the same function #231's merge
+	// hands its conjoined properties to. That is what supplies the answer for an
+	// empty intersection here: two disjoint sets become `"enum": []` and the merge
+	// emits the forbidding wrapper, which is the type the neighbouring spelling
+	// has produced for a property since #231 and which this ladder has no arm of
+	// its own for.
+	//
+	// Behind refDisplacesSiblingValues and not behind refMergesSiblingValues,
+	// which is where the two halves of that split part company here. Through draft
+	// 7 a $ref replaces what is written beside it, so the property states no values
+	// at all and there is nothing for a branch to narrow -- firing would mint an
+	// alias to the target where the ref arm below answers with the target itself
+	// (issue #151). From 2019-09 on the values *are* stated and the branch does
+	// narrow them, so the premise holds; the arm is welcome to claim the schema,
+	// and generateTypeDef routes it to the same merge the ref arm would have
+	// reached (issue #153). A gate there would be a claim that the arm should
+	// stand down, which is not true of that draft.
+	if g.validationKeywordsEnabled() && !refDisplacesEnum &&
+		g.allOfNarrowsStatedValues(s) {
+		nestedName := parentName + fieldName
+		if g.inlineNameAvailable(s, nestedName) {
+			if t, ok := g.namedInlineType(s, nestedName); ok {
+				return t, nil
+			}
+		}
+	}
+
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
@@ -8703,6 +8828,23 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	// below can carry both (refMergesSiblingValues, issue #153).
 	refDisplacesEnum := g.refDisplacesSiblingValues(s)
 	refMergesEnum := g.refMergesSiblingValues(s)
+
+	// An allOf beside the value's own `enum` or `const`, naming fewer values than
+	// it does. resolvePropertyType's arm of the same name, one position over: an
+	// element, a map value or a oneOf branch reaches this ladder instead, and both
+	// arms below read the list alone. {"additionalProperties":{"type":"string",
+	// "enum":["a","b"],"allOf":[{"enum":["b"]}]}} typed the map's values as an
+	// enum naming a and b and accepted "a" (issue #238). Materializing hands the
+	// conjunction to generateAllOfDef, which is where an empty intersection
+	// becomes the forbidding wrapper. It stands behind refDisplacesSiblingValues
+	// alone, for the reason resolvePropertyType's arm gives.
+	if g.validationKeywordsEnabled() && !refDisplacesEnum &&
+		g.allOfNarrowsStatedValues(s) && g.inlineNameAvailable(s, contextName) {
+		if t, ok := g.namedInlineType(s, contextName); ok {
+			return t
+		}
+	}
+
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
