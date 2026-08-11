@@ -4668,6 +4668,33 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		merged.UnevaluatedItems = s.UnevaluatedItems
 	}
 
+	// A conjunction that came out empty. Two branches whose value sets share no
+	// member, or whose declared types name no type in common, admit no instance
+	// between them -- and the merge says so in the one spelling the rest of the
+	// generator reads, `"enum": []` (see emptyEnumSchema, mergeEnumAndConst and
+	// narrowMergedType).
+	//
+	// It is asked here rather than left to the arms below because none of them
+	// would see it: the enum arm is entered on `len(merged.Enum) > 0`, so an
+	// empty list falls straight past it to whatever the remaining keywords infer,
+	// and what they infer is a type that accepts things nothing admits. The
+	// forbidding wrapper is the same one the boolean `false` branch above emits,
+	// which is what {"allOf":[false]} has always produced.
+	//
+	// Behind the validation vocabulary, exactly as the two producers are: where
+	// the declared metaschema withholds it, `enum` and `type` assert nothing and
+	// neither can make a schema empty.
+	if g.validationKeywordsEnabled() && emptyEnumSchema(merged) {
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			Name:        name,
+			Description: s.Description,
+			Annotations: annotationsOf(s),
+			IsForbidden: true,
+		})
+		return nil
+	}
+
 	// If no sub-schema contributed a named key, don't generate an empty struct.
 	// Instead, infer the type from constraints and generate an alias.
 	//
@@ -5390,9 +5417,11 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		}
 		// Copy direct properties. allOf is an in-place applicator: every branch
 		// binds on every valid instance, so what it says about a property is said
-		// about all of them and the annotation reading records it as such.
+		// about all of them and the annotation reading records it as such -- and,
+		// where something has already spoken about the same property, what the
+		// two say is conjoined rather than replaced. See conjoinAllOfProperty.
 		for k, v := range resolved.Properties {
-			target.Properties[k] = v
+			target.Properties[k] = g.conjoinAllOfProperty(target.Properties[k], v)
 			g.recordMergedProperty(target, k, v, nil)
 		}
 		target.Required = append(target.Required, resolved.Required...)
@@ -5408,11 +5437,29 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		// A branch that states a "type" settles what an earlier branch's array
 		// keywords only let the merge guess, whichever order the two arrive in.
 		if len(resolved.Type) > 0 {
+			inferred := g.arrayTypeInferredFromBranch[target]
 			delete(g.arrayTypeInferredFromBranch, target)
-		}
-		// Propagate type from sub-schemas if the target doesn't have one.
-		if len(resolved.Type) > 0 && len(target.Type) == 0 {
-			target.Type = resolved.Type
+			switch {
+			case len(target.Type) == 0:
+				// Propagate type from sub-schemas if the target doesn't have one.
+				target.Type = resolved.Type
+			case inferred:
+				// What is already there is this merge's own guess about a branch
+				// that named array positions, not something a schema stated, so
+				// there is nothing to intersect it with -- a guess and an
+				// assertion are not two assertions. The assertion replaces it,
+				// which is what the sentence above this block has claimed since
+				// #222 and what the `delete` alone did not do: the mark came off
+				// and the guess stayed, so a merge whose array branch happened to
+				// come first answered "array" and the same two branches written
+				// the other way round answered what the schema said.
+				target.Type = resolved.Type
+			default:
+				// Two stated types on one instance admit the types both name, and
+				// nothing at all when they name none in common. See
+				// intersectDeclaredTypes.
+				g.narrowMergedType(target, resolved)
+			}
 		}
 		if g.validationKeywordsEnabled() && supportsDependentRequired(g.draftForSchema(resolved)) && len(resolved.DependentRequired) > 0 && len(target.DependentRequired) == 0 {
 			target.DependentRequired = resolved.DependentRequired
@@ -5472,6 +5519,120 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		for _, node := range chain {
 			delete(onPath, node)
 		}
+	}
+}
+
+// conjoinAllOfProperty combines what two things that bind on every valid
+// instance say about the same property of a merged object.
+//
+// allOf is an in-place applicator: each branch is asserted of the whole
+// instance, so a branch naming a property the parent already declared -- or that
+// an earlier branch already named -- adds to what that property must satisfy. It
+// does not replace it. The merge loop used to assign, and
+//
+//	{"properties":{"declared":{"type":"string","minLength":2}},
+//	 "allOf":[{"properties":{"declared":{"maxLength":9}}}]}
+//
+// accepted {"declared":"z"}: the branch's node went into the slot whole, so the
+// root's `type` and its `minLength` were both gone and the property was left
+// carrying the branch's `maxLength` alone (issue #231). The same assignment lost
+// the other direction too -- a root `maxLength` under a branch `minLength` --
+// and lost the earlier branch whenever two branches named one property.
+//
+// The conjunction is spelled as an allOf of the two contributions rather than
+// intersected keyword by keyword here, because an allOf of two schemas *is*
+// their conjunction and this repository already holds one reading of what that
+// means: mergeAllOfBranches and mergeConstraints, which take the tighter of two
+// bounds, the union of two `required` lists, the intersection of two value sets
+// and of two declared types, and recurse into nested `properties`. A second
+// intersection written at this site would be a second opinion about the same
+// question, free to drift from the first, and every keyword it forgot would be a
+// constraint silently dropped -- which is worse than the overwrite it replaces,
+// because the overwrite is at least predictable. A keyword taught to
+// mergeConstraints is conjoined here the same day.
+//
+// The order is (existing, next) and it is load-bearing: where only one value of
+// a keyword can be kept -- `pattern`, `format`, `contentEncoding` --
+// mergeConstraints keeps the first, so the parent's survives a branch's and an
+// earlier branch's survives a later one. That is #68's answer for propertyNames
+// and #153's for a const beside a reference, reached here by construction.
+//
+// The two boolean schemas are the ends of the conjunction: `true` asserts
+// nothing, so the other side is the whole answer, and `false` admits nothing, so
+// it is the whole answer.
+func (g *Generator) conjoinAllOfProperty(existing, next *schema.Schema) *schema.Schema {
+	switch {
+	case existing == nil || existing == next:
+		return next
+	case next == nil:
+		return existing
+	case existing.IsFalseSchema():
+		return existing
+	case next.IsFalseSchema():
+		return next
+	case existing.IsTrueSchema():
+		return next
+	case next.IsTrueSchema():
+		return existing
+	}
+	// A third contribution nests: allOf[allOf[a, b], c]. That is left as it
+	// falls rather than flattened, because mergeAllOfBranches recurses into a
+	// branch's own allOf, so the nested spelling and the flat one produce the
+	// same merge -- a flattening pass here would be a shape nothing downstream
+	// can tell from this one, and an earlier draft of this function carried one
+	// that no planted fault could falsify.
+	//
+	// $schema and DocumentRoot come from the left-hand contribution because
+	// draftForSchema reads them, and a synthesized node naming neither would be
+	// read under the root document's dialect wherever the property came from
+	// another one. BaseURI likewise: the conjunction stands where `existing`
+	// stood, so a relative reference under it resolves from there.
+	// TestConjoinedPropertyAnswersForTheContributionItStandsIn is what holds
+	// that, since no document in the corpus distinguishes the two dialects at
+	// this position.
+	conjoined := &schema.Schema{
+		AllOf:        []*schema.Schema{existing, next},
+		Schema:       existing.Schema,
+		BaseURI:      existing.BaseURI,
+		DocumentRoot: existing.DocumentRoot,
+	}
+	carryPropertyAnnotations(conjoined, existing)
+	carryPropertyAnnotations(conjoined, next)
+	return conjoined
+}
+
+// carryPropertyAnnotations lifts the annotations of one contribution onto the
+// node standing for the conjunction of several.
+//
+// They have to be lifted rather than left where they are: the description and
+// the two read/write markers are read off the property's own schema node, and
+// the synthesized conjunction is that node now -- so without this a property
+// documented beside the allOf lost its comment, and one marked readOnly there
+// stopped being marked, the moment a branch mentioned it. Nothing here changes a
+// verdict; every keyword below is an annotation in every draft. The first
+// contribution to state one wins, as mergeConstraints does for the keywords with
+// a single slot.
+//
+// `title`, `default` and `examples` are deliberately not among them. They reach
+// the emitted source by another route -- the field's default is read from the
+// contributing node and the title is a naming input rather than documentation --
+// and planting each of them away changed no byte of any fixture's output, which
+// is this repository's test for whether a line belongs here at all.
+func carryPropertyAnnotations(dst, src *schema.Schema) {
+	if dst == nil || src == nil {
+		return
+	}
+	if dst.Description == "" {
+		dst.Description = src.Description
+	}
+	if dst.Deprecated == nil {
+		dst.Deprecated = src.Deprecated
+	}
+	if dst.ReadOnly == nil {
+		dst.ReadOnly = src.ReadOnly
+	}
+	if dst.WriteOnly == nil {
+		dst.WriteOnly = src.WriteOnly
 	}
 }
 
@@ -6221,13 +6382,8 @@ func mergeConstraints(dst, src *schema.Schema) {
 	// is the whole of what that branch asserts. Dropped, the merged schema had
 	// nothing left to infer a type from and fell through to `type X any`, which
 	// carries no Validate -- so every member of the enum and every value outside
-	// it were accepted alike. Intersecting two enums is what allOf means, but a
-	// merged schema holds one list; the first is kept, which under-enforces
-	// rather than rejecting values the schema allows. Same direction as
-	// mergePropertyNames, which already resolves this pair that way.
-	if len(dst.Enum) == 0 && dst.Const == nil && !dst.ConstIsNull {
-		dst.Enum, dst.Const, dst.ConstIsNull = src.Enum, src.Const, src.ConstIsNull
-	}
+	// it were accepted alike.
+	mergeEnumAndConst(dst, src)
 	// Array constraints.
 	dst.MinItems = tighterLowerFlexInt(dst.MinItems, src.MinItems)
 	dst.MaxItems = tighterUpperFlexInt(dst.MaxItems, src.MaxItems)
@@ -6242,6 +6398,242 @@ func mergeConstraints(dst, src *schema.Schema) {
 	dst.MaxProperties = tighterUpperFlexInt(dst.MaxProperties, src.MaxProperties)
 }
 
+// mergeEnumAndConst folds src's statement of which values are legal into dst's.
+//
+// Two such statements on one instance admit the values both list, so this is a
+// set intersection and not a choice between them. It used to be the choice:
+// whichever side spoke first kept its list whole, so
+// {"allOf":[{"enum":["a","b"]},{"enum":["b","c"]}]} accepted "a", which the
+// second branch forbids. That direction is the safe one for a keyword with a
+// single slot and no way to say "both" -- `pattern` and `format` are still
+// resolved that way above -- but `enum` has no such difficulty: the intersection
+// is itself an enum, and it fits the same slot.
+//
+// An empty intersection is written as `"enum": []`, which is this repository's
+// existing spelling for a schema that admits nothing (see emptyEnumSchema). It
+// has to be the empty *non-nil* list: nil is what an absent enum looks like, and
+// writing that would turn "no value is legal" into "nothing was said".
+//
+// Where the intersection is one of the two inputs unchanged, that input's own
+// spelling is kept rather than rewritten -- a `const` that survives an `enum`
+// stays a `const`. Only a genuinely narrower answer is written as a fresh list,
+// so a document whose branches agree generates exactly what it generated before.
+func mergeEnumAndConst(dst, src *schema.Schema) {
+	if !statesEnumOrConst(src) {
+		return
+	}
+	if !statesEnumOrConst(dst) {
+		dst.Enum, dst.Const, dst.ConstIsNull = src.Enum, src.Const, src.ConstIsNull
+		return
+	}
+	dstValues, srcValues := enumLikeValues(dst), enumLikeValues(src)
+	kept := intersectEnumValues(dstValues, srcValues)
+	if sameEnumValueSet(kept, dstValues) {
+		return
+	}
+	if sameEnumValueSet(kept, srcValues) {
+		dst.Enum, dst.Const, dst.ConstIsNull = src.Enum, src.Const, src.ConstIsNull
+		return
+	}
+	dst.Enum, dst.Const, dst.ConstIsNull = kept, nil, false
+}
+
+// intersectEnumValues returns the values present in both lists, in the order
+// they appear in the first. The result is never nil, so an empty answer is the
+// empty enum -- a schema that admits nothing -- and not an absent one.
+func intersectEnumValues(a, b []any) []any {
+	inB := make(map[string]bool, len(b))
+	for _, value := range b {
+		inB[exactEnumValueKey(value)] = true
+	}
+	out := []any{}
+	seen := make(map[string]bool, len(a))
+	for _, value := range a {
+		key := exactEnumValueKey(value)
+		if !inB[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+// sameEnumValueSet reports whether two value lists name the same set, ignoring
+// order and repetition.
+func sameEnumValueSet(a, b []any) bool {
+	keys := make(map[string]bool, len(a))
+	for _, value := range a {
+		keys[exactEnumValueKey(value)] = true
+	}
+	for _, value := range b {
+		key := exactEnumValueKey(value)
+		if !keys[key] {
+			return false
+		}
+		delete(keys, key)
+	}
+	return len(keys) == 0
+}
+
+// exactEnumValueKey identifies a value for the purpose of comparing two
+// enumerations, without folding a number through float64 on the way.
+//
+// enumValueKey, which unionEnumValues uses, marshals through
+// foldNumbersToFloat, so two literals float64 cannot tell apart --
+// 9007199254740992 and 9007199254740993 -- produce one key. Widening a set by
+// treating them as one member is harmless, which is why the union may. Narrowing
+// one is not: an intersection that believed them equal would keep a value one of
+// the two schemas does not list, and #215/#216/#220 are the record of what
+// reading a JSON number through float64 costs. So a number is compared as the
+// exact rational #230 already carries it as, under which 1, 1.0 and 1e0 are one
+// member because JSON says they are one number.
+//
+// A literal big.Rat cannot read -- one whose exponent is past ratExponentLimit
+// -- falls back to its own text, which can only ever make two values look
+// different. That is the direction that drops a member from an intersection
+// rather than inventing one, and a dropped member is a rejection the schema
+// states somewhere else.
+func exactEnumValueKey(v any) string {
+	var b strings.Builder
+	writeExactEnumValueKey(&b, v)
+	return b.String()
+}
+
+func writeExactEnumValueKey(b *strings.Builder, v any) {
+	switch t := v.(type) {
+	case nil:
+		b.WriteString("null")
+	case bool:
+		if t {
+			b.WriteString("true")
+		} else {
+			b.WriteString("false")
+		}
+	case string:
+		b.WriteString("s")
+		b.WriteString(strconv.Quote(t))
+	case json.Number:
+		writeExactNumberKey(b, schema.Number(t))
+	case schema.Number:
+		writeExactNumberKey(b, t)
+	case float64:
+		writeExactNumberKey(b, schema.Number(strconv.FormatFloat(t, 'g', -1, 64)))
+	case int:
+		writeExactNumberKey(b, schema.Number(strconv.Itoa(t)))
+	case int64:
+		writeExactNumberKey(b, schema.Number(strconv.FormatInt(t, 10)))
+	case []any:
+		b.WriteString("[")
+		for i, elem := range t {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			writeExactEnumValueKey(b, elem)
+		}
+		b.WriteString("]")
+	case map[string]any:
+		b.WriteString("{")
+		for i, k := range sortedKeys(t) {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(strconv.Quote(k))
+			b.WriteString(":")
+			writeExactEnumValueKey(b, t[k])
+		}
+		b.WriteString("}")
+	default:
+		fmt.Fprintf(b, "?%T:%v", v, v)
+	}
+}
+
+func writeExactNumberKey(b *strings.Builder, n schema.Number) {
+	if r, ok := n.Rat(); ok {
+		b.WriteString("n")
+		b.WriteString(r.RatString())
+		return
+	}
+	b.WriteString("n?")
+	b.WriteString(string(n))
+}
+
+// narrowMergedType intersects the type a merge already holds with the one a
+// branch states. Both bind on every valid instance, so the merge admits the
+// types both name and nothing else.
+//
+// Before this the first stated type simply stood and every later one was
+// dropped, which over-enforced in one direction and under-enforced in the other:
+// {"type":["string","integer"],"allOf":[{"type":"string"}]} kept both names, so
+// the merge produced a type that accepts an integer neither schema admits
+// together.
+//
+// "integer" and "number" are the one pair that intersects to something neither
+// side wrote: every integer is a number in every draft, so the two together
+// admit the integers.
+func (g *Generator) narrowMergedType(target, resolved *schema.Schema) {
+	// Draft 3 lets an entry of the type array be a schema rather than a name.
+	// Those alternatives widen what the schema admits past the names Type lists,
+	// so the names alone do not describe either side and intersecting them would
+	// refuse instances the schema permits. The first stated stands, which is
+	// where it was before this function existed.
+	if len(target.TypeSchemas) > 0 || len(resolved.TypeSchemas) > 0 {
+		return
+	}
+	if kept := intersectDeclaredTypes(target.Type, resolved.Type); len(kept) > 0 {
+		target.Type = kept
+		return
+	}
+	// Nothing satisfies both. Recorded as the empty enum, which is what this
+	// repository already reads as "admits nothing" -- see emptyEnumSchema and
+	// the forbidding arm in generateAllOfDef. `type` is left as it was so that
+	// any path which does not consult that arm behaves exactly as it did.
+	//
+	// Only where the validation vocabulary binds: a metaschema that withholds it
+	// makes `type` an annotation, and two annotations that disagree forbid
+	// nothing at all.
+	if !g.validationKeywordsEnabled() {
+		return
+	}
+	dropEveryValue(target)
+}
+
+// dropEveryValue marks a schema as admitting no instance, in the spelling the
+// rest of the generator already reads: `"enum": []`. The list must be empty and
+// non-nil; nil is an absent enum. See emptyEnumSchema.
+func dropEveryValue(s *schema.Schema) {
+	s.Enum = []any{}
+	s.Const = nil
+	s.ConstIsNull = false
+}
+
+// intersectDeclaredTypes returns the type names both lists admit, in the order
+// of the first. "integer" is kept against a "number" on the other side, since
+// every integer is a number.
+func intersectDeclaredTypes(a, b schema.TypeList) schema.TypeList {
+	inB := make(map[string]bool, len(b))
+	for _, name := range b {
+		inB[name] = true
+	}
+	var out schema.TypeList
+	seen := make(map[string]bool, len(a))
+	for _, name := range a {
+		kept := ""
+		switch {
+		case inB[name]:
+			kept = name
+		case name == "number" && inB["integer"], name == "integer" && inB["number"]:
+			kept = "integer"
+		}
+		if kept == "" || seen[kept] {
+			continue
+		}
+		seen[kept] = true
+		out = append(out, kept)
+	}
+	return out
+}
+
 // mergePropertyNames combines the two propertyNames sub-schemas an allOf brings
 // to bear on the same object. Both bind at once, so the result must satisfy
 // both, and it returns a fresh node rather than writing through to either --
@@ -6249,13 +6641,14 @@ func mergeConstraints(dst, src *schema.Schema) {
 // merge into every other use of it.
 //
 // What can be intersected is: a false schema on either side (no name is legal),
-// a true schema on either side (that side says nothing), and the length bounds,
-// where the tighter wins. `pattern` and `enum` cannot be: a single regex cannot
-// in general express "matches both", and PropertyNamesDef has one slot for
-// each. There the first stated wins -- the same single-pattern limitation
-// mergeConstraints already documents for `pattern`. That under-enforces (a name
-// the other pattern would reject is let through) rather than rejecting names
-// the schema allows, which is the safer direction for generated code.
+// a true schema on either side (that side says nothing), the length bounds,
+// where the tighter wins, and the enumerated name sets, which mergeConstraints
+// intersects. `pattern` cannot be: a single regex cannot in general express
+// "matches both", and PropertyNamesDef has one slot for it. There the first
+// stated wins -- the same single-pattern limitation mergeConstraints already
+// documents. That under-enforces (a name the other pattern would reject is let
+// through) rather than rejecting names the schema allows, which is the safer
+// direction for generated code.
 func mergePropertyNames(dst, src *schema.Schema) *schema.Schema {
 	if src == nil {
 		return dst
@@ -6270,10 +6663,13 @@ func mergePropertyNames(dst, src *schema.Schema) *schema.Schema {
 		return src
 	}
 	combined := *dst // shallow copy; mergeConstraints writes into its first argument
+	// enum and const are mergeConstraints' now, whole: it intersects the two
+	// name sets and knows the `"const": null` spelling that a *any cannot hold.
+	// The patch that used to stand here read only `len(Enum) == 0 && Const ==
+	// nil`, which is also what an *empty* enum looks like -- so an intersection
+	// that came out empty was overwritten with src's list, and a propertyNames
+	// admitting no name at all admitted src's names instead.
 	mergeConstraints(&combined, src)
-	if len(combined.Enum) == 0 && combined.Const == nil {
-		combined.Enum, combined.Const = src.Enum, src.Const
-	}
 	return &combined
 }
 
