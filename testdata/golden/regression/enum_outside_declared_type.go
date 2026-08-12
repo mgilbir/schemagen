@@ -1443,7 +1443,7 @@ type EnumOutsideDeclaredType struct {
 	IntegerFloatSpelling    *int64                                                    `json:"integerFloatSpelling,omitempty"`
 	NotConstOutside         EnumOutsideDeclaredTypeNotConstOutside                    `json:"notConstOutside,omitzero"`
 	NullOutsideConst        NullConst                                                 `json:"nullOutsideConst,omitzero"`
-	NullableEnum            EnumOutsideDeclaredTypeNullableEnum                       `json:"nullableEnum"`
+	NullableEnum            EnumOutsideDeclaredTypeNullableEnum                       `json:"nullableEnum,omitzero"`
 	NumberEnum              *EnumOutsideDeclaredTypeNumberEnum                        `json:"numberEnum,omitempty"`
 	NumberOutsideConst      NumberConst                                               `json:"numberOutsideConst,omitzero"`
 	ObjectEnum              EnumOutsideDeclaredTypeObjectEnum                         `json:"objectEnum,omitempty"`

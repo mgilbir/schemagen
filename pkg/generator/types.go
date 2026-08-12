@@ -1244,9 +1244,14 @@ type FieldDef struct {
 	// Config.StrictReadWrite does look through the reference, because the check
 	// it emits has nowhere else to live, and so does DefaultLiteral. See
 	// Generator.unconditionalReachAt.
-	Annotations    Annotations
-	ManualJSON     bool   // true if a `json:"..."` tag cannot carry JSONName -- see needsManualJSON, which asks encoding/json's own tag grammar rather than listing characters
-	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
+	Annotations Annotations
+	ManualJSON  bool   // true if a `json:"..."` tag cannot carry JSONName -- see needsManualJSON, which asks encoding/json's own tag grammar rather than listing characters
+	ManualOmit  string // how the hand-written marshal detects a value it must not write: "nil", "iszero", "zerojson", or "" (write unconditionally). Only meaningful with ManualJSON.
+	// ZeroJSON is the JSON text this field's Go zero marshals to, set only for
+	// ManualOmit "zerojson": the field has no nil and no IsZero, so the
+	// hand-written marshal recognises the value it must not write by the bytes
+	// it produces. See zeroValueForbidden.
+	ZeroJSON       string
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
 	// DefaultShape selects the arm of the SetDefaults template that writes
 	// DefaultLiteral. Empty for the four scalars and their pointers, where the

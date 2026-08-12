@@ -94,6 +94,21 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		}
 		obj[{{printf "%q" .JSONName}}] = raw
 	}
+	{{- else if eq .ManualOmit "zerojson"}}
+	// The property name cannot go in a struct tag, so ",omitzero" never reaches
+	// this field: the value its Go zero writes is one the schema forbids here,
+	// and skipping it has to be done by hand. The field has neither a nil nor an
+	// IsZero to recognise that value by, so the bytes are what it is recognised
+	// by. See zeroValueForbidden and issue #250.
+	{
+		raw, err := json.Marshal({{$recv}}.{{.Name}})
+		if err != nil {
+			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
+		}
+		if string(raw) != {{printf "%q" .ZeroJSON}} {
+			obj[{{printf "%q" .JSONName}}] = raw
+		}
+	}
 	{{- else}}
 	{
 		raw, err := json.Marshal({{$recv}}.{{.Name}})

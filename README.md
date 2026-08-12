@@ -52,7 +52,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 |------|-------|---------|-------------|
 | `--output-dir` | `-o` | `.` | Output directory for generated files |
 | `--package` | `-p` | `generated` | Go package name for generated code |
-| `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields |
+| `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields. With `--omit-empty=false` an optional field is written even when it holds its Go zero — `{}` marshals as `{"s":"","i":0,"b":false}` — except where that zero is a value the schema forbids at that position: a `null` for a typed property, or a zero the property's `const`, `enum`, `minLength`, `pattern` or numeric bounds exclude. Those are omitted rather than written, because there is no value to write there and every candidate is one the schema may equally reject |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output. Read on every object schema, including the sub-schemas the generator compiles to schema data rather than to a struct. An `allOf` branch's properties are pooled into the object the branches compose, as the merged struct pools them; every other applicator's sub-schema is a schema object in its own right and is read on its own terms, which is `additionalProperties`' own reading and can make a discriminated or conditional object unsatisfiable |
 | `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
