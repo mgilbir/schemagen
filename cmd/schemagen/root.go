@@ -310,6 +310,23 @@ func newGenerateCmd() *cobra.Command {
 				}
 			}
 
+			// The root type name of an input, from the same two sources
+			// generation reads and in the same order. Shared with the
+			// definition-name resolver below, whose prefixes have to be the
+			// names the documents actually get.
+			rootNameOf := func(schemaPath string, s *schema.Schema) string {
+				if name := rootNames.lookup(schemaPath, docIDOf(s)); name != "" {
+					return name
+				}
+				if rootNameFromFile {
+					// e.g. "http_api_url.json" → "HTTPAPIURLJSON"; the extension
+					// is kept as a naming word so person.json and person.yaml
+					// derive distinct type names.
+					return generator.SchemaNameToGoName(filepath.Base(schemaPath))
+				}
+				return ""
+			}
+
 			var sharedGen *generator.Generator
 			// The $refs between the inputs, in shared-types mode only, where
 			// they decide the order the inputs have to be generated in. Two
@@ -322,6 +339,12 @@ func newGenerateCmd() *cobra.Command {
 			// order; see explainRootTypeCollision.
 			generatedRoots := make(map[string]string, len(args))
 			generatedInputs := make([]string, 0, len(args))
+			// The Go names this package's definitions are declared under, for
+			// the ones a same-named definition in another input made it
+			// impossible to leave alone. Empty in every run that has no such
+			// clash, which is every single-document run. See
+			// resolveSharedDefinitionNames.
+			var pinnedDefNames map[*schema.Schema]string
 			if sharedTypes {
 				// One package, one generator, and therefore one pass over the
 				// inputs in the order given. A $ref chain that runs in a circle
@@ -331,6 +354,13 @@ func newGenerateCmd() *cobra.Command {
 				if err := checkInputRefCycle(args, refEdges); err != nil {
 					return err
 				}
+				pinnedDefNames = resolveSharedDefinitionNames(args, inputByPath,
+					func(schemaPath string, s *schema.Schema) string {
+						if name := rootNameOf(schemaPath, s); name != "" {
+							return name
+						}
+						return generator.DefaultRootTypeName(s)
+					}, cmd.ErrOrStderr())
 				absPath, _ := filepath.Abs(args[0])
 				resolvers := []schema.SchemaResolver{
 					schema.NewMappingResolver(inputByID),
@@ -340,19 +370,20 @@ func newGenerateCmd() *cobra.Command {
 					resolvers = append(resolvers, schema.NewHTTPResolver())
 				}
 				sharedGen = generator.New(generator.Config{
-					PackageName:      pkgName,
-					OutputDir:        outputDir,
-					OmitEmpty:        omitEmpty,
-					StrictProperties: strictProperties,
-					StrictReadWrite:  strictReadWrite,
-					BigIntSupport:    bigInt,
-					FormatAssertion:  formatAssertion,
-					FormatAnnotation: formatAnnotation,
-					Resolver:         schema.NewCompositeResolver(resolvers...),
-					Draft:            draft,
-					Validation:       validationMode,
-					LenientRefs:      lenientRefs,
-					SharedTypes:      true,
+					PackageName:         pkgName,
+					OutputDir:           outputDir,
+					OmitEmpty:           omitEmpty,
+					StrictProperties:    strictProperties,
+					StrictReadWrite:     strictReadWrite,
+					BigIntSupport:       bigInt,
+					FormatAssertion:     formatAssertion,
+					FormatAnnotation:    formatAnnotation,
+					Resolver:            schema.NewCompositeResolver(resolvers...),
+					Draft:               draft,
+					Validation:          validationMode,
+					LenientRefs:         lenientRefs,
+					SharedTypes:         true,
+					DefinitionTypeNames: pinnedDefNames,
 				})
 			}
 
@@ -411,13 +442,7 @@ func newGenerateCmd() *cobra.Command {
 				// The $id is only known once the schema is loaded, and it is a
 				// --root-name key, so the name is resolved here rather than
 				// before the branch above.
-				rootTypeName := rootNames.lookup(schemaPath, docIDOf(s))
-				if rootTypeName == "" && rootNameFromFile {
-					// e.g. "http_api_url.json" → "HTTPAPIURLJSON"; the extension
-					// is kept as a naming word so person.json and person.yaml
-					// derive distinct type names.
-					rootTypeName = generator.SchemaNameToGoName(fileKey)
-				}
+				rootTypeName := rootNameOf(schemaPath, s)
 
 				// 4. Generate IR
 				ir, err := gen.Generate(s,
@@ -444,6 +469,13 @@ func newGenerateCmd() *cobra.Command {
 					var collision *generator.RootTypeCollisionError
 					if errors.As(err, &collision) {
 						return explainRootTypeCollision(schemaPath, collision, generatedInputs, generatedRoots, refEdges)
+					}
+					// The name chosen to keep two same-named definitions apart
+					// was itself taken. Only this loop knows which definition
+					// that name was chosen for; see explainPinnedNameCollision.
+					var pinnedCollision *generator.PinnedNameCollisionError
+					if errors.As(err, &pinnedCollision) {
+						return explainPinnedNameCollision(schemaPath, pinnedCollision, pinnedDefNames, inputByPath, args)
 					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
@@ -834,6 +866,34 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	}
 	pkgOrder = orderedPkgs
 
+	// Two documents assigned to one package share its name space exactly as two
+	// inputs of a --shared-types run do, so a definition of the same name in
+	// both is the same defect and gets the same answer. Resolved per package:
+	// documents in different packages are in different name spaces, and
+	// qualifying a name there would rename types nothing was about to merge.
+	rootNameOf := func(schemaPath string, s *schema.Schema) string {
+		id := docIDOf(s)
+		if name := p.rootNames.lookup(schemaPath, id); name != "" {
+			return name
+		}
+		if p.rootNameFromFile {
+			return generator.SchemaNameToGoName(filepath.Base(schemaPath))
+		}
+		return generator.DefaultRootTypeName(s)
+	}
+	pinnedDefNames := make(map[string]map[*schema.Schema]string, len(pkgOrder))
+	byPath := make(map[string]*schema.Schema, len(inputs))
+	for _, in := range inputs {
+		byPath[in.path] = in.s
+	}
+	for _, pkg := range pkgOrder {
+		paths := make([]string, 0, len(pkgInputs[pkg]))
+		for _, in := range pkgInputs[pkg] {
+			paths = append(paths, in.path)
+		}
+		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, byPath, rootNameOf, p.warnings)
+	}
+
 	// Reject resolved output-path collisions before generating anything, and
 	// require each output directory to hold exactly one package: files in one
 	// directory share a package clause, so two import paths writing there
@@ -881,6 +941,12 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			SharedTypes:      true,
 			ImportPath:       pkg,
 			CrossPackage:     registry,
+			// This package's pins only: a name is a name inside one Go package,
+			// and another package's choice neither collides with nor binds this
+			// one. A cross-package $ref reaches the pinned name through the
+			// registry, which recorded it when the owning package was generated
+			// -- packages are ordered so that has already happened.
+			DefinitionTypeNames: pinnedDefNames[pkg],
 		})
 
 		// Helpers are package-level functions, so each generated package gets
@@ -915,6 +981,14 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				var unresolved *generator.UnresolvedRefsError
 				if errors.As(err, &unresolved) {
 					return fmt.Errorf("generating IR for %s: %w\n(provide the referenced documents as inputs, enable --allow-remote-refs, or pass --lenient-refs to degrade unresolved refs to any)", in.path, err)
+				}
+				var pinnedCollision *generator.PinnedNameCollisionError
+				if errors.As(err, &pinnedCollision) {
+					pkgPaths := make([]string, 0, len(pkgInputs[pkg]))
+					for _, other := range pkgInputs[pkg] {
+						pkgPaths = append(pkgPaths, other.path)
+					}
+					return explainPinnedNameCollision(in.path, pinnedCollision, pinnedDefNames[pkg], byPath, pkgPaths)
 				}
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}

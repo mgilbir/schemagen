@@ -207,12 +207,34 @@ type Generator struct {
 	// it is checked on arrival and refused. Generate reports this in preference
 	// to the "cannot resolve $ref" that refusing it produces.
 	nullSubschemaErr error
+
+	// pinnedNames is the set of names Config.DefinitionTypeNames asks for, and
+	// pinnedNameTaken the ones a *different* schema node had already claimed by
+	// the time the pinned definition asked for them.
+	//
+	// A pinned name is one the caller invented to keep two definitions apart, so
+	// it was never written in any document and cannot be checked against one.
+	// Every other route into generateTypeDef derives its name from something in
+	// the input -- a $defs key, a property path, a title -- and the caller can
+	// see those; it cannot see the names the generator mints for inline
+	// positions (parent name + field name), and a pinned name that lands on one
+	// of those would be skipped by the re-entrancy guard exactly as the
+	// collision it was invented to prevent. Recording it here is what turns that
+	// back into a refusal instead of a second silent merge.
+	pinnedNames     map[string]bool
+	pinnedNameTaken map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
+	pinned := make(map[string]bool, len(cfg.DefinitionTypeNames))
+	for _, name := range cfg.DefinitionTypeNames {
+		pinned[name] = true
+	}
 	return &Generator{
 		config:             cfg,
+		pinnedNames:        pinned,
+		pinnedNameTaken:    make(map[string]bool),
 		generated:          make(map[string]bool),
 		generating:         make(map[string]bool),
 		structsInProgress:  make(map[string]bool),
@@ -394,7 +416,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	defNames := sortedKeys(s.Defs)
 	for _, name := range defNames {
 		def := s.Defs[name]
-		goName := SchemaNameToGoName(name)
+		goName := g.definitionGoName(name, def)
 		if err := g.generateTypeDef(goName, def); err != nil {
 			return nil, fmt.Errorf("generating $defs/%s: %w", name, err)
 		}
@@ -403,7 +425,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	defNames = sortedKeys(s.Definitions)
 	for _, name := range defNames {
 		def := s.Definitions[name]
-		goName := SchemaNameToGoName(name)
+		goName := g.definitionGoName(name, def)
 		if err := g.generateTypeDef(goName, def); err != nil {
 			return nil, fmt.Errorf("generating definitions/%s: %w", name, err)
 		}
@@ -492,6 +514,19 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		return nil, newCrossPackageMissError(g.crossPackageMisses)
 	}
 
+	// A pinned name that another schema already held kept none of the
+	// definitions apart, so the IR built above is the merged one the pin exists
+	// to prevent. Reported rather than worked around: the name came from the
+	// caller, and only the caller can choose another.
+	if len(g.pinnedNameTaken) > 0 {
+		names := make([]string, 0, len(g.pinnedNameTaken))
+		for name := range g.pinnedNameTaken {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return nil, &PinnedNameCollisionError{Names: names}
+	}
+
 	// Imports of sibling generated packages (cross-package refs), sorted for
 	// deterministic output.
 	crossPaths := make([]string, 0, len(g.crossImports))
@@ -571,6 +606,62 @@ func DefaultRootTypeName(s *schema.Schema) string {
 		return SchemaNameToGoName(s.Title)
 	}
 	return "Root"
+}
+
+// notePinnedNameTaken records a pinned name the re-entrancy guard just turned
+// away because a different schema node holds it.
+//
+// The comparison is on the node, not on the name: the same definition arrives
+// here repeatedly (its own $defs entry, and again through every $ref that
+// reaches it) and those visits are the guard working as intended. Only a
+// *different* node under a pinned name is a collision, and only then is the
+// definition that pin was invented for left sharing someone else's type.
+//
+// A name with no recorded schema is not judged. The arms above this guard --
+// the runtime evaluator, the dynamic-scope wrapper -- claim a name before
+// typeSchemas is written, so "no entry" means "not known", not "free".
+func (g *Generator) notePinnedNameTaken(name string, s *schema.Schema) {
+	if s == nil || !g.pinnedNames[name] {
+		return
+	}
+	claimed, ok := g.typeSchemas[name]
+	if !ok || claimed == nil || claimed == s {
+		return
+	}
+	// Two nodes pinned to one name are the caller saying they are one type,
+	// which a document spelling the same definition under both "definitions"
+	// and "$defs" produces. The guard turning the second away is then the whole
+	// point of the pin, not a collision with it.
+	if g.config.DefinitionTypeNames[claimed] == name && g.config.DefinitionTypeNames[s] == name {
+		return
+	}
+	g.pinnedNameTaken[name] = true
+}
+
+// definitionGoName is the Go type name a definition is declared under: the name
+// the caller pinned for that node, or the one its $defs key derives.
+func (g *Generator) definitionGoName(defKey string, def *schema.Schema) string {
+	if pinned, ok := g.config.DefinitionTypeNames[def]; ok {
+		return pinned
+	}
+	return SchemaNameToGoName(defKey)
+}
+
+// PinnedNameCollisionError reports names Config.DefinitionTypeNames asked for
+// that a different schema node had already claimed.
+//
+// The caller invented those names to keep two definitions apart, so a name that
+// lands on some other type has not kept them apart at all -- the definition is
+// skipped by the re-entrancy guard and its position silently carries the other
+// type, which is the defect the pin exists to prevent. Refusing is the only
+// answer that does not hand back that same silence under a new name.
+type PinnedNameCollisionError struct {
+	Names []string
+}
+
+func (e *PinnedNameCollisionError) Error() string {
+	return fmt.Sprintf("type name %s is claimed by another schema in this package",
+		strings.Join(quoteAll(e.Names), ", "))
 }
 
 // RootTypeCollisionError reports a --shared-types schema whose root type name
@@ -2296,6 +2387,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// decide -- it is the same schema under the same name, so the arm that
 	// claimed it the first time is the arm that would claim it again.
 	if g.generated[name] {
+		g.notePinnedNameTaken(name, s)
 		return nil
 	}
 
@@ -10564,6 +10656,16 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 	// fetched meta-schema recurse without end.
 	if existing, ok := g.nodeTypeNames[resolved]; ok {
 		return existing
+	}
+	// A definition the caller pinned a name for keeps it wherever the reference
+	// came from, and this is the arm that answers every reference the node was
+	// not already materialized for -- one from another document of the same
+	// package whose own turn has not come, and one into a definition an arm
+	// above generateTypeDef's node registry claimed. Without it the reference
+	// materializes that definition under the name its $defs key derives, which
+	// is the name the pin exists to move it off.
+	if pinned, ok := g.config.DefinitionTypeNames[resolved]; ok {
+		return pinned
 	}
 	// Only re-derive the name when the ref would produce a misleading name.
 	// This happens primarily for fragment-only refs like "#" or "#/..." that
