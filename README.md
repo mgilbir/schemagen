@@ -535,7 +535,16 @@ A schema that constrains a value without giving it a Go type -- a root `anyOf`/`
 
 ### Field Name Overrides
 
-By default, `schemagen` derives Go field names from JSON property names (e.g. `first_name` → `FirstName`). When migrating an existing codebase to schema-generated types, you may need specific field names to stay compatible with code that already references them. Use `--field-map` to pin individual properties to chosen Go field names:
+By default, `schemagen` derives Go field names from JSON property names (e.g. `first_name` → `FirstName`).
+
+A derived name is always **exported**, which capitalizing alone cannot guarantee: a script without case has no capital to reach, so a property named `日本語` capitalizes to `日本語`, which is a legal Go identifier and an unexported one — and `encoding/json` ignores an unexported field however good its tag is. Such a name takes a leading `X`, the same prefix a name that cannot start an identifier already takes (`1a` → `X1a`):
+
+| property | Go field | |
+|---|---|---|
+| `日本語`, `한국어`, `العربية`, `ภาษาไทย` | `X日本語`, `X한국어`, `Xالعربية`, `Xภาษาไทย` | no upper case exists in the script |
+| `привет`, `Ωμέγα`, `café` | `Привет`, `Ωμέγα`, `Café` | Cyrillic, Greek and Latin have case, so nothing is prefixed |
+
+The JSON tag keeps the original property name either way, so this changes the Go API of a generated type and not the wire format. Two properties whose derived names collide (`日本語` beside `X日本語`) are numbered apart exactly as any other clash is. Use `--field-map` to pin individual properties to chosen Go field names:
 
 ```bash
 schemagen generate --field-map names.json person.json address.json

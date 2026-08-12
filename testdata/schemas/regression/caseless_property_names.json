@@ -1,0 +1,477 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaselessNames",
+  "type": "object",
+  "properties": {
+    "requiredBag": {
+      "type": "object",
+      "properties": {
+        "日本語": {
+          "type": "string"
+        },
+        "中文": {
+          "type": "string"
+        },
+        "한국어": {
+          "type": "string"
+        },
+        "العربية": {
+          "type": "string"
+        },
+        "עברית": {
+          "type": "string"
+        },
+        "ภาษาไทย": {
+          "type": "string"
+        },
+        "हिन्दी": {
+          "type": "string"
+        },
+        "कमल": {
+          "type": "string"
+        },
+        "日本語abc": {
+          "type": "string"
+        },
+        "१२३": {
+          "type": "string"
+        },
+        "abc日本語": {
+          "type": "string"
+        },
+        "привет": {
+          "type": "string"
+        },
+        "Ωμέγα": {
+          "type": "string"
+        },
+        "café": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "string"
+        },
+        "1a": {
+          "type": "string"
+        },
+        "_x": {
+          "type": "string"
+        },
+        "": {
+          "type": "string"
+        },
+        "🎉": {
+          "type": "string"
+        },
+        "-": {
+          "type": "string"
+        },
+        "a,b": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "日本語",
+        "中文",
+        "한국어",
+        "العربية",
+        "עברית",
+        "ภาษาไทย",
+        "हिन्दी",
+        "कमल",
+        "日本語abc",
+        "१२३",
+        "abc日本語",
+        "привет",
+        "Ωμέγα",
+        "café",
+        "ok",
+        "1a",
+        "_x",
+        "",
+        "🎉",
+        "-",
+        "a,b"
+      ]
+    },
+    "optionalBag": {
+      "type": "object",
+      "properties": {
+        "日本語": {
+          "type": "string"
+        },
+        "中文": {
+          "type": "string"
+        },
+        "한국어": {
+          "type": "string"
+        },
+        "العربية": {
+          "type": "string"
+        },
+        "עברית": {
+          "type": "string"
+        },
+        "ภาษาไทย": {
+          "type": "string"
+        },
+        "हिन्दी": {
+          "type": "string"
+        },
+        "कमल": {
+          "type": "string"
+        },
+        "日本語abc": {
+          "type": "string"
+        },
+        "१२३": {
+          "type": "string"
+        },
+        "abc日本語": {
+          "type": "string"
+        },
+        "привет": {
+          "type": "string"
+        },
+        "Ωμέγα": {
+          "type": "string"
+        },
+        "café": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "string"
+        },
+        "1a": {
+          "type": "string"
+        },
+        "_x": {
+          "type": "string"
+        },
+        "": {
+          "type": "string"
+        },
+        "🎉": {
+          "type": "string"
+        },
+        "-": {
+          "type": "string"
+        },
+        "a,b": {
+          "type": "string"
+        }
+      }
+    },
+    "nested": {
+      "type": "object",
+      "properties": {
+        "inner": {
+          "type": "object",
+          "properties": {
+            "日本語": {
+              "type": "string"
+            },
+            "中文": {
+              "type": "string"
+            },
+            "한국어": {
+              "type": "string"
+            },
+            "العربية": {
+              "type": "string"
+            },
+            "עברית": {
+              "type": "string"
+            },
+            "ภาษาไทย": {
+              "type": "string"
+            },
+            "हिन्दी": {
+              "type": "string"
+            },
+            "कमल": {
+              "type": "string"
+            },
+            "日本語abc": {
+              "type": "string"
+            },
+            "१२३": {
+              "type": "string"
+            },
+            "abc日本語": {
+              "type": "string"
+            },
+            "привет": {
+              "type": "string"
+            },
+            "Ωμέγα": {
+              "type": "string"
+            },
+            "café": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "string"
+            },
+            "1a": {
+              "type": "string"
+            },
+            "_x": {
+              "type": "string"
+            },
+            "": {
+              "type": "string"
+            },
+            "🎉": {
+              "type": "string"
+            },
+            "-": {
+              "type": "string"
+            },
+            "a,b": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "mapValues": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "日本語": {
+            "type": "string"
+          },
+          "中文": {
+            "type": "string"
+          },
+          "한국어": {
+            "type": "string"
+          },
+          "العربية": {
+            "type": "string"
+          },
+          "עברית": {
+            "type": "string"
+          },
+          "ภาษาไทย": {
+            "type": "string"
+          },
+          "हिन्दी": {
+            "type": "string"
+          },
+          "कमल": {
+            "type": "string"
+          },
+          "日本語abc": {
+            "type": "string"
+          },
+          "१२३": {
+            "type": "string"
+          },
+          "abc日本語": {
+            "type": "string"
+          },
+          "привет": {
+            "type": "string"
+          },
+          "Ωμέγα": {
+            "type": "string"
+          },
+          "café": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "string"
+          },
+          "1a": {
+            "type": "string"
+          },
+          "_x": {
+            "type": "string"
+          },
+          "": {
+            "type": "string"
+          },
+          "🎉": {
+            "type": "string"
+          },
+          "-": {
+            "type": "string"
+          },
+          "a,b": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "arrayElements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "日本語": {
+            "type": "string"
+          },
+          "中文": {
+            "type": "string"
+          },
+          "한국어": {
+            "type": "string"
+          },
+          "العربية": {
+            "type": "string"
+          },
+          "עברית": {
+            "type": "string"
+          },
+          "ภาษาไทย": {
+            "type": "string"
+          },
+          "हिन्दी": {
+            "type": "string"
+          },
+          "कमल": {
+            "type": "string"
+          },
+          "日本語abc": {
+            "type": "string"
+          },
+          "१२३": {
+            "type": "string"
+          },
+          "abc日本語": {
+            "type": "string"
+          },
+          "привет": {
+            "type": "string"
+          },
+          "Ωμέγα": {
+            "type": "string"
+          },
+          "café": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "string"
+          },
+          "1a": {
+            "type": "string"
+          },
+          "_x": {
+            "type": "string"
+          },
+          "": {
+            "type": "string"
+          },
+          "🎉": {
+            "type": "string"
+          },
+          "-": {
+            "type": "string"
+          },
+          "a,b": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "collide": {
+      "type": "object",
+      "properties": {
+        "日本語": {
+          "type": "string"
+        },
+        "X日本語": {
+          "type": "string"
+        },
+        "日-本-語": {
+          "type": "string"
+        },
+        "中文": {
+          "type": "string"
+        },
+        "中-文": {
+          "type": "string"
+        }
+      }
+    },
+    "defRef": {
+      "$ref": "#/$defs/日本語型"
+    }
+  },
+  "required": [
+    "requiredBag"
+  ],
+  "$defs": {
+    "日本語型": {
+      "type": "object",
+      "properties": {
+        "日本語": {
+          "type": "string"
+        },
+        "中文": {
+          "type": "string"
+        },
+        "한국어": {
+          "type": "string"
+        },
+        "العربية": {
+          "type": "string"
+        },
+        "עברית": {
+          "type": "string"
+        },
+        "ภาษาไทย": {
+          "type": "string"
+        },
+        "हिन्दी": {
+          "type": "string"
+        },
+        "कमल": {
+          "type": "string"
+        },
+        "日本語abc": {
+          "type": "string"
+        },
+        "१२३": {
+          "type": "string"
+        },
+        "abc日本語": {
+          "type": "string"
+        },
+        "привет": {
+          "type": "string"
+        },
+        "Ωμέγα": {
+          "type": "string"
+        },
+        "café": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "string"
+        },
+        "1a": {
+          "type": "string"
+        },
+        "_x": {
+          "type": "string"
+        },
+        "": {
+          "type": "string"
+        },
+        "🎉": {
+          "type": "string"
+        },
+        "-": {
+          "type": "string"
+        },
+        "a,b": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
