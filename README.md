@@ -156,6 +156,20 @@ null, and a present empty collection comes back as `[]` or `{}`. All three are
 distinguishable. A value built in Go rather than decoded carries no such record,
 and its nil fields are simply omitted.
 
+### Property names are case-sensitive
+
+JSON Schema property names are case-sensitive: `NAME` and `name` are two
+different properties, and a schema declaring only `name` says nothing whatever
+about `NAME`. `encoding/json` disagrees by default — a key matching no struct
+tag exactly is matched a second time case-insensitively, through Unicode simple
+folding rather than merely ASCII case, so U+212A KELVIN SIGN reaches a property
+named `k`.
+
+Generated code follows the schema. A key that differs from a declared property
+only in case is an **additional property**: it goes to the overflow map (or is
+refused, where the schema forbids extra keys), and the declared property is
+absent unless the document wrote its exact name.
+
 ### Annotations: `deprecated`, `readOnly`, `writeOnly`, `examples`
 
 These four constrain nothing — from 2019-09 they are the meta-data vocabulary

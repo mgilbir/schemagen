@@ -55,6 +55,25 @@ type AllOfObjectEnumConstMember struct {
 func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"k",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumConstMember
 	aux := &struct {
 		*Alias
@@ -63,7 +82,7 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -75,9 +94,8 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 		a.K = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -172,6 +190,25 @@ type AllOfObjectEnumInline struct {
 func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"k",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumInline
 	aux := &struct {
 		*Alias
@@ -180,7 +217,7 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -192,9 +229,8 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 		a.K = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -290,6 +326,25 @@ type AllOfObjectEnumNested struct {
 func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"k",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumNested
 	aux := &struct {
 		*Alias
@@ -297,13 +352,12 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -398,6 +452,25 @@ type AllOfObjectEnumPlain struct {
 func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"k",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumPlain
 	aux := &struct {
 		*Alias
@@ -406,7 +479,7 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -418,9 +491,8 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 		a.K = int64(_iv)
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -502,6 +574,26 @@ type AllOfObjectEnumReordered struct {
 func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+			"b",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumReordered
 	aux := &struct {
 		*Alias
@@ -511,7 +603,7 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -527,9 +619,8 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 		a.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -665,6 +756,25 @@ type AllOfObjectEnumViaRef struct {
 func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"k",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnumViaRef
 	aux := &struct {
 		*Alias
@@ -673,7 +783,7 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -685,9 +795,8 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 		a.K = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -792,6 +901,31 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfObjectEnum")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"constMember",
+			"inline",
+			"nested",
+			"plain",
+			"reordered",
+			"standalone",
+			"viaRef",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfObjectEnum
 	aux := &struct {
 		*Alias
@@ -799,13 +933,12 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null

@@ -70,6 +70,29 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	       into first -- and attempting one would refuse every scalar the schema
 	       allows before a branch was tried. See OneOfIsWholeValue. */}}
 	{{- else}}
+	{{- if $struct.NeedsExactPropertyDecode}}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			{{- range $struct.DecodeJSONNames}}
+			{{printf "%q" .}},
+			{{- end}}
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
+	{{- end}}
 	type Alias {{$struct.Name}}
 	aux := &struct {
 		*Alias
@@ -90,7 +113,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)({{$recv}}),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal({{if $struct.NeedsExactPropertyDecode}}_decodeData{{else}}data{{end}}, aux); err != nil {
 		{{- if $struct.StrictReadWrite}}
 		// A refusal arriving from a nested type is held rather than returned.
 		// encoding/json records an Unmarshaler's error and goes on filling the
@@ -126,10 +149,16 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 
 	// Extract fields with JSON names that cannot be represented in struct tags.
 	{
+		{{- if $struct.NeedsExactPropertyDecode}}
+		if _rawErr != nil {
+			return _rawErr
+		}
+		{{- else}}
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		{{- end}}
 		{{- range $struct.Fields}}
 		{{- if .ManualJSON}}
 		if v, ok := raw[{{printf "%q" .JSONName}}]; ok {
@@ -368,10 +397,16 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 
 	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks $struct.NeedsJSONNulls $struct.ReadOnlyKeys}}
 	{
+		{{- if $struct.NeedsExactPropertyDecode}}
+		if _rawErr != nil {
+			return _rawErr
+		}
+		{{- else}}
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
+		{{- end}}
 		{{- if $struct.ReadOnlyKeys}}
 		// --strict-read-write. The schema marks these "readOnly", which JSON
 		// Schema section 9.4 says an owning authority is expected to ignore or

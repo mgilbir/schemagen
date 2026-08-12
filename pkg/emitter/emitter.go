@@ -154,8 +154,11 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck, "encoding/json")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.Format, "fmt")
+	// jsonExactProperties compares a document's keys the way encoding/json
+	// compares them, which is strings.EqualFold and not an ASCII rule.
+	add(helpers.ExactProperties, "strings")
 	add(helpers.Dynamic, "math")
 	// jsonIntegerFromLiteral reads the number as decimal digits, which is what
 	// makes it exact where a parse into float64 could not be.

@@ -715,6 +715,51 @@ func (d *StructDef) HasIntegerDecodes() bool {
 	return false
 }
 
+// DecodeJSONNames lists the JSON property names the opening struct decode in
+// UnmarshalJSON is allowed to fill a member from: every field carrying a real
+// struct tag, and every oneOf that sits on a property of its own. A field held
+// back for hand decoding is tagged `json:"-"` and is not one of them, and
+// neither is a oneOf standing for the whole value -- both are read out of the
+// document's own keys further down, by name and exactly.
+//
+// The list is what NeedsExactPropertyDecode narrows the decode to. Order follows
+// declaration order, and a name repeated by two members appears once: the list is
+// emitted as the argument of a single call.
+func (d *StructDef) DecodeJSONNames() []string {
+	var names []string
+	seen := make(map[string]bool, len(d.Fields)+len(d.OneOfs))
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	for i := range d.Fields {
+		if d.Fields[i].ManualJSON {
+			continue
+		}
+		add(d.Fields[i].JSONName)
+	}
+	for i := range d.OneOfs {
+		add(d.OneOfs[i].JSONName)
+	}
+	return names
+}
+
+// NeedsExactPropertyDecode reports whether UnmarshalJSON has to hand its opening
+// struct decode an object cut down to the properties the schema declares, rather
+// than the document itself.
+//
+// JSON Schema property names are case-sensitive, and encoding/json's are not: a
+// key matching no field exactly is matched again case-insensitively, so "NAME"
+// filled the member declared for "name". See jsonExactProperties, and issue #245.
+// A struct with nothing for that to happen to -- no tagged member at all -- keeps
+// the decode it had.
+func (d *StructDef) NeedsExactPropertyDecode() bool {
+	return len(d.DecodeJSONNames()) > 0
+}
+
 // HasDependentSchemaBranches reports whether any dependentSchemas entry carries
 // a branch whose checks run through the dynamic evaluator. It is the second
 // source of those checks beside ObjectConditionals, and needs the same imports

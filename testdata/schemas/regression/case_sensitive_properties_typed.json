@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaseSensitiveTypedOverflow",
+  "description": "The same, with additionalProperties given a type of its own, so the case-differing key is decoded rather than kept raw.",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" }
+  },
+  "additionalProperties": { "type": "string" }
+}

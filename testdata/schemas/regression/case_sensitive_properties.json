@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaseSensitiveProperties",
+  "description": "Two lower-case properties, and nothing said about any other spelling of them. JSON Schema property names are case-sensitive, so \"NAME\" is an additional property here and not this schema's \"name\".",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "k": { "type": "string" }
+  }
+}

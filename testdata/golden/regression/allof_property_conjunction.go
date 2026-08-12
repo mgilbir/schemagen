@@ -90,6 +90,25 @@ func (c *CapBranch) UnmarshalJSON(data []byte) error {
 		c._rawNonObject = append(c._rawNonObject[:0], data...)
 		return nil
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"viaRef",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias CapBranch
 	aux := &struct {
 		*Alias
@@ -97,13 +116,12 @@ func (c *CapBranch) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(c),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// The properties whose schema permits a null. The decode above has
 		// already turned one into a nil pointer, a nil collection or an
@@ -523,6 +541,26 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNested")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+			"b",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfPropertyConjunctionNested
 	aux := &struct {
 		*Alias
@@ -531,7 +569,7 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -543,9 +581,8 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 		a.B = int64(_iv)
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -858,6 +895,45 @@ type AllOfPropertyConjunction struct {
 func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"branchOnly",
+			"constAgainstEnum",
+			"declared",
+			"documented",
+			"documentedWriteOnly",
+			"enumBranchNarrower",
+			"enumRootNarrower",
+			"highBound",
+			"highBoundRootTighter",
+			"lenRootTighter",
+			"lowBound",
+			"lowBoundRootTighter",
+			"nested",
+			"numberMeetsInteger",
+			"numberSpelling",
+			"patternFirstWins",
+			"reversed",
+			"twice",
+			"typeBranchNarrower",
+			"typeRootNarrower",
+			"viaRef",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfPropertyConjunction
 	aux := &struct {
 		*Alias
@@ -865,13 +941,12 @@ func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
