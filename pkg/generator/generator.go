@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -782,7 +783,8 @@ func (g *Generator) addRequiredImports() {
 					}
 				}
 			}
-			// Check if any fields need manual JSON handling (control chars in names).
+			// Check if any fields need manual JSON handling (a name no struct tag can
+			// carry -- see needsManualJSON).
 			for _, f := range sd.Fields {
 				if f.ManualJSON {
 					needsJSON = true
@@ -4117,8 +4119,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 
-	// Enable custom marshal/unmarshal if any field has a JSON name that
-	// cannot be represented in struct tags (control chars, quotes, etc.).
+	// Enable custom marshal/unmarshal if any field has a JSON name a struct tag
+	// cannot carry -- see needsManualJSON.
 	for _, f := range fields {
 		if f.ManualJSON {
 			needsMarshal = true
@@ -10699,24 +10701,84 @@ func (g *Generator) resolveBaseType(s *schema.Schema) GoType {
 	return &PrimitiveType{Name: "string"}
 }
 
-// needsManualJSON returns true if the JSON property name contains characters
-// that cannot be correctly represented in a Go struct tag (backtick-delimited
-// raw string). Specifically: double quotes break tag value parsing, newlines
-// break tag key:value parsing, carriage returns/form feeds are stripped
-// or mishandled by the reflect.StructTag parser, and backticks terminate
-// the raw string literal.
+// needsManualJSON reports whether a JSON property name cannot be carried by the
+// `json:"..."` struct tag the emitter writes, and so has to be read and written
+// by hand in UnmarshalJSON/MarshalJSON instead.
+//
+// This used to be a hand-written list of characters somebody had been bitten by
+// -- `" \ backtick \n \r \t \f` and the control range -- and a list like that is
+// only ever as complete as the last bug report. It was wrong about the empty
+// name (issue #246), about any name containing a comma (issue #247), about a
+// name that is exactly "-", and about every non-ASCII rune that is not a letter
+// or a digit, an emoji among them. Each of those produced a field whose tag
+// encoding/json silently declined to use, so the document key was dropped on
+// decode and a *different* key -- the Go field name -- was invented on encode.
+//
+// So the question is not asked from examples any more. It is asked of
+// encoding/json's own tag grammar, which is where the answer has always lived:
+//
+//   - encoding/json splits the tag at the first comma (parseTag), so everything
+//     after one is read as an option rather than as part of the name.
+//   - It then puts the name through isValidTag (encoding/json/encode.go), which
+//     admits a letter, a digit, and the punctuation in "!#$%&()*+-./:;<=>?@[]^_{|}~ ",
+//     and rejects the empty string. A name it rejects is discarded and the Go
+//     field name is used in its place -- silently.
+//   - A tag of exactly "-" means "never serialize this field". A property named
+//     "-" therefore has no unambiguous spelling: the emitter writes `json:"-"`
+//     for it when there is no option to follow, and the field vanishes.
+//
+// isValidTag is the whole of the first two, because it is applied to the entire
+// name rather than to the part before the first comma: the comma is not in its
+// punctuation set, so a name containing one fails it anyway. It also subsumes
+// every character the old list named -- quote, backslash, backtick, tab,
+// newline, carriage return, form feed and the rest of the control range are
+// none of them letters, digits, or members of that punctuation set -- and with
+// them the two hazards below encoding/json: a backtick would close the raw
+// string literal the tag is written in, and reflect.StructTag would fail to
+// unquote a value holding a raw quote, backslash or newline.
+//
+// tagNameIsRepresentable is the predicate; this is its complement, kept because
+// every caller asks the negative question.
+// TestTagRepresentabilityMatchesEncodingJSON holds the predicate against what
+// encoding/json actually does, so a rule that drifts from the parser is a test
+// failure rather than the next issue.
 func needsManualJSON(jsonName string) bool {
+	return !tagNameIsRepresentable(jsonName)
+}
+
+// validTagPunctuation is the punctuation encoding/json's isValidTag admits in a
+// tag name, character for character. Absent from it, and therefore rejected:
+// the comma that separates the name from the options, the quote and backslash
+// reserved by reflect.StructTag's unquoting, the backtick that would end the raw
+// string literal, and the apostrophe.
+const validTagPunctuation = "!#$%&()*+-./:;<=>?@[]^_{|}~ "
+
+// tagNameIsRepresentable reports whether encoding/json, handed a struct tag
+// whose name is jsonName, uses exactly jsonName as the JSON member name. See
+// needsManualJSON for why the rule is stated this way.
+func tagNameIsRepresentable(jsonName string) bool {
+	// `json:"-"` is encoding/json's spelling of "skip this field", and the
+	// emitter writes a bare `json:"-"` whenever no ",omitempty"/",omitzero"
+	// follows -- so a required property named "-" disappeared from the output
+	// entirely. `json:"-,"` would name it under encoding/json v1, but the v2
+	// parser rejects that spelling outright, and the hand-written path already
+	// carries the name literally under both.
+	if jsonName == "-" {
+		return false
+	}
+	// The rest is encoding/json's isValidTag, applied to the whole name.
+	if jsonName == "" {
+		return false
+	}
 	for _, r := range jsonName {
-		switch r {
-		case '"', '`', '\\', '\n', '\r', '\t', '\f':
-			return true
+		if strings.ContainsRune(validTagPunctuation, r) {
+			continue
 		}
-		// Any non-printable control character
-		if r < 0x20 {
-			return true
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // isObjectProperty returns true if the Go type resolves to a struct (NamedType that

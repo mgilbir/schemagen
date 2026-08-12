@@ -1182,7 +1182,7 @@ type FieldDef struct {
 	// it emits has nowhere else to live, and so does DefaultLiteral. See
 	// Generator.unconditionalReachAt.
 	Annotations    Annotations
-	ManualJSON     bool   // true if JSONName contains chars that break struct tags (control chars, quotes)
+	ManualJSON     bool   // true if a `json:"..."` tag cannot carry JSONName -- see needsManualJSON, which asks encoding/json's own tag grammar rather than listing characters
 	ManualOmit     string // how the hand-written marshal detects an absent optional value: "nil", "iszero", or "" (write unconditionally). Only meaningful with ManualJSON.
 	DefaultLiteral string // Go literal for the default value (empty string means no default)
 	// DefaultShape selects the arm of the SetDefaults template that writes
