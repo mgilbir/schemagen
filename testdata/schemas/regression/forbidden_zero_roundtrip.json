@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Issue #250. Every property here is optional, so under --omit-empty=false every one of them is written from whatever the decoder left behind. The first group's zeros are values this schema forbids; the second group's are values it permits, and those must still be written.",
+  "title": "ForbiddenZeroRoundTrip",
+  "type": "object",
+  "properties": {
+    "tags": {
+      "$comment": "The issue as reported: a nil slice marshals to null, which a typed array forbids.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "boundedTags": {
+      "$comment": "The same, where [] would not have been a legal replacement either.",
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "boundedLabels": {
+      "$comment": "The same, where {} would not have been a legal replacement either.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string" }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "k": { "type": "string" } },
+        "required": ["k"]
+      }
+    },
+    "refList": {
+      "$ref": "#/$defs/BoundedList"
+    },
+    "child": {
+      "$comment": "A recursive property is a pointer, whose nil is a null the root forbids.",
+      "$ref": "#"
+    },
+    "slot": {
+      "type": "array",
+      "prefixItems": [{ "type": "string" }, { "type": "integer" }],
+      "items": false
+    },
+    "constant": {
+      "$comment": "No null in sight: the zero of the named string type is \"\", which the const forbids. This is the re-Validate half.",
+      "const": "fixed"
+    },
+    "choice": {
+      "enum": ["a", "b"]
+    },
+    "counted": {
+      "type": "integer",
+      "enum": [1, 2]
+    },
+    "atLeastTwo": {
+      "$comment": "Constraint-only: an inferred-alias wrapper whose zero marshals as \"\".",
+      "minLength": 2
+    },
+    "lowercase": {
+      "type": "string",
+      "pattern": "^[a-z]+$"
+    },
+    "positive": {
+      "type": "integer",
+      "minimum": 5
+    },
+    "a,b": {
+      "$comment": "A property name no struct tag can carry, so the omission is written by hand.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "c,d": {
+      "$comment": "The same, for a zero that is not a null: neither a nil nor an IsZero to recognise it by.",
+      "const": "fixed"
+    },
+    "nullableString": {
+      "$comment": "Null is a legal value here, so the property keeps it and an absent one is written back as null.",
+      "type": ["string", "null"]
+    },
+    "nullableList": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "nullableComposition": {
+      "anyOf": [{ "type": "string", "const": "a" }, { "type": "null" }]
+    },
+    "nullLookingEnum": {
+      "$comment": "The type list admits a null and the enum does not list one, so null is not a value this property may hold. The pointer says otherwise, and under every configuration -- the default one included -- a nil was written back as a null the decoder then refused.",
+      "type": ["string", "null"],
+      "enum": ["a", 5]
+    },
+    "nullLookingBranch": {
+      "$comment": "The same disagreement spelled through an allOf branch.",
+      "type": ["string", "null"],
+      "allOf": [{ "enum": ["a", "b"] }]
+    },
+    "anything": {},
+    "s": { "type": "string" },
+    "i": { "type": "integer" },
+    "b": { "type": "boolean" },
+    "nested": {
+      "type": "object",
+      "properties": {
+        "deeper": {
+          "type": "object",
+          "properties": { "leaf": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "BoundedList": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 2
+    }
+  }
+}

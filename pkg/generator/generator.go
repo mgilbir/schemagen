@@ -3710,6 +3710,42 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 		}
 
+		// An optional field that carries no omission at all -- which is every
+		// optional field under --omit-empty=false -- is written even when it
+		// holds the zero the decoder leaves for an absent property. Where that
+		// zero is a value this position forbids, writing it produces a document
+		// the type itself refuses to read back, so the field is omitted
+		// instead. See zeroValueForbidden and issue #250.
+		//
+		// Only where the field is not already omitted: a tag that says
+		// ",omitempty" drops the same values, and re-spelling it as ",omitzero"
+		// would rewrite every generated file under the default configuration to
+		// no effect.
+		var zeroJSON string
+		if !required && !omitEmpty && g.zeroValueForbidden(propSchema, goType) {
+			omitZero = true
+			if manualJSON {
+				// The property name cannot go in a struct tag, so no tag
+				// reaches this field and the omission is spelled out in
+				// MarshalJSON. The nilable and IsZero-carrying shapes have
+				// arms of their own; everything else is compared against the
+				// bytes its zero marshals to, which is the one test that holds
+				// for a named scalar and for a wrapper struct alike -- a
+				// wrapper is not comparable, so `!= zero` would not build.
+				switch {
+				case goType.IsPointer() || g.isCollectionType(goType) || g.isInterfaceType(goType):
+					manualOmit = "nil"
+				case g.isRawValueWrapperType(goType):
+					manualOmit = "iszero"
+				default:
+					if kind, ok := g.zeroJSONKind(goType, 0); ok {
+						manualOmit = "zerojson"
+						zeroJSON = zeroJSONLiteral(kind)
+					}
+				}
+			}
+		}
+
 		// Compute default literal if some schema unconditionally states one for
 		// this location. A default the field's own Go type cannot spell is kept
 		// for resolveNamedTypeDefaults, which runs once every declaration a
@@ -3739,6 +3775,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			Annotations:     g.propertyAnnotations(s, propName, propSchema),
 			ManualJSON:      manualJSON,
 			ManualOmit:      manualOmit,
+			ZeroJSON:        zeroJSON,
 			DefaultLiteral:  defaultLiteral,
 			pendingDefault:  pendingDefault,
 			IntegerDecode:   g.integerDecodeFor(goType, propSchema),
@@ -12210,6 +12247,303 @@ func (g *Generator) nullPresenceRecordable(t GoType) bool {
 		return false
 	}
 	return true
+}
+
+// The four JSON values a Go zero can marshal to that this file can reason
+// about. A struct zero marshals to an object whose members are themselves
+// zeros, and no single value names it, so it has no constant here and
+// zeroJSONKind declines to answer for one.
+const (
+	zeroKindNull    = "null"
+	zeroKindString  = "string"
+	zeroKindNumber  = "number"
+	zeroKindBoolean = "boolean"
+)
+
+// zeroValueForbidden reports whether the JSON value this field's Go zero
+// marshals to is one the property's own schema demonstrably rejects.
+//
+// It is asked of the optional fields that carry no omission -- which is every
+// optional field under --omit-empty=false. Such a field is written
+// unconditionally, and where its Go value is still the zero the decoder leaves
+// for an absent property, what goes into the document is a value nobody
+// supplied. Sometimes that value is one the schema permits, and always-emit is
+// what the flag asks for: {} comes back as {"s":"","i":0,"b":false}, which is
+// invented but valid, and this predicate says nothing about it.
+//
+// The rest is issue #250. A nil pointer, slice, map or interface marshals to
+// null, which a typed property forbids -- so the type wrote a document its own
+// UnmarshalJSON then refuses, and {"n":1} came back as {"n":1,"tags":null}. The
+// same break with no null in it is a zero the schema excludes by value: a const
+// property writes "" where only "fixed" is allowed, and the document is refused
+// a step later by Validate instead. Both are one rule -- do not write a value
+// this position forbids -- and there is nothing else to write in its place,
+// because every candidate ([] for an array, {} for an object, the type's zero
+// for a scalar) is a value the schema is equally free to reject, and minItems,
+// required and minLength are exactly the keywords that do. So the property is
+// omitted, which is what an optional property has always been allowed to be,
+// and which is what the default configuration already emits here.
+//
+// A property the schema permits a null in is not touched: null is a value it
+// may legitimately hold, an absent one is written back from the record
+// UnmarshalJSON keeps (see nullPresenceTracked), and omitting it would lose
+// what the document said.
+func (g *Generator) zeroValueForbidden(propSchema *schema.Schema, t GoType) bool {
+	if propSchema == nil || t == nil {
+		return false
+	}
+	kind, ok := g.zeroJSONKind(t, 0)
+	if !ok {
+		return false
+	}
+	if kind == zeroKindNull {
+		return g.schemaForbidsNull(propSchema)
+	}
+	return g.schemaForbidsZeroAt(propSchema, kind, 0)
+}
+
+// zeroJSONKind names the JSON value a zero of this Go type marshals to, and
+// reports whether it could be named at all.
+//
+// Everything nilable answers "null", which is what encoding/json writes for a
+// nil pointer, slice, map or interface, and what the raw-value wrappers'
+// hand-written MarshalJSON writes when they hold no bytes. A named type is read
+// through to whatever it is a name for, because a $ref to a "type":"string"
+// definition and an inline enum are both still a string underneath.
+//
+// A struct is where it gives up: its zero marshals to an object of further
+// zeros, and judging that against the schema is the zero-value invention this
+// deliberately leaves alone. So are time.Time and netip.Addr, whose zeros are
+// non-empty strings that no keyword this reads is about, and a foreign package's
+// type, whose definition is not in scope to be read.
+func (g *Generator) zeroJSONKind(t GoType, depth int) (string, bool) {
+	if t == nil || depth >= maxNullRefDepth {
+		return "", false
+	}
+	switch v := t.(type) {
+	case *PointerType, *ArrayType, *MapType:
+		return zeroKindNull, true
+	case *PrimitiveType:
+		switch v.Name {
+		case "string":
+			return zeroKindString, true
+		case "int64", "float64":
+			return zeroKindNumber, true
+		case "bool":
+			return zeroKindBoolean, true
+		case "any":
+			return zeroKindNull, true
+		}
+		return "", false
+	case *NamedType:
+		if v.Pointer {
+			return zeroKindNull, true
+		}
+		if v.PkgAlias != "" {
+			return "", false
+		}
+		for _, td := range g.typeDefsInScope() {
+			if td.TypeName() != v.Name {
+				continue
+			}
+			switch def := td.(type) {
+			case *AliasDef:
+				return g.zeroJSONKind(def.Underlying, depth+1)
+			case *EnumDef:
+				if def.IsRaw {
+					// Backed by json.RawMessage, whose nil marshals to null.
+					return zeroKindNull, true
+				}
+				return g.zeroJSONKind(def.BaseType, depth+1)
+			case *InferredAliasDef:
+				// The wrapper holds a typed value and a raw fallback; its zero
+				// is the typed side untouched, which it marshals as the zero of
+				// the inferred Go type.
+				return g.zeroJSONKind(def.InferredGoType, depth+1)
+			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
+				return zeroKindNull, true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// schemaForbidsZeroAt is schemaForbidsNull's question for a zero that is not a
+// null: whether this schema positively excludes the empty string, the number
+// zero or false at its own position.
+//
+// It is built the same way and for the same reason -- it follows the keywords
+// that can settle the question and gives up on the ones that cannot, so that it
+// only ever narrows to what the schema demonstrably forbids. $ref, allOf,
+// anyOf and oneOf compose exactly as they do there. const and enum enumerate
+// the permitted values. The bounding keywords are the ones whose argument
+// places the zero outside the values they admit: a minLength above zero, a
+// pattern the empty string does not match, a lower bound above zero or an upper
+// bound below it.
+//
+// "format" is deliberately not among them, even under --format-assertion: the
+// empty string is a legitimate value of several formats (json-pointer,
+// uri-reference, regex), so there is no answer here that holds for the keyword
+// rather than for a particular one of its values.
+func (g *Generator) schemaForbidsZeroAt(s *schema.Schema, kind string, depth int) bool {
+	if s == nil || depth >= maxNullRefDepth || s.IsBooleanSchema() {
+		return false
+	}
+	ref := s.EffectiveRef()
+	if ref != "" && g.refOverridesSiblings() {
+		// Before 2019-09 a $ref replaces its siblings outright, so only the
+		// target has a say.
+		target := g.resolveRefInContext(ref, s)
+		return target != nil && g.schemaForbidsZeroAt(target, kind, depth+1)
+	}
+	if ref != "" {
+		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsZeroAt(target, kind, depth+1) {
+			return true
+		}
+	}
+	for _, branch := range s.AllOf {
+		if g.schemaForbidsZeroAt(branch, kind, depth+1) {
+			return true
+		}
+	}
+	for _, group := range [][]*schema.Schema{s.AnyOf, s.OneOf} {
+		if len(group) == 0 {
+			continue
+		}
+		everyBranch := true
+		for _, branch := range group {
+			if !g.schemaForbidsZeroAt(branch, kind, depth+1) {
+				everyBranch = false
+				break
+			}
+		}
+		if everyBranch {
+			return true
+		}
+	}
+	// {"const": null} permits nothing but a null, and the value asked about
+	// here is not one. It is spelled with its own flag for the reason
+	// schemaForbidsNull gives.
+	if s.ConstIsNull {
+		return true
+	}
+	if s.Const != nil {
+		return !jsonValueIsZeroOfKind(*s.Const, kind)
+	}
+	if len(s.Enum) > 0 {
+		for _, v := range s.Enum {
+			if jsonValueIsZeroOfKind(v, kind) {
+				return false
+			}
+		}
+		return true
+	}
+	switch kind {
+	case zeroKindString:
+		if s.MinLength != nil && s.MinLength.Int() > 0 {
+			return true
+		}
+		if s.Pattern != nil && patternRefusesEmptyString(*s.Pattern) {
+			return true
+		}
+	case zeroKindNumber:
+		return numericBoundsExcludeZero(s)
+	}
+	return false
+}
+
+// jsonValueIsZeroOfKind reports whether a decoded JSON value is the zero of the
+// named kind -- the value a Go field of that shape holds when nothing was
+// assigned to it.
+func jsonValueIsZeroOfKind(v any, kind string) bool {
+	switch kind {
+	case zeroKindString:
+		s, ok := v.(string)
+		return ok && s == ""
+	case zeroKindNumber:
+		switch n := v.(type) {
+		case float64:
+			return n == 0
+		case int:
+			return n == 0
+		case int64:
+			return n == 0
+		case json.Number:
+			f, err := n.Float64()
+			return err == nil && f == 0
+		}
+		return false
+	case zeroKindBoolean:
+		b, ok := v.(bool)
+		return ok && !b
+	case zeroKindNull:
+		return v == nil
+	}
+	return false
+}
+
+// zeroJSONLiteral is the JSON text a zero of the named kind marshals to.
+func zeroJSONLiteral(kind string) string {
+	switch kind {
+	case zeroKindString:
+		return `""`
+	case zeroKindNumber:
+		return "0"
+	case zeroKindBoolean:
+		return "false"
+	case zeroKindNull:
+		return "null"
+	}
+	return ""
+}
+
+// patternRefusesEmptyString reports whether a "pattern" demonstrably does not
+// match the empty string.
+//
+// The pattern is an ECMA-262 regular expression and Go's regexp is RE2, so the
+// two do not accept the same language -- but the failure is in the safe
+// direction: a pattern RE2 cannot compile answers false, which leaves the field
+// exactly as it is today. Both engines search rather than anchor, so a pattern
+// that matches the empty string anywhere matches it in both.
+func patternRefusesEmptyString(pattern string) bool {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return false
+	}
+	return !re.MatchString("")
+}
+
+// numericBoundsExcludeZero reports whether this schema's numeric bounds place
+// the number zero outside the values it admits.
+//
+// Draft 4 spells an exclusive bound as a boolean beside "minimum"/"maximum",
+// and every draft after it as a number of its own; both forms are read, because
+// a schema is normalized for its own draft and not into one shape.
+func numericBoundsExcludeZero(s *schema.Schema) bool {
+	minExclusive := s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool
+	maxExclusive := s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool
+	if s.Minimum != nil {
+		if f, ok := s.Minimum.Float64(); ok && (f > 0 || (minExclusive && f >= 0)) {
+			return true
+		}
+	}
+	if s.Maximum != nil {
+		if f, ok := s.Maximum.Float64(); ok && (f < 0 || (maxExclusive && f <= 0)) {
+			return true
+		}
+	}
+	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
+		if f, ok := s.ExclusiveMinimum.Number.Float64(); ok && f >= 0 {
+			return true
+		}
+	}
+	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
+		if f, ok := s.ExclusiveMaximum.Number.Float64(); ok && f <= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleVacuousForNull reports whether a JSON null satisfies a rule of this type
