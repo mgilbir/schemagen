@@ -389,6 +389,18 @@ func (d *StructDef) HasDefaults() bool {
 	return false
 }
 
+// HasKeyedDefault reports whether any default this struct writes is settled
+// against the document's key set rather than against the field's own zero. See
+// FieldDef.DefaultAsksJSONKeys.
+func (d *StructDef) HasKeyedDefault() bool {
+	for _, f := range d.Fields {
+		if f.DefaultAsksJSONKeys() {
+			return true
+		}
+	}
+	return false
+}
+
 // HasOwnPropertyNames returns true if the struct tracks own (non-merged) property names
 // for additionalProperties scope isolation (e.g., allOf merges). A non-nil but empty
 // slice means "no own properties" — all properties came from allOf sub-schemas.
@@ -535,6 +547,12 @@ func (d *StructDef) NeedsJSONKeys() bool {
 		return true
 	}
 	if d.UnevaluatedProperties != nil && d.UnevaluatedProperties.HasConditionalEvals() {
+		return true
+	}
+	// SetDefaults asks the key set whether a property with no nil state was
+	// absent, because the field's zero is what an explicit "", 0 or false leaves
+	// behind as well. See FieldDef.DefaultAsksJSONKeys and issue #248.
+	if d.HasKeyedDefault() {
 		return true
 	}
 	for _, v := range d.Validations {
@@ -1188,8 +1206,10 @@ type FieldDef struct {
 	// DefaultShape selects the arm of the SetDefaults template that writes
 	// DefaultLiteral. Empty for the four scalars and their pointers, where the
 	// field's own Go type name selects it; "named" or "*named" when the literal
-	// is a conversion into a generated type, which the scalar arms would wrap in
-	// a second conversion of the wrong type. Set by resolveNamedTypeDefaults.
+	// is a conversion or composite written into a generated type, which the
+	// scalar arms would wrap in a second conversion of the wrong type;
+	// "collection" for a slice or map literal, whose field is nil exactly when
+	// the property was absent. Set by resolveNamedTypeDefaults.
 	DefaultShape string
 	// pendingDefault is the "default" of a field defaultToGoLiteral could not
 	// write, held for resolveNamedTypeDefaults. Unexported: nothing outside this
@@ -1206,6 +1226,28 @@ type FieldDef struct {
 	// to the documents its condition selects and a field's rules apply to all of
 	// them. See Generator.conditionalOnlyProperties (issue #213).
 	ConditionalOnly bool
+}
+
+// DefaultAsksJSONKeys reports whether SetDefaults has to consult the document's
+// own key set to tell this field's default apart from a value the document
+// carried. It selects the arm of the SetDefaults template as well as answering
+// for StructDef.NeedsJSONKeys, so the state the emitted code reads and the state
+// the struct declares cannot come apart.
+//
+// A pointer says absence by being nil and is asked nothing else. Everything else
+// has one value standing for both an absent property and a present "", 0, false
+// or []: testing it for its zero, which is what SetDefaults did until issue
+// #248, replaced every explicitly-supplied one with the default. Under
+// --omit-empty=false that is every property of every type, and a boolean is the
+// sharp case, since false is a value nobody writes by accident. A required
+// property is the same shape under any configuration -- "required" is exactly
+// what takes the pointer away.
+//
+// The key set does not replace the zero test, it is asked beside it: a caller
+// that decodes a document and then assigns a field would otherwise have the
+// assignment overwritten, because the key set speaks only for the document.
+func (f FieldDef) DefaultAsksJSONKeys() bool {
+	return f.DefaultLiteral != "" && !f.Type.IsPointer()
 }
 
 // OneOfDef represents a oneOf group on a struct.

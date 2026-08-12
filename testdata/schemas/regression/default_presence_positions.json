@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DefaultPresencePositions",
+  "type": "object",
+  "$defs": {
+    "Label": { "type": "string" },
+    "Tags": { "type": "array", "items": { "type": "string" } },
+    "Leaf": {
+      "type": "object",
+      "properties": {
+        "ls": { "type": "string", "default": "leaf" },
+        "lb": { "type": "boolean", "default": true }
+      },
+      "required": ["ls", "lb"]
+    }
+  },
+  "properties": {
+    "reqStr": { "type": "string", "default": "dflt" },
+    "reqBool": { "type": "boolean", "default": true },
+    "reqInt": { "type": "integer", "default": 7 },
+    "reqNum": { "type": "number", "default": 1.5 },
+    "reqArr": { "type": "array", "items": { "type": "string" }, "default": ["z"] },
+    "reqMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": { "k": "v" }
+    },
+    "reqNamed": { "$ref": "#/$defs/Label", "default": "named" },
+
+    "optStr": { "type": "string", "default": "dflt" },
+    "optBool": { "type": "boolean", "default": true },
+    "optInt": { "type": "integer", "default": 7 },
+    "optNum": { "type": "number", "default": 1.5 },
+    "optArr": { "type": "array", "items": { "type": "string" }, "default": ["z"] },
+    "optMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "default": { "k": "v" }
+    },
+
+    "namedArr": { "$ref": "#/$defs/Tags", "default": ["t"] },
+    "anyArr": { "type": "array", "default": ["z", 1, true] },
+    "anyMap": { "type": "object", "default": { "k": "v", "a": "b" } },
+    "arrOfNamed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Label" },
+      "default": ["q"]
+    },
+    "nullArr": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "default": ["z"]
+    },
+    "mapOfArr": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "items": { "type": "integer" } },
+      "default": { "a": [1, 2] }
+    },
+
+    "leaf": { "$ref": "#/$defs/Leaf" },
+    "leafMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Leaf" }
+    },
+    "leafArr": { "type": "array", "items": { "$ref": "#/$defs/Leaf" } },
+
+    "arrMismatch": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [1]
+    },
+
+    "structDflt": { "$ref": "#/$defs/Leaf", "default": { "ls": "x" } },
+    "mismatch": { "type": "integer", "default": "notAnInt" }
+  },
+  "required": [
+    "reqStr",
+    "reqBool",
+    "reqInt",
+    "reqNum",
+    "reqArr",
+    "reqMap",
+    "reqNamed"
+  ]
+}

@@ -143,3 +143,110 @@ func TestDefaultToGoLiteral(t *testing.T) {
 		})
 	}
 }
+
+// TestBigIntDefaultReportsAFractionalValue holds --big-int to the same answer
+// the plain int64 target gives.
+//
+// The wrapper the flag materializes holds integers of any size, so a value too
+// large for int64 is not an error here -- but a value with a fraction is not an
+// integer at all, and quietly dropping it would mean whether a run failed turned
+// on a flag rather than on what the schema says. Issue #172's rule, on the axis
+// #251 opened.
+func TestBigIntDefaultReportsAFractionalValue(t *testing.T) {
+	const doc = `{"type":"object","properties":{"n":{"type":"integer","default":4.5}}}`
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(doc), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	_, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
+	if err == nil {
+		t.Fatalf("generation succeeded; the same default without --big-int is an error")
+	}
+	if !strings.Contains(err.Error(), "not an integer") {
+		t.Fatalf("generation failed for the wrong reason: %v", err)
+	}
+}
+
+// TestBigIntDefaultDeclinesAValuePastFloat64 is the one integer default
+// --big-int still writes nothing for, and the reason is upstream of this
+// package: "default" is decoded into an `any`, so a literal past float64's exact
+// range arrives already rounded and the digits the author wrote are gone.
+//
+// Writing the rounded digits would put a number in the generated source that the
+// schema never stated. Nothing is written instead, and generation succeeds --
+// which is the difference from the fractional case above, where the value is not
+// an integer under any reading.
+func TestBigIntDefaultDeclinesAValuePastFloat64(t *testing.T) {
+	const doc = `{"type":"object","properties":{` +
+		`"big":{"type":"integer","default":1e30},` +
+		`"small":{"type":"integer","default":7}}}`
+	var s schema.Schema
+	if err := json.Unmarshal([]byte(doc), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s.Normalize()
+	ir, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var big, small FieldDef
+	for _, td := range ir.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for _, f := range sd.Fields {
+			switch f.JSONName {
+			case "big":
+				big = f
+			case "small":
+				small = f
+			}
+		}
+	}
+	if big.DefaultLiteral != "" {
+		t.Errorf("the out-of-range default was written as %q; its digits are not the schema's", big.DefaultLiteral)
+	}
+	if !strings.Contains(small.DefaultLiteral, "_int64: 7") {
+		t.Errorf("the in-range default beside it is %q, want the wrapper literal", small.DefaultLiteral)
+	}
+}
+
+// TestCollectionDefaultDeclinesAnElementWithNoLiteral names the two element
+// kinds a composite literal cannot hold, and which no schema in the corpus
+// produces in this position -- so the IR is built directly, exactly as
+// TestNamedDefaultDeclinesAForeignType does, and for the same reason.
+//
+// A pointer element has no literal at all: Go has no address-of for a scalar
+// written inside a composite. An element typed by another generated package has
+// no declaration here to read, and a local type of the same name would answer in
+// its place. Both would emit source that does not compile, and the whole default
+// is declined rather than half-written.
+func TestCollectionDefaultDeclinesAnElementWithNoLiteral(t *testing.T) {
+	local := any([]any{"z"})
+	g := New(Config{PackageName: "testpkg"})
+	g.output = &File{TypeDefs: []TypeDef{
+		&AliasDef{Name: "Token", Underlying: &PrimitiveType{Name: "string"}},
+		&StructDef{Name: "Holder", Fields: []FieldDef{
+			{Name: "Plain", JSONName: "plain",
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token"}}, pendingDefault: &local},
+			{Name: "Pointed", JSONName: "pointed",
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token", Pointer: true}}, pendingDefault: &local},
+			{Name: "Foreign", JSONName: "foreign",
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token", PkgAlias: "other"}}, pendingDefault: &local},
+		}},
+	}}
+	if err := g.resolveNamedTypeDefaults(); err != nil {
+		t.Fatalf("resolveNamedTypeDefaults: %v", err)
+	}
+	fields := g.output.TypeDefs[1].(*StructDef).Fields
+	if want := `[]Token{Token("z")}`; fields[0].DefaultLiteral != want {
+		t.Errorf("the control element is %q, want %q", fields[0].DefaultLiteral, want)
+	}
+	for _, f := range fields[1:] {
+		if f.DefaultLiteral != "" {
+			t.Errorf("%s: wrote %q for an element with no literal", f.JSONName, f.DefaultLiteral)
+		}
+	}
+}

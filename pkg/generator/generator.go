@@ -3655,6 +3655,23 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		if needsUnmarshalForIntegers(fields[len(fields)-1]) {
 			needsUnmarshal = true
 		}
+		// A default written into a field with no nil state is settled against
+		// the document's key set, and UnmarshalJSON is the only thing that
+		// records one. Every other reason StructDef.NeedsJSONKeys gives is
+		// paired with a line like this one, and for the same reason: a struct
+		// that declares _jsonKeys and never fills it answers "absent" to every
+		// question, silently.
+		//
+		// No route reaches it today -- an object struct carrying a default has
+		// already claimed UnmarshalJSON, because its schema refuses null or it
+		// captures overflow -- and neutering it changes no golden and no
+		// generated file in the corpus. It is kept for the same reason
+		// needsUnmarshalForIntegers is: so the two are decided together rather
+		// than by coincidence. The fields whose literal is settled later ask the
+		// same question from resolveNamedTypeDefaults.
+		if fields[len(fields)-1].DefaultAsksJSONKeys() {
+			needsUnmarshal = true
+		}
 	}
 
 	// Handle top-level oneOf (not on a property but on the type itself). Same

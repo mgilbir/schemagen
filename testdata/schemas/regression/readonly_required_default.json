@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReadOnlyRequiredDefault",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "type": "string", "readOnly": true, "default": "auto" },
+    "name": { "type": "string" }
+  }
+}
