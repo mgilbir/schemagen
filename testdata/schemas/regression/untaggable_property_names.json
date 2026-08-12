@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UntaggableNames",
+  "type": "object",
+  "properties": {
+    "requiredBag": {
+      "type": "object",
+      "properties": {
+        "ok": {"type": "string"},
+        "a`b": {"type": "string"},
+        "a\\b": {"type": "string"},
+        "a\tb": {"type": "string"},
+        "a\nb": {"type": "string"},
+        "a\rb": {"type": "string"},
+        "a b": {"type": "string"},
+        "a\"b": {"type": "string"},
+        "-": {"type": "string"},
+        "omitempty": {"type": "string"},
+        "1a": {"type": "string"},
+        "café": {"type": "string"},
+        "🎉": {"type": "string"},
+        "": {"type": "string"},
+        "a,b": {"type": "string"},
+        "x,omitempty": {"type": "string"}
+      },
+      "required": ["ok", "a`b", "a\\b", "a\tb", "a\nb", "a\rb", "a b", "a\"b", "-", "omitempty", "1a", "café", "🎉", "", "a,b", "x,omitempty"]
+    },
+    "optionalBag": {
+      "type": "object",
+      "properties": {
+        "ok": {"type": "string"},
+        "a`b": {"type": "string"},
+        "a\\b": {"type": "string"},
+        "a\tb": {"type": "string"},
+        "a\nb": {"type": "string"},
+        "a\rb": {"type": "string"},
+        "a b": {"type": "string"},
+        "a\"b": {"type": "string"},
+        "-": {"type": "string"},
+        "omitempty": {"type": "string"},
+        "1a": {"type": "string"},
+        "café": {"type": "string"},
+        "🎉": {"type": "string"},
+        "": {"type": "string"},
+        "a,b": {"type": "string"},
+        "x,omitempty": {"type": "string"}
+      }
+    },
+    "nested": {
+      "type": "object",
+      "properties": {
+        "inner": {
+          "type": "object",
+          "properties": {
+            "ok": {"type": "string"},
+            "a`b": {"type": "string"},
+            "a\\b": {"type": "string"},
+            "a\tb": {"type": "string"},
+            "a\nb": {"type": "string"},
+            "a\rb": {"type": "string"},
+            "a b": {"type": "string"},
+            "a\"b": {"type": "string"},
+            "-": {"type": "string"},
+            "omitempty": {"type": "string"},
+            "1a": {"type": "string"},
+            "café": {"type": "string"},
+            "🎉": {"type": "string"},
+            "": {"type": "string"},
+            "a,b": {"type": "string"},
+            "x,omitempty": {"type": "string"}
+          }
+        }
+      }
+    },
+    "mapValues": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "ok": {"type": "string"},
+          "a`b": {"type": "string"},
+          "a\\b": {"type": "string"},
+          "a\tb": {"type": "string"},
+          "a\nb": {"type": "string"},
+          "a\rb": {"type": "string"},
+          "a b": {"type": "string"},
+          "a\"b": {"type": "string"},
+          "-": {"type": "string"},
+          "omitempty": {"type": "string"},
+          "1a": {"type": "string"},
+          "café": {"type": "string"},
+          "🎉": {"type": "string"},
+          "": {"type": "string"},
+          "a,b": {"type": "string"},
+          "x,omitempty": {"type": "string"}
+        }
+      }
+    },
+    "arrayElements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ok": {"type": "string"},
+          "a`b": {"type": "string"},
+          "a\\b": {"type": "string"},
+          "a\tb": {"type": "string"},
+          "a\nb": {"type": "string"},
+          "a\rb": {"type": "string"},
+          "a b": {"type": "string"},
+          "a\"b": {"type": "string"},
+          "-": {"type": "string"},
+          "omitempty": {"type": "string"},
+          "1a": {"type": "string"},
+          "café": {"type": "string"},
+          "🎉": {"type": "string"},
+          "": {"type": "string"},
+          "a,b": {"type": "string"},
+          "x,omitempty": {"type": "string"}
+        }
+      }
+    },
+    "shadowed": {
+      "type": "object",
+      "properties": {
+        "": {"type": "string"},
+        "X": {"type": "string"},
+        "a,b": {"type": "string"},
+        "a": {"type": "string"},
+        "-": {"type": "string"}
+      },
+      "required": ["", "X", "a,b", "a", "-"]
+    }
+  },
+  "required": ["requiredBag"]
+}
