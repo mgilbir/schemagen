@@ -121,6 +121,25 @@ type Config struct {
 	// local copies.
 	ImportPath   string
 	CrossPackage *CrossPackageRegistry
+
+	// DefinitionTypeNames pins the Go type name a document's definition is
+	// declared under, keyed by the definition's own schema node rather than by
+	// its $defs key.
+	//
+	// It exists for one situation, and only a caller holding the whole input set
+	// can see it: several documents generated into one package (SharedTypes)
+	// that each define a $defs entry of the same name but with different
+	// content. The name registry keys on the Go name, so the first definition
+	// generated claims it and every later one is skipped -- the second
+	// document's property then silently carries the first document's type
+	// (issue #249). The caller resolves that by naming each definition after its
+	// own document and passing the result here; the key is the node because that
+	// is what survives $ref resolution, so a reference from another document
+	// reaches the same answer as the definition itself.
+	//
+	// Entries for nodes this run never generates are ignored, so one map may
+	// describe every document of the run.
+	DefinitionTypeNames map[*schema.Schema]string
 }
 
 // DefaultConfig returns sensible defaults.

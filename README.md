@@ -402,6 +402,22 @@ the refs that form the cycle. Merge them into one document — a `$ref` cycle
 *within* a document is supported — or generate each in its own run and package,
 which gives each package its own copy of the other's types.
 
+One package is also one name space for the definitions, and two documents can
+each declare a `$defs` entry of the same name. When the definitions agree they
+stay one Go type — that is what the mode is for, and how they are spelled (key
+order, whitespace, a keyword the document's dialect does not define) makes no
+difference. When they differ they cannot be: each is named after its own
+document's root type instead, so `$defs/Thing` in a document rooted `Alpha`
+becomes `AlphaThing` and the one in `Beta` becomes `BetaThing`, and a warning
+names both documents. Every claim on the name is qualified, not only the later
+one, so the generated names do not depend on the order the inputs were listed;
+`--root-name` sets the prefix. A document's own root type keeps its name, and a
+definition that collides with another document's root name is the one that
+moves.
+
+`--schema-package` shares a name space per package and answers the same
+collision the same way, between the documents assigned to one package.
+
 ### Several Schemas, Several Packages
 
 `--schema-package` assigns each document to a Go import path. A `$ref` that
