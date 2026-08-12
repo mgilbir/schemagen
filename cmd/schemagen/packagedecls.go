@@ -78,6 +78,25 @@ func (p *packageDecls) add(schemaPath string, src []byte) error {
 	if len(shown) > limit {
 		shown, suffix = shown[:limit], fmt.Sprintf(" (and %d more)", len(clashes)-limit)
 	}
+	// The name was already held by the file this one is, which is to say one
+	// generated file declares it twice. That is a different report: it is not two
+	// documents meeting in a package, and neither mode below would change it,
+	// because there is no second document to move anywhere. "a.json and a.json
+	// both declare [Thing]" named the same document twice and sent the reader
+	// after inputs they do not have (issue #259, where {"$defs":{"Thing":
+	// {"$ref":"#"}}} referenced from a property emitted Thing twice).
+	//
+	// Nothing a schema can say asks for this: within one file the generator
+	// declares each name once, and the guard reads the emitted source precisely
+	// so that a route which slips past that becomes visible instead of reaching
+	// the caller as a compile error in generated code. So the message says the
+	// defect is schemagen's.
+	if owner == schemaPath {
+		return fmt.Errorf("the file generated for %s declares %v%s twice in package %q, so it would not compile; "+
+			"one file declares each type once, whatever the document says, so this is a defect in schemagen rather than in the schema "+
+			"-- --shared-types and --schema-package will not change it. Please report it, with the schema that produced it",
+			schemaPath, shown, suffix, p.pkgName)
+	}
 	return fmt.Errorf("%s and %s both declare %v%s in package %q; "+
 		"a document reached by $ref is materialized into every file that references it, "+
 		"so the package would not compile. Generate the set with --shared-types "+

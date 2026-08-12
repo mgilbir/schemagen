@@ -8626,6 +8626,25 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if foreign, ok := g.foreignTypeFor(refSchema); ok {
 				return foreign, nil
 			}
+			// The ref *target*, rather than this property's own node, is the one
+			// still being generated further up the stack. The guard at the top of
+			// this function reads s, so it cannot see it, and the arm below then
+			// re-enters generateTypeDef for a definition whose frame has not
+			// returned: g.generated is not set until a definition completes, so
+			// the re-entry runs every arm again and emits a *second* declaration
+			// under the same name. {"properties":{"thing":{"$ref":"#/$defs/Thing"}},
+			// "$defs":{"Thing":{"$ref":"#"}}} is the whole of it -- $defs/Thing
+			// leads to the root, the root's property leads back to $defs/Thing,
+			// and the file declared Thing twice and did not compile. Issue #259.
+			//
+			// Naming the type in flight is exact, not a degradation: the frame
+			// above will declare it. The pointer is the same rule the guard at the
+			// top applies, and for the same reason -- a struct field closing a
+			// cycle would otherwise make the type contain itself by value, which
+			// Go rejects outright. See cyclicNodeName.
+			if canonical, ok := g.cyclicNodeName(refSchema); ok {
+				return namedOrPointer(canonical, true), nil
+			}
 			pushed := g.pushDynamicScope(refSchema)
 			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
@@ -10704,11 +10723,17 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 	if pinned, ok := g.config.DefinitionTypeNames[resolved]; ok {
 		return pinned
 	}
-	// Only re-derive the name when the ref would produce a misleading name.
-	// This happens primarily for fragment-only refs like "#" or "#/..." that
-	// resolved to a scoped document root (not the main root).
+	// A reference that lands on the document's own root names the root type,
+	// whatever the caller called it. The fallback is derived from the reference
+	// text -- refToGoName("#") is the literal "Root", and a self-reference written
+	// as the document's own $id derives from the URI -- so a document whose root
+	// is called anything else (its title, or --root-name) had the root
+	// materialized a second time under that derived name: "$defs":{"Thing":
+	// {"$ref":"#"}} on a document titled "A" emitted a whole second struct "Root"
+	// beside "A", with the definitions generated ahead of the root so
+	// nodeTypeNames above could not yet answer. Issue #259.
 	if resolved == g.rootSchema {
-		return fallback
+		return g.rootTypeName
 	}
 	// Check if the resolved schema is a known document root with its own $id.
 	if resolved.DocumentRoot == resolved {
