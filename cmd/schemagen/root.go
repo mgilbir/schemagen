@@ -339,10 +339,19 @@ func newGenerateCmd() *cobra.Command {
 			// order; see explainRootTypeCollision.
 			generatedRoots := make(map[string]string, len(args))
 			generatedInputs := make([]string, 0, len(args))
+			// The root type name generation will actually give an input:
+			// rootNameOf's answer where the caller set one, and the name the
+			// generator derives otherwise. The definition-name resolver's
+			// prefixes have to be the names the documents really get.
+			effectiveRootNameOf := func(schemaPath string, s *schema.Schema) string {
+				if name := rootNameOf(schemaPath, s); name != "" {
+					return name
+				}
+				return generator.DefaultRootTypeName(s)
+			}
 			// The Go names this package's definitions are declared under, for
-			// the ones a same-named definition in another input made it
-			// impossible to leave alone. Empty in every run that has no such
-			// clash, which is every single-document run. See
+			// the ones another claim on the name made it impossible to leave
+			// alone. Empty in every run that has no such clash. See
 			// resolveSharedDefinitionNames.
 			var pinnedDefNames map[*schema.Schema]string
 			if sharedTypes {
@@ -354,13 +363,7 @@ func newGenerateCmd() *cobra.Command {
 				if err := checkInputRefCycle(args, refEdges); err != nil {
 					return err
 				}
-				pinnedDefNames = resolveSharedDefinitionNames(args, inputByPath,
-					func(schemaPath string, s *schema.Schema) string {
-						if name := rootNameOf(schemaPath, s); name != "" {
-							return name
-						}
-						return generator.DefaultRootTypeName(s)
-					}, cmd.ErrOrStderr())
+				pinnedDefNames = resolveSharedDefinitionNames(args, inputByPath, effectiveRootNameOf, cmd.ErrOrStderr())
 				absPath, _ := filepath.Abs(args[0])
 				resolvers := []schema.SchemaResolver{
 					schema.NewMappingResolver(inputByID),
@@ -423,6 +426,15 @@ func newGenerateCmd() *cobra.Command {
 						resolver = schema.NewCompositeResolver(resolvers...)
 					}
 
+					// This document alone. A document can contest a Go type name
+					// with itself -- "$defs/X" and "definitions/X" are two
+					// schema locations, and a document may write different
+					// schemas at them -- and that needs no other input to see,
+					// so it is resolved here as well as in the modes that share
+					// a package. Passing only this path is what keeps it to
+					// that question: each input writes its own file here, so
+					// two of them claiming one name is issue #217's collision
+					// and packageDecls' refusal, not a name to rewrite.
 					gen = generator.New(generator.Config{
 						PackageName:      pkgName,
 						OutputDir:        outputDir,
@@ -436,6 +448,8 @@ func newGenerateCmd() *cobra.Command {
 						Draft:            draft,
 						Validation:       validationMode,
 						LenientRefs:      lenientRefs,
+						DefinitionTypeNames: resolveSharedDefinitionNames(
+							[]string{schemaPath}, inputByPath, effectiveRootNameOf, cmd.ErrOrStderr()),
 					})
 				}
 
