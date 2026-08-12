@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "disjointBranchEnums": {
+      "type": "string",
+      "allOf": [{ "enum": ["a"] }, { "enum": ["b"] }]
+    },
+    "branchConstAgainstBranchEnum": {
+      "type": "string",
+      "allOf": [{ "const": "a" }, { "enum": ["b", "c"] }]
+    },
+    "valuesOutsideDeclaredType": {
+      "type": "integer",
+      "allOf": [{ "enum": ["a", "b"] }]
+    },
+    "emptyEnumBranch": { "type": "string", "allOf": [{ "enum": [] }] },
+    "ownEnumIsEmpty": {
+      "type": "string",
+      "enum": [],
+      "allOf": [{ "enum": ["a"] }]
+    },
+    "bigIntegerBranches": {
+      "type": "integer",
+      "allOf": [{ "enum": [9007199254740992] }, { "enum": [9007199254740993] }]
+    },
+    "satisfiable": { "type": "string", "allOf": [{ "enum": ["a", "b"] }] }
+  }
+}

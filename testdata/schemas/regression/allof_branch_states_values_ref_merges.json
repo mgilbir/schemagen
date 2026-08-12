@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "merged": { "$ref": "#/$defs/LongString", "allOf": [{ "enum": ["abcdef", "xy"] }] }
+  },
+  "$defs": {
+    "LongString": { "type": "string", "minLength": 5 }
+  }
+}

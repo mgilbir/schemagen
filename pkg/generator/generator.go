@@ -11152,11 +11152,16 @@ func (g *Generator) allOfBuildsObjectType(s *schema.Schema) bool {
 // made no difference: it is the *position* that lost it.
 //
 // The second condition is what keeps this from claiming schemas that already
-// resolve. Anything on s itself that gives resolveType an answer -- a type, a
-// $ref, an enum, properties, array or object structure, a sibling composition --
+// resolve. Anything on s itself that gives resolveType an answer -- a $ref, an
+// enum, properties, array or object structure, a sibling composition --
 // disqualifies it, because those arms know things the merge does not and taking
 // the schema over would drop them. What is left is a schema whose allOf is the
 // only thing saying what the value is.
+//
+// A stated "type" is on that list too, and is the one entry with an exception:
+// the arm reading it answers the whole schema from it, and there is one thing a
+// branch can say that such an answer has nowhere to put -- which values of that
+// type are legal. See allOfStatesTheOnlyValues, and issue #242.
 func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
 	if g.allOfBuildsObjectType(s) {
 		return true
@@ -11177,7 +11182,7 @@ func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
 	if g.allOfContainsFalseSchema(s.AllOf) {
 		return true
 	}
-	if len(s.Type) > 0 || len(s.TypeSchemas) > 0 || hasProperties(s) ||
+	if len(s.TypeSchemas) > 0 || hasProperties(s) ||
 		len(s.PatternProperties) > 0 || s.AdditionalProperties != nil ||
 		s.EffectiveRef() != "" || s.DynamicRef != "" || s.RecursiveRef != "" ||
 		len(s.Enum) > 0 || s.Const != nil || s.ConstIsNull ||
@@ -11185,7 +11190,142 @@ func (g *Generator) allOfNeedsNamedType(s *schema.Schema) bool {
 		s.Items != nil || len(s.PrefixItems) > 0 {
 		return false
 	}
+	// A schema that states its own "type" is one of the disqualified ones, with
+	// the single exception below: the arm that reads the type answers the whole
+	// schema from it, which is right for every keyword the merge could add to a
+	// value of that type -- and wrong for the one keyword that says which values
+	// of it there are.
+	if len(s.Type) > 0 {
+		return g.allOfStatesTheOnlyValues(s)
+	}
 	return g.allOfNamesATypeOnPath(s, nil)
+}
+
+// allOfStatesTheOnlyValues reports whether the allOf beside a schema says which
+// values are legal where the schema itself says nothing about them.
+//
+// allOf is an in-place applicator, so a branch is asserted of the very instance
+// the schema is asserted of, and a branch that lists the admissible values lists
+// them for the schema. A schema stating a "type" is answered by the arm that
+// reads the type, and that arm has nowhere to put such a list:
+//
+//	{"properties":{"p":{"type":"string","allOf":[{"enum":["a","b"]}]}}}
+//	{"properties":{"p":{"type":"string","allOf":[{"const":"x"}]}}}
+//
+// both typed p a plain *string with a Validate of `return nil`, so every string
+// was accepted -- including the ones the branch names to forbid (issue #242).
+// The same at an element and at a map value, which reach the same ladder. It is
+// the position that loses them and not the schema: written as a $defs entry and
+// referenced, or written as the whole document, the identical sub-schema has
+// always reached generateAllOfDef and come out an enum type.
+//
+// This is the shape allOfContainsFalseSchema above is asked ahead of the
+// disqualifying keywords for, one degree weaker. A branch of `false` admits no
+// value of the declared type; a branch listing values admits only those, and a
+// stated "type" can no more restore a value the branch leaves out than it can
+// restore one `false` leaves out. So it is asked here rather than after, and for
+// the same reason.
+//
+// Nothing is intersected here. The answer only routes the position to
+// generateAllOfDef, which is this repository's one reading of what a conjunction
+// of two schemas means -- it folds the branches' values together through
+// mergeEnumAndConst and answers an empty result with the forbidding wrapper.
+// #243 makes the neighbouring decision the same way and for the same reason.
+//
+// The two halves of the question are what keep it narrow. statesEnumOrConst asks
+// that the schema state no values of its own: where it states some, the branches
+// narrow a list that is already there and the enum arms ahead of this one own the
+// answer, which is #238's shape and not this one. declaredTypeCarriesAConstEnum
+// asks that the values be carriable at the position -- see there.
+func (g *Generator) allOfStatesTheOnlyValues(s *schema.Schema) bool {
+	if !g.validationKeywordsEnabled() {
+		return false
+	}
+	if statesEnumOrConst(s) || !declaredTypeCarriesAConstEnum(s) {
+		return false
+	}
+	// A position whose Go type comes from its "format" rather than from its
+	// "type" is not one of those scalars: the value is a time.Time or a
+	// netip.Addr, and the merged schema states more than a list of members, so
+	// generateAllOfDef answers it with the raw wrapper instead. Two of the three
+	// positions would take that answer and the third would not --
+	// resolvePropertyType reads the format before it delegates here and
+	// resolveType reads it in the primitive arm below -- so a property and a map
+	// value written from the same sub-schema would stop agreeing on its Go type.
+	// The branch's values go unenforced at all three instead, as they were.
+	if g.formatGoTypeForSchema(s) != nil {
+		return false
+	}
+	return g.allOfStatesValuesOnPath(s, nil)
+}
+
+// declaredTypeCarriesAConstEnum reports whether a schema's declared "type" is one
+// whose values Go can name -- a string, an integer, a number or a boolean.
+//
+// This is the line between a position that can carry a value set stated only in
+// a branch and one that cannot. A member of a scalar type becomes a Go constant
+// of that type, so what the position gains is `type RootP string` and a constant
+// per member: it still decodes from, marshals to and compares as a string, and
+// where the merged schema states more than the list it gains instead the same raw
+// wrapper the identical sub-schema has always had when written as a $defs entry.
+// A member of an object or an array type can be neither -- isHeterogeneousEnum
+// sends every member that is not a homogeneous primitive to generateRawEnumDef,
+// whose type is a json.RawMessage alias -- so the only way to carry the list there
+// is to stop being the map[string]any or []any the position's decoder, its
+// Validate and its callers are built on. That is a change to what the value *is*
+// rather than a check added to it, so those positions are left as they are:
+// {"type":"object","allOf":[{"enum":[{"k":1}]}]} written inline keeps its map and
+// the branch stays unenforced, which is under-enforcement and is what it had.
+//
+// The scalars are not listed by name here but read off PrimitiveTypeFromSchema,
+// which is the table resolveType's own primitive arm answers from -- so this is
+// that arm's reading of the declared type and not a second one. A union of types
+// answers "" there and a `null` answers nil, and neither is a position the
+// primitive arm types either.
+func declaredTypeCarriesAConstEnum(s *schema.Schema) bool {
+	p, ok := PrimitiveTypeFromSchema(primarySchemaType(s)).(*PrimitiveType)
+	return ok && p.Name != "any"
+}
+
+// allOfStatesValuesOnPath reports whether some branch of the allOf lists the
+// values it admits.
+//
+// It follows a branch's $ref and its nested allOf, and carries the on-path set
+// against {"allOf":[{"$ref":"#"}]}, for the reasons allOfNamesATypeOnPath gives:
+// this has to see the branches mergeAllOfBranches will merge, since a branch it
+// misses is a value list the merge would apply and this would not have named the
+// position for.
+func (g *Generator) allOfStatesValuesOnPath(s *schema.Schema, onPath map[*schema.Schema]bool) bool {
+	if s == nil || len(s.AllOf) == 0 || onPath[s] {
+		return false
+	}
+	if onPath == nil {
+		onPath = make(map[*schema.Schema]bool)
+	}
+	onPath[s] = true
+	defer delete(onPath, s)
+	for _, sub := range s.AllOf {
+		if sub == nil {
+			continue
+		}
+		if statesEnumOrConst(sub) {
+			return true
+		}
+		if effRef := sub.EffectiveRef(); effRef != "" {
+			if r := g.resolveRefInContext(effRef, sub); r != nil {
+				if statesEnumOrConst(r) {
+					return true
+				}
+				if g.allOfStatesValuesOnPath(r, onPath) {
+					return true
+				}
+			}
+		}
+		if g.allOfStatesValuesOnPath(sub, onPath) {
+			return true
+		}
+	}
+	return false
 }
 
 // allOfNamesATypeOnPath reports whether some branch of the allOf states a
