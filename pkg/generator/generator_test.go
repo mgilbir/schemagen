@@ -1546,6 +1546,16 @@ func TestSanitizeGoIdentifier(t *testing.T) {
 		{"ValidName", "ValidName"},
 		{"", "X"},
 		{"123", "X123"},
+		// A digit outside ASCII. This is the only test that can fail the
+		// byte-vs-rune fix in the digit branch: the first byte of "१२३" is 0xE0,
+		// which rune() reads as à, so the branch did not fire and the emitter was
+		// handed १२३ as a field name -- not a legal Go identifier, because an
+		// identifier must start with a letter, and gofmt killed generation with
+		// "illegal character U+0967". JSONPropertyToGoName also prefixes this
+		// name now, for being unexported rather than for starting with a digit,
+		// which is why the assertion has to be made here against the function
+		// whose contract is "a valid identifier" rather than through a schema.
+		{"१२३", "X१२३"},
 		{"$ref", "ref"},
 		{"foo#bar", "foobar"},
 		{"break", "break_"},
