@@ -66,6 +66,13 @@ type HelperSet struct {
 	// package whose rules match no key by pattern should not acquire it.
 	AccessPattern bool
 
+	// ExactProperties is jsonExactProperties, which every struct decode that can
+	// fill a member from a JSON key goes through. It is not conditional on
+	// anything the schema says: encoding/json's case-insensitive key matching is
+	// a property of the decoder, so a schema declaring one lower-case property is
+	// exposed to it exactly as much as one declaring fifty. See issue #245.
+	ExactProperties bool
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -80,7 +87,7 @@ type HelperSet struct {
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname &&
-		!h.Content && !h.Access
+		!h.Content && !h.Access && !h.ExactProperties
 }
 
 // Merge folds another set into this one.
@@ -101,6 +108,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.FormatHostname = h.FormatHostname || other.FormatHostname
 	h.Access = h.Access || other.Access
 	h.AccessPattern = h.AccessPattern || other.AccessPattern
+	h.ExactProperties = h.ExactProperties || other.ExactProperties
 }
 
 // HelpersReferencedBy reports which shared helpers a generated file calls, read
@@ -131,6 +139,11 @@ func HelpersReferencedBy(src string) HelperSet {
 	}
 	if strings.Contains(src, "oneofDiscriminatorValue(") {
 		set.OneOfDiscriminator = true
+	}
+	// The exact-property decode. One function, called from every UnmarshalJSON
+	// whose struct has a member a JSON key can fill.
+	if strings.Contains(src, "jsonExactProperties(") {
+		set.ExactProperties = true
 	}
 	// The _dyn* family is matched by its prefix and pulled in whole, rather than
 	// by a list of names that has to be kept in step with the templates by hand.

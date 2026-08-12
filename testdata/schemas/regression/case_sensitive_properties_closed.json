@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaseSensitiveClosed",
+  "description": "additionalProperties: false. A key differing only in case is an additional property, so this schema forbids it.",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" }
+  },
+  "additionalProperties": false
+}

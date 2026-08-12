@@ -14,6 +14,77 @@ func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
 }
 {{- end}}
 
+{{define "exact_properties_helper"}}
+// jsonExactProperties reduces a decoded object to the members whose names are
+// among names, and returns it re-encoded -- but only when the object carries a
+// name encoding/json would decode into one of those properties without being it.
+// Otherwise it returns nil, and the caller decodes the document itself.
+//
+// JSON Schema property names are case-sensitive. "NAME" and "name" are two
+// different properties, and a schema declaring only "name" says nothing at all
+// about "NAME": it is an additional property, and "name" is absent. encoding/json
+// reads keys the other way round -- a key that matches no field exactly is
+// matched a second time case-insensitively -- so a schema-declared member was
+// filled from a key the schema never gave it while the overflow routing filed
+// that same key as an additional property. Both halves landed at once, which is
+// why nothing reported it: the document validated going in, the value validated
+// coming out, and the property in between held someone else's value.
+//
+// strings.EqualFold is the predicate rather than an approximation of it, because
+// it is the one encoding/json matches on: the decoder's folded-name lookup is
+// documented as identical to EqualFold. That is also why this is not an ASCII
+// rule -- U+212A KELVIN SIGN folds to "k", and did reach a property named "k".
+//
+// The exact members are the only ones written back out. A key that neither
+// matches nor folds is dropped with them, which changes nothing: the decode
+// ignores a key no field answers to, and every key of the document is still read
+// by the caller from the map passed in here.
+func jsonExactProperties(raw map[string]json.RawMessage, names ...string) []byte {
+	folded := false
+	for key := range raw {
+		fold := false
+		for _, name := range names {
+			if key == name {
+				// An exact match settles the key whatever else it folds onto,
+				// which is what a schema declaring both "name" and "NAME" needs.
+				fold = false
+				break
+			}
+			if !fold && strings.EqualFold(key, name) {
+				fold = true
+			}
+		}
+		if fold {
+			folded = true
+			break
+		}
+	}
+	if !folded {
+		return nil
+	}
+	out := make([]byte, 0, len(names)*16)
+	out = append(out, '{')
+	for _, name := range names {
+		val, ok := raw[name]
+		if !ok {
+			continue
+		}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		// A Go string has no JSON encoding that can fail, and the values are the
+		// document's own bytes, kept verbatim so that a number kept whatever it
+		// was written as.
+		quoted, _ := json.Marshal(name)
+		out = append(out, quoted...)
+		out = append(out, ':')
+		out = append(out, val...)
+	}
+	out = append(out, '}')
+	return out
+}
+{{- end}}
+
 {{define "validation_capability"}}
 // SchemagenValidationMode reports the validation strategy used for this file.
 const SchemagenValidationMode = {{printf "%q" .ValidationCapability.Mode}}

@@ -9,6 +9,9 @@ import (
 {{- end}}
 )
 {{- end}}
+{{- if .Helpers.ExactProperties}}
+{{template "exact_properties_helper"}}
+{{- end}}
 {{- if .Helpers.Dynamic}}
 {{template "dyn_helpers"}}
 {{- end}}

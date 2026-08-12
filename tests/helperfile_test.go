@@ -77,7 +77,7 @@ func writeSharedHelpers(t *testing.T, dir, content string) {
 // make. The families are matched by prefix rather than by name so that a helper
 // added to a block is covered the day it is written -- a list of names is what
 // failed on PR #59 and again on the format block.
-var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|_dyn\w*|_schemaNode|_evalNode)\(`)
+var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|_dyn\w*|_schemaNode|_evalNode)\(`)
 
 // TestHelperFileDeclaresEveryHelperCalled compiles the one claim the helper file
 // has to satisfy: everything the generated code calls, it declares.

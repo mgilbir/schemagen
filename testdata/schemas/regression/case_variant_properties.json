@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaseVariantProperties",
+  "description": "Both spellings declared. They are two separate properties and each has to hold its own value.",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "NAME": { "type": "string" }
+  }
+}

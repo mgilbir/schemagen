@@ -22,6 +22,25 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type StrictBase")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"base",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias StrictBase
 	aux := &struct {
 		*Alias
@@ -30,7 +49,7 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(s),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -42,9 +61,8 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 		s.Base = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -120,6 +138,26 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 	a.PatternProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+			"b",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowAdjacent
 	aux := &struct {
 		*Alias
@@ -129,7 +167,7 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -145,9 +183,8 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 		a.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -353,6 +390,25 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowBare
 	aux := &struct {
 		*Alias
@@ -361,7 +417,7 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -373,9 +429,8 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 		a.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -489,6 +544,26 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+			"b",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowBranchUnevaluated
 	aux := &struct {
 		*Alias
@@ -498,7 +573,7 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -514,9 +589,8 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 		a.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -620,6 +694,26 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+			"b",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowBranchUnevaluatedFalse
 	aux := &struct {
 		*Alias
@@ -629,7 +723,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -645,9 +739,8 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 		a.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -740,6 +833,25 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowForbid
 	aux := &struct {
 		*Alias
@@ -748,7 +860,7 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -760,9 +872,8 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 		a.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -884,6 +995,25 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowNestedAllOf
 	aux := &struct {
 		*Alias
@@ -892,7 +1022,7 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -904,9 +1034,8 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 		a.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1000,6 +1129,25 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValueA")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"n",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowObjectValueA
 	aux := &struct {
 		*Alias
@@ -1008,7 +1156,7 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1020,9 +1168,8 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 		a.N = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1091,6 +1238,25 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValueBranch0Value")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"n",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowObjectValueBranch0Value
 	aux := &struct {
 		*Alias
@@ -1099,7 +1265,7 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1111,9 +1277,8 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 		a.N = int64(_iv)
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1199,6 +1364,25 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowObjectValue
 	aux := &struct {
 		*Alias
@@ -1206,13 +1390,12 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1310,6 +1493,25 @@ type AllOfBranchOverflowOwnAdditional struct {
 func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowOwnAdditional
 	aux := &struct {
 		*Alias
@@ -1318,7 +1520,7 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1330,9 +1532,8 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 		a.A = int64(_iv)
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1429,6 +1630,25 @@ type AllOfBranchOverflowPlain struct {
 func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowPlain
 	aux := &struct {
 		*Alias
@@ -1437,7 +1657,7 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1449,9 +1669,8 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 		a.A = int64(_iv)
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1688,6 +1907,25 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"a",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowTwoBranches
 	aux := &struct {
 		*Alias
@@ -1696,7 +1934,7 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1708,9 +1946,8 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 		a.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1828,6 +2065,26 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowViaRef")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"base",
+			"other",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflowViaRef
 	aux := &struct {
 		*Alias
@@ -1837,7 +2094,7 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -1853,9 +2110,8 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 		a.Other = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -1958,6 +2214,36 @@ func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type AllOfBranchOverflow")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"adjacent",
+			"bare",
+			"branchUnevaluated",
+			"branchUnevaluatedFalse",
+			"forbid",
+			"nestedAllOf",
+			"objectValue",
+			"ownAdditional",
+			"plain",
+			"soleBranch",
+			"twoBranches",
+			"viaRef",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias AllOfBranchOverflow
 	aux := &struct {
 		*Alias
@@ -1965,13 +2251,12 @@ func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(a),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null

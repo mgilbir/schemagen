@@ -44,6 +44,26 @@ func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
 		o._rawNonObject = append(o._rawNonObject[:0], data...)
 		return nil
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"kind",
+			"x",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias OneOfOptionalConstPOption0
 	aux := &struct {
 		*Alias
@@ -51,13 +71,12 @@ func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(o),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -184,6 +203,26 @@ func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
 		o._rawNonObject = append(o._rawNonObject[:0], data...)
 		return nil
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"kind",
+			"y",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias OneOfOptionalConstPOption1
 	aux := &struct {
 		*Alias
@@ -191,13 +230,12 @@ func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(o),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// A property the schema gives a type to may not be written as null. By
 		// the time the decode above has run there is nothing left to see: a null
@@ -342,6 +380,25 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type OneOfOptionalConst")
 	}
+	// The decode below is handed the document cut down to the properties this
+	// schema declares, because encoding/json matches a key that matches no field
+	// exactly a second time case-insensitively, and would fill "name" from a
+	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
+	//
+	// The object is parsed once here and read again by the blocks below, so this
+	// costs no parse that was not already being paid. Its error is held rather
+	// than returned, so that a document which is not an object is still refused
+	// by the decode that always refused it, in the words it always used.
+	var raw map[string]json.RawMessage
+	_rawErr := json.Unmarshal(data, &raw)
+	_decodeData := data
+	if _rawErr == nil {
+		if _exact := jsonExactProperties(raw,
+			"p",
+		); _exact != nil {
+			_decodeData = _exact
+		}
+	}
 	type Alias OneOfOptionalConst
 	aux := &struct {
 		*Alias
@@ -350,7 +407,7 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(o),
 	}
 
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
 
@@ -441,9 +498,8 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		if _rawErr != nil {
+			return _rawErr
 		}
 		// The properties whose schema permits a null. The decode above has
 		// already turned one into a nil pointer, a nil collection or an
