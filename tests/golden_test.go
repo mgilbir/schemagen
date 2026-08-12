@@ -300,6 +300,23 @@ func allGoldenTests() []goldenTestCase {
 		// would pin a great deal that has nothing to do with the element.
 		{"regression/inferred_array_root", "testdata/schemas/regression/inferred_array_root.json", "testdata/golden/regression/inferred_array_root.go"},
 		{"regression/inferred_array_tuple_draft7", "testdata/schemas/regression/inferred_array_tuple_draft7.json", "testdata/golden/regression/inferred_array_tuple_draft7.go"},
+		// Issues #248 and #251, which the defaults corpus could not see: until
+		// this entry the only property in every golden here whose default is
+		// written into something other than a pointer was one field of
+		// annotation_reach_positions, and no golden had a collection default at
+		// all -- because none was ever emitted.
+		//
+		// What it pins is which arm each position takes, which is the whole of
+		// both issues: the pointers keep the nil test, and everything else gains
+		// the key-set test beside its zero. The pair beside them says what is
+		// still not written -- a default whose target is a struct, and a string
+		// default on an integer field.
+		{"regression/default_presence_positions", "testdata/schemas/regression/default_presence_positions.json", "testdata/golden/regression/default_presence_positions.go"},
+		// The other side of that: a document whose only two defaults land on
+		// pointers declares no _jsonKeys at all. It is what says the key set is
+		// asked for where it is needed and nowhere else, which no behavioural
+		// test can show -- an unused field changes no verdict.
+		{"regression/default_sole_keyword", "testdata/schemas/regression/default_sole_keyword.json", "testdata/golden/regression/default_sole_keyword.go"},
 	}
 }
 

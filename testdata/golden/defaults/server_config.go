@@ -120,8 +120,21 @@ func (s ServerConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-// SetDefaults sets default values for unset fields of ServerConfig.
-// A field is considered "unset" if it holds the zero value for its type.
+// SetDefaults writes each schema default into the properties this value does
+// not already carry.
+//
+// What "does not carry" means depends on what the Go field can hold. A pointer
+// is nil exactly when the property was absent, since the decode assigns only for
+// a key the document wrote, and is asked directly. A field with no nil state has
+// one value standing for both an absent property and an explicit "", 0, false or
+// [] -- issue #248 -- so it is asked twice: of _jsonKeys, the key set
+// UnmarshalJSON records from the document itself, and of the field, which must
+// still be untouched. A value that was never decoded from JSON has no key set,
+// and the second test is what then keeps the fields it was built with.
+//
+// Nothing here touches _jsonKeys. A default is not a property the document sent,
+// so a required property still has to have been sent, and SetDefaults cannot
+// make one satisfiable that was not.
 func (s *ServerConfig) SetDefaults() {
 	if s.Debug == nil {
 		_default := true

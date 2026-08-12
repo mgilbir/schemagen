@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DefaultSoleKeyword",
+  "type": "object",
+  "properties": {
+    "s": { "type": "string", "default": "d" },
+    "b": { "type": "boolean", "default": true }
+  }
+}
