@@ -122,11 +122,14 @@ type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}
 {{- $allowedVar := lowerFirst .Name | printf "%sAllowedJSON"}}
 
-var {{$allowedVar}} = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var {{$allowedVar}} = _jsonCanonicalTexts([]string{
 {{- range .Values}}
 	{{goStringQuote .RawJSON}},
 {{- end}}
-}
+})
 
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	*{{$recv}} = {{.Name}}(data)
@@ -142,22 +145,19 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte({{$recv}}), &tmp); err != nil {
-		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
-	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
-	}
 	{{- /* _canon, not `s`: the receiver is the type name's first letter
 	lowercased, so every raw enum whose type name begins with S or s declared
 	this local over its own receiver -- `no new variables on left side of :=`,
 	and then a comparison between the named type and a string. The underscore
 	prefix is the convention the rest of the generated code uses for exactly
 	this, and a receiver is one letter and can never carry it. */}}
-	_canon := string(canonical)
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte({{$recv}}))
+	if _canonErr != nil {
+		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
+	}
 	for _, allowed := range {{$allowedVar}} {
 		if _canon == allowed {
 			return nil

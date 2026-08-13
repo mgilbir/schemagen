@@ -39,6 +39,9 @@ import (
 {{- if .Helpers.DateTime}}
 {{template "datetime_helpers"}}
 {{- end}}
+{{- if .Helpers.Canonical}}
+{{template "canonical_helpers"}}
+{{- end}}
 {{- if .Helpers.NullCheck}}
 {{template "nullcheck_helpers"}}
 {{- end}}

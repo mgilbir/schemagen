@@ -155,8 +155,14 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NullCheck || helpers.Format, "fmt")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format, "fmt")
+	// The JSON-equality reduction: a decoder over the document's own bytes, a
+	// builder for the text it reduces to, sorted member names, and strconv for
+	// the exponent it writes a number's scale as.
+	add(helpers.Canonical, "bytes")
+	add(helpers.Canonical, "strconv")
+	add(helpers.Canonical, "strings")
 	// The exact-number comparisons read the literal as decimal digits: strconv
 	// for the exponent, math/big for the one question -- does this divide that
 	// -- that digit arithmetic alone does not answer. Neither is needed by the
@@ -194,7 +200,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// document with several of them fails the same way every time. The runtime
 	// evaluator visits an object's properties in the same fixed order, for the
 	// same reason.
-	add(helpers.NullCheck || helpers.Annotations, "sort")
+	add(helpers.NullCheck || helpers.Annotations || helpers.Canonical, "sort")
 	// The format helpers are emitted as one block, so they name every package
 	// any of them needs whether or not the schema uses that particular format.
 	// Splitting the block per format is what would let a package end up with a

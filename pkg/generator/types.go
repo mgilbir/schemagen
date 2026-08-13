@@ -134,7 +134,7 @@ type StructDef struct {
 	UnevaluatedProperties  *UnevaluatedPropertiesDef // unevaluatedProperties constraint (Draft 2019-09+)
 	BranchOverflowChecks   []BranchOverflowCheck     // per-branch additionalProperties/unevaluatedProperties checks from allOf sub-schemas
 	RuntimeBranchChecks    []RuntimeBranchCheck      // anyOf/oneOf keywords a branch's unevaluatedProperties makes per-document; evaluated at runtime
-	ObjectEnum             []string                  // canonical JSON of the whole documents an enum permits, when one was merged in beside the declared properties
+	ObjectEnum             []string                  // the whole documents an enum permits, as the schema wrote them; reduced to one spelling per value by _jsonCanonical at run time
 	ObjectOneOfs           []ObjectOneOfDef          // object-level oneOf branch validation for flattened applicator schemas
 	ObjectAnyOfs           []ObjectAnyOfDef          // object-level anyOf branch validation for flattened applicator schemas (>=1 branch must match)
 	ObjectConditionals     []ObjectConditionalDef    // object-level if/then/else groups, checked against the raw JSON properties
@@ -1532,7 +1532,7 @@ func (d *EnumDef) typeDef()         {}
 type EnumValue struct {
 	Name    string // Go constant name
 	Value   any    // actual value (string or int)
-	RawJSON string // JSON-encoded form (only set when EnumDef.IsRaw is true)
+	RawJSON string // the member as the schema wrote it (only set when EnumDef.IsRaw is true); reduced to one spelling per value by _jsonCanonical at run time
 }
 
 // TupleItemDef describes one position in a tuple-form array (prefixItems/items-as-array).

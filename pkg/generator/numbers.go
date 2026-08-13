@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -87,12 +88,80 @@ func numFloat(v any) (float64, bool) {
 // is what keeps 9223372036854775807 out of the float64 it does not survive.
 // Only a Schema assembled in Go, whose number never had a literal, is formatted
 // here.
+//
+// "Verbatim" stops at the width a Go integer constant has to hold, which is
+// what goConstLiteral decides; see it for why writing 1e308 out in full is not
+// a constant every compiler accepts.
 func numGoFloatLiteral(v any) string {
 	n, ok := schemaNumber(v)
 	if !ok {
 		return "0"
 	}
-	return string(n)
+	return goConstLiteral(n)
+}
+
+// goConstIntBits is how wide a whole number this generator will write into Go
+// source in integer notation.
+//
+// The Go specification requires an implementation to represent an integer
+// constant with at least 256 bits of precision, and gc gives 512. 256 is
+// therefore the widest integer literal that is portable Go rather than
+// gc-specific Go, and anything past it has to be written as a floating-point
+// constant, which every implementation rounds instead of refusing.
+//
+// The bound is not theoretical. Every number float64 can hold is a legitimate
+// numeric keyword, and the largest of them is 1.7976931348623157e308 -- three
+// hundred and nine digits once it is written out as the whole number it is,
+// which is 1024 bits and which gc rejects outright with "constant overflow".
+// {"type":"number","maximum":1e308} generated Go that did not compile, behind a
+// zero exit code, and so did {"enum":[1e308]} and {"multipleOf":1e308}. See
+// issue #269.
+const goConstIntBits = 256
+
+// goConstLiteral renders a schema number as a Go constant that a compiler will
+// take, preferring the spelling the document used.
+//
+// Three arms, in the order they are tried:
+//
+//   - A whole number narrow enough for an integer constant is written in
+//     integer notation, so {"const": 1e2} declares 100 rather than 1e2. The two
+//     are the same constant to Go and only one of them reads as the integer it
+//     is.
+//   - Anything the document already wrote in floating-point notation is used as
+//     it stands. A Go floating-point constant is rounded to the
+//     implementation's precision rather than refused, so 1e308 and
+//     1.7976931348623157e308 are both constants; only the integer *notation*
+//     for them is not.
+//   - What is left is a whole number written out in full and too wide to be a
+//     constant -- a hundred and sixty digits of it, say. It becomes the float64
+//     it rounds to, which is exactly the reading every remaining caller makes
+//     of it: these render bounds and members that are compared as float64.
+//     A magnitude float64 cannot hold at all keeps its digits and moves the
+//     decimal point, which is a float constant rather than an integer one and
+//     so is refused where it is converted rather than where it is written.
+func goConstLiteral(n schema.Number) string {
+	lit := string(n)
+	if r, ok := n.Rat(); ok && r.IsInt() && r.Num().BitLen() <= goConstIntBits {
+		return r.Num().String()
+	}
+	if strings.ContainsAny(lit, ".eE") {
+		return lit
+	}
+	if f, ok := n.Float64(); ok {
+		return strconv.FormatFloat(f, 'e', -1, 64)
+	}
+	neg := ""
+	digits := lit
+	if len(digits) > 0 && (digits[0] == '-' || digits[0] == '+') {
+		if digits[0] == '-' {
+			neg = "-"
+		}
+		digits = digits[1:]
+	}
+	if len(digits) < 2 {
+		return lit
+	}
+	return neg + digits[:1] + "." + digits[1:] + "e" + strconv.Itoa(len(digits)-1)
 }
 
 // GoNumberLiteral renders a schema-supplied number as a Go constant.
@@ -106,7 +175,9 @@ func numGoFloatLiteral(v any) string {
 //
 // A value that names an integer is written in integer notation, so that
 // {"const": 1e2} declares 100 rather than 1e2. The two are the same constant to
-// Go, but only one of them reads as the integer it is.
+// Go, but only one of them reads as the integer it is -- up to the width an
+// integer constant has to hold, past which goConstLiteral writes it as a
+// floating-point one instead.
 //
 // The empty string is returned for a value that is not a number, which the
 // callers treat as "render it some other way".
@@ -115,10 +186,7 @@ func GoNumberLiteral(v any) string {
 	if !ok {
 		return ""
 	}
-	if r, ok := n.Rat(); ok && r.IsInt() {
-		return r.Num().String()
-	}
-	return string(n)
+	return goConstLiteral(n)
 }
 
 // constJSONValue encodes a schema-supplied value as the JSON the generated code
@@ -139,6 +207,20 @@ func GoNumberLiteral(v any) string {
 // this, and it is not made here.
 func constJSONValue(v any) ([]byte, error) {
 	return json.Marshal(foldNumbersToFloat(v))
+}
+
+// exactJSONValue encodes a schema-supplied value as the JSON the document
+// wrote, with every number kept as its literal.
+//
+// It is constJSONValue without the fold, for the comparisons whose other side
+// is raw JSON rather than a Go value: an enum or a const held as
+// json.RawMessage is compared against the instance's own bytes, and both sides
+// go through the emitted _jsonCanonical rather than through a float64. Nothing
+// is decided here beyond keeping the digits -- the reduction to one spelling
+// per value happens in the generated code, so there is a single implementation
+// of it and not one on each side. See issue #272.
+func exactJSONValue(v any) ([]byte, error) {
+	return json.Marshal(v)
 }
 
 // foldNumbersToFloat rewrites every number a value holds as its float64
