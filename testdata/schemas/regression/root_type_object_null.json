@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeObjectNull",
+  "$comment": "Issue #270, the nullable-object spelling. The type list admits an object and a null, so the struct is only half of what the schema describes and the other half has to be kept as raw bytes -- including on the way out, where a null used to be re-marshalled as {}.",
+  "type": ["object", "null"],
+  "properties": {"a": {"type": "string"}}
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatternValueNullBounds",
+  "$comment": "Issue #270's third shape at the position it is shared with: every scalar bound in the pattern-value bucket decodes the raw value into a Go type and reads what it finds, and encoding/json takes a JSON null into any type as a no-op with no error -- so a null was measured as 0, as \"\" and as an empty array. Each family gets a key of its own so a fix to one is not read as a fix to all four.",
+  "patternProperties": {
+    "^num": {"minimum": 5},
+    "^str": {"minLength": 3},
+    "^pat": {"pattern": "^z"},
+    "^arr": {"minItems": 2}
+  }
+}

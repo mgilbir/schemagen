@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeArrayObject",
+  "$comment": "Issue #270, the widening direction with a collection on the other side: an array is a document the type names and the struct decode refused.",
+  "type": ["array", "object"],
+  "properties": {"a": {"type": "string"}}
+}

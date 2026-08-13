@@ -52,9 +52,19 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("null is not allowed for type {{$struct.Name}}")
 	}
 	{{- end}}
+	{{- if $struct.RejectObject}}
+	// The fields below describe the object this schema would admit, but its own
+	// "type" admits no object at all, so no document reaches them. Refused here
+	// rather than left to the constraints: an object decodes into the fields and
+	// never reaches the non-object block, which is where the type is checked.
+	if len(data) > 0 && data[0] == '{' {
+		return fmt.Errorf("object is not allowed for type {{$struct.Name}}")
+	}
+	{{- end}}
 	{{- if $struct.AcceptNonObject}}
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	{{- if $struct.NeedsNullCheck}}
 	if len(data) == 0 || (data[0] != '{' && string(data) != "null") {
 	{{- else}}

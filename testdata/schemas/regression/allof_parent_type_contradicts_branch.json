@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfParentTypeContradictsBranch",
+  "$comment": "The parent's type and a branch's type naming no kind in common. An allOf conjoins them, so this schema admits no instance at all -- and saying so is what the merge's own empty-conjunction arm exists for. The conjunction of the parent has to happen before that arm runs, or the contradiction is recorded after the only thing that reads it has already decided, and the merge comes out an ordinary integer that accepts every integer the parent's type excludes.",
+  "type": "string",
+  "allOf": [
+    {"type": "integer"}
+  ]
+}

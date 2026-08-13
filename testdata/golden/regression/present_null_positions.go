@@ -3,6 +3,7 @@
 package testpkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"unicode/utf8"
@@ -21,8 +22,9 @@ func (o *Obj) UnmarshalJSON(data []byte) error {
 	o._jsonKeys = nil
 	o._nonObject = false
 	o._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		o._nonObject = true
 		o._rawNonObject = append(o._rawNonObject[:0], data...)
@@ -230,12 +232,24 @@ func (p PresentNullPositionsBoundOnly) Validate() error {
 type PresentNullPositionsNullableObject struct {
 	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
+	p._nonObject = false
+	p._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		p._nonObject = true
+		p._rawNonObject = append(p._rawNonObject[:0], data...)
+		return nil
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -303,6 +317,13 @@ func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (p PresentNullPositionsNullableObject) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if p._nonObject {
+		if len(p._rawNonObject) > 0 {
+			return p._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias PresentNullPositionsNullableObject
 	aux := struct {
 		Alias
@@ -325,6 +346,54 @@ func (p PresentNullPositionsNullableObject) MarshalJSON() ([]byte, error) {
 
 // Validate checks PresentNullPositionsNullableObject against its JSON Schema constraints.
 func (p PresentNullPositionsNullableObject) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if p._nonObject {
+		v := p._rawNonObject
+		_ = v
+		{
+			b := bytes.TrimSpace(v)
+			var jt string
+			if len(b) == 0 {
+				jt = "unknown"
+			} else {
+				switch b[0] {
+				case '"':
+					jt = "string"
+				case '{':
+					jt = "object"
+				case '[':
+					jt = "array"
+				case 't', 'f':
+					jt = "boolean"
+				case 'n':
+					jt = "null"
+				default:
+					jt = "number"
+					isInt := true
+					for _, c := range b {
+						if c == '.' || c == 'e' || c == 'E' {
+							isInt = false
+							break
+						}
+					}
+					if isInt {
+						jt = "integer"
+					}
+				}
+			}
+			_ppTypeOK := false
+			if jt == "object" {
+				_ppTypeOK = true
+			}
+			if jt == "null" {
+				_ppTypeOK = true
+			}
+			if !_ppTypeOK {
+				return fmt.Errorf("value must be one of: object, null")
+			}
+		}
+		return nil
+	}
 	// Required properties must be present in the source JSON. _jsonKeys is
 	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
 	// presence is untracked and the check is skipped, consistent with how

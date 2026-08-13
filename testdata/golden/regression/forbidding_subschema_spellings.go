@@ -3,6 +3,7 @@
 package testpkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"unicode/utf8"
@@ -1854,12 +1855,24 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 
 type ForbiddingSubschemaSpellingsNullableInlineNames struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (f *ForbiddingSubschemaSpellingsNullableInlineNames) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
+	f._nonObject = false
+	f._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		f._nonObject = true
+		f._rawNonObject = append(f._rawNonObject[:0], data...)
+		return nil
+	}
 	type Alias ForbiddingSubschemaSpellingsNullableInlineNames
 	aux := &struct {
 		*Alias
@@ -1894,6 +1907,13 @@ func (f *ForbiddingSubschemaSpellingsNullableInlineNames) UnmarshalJSON(data []b
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if f._nonObject {
+		if len(f._rawNonObject) > 0 {
+			return f._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias ForbiddingSubschemaSpellingsNullableInlineNames
 	aux := struct {
 		Alias
@@ -1916,6 +1936,54 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, 
 
 // Validate checks ForbiddingSubschemaSpellingsNullableInlineNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if f._nonObject {
+		v := f._rawNonObject
+		_ = v
+		{
+			b := bytes.TrimSpace(v)
+			var jt string
+			if len(b) == 0 {
+				jt = "unknown"
+			} else {
+				switch b[0] {
+				case '"':
+					jt = "string"
+				case '{':
+					jt = "object"
+				case '[':
+					jt = "array"
+				case 't', 'f':
+					jt = "boolean"
+				case 'n':
+					jt = "null"
+				default:
+					jt = "number"
+					isInt := true
+					for _, c := range b {
+						if c == '.' || c == 'e' || c == 'E' {
+							isInt = false
+							break
+						}
+					}
+					if isInt {
+						jt = "integer"
+					}
+				}
+			}
+			_ppTypeOK := false
+			if jt == "object" {
+				_ppTypeOK = true
+			}
+			if jt == "null" {
+				_ppTypeOK = true
+			}
+			if !_ppTypeOK {
+				return fmt.Errorf("value must be one of: object, null")
+			}
+		}
+		return nil
+	}
 	// propertyNames: validate that all property names satisfy the constraint.
 	for _pnKey := range f._jsonKeys {
 		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)

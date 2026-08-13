@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeNullAllOfMerge",
+  "$comment": "Issue #270's two directions meeting on one schema: the parent's type excludes an object and the branch describes one. The merge carries the branch's properties and not the parent's type, so only a question asked of the schema as written can see the exclusion.",
+  "type": "null",
+  "allOf": [
+    {"properties": {"a": {"type": "string"}}}
+  ]
+}

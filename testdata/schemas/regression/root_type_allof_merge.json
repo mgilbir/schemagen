@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeAllOfMerge",
+  "$comment": "Issue #270 on the merged-struct path. generateAllOfDef hands generateStructDef a merged schema and a hard `false` for the escape hatch, so a document that is not an object was refused although no schema here states a type -- and `required` is vacuous on a non-object.",
+  "allOf": [
+    {"properties": {"a": {"type": "string"}}, "required": ["a"]}
+  ]
+}

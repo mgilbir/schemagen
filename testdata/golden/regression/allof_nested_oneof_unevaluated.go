@@ -24,8 +24,9 @@ func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
 	p._jsonNulls = nil
 	p._nonObject = false
 	p._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		p._nonObject = true
 		p._rawNonObject = append(p._rawNonObject[:0], data...)
@@ -231,8 +232,9 @@ func (p *PickOneValueOption1) UnmarshalJSON(data []byte) error {
 	p._jsonKeys = nil
 	p._nonObject = false
 	p._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		p._nonObject = true
 		p._rawNonObject = append(p._rawNonObject[:0], data...)

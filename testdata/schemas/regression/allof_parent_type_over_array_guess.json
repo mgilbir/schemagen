@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllOfParentTypeOverArrayGuess",
+  "$comment": "The parent's type meeting this generator's own guess rather than another schema's assertion. A branch that names array positions makes the merge guess \"array\"; the parent states object. A guess and an assertion are not two assertions to intersect -- taking their intersection leaves nothing, which would make this schema admit no instance at all, when what it admits is every object.",
+  "type": "object",
+  "allOf": [
+    {"items": {"type": "string"}}
+  ]
+}

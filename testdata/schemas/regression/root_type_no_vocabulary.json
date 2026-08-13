@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2020-12/vocab/core": true,
+    "https://json-schema.org/draft/2020-12/vocab/applicator": true
+  },
+  "title": "RootTypeNoVocabulary",
+  "$comment": "Issue #270 under a metaschema that withholds the validation vocabulary. `type` is then an annotation and asserts nothing, so it excludes no document -- and a reconciliation that read it anyway would refuse every object this schema admits. The same gate the enum and const arms are behind.",
+  "type": "null",
+  "properties": {"a": {"type": "string"}}
+}

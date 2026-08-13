@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeBranchNamesObject",
+  "$comment": "Issue #270 in the narrowing direction, where the type is not stated at the root at all: an anyOf whose every branch names object leaves nothing else admissible, and the arm that reads `type` off the root alone opened the raw escape hatch and accepted every string, number and array.",
+  "properties": {"a": {"type": "string"}},
+  "anyOf": [{"type": "object"}]
+}

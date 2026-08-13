@@ -966,6 +966,8 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 		// taken from the document's own keys. See jsonNullRule for the nested
 		// spelling of the same rule.
 		for _, _nullKey := range []string{
+			"falseBranch",
+			"mixed",
 			"objectsOnly",
 			"scalarsOnly",
 			"typedEnumBranch",

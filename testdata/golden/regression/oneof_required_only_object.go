@@ -19,8 +19,9 @@ func (o *OneOfRequiredOnlyObjectValueOption0) UnmarshalJSON(data []byte) error {
 	o._jsonKeys = nil
 	o._nonObject = false
 	o._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		o._nonObject = true
 		o._rawNonObject = append(o._rawNonObject[:0], data...)
@@ -119,8 +120,9 @@ func (o *OneOfRequiredOnlyObjectValueOption1) UnmarshalJSON(data []byte) error {
 	o._jsonKeys = nil
 	o._nonObject = false
 	o._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		o._nonObject = true
 		o._rawNonObject = append(o._rawNonObject[:0], data...)

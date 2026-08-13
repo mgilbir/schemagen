@@ -320,8 +320,9 @@ func (i *InlineUntypedPositionsObj) UnmarshalJSON(data []byte) error {
 	i._jsonKeys = nil
 	i._nonObject = false
 	i._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		i._nonObject = true
 		i._rawNonObject = append(i._rawNonObject[:0], data...)
@@ -420,8 +421,9 @@ func (i *InlineUntypedPositionsObjItemsItem) UnmarshalJSON(data []byte) error {
 	i._jsonKeys = nil
 	i._nonObject = false
 	i._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		i._nonObject = true
 		i._rawNonObject = append(i._rawNonObject[:0], data...)

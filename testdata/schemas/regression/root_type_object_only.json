@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeObjectOnly",
+  "$comment": "Issue #270's control, and the shape nearly every schema in the corpus has: `type` names object and nothing else, so the struct is the whole of what the schema describes and the emitted type must be byte for byte what it was before the reconciliation existed.",
+  "type": "object",
+  "properties": {"a": {"type": "string"}},
+  "required": ["a"]
+}

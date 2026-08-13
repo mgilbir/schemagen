@@ -137,8 +137,11 @@ func (r Root) Validate() error {
 					}
 				}
 				{
-					var s string
-					if err := json.Unmarshal(v, &s); err == nil {
+					// Through a pointer, so that a null is not matched as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+						s := *_s
 						if matched, _ := ecma262.MatchString("^(?=a)a+$", ecmaflags.Unicode, s); !matched {
 							return fmt.Errorf("patternProperties %s: key %q value does not match pattern ^(?=a)a+$", "^v", k)
 						}

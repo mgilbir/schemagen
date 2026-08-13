@@ -2583,6 +2583,149 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		return err
 	}
 	g.applyNullRejection(name, s)
+	g.applyTypeReconciliation(name, s)
+	return nil
+}
+
+// applyTypeReconciliation settles, on the struct generateTypeDef just built for
+// this name, which JSON kinds the schema actually admits -- and it is here for
+// the same reason applyNullRejection is.
+//
+// A struct is chosen by the arms above from `properties`, `patternProperties`
+// and `unevaluatedProperties`: keywords that describe an object and say nothing
+// about whether the instance has to be one. What settles that is `type`, and the
+// arms read one bit of it -- schemaHasExplicitType(s, "object") -- to decide
+// whether a non-object document gets the raw escape hatch. One bit is not enough
+// in either direction, and both directions were live (issue #270):
+//
+//   - {"type":"null","properties":{"a":{"type":"string"}}} has no explicit
+//     "object", so the hatch opened; but a document that *is* an object never
+//     takes the hatch, and nothing else asked. `{}` and `{"a":"x"}` were
+//     accepted, and only null is valid. (An array was refused, which is the
+//     hatch's own type rule firing -- the type was half-read, not unread.)
+//   - {"type":["string","object"],"properties":{...}} does have an explicit
+//     "object", so the hatch stayed shut and every string was refused by the
+//     opening decode -- a value the schema's own type names.
+//
+// The merge paths never asked at all: generateAllOfDef and generateAnyOfDef hand
+// generateStructDef a merged schema and a hard `false`, so
+// {"anyOf":[{"properties":{"a":{...}},"required":["a"]}, ...]} refused every
+// non-object document, although `required` is vacuous on one and both branches
+// therefore match.
+//
+// So the question is asked once, of the schema *as written*, exactly like the
+// null rejection: it has to be, because the merge is what loses it. A merge takes
+// `type` off a branch and drops the parent's, so asking `merged` asks about a
+// schema nobody wrote -- the same trap #267 documented for the null. Asking here
+// also means the answer is one statement rather than one per arm.
+//
+// The predicate is schemaForbidsKind, which is schemaForbidsNull generalised:
+// it reads $ref, allOf, anyOf/oneOf, enum and const rather than the type list
+// alone, and answers false for everything it cannot settle. That last property
+// is what makes the widening direction safe -- a schema this cannot read keeps
+// the answer its arm gave it.
+func (g *Generator) applyTypeReconciliation(name string, s *schema.Schema) {
+	if !g.validationKeywordsEnabled() {
+		// Where the declared metaschema withholds the validation vocabulary,
+		// `type` is an annotation and asserts nothing, so there is nothing to
+		// reconcile the shape with. The arms' own answer stands.
+		return
+	}
+	if len(s.TypeSchemas) > 0 {
+		// Draft 3 lets an entry of the type array be a schema rather than a
+		// name. Those alternatives admit values the names do not describe, so
+		// the list is not a statement about which kinds are excluded and
+		// narrowMergedType declines them for the same reason.
+		return
+	}
+	sd := g.structDefNamed(name)
+	if sd == nil {
+		return
+	}
+	if len(sd.OneOfs) > 0 {
+		// A struct carrying a union is a different shape with a different
+		// decoder: OneOfIsWholeValue reads AcceptNonObject as evidence that the
+		// document is being read as an object, and the branch loop is what
+		// judges a scalar there. Opening the hatch would put a scalar past the
+		// branches instead of through them. That leaves the type unreconciled
+		// for a schema written with `properties`, a `type` and a `oneOf` at
+		// once; no corpus schema and no adversarial fixture is of that shape,
+		// and the union path wants a fix of its own rather than this one
+		// reaching into it.
+		return
+	}
+
+	admitsObject := !g.schemaForbidsKind(s, jsonKindObject)
+	admitsNonObject := false
+	for _, kind := range jsonKindsNonObject {
+		if !g.schemaForbidsKind(s, kind) {
+			admitsNonObject = true
+			break
+		}
+	}
+
+	// The refusal, for a schema whose own keywords exclude an object. Written as
+	// a refusal rather than as a re-route into the hatch: the hatch judges what
+	// it holds with NonObjectValidations, and those are extracted from `type`
+	// and the scalar bounds only -- so a schema that excludes objects through an
+	// allOf branch or an enum would have been re-routed into a check that says
+	// nothing, turning one false accept into another. A refusal cannot lose a
+	// rejection. It mirrors NeedsNullCheck, which is the same sentence about the
+	// other kind no Go shape can hold.
+	sd.RejectObject = !admitsObject
+
+	switch {
+	case admitsNonObject && !sd.AcceptNonObject:
+		sd.AcceptNonObject = true
+		sd.NonObjectValidations = extractNonObjectValidationRules(s)
+		// Both, and for the reasons generateStructDef gives where it opens the
+		// hatch itself: the decoder is what diverts the document and the
+		// marshaller is what gives the raw bytes back, so a hatch with neither
+		// is a document silently turned into an empty object on the way out.
+		sd.NeedsUnmarshal = true
+		sd.NeedsMarshal = true
+	case !admitsNonObject && sd.AcceptNonObject:
+		// The other direction, which is not hypothetical:
+		// {"properties":{...},"anyOf":[{"type":"object"}]} states no type of its
+		// own, so the arm opened the hatch, and the branch that does state one
+		// was never consulted -- every string, number and array was accepted.
+		//
+		// NeedsUnmarshal and NeedsMarshal are left as they are. Both are true of
+		// every struct this generator emits for an object shape anyway -- the
+		// overflow map needs them -- and the templates gate the hatch's own
+		// blocks on AcceptNonObject, so clearing it is what removes them.
+		sd.AcceptNonObject = false
+		sd.NonObjectValidations = nil
+	}
+}
+
+// structDefNamed returns the struct generateTypeDef just declared under this
+// name, or nil if what it declared was not a struct. See typeDefNamed.
+func (g *Generator) structDefNamed(name string) *StructDef {
+	sd, _ := g.typeDefNamed(name).(*StructDef)
+	return sd
+}
+
+// typeDefNamed returns the def generateTypeDef just declared under this name, or
+// nil if it declared none.
+//
+// One lookup for both post-passes rather than a loop in each, because where the
+// def is found is one claim and wants one place to be stated.
+//
+// The name is unique, so the direction is not a correctness question and no
+// plant can falsify it: the re-entrancy guard in generateTypeDef lets one name be
+// declared once, and since #271 a position deriving a name another node holds is
+// given a numbered one rather than that node's -- an arm that generated a $ref
+// target or a variant type alongside its own def declared those under names of
+// their own. Searched from the end because that is simply where the answer is:
+// every arm appends the def for its own name last, after the nested types it had
+// to resolve first.
+func (g *Generator) typeDefNamed(name string) TypeDef {
+	for i := len(g.output.TypeDefs) - 1; i >= 0; i-- {
+		if td := g.output.TypeDefs[i]; td.TypeName() == name {
+			return td
+		}
+	}
 	return nil
 }
 
@@ -2604,11 +2747,9 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 // g.output is rebuilt by every Generate whether or not the run shares types, so
 // there is no earlier call's def in the slice this walks.
 //
-// Searched from the end because that is where the answer is: every arm appends
-// the def for its own name last, after the nested types it had to resolve first.
-// (No corpus schema in any configuration produces a second def under one name,
-// or finds this one anywhere but the last position -- so neither a duplicate nor
-// an earlier match is a case this has been able to see.)
+// The walk itself is typeDefNamed, which #270's post-pass shares: the search
+// direction is a claim about how the arms append, and one claim wants one place
+// to be stated.
 //
 // It only ever turns a rejection on. schemaForbidsNull answers false for
 // everything it cannot settle, so a def it says nothing about keeps exactly the
@@ -2617,62 +2758,59 @@ func (g *Generator) applyNullRejection(name string, s *schema.Schema) {
 	if !g.schemaForbidsNull(s) {
 		return
 	}
-	for i := len(g.output.TypeDefs) - 1; i >= 0; i-- {
-		td := g.output.TypeDefs[i]
-		if td.TypeName() != name {
-			continue
-		}
-		switch d := td.(type) {
-		case *StructDef:
-			// Asked before the field is set, because the answer changes once it
-			// is: a struct whose whole value is a union must keep skipping the
-			// opening object decode, or every scalar branch is refused before it
-			// is tried. The union carries the refusal instead, one line further
-			// in. See OneOfDef.RejectNull.
-			if d.OneOfIsWholeValue() {
-				for j := range d.OneOfs {
-					if d.OneOfs[j].JSONName == "" {
-						d.OneOfs[j].RejectNull = true
-					}
-				}
-				return
-			}
-			// NeedsUnmarshal is not set alongside. The template gates the whole
-			// method on it, so a struct without it would swallow the guard --
-			// but no schema in the corpus reaches here with it clear, in either
-			// configuration, because every struct this generator emits carries
-			// an overflow map and an UnmarshalJSON to fill it. An assertion no
-			// plant can falsify is one nobody can maintain.
-			d.NeedsNullCheck = true
-		case *AliasDef:
-			d.NeedsNullCheck = true
-		case *EnumDef:
-			d.NeedsNullCheck = true
-		case *InferredAliasDef:
-			d.NeedsNullCheck = true
-		case *BigIntAliasDef:
-			// AllowsNull is this def's representation of a permitted null, so
-			// it is cleared alongside: a wrapper that refuses the value must not
-			// also carry a state, a decode branch and a Validate arm for it.
-			//
-			// The two are complements at both construction sites, which set
-			// them from one schemaAllowsNull call -- but the schema they ask is
-			// the *merged* one, and a merge takes a type off a branch. So
-			// {"type":"integer","allOf":[{"type":["integer","null"]}]} under
-			// --big-int reached those sites saying null was permitted, when the
-			// parent's own type excludes it, and accepted a null the schema
-			// forbids. The question this arm asks is the one the schema wrote.
-			//
-			// Both halves are needed and neither implies the other. Clearing the
-			// state is what turns the verdict around -- without it the wrapper
-			// takes the null into _isNull and returns -- while the guard is what
-			// makes the refusal say so, rather than letting the null fall
-			// through to json.Number and come back as "value  cannot be
-			// represented as int64" about a value the document never wrote.
-			d.NeedsNullCheck = true
-			d.AllowsNull = false
-		}
+	td := g.typeDefNamed(name)
+	if td == nil {
 		return
+	}
+	switch d := td.(type) {
+	case *StructDef:
+		// Asked before the field is set, because the answer changes once it
+		// is: a struct whose whole value is a union must keep skipping the
+		// opening object decode, or every scalar branch is refused before it
+		// is tried. The union carries the refusal instead, one line further
+		// in. See OneOfDef.RejectNull.
+		if d.OneOfIsWholeValue() {
+			for j := range d.OneOfs {
+				if d.OneOfs[j].JSONName == "" {
+					d.OneOfs[j].RejectNull = true
+				}
+			}
+			return
+		}
+		// NeedsUnmarshal is not set alongside. The template gates the whole
+		// method on it, so a struct without it would swallow the guard --
+		// but no schema in the corpus reaches here with it clear, in either
+		// configuration, because every struct this generator emits carries
+		// an overflow map and an UnmarshalJSON to fill it. An assertion no
+		// plant can falsify is one nobody can maintain.
+		d.NeedsNullCheck = true
+	case *AliasDef:
+		d.NeedsNullCheck = true
+	case *EnumDef:
+		d.NeedsNullCheck = true
+	case *InferredAliasDef:
+		d.NeedsNullCheck = true
+	case *BigIntAliasDef:
+		// AllowsNull is this def's representation of a permitted null, so
+		// it is cleared alongside: a wrapper that refuses the value must not
+		// also carry a state, a decode branch and a Validate arm for it.
+		//
+		// The two are complements at both construction sites, which set
+		// them from one schemaAllowsNull call -- but the schema they ask is
+		// the *merged* one, and a merge takes a type off a branch. So
+		// {"type":"integer","allOf":[{"type":["integer","null"]}]} under
+		// --big-int reached those sites saying null was permitted, when the
+		// parent's own type excludes it, and accepted a null the schema
+		// forbids. The question this arm asks is the one the schema wrote.
+		//
+		// Both halves are needed and neither implies the other. Clearing the
+		// state is what turns the verdict around -- without it the wrapper
+		// takes the null into _isNull and returns -- while the guard is what
+		// makes the refusal say so, rather than letting the null fall
+		// through to json.Number and come back as "value  cannot be
+		// represented as int64" about a value the document never wrote.
+		d.NeedsNullCheck = true
+		d.AllowsNull = false
 	}
 }
 
@@ -5182,6 +5320,11 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		merged.UnevaluatedItems = s.UnevaluatedItems
 	}
 
+	// The parent's own "type", conjoined with what the branches contributed.
+	// Ahead of the empty check below so that a parent and a branch naming no
+	// type in common reach the forbidding arm. See conjoinParentDeclaredType.
+	g.conjoinParentDeclaredType(merged, s)
+
 	// A conjunction that came out empty. Two branches whose value sets share no
 	// member, or whose declared types name no type in common, admit no instance
 	// between them -- and the merge says so in the one spelling the rest of the
@@ -5238,11 +5381,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		//
 		// Only inside this block: a merge that produced properties goes to
 		// generateStructDef, which has its own reading of the parent and is not
-		// part of the defect.
-		if len(merged.Type) == 0 && len(s.Type) > 0 {
-			merged.Type = s.Type
-			merged.TypeSchemas = s.TypeSchemas
-		}
+		// part of the defect. See conjoinParentDeclaredType, which is where the
+		// assignment now lives -- it has to run before the empty-conjunction
+		// check above, so that a contradiction between the parent and a branch
+		// reaches the forbidding arm rather than an alias built from a type the
+		// parent excludes.
+
 		// The schema the array arms below read their per-position checks from.
 		// Normally the merged one; when nothing in it describes the array's
 		// positions, a lone branch that does. See soleBranchArrayKeywords.
@@ -7186,6 +7330,59 @@ func (g *Generator) narrowMergedType(target, resolved *schema.Schema) {
 		return
 	}
 	dropEveryValue(target)
+}
+
+// conjoinParentDeclaredType puts the "type" a schema declared beside its allOf
+// onto the merge its branches produced.
+//
+// The merge only ever takes a type off a *branch*, so a type the parent declared
+// has not reached `merged` at all -- and every arm downstream reads its answer
+// off `merged`: resolveType for the Go type, schemaAllowsNull for the decoder's
+// null check, extractAliasValidationRules for the rules, primarySchemaType for
+// which arm runs. Putting it on once is what makes those agree, and it is what
+// carries a declared type through the synthesized allOf a $ref-beside-a-type is
+// rewritten into (#118).
+//
+// It conjoins rather than fills in, which is issue #270's fourth shape. The
+// parent's type and a branch's type are two assertions about one instance, and
+// an allOf conjoins them -- but this used to apply the parent's only where the
+// branches had left the merge empty, so a branch stating a *wider* type replaced
+// the parent's instead of being narrowed by it.
+// {"type":"integer","allOf":[{"type":["integer","null"]}]} therefore reached the
+// arms below as integer-or-null, which resolveType answers with `*int64` -- a
+// pointer, which carries no methods, so nothing was left to refuse the null the
+// parent's own type excludes, and #276's rejection had nowhere to be recorded.
+// The intersection is the one two branches already get, for the same reason.
+//
+// It runs for every merge, not only the ones that produced no object shape. The
+// scoping the assignment used to carry -- "a merge with properties goes to
+// generateStructDef and is not part of the defect" -- is true of *why* it is
+// needed and false as a condition: a merge with properties reaches
+// generateStructDef, whose Go type is a struct whatever the type list says, and
+// where applyTypeReconciliation answers the type question from the schema as
+// written. So the assignment changes nothing there, and no plant and no corpus
+// schema in any configuration could tell the two apart. A branch nothing can
+// falsify is one nobody can maintain, so the condition is gone and the reason it
+// existed is this paragraph.
+func (g *Generator) conjoinParentDeclaredType(merged, s *schema.Schema) {
+	switch {
+	case len(s.Type) == 0:
+		// Nothing declared beside the allOf; the branches' answer stands.
+	case len(merged.Type) == 0:
+		merged.Type = s.Type
+		merged.TypeSchemas = s.TypeSchemas
+	case g.arrayTypeInferredFromBranch[merged]:
+		// What is on the merge is this generator's own guess about a branch that
+		// named array positions, not something any schema stated, and a guess
+		// and an assertion are not two assertions to intersect. The assertion
+		// replaces it, which is what mergeAllOfBranches does with the same flag
+		// one level down.
+		merged.Type = s.Type
+		merged.TypeSchemas = s.TypeSchemas
+		delete(g.arrayTypeInferredFromBranch, merged)
+	default:
+		g.narrowMergedType(merged, s)
+	}
 }
 
 // dropEveryValue marks a schema as admitting no instance, in the spelling the
@@ -12499,31 +12696,68 @@ const maxNullRefDepth = 12
 // Everything this cannot decide answers false, so the check only ever narrows
 // to what the schema demonstrably forbids.
 func (g *Generator) schemaForbidsNull(s *schema.Schema) bool {
-	return g.schemaForbidsNullAt(s, 0)
+	return g.schemaForbidsKindAt(s, jsonKindNull, 0)
 }
 
-func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
-	if s == nil || depth >= maxNullRefDepth || s.IsBooleanSchema() {
+// schemaForbidsKind is schemaForbidsNull asked about any one JSON kind: does the
+// schema positively exclude every instance of `kind` at its own position?
+//
+// It is the same walk over the same keywords, because the reasoning above is not
+// about null. "type" that lists something and not this kind settles it; a $ref
+// counts for the whole schema or beside it depending on the draft; allOf is a
+// conjunction and anyOf/oneOf are disjunctions; enum and const enumerate. Only
+// the leaf test differs, and that is the argument.
+//
+// Written as one function rather than a null copy and an object copy, because
+// the two would then be two statements of the same rule -- and this repository
+// has been bitten more than once by a keyword list that was widened in one copy
+// and not the other. schemaForbidsNull is now this function with jsonKindNull,
+// and answers exactly what it answered before: for a stated type list,
+// jsonKindAdmittedBy reduces to "does the list name null", which is what
+// schemaAllowsNull asked; for a const or an enum, jsonKindOf answers "null" for
+// the nil the decoder leaves, which is the value the old code compared against.
+func (g *Generator) schemaForbidsKind(s *schema.Schema, kind string) bool {
+	return g.schemaForbidsKindAt(s, kind, 0)
+}
+
+func (g *Generator) schemaForbidsKindAt(s *schema.Schema, kind string, depth int) bool {
+	if s == nil || depth >= maxNullRefDepth {
+		return false
+	}
+	// A schema that admits no instance forbids every kind, and saying so is what
+	// makes a disjunction come out right: {"anyOf":[{"type":"object"}, false]}
+	// admits exactly what the first branch admits, and reading the `false` as a
+	// branch with nothing to say made the whole group say nothing. Both
+	// spellings, because this repository already reads them as one -- see
+	// emptyEnumSchema, and the forbidding arm in generateAllOfDef.
+	if s.IsFalseSchema() {
+		return true
+	}
+	if g.validationKeywordsEnabled() && s.Enum != nil && len(s.Enum) == 0 {
+		return true
+	}
+	if s.IsBooleanSchema() {
+		// The `true` schema, which admits everything.
 		return false
 	}
 	ref := s.EffectiveRef()
 	if ref != "" && g.refOverridesSiblings() {
 		// Before 2019-09 a $ref replaces everything beside it, so the siblings
-		// have no say at all. Reading them anyway would refuse a null the
+		// have no say at all. Reading them anyway would refuse a value the
 		// target admits.
 		target := g.resolveRefInContext(ref, s)
-		return target != nil && g.schemaForbidsNullAt(target, depth+1)
+		return target != nil && g.schemaForbidsKindAt(target, kind, depth+1)
 	}
-	if len(s.Type) > 0 && !schemaAllowsNull(s) {
+	if len(s.Type) > 0 && !typeListAdmitsKind(s.Type, kind) {
 		return true
 	}
 	if ref != "" {
-		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsNullAt(target, depth+1) {
+		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsKindAt(target, kind, depth+1) {
 			return true
 		}
 	}
 	for _, branch := range s.AllOf {
-		if g.schemaForbidsNullAt(branch, depth+1) {
+		if g.schemaForbidsKindAt(branch, kind, depth+1) {
 			return true
 		}
 	}
@@ -12533,7 +12767,7 @@ func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
 		}
 		everyBranch := true
 		for _, branch := range group {
-			if !g.schemaForbidsNullAt(branch, depth+1) {
+			if !g.schemaForbidsKindAt(branch, kind, depth+1) {
 				everyBranch = false
 				break
 			}
@@ -12546,20 +12780,82 @@ func (g *Generator) schemaForbidsNullAt(s *schema.Schema, depth int) bool {
 	// *any nil for a JSON null, so a null const and an absent one are the same
 	// pointer. Asking the flag keeps the two apart.
 	if s.ConstIsNull {
-		return false
+		return kind != jsonKindNull
 	}
 	if s.Const != nil {
-		return *s.Const != nil
+		return !jsonKindsOverlap(jsonKindOf(*s.Const), kind)
 	}
 	if len(s.Enum) > 0 {
 		for _, v := range s.Enum {
-			if v == nil {
+			if jsonKindsOverlap(jsonKindOf(v), kind) {
 				return false
 			}
 		}
 		return true
 	}
 	return false
+}
+
+// The JSON kind names, which are the "type" keyword's own vocabulary. "integer"
+// is deliberately absent: it names a subset of "number" rather than a seventh
+// kind of value, and every question here is about the value, so the two are
+// reconciled by jsonKindsOverlap instead.
+const (
+	jsonKindNull    = "null"
+	jsonKindBoolean = "boolean"
+	jsonKindObject  = "object"
+	jsonKindArray   = "array"
+	jsonKindNumber  = "number"
+	jsonKindString  = "string"
+)
+
+// jsonKindsNonObject are the five kinds a value can be when it is not an object.
+var jsonKindsNonObject = []string{jsonKindNull, jsonKindBoolean, jsonKindArray, jsonKindNumber, jsonKindString}
+
+// typeListAdmitsKind reports whether a stated "type" admits any instance of the
+// given kind. It is not equality: a list naming "integer" admits some numbers,
+// so it does not exclude the kind, and a list naming "number" admits every
+// integer. Excluding on a name mismatch alone would make {"type":"integer"}
+// claim to forbid numbers outright.
+func typeListAdmitsKind(types schema.TypeList, kind string) bool {
+	for _, t := range types {
+		if jsonKindsOverlap(t, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonKindsOverlap reports whether two kind names can describe one value.
+// The empty name is a kind this file could not identify, and overlaps with
+// everything: a question it cannot answer must not become an exclusion.
+func jsonKindsOverlap(a, b string) bool {
+	if a == "" || b == "" || a == b {
+		return true
+	}
+	numeric := func(name string) bool { return name == jsonKindNumber || name == "integer" }
+	return numeric(a) && numeric(b)
+}
+
+// jsonKindOf names the JSON kind a decoded enum or const value came from. The
+// schema decoder runs with UseNumber, so a number arrives as json.Number; the
+// float64 case is for a value built by anything that did not.
+func jsonKindOf(v any) string {
+	switch v.(type) {
+	case nil:
+		return jsonKindNull
+	case bool:
+		return jsonKindBoolean
+	case string:
+		return jsonKindString
+	case json.Number, float64, int, int64:
+		return jsonKindNumber
+	case []any:
+		return jsonKindArray
+	case map[string]any:
+		return jsonKindObject
+	}
+	return ""
 }
 
 // nullPresenceTracked reports whether a property needs the fact that its value
