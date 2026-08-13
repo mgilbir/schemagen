@@ -20570,7 +20570,7 @@ func (g *Generator) collectConditionalRuntimeChecks(s *schema.Schema, staticRead
 			fields = append(fields, fmt.Sprintf("\t%s: _node(%s),", branch.field, lit))
 		}
 		checks = append(checks, RuntimeBranchCheck{
-			Keyword:     "if",
+			Keyword:     conditionalRuntimeKeyword,
 			NodeLiteral: "_schemaNode{\n" + strings.Join(fields, "\n") + "\n}",
 			owner:       owner,
 		})

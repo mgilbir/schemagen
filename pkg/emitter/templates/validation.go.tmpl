@@ -1251,12 +1251,27 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- range $ri, $check := $struct.RuntimeBranchChecks}}
 		{
 			_rbNode{{$ri}} := {{$check.NodeLiteral}}
+			{{- if $check.MessageNamesItsOwnKeyword}}
+			{{- /* The check is filed under the keyword that selects the group, and
+			       that keyword can never be the one that refused: a condition is
+			       not an assertion, so an `if` that fails selects `else`, or
+			       accepts where there is none. Stamping it here named a sub-schema
+			       that says nothing about the value at fault (issue #281). The
+			       evaluator opens the reason with the branch that did refuse, so
+			       the message is passed up as it is -- and it is never empty,
+			       because a group compiled here always states a `then` or an
+			       `else` for that opening to name. */}}
+			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
+				return fmt.Errorf("%s", _rbRes.reason)
+			}
+			{{- else}}
 			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
 				if _rbRes.reason == "" {
 					return fmt.Errorf("{{$check.Keyword}}: value does not satisfy the schema")
 				}
 				return fmt.Errorf("{{$check.Keyword}}: %s", _rbRes.reason)
 			}
+			{{- end}}
 		}
 		{{- end}}
 	}

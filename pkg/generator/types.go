@@ -1071,10 +1071,14 @@ type BranchOverflowCheck struct {
 // 2019-09 a reference in a branch applies alongside its siblings, and before it
 // replaces them, and nodeBuilder asks refOverridesSiblingsForSchema rather than
 // reading either rule into the reduction. The Keyword is "if", naming the group
-// by the keyword that selects it. See collectConditionalRuntimeChecks.
+// by the keyword that selects it -- which is what files the check, and, alone
+// among the five, not what the message opens with. See
+// MessageNamesItsOwnKeyword and collectConditionalRuntimeChecks.
 type RuntimeBranchCheck struct {
-	// Keyword names the keyword in the error message: "anyOf", "oneOf",
-	// "propertyNames", "dependentSchemas" or "if".
+	// Keyword names the keyword this check was compiled from: "anyOf", "oneOf",
+	// "propertyNames", "dependentSchemas" or conditionalRuntimeKeyword. It is
+	// also what the emitted message opens with, except where
+	// MessageNamesItsOwnKeyword says the evaluator has a better answer.
 	Keyword string
 	// NodeLiteral is the Go composite literal for the _schemaNode holding that
 	// keyword and its branches.
@@ -1088,6 +1092,33 @@ type RuntimeBranchCheck struct {
 	// (node, keyword) names the slice exactly. A schema object states at most one
 	// if/then/else group as well, so "if" names one the same way.
 	owner *schema.Schema
+}
+
+// conditionalRuntimeKeyword files an if/then/else group compiled to the
+// evaluator. It names the group by the keyword that selects it, which is the
+// only one of the three always present, and is what pairs the check with the
+// static reading it takes over.
+const conditionalRuntimeKeyword = "if"
+
+// MessageNamesItsOwnKeyword reports whether the evaluator's reason for this
+// check already opens with the keyword at fault, so that the emitted message
+// must pass it up rather than stamp one of its own in front of it.
+//
+// The if/then/else group is the one check where the keyword the check is filed
+// under cannot be the keyword that refused. A condition is not an assertion: an
+// `if` that fails selects `else`, or, where there is no `else`, accepts. So no
+// document is ever refused by `if`, and opening the message with it sent the
+// caller to a sub-schema that says nothing about the value at fault -- in
+// {"if":{...on k},"then":{...on p},"else":{...on q}} both a `then` violation and
+// an `else` violation were announced as `if:` (issue #281). Which branch ran is
+// a fact about the document, so the evaluator is the only place that has it, and
+// it opens the reason with "then: " or "else: " accordingly.
+//
+// The other four are filed under the keyword that does the refusing -- `anyOf`
+// matches no branch, `propertyNames` rejects a name -- so their message opens
+// with it here.
+func (c RuntimeBranchCheck) MessageNamesItsOwnKeyword() bool {
+	return c.Keyword == conditionalRuntimeKeyword
 }
 
 // ContentCheck is the argument of a "content" validation rule: the decoding to
