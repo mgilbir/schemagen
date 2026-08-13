@@ -196,14 +196,13 @@ func TestDefinitionNamedAfterItsOwnRootTypeSaysWhatToChange(t *testing.T) {
 	}
 }
 
-// The boundary, recorded so it is not mistaken for something this change
-// answers. Two $defs keys of one document that fold onto one Go name are
-// contested by neither qualifier -- same document, same keyword -- so they still
-// merge, exactly as before. That collision needs a discriminator the document
-// does not contain, which is a different question with a different answer; what
-// matters here is that nothing invents one, and in particular that two nodes are
-// never pinned to one name, which the generator would refuse outright.
-func TestTwoDefsKeysFoldingOntoOneNameAreUnchanged(t *testing.T) {
+// Two $defs keys of one document that fold onto one Go name. Neither qualifier
+// above reaches them -- same document, same keyword -- and this is where they
+// used to be left: one type for both keys, every $ref to either reaching it, and
+// nothing said. The property whose definition was dropped carried a schema its
+// own document wrote somewhere else. Issue #271; the answer is a numbered name,
+// since nothing in the document separates the two. See splitFoldedClaims.
+func TestTwoDefsKeysFoldingOntoOneNameGetATypeEach(t *testing.T) {
 	dir, paths := writeSchemas(t, "f.json", `{
 		"title": "F", "type": "object",
 		"properties": {"a": {"$ref": "#/$defs/foo-bar"}, "b": {"$ref": "#/$defs/foo_bar"}},
@@ -211,14 +210,21 @@ func TestTwoDefsKeysFoldingOntoOneNameAreUnchanged(t *testing.T) {
 	}`)
 
 	out := filepath.Join(dir, "gen")
-	stderr, err := runGenerateCapturing(t, append(append([]string{}, paths...), "-o", out, "-p", "gen")...)
-	if err != nil {
-		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	if _, err := runGenerateCapturing(t, append(append([]string{}, paths...), "-o", out, "-p", "gen")...); err != nil {
+		t.Fatalf("generate: %v", err)
 	}
-	if stderr != "" {
-		t.Errorf("stderr = %q, want nothing: this collision is not one this change answers", stderr)
+	if got := strings.Join(declaredTypeNames(t, out), ","); got != "F,FooBar,FooBar2" {
+		t.Errorf("declared types = %s, want F,FooBar,FooBar2", got)
 	}
-	if got := strings.Join(declaredTypeNames(t, out), ","); got != "F,FooBar" {
-		t.Errorf("declared types = %s, want F,FooBar", got)
-	}
+
+	generateCompileRun(t,
+		func(modRoot string) []string {
+			return append(append([]string{}, paths...), "-o", filepath.Join(modRoot, "gen"), "-p", "gen")
+		},
+		"example.com/m/gen", "F",
+		[]docInstance{
+			{`{"a":"s","b":1}`, true, `{"a":"s","b":1}`},
+			{`{"a":1}`, false, ""},
+			{`{"b":"s"}`, false, ""},
+		})
 }

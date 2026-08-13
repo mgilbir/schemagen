@@ -117,6 +117,28 @@ type Generator struct {
 	// pick a disambiguated one instead of silently reusing the wrong type.
 	typeSchemas map[string]*schema.Schema
 
+	// typeOwner records which schema node a generated type name belongs to, for
+	// every name that reached a declaration by any route.
+	//
+	// typeSchemas above answers the same question and cannot be used for it. It
+	// is written part-way down generateTypeDef, so every arm ahead of that line
+	// -- the runtime evaluator, the dynamic-scope wrapper, the annotation
+	// evaluator -- declares a type whose name it never records, and so do the
+	// wrapper helpers that build a def and mark it generated without calling
+	// generateTypeDef at all. A name they own reads as unowned, and the caller
+	// that asked "is this name free" would be told yes and hand a second node the
+	// first one's type. That is the merge this map exists to prevent, so the
+	// record is taken where nothing can be ahead of it: on the way out of
+	// generateTypeDef and of resolvePropertyType, for whatever name each of them
+	// left declared.
+	//
+	// First writer wins, because the first node to declare a name is the one that
+	// holds it. A name a call asked for and did not declare is not recorded at
+	// all, so declining to generate leaves the name free for the next node -- and
+	// the map is emptied with g.generated between two Generate calls that do not
+	// share a package, since what is not declared is not held.
+	typeOwner map[string]*schema.Schema
+
 	// nodeTypeNames is the inverse of typeSchemas: the canonical Go name a
 	// schema node was first materialized under. A self-referential document
 	// (every meta-schema is one) is reached by a different context-derived name
@@ -242,6 +264,7 @@ func New(cfg Config) *Generator {
 		resolvedRefs:       make(map[string]bool),
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
+		typeOwner:          make(map[string]*schema.Schema),
 		nodeTypeNames:      make(map[*schema.Schema]string),
 		patternMintedTypes: make(map[string]*schema.Schema),
 		nodesInProgress:    make(map[*schema.Schema]bool),
@@ -297,6 +320,11 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// package are referenced instead of re-emitted.
 	if !g.config.SharedTypes {
 		g.generated = make(map[string]bool)
+		// And with it the record of who holds each of those names, which is a
+		// statement about the same set: a name this call does not declare is held
+		// by nobody, and an owner left behind would have this document's
+		// positions stepping around types that are not in the file being written.
+		g.typeOwner = make(map[string]*schema.Schema)
 	}
 	g.generating = make(map[string]bool)
 	g.crossImports = make(map[string]string)
@@ -643,13 +671,112 @@ func (g *Generator) notePinnedNameTaken(name string, s *schema.Schema) {
 	g.pinnedNameTaken[name] = true
 }
 
+// noteTypeOwner records s as the holder of a type name, if the call that just
+// returned left that name declared and no earlier node holds it. See typeOwner.
+func (g *Generator) noteTypeOwner(name string, s *schema.Schema) {
+	if name == "" || s == nil || !g.generated[name] {
+		return
+	}
+	if _, held := g.typeOwner[name]; held {
+		return
+	}
+	g.typeOwner[name] = s
+}
+
+// nameHeldByOther reports whether a declared type of this package stands under
+// name and was generated for some schema node other than s.
+func (g *Generator) nameHeldByOther(name string, s *schema.Schema) bool {
+	if name == "" {
+		return false
+	}
+	owner, held := g.typeOwner[name]
+	return held && owner != s
+}
+
+// unclaimedTypeName is the name a type minted for a position inside a document
+// is declared under: the name the position derives, or the first numbered
+// spelling of it that no other node holds.
+//
+// A position's name is its parent's name and its own, so two positions whose
+// names differ only in what the Go name derivation drops arrive here as one
+// string. {"properties":{"a":{"properties":{"b":{"type":"string"}}},
+// "a_b":{"type":"integer"}}} derives RootAB twice: once for the nested a.b and
+// once for the flat a_b. The re-entrancy guard in generateTypeDef then turned the
+// second away -- it answers per name, and the name was taken -- and the caller,
+// which had no way to hear that, gave the property the *first* position's type.
+// So a_b was validated against a schema written one level down and about a
+// different location: {"a_b":{"c":1}} was refused for an integer the schema
+// requires there, and {"a_b":{"c":"s"}} accepted for a string it forbids. Issue
+// #271, in the half of it only the generator can see -- these names exist nowhere
+// in the document, so no caller can pin them apart through DefinitionTypeNames.
+//
+// Numbered rather than qualified, for the reason the same fold gets a numeric
+// suffix a level down in generateStruct when two property names collide: the two
+// positions differ in nothing that survives the derivation, so there is no other
+// name to give them. Which of two *definitions* keeps a contested name is not
+// decided here: that question can need a comparison across documents, which this
+// cannot see, and it is Config.DefinitionTypeNames' answer.
+//
+// The name is left alone when the node holding it is s itself. The same node
+// arrives repeatedly -- reached again through a $ref, revisited by a second pass
+// -- and giving it a fresh name each time would declare the same type twice.
+//
+// It is left alone too when Config.DefinitionTypeNames pins it, and that is not
+// an oversight. A pinned name is one the caller invented to keep two definitions
+// apart, so it was never written in any document and the caller cannot see what
+// else it might land on. Stepping around it here would answer that with a name
+// nobody chose and say nothing, where the contract is that the caller hears: the
+// collision is recorded by notePinnedNameTaken and the run is refused with the
+// definition and the remedy named. Numbering is the answer for a name this
+// generator derived, not for one it was handed.
+func (g *Generator) unclaimedTypeName(name string, s *schema.Schema) string {
+	if g.pinnedNames[name] || !g.nameHeldByOther(name, s) {
+		return name
+	}
+	return g.numberedTypeName(name, s)
+}
+
+// numberedTypeName is the first numbered spelling of name that no other node
+// holds and the caller has not pinned.
+func (g *Generator) numberedTypeName(name string, s *schema.Schema) string {
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s%d", name, i)
+		if !g.pinnedNames[candidate] && !g.nameHeldByOther(candidate, s) {
+			return candidate
+		}
+	}
+}
+
 // definitionGoName is the Go type name a definition is declared under: the name
 // the caller pinned for that node, or the one its $defs key derives.
+//
+// A derived name is kept off the document's own root type name. The definitions
+// are generated first, so a $defs key deriving that name claimed it and the root
+// type was never declared at all: a document titled "Thing" with a $defs entry
+// keyed "thing" produced a package holding one Thing, the definition's, and
+// {"t":"not-an-object"} passed a root schema that requires t to be that object.
+// Issue #268, and it says nothing on the way past.
+//
+// The root type name is the one name in the document that cannot move: it is what
+// --root-name and the title choose, it is the type the caller writes their code
+// against, and every position inside the document is named after it. So the
+// definition is what steps aside.
+//
+// A pinned name is left alone, here as everywhere: the caller has said what that
+// definition is called, having seen the whole input set, and it may well be
+// naming it after this very root (issue #249's AlphaThing). The CLI resolves this
+// collision before generation and reaches the same answer by the route that can
+// also say which keyword declared it, so this is the backstop for a caller that
+// resolves nothing -- the library's own callers, and the compliance harness.
 func (g *Generator) definitionGoName(defKey string, def *schema.Schema) string {
 	if pinned, ok := g.config.DefinitionTypeNames[def]; ok {
 		return pinned
 	}
-	return SchemaNameToGoName(defKey)
+	name := SchemaNameToGoName(defKey)
+	if name == g.rootTypeName {
+		return g.numberedTypeName(name, def)
+	}
+	return name
 }
 
 // PinnedNameCollisionError reports names Config.DefinitionTypeNames asked for
@@ -2407,6 +2534,13 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 		g.notePinnedNameTaken(name, s)
 		return nil
 	}
+
+	// Whatever this call leaves declared under name belongs to s, unless an
+	// earlier node already holds it. Taken on the way out, so that it describes
+	// what was declared rather than what was asked for: several arms below
+	// decline, and a name nothing declared has to stay free for the next node
+	// that derives it. See typeOwner.
+	defer g.noteTypeOwner(name, s)
 
 	// unevaluatedItems next to in-place applicators cannot be decided
 	// statically: which items count as evaluated depends on which branches
@@ -8174,21 +8308,23 @@ func (g *Generator) nullableAliasCarriesTheBranch(branch *schema.Schema, inner G
 // Nothing is claimed when it declines: the caller keeps today's pointer, which
 // is wrong about this branch but still gives the field the branch's Go type,
 // where a name with no Validate would give neither.
-func (g *Generator) nullableCollapseNamedType(s, branch *schema.Schema, inner GoType, parentName, fieldName string) (GoType, bool) {
+// The name is the caller's, and is the one it gives every other type it mints
+// for that position: this is one of the arms resolvePropertyType chooses between,
+// so it must not derive a second answer of its own. See unclaimedTypeName.
+func (g *Generator) nullableCollapseNamedType(s, branch *schema.Schema, inner GoType, posName string) (GoType, bool) {
 	if g.nullableCollapseCarriesTheBranch(branch, inner) {
 		return nil, false
 	}
-	nestedName := parentName + fieldName
-	if nestedName == "" || g.generated[nestedName] || g.generating[nestedName] || g.nodesInProgress[s] {
+	if posName == "" || g.generated[posName] || g.generating[posName] || g.nodesInProgress[s] {
 		return nil, false
 	}
-	def := g.rawWrapperDef(nestedName, s)
+	def := g.rawWrapperDef(posName, s)
 	if def == nil {
 		return nil, false
 	}
-	g.generated[nestedName] = true
+	g.generated[posName] = true
 	g.output.TypeDefs = append(g.output.TypeDefs, def)
-	return &NamedType{Name: nestedName}, true
+	return &NamedType{Name: posName}, true
 }
 
 // goTypeIsGenerated reports whether t names a type this run defines, whose own
@@ -8447,18 +8583,34 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		return namedOrPointer(canonical, true), nil
 	}
 
+	// The name every arm below declares this position's type under, decided once
+	// and in one place: each of them derives it from the parent's name and the
+	// field's, and two positions of one document can derive the same string. See
+	// unclaimedTypeName.
+	//
+	// Read here rather than at each arm because the arms disagree about what a
+	// taken name means -- some reuse the type standing under it, some decline and
+	// leave the property a weaker one -- and both readings are wrong for a name
+	// that belongs to another position. Deciding before any of them run leaves
+	// them one name that is this position's own.
+	posName := g.unclaimedTypeName(parentName+fieldName, s)
+	// And what the arms below leave declared under it belongs to this position.
+	// generateTypeDef records the same thing for the names it is called with;
+	// this covers the wrapper arms that build a def and mark it generated
+	// without going through it. See typeOwner.
+	defer g.noteTypeOwner(posName, s)
+
 	// A property stating a "not" beside another keyword. Ahead of every arm
 	// below, each of which types the value from one of those siblings and has
 	// nowhere to put the negation -- the enum arm immediately after this one
 	// included, which is why it sits here and not with the other wrapper arms
 	// further down. See inlineSiblingNotWrapper and issue #177.
 	if g.inlineSiblingNotWrapper(s) {
-		nestedName := parentName + fieldName
-		if err := g.generateTypeDef(nestedName, s); err != nil {
+		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		if g.generated[nestedName] {
-			return &NamedType{Name: nestedName}, nil
+		if g.generated[posName] {
+			return &NamedType{Name: posName}, nil
 		}
 	}
 
@@ -8504,9 +8656,8 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// stand down, which is not true of that draft.
 	if g.validationKeywordsEnabled() && !refDisplacesEnum &&
 		g.allOfNarrowsStatedValues(s) {
-		nestedName := parentName + fieldName
-		if g.inlineNameAvailable(s, nestedName) {
-			if t, ok := g.namedInlineType(s, nestedName); ok {
+		if g.inlineNameAvailable(s, posName) {
+			if t, ok := g.namedInlineType(s, posName); ok {
 				return t, nil
 			}
 		}
@@ -8518,11 +8669,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// Inline enum → generate enum type
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
-		enumName := parentName + fieldName
-		if err := g.generateEnumDef(enumName, s); err != nil {
+		if err := g.generateEnumDef(posName, s); err != nil {
 			return nil, err
 		}
-		return &NamedType{Name: enumName}, nil
+		return &NamedType{Name: posName}, nil
 	}
 
 	// A property whose unevaluatedItems can only be settled by running the
@@ -8531,12 +8681,11 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// there is no field-level check to fall back on, since which items count as
 	// evaluated depends on which branches matched the value in hand.
 	if g.inlineAnnotationWrapper(s) || g.inlineUnevaluatedWrapper(s) {
-		nestedName := parentName + fieldName
-		if err := g.generateTypeDef(nestedName, s); err != nil {
+		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		if g.generated[nestedName] {
-			return &NamedType{Name: nestedName}, nil
+		if g.generated[posName] {
+			return &NamedType{Name: posName}, nil
 		}
 	}
 
@@ -8563,7 +8712,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if err != nil {
 				return nil, err
 			}
-			if t, ok := g.nullableCollapseNamedType(s, variant, innerType, parentName, fieldName); ok {
+			if t, ok := g.nullableCollapseNamedType(s, variant, innerType, posName); ok {
 				return t, nil
 			}
 			if !innerType.IsPointer() {
@@ -8583,11 +8732,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// hasProperties is excluded because resolveType already materializes a
 		// named struct for it; a $ref is excluded so the ref arms keep it.
 		if !oneOfUnionKeepsWholeSchema(s) && s.EffectiveRef() == "" && !hasProperties(s) && g.oneOfDescribesObject(s) {
-			nestedName := parentName + fieldName
-			if err := g.generateTypeDef(nestedName, s); err != nil {
+			if err := g.generateTypeDef(posName, s); err != nil {
 				return nil, err
 			}
-			return &NamedType{Name: nestedName}, nil
+			return &NamedType{Name: posName}, nil
 		}
 		// A oneOf the caller declined for one of the other two reasons, both of
 		// which are about the branches rather than about the siblings: there is
@@ -8599,11 +8747,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// dynamic or runtime wrapper when it is not. Without this the arms below
 		// would take the declared type and drop the oneOf entirely.
 		if oneOfUnionKeepsWholeSchema(s) && !g.oneOfRendersAsUnion(s) && s.EffectiveRef() == "" && !hasProperties(s) {
-			nestedName := parentName + fieldName
-			if err := g.generateTypeDef(nestedName, s); err != nil {
+			if err := g.generateTypeDef(posName, s); err != nil {
 				return nil, err
 			}
-			return &NamedType{Name: nestedName}, nil
+			return &NamedType{Name: posName}, nil
 		}
 	}
 
@@ -8625,7 +8772,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if err != nil {
 				return nil, err
 			}
-			if t, ok := g.nullableCollapseNamedType(s, effective, innerType, parentName, fieldName); ok {
+			if t, ok := g.nullableCollapseNamedType(s, effective, innerType, posName); ok {
 				return t, nil
 			}
 			if !innerType.IsPointer() {
@@ -8638,11 +8785,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// $ref / $recursiveRef / $dynamicRef
 	if effRef := s.EffectiveRef(); effRef != "" {
 		if !g.refOverridesSiblingsForSchema(s) && hasRefStructuralSiblings(s) {
-			nestedName := parentName + fieldName
-			if err := g.generateTypeDef(nestedName, s); err != nil {
+			if err := g.generateTypeDef(posName, s); err != nil {
 				return nil, err
 			}
-			return &NamedType{Name: nestedName}, nil
+			return &NamedType{Name: posName}, nil
 		}
 		// Self-references (e.g. $ref: "#" or $ref matching root $id).
 		if g.isSelfRefInContext(effRef, s) {
@@ -8714,44 +8860,43 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// that cannot be divided among the branches, so those keep the older
 	// behaviour rather than losing it.
 	if len(s.TypeSchemas) > 0 && !hasNonTypeScopedConstraints(s) {
-		nestedName := parentName + fieldName
-		if err := g.generateTypeDef(nestedName, s); err != nil {
+		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		return &NamedType{Name: nestedName}, nil
+		return &NamedType{Name: posName}, nil
 	}
 
 	// A type union spanning several Go representations, carrying siblings that
 	// only one of them would keep. Checked before the nullable case, which only
 	// handles a single non-null type.
-	if goType, ok := g.multiTypeUnionType(s, parentName+fieldName); ok {
+	if goType, ok := g.multiTypeUnionType(s, posName); ok {
 		return goType, nil
 	}
 
 	// ["string","null"] beside a format, which is the one type union the pointer
 	// below would take and answer with a type that cannot carry the format. See
 	// nullableFormatUnion.
-	if goType, ok := g.nullableFormatUnionType(s, parentName+fieldName); ok {
+	if goType, ok := g.nullableFormatUnionType(s, posName); ok {
 		return goType, nil
 	}
 
 	// A format with no "type", which the fallback would answer `any` -- and
 	// `any` carries no Validate, so the format would be asserted nowhere. See
 	// stringAnnotationOnlySchema.
-	if goType, ok := g.stringAnnotationOnlyWrapperType(s, parentName+fieldName); ok {
+	if goType, ok := g.stringAnnotationOnlyWrapperType(s, posName); ok {
 		return goType, nil
 	}
 
 	// A property that must be null. Checked before the nullable case, whose
 	// pointer says neither of the two things this schema needs said.
-	if goType, ok := g.nullOnlyWrapperType(s, parentName+fieldName); ok {
+	if goType, ok := g.nullOnlyWrapperType(s, posName); ok {
 		return goType, nil
 	}
 
 	// An allOf whose branches each bound the object's values. The map arm below
 	// would answer map[string]any and carry none of them. See
 	// allOfStatesUnmergeableOverflow.
-	if goType, ok := g.overflowAllOfWrapperType(s, parentName+fieldName); ok {
+	if goType, ok := g.overflowAllOfWrapperType(s, posName); ok {
 		return goType, nil
 	}
 
@@ -8763,11 +8908,10 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		}
 		// Nullable object that is a struct rather than a map → pointer to named struct
 		if inner == "object" && objectIsStruct(s) {
-			nestedName := parentName + fieldName
-			if err := g.generateTypeDef(nestedName, s); err != nil {
+			if err := g.generateTypeDef(posName, s); err != nil {
 				return nil, err
 			}
-			return &PointerType{Inner: &NamedType{Name: nestedName}}, nil
+			return &PointerType{Inner: &NamedType{Name: posName}}, nil
 		}
 		// Nullable array → delegate to resolveType, which preserves the element
 		// type via its array-with-items branch. Without this, the fallback below
@@ -8775,7 +8919,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// schema (and any named element struct) is dropped, collapsing a
 		// ["array","null"] property to *[]any.
 		if inner == "array" {
-			return g.resolveType(s, parentName+fieldName), nil
+			return g.resolveType(s, posName), nil
 		}
 		// Nullable map → delegate for the same reason, to the map arm this time.
 		// A ["object","null"] whose whole shape is additionalProperties has no
@@ -8785,7 +8929,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		// mapValueSchema is the predicate resolveType's own map arm consults, so
 		// the two agree on exactly which nodes are maps.
 		if mapValueSchema(s, inner) != nil {
-			return g.resolveType(s, parentName+fieldName), nil
+			return g.resolveType(s, posName), nil
 		}
 		baseType := g.primitiveTypeFromSchema(inner)
 		if baseType == nil {
@@ -8805,7 +8949,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// them, say. No single Go type holds both, so keep the value raw and check
 	// the alternatives; the fallback below would otherwise type it `any` and
 	// validate nothing.
-	if goType, ok := g.anyOfUnionType(s, parentName+fieldName); ok {
+	if goType, ok := g.anyOfUnionType(s, posName); ok {
 		return goType, nil
 	}
 
@@ -8819,22 +8963,20 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// constraint has somewhere to live. This is the same shape the property
 	// would get from a $ref to a definition holding that schema.
 	if g.inlineConstraintWrapper(s) {
-		nestedName := parentName + fieldName
-		if err := g.generateTypeDef(nestedName, s); err != nil {
+		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		return &NamedType{Name: nestedName}, nil
+		return &NamedType{Name: posName}, nil
 	}
 
 	// An integer written inline under BigIntSupport, which resolveType below
 	// would answer with a bare int64 -- the one Go type the flag exists to get
 	// away from. See bigIntInlineWrapper.
 	if g.bigIntInlineWrapper(s) {
-		nestedName := parentName + fieldName
-		if err := g.generateTypeDef(nestedName, s); err != nil {
+		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		return &NamedType{Name: nestedName}, nil
+		return &NamedType{Name: posName}, nil
 	}
 
 	// A property whose schema states no "type" and would be given one by
@@ -8848,11 +8990,11 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// from an answer that is already right. It is the same call the overflow-map
 	// positions take, so a sub-schema written under `properties` and the same one
 	// written under `additionalProperties` get the same type.
-	if goType, ok := g.boxedInferredType(s, parentName+fieldName); ok {
+	if goType, ok := g.boxedInferredType(s, posName); ok {
 		return goType, nil
 	}
 
-	return g.resolveType(s, parentName+fieldName), nil
+	return g.resolveType(s, posName), nil
 }
 
 // bigIntInlineWrapper reports whether an integer written inline -- as a

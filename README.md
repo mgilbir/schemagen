@@ -517,6 +517,19 @@ moves.
 `--schema-package` shares a name space per package and answers the same
 collision the same way, between the documents assigned to one package.
 
+One document can also contest a name with itself, and that needs no second input
+to see, so it is answered in every mode. `$defs/X` and `definitions/X` are two
+schema locations and may hold different schemas; each is named after the keyword
+that declared it, `DefsX` and `DefinitionsX`. A definition whose key derives the
+document's own root type name gives way to it — the root type name is what
+`--root-name` and the title choose, and every position inside the document is
+named after it. And two keys that derive one Go name with nothing left to tell
+them apart — `my-type` and `my_type`, the two spellings of a JSON Pointer escape,
+a key with no letters in it at all — keep one type each, the second numbered
+`MyType2`. Keys that hold the same definition still share one type. Each split is
+reported, saying which key kept the name and what to rename to choose the names
+yourself.
+
 ### Several Schemas, Several Packages
 
 `--schema-package` assigns each document to a Go import path. A `$ref` that
