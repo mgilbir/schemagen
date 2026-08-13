@@ -21,7 +21,7 @@ func (c CrossedKind) Validate() error {
 	case CrossedKindLeft, CrossedKindRight:
 		return nil
 	default:
-		return fmt.Errorf("invalid CrossedKind value: %v", c)
+		return jsonValueErrorf("invalid CrossedKind value: %v", c)
 	}
 }
 
@@ -389,7 +389,7 @@ func (c Crossed) Validate() error {
 	}
 	if c.Kind != nil {
 		if err := c.Kind.Validate(); err != nil {
-			return fmt.Errorf("kind.%w", err)
+			return jsonPathf(err, "kind")
 		}
 	}
 	return nil

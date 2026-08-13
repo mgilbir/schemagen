@@ -407,7 +407,7 @@ func (s SearchResult) Validate() error {
 	}
 	if s.Result != nil {
 		if err := s.Result.Validate(); err != nil {
-			return fmt.Errorf("result.%w", err)
+			return jsonPathf(err, "result")
 		}
 	}
 	return nil

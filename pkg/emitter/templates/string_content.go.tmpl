@@ -9,7 +9,8 @@ value, and the wrapper a content keyword with no declared "type" resolves to --
 so the three cannot disagree about what the keywords mean.
 
 .Expr      a Go expression of type string
-.Path      what to name the value in the error message ("value", a JSON pointer, ...)
+.Path      the path to name the value under, or empty where the value is the
+           whole of what the type answers for and there is no path to it
 .Args      the argument list a Path carrying format verbs needs, or empty
 .Encoding  the contentEncoding to decode by, or empty
 .MediaType the contentMediaType to parse the decoded bytes as, or empty
@@ -19,6 +20,10 @@ guard: contentCheckFor refuses to produce one.
 */}}
 {{define "string_content_check"}}
 if _err := schemagenContentString({{.Expr}}, {{printf "%q" .Encoding}}, {{printf "%q" .MediaType}}); _err != nil {
-	return fmt.Errorf("{{.Path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
+	{{- if .Path}}
+	return {{pathErrf .Path}}("{{.Path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
+	{{- else}}
+	return jsonValueErrorf("%w", _err)
+	{{- end}}
 }
 {{- end}}

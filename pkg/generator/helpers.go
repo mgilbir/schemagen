@@ -100,6 +100,12 @@ type HelperSet struct {
 	// exposed to it exactly as much as one declaring fifty. See issue #245.
 	ExactProperties bool
 
+	// PathJoin is jsonPathError and the two constructors and two joiners around
+	// it: the rule by which a nested validation message is put behind the path
+	// that reaches the value it was raised on. Conditional like every other
+	// block here -- a package whose schemas nest nothing emits none of it.
+	PathJoin bool
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -115,7 +121,8 @@ func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
 		!h.Canonical && !h.NullCheck &&
-		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties
+		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties &&
+		!h.PathJoin
 }
 
 // Merge folds another set into this one.
@@ -141,6 +148,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Access = h.Access || other.Access
 	h.AccessPattern = h.AccessPattern || other.AccessPattern
 	h.ExactProperties = h.ExactProperties || other.ExactProperties
+	h.PathJoin = h.PathJoin || other.PathJoin
 }
 
 // HelpersReferencedBy reports which shared helpers a generated file calls, read
@@ -176,6 +184,15 @@ func HelpersReferencedBy(src string) HelperSet {
 	// whose struct has a member a JSON key can fill.
 	if strings.Contains(src, "jsonExactProperties(") {
 		set.ExactProperties = true
+	}
+	// The path-join block. Four names reach it -- the two constructors a message
+	// that cannot be joined with a "." is built by, and the two joiners that read
+	// what they recorded -- and a file can carry any one without the others: a
+	// leaf alias only ever builds, and a struct whose members are all named only
+	// ever joins. All four are matched for that reason.
+	if strings.Contains(src, "jsonValueErrorf(") || strings.Contains(src, "jsonElemErrorf(") ||
+		strings.Contains(src, "jsonPathf(") || strings.Contains(src, "jsonElemPathf(") {
+		set.PathJoin = true
 	}
 	// The _dyn* family is matched by its prefix and pulled in whole, rather than
 	// by a list of names that has to be kept in step with the templates by hand.

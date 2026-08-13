@@ -62,7 +62,7 @@ func (l LowerValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(l._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", l._value)
+		return jsonValueErrorf("%v is less than minimum 5", l._value)
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func (l *Lower) UnmarshalJSON(data []byte) error {
 			}
 			var val LowerValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			l.AdditionalProperties[rawKey] = val
 		}
@@ -158,7 +158,7 @@ func (l Lower) Validate() error {
 	}
 	for _k0, _e0 := range l.AdditionalProperties {
 		if _err := _e0.Validate(); _err != nil {
-			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
+			return jsonElemPathf(_err, "[%q]", _k0)
 		}
 	}
 	return nil
@@ -285,7 +285,7 @@ func (a AllOfOverflowPositionsNamedKeyBranch0Value) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+		return jsonValueErrorf("%v is less than minimum 5", a._value)
 	}
 	return nil
 }
@@ -345,7 +345,7 @@ func (a AllOfOverflowPositionsNamedKeyBranch1Value) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) > 9 {
-		return fmt.Errorf("value: %v exceeds maximum 9", a._value)
+		return jsonValueErrorf("%v exceeds maximum 9", a._value)
 	}
 	return nil
 }
@@ -553,7 +553,7 @@ func (a AllOfOverflowPositionsSoleBranchValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+		return jsonValueErrorf("%v is less than minimum 5", a._value)
 	}
 	return nil
 }
@@ -592,7 +592,7 @@ func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 			}
 			var val AllOfOverflowPositionsSoleBranchValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			a.AdditionalProperties[rawKey] = val
 		}
@@ -629,7 +629,7 @@ func (a AllOfOverflowPositionsSoleBranch) MarshalJSON() ([]byte, error) {
 func (a AllOfOverflowPositionsSoleBranch) Validate() error {
 	for _k0, _e0 := range a.AdditionalProperties {
 		if _err := _e0.Validate(); _err != nil {
-			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
+			return jsonElemPathf(_err, "[%q]", _k0)
 		}
 	}
 	return nil
@@ -895,17 +895,17 @@ func (a AllOfOverflowPositions) MarshalJSON() ([]byte, error) {
 func (a AllOfOverflowPositions) Validate() error {
 	for _i, _item := range a.Items {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("items[%d].%w", _i, err)
+			return jsonPathf(err, "items[%d]", _i)
 		}
 	}
 	if a.NamedKey != nil {
 		if err := a.NamedKey.Validate(); err != nil {
-			return fmt.Errorf("namedKey.%w", err)
+			return jsonPathf(err, "namedKey")
 		}
 	}
 	if a.SoleBranch != nil {
 		if err := a.SoleBranch.Validate(); err != nil {
-			return fmt.Errorf("soleBranch.%w", err)
+			return jsonPathf(err, "soleBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -914,7 +914,7 @@ func (a AllOfOverflowPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["twoBranches"] {
 		if err := a.TwoBranches.Validate(); err != nil {
-			return fmt.Errorf("twoBranches.%w", err)
+			return jsonPathf(err, "twoBranches")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -923,7 +923,7 @@ func (a AllOfOverflowPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["viaRef"] {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

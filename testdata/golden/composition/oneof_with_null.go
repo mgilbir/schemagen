@@ -295,7 +295,7 @@ func (c Config) Validate() error {
 	}
 	if c.Database != nil {
 		if err := c.Database.Validate(); err != nil {
-			return fmt.Errorf("database.%w", err)
+			return jsonPathf(err, "database")
 		}
 	}
 	return nil

@@ -63,7 +63,7 @@ func (a AtLeastFive) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+		return jsonValueErrorf("%v is less than minimum 5", a._value)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func (o OverflowMapUntypedValueArrLenValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if len(o._value) < 2 {
-		return fmt.Errorf("value: has %d items, minimum is 2", len(o._value))
+		return jsonValueErrorf("has %d items, minimum is 2", len(o._value))
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (o OverflowMapUntypedValueBareValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(o._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", o._value)
+		return jsonValueErrorf("%v is less than minimum 5", o._value)
 	}
 	return nil
 }
@@ -344,7 +344,7 @@ func (o OverflowMapUntypedValueStrLenValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(o._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(o._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(o._value)))
 	}
 	return nil
 }
@@ -404,7 +404,7 @@ func (o OverflowMapUntypedValueValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(o._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", o._value)
+		return jsonValueErrorf("%v is less than minimum 5", o._value)
 	}
 	return nil
 }
@@ -502,7 +502,7 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 			}
 			var val OverflowMapUntypedValueValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			o.AdditionalProperties[rawKey] = val
 		}
@@ -539,27 +539,27 @@ func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
 func (o OverflowMapUntypedValue) Validate() error {
 	for _k, _val := range o.ArrLen {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("arrLen[%q].%w", _k, err)
+			return jsonPathf(err, "arrLen[%q]", _k)
 		}
 	}
 	for _k, _val := range o.Bare {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("bare[%q].%w", _k, err)
+			return jsonPathf(err, "bare[%q]", _k)
 		}
 	}
 	for _k, _val := range o.ObjReq {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("objReq[%q].%w", _k, err)
+			return jsonPathf(err, "objReq[%q]", _k)
 		}
 	}
 	for _k, _val := range o.StrLen {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("strLen[%q].%w", _k, err)
+			return jsonPathf(err, "strLen[%q]", _k)
 		}
 	}
 	for _k, _val := range o.ViaRef {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("viaRef[%q].%w", _k, err)
+			return jsonPathf(err, "viaRef[%q]", _k)
 		}
 	}
 	for _k0, _e0 := range o.Typed {
@@ -569,7 +569,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 	}
 	for _k0, _e0 := range o.AdditionalProperties {
 		if _err := _e0.Validate(); _err != nil {
-			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
+			return jsonElemPathf(_err, "[%q]", _k0)
 		}
 	}
 	return nil

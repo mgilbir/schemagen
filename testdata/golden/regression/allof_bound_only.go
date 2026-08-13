@@ -63,7 +63,7 @@ func (b Bound) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(b._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(b._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(b._value)))
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func (a AllOfBoundOnlyArr) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if len(a._value) < 2 {
-		return fmt.Errorf("value: has %d items, minimum is 2", len(a._value))
+		return jsonValueErrorf("has %d items, minimum is 2", len(a._value))
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (a AllOfBoundOnlyListItem) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func (a AllOfBoundOnlyMapValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -303,7 +303,7 @@ func (a AllOfBoundOnlyNested) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -363,7 +363,7 @@ func (a AllOfBoundOnlyNum) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+		return jsonValueErrorf("%v is less than minimum 5", a._value)
 	}
 	return nil
 }
@@ -423,7 +423,7 @@ func (a AllOfBoundOnlyProp) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -483,7 +483,7 @@ func (a AllOfBoundOnlyUnionOption0) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -543,7 +543,7 @@ func (a AllOfBoundOnlyViaRef) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -603,7 +603,7 @@ func (a AllOfBoundOnlyTupleItem0) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(a._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a._value)))
 	}
 	return nil
 }
@@ -915,37 +915,37 @@ func (a AllOfBoundOnly) MarshalJSON() ([]byte, error) {
 func (a AllOfBoundOnly) Validate() error {
 	if a.Arr != nil {
 		if err := a.Arr.Validate(); err != nil {
-			return fmt.Errorf("arr.%w", err)
+			return jsonPathf(err, "arr")
 		}
 	}
 	for _i, _item := range a.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	for _k, _val := range a.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	if a.Nested != nil {
 		if err := a.Nested.Validate(); err != nil {
-			return fmt.Errorf("nested.%w", err)
+			return jsonPathf(err, "nested")
 		}
 	}
 	if a.Num != nil {
 		if err := a.Num.Validate(); err != nil {
-			return fmt.Errorf("num.%w", err)
+			return jsonPathf(err, "num")
 		}
 	}
 	if a.Prop != nil {
 		if err := a.Prop.Validate(); err != nil {
-			return fmt.Errorf("prop.%w", err)
+			return jsonPathf(err, "prop")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -957,7 +957,7 @@ func (a AllOfBoundOnly) Validate() error {
 	switch _oneOfSel := a.Union.(type) {
 	case *AllOfBoundOnly_AllOfBoundOnlyUnionOption0:
 		if err := _oneOfSel.AllOfBoundOnlyUnionOption0.Validate(); err != nil {
-			return fmt.Errorf("union.%w", err)
+			return jsonPathf(err, "union")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

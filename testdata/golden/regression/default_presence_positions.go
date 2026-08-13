@@ -177,7 +177,7 @@ func (t *Tags) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Tags")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Tags
@@ -602,35 +602,35 @@ func (d DefaultPresencePositions) Validate() error {
 	}
 	for _i, _item := range d.ArrOfNamed {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("arrOfNamed[%d].%w", _i, err)
+			return jsonPathf(err, "arrOfNamed[%d]", _i)
 		}
 	}
 	if d.Leaf != nil {
 		if err := d.Leaf.Validate(); err != nil {
-			return fmt.Errorf("leaf.%w", err)
+			return jsonPathf(err, "leaf")
 		}
 	}
 	for _i, _item := range d.LeafArr {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("leafArr[%d].%w", _i, err)
+			return jsonPathf(err, "leafArr[%d]", _i)
 		}
 	}
 	for _k, _val := range d.LeafMap {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("leafMap[%q].%w", _k, err)
+			return jsonPathf(err, "leafMap[%q]", _k)
 		}
 	}
 	if d.NamedArr != nil {
 		if err := d.NamedArr.Validate(); err != nil {
-			return fmt.Errorf("namedArr.%w", err)
+			return jsonPathf(err, "namedArr")
 		}
 	}
 	if err := d.ReqNamed.Validate(); err != nil {
-		return fmt.Errorf("reqNamed.%w", err)
+		return jsonPathf(err, "reqNamed")
 	}
 	if d.StructDflt != nil {
 		if err := d.StructDflt.Validate(); err != nil {
-			return fmt.Errorf("structDflt.%w", err)
+			return jsonPathf(err, "structDflt")
 		}
 	}
 	return nil

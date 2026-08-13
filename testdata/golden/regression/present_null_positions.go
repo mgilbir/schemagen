@@ -147,7 +147,7 @@ func (o Obj) Validate() error {
 type Pair []int64
 
 func (p *Pair) UnmarshalJSON(data []byte) error {
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	// A named container of integers. Decoding through the shadow is what lets a
@@ -164,7 +164,7 @@ func (p *Pair) UnmarshalJSON(data []byte) error {
 // Validate checks Pair against its JSON Schema constraints.
 func (p Pair) Validate() error {
 	if len(p) < 2 {
-		return fmt.Errorf("value: has %d items, minimum is 2", len(p))
+		return jsonValueErrorf("has %d items, minimum is 2", len(p))
 	}
 	return nil
 }
@@ -224,7 +224,7 @@ func (p PresentNullPositionsBoundOnly) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(p._value)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
 	}
 	return nil
 }
@@ -389,7 +389,7 @@ func (p PresentNullPositionsNullableObject) Validate() error {
 				_ppTypeOK = true
 			}
 			if !_ppTypeOK {
-				return fmt.Errorf("value must be one of: object, null")
+				return jsonValueErrorf("value must be one of: object, null")
 			}
 		}
 		return nil
@@ -463,7 +463,7 @@ func (p PresentNullPositionsReqBoundOnly) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(p._value)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(p._value)))
 	}
 	return nil
 }
@@ -666,26 +666,26 @@ func (p PresentNullPositions) Validate() error {
 	}
 	if p.BoundOnly != nil {
 		if err := p.BoundOnly.Validate(); err != nil {
-			return fmt.Errorf("boundOnly.%w", err)
+			return jsonPathf(err, "boundOnly")
 		}
 	}
 	if p.NullableObject != nil {
 		if err := p.NullableObject.Validate(); err != nil {
-			return fmt.Errorf("nullableObject.%w", err)
+			return jsonPathf(err, "nullableObject")
 		}
 	}
 	if p.RefList != nil {
 		if err := p.RefList.Validate(); err != nil {
-			return fmt.Errorf("refList.%w", err)
+			return jsonPathf(err, "refList")
 		}
 	}
 	if p.RefObject != nil {
 		if err := p.RefObject.Validate(); err != nil {
-			return fmt.Errorf("refObject.%w", err)
+			return jsonPathf(err, "refObject")
 		}
 	}
 	if err := p.ReqBoundOnly.Validate(); err != nil {
-		return fmt.Errorf("reqBoundOnly.%w", err)
+		return jsonPathf(err, "reqBoundOnly")
 	}
 	return nil
 }

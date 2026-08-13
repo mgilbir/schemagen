@@ -654,19 +654,19 @@ func (e Event) Validate() error {
 	case *Event_ClickEvent:
 		if _oneOfSel.ClickEvent != nil {
 			if err := _oneOfSel.ClickEvent.Validate(); err != nil {
-				return fmt.Errorf("payload.%w", err)
+				return jsonPathf(err, "payload")
 			}
 		}
 	case *Event_KeypressEvent:
 		if _oneOfSel.KeypressEvent != nil {
 			if err := _oneOfSel.KeypressEvent.Validate(); err != nil {
-				return fmt.Errorf("payload.%w", err)
+				return jsonPathf(err, "payload")
 			}
 		}
 	case *Event_ScrollEvent:
 		if _oneOfSel.ScrollEvent != nil {
 			if err := _oneOfSel.ScrollEvent.Validate(); err != nil {
-				return fmt.Errorf("payload.%w", err)
+				return jsonPathf(err, "payload")
 			}
 		}
 	}

@@ -135,7 +135,7 @@ func (r *Rows) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Rows")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Rows
@@ -146,7 +146,7 @@ func (r *Rows) UnmarshalJSON(data []byte) error {
 func (r Rows) Validate() error {
 	for _i0, _e0 := range r {
 		if _err := _e0.Validate(); _err != nil {
-			return fmt.Errorf("items[%d].%w", _i0, _err)
+			return jsonElemPathf(_err, "[%d]", _i0)
 		}
 	}
 	return nil
@@ -158,7 +158,7 @@ func (t *Tags) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Tags")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Tags
@@ -169,7 +169,7 @@ func (t *Tags) UnmarshalJSON(data []byte) error {
 func (t Tags) Validate() error {
 	for _i0, _e0 := range t {
 		if utf8.RuneCountInString(string(_e0)) < 2 {
-			return fmt.Errorf("items[%d]: length %d is less than minimum 2", _i0, utf8.RuneCountInString(string(_e0)))
+			return jsonElemErrorf("[%d]: length %d is less than minimum 2", _i0, utf8.RuneCountInString(string(_e0)))
 		}
 	}
 	return nil
@@ -187,7 +187,7 @@ func (i ItemConstraintsMarksItem) Validate() error {
 	case ItemConstraintsMarksItem5:
 		return nil
 	default:
-		return fmt.Errorf("invalid ItemConstraintsMarksItem value: %v", i)
+		return jsonValueErrorf("invalid ItemConstraintsMarksItem value: %v", i)
 	}
 }
 
@@ -377,17 +377,17 @@ func (i ItemConstraints) Validate() error {
 	}
 	for _i, _item := range i.Marks {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("marks[%d].%w", _i, err)
+			return jsonPathf(err, "marks[%d]", _i)
 		}
 	}
 	if i.Rows != nil {
 		if err := i.Rows.Validate(); err != nil {
-			return fmt.Errorf("rows.%w", err)
+			return jsonPathf(err, "rows")
 		}
 	}
 	if i.Tags != nil {
 		if err := i.Tags.Validate(); err != nil {
-			return fmt.Errorf("tags.%w", err)
+			return jsonPathf(err, "tags")
 		}
 	}
 	for _i0, _e0 := range i.Codes {

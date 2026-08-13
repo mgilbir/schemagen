@@ -118,7 +118,7 @@ func (s StrictBase) MarshalJSON() ([]byte, error) {
 func (s StrictBase) Validate() error {
 	if len(s.AdditionalProperties) > 0 {
 		for k := range s.AdditionalProperties {
-			return fmt.Errorf("additional property %q is not allowed", k)
+			return jsonValueErrorf("additional property %q is not allowed", k)
 		}
 	}
 	return nil
@@ -377,7 +377,7 @@ func (a *AllOfBranchOverflowBareBranch0Value) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfBranchOverflowBareBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowBareBranch0Value) Validate() error {
 	if a < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a)
+		return jsonValueErrorf("%v is less than minimum 5", a)
 	}
 	return nil
 }
@@ -533,7 +533,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedBranch0Value) UnmarshalJSON(data []
 // Validate checks AllOfBranchOverflowBranchUnevaluatedBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowBranchUnevaluatedBranch0Value) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -994,7 +994,7 @@ func (a *AllOfBranchOverflowNestedAllOfBranch0Value) UnmarshalJSON(data []byte) 
 // Validate checks AllOfBranchOverflowNestedAllOfBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowNestedAllOfBranch0Value) Validate() error {
 	if a < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a)
+		return jsonValueErrorf("%v is less than minimum 5", a)
 	}
 	return nil
 }
@@ -1477,7 +1477,7 @@ func (a AllOfBranchOverflowObjectValue) MarshalJSON() ([]byte, error) {
 func (a AllOfBranchOverflowObjectValue) Validate() error {
 	if a.A != nil {
 		if err := a.A.Validate(); err != nil {
-			return fmt.Errorf("a.%w", err)
+			return jsonPathf(err, "a")
 		}
 	}
 	// Per-branch overflow: an allOf/anyOf branch's own additionalProperties or
@@ -1584,14 +1584,14 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]int64)
 			}
 			var _iv jsonInteger
 			if err := json.Unmarshal(rawVal, &_iv); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			a.AdditionalProperties[rawKey] = int64(_iv)
 		}
@@ -1639,7 +1639,7 @@ func (a AllOfBranchOverflowOwnAdditional) Validate() error {
 	}
 	for _k0, _e0 := range a.AdditionalProperties {
 		if float64(_e0) < 5 {
-			return fmt.Errorf("additionalProperties[%q]: value %v is less than minimum 5", _k0, _e0)
+			return jsonElemErrorf("[%q]: value %v is less than minimum 5", _k0, _e0)
 		}
 	}
 	return nil
@@ -1799,14 +1799,14 @@ func (a *AllOfBranchOverflowSoleBranch) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			a.AdditionalProperties[rawKey] = val
 		}
@@ -1843,7 +1843,7 @@ func (a AllOfBranchOverflowSoleBranch) MarshalJSON() ([]byte, error) {
 func (a AllOfBranchOverflowSoleBranch) Validate() error {
 	for _k0, _e0 := range a.AdditionalProperties {
 		if utf8.RuneCountInString(string(_e0)) < 2 {
-			return fmt.Errorf("additionalProperties[%q]: length %d is less than minimum 2", _k0, utf8.RuneCountInString(string(_e0)))
+			return jsonElemErrorf("[%q]: length %d is less than minimum 2", _k0, utf8.RuneCountInString(string(_e0)))
 		}
 	}
 	return nil
@@ -1881,7 +1881,7 @@ func (a *AllOfBranchOverflowTwoBranchesBranch0Value) UnmarshalJSON(data []byte) 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch0Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowTwoBranchesBranch0Value) Validate() error {
 	if a < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a)
+		return jsonValueErrorf("%v is less than minimum 5", a)
 	}
 	return nil
 }
@@ -1918,7 +1918,7 @@ func (a *AllOfBranchOverflowTwoBranchesBranch1Value) UnmarshalJSON(data []byte) 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch1Value against its JSON Schema constraints.
 func (a AllOfBranchOverflowTwoBranchesBranch1Value) Validate() error {
 	if a > 9 {
-		return fmt.Errorf("value: %v exceeds maximum 9", a)
+		return jsonValueErrorf("%v exceeds maximum 9", a)
 	}
 	return nil
 }
@@ -2364,62 +2364,62 @@ func (a AllOfBranchOverflow) MarshalJSON() ([]byte, error) {
 func (a AllOfBranchOverflow) Validate() error {
 	if a.Adjacent != nil {
 		if err := a.Adjacent.Validate(); err != nil {
-			return fmt.Errorf("adjacent.%w", err)
+			return jsonPathf(err, "adjacent")
 		}
 	}
 	if a.Bare != nil {
 		if err := a.Bare.Validate(); err != nil {
-			return fmt.Errorf("bare.%w", err)
+			return jsonPathf(err, "bare")
 		}
 	}
 	if a.BranchUnevaluated != nil {
 		if err := a.BranchUnevaluated.Validate(); err != nil {
-			return fmt.Errorf("branchUnevaluated.%w", err)
+			return jsonPathf(err, "branchUnevaluated")
 		}
 	}
 	if a.BranchUnevaluatedFalse != nil {
 		if err := a.BranchUnevaluatedFalse.Validate(); err != nil {
-			return fmt.Errorf("branchUnevaluatedFalse.%w", err)
+			return jsonPathf(err, "branchUnevaluatedFalse")
 		}
 	}
 	if a.Forbid != nil {
 		if err := a.Forbid.Validate(); err != nil {
-			return fmt.Errorf("forbid.%w", err)
+			return jsonPathf(err, "forbid")
 		}
 	}
 	if a.NestedAllOf != nil {
 		if err := a.NestedAllOf.Validate(); err != nil {
-			return fmt.Errorf("nestedAllOf.%w", err)
+			return jsonPathf(err, "nestedAllOf")
 		}
 	}
 	if a.ObjectValue != nil {
 		if err := a.ObjectValue.Validate(); err != nil {
-			return fmt.Errorf("objectValue.%w", err)
+			return jsonPathf(err, "objectValue")
 		}
 	}
 	if a.OwnAdditional != nil {
 		if err := a.OwnAdditional.Validate(); err != nil {
-			return fmt.Errorf("ownAdditional.%w", err)
+			return jsonPathf(err, "ownAdditional")
 		}
 	}
 	if a.Plain != nil {
 		if err := a.Plain.Validate(); err != nil {
-			return fmt.Errorf("plain.%w", err)
+			return jsonPathf(err, "plain")
 		}
 	}
 	if a.SoleBranch != nil {
 		if err := a.SoleBranch.Validate(); err != nil {
-			return fmt.Errorf("soleBranch.%w", err)
+			return jsonPathf(err, "soleBranch")
 		}
 	}
 	if a.TwoBranches != nil {
 		if err := a.TwoBranches.Validate(); err != nil {
-			return fmt.Errorf("twoBranches.%w", err)
+			return jsonPathf(err, "twoBranches")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

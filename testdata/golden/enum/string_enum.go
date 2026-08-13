@@ -21,7 +21,7 @@ func (t TaskPriority) Validate() error {
 	case TaskPriorityLow, TaskPriorityMedium, TaskPriorityHigh:
 		return nil
 	default:
-		return fmt.Errorf("invalid TaskPriority value: %v", t)
+		return jsonValueErrorf("invalid TaskPriority value: %v", t)
 	}
 }
 
@@ -40,7 +40,7 @@ func (t TaskStatus) Validate() error {
 	case TaskStatusPending, TaskStatusInProgress, TaskStatusCompleted, TaskStatusCancelled:
 		return nil
 	default:
-		return fmt.Errorf("invalid TaskStatus value: %v", t)
+		return jsonValueErrorf("invalid TaskStatus value: %v", t)
 	}
 }
 
@@ -166,11 +166,11 @@ func (t Task) Validate() error {
 	}
 	if t.Priority != nil {
 		if err := t.Priority.Validate(); err != nil {
-			return fmt.Errorf("priority.%w", err)
+			return jsonPathf(err, "priority")
 		}
 	}
 	if err := t.Status.Validate(); err != nil {
-		return fmt.Errorf("status.%w", err)
+		return jsonPathf(err, "status")
 	}
 	return nil
 }

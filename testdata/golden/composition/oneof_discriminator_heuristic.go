@@ -640,19 +640,19 @@ func (s Shape) Validate() error {
 	case *Shape_Circle:
 		if _oneOfSel.Circle != nil {
 			if err := _oneOfSel.Circle.Validate(); err != nil {
-				return fmt.Errorf("geometry.%w", err)
+				return jsonPathf(err, "geometry")
 			}
 		}
 	case *Shape_Square:
 		if _oneOfSel.Square != nil {
 			if err := _oneOfSel.Square.Validate(); err != nil {
-				return fmt.Errorf("geometry.%w", err)
+				return jsonPathf(err, "geometry")
 			}
 		}
 	case *Shape_Triangle:
 		if _oneOfSel.Triangle != nil {
 			if err := _oneOfSel.Triangle.Validate(); err != nil {
-				return fmt.Errorf("geometry.%w", err)
+				return jsonPathf(err, "geometry")
 			}
 		}
 	}

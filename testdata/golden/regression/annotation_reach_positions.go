@@ -41,8 +41,12 @@ func (a *AliasOfDefaultedString) UnmarshalJSON(data []byte) error {
 
 // Validate checks AliasOfDefaultedString against its JSON Schema constraints.
 func (a AliasOfDefaultedString) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (DefaultedString(a)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -369,7 +373,7 @@ func (d *DefaultedInt) UnmarshalJSON(data []byte) error {
 // Validate checks DefaultedInt against its JSON Schema constraints.
 func (d DefaultedInt) Validate() error {
 	if d < 1 {
-		return fmt.Errorf("value: %v is less than minimum 1", d)
+		return jsonValueErrorf("%v is less than minimum 1", d)
 	}
 	return nil
 }
@@ -1667,37 +1671,37 @@ func (a AnnotationReachPositions) Validate() error {
 	}
 	if a.AnnViaAllOf != nil {
 		if err := a.AnnViaAllOf.Validate(); err != nil {
-			return fmt.Errorf("annViaAllOf.%w", err)
+			return jsonPathf(err, "annViaAllOf")
 		}
 	}
 	if a.AnnViaNestedAllOf != nil {
 		if err := a.AnnViaNestedAllOf.Validate(); err != nil {
-			return fmt.Errorf("annViaNestedAllOf.%w", err)
+			return jsonPathf(err, "annViaNestedAllOf")
 		}
 	}
 	if a.AnnViaRef != nil {
 		if err := a.AnnViaRef.Validate(); err != nil {
-			return fmt.Errorf("annViaRef.%w", err)
+			return jsonPathf(err, "annViaRef")
 		}
 	}
 	if a.DfltBoolViaRef != nil {
 		if err := a.DfltBoolViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltBoolViaRef.%w", err)
+			return jsonPathf(err, "dfltBoolViaRef")
 		}
 	}
 	if a.DfltEmptyViaRef != nil {
 		if err := a.DfltEmptyViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltEmptyViaRef.%w", err)
+			return jsonPathf(err, "dfltEmptyViaRef")
 		}
 	}
 	if a.DfltIntViaRef != nil {
 		if err := a.DfltIntViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltIntViaRef.%w", err)
+			return jsonPathf(err, "dfltIntViaRef")
 		}
 	}
 	if a.DfltMismatchViaRef != nil {
 		if err := a.DfltMismatchViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltMismatchViaRef.%w", err)
+			return jsonPathf(err, "dfltMismatchViaRef")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1706,55 +1710,55 @@ func (a AnnotationReachPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["dfltMultiTypeViaRef"] {
 		if err := a.DfltMultiTypeViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltMultiTypeViaRef.%w", err)
+			return jsonPathf(err, "dfltMultiTypeViaRef")
 		}
 	}
 	if a.DfltNone != nil {
 		if err := a.DfltNone.Validate(); err != nil {
-			return fmt.Errorf("dfltNone.%w", err)
+			return jsonPathf(err, "dfltNone")
 		}
 	}
 	if a.DfltNumberViaRef != nil {
 		if err := a.DfltNumberViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltNumberViaRef.%w", err)
+			return jsonPathf(err, "dfltNumberViaRef")
 		}
 	}
 	if a.DfltObjectViaRef != nil {
 		if err := a.DfltObjectViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltObjectViaRef.%w", err)
+			return jsonPathf(err, "dfltObjectViaRef")
 		}
 	}
 	if err := a.DfltRequiredViaRef.Validate(); err != nil {
-		return fmt.Errorf("dfltRequiredViaRef.%w", err)
+		return jsonPathf(err, "dfltRequiredViaRef")
 	}
 	if a.DfltViaAllOf != nil {
 		if err := a.DfltViaAllOf.Validate(); err != nil {
-			return fmt.Errorf("dfltViaAllOf.%w", err)
+			return jsonPathf(err, "dfltViaAllOf")
 		}
 	}
 	if a.DfltViaAllOfRef != nil {
 		if err := a.DfltViaAllOfRef.Validate(); err != nil {
-			return fmt.Errorf("dfltViaAllOfRef.%w", err)
+			return jsonPathf(err, "dfltViaAllOfRef")
 		}
 	}
 	if a.DfltViaCycle != nil {
 		if err := a.DfltViaCycle.Validate(); err != nil {
-			return fmt.Errorf("dfltViaCycle.%w", err)
+			return jsonPathf(err, "dfltViaCycle")
 		}
 	}
 	if a.DfltViaNestedAllOf != nil {
 		if err := a.DfltViaNestedAllOf.Validate(); err != nil {
-			return fmt.Errorf("dfltViaNestedAllOf.%w", err)
+			return jsonPathf(err, "dfltViaNestedAllOf")
 		}
 	}
 	if a.DfltViaRef != nil {
 		if err := a.DfltViaRef.Validate(); err != nil {
-			return fmt.Errorf("dfltViaRef.%w", err)
+			return jsonPathf(err, "dfltViaRef")
 		}
 	}
 	if a.DfltViaRefChain != nil {
 		if err := a.DfltViaRefChain.Validate(); err != nil {
-			return fmt.Errorf("dfltViaRefChain.%w", err)
+			return jsonPathf(err, "dfltViaRefChain")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -1767,13 +1771,13 @@ func (a AnnotationReachPositions) Validate() error {
 	case *AnnotationReachPositions_ByName:
 		if _oneOfSel.ByName != nil {
 			if err := _oneOfSel.ByName.Validate(); err != nil {
-				return fmt.Errorf("annCondGroup.%w", err)
+				return jsonPathf(err, "annCondGroup")
 			}
 		}
 	case *AnnotationReachPositions_ByID:
 		if _oneOfSel.ByID != nil {
 			if err := _oneOfSel.ByID.Validate(); err != nil {
-				return fmt.Errorf("annCondGroup.%w", err)
+				return jsonPathf(err, "annCondGroup")
 			}
 		}
 	}
@@ -1787,13 +1791,13 @@ func (a AnnotationReachPositions) Validate() error {
 	case *AnnotationReachPositions_ByName2:
 		if _oneOfSel.ByName2 != nil {
 			if err := _oneOfSel.ByName2.Validate(); err != nil {
-				return fmt.Errorf("annGroupPlain.%w", err)
+				return jsonPathf(err, "annGroupPlain")
 			}
 		}
 	case *AnnotationReachPositions_ByID2:
 		if _oneOfSel.ByID2 != nil {
 			if err := _oneOfSel.ByID2.Validate(); err != nil {
-				return fmt.Errorf("annGroupPlain.%w", err)
+				return jsonPathf(err, "annGroupPlain")
 			}
 		}
 	}
@@ -1804,7 +1808,7 @@ func (a AnnotationReachPositions) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}

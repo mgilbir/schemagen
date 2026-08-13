@@ -1620,7 +1620,7 @@ func (n NullableFormatPositions) MarshalJSON() ([]byte, error) {
 func (n NullableFormatPositions) Validate() error {
 	if n.Buckets != nil {
 		if err := n.Buckets.Validate(); err != nil {
-			return fmt.Errorf("buckets.%w", err)
+			return jsonPathf(err, "buckets")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1629,7 +1629,7 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["chain"] {
 		if err := n.Chain.Validate(); err != nil {
-			return fmt.Errorf("chain.%w", err)
+			return jsonPathf(err, "chain")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1638,12 +1638,12 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["inline"] {
 		if err := n.Inline.Validate(); err != nil {
-			return fmt.Errorf("inline.%w", err)
+			return jsonPathf(err, "inline")
 		}
 	}
 	for _i, _item := range n.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1652,12 +1652,12 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["mail"] {
 		if err := n.Mail.Validate(); err != nil {
-			return fmt.Errorf("mail.%w", err)
+			return jsonPathf(err, "mail")
 		}
 	}
 	for _k, _val := range n.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1666,7 +1666,7 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["ref"] {
 		if err := n.Ref.Validate(); err != nil {
-			return fmt.Errorf("ref.%w", err)
+			return jsonPathf(err, "ref")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1675,7 +1675,7 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["stamp"] {
 		if err := n.Stamp.Validate(); err != nil {
-			return fmt.Errorf("stamp.%w", err)
+			return jsonPathf(err, "stamp")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1684,7 +1684,7 @@ func (n NullableFormatPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["wrapped"] {
 		if err := n.Wrapped.Validate(); err != nil {
-			return fmt.Errorf("wrapped.%w", err)
+			return jsonPathf(err, "wrapped")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -1696,7 +1696,7 @@ func (n NullableFormatPositions) Validate() error {
 	switch _oneOfSel := n.Branch.(type) {
 	case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
 		if err := _oneOfSel.NullableFormatPositionsBranchOption0.Validate(); err != nil {
-			return fmt.Errorf("branch.%w", err)
+			return jsonPathf(err, "branch")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

@@ -406,7 +406,7 @@ func (v ValidatableFieldFmt) Validate() error {
 	}
 	if v.Foo != nil {
 		if err := v.Foo.Validate(); err != nil {
-			return fmt.Errorf("foo.%w", err)
+			return jsonPathf(err, "foo")
 		}
 	}
 	return nil

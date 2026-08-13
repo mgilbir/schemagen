@@ -1125,7 +1125,7 @@ func (o OneOfBooleanAndConstBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["falseBranch"] {
 		if err := o.FalseBranch.Validate(); err != nil {
-			return fmt.Errorf("falseBranch.%w", err)
+			return jsonPathf(err, "falseBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1134,7 +1134,7 @@ func (o OneOfBooleanAndConstBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["mixed"] {
 		if err := o.Mixed.Validate(); err != nil {
-			return fmt.Errorf("mixed.%w", err)
+			return jsonPathf(err, "mixed")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1143,7 +1143,7 @@ func (o OneOfBooleanAndConstBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["typedEnumBranch"] {
 		if err := o.TypedEnumBranch.Validate(); err != nil {
-			return fmt.Errorf("typedEnumBranch.%w", err)
+			return jsonPathf(err, "typedEnumBranch")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -1156,13 +1156,13 @@ func (o OneOfBooleanAndConstBranches) Validate() error {
 	case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0:
 		if _oneOfSel.OneOfBooleanAndConstBranchesObjectsOnlyOption0 != nil {
 			if err := _oneOfSel.OneOfBooleanAndConstBranchesObjectsOnlyOption0.Validate(); err != nil {
-				return fmt.Errorf("objectsOnly.%w", err)
+				return jsonPathf(err, "objectsOnly")
 			}
 		}
 	case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
 		if _oneOfSel.OneOfBooleanAndConstBranchesObjectsOnlyOption1 != nil {
 			if err := _oneOfSel.OneOfBooleanAndConstBranchesObjectsOnlyOption1.Validate(); err != nil {
-				return fmt.Errorf("objectsOnly.%w", err)
+				return jsonPathf(err, "objectsOnly")
 			}
 		}
 	}
@@ -1176,7 +1176,7 @@ func (o OneOfBooleanAndConstBranches) Validate() error {
 	case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0:
 		if _oneOfSel.OneOfBooleanAndConstBranchesTrueBranchOption0 != nil {
 			if err := _oneOfSel.OneOfBooleanAndConstBranchesTrueBranchOption0.Validate(); err != nil {
-				return fmt.Errorf("trueBranch.%w", err)
+				return jsonPathf(err, "trueBranch")
 			}
 		}
 	}

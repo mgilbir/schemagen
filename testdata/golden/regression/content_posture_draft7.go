@@ -63,7 +63,7 @@ func (c ContentPostureDraft7Blob) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if _err := schemagenContentString(string(c._value), "base64", ""); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -123,10 +123,10 @@ func (c ContentPostureDraft7BoundedBlob) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(c._value)) < 4 {
-		return fmt.Errorf("value: length %d is less than minimum 4", utf8.RuneCountInString(string(c._value)))
+		return jsonValueErrorf("length %d is less than minimum 4", utf8.RuneCountInString(string(c._value)))
 	}
 	if _err := schemagenContentString(string(c._value), "base64", ""); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -144,7 +144,7 @@ func (c *ContentPostureDraft7BranchOption0) UnmarshalJSON(data []byte) error {
 // Validate checks ContentPostureDraft7BranchOption0 against its JSON Schema constraints.
 func (c ContentPostureDraft7BranchOption0) Validate() error {
 	if _err := schemagenContentString(string(c), "base64", ""); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -204,7 +204,7 @@ func (c ContentPostureDraft7EncodedDoc) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if _err := schemagenContentString(string(c._value), "base64", "application/json"); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -321,7 +321,7 @@ func (c ContentPostureDraft7ViaAllOf) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if _err := schemagenContentString(string(c._value), "base64", ""); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -339,7 +339,7 @@ func (c *ContentPostureDraft7TupleItem0) UnmarshalJSON(data []byte) error {
 // Validate checks ContentPostureDraft7TupleItem0 against its JSON Schema constraints.
 func (c ContentPostureDraft7TupleItem0) Validate() error {
 	if _err := schemagenContentString(string(c), "base64", ""); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return jsonValueErrorf("%w", _err)
 	}
 	return nil
 }
@@ -668,27 +668,27 @@ func (c ContentPostureDraft7) Validate() error {
 	}
 	if c.Blob != nil {
 		if err := c.Blob.Validate(); err != nil {
-			return fmt.Errorf("blob.%w", err)
+			return jsonPathf(err, "blob")
 		}
 	}
 	if c.BoundedBlob != nil {
 		if err := c.BoundedBlob.Validate(); err != nil {
-			return fmt.Errorf("boundedBlob.%w", err)
+			return jsonPathf(err, "boundedBlob")
 		}
 	}
 	if c.EncodedDoc != nil {
 		if err := c.EncodedDoc.Validate(); err != nil {
-			return fmt.Errorf("encodedDoc.%w", err)
+			return jsonPathf(err, "encodedDoc")
 		}
 	}
 	if c.UnknownEncoding != nil {
 		if err := c.UnknownEncoding.Validate(); err != nil {
-			return fmt.Errorf("unknownEncoding.%w", err)
+			return jsonPathf(err, "unknownEncoding")
 		}
 	}
 	if c.ViaAllOf != nil {
 		if err := c.ViaAllOf.Validate(); err != nil {
-			return fmt.Errorf("viaAllOf.%w", err)
+			return jsonPathf(err, "viaAllOf")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -700,7 +700,7 @@ func (c ContentPostureDraft7) Validate() error {
 	switch _oneOfSel := c.Branch.(type) {
 	case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
 		if err := _oneOfSel.ContentPostureDraft7BranchOption0.Validate(); err != nil {
-			return fmt.Errorf("branch.%w", err)
+			return jsonPathf(err, "branch")
 		}
 	}
 	for _i0, _e0 := range c.List {

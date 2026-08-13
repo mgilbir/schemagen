@@ -41,8 +41,12 @@ func (t *TypedChainInner) UnmarshalJSON(data []byte) error {
 
 // Validate checks TypedChainInner against its JSON Schema constraints.
 func (t TypedChainInner) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (TypedV4(t)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -63,8 +67,12 @@ func (t *TypedChainOuter) UnmarshalJSON(data []byte) error {
 
 // Validate checks TypedChainOuter against its JSON Schema constraints.
 func (t TypedChainOuter) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (TypedChainInner(t)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -470,22 +478,22 @@ func (t TypedFormatPositions) MarshalJSON() ([]byte, error) {
 func (t TypedFormatPositions) Validate() error {
 	if t.Buckets != nil {
 		if err := t.Buckets.Validate(); err != nil {
-			return fmt.Errorf("buckets.%w", err)
+			return jsonPathf(err, "buckets")
 		}
 	}
 	if t.Chain != nil {
 		if err := t.Chain.Validate(); err != nil {
-			return fmt.Errorf("chain.%w", err)
+			return jsonPathf(err, "chain")
 		}
 	}
 	if t.Ref != nil {
 		if err := t.Ref.Validate(); err != nil {
-			return fmt.Errorf("ref.%w", err)
+			return jsonPathf(err, "ref")
 		}
 	}
 	if t.Wrapped != nil {
 		if err := t.Wrapped.Validate(); err != nil {
-			return fmt.Errorf("wrapped.%w", err)
+			return jsonPathf(err, "wrapped")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

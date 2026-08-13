@@ -21,7 +21,7 @@ func (w *Word) UnmarshalJSON(data []byte) error {
 // Validate checks Word against its JSON Schema constraints.
 func (w Word) Validate() error {
 	if utf8.RuneCountInString(string(w)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(w)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(w)))
 	}
 	return nil
 }
@@ -42,8 +42,12 @@ func (n *NamedEmptyEnum) UnmarshalJSON(data []byte) error {
 
 // Validate checks NamedEmptyEnum against its JSON Schema constraints.
 func (n NamedEmptyEnum) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (Word(n)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -64,8 +68,12 @@ func (n *NamedSibling) UnmarshalJSON(data []byte) error {
 
 // Validate checks NamedSibling against its JSON Schema constraints.
 func (n NamedSibling) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (Word(n)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -204,42 +212,42 @@ func (r RefSiblingValuesDraft7) MarshalJSON() ([]byte, error) {
 func (r RefSiblingValuesDraft7) Validate() error {
 	if r.ConstSibling != nil {
 		if err := r.ConstSibling.Validate(); err != nil {
-			return fmt.Errorf("constSibling.%w", err)
+			return jsonPathf(err, "constSibling")
 		}
 	}
 	if r.EmptyEnumSibling != nil {
 		if err := r.EmptyEnumSibling.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumSibling.%w", err)
+			return jsonPathf(err, "emptyEnumSibling")
 		}
 	}
 	if r.EnumSibling != nil {
 		if err := r.EnumSibling.Validate(); err != nil {
-			return fmt.Errorf("enumSibling.%w", err)
+			return jsonPathf(err, "enumSibling")
 		}
 	}
 	for _i, _item := range r.ListSibling {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("listSibling[%d].%w", _i, err)
+			return jsonPathf(err, "listSibling[%d]", _i)
 		}
 	}
 	for _k, _val := range r.MapSibling {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("mapSibling[%q].%w", _k, err)
+			return jsonPathf(err, "mapSibling[%q]", _k)
 		}
 	}
 	if r.NamedEmptyEnum != nil {
 		if err := r.NamedEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("namedEmptyEnum.%w", err)
+			return jsonPathf(err, "namedEmptyEnum")
 		}
 	}
 	if r.NamedSibling != nil {
 		if err := r.NamedSibling.Validate(); err != nil {
-			return fmt.Errorf("namedSibling.%w", err)
+			return jsonPathf(err, "namedSibling")
 		}
 	}
 	if r.NoSibling != nil {
 		if err := r.NoSibling.Validate(); err != nil {
-			return fmt.Errorf("noSibling.%w", err)
+			return jsonPathf(err, "noSibling")
 		}
 	}
 	return nil

@@ -125,7 +125,7 @@ func (p PropertyCount) Validate() error {
 			totalProps = len(p._jsonKeys)
 		}
 		if totalProps > 2 {
-			return fmt.Errorf("too many properties: %d exceeds maximum 2", totalProps)
+			return jsonValueErrorf("too many properties: %d exceeds maximum 2", totalProps)
 		}
 	}
 	{
@@ -134,7 +134,7 @@ func (p PropertyCount) Validate() error {
 			totalProps = len(p._jsonKeys)
 		}
 		if totalProps < 1 {
-			return fmt.Errorf("too few properties: %d is less than minimum 1", totalProps)
+			return jsonValueErrorf("too few properties: %d is less than minimum 1", totalProps)
 		}
 	}
 	return nil

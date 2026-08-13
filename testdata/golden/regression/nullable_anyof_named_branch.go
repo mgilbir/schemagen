@@ -87,7 +87,7 @@ func (n NullableWordValue) Validate() error {
 	case NullableWordValueA, NullableWordValueC:
 		return nil
 	default:
-		return fmt.Errorf("invalid NullableWordValue value: %v", n)
+		return jsonValueErrorf("invalid NullableWordValue value: %v", n)
 	}
 }
 
@@ -251,7 +251,7 @@ func (n NullableAnyOfNamedBranch) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["obj"] {
 		if err := n.Obj.Validate(); err != nil {
-			return fmt.Errorf("obj.%w", err)
+			return jsonPathf(err, "obj")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -260,7 +260,7 @@ func (n NullableAnyOfNamedBranch) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["word"] {
 		if err := n.Word.Validate(); err != nil {
-			return fmt.Errorf("word.%w", err)
+			return jsonPathf(err, "word")
 		}
 	}
 	return nil

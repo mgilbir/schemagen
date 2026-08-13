@@ -102,14 +102,14 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if r.AdditionalProperties == nil {
 				r.AdditionalProperties = make(map[string]bool)
 			}
 			var val bool
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			r.AdditionalProperties[rawKey] = val
 		}

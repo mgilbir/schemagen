@@ -90,6 +90,8 @@ func FuncMap() template.FuncMap {
 		"itemRange":              itemRangeFunc,
 		"itemElem":               itemElemFunc,
 		"itemPath":               itemPathFunc,
+		"pathErrf":               pathErrfFunc,
+		"pathJoin":               pathJoinFunc,
 		"itemArgs":               itemArgsFunc,
 		"argPrefix":              argPrefixFunc,
 	}
@@ -405,21 +407,22 @@ func itemElemFunc(def generator.ItemValidationDef, level int) string {
 }
 
 // itemPathFunc renders the error path down to a level, as a format string with
-// one verb per level: %d for a slice index, %q for a map key. An alias has no
-// property name to lead with, so it reports the position under the keyword that
-// constrains it.
+// one verb per level: %d for a slice index, %q for a map key.
+//
+// A container that is not a declared property has no name to lead with, and
+// leads with nothing: the path is the accessors alone, `[1]` or `["kk"]`. It
+// used to lead with the keyword that constrains the container instead --
+// "items" for an array, "properties" for a map -- which printed, byte for byte,
+// what a document with a member of that name would print, so a caller could not
+// tell a real member from a keyword the generator had substituted. See issue
+// #280. The message such a path opens is marked by pathErrfFunc, since a
+// container that does have a name has to glue the two together without a "."
+// between them.
 func itemPathFunc(def generator.ItemValidationDef, level int) string {
-	name := "items"
-	switch {
-	case def.PathName != "":
-		name = jsonErrorNameFunc(def.PathName)
-	case def.JSONName != "":
-		name = jsonErrorNameFunc(def.JSONName)
-	case len(def.Levels) > 0 && def.Levels[0].IsMap:
-		name = "properties"
-	}
 	var b strings.Builder
-	b.WriteString(name)
+	if def.JSONName != "" {
+		b.WriteString(jsonErrorNameFunc(def.JSONName))
+	}
 	for i := 0; i <= level; i++ {
 		if def.Levels[i].IsMap {
 			b.WriteString("[%q]")
@@ -428,6 +431,40 @@ func itemPathFunc(def generator.ItemValidationDef, level int) string {
 		}
 	}
 	return b.String()
+}
+
+// pathIsAccessorLed reports whether an error path opens with an accessor rather
+// than with a name -- which is what a container with no JSON name of its own
+// emits, `[%d]` for a slice and `[%q]` for a map.
+//
+// The test is against the verb and not the bracket, so that it cannot be met by
+// a document's own property name: jsonErrorNameFunc doubles a percent sign, so a
+// property named "[%d]" renders as "[%%d]" and a property named "[x]" as "[x]".
+// Only a path this generator built with no name in front can begin with the two
+// characters of a format verb inside the first bracket.
+func pathIsAccessorLed(path string) bool {
+	return strings.HasPrefix(path, "[%d]") || strings.HasPrefix(path, "[%q]")
+}
+
+// pathErrfFunc names the constructor a check under this error path builds its
+// error with: the plain one where the path opens with a name, and jsonElemErrorf
+// where it opens with an accessor. The second has to be marked, because a
+// message opening with "[1]" is glued to its container's path with nothing
+// between it, where a message opening with a member name takes a ".".
+func pathErrfFunc(path string) string {
+	if pathIsAccessorLed(path) {
+		return "jsonElemErrorf"
+	}
+	return "fmt.Errorf"
+}
+
+// pathJoinFunc is pathErrfFunc for the joiner rather than the constructor: what
+// an element's own Validate error is put behind this path with.
+func pathJoinFunc(path string) string {
+	if pathIsAccessorLed(path) {
+		return "jsonElemPathf"
+	}
+	return "jsonPathf"
 }
 
 // argPrefixFunc turns an enclosing loop's fmt arguments into the text that goes

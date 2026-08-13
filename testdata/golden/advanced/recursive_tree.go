@@ -140,12 +140,12 @@ func (t TreeNode) Validate() error {
 			return fmt.Errorf("children[%d]: null is not allowed", _i)
 		}
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("children[%d].%w", _i, err)
+			return jsonPathf(err, "children[%d]", _i)
 		}
 	}
 	if t.Parent != nil {
 		if err := t.Parent.Validate(); err != nil {
-			return fmt.Errorf("parent.%w", err)
+			return jsonPathf(err, "parent")
 		}
 	}
 	return nil

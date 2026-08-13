@@ -104,7 +104,7 @@ func (e Extended) MarshalJSON() ([]byte, error) {
 func (e Extended) Validate() error {
 	if e.Bar != nil {
 		if err := e.Bar.Validate(); err != nil {
-			return fmt.Errorf("bar.%w", err)
+			return jsonPathf(err, "bar")
 		}
 	}
 	return nil
@@ -237,7 +237,7 @@ func (b Bar) MarshalJSON() ([]byte, error) {
 func (b Bar) Validate() error {
 	if b.Baz != nil {
 		if err := b.Baz.Validate(); err != nil {
-			return fmt.Errorf("baz.%w", err)
+			return jsonPathf(err, "baz")
 		}
 	}
 	return nil
@@ -255,7 +255,7 @@ func (r RootFoo) Validate() error {
 	case RootFooPass:
 		return nil
 	default:
-		return fmt.Errorf("invalid RootFoo value: %v", r)
+		return jsonValueErrorf("invalid RootFoo value: %v", r)
 	}
 }
 
@@ -360,12 +360,12 @@ func (r Root) MarshalJSON() ([]byte, error) {
 func (r Root) Validate() error {
 	if r.Bar != nil {
 		if err := r.Bar.Validate(); err != nil {
-			return fmt.Errorf("bar.%w", err)
+			return jsonPathf(err, "bar")
 		}
 	}
 	if r.Foo != nil {
 		if err := r.Foo.Validate(); err != nil {
-			return fmt.Errorf("foo.%w", err)
+			return jsonPathf(err, "foo")
 		}
 	}
 	return nil

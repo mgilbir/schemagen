@@ -118,11 +118,11 @@ func (r Root) Validate() error {
 			if !evaluated {
 				var _uVal string
 				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
-					return fmt.Errorf("unevaluated property %q: %w", k, _uErr)
+					return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
 				}
 				{
 					if matched, _ := ecma262.MatchString("^x", ecmaflags.Unicode, _uVal); !matched {
-						return fmt.Errorf("unevaluated property %q: value does not match pattern %s", k, "^x")
+						return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", k, "^x")
 					}
 				}
 			}

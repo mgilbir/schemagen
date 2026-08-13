@@ -63,7 +63,7 @@ func (c ConstraintOnlyPositionsBranchAlternative0) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(c._value) < 3 {
-		return fmt.Errorf("value: %v is less than minimum 3", c._value)
+		return jsonValueErrorf("%v is less than minimum 3", c._value)
 	}
 	return nil
 }
@@ -545,7 +545,7 @@ func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
 		for _rbKey, _rbRaw := range c._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}
@@ -860,22 +860,22 @@ func (c ConstraintOnlyPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if c._jsonKeys == nil || c._jsonKeys["branch"] {
 		if err := c.Branch.Validate(); err != nil {
-			return fmt.Errorf("branch.%w", err)
+			return jsonPathf(err, "branch")
 		}
 	}
 	for _i, _item := range c.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	for _k, _val := range c.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	for _i, _item := range c.Nulls {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("nulls[%d].%w", _i, err)
+			return jsonPathf(err, "nulls[%d]", _i)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -884,12 +884,12 @@ func (c ConstraintOnlyPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if c._jsonKeys == nil || c._jsonKeys["prop"] {
 		if err := c.Prop.Validate(); err != nil {
-			return fmt.Errorf("prop.%w", err)
+			return jsonPathf(err, "prop")
 		}
 	}
 	if c.Unevaluated != nil {
 		if err := c.Unevaluated.Validate(); err != nil {
-			return fmt.Errorf("unevaluated.%w", err)
+			return jsonPathf(err, "unevaluated")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -898,7 +898,7 @@ func (c ConstraintOnlyPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if c._jsonKeys == nil || c._jsonKeys["union"] {
 		if err := c.Union.Validate(); err != nil {
-			return fmt.Errorf("union.%w", err)
+			return jsonPathf(err, "union")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

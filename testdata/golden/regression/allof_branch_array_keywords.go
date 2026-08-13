@@ -337,27 +337,27 @@ func (a AllOfBranchArrayKeywords) MarshalJSON() ([]byte, error) {
 func (a AllOfBranchArrayKeywords) Validate() error {
 	if a.Contains != nil {
 		if err := a.Contains.Validate(); err != nil {
-			return fmt.Errorf("contains.%w", err)
+			return jsonPathf(err, "contains")
 		}
 	}
 	if a.OwnPrefix != nil {
 		if err := a.OwnPrefix.Validate(); err != nil {
-			return fmt.Errorf("ownPrefix.%w", err)
+			return jsonPathf(err, "ownPrefix")
 		}
 	}
 	if a.Prefix != nil {
 		if err := a.Prefix.Validate(); err != nil {
-			return fmt.Errorf("prefix.%w", err)
+			return jsonPathf(err, "prefix")
 		}
 	}
 	if a.TwoBranches != nil {
 		if err := a.TwoBranches.Validate(); err != nil {
-			return fmt.Errorf("twoBranches.%w", err)
+			return jsonPathf(err, "twoBranches")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

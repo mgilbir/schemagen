@@ -39,12 +39,12 @@ func (a *AllOfTightestConstraints) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfTightestConstraints against its JSON Schema constraints.
 func (a AllOfTightestConstraints) Validate() error {
 	if a < 10 {
-		return fmt.Errorf("value: %v is less than minimum 10", a)
+		return jsonValueErrorf("%v is less than minimum 10", a)
 	}
 	// Exact: both operands are int64, so divisibility is a remainder rather
 	// than a float64 quotient compared against a tolerance.
 	if a%6 != 0 {
-		return fmt.Errorf("value: %v is not a multiple of 6", a)
+		return jsonValueErrorf("%v is not a multiple of 6", a)
 	}
 	return nil
 }

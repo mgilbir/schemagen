@@ -516,13 +516,13 @@ func (d Drawing) Validate() error {
 	case *Drawing_Circle:
 		if _oneOfSel.Circle != nil {
 			if err := _oneOfSel.Circle.Validate(); err != nil {
-				return fmt.Errorf("shape.%w", err)
+				return jsonPathf(err, "shape")
 			}
 		}
 	case *Drawing_Rectangle:
 		if _oneOfSel.Rectangle != nil {
 			if err := _oneOfSel.Rectangle.Validate(); err != nil {
-				return fmt.Errorf("shape.%w", err)
+				return jsonPathf(err, "shape")
 			}
 		}
 	}

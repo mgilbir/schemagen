@@ -50,7 +50,7 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 			}
 			var val *Inner
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			i.AdditionalProperties[rawKey] = val
 		}
@@ -101,7 +101,7 @@ func (i Inner) Validate() error {
 			continue // a JSON null left no value behind to check
 		}
 		if _err := _e0.Validate(); _err != nil {
-			return fmt.Errorf("additionalProperties[%q].%w", _k0, _err)
+			return jsonElemPathf(_err, "[%q]", _k0)
 		}
 	}
 	return nil

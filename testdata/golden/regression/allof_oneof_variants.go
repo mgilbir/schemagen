@@ -144,7 +144,7 @@ func (d DiaryFieldWidget) Validate() error {
 	case DiaryFieldWidgetSlider, DiaryFieldWidgetHours:
 		return nil
 	default:
-		return fmt.Errorf("invalid DiaryFieldWidget value: %v", d)
+		return jsonValueErrorf("invalid DiaryFieldWidget value: %v", d)
 	}
 }
 
@@ -597,7 +597,7 @@ func (d DiaryField) Validate() error {
 	}
 	if d.Widget != nil {
 		if err := d.Widget.Validate(); err != nil {
-			return fmt.Errorf("widget.%w", err)
+			return jsonPathf(err, "widget")
 		}
 	}
 	return nil

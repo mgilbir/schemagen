@@ -212,7 +212,7 @@ func (p PickOneValueOption0) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -575,7 +575,7 @@ func (p PickOne) Validate() error {
 		for _rbKey, _rbRaw := range p._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}
@@ -826,7 +826,7 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}

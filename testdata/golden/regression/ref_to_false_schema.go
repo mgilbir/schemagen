@@ -490,17 +490,17 @@ func (r RefToFalseSchema) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["beside"] {
 		if err := r.Beside.Validate(); err != nil {
-			return fmt.Errorf("beside.%w", err)
+			return jsonPathf(err, "beside")
 		}
 	}
 	for _i, _item := range r.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	for _k, _val := range r.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -509,7 +509,7 @@ func (r RefToFalseSchema) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["prop"] {
 		if err := r.Prop.Validate(); err != nil {
-			return fmt.Errorf("prop.%w", err)
+			return jsonPathf(err, "prop")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -518,7 +518,7 @@ func (r RefToFalseSchema) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["viaAllOf"] {
 		if err := r.ViaAllOf.Validate(); err != nil {
-			return fmt.Errorf("viaAllOf.%w", err)
+			return jsonPathf(err, "viaAllOf")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -527,7 +527,7 @@ func (r RefToFalseSchema) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["viaAnyOf"] {
 		if err := r.ViaAnyOf.Validate(); err != nil {
-			return fmt.Errorf("viaAnyOf.%w", err)
+			return jsonPathf(err, "viaAnyOf")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -536,7 +536,7 @@ func (r RefToFalseSchema) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["viaNested"] {
 		if err := r.ViaNested.Validate(); err != nil {
-			return fmt.Errorf("viaNested.%w", err)
+			return jsonPathf(err, "viaNested")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -549,7 +549,7 @@ func (r RefToFalseSchema) Validate() error {
 	case *RefToFalseSchema_Never:
 		if _oneOfSel.Never != nil {
 			if err := _oneOfSel.Never.Validate(); err != nil {
-				return fmt.Errorf("viaOneOf.%w", err)
+				return jsonPathf(err, "viaOneOf")
 			}
 		}
 	}

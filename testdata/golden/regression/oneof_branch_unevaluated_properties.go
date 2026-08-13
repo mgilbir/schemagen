@@ -160,7 +160,7 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -528,7 +528,7 @@ func (o OneOfBranchUnevaluatedProperties) Validate() error {
 		for _rbKey, _rbRaw := range o._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}

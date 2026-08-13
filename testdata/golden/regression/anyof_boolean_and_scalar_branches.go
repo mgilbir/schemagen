@@ -247,7 +247,7 @@ func (a AnyOfBooleanAndScalarBranchesFalseBranch) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}
@@ -817,7 +817,7 @@ func (a AnyOfBooleanAndScalarBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["bareObjectBranch"] {
 		if err := a.BareObjectBranch.Validate(); err != nil {
-			return fmt.Errorf("bareObjectBranch.%w", err)
+			return jsonPathf(err, "bareObjectBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -826,12 +826,12 @@ func (a AnyOfBooleanAndScalarBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["constBranch"] {
 		if err := a.ConstBranch.Validate(); err != nil {
-			return fmt.Errorf("constBranch.%w", err)
+			return jsonPathf(err, "constBranch")
 		}
 	}
 	if a.FalseBranch != nil {
 		if err := a.FalseBranch.Validate(); err != nil {
-			return fmt.Errorf("falseBranch.%w", err)
+			return jsonPathf(err, "falseBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -840,7 +840,7 @@ func (a AnyOfBooleanAndScalarBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["mixed"] {
 		if err := a.Mixed.Validate(); err != nil {
-			return fmt.Errorf("mixed.%w", err)
+			return jsonPathf(err, "mixed")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -849,12 +849,12 @@ func (a AnyOfBooleanAndScalarBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["notBranch"] {
 		if err := a.NotBranch.Validate(); err != nil {
-			return fmt.Errorf("notBranch.%w", err)
+			return jsonPathf(err, "notBranch")
 		}
 	}
 	if a.ObjectsOnly != nil {
 		if err := a.ObjectsOnly.Validate(); err != nil {
-			return fmt.Errorf("objectsOnly.%w", err)
+			return jsonPathf(err, "objectsOnly")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -863,7 +863,7 @@ func (a AnyOfBooleanAndScalarBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["trueBranch"] {
 		if err := a.TrueBranch.Validate(); err != nil {
-			return fmt.Errorf("trueBranch.%w", err)
+			return jsonPathf(err, "trueBranch")
 		}
 	}
 	return nil

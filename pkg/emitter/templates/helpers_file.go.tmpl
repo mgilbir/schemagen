@@ -9,6 +9,9 @@ import (
 {{- end}}
 )
 {{- end}}
+{{- if .Helpers.PathJoin}}
+{{template "pathjoin_helpers"}}
+{{- end}}
 {{- if .Helpers.ExactProperties}}
 {{template "exact_properties_helper"}}
 {{- end}}

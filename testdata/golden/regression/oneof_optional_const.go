@@ -19,7 +19,7 @@ func (o OneOfOptionalConstPOption0Kind) Validate() error {
 	case OneOfOptionalConstPOption0KindA:
 		return nil
 	default:
-		return fmt.Errorf("invalid OneOfOptionalConstPOption0Kind value: %v", o)
+		return jsonValueErrorf("invalid OneOfOptionalConstPOption0Kind value: %v", o)
 	}
 }
 
@@ -161,7 +161,7 @@ func (o OneOfOptionalConstPOption0) Validate() error {
 	}
 	if o.Kind != nil {
 		if err := o.Kind.Validate(); err != nil {
-			return fmt.Errorf("kind.%w", err)
+			return jsonPathf(err, "kind")
 		}
 	}
 	return nil
@@ -179,7 +179,7 @@ func (o OneOfOptionalConstPOption1Kind) Validate() error {
 	case OneOfOptionalConstPOption1KindB:
 		return nil
 	default:
-		return fmt.Errorf("invalid OneOfOptionalConstPOption1Kind value: %v", o)
+		return jsonValueErrorf("invalid OneOfOptionalConstPOption1Kind value: %v", o)
 	}
 }
 
@@ -321,7 +321,7 @@ func (o OneOfOptionalConstPOption1) Validate() error {
 	}
 	if o.Kind != nil {
 		if err := o.Kind.Validate(); err != nil {
-			return fmt.Errorf("kind.%w", err)
+			return jsonPathf(err, "kind")
 		}
 	}
 	return nil
@@ -611,13 +611,13 @@ func (o OneOfOptionalConst) Validate() error {
 	case *OneOfOptionalConst_OneOfOptionalConstPOption0:
 		if _oneOfSel.OneOfOptionalConstPOption0 != nil {
 			if err := _oneOfSel.OneOfOptionalConstPOption0.Validate(); err != nil {
-				return fmt.Errorf("p.%w", err)
+				return jsonPathf(err, "p")
 			}
 		}
 	case *OneOfOptionalConst_OneOfOptionalConstPOption1:
 		if _oneOfSel.OneOfOptionalConstPOption1 != nil {
 			if err := _oneOfSel.OneOfOptionalConstPOption1.Validate(); err != nil {
-				return fmt.Errorf("p.%w", err)
+				return jsonPathf(err, "p")
 			}
 		}
 	}

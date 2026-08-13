@@ -1725,12 +1725,6 @@ type ItemValidationDef struct {
 	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
 	Levels    []ItemLevel
 
-	// PathName leads the error path where the container is not a declared
-	// property and so has no JSON name to report under. The
-	// additionalProperties overflow map is the case: it reports under the
-	// keyword that governs it.
-	PathName string
-
 	// OwnsOutermost says this definition answers for the outermost element's
 	// own Validate as well as for its inline rules. A struct *field's*
 	// outermost element is already dispatched to by ValidatableFields, so a

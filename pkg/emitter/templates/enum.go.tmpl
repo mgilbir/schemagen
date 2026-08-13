@@ -101,13 +101,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return nil
 	{{- end}}
 	}
-	return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
+	return jsonValueErrorf("invalid {{.Name}} value: %v", {{$recv}})
 	{{- else}}
 	switch {{$recv}} {
 	case {{range $i, $v := .Values}}{{if $i}}, {{end}}{{$v.Name}}{{end}}:
 		return nil
 	default:
-		return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
+		return jsonValueErrorf("invalid {{.Name}} value: %v", {{$recv}})
 	}
 	{{- end}}
 }
@@ -156,13 +156,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte({{$recv}}))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid {{.Name}} value: %s", string({{$recv}}))
+		return jsonValueErrorf("invalid {{.Name}} value: %s", string({{$recv}}))
 	}
 	for _, allowed := range {{$allowedVar}} {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid {{.Name}} value: %s", _canon)
+	return jsonValueErrorf("invalid {{.Name}} value: %s", _canon)
 }
 {{- end}}

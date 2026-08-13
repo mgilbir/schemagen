@@ -198,7 +198,7 @@ func (b BooleanDefsKeepAny) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if b._jsonKeys == nil || b._jsonKeys["b"] {
 		if err := b.B.Validate(); err != nil {
-			return fmt.Errorf("b.%w", err)
+			return jsonPathf(err, "b")
 		}
 	}
 	return nil

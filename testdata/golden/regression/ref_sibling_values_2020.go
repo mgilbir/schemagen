@@ -70,7 +70,7 @@ func (n NamedSibling) Validate() error {
 	case NamedSiblingA:
 		return nil
 	default:
-		return fmt.Errorf("invalid NamedSibling value: %v", n)
+		return jsonValueErrorf("invalid NamedSibling value: %v", n)
 	}
 }
 
@@ -116,7 +116,7 @@ func (r RefSiblingValues2020ConstSibling) Validate() error {
 	case RefSiblingValues2020ConstSiblingA:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingValues2020ConstSibling value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingValues2020ConstSibling value: %v", r)
 	}
 }
 
@@ -184,7 +184,7 @@ func (r RefSiblingValues2020EnumSibling) Validate() error {
 	case RefSiblingValues2020EnumSiblingA, RefSiblingValues2020EnumSiblingC:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingValues2020EnumSibling value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingValues2020EnumSibling value: %v", r)
 	}
 }
 
@@ -215,7 +215,7 @@ func (r RefSiblingValues2020ListSiblingItem) Validate() error {
 	case RefSiblingValues2020ListSiblingItemA:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingValues2020ListSiblingItem value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingValues2020ListSiblingItem value: %v", r)
 	}
 }
 
@@ -246,7 +246,7 @@ func (r RefSiblingValues2020MapSiblingValue) Validate() error {
 	case RefSiblingValues2020MapSiblingValueA:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingValues2020MapSiblingValue value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingValues2020MapSiblingValue value: %v", r)
 	}
 }
 
@@ -390,7 +390,7 @@ func (r RefSiblingValues2020) MarshalJSON() ([]byte, error) {
 func (r RefSiblingValues2020) Validate() error {
 	if r.ConstSibling != nil {
 		if err := r.ConstSibling.Validate(); err != nil {
-			return fmt.Errorf("constSibling.%w", err)
+			return jsonPathf(err, "constSibling")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -399,22 +399,22 @@ func (r RefSiblingValues2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["emptyEnumSibling"] {
 		if err := r.EmptyEnumSibling.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumSibling.%w", err)
+			return jsonPathf(err, "emptyEnumSibling")
 		}
 	}
 	if r.EnumSibling != nil {
 		if err := r.EnumSibling.Validate(); err != nil {
-			return fmt.Errorf("enumSibling.%w", err)
+			return jsonPathf(err, "enumSibling")
 		}
 	}
 	for _i, _item := range r.ListSibling {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("listSibling[%d].%w", _i, err)
+			return jsonPathf(err, "listSibling[%d]", _i)
 		}
 	}
 	for _k, _val := range r.MapSibling {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("mapSibling[%q].%w", _k, err)
+			return jsonPathf(err, "mapSibling[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -423,17 +423,17 @@ func (r RefSiblingValues2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["namedEmptyEnum"] {
 		if err := r.NamedEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("namedEmptyEnum.%w", err)
+			return jsonPathf(err, "namedEmptyEnum")
 		}
 	}
 	if r.NamedSibling != nil {
 		if err := r.NamedSibling.Validate(); err != nil {
-			return fmt.Errorf("namedSibling.%w", err)
+			return jsonPathf(err, "namedSibling")
 		}
 	}
 	if r.NoSibling != nil {
 		if err := r.NoSibling.Validate(); err != nil {
-			return fmt.Errorf("noSibling.%w", err)
+			return jsonPathf(err, "noSibling")
 		}
 	}
 	return nil

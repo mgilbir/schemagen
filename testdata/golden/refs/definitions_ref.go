@@ -248,7 +248,7 @@ func (t Team) Validate() error {
 	}
 	for _i, _item := range t.Members {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("members[%d].%w", _i, err)
+			return jsonPathf(err, "members[%d]", _i)
 		}
 	}
 	return nil

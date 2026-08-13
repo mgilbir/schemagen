@@ -526,13 +526,13 @@ func (o OneOfObjectVariantConstraints) Validate() error {
 	case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0:
 		if _oneOfSel.OneOfObjectVariantConstraintsAOption0 != nil {
 			if err := _oneOfSel.OneOfObjectVariantConstraintsAOption0.Validate(); err != nil {
-				return fmt.Errorf("a.%w", err)
+				return jsonPathf(err, "a")
 			}
 		}
 	case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
 		if _oneOfSel.OneOfObjectVariantConstraintsAOption1 != nil {
 			if err := _oneOfSel.OneOfObjectVariantConstraintsAOption1.Validate(); err != nil {
-				return fmt.Errorf("a.%w", err)
+				return jsonPathf(err, "a")
 			}
 		}
 	}

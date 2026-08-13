@@ -36,7 +36,7 @@ func (a *AnnAlias) UnmarshalJSON(data []byte) error {
 // Validate checks AnnAlias against its JSON Schema constraints.
 func (a AnnAlias) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 1 {
-		return fmt.Errorf("value: length %d is less than minimum 1", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 1", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func (a AnnBigInt) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("0")
 		if _val.Cmp(_limit) < 0 {
-			return fmt.Errorf("value: %s is less than minimum 0", a.BigInt().String())
+			return jsonValueErrorf("%s is less than minimum 0", a.BigInt().String())
 		}
 	}
 	return nil
@@ -258,7 +258,7 @@ func (a AnnEnum) Validate() error {
 	case AnnEnumRed, AnnEnumGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid AnnEnum value: %v", a)
+		return jsonValueErrorf("invalid AnnEnum value: %v", a)
 	}
 }
 
@@ -328,7 +328,7 @@ func (a AnnInferred) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 3 {
-		return fmt.Errorf("value: %v is less than minimum 3", a._value)
+		return jsonValueErrorf("%v is less than minimum 3", a._value)
 	}
 	return nil
 }
@@ -428,14 +428,14 @@ func (a AnnRawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid AnnRawEnum value: %s", string(a))
+		return jsonValueErrorf("invalid AnnRawEnum value: %s", string(a))
 	}
 	for _, allowed := range annRawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid AnnRawEnum value: %s", _canon)
+	return jsonValueErrorf("invalid AnnRawEnum value: %s", _canon)
 }
 
 // AnnRuntime - unevaluatedItems beside an in-place applicator, so the schema is held as data.
@@ -716,7 +716,7 @@ func (d *DepAlias) UnmarshalJSON(data []byte) error {
 // Validate checks DepAlias against its JSON Schema constraints.
 func (d DepAlias) Validate() error {
 	if utf8.RuneCountInString(string(d)) < 1 {
-		return fmt.Errorf("value: length %d is less than minimum 1", utf8.RuneCountInString(string(d)))
+		return jsonValueErrorf("length %d is less than minimum 1", utf8.RuneCountInString(string(d)))
 	}
 	return nil
 }
@@ -811,7 +811,7 @@ func (d DepBigInt) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("0")
 		if _val.Cmp(_limit) < 0 {
-			return fmt.Errorf("value: %s is less than minimum 0", d.BigInt().String())
+			return jsonValueErrorf("%s is less than minimum 0", d.BigInt().String())
 		}
 	}
 	return nil
@@ -905,7 +905,7 @@ func (d DepEnum) Validate() error {
 	case DepEnumOn, DepEnumOff:
 		return nil
 	default:
-		return fmt.Errorf("invalid DepEnum value: %v", d)
+		return jsonValueErrorf("invalid DepEnum value: %v", d)
 	}
 }
 
@@ -967,7 +967,7 @@ func (d DepInferred) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(d._value) < 3 {
-		return fmt.Errorf("value: %v is less than minimum 3", d._value)
+		return jsonValueErrorf("%v is less than minimum 3", d._value)
 	}
 	return nil
 }
@@ -1051,14 +1051,14 @@ func (d DepRawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(d))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid DepRawEnum value: %s", string(d))
+		return jsonValueErrorf("invalid DepRawEnum value: %s", string(d))
 	}
 	for _, allowed := range depRawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid DepRawEnum value: %s", _canon)
+	return jsonValueErrorf("invalid DepRawEnum value: %s", _canon)
 }
 
 // DepRuntime - Deprecated, and nothing else.
@@ -1311,7 +1311,7 @@ func (p *PlainAlias) UnmarshalJSON(data []byte) error {
 // Validate checks PlainAlias against its JSON Schema constraints.
 func (p PlainAlias) Validate() error {
 	if utf8.RuneCountInString(string(p)) < 1 {
-		return fmt.Errorf("value: length %d is less than minimum 1", utf8.RuneCountInString(string(p)))
+		return jsonValueErrorf("length %d is less than minimum 1", utf8.RuneCountInString(string(p)))
 	}
 	return nil
 }
@@ -1403,7 +1403,7 @@ func (p PlainBigInt) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("0")
 		if _val.Cmp(_limit) < 0 {
-			return fmt.Errorf("value: %s is less than minimum 0", p.BigInt().String())
+			return jsonValueErrorf("%s is less than minimum 0", p.BigInt().String())
 		}
 	}
 	return nil
@@ -1491,7 +1491,7 @@ func (p PlainEnum) Validate() error {
 	case PlainEnumUp, PlainEnumDown:
 		return nil
 	default:
-		return fmt.Errorf("invalid PlainEnum value: %v", p)
+		return jsonValueErrorf("invalid PlainEnum value: %v", p)
 	}
 }
 
@@ -1550,7 +1550,7 @@ func (p PlainInferred) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(p._value) < 3 {
-		return fmt.Errorf("value: %v is less than minimum 3", p._value)
+		return jsonValueErrorf("%v is less than minimum 3", p._value)
 	}
 	return nil
 }
@@ -2041,22 +2041,22 @@ func (a AnnotationPositions) MarshalJSON() ([]byte, error) {
 func (a AnnotationPositions) Validate() error {
 	if a.Alias != nil {
 		if err := a.Alias.Validate(); err != nil {
-			return fmt.Errorf("alias.%w", err)
+			return jsonPathf(err, "alias")
 		}
 	}
 	if a.AliasPlain != nil {
 		if err := a.AliasPlain.Validate(); err != nil {
-			return fmt.Errorf("aliasPlain.%w", err)
+			return jsonPathf(err, "aliasPlain")
 		}
 	}
 	if a.BigInt != nil {
 		if err := a.BigInt.Validate(); err != nil {
-			return fmt.Errorf("bigInt.%w", err)
+			return jsonPathf(err, "bigInt")
 		}
 	}
 	if a.BigIntPlain != nil {
 		if err := a.BigIntPlain.Validate(); err != nil {
-			return fmt.Errorf("bigIntPlain.%w", err)
+			return jsonPathf(err, "bigIntPlain")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2065,7 +2065,7 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["dynamic"] {
 		if err := a.Dynamic.Validate(); err != nil {
-			return fmt.Errorf("dynamic.%w", err)
+			return jsonPathf(err, "dynamic")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2074,27 +2074,27 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["dynamicPlain"] {
 		if err := a.DynamicPlain.Validate(); err != nil {
-			return fmt.Errorf("dynamicPlain.%w", err)
+			return jsonPathf(err, "dynamicPlain")
 		}
 	}
 	if a.Enum != nil {
 		if err := a.Enum.Validate(); err != nil {
-			return fmt.Errorf("enum.%w", err)
+			return jsonPathf(err, "enum")
 		}
 	}
 	if a.EnumPlain != nil {
 		if err := a.EnumPlain.Validate(); err != nil {
-			return fmt.Errorf("enumPlain.%w", err)
+			return jsonPathf(err, "enumPlain")
 		}
 	}
 	if a.Inferred != nil {
 		if err := a.Inferred.Validate(); err != nil {
-			return fmt.Errorf("inferred.%w", err)
+			return jsonPathf(err, "inferred")
 		}
 	}
 	if a.InferredPlain != nil {
 		if err := a.InferredPlain.Validate(); err != nil {
-			return fmt.Errorf("inferredPlain.%w", err)
+			return jsonPathf(err, "inferredPlain")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2103,7 +2103,7 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["not"] {
 		if err := a.Not.Validate(); err != nil {
-			return fmt.Errorf("not.%w", err)
+			return jsonPathf(err, "not")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2112,12 +2112,12 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["notPlain"] {
 		if err := a.NotPlain.Validate(); err != nil {
-			return fmt.Errorf("notPlain.%w", err)
+			return jsonPathf(err, "notPlain")
 		}
 	}
 	if a.RawEnum != nil {
 		if err := a.RawEnum.Validate(); err != nil {
-			return fmt.Errorf("rawEnum.%w", err)
+			return jsonPathf(err, "rawEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2126,7 +2126,7 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["runtime"] {
 		if err := a.Runtime.Validate(); err != nil {
-			return fmt.Errorf("runtime.%w", err)
+			return jsonPathf(err, "runtime")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2135,17 +2135,17 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["runtimePlain"] {
 		if err := a.RuntimePlain.Validate(); err != nil {
-			return fmt.Errorf("runtimePlain.%w", err)
+			return jsonPathf(err, "runtimePlain")
 		}
 	}
 	if a.Struct != nil {
 		if err := a.Struct.Validate(); err != nil {
-			return fmt.Errorf("struct.%w", err)
+			return jsonPathf(err, "struct")
 		}
 	}
 	if a.StructPlain != nil {
 		if err := a.StructPlain.Validate(); err != nil {
-			return fmt.Errorf("structPlain.%w", err)
+			return jsonPathf(err, "structPlain")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2154,7 +2154,7 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["typeOnly"] {
 		if err := a.TypeOnly.Validate(); err != nil {
-			return fmt.Errorf("typeOnly.%w", err)
+			return jsonPathf(err, "typeOnly")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2163,7 +2163,7 @@ func (a AnnotationPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if a._jsonKeys == nil || a._jsonKeys["typeOnlyPlain"] {
 		if err := a.TypeOnlyPlain.Validate(); err != nil {
-			return fmt.Errorf("typeOnlyPlain.%w", err)
+			return jsonPathf(err, "typeOnlyPlain")
 		}
 	}
 	return nil

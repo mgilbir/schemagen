@@ -156,7 +156,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
 	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format, "fmt")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin, "fmt")
 	// The JSON-equality reduction: a decoder over the document's own bytes, a
 	// builder for the text it reduces to, sorted member names, and strconv for
 	// the exponent it writes a number's scale as.

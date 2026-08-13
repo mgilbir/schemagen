@@ -89,8 +89,12 @@ func (r RefToRuntimeWrapper) MarshalJSON() ([]byte, error) {
 
 // Validate checks RefToRuntimeWrapper against its JSON Schema constraints.
 func (r RefToRuntimeWrapper) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (Wrapped(r)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }

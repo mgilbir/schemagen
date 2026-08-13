@@ -181,7 +181,7 @@ func (n NullableArrayItemsRowsItem) Validate() error {
 				_ppTypeOK = true
 			}
 			if !_ppTypeOK {
-				return fmt.Errorf("value must be one of: object, null")
+				return jsonValueErrorf("value must be one of: object, null")
 			}
 		}
 		return nil
@@ -344,7 +344,7 @@ func (n NullableArrayItems) Validate() error {
 			continue // a JSON null left no value behind to check
 		}
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("rows[%d].%w", _i, err)
+			return jsonPathf(err, "rows[%d]", _i)
 		}
 	}
 	return nil

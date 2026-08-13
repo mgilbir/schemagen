@@ -114,7 +114,7 @@ func (a AnyOfSummary) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}
@@ -248,7 +248,7 @@ func (a AnyOfSummaryFalse) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}
@@ -482,14 +482,14 @@ func (h HiddenKeywordSpellingsPatternConstNullPattern0) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(h))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", string(h))
+		return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", string(h))
 	}
 	for _, allowed := range hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _canon)
+	return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _canon)
 }
 
 type HiddenKeywordSpellingsPatternConstNull struct {
@@ -628,7 +628,7 @@ func (h HiddenKeywordSpellingsPatternConstStringPattern0) Validate() error {
 	case HiddenKeywordSpellingsPatternConstStringPattern0A:
 		return nil
 	default:
-		return fmt.Errorf("invalid HiddenKeywordSpellingsPatternConstStringPattern0 value: %v", h)
+		return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstStringPattern0 value: %v", h)
 	}
 }
 
@@ -754,7 +754,7 @@ func (h HiddenKeywordSpellingsPlainEnum) Validate() error {
 	case HiddenKeywordSpellingsPlainEnumA, HiddenKeywordSpellingsPlainEnumB:
 		return nil
 	default:
-		return fmt.Errorf("invalid HiddenKeywordSpellingsPlainEnum value: %v", h)
+		return jsonValueErrorf("invalid HiddenKeywordSpellingsPlainEnum value: %v", h)
 	}
 }
 
@@ -888,12 +888,12 @@ func (h HiddenKeywordSpellings) MarshalJSON() ([]byte, error) {
 func (h HiddenKeywordSpellings) Validate() error {
 	if h.AnyOfSummaryEmptyEnum != nil {
 		if err := h.AnyOfSummaryEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("anyOfSummaryEmptyEnum.%w", err)
+			return jsonPathf(err, "anyOfSummaryEmptyEnum")
 		}
 	}
 	if h.AnyOfSummaryFalse != nil {
 		if err := h.AnyOfSummaryFalse.Validate(); err != nil {
-			return fmt.Errorf("anyOfSummaryFalse.%w", err)
+			return jsonPathf(err, "anyOfSummaryFalse")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -902,7 +902,7 @@ func (h HiddenKeywordSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if h._jsonKeys == nil || h._jsonKeys["constNullBranch"] {
 		if err := h.ConstNullBranch.Validate(); err != nil {
-			return fmt.Errorf("constNullBranch.%w", err)
+			return jsonPathf(err, "constNullBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -911,7 +911,7 @@ func (h HiddenKeywordSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if h._jsonKeys == nil || h._jsonKeys["constStringBranch"] {
 		if err := h.ConstStringBranch.Validate(); err != nil {
-			return fmt.Errorf("constStringBranch.%w", err)
+			return jsonPathf(err, "constStringBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -920,22 +920,22 @@ func (h HiddenKeywordSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if h._jsonKeys == nil || h._jsonKeys["oneOfConstNull"] {
 		if err := h.OneOfConstNull.Validate(); err != nil {
-			return fmt.Errorf("oneOfConstNull.%w", err)
+			return jsonPathf(err, "oneOfConstNull")
 		}
 	}
 	if h.PatternConstNull != nil {
 		if err := h.PatternConstNull.Validate(); err != nil {
-			return fmt.Errorf("patternConstNull.%w", err)
+			return jsonPathf(err, "patternConstNull")
 		}
 	}
 	if h.PatternConstString != nil {
 		if err := h.PatternConstString.Validate(); err != nil {
-			return fmt.Errorf("patternConstString.%w", err)
+			return jsonPathf(err, "patternConstString")
 		}
 	}
 	if h.PlainEnum != nil {
 		if err := h.PlainEnum.Validate(); err != nil {
-			return fmt.Errorf("plainEnum.%w", err)
+			return jsonPathf(err, "plainEnum")
 		}
 	}
 	return nil

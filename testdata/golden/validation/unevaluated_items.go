@@ -203,7 +203,7 @@ func (u UnevaluatedItemsTest) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if u._jsonKeys == nil || u._jsonKeys["allof_extended_tuple"] {
 		if err := u.AllofExtendedTuple.Validate(); err != nil {
-			return fmt.Errorf("allof_extended_tuple.%w", err)
+			return jsonPathf(err, "allof_extended_tuple")
 		}
 	}
 	// Tuple items: validate each position against its schema type.
