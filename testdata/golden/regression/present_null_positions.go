@@ -57,7 +57,9 @@ func (o *Obj) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -73,7 +75,7 @@ func (o *Obj) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -147,7 +149,7 @@ func (o Obj) Validate() error {
 type Pair []int64
 
 func (p *Pair) UnmarshalJSON(data []byte) error {
-	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	// A named container of integers. Decoding through the shadow is what lets a
@@ -155,7 +157,7 @@ func (p *Pair) UnmarshalJSON(data []byte) error {
 	// decides from the destination type, and []int64 refuses it outright.
 	var _iv []jsonInteger
 	if _err := json.Unmarshal(data, &_iv); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*p = jsonIntegerSlice(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 	return nil
@@ -277,7 +279,9 @@ func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -293,7 +297,7 @@ func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
@@ -489,7 +493,7 @@ func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
 	p._jsonKeys = nil
 	p._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PresentNullPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -526,7 +530,17 @@ func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"boundOnly", jsonDecodeValue[*PresentNullPositionsBoundOnly]},
+			{"nullableList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"nullableObject", jsonDecodeValue[*PresentNullPositionsNullableObject]},
+			{"nullableScalar", jsonDecodeValue[*string]},
+			{"refList", jsonDecodeValue[Pair]},
+			{"refObject", jsonDecodeValue[*Obj]},
+			{"reqBoundOnly", jsonDecodeValue[PresentNullPositionsReqBoundOnly]},
+			{"typedString", jsonDecodeValue[*string]},
+			{"untyped", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -542,12 +556,12 @@ func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
 			"typedString",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["nullableList"]; ok {
-			if err := checkJSONNulls(_v, "nullableList", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "nullableList")
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))

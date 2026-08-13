@@ -24,7 +24,7 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Person")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -57,7 +57,12 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"active", jsonDecodeValue[*bool]},
+			{"age", jsonDecodeValue[*jsonInteger]},
+			{"email", jsonDecodeValue[string]},
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -84,7 +89,7 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 			"name",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))

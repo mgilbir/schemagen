@@ -65,7 +65,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	c._jsonKeys = nil
 	c._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Config")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -99,7 +99,13 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"count", jsonDecodeValue[*jsonInteger]},
+			{"mode", jsonDecodeValue[ConfigMode]},
+			{"name", jsonDecodeValue[*string]},
+			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+			{"version", jsonDecodeValue[ConfigVersion]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -124,12 +130,12 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			"version",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "tags")
 			}
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))

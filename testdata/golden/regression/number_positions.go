@@ -12,13 +12,13 @@ type Readings []float64
 
 func (r *Readings) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Readings")
+		return jsonValueErrorf("null is not allowed")
 	}
-	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Readings
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks Readings against its JSON Schema constraints.
@@ -30,10 +30,10 @@ type Temperature float64
 
 func (t *Temperature) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Temperature")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Temperature
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks Temperature against its JSON Schema constraints.
@@ -147,7 +147,7 @@ func (n *NumberPositions) UnmarshalJSON(data []byte) error {
 	n._jsonKeys = nil
 	n._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NumberPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -190,7 +190,22 @@ func (n *NumberPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"aliased", jsonDecodeValue[*Temperature]},
+			{"aliasedList", jsonDecodeValue[Readings]},
+			{"bounded", jsonDecodeValue[*float64]},
+			{"choices", jsonDecodeValue[*NumberPositionsChoices]},
+			{"constant", jsonDecodeValue[*float64]},
+			{"constrained", jsonDecodeValue[*NumberPositionsConstrained]},
+			{"counted", jsonDecodeItems(jsonDecodeValue[float64])},
+			{"elements", jsonDecodeItems(jsonDecodeValue[float64])},
+			{"integerBeside", jsonDecodeValue[*jsonInteger]},
+			{"nullable", jsonDecodeValue[*float64]},
+			{"required", jsonDecodeValue[float64]},
+			{"scalar", jsonDecodeValue[*float64]},
+			{"values", jsonDecodeValues(jsonDecodeValue[float64])},
+			{"withDefault", jsonDecodeValue[*float64]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -222,22 +237,22 @@ func (n *NumberPositions) UnmarshalJSON(data []byte) error {
 			"withDefault",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["counted"]; ok {
-			if err := checkJSONNulls(_v, "counted", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "counted")
 			}
 		}
 		if _v, ok := raw["elements"]; ok {
-			if err := checkJSONNulls(_v, "elements", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "elements")
 			}
 		}
 		if _v, ok := raw["values"]; ok {
-			if err := checkJSONNulls(_v, "values", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "values")
 			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))

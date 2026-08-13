@@ -22,7 +22,7 @@ func (a *AnyOfRequiredOnly) UnmarshalJSON(data []byte) error {
 	a._jsonRawProps = nil
 	a._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfRequiredOnly")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -52,7 +52,10 @@ func (a *AnyOfRequiredOnly) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[any]},
+			{"b", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {

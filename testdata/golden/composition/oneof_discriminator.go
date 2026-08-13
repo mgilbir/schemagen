@@ -19,7 +19,7 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 	c.AdditionalProperties = nil
 	c._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ClickEvent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -52,7 +52,11 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"kind", jsonDecodeValue[string]},
+			{"x", jsonDecodeValue[jsonInteger]},
+			{"y", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -82,7 +86,7 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 			"y",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))
@@ -164,7 +168,7 @@ func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
 	k.AdditionalProperties = nil
 	k._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type KeypressEvent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -194,7 +198,10 @@ func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"key", jsonDecodeValue[string]},
+			{"kind", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -211,7 +218,7 @@ func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
 			"kind",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		k._jsonKeys = make(map[string]bool, len(raw))
@@ -292,7 +299,7 @@ func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	s._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ScrollEvent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -322,7 +329,10 @@ func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"delta", jsonDecodeValue[float64]},
+			{"kind", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -339,7 +349,7 @@ func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
 			"kind",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))
@@ -481,7 +491,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	e._jsonKeys = nil
 	e.Payload = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Event")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -512,7 +522,9 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"id", jsonDecodeValue[string]},
+		})
 	}
 
 	{
@@ -562,7 +574,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 			"payload",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))

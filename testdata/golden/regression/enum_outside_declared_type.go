@@ -91,7 +91,7 @@ func (f *ForbiddenWhenK) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddenWhenK")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddenWhenK
 	aux := &struct {
@@ -101,7 +101,7 @@ func (f *ForbiddenWhenK) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -201,7 +201,7 @@ func (n *NoNameAllowed) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NoNameAllowed")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NoNameAllowed
 	aux := &struct {
@@ -211,7 +211,7 @@ func (n *NoNameAllowed) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -389,10 +389,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (o *OnlyA) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OnlyA")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OnlyA
-	return json.Unmarshal(data, (*Alias)(o))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(o)))
 }
 
 // Validate checks OnlyA against its JSON Schema constraints.
@@ -619,7 +619,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) UnmarshalJSON(data []byte) 
 	e.AdditionalProperties = nil
 	e.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeConstOutsidePattern")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EnumOutsideDeclaredTypeConstOutsidePattern
 	aux := &struct {
@@ -629,7 +629,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -716,7 +716,7 @@ type EnumOutsideDeclaredTypeConstOutsideUnevalProps struct {
 func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeConstOutsideUnevalProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -746,7 +746,9 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []by
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -770,7 +772,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []by
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -970,10 +972,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (e *EnumOutsideDeclaredTypeEnumPartialPatternPattern0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeEnumPartialPatternPattern0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EnumOutsideDeclaredTypeEnumPartialPatternPattern0
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks EnumOutsideDeclaredTypeEnumPartialPatternPattern0 against its JSON Schema constraints.
@@ -995,7 +997,7 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) UnmarshalJSON(data []byte) e
 	e.AdditionalProperties = nil
 	e.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeEnumPartialPattern")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EnumOutsideDeclaredTypeEnumPartialPattern
 	aux := &struct {
@@ -1005,7 +1007,7 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) UnmarshalJSON(data []byte) e
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1438,10 +1440,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (e *EnumOutsideDeclaredTypeEnumPartialSlotItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeEnumPartialSlotItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EnumOutsideDeclaredTypeEnumPartialSlotItem0
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks EnumOutsideDeclaredTypeEnumPartialSlotItem0 against its JSON Schema constraints.
@@ -1506,7 +1508,7 @@ func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	e._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredType")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1578,7 +1580,50 @@ func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"arrayEnum", jsonDecodeValue[EnumOutsideDeclaredTypeArrayEnum]},
+			{"arrayOutsideConst", jsonDecodeValue[ArrayConst]},
+			{"boolEnum", jsonDecodeValue[*bool]},
+			{"boolOutsideConst", jsonDecodeValue[BoolConst]},
+			{"constOutsideAllOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAllOf]},
+			{"constOutsideAnyOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAnyOf]},
+			{"constOutsideContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"constOutsideDependent", jsonDecodeValue[*ForbiddenWhenK]},
+			{"constOutsideItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideItemsItem])},
+			{"constOutsideNames", jsonDecodeValue[*NoNameAllowed]},
+			{"constOutsideOneOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideOneOf]},
+			{"constOutsidePattern", jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsidePattern]},
+			{"constOutsideProp", jsonDecodeValue[*string]},
+			{"constOutsideRef", jsonDecodeValue[NeverString]},
+			{"constOutsideSlot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"constOutsideUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
+			{"constOutsideUnevalProps", jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsideUnevalProps]},
+			{"constOutsideValues", jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideValuesValue])},
+			{"enumAllOutsideProp", jsonDecodeValue[EnumOutsideDeclaredTypeEnumAllOutsideProp]},
+			{"enumOutsideProp", jsonDecodeValue[EnumOutsideDeclaredTypeEnumOutsideProp]},
+			{"enumPartialItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialItemsItem])},
+			{"enumPartialPattern", jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialPattern]},
+			{"enumPartialProp", jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialProp]},
+			{"enumPartialRef", jsonDecodeValue[*OnlyA]},
+			{"enumPartialSlot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"enumPartialValues", jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialValuesValue])},
+			{"fracInInteger", jsonDecodeValue[*EnumOutsideDeclaredTypeFracInInteger]},
+			{"fracOutsideInteger", jsonDecodeValue[*jsonInteger]},
+			{"integerEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeIntegerEnum]},
+			{"integerFloatSpelling", jsonDecodeValue[*jsonInteger]},
+			{"notConstOutside", jsonDecodeValue[EnumOutsideDeclaredTypeNotConstOutside]},
+			{"nullOutsideConst", jsonDecodeValue[NullConst]},
+			{"nullableEnum", jsonDecodeValue[EnumOutsideDeclaredTypeNullableEnum]},
+			{"numberEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeNumberEnum]},
+			{"numberOutsideConst", jsonDecodeValue[NumberConst]},
+			{"objectEnum", jsonDecodeValue[EnumOutsideDeclaredTypeObjectEnum]},
+			{"objectOutsideConst", jsonDecodeValue[ObjectConst]},
+			{"okItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeOkItemsItem])},
+			{"typedConst", jsonDecodeValue[*string]},
+			{"typedEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeTypedEnum]},
+			{"unionEnum", jsonDecodeValue[EnumOutsideDeclaredTypeUnionEnum]},
+			{"untypedEnum", jsonDecodeValue[EnumOutsideDeclaredTypeUntypedEnum]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1641,32 +1686,32 @@ func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
 			"untypedEnum",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["constOutsideItems"]; ok {
-			if err := checkJSONNulls(_v, "constOutsideItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "constOutsideItems")
 			}
 		}
 		if _v, ok := raw["constOutsideValues"]; ok {
-			if err := checkJSONNulls(_v, "constOutsideValues", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "constOutsideValues")
 			}
 		}
 		if _v, ok := raw["enumPartialItems"]; ok {
-			if err := checkJSONNulls(_v, "enumPartialItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "enumPartialItems")
 			}
 		}
 		if _v, ok := raw["enumPartialValues"]; ok {
-			if err := checkJSONNulls(_v, "enumPartialValues", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "enumPartialValues")
 			}
 		}
 		if _v, ok := raw["okItems"]; ok {
-			if err := checkJSONNulls(_v, "okItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "okItems")
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))

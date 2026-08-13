@@ -17,7 +17,7 @@ type Leaf struct {
 func (l *Leaf) UnmarshalJSON(data []byte) error {
 	l.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Leaf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -46,7 +46,9 @@ func (l *Leaf) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -62,7 +64,7 @@ func (l *Leaf) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -113,13 +115,13 @@ type Names []string
 
 func (n *Names) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Names")
+		return jsonValueErrorf("null is not allowed")
 	}
-	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Names
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks Names against its JSON Schema constraints.
@@ -137,7 +139,7 @@ func (n *Numbered) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Numbered")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -167,7 +169,9 @@ func (n *Numbered) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"num", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -191,7 +195,7 @@ func (n *Numbered) UnmarshalJSON(data []byte) error {
 			"num",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))
@@ -259,7 +263,7 @@ type Overflow struct {
 func (o *Overflow) UnmarshalJSON(data []byte) error {
 	o.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Overflow")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -288,7 +292,9 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -304,7 +310,7 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -315,14 +321,14 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if o.AdditionalProperties == nil {
 				o.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			o.AdditionalProperties[rawKey] = val
 		}
@@ -364,10 +370,10 @@ type Short string
 
 func (s *Short) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Short")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Short
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Short against its JSON Schema constraints.
@@ -388,7 +394,7 @@ func (t *Tagged) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Tagged")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -417,7 +423,9 @@ func (t *Tagged) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"tag", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -433,7 +441,7 @@ func (t *Tagged) UnmarshalJSON(data []byte) error {
 			"tag",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))
@@ -557,10 +565,10 @@ type ExplicitNullPositionsBounded string
 
 func (e *ExplicitNullPositionsBounded) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ExplicitNullPositionsBounded")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ExplicitNullPositionsBounded
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks ExplicitNullPositionsBounded against its JSON Schema constraints.
@@ -579,7 +587,7 @@ type ExplicitNullPositionsInline struct {
 func (e *ExplicitNullPositionsInline) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ExplicitNullPositionsInline")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -608,7 +616,9 @@ func (e *ExplicitNullPositionsInline) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"x", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -624,7 +634,7 @@ func (e *ExplicitNullPositionsInline) UnmarshalJSON(data []byte) error {
 			"x",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -750,7 +760,7 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 	e._jsonNulls = nil
 	e.Union = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ExplicitNullPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -806,7 +816,33 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"alias", jsonDecodeValue[*Short]},
+			{"array", jsonDecodeItems(jsonDecodeValue[string])},
+			{"arrayOfMap", jsonDecodeItems(jsonDecodeValues(jsonDecodeValue[string]))},
+			{"boundOnly", jsonDecodeValue[*ExplicitNullPositionsBoundOnly]},
+			{"bounded", jsonDecodeValue[*ExplicitNullPositionsBounded]},
+			{"count", jsonDecodeValue[*jsonInteger]},
+			{"inline", jsonDecodeValue[*ExplicitNullPositionsInline]},
+			{"mapOfArray", jsonDecodeValues(jsonDecodeItems(jsonDecodeValue[string]))},
+			{"mapOfString", jsonDecodeValues(jsonDecodeValue[string])},
+			{"namedArray", jsonDecodeValue[Names]},
+			{"nested", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[string]))},
+			{"nullableAlias", jsonDecodeValue[MaybeShort]},
+			{"nullableItems", jsonDecodeItems(jsonDecodeValue[*string])},
+			{"nullableOuter", jsonDecodeItems(jsonDecodeValue[string])},
+			{"nullableScalar", jsonDecodeValue[*string]},
+			{"nullableValues", jsonDecodeValues(jsonDecodeValue[*string])},
+			{"overflow", jsonDecodeValue[*Overflow]},
+			{"reqAlias", jsonDecodeValue[Short]},
+			{"reqArray", jsonDecodeItems(jsonDecodeValue[string])},
+			{"reqScalar", jsonDecodeValue[string]},
+			{"reqStruct", jsonDecodeValue[Leaf]},
+			{"scalar", jsonDecodeValue[*string]},
+			{"struct", jsonDecodeValue[*Leaf]},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"untyped", jsonDecodeValue[any]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -931,42 +967,42 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 			"union",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["array"]; ok {
-			if err := checkJSONNulls(_v, "array", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "array")
 			}
 		}
 		if _v, ok := raw["arrayOfMap"]; ok {
-			if err := checkJSONNulls(_v, "arrayOfMap", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "arrayOfMap")
 			}
 		}
 		if _v, ok := raw["mapOfArray"]; ok {
-			if err := checkJSONNulls(_v, "mapOfArray", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "mapOfArray")
 			}
 		}
 		if _v, ok := raw["mapOfString"]; ok {
-			if err := checkJSONNulls(_v, "mapOfString", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapOfString")
 			}
 		}
 		if _v, ok := raw["nested"]; ok {
-			if err := checkJSONNulls(_v, "nested", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "nested")
 			}
 		}
 		if _v, ok := raw["nullableOuter"]; ok {
-			if err := checkJSONNulls(_v, "nullableOuter", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "nullableOuter")
 			}
 		}
 		if _v, ok := raw["reqArray"]; ok {
-			if err := checkJSONNulls(_v, "reqArray", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "reqArray")
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))

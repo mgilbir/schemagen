@@ -138,6 +138,10 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	if helpers.Empty() {
 		return nil, false, nil
 	}
+	// A block one block calls is a block this file has to carry, and nothing
+	// upstream can see that: the set is read from what the *generated types*
+	// call, and a call from one helper to another appears in neither.
+	helpers.CloseOverCalls()
 
 	// Imports are fixed by which helpers are included, not by the schemas.
 	var imports []generator.Import
@@ -155,8 +159,8 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin, "fmt")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties || helpers.DecodePath, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin || helpers.DecodePath, "fmt")
 	// The JSON-equality reduction: a decoder over the document's own bytes, a
 	// builder for the text it reduces to, sorted member names, and strconv for
 	// the exponent it writes a number's scale as.
@@ -181,6 +185,10 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// given to that type's own decoder; the respelling it retries through needs
 	// nothing else.
 	add(helpers.DateTime, "time")
+	// The two ip shadows are defined types over netip.Addr and hand what they
+	// are given to that package's own parser.
+	add(helpers.IPAddr, "net/netip")
+	add(helpers.IPAddr, "encoding/json")
 	add(helpers.Annotations, "reflect")
 	add(helpers.Annotations, "strconv")
 	// The regexp engine only comes in when a compiled schema actually names a
@@ -200,7 +208,12 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// document with several of them fails the same way every time. The runtime
 	// evaluator visits an object's properties in the same fixed order, for the
 	// same reason.
-	add(helpers.NullCheck || helpers.Annotations || helpers.Canonical, "sort")
+	add(helpers.NullCheck || helpers.Annotations || helpers.Canonical || helpers.DecodePath, "sort")
+	// The decode-path block reads what a refusal was about: errors.As for the
+	// one encoding/json raises from the Go type it was filling, and strings to
+	// take the package qualifier off a shadow's name before reading it.
+	add(helpers.DecodePath, "errors")
+	add(helpers.DecodePath, "strings")
 	// The format helpers are emitted as one block, so they name every package
 	// any of them needs whether or not the schema uses that particular format.
 	// Splitting the block per format is what would let a package end up with a

@@ -18,16 +18,16 @@ type D int64
 
 func (d *D) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type D")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type D")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*d = D(_i)
@@ -40,7 +40,7 @@ func (d *D) UnmarshalJSON(data []byte) error {
 		*d = D(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks D against its JSON Schema constraints.
@@ -67,10 +67,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (p *PatternValueSubschemasPattern0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern0
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PatternValueSubschemasPattern0 against its JSON Schema constraints.
@@ -98,10 +98,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (p *PatternValueSubschemasPattern1) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern1")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern1
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PatternValueSubschemasPattern1 against its JSON Schema constraints.
@@ -123,7 +123,7 @@ func (p *PatternValueSubschemasPattern2) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern2")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern2
 	aux := &struct {
@@ -133,7 +133,7 @@ func (p *PatternValueSubschemasPattern2) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -205,7 +205,7 @@ func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern3")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -234,7 +234,9 @@ func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"x", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -250,7 +252,7 @@ func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
 			"x",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
@@ -308,13 +310,13 @@ type PatternValueSubschemasPattern5 []string
 
 func (p *PatternValueSubschemasPattern5) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern5")
+		return jsonValueErrorf("null is not allowed")
 	}
-	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias PatternValueSubschemasPattern5
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PatternValueSubschemasPattern5 against its JSON Schema constraints.
@@ -331,10 +333,10 @@ type PatternValueSubschemasPattern6 []any
 
 func (p *PatternValueSubschemasPattern6) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern6")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern6
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PatternValueSubschemasPattern6 against its JSON Schema constraints.
@@ -404,10 +406,10 @@ type PatternValueSubschemasPattern8 string
 
 func (p *PatternValueSubschemasPattern8) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern8")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern8
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PatternValueSubschemasPattern8 against its JSON Schema constraints.
@@ -427,7 +429,7 @@ func (p *PatternValueSubschemasPattern9) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern9")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern9
 	aux := &struct {
@@ -437,7 +439,7 @@ func (p *PatternValueSubschemasPattern9) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -509,7 +511,7 @@ func (p *PatternValueSubschemasPattern10) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern10")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern10
 	aux := &struct {
@@ -519,7 +521,7 @@ func (p *PatternValueSubschemasPattern10) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -649,7 +651,7 @@ type PatternValueSubschemasPattern11 struct {
 func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern11")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern11
 	aux := &struct {
@@ -659,7 +661,7 @@ func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -672,14 +674,14 @@ func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if p.AdditionalProperties == nil {
 				p.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			p.AdditionalProperties[rawKey] = val
 		}
@@ -833,7 +835,7 @@ func (p *PatternValueSubschemasPattern14) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern14")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern14
 	aux := &struct {
@@ -843,7 +845,7 @@ func (p *PatternValueSubschemasPattern14) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -909,7 +911,7 @@ func (p *PatternValueSubschemasPattern15) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern15")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern15
 	aux := &struct {
@@ -919,7 +921,7 @@ func (p *PatternValueSubschemasPattern15) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -983,7 +985,7 @@ type PatternValueSubschemasPattern16 struct {
 func (p *PatternValueSubschemasPattern16) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern16")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern16
 	aux := &struct {
@@ -993,7 +995,7 @@ func (p *PatternValueSubschemasPattern16) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1111,7 +1113,7 @@ func (p *PatternValueSubschemas) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PatternValueSubschemas")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemas
 	aux := &struct {
@@ -1121,7 +1123,7 @@ func (p *PatternValueSubschemas) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage

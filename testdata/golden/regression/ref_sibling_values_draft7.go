@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 	"unicode/utf8"
 )
 
@@ -12,10 +11,10 @@ type Word string
 
 func (w *Word) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Word")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Word
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks Word against its JSON Schema constraints.
@@ -30,11 +29,11 @@ type NamedEmptyEnum Word
 
 func (n *NamedEmptyEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NamedEmptyEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target Word
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*n = NamedEmptyEnum(_target)
 	return nil
@@ -56,11 +55,11 @@ type NamedSibling Word
 
 func (n *NamedSibling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NamedSibling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target Word
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*n = NamedSibling(_target)
 	return nil
@@ -94,7 +93,7 @@ type RefSiblingValuesDraft7 struct {
 func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValuesDraft7")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -130,7 +129,16 @@ func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"constSibling", jsonDecodeValue[*Word]},
+			{"emptyEnumSibling", jsonDecodeValue[*Word]},
+			{"enumSibling", jsonDecodeValue[*Word]},
+			{"listSibling", jsonDecodeItems(jsonDecodeValue[Word])},
+			{"mapSibling", jsonDecodeValues(jsonDecodeValue[Word])},
+			{"namedEmptyEnum", jsonDecodeValue[*NamedEmptyEnum]},
+			{"namedSibling", jsonDecodeValue[*NamedSibling]},
+			{"noSibling", jsonDecodeValue[*Word]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -151,17 +159,17 @@ func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
 			"noSibling",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["listSibling"]; ok {
-			if err := checkJSONNulls(_v, "listSibling", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "listSibling")
 			}
 		}
 		if _v, ok := raw["mapSibling"]; ok {
-			if err := checkJSONNulls(_v, "mapSibling", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapSibling")
 			}
 		}
 		knownFields := map[string]bool{

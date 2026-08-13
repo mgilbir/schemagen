@@ -11,10 +11,10 @@ type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Addr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Addr
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
@@ -26,10 +26,10 @@ type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Stamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Stamp
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -41,11 +41,11 @@ type StampAlias Stamp
 
 func (s *StampAlias) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type StampAlias")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target Stamp
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*s = StampAlias(_target)
 	return nil
@@ -82,7 +82,7 @@ func (f *FormatAliasPositions) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FormatAliasPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -119,7 +119,17 @@ func (f *FormatAliasPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"addr", jsonDecodeValue[*Addr]},
+			{"addr_list", jsonDecodeItems(jsonDecodeValue[Addr])},
+			{"chained_stamp", jsonDecodeValue[*StampAlias]},
+			{"optional_stamp", jsonDecodeValue[*Stamp]},
+			{"required_stamp", jsonDecodeValue[Stamp]},
+			{"stamp_grid", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[Stamp]))},
+			{"stamp_list", jsonDecodeItems(jsonDecodeValue[Stamp])},
+			{"stamp_map", jsonDecodeValues(jsonDecodeValue[Stamp])},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -139,27 +149,27 @@ func (f *FormatAliasPositions) UnmarshalJSON(data []byte) error {
 			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["addr_list"]; ok {
-			if err := checkJSONNulls(_v, "addr_list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "addr_list")
 			}
 		}
 		if _v, ok := raw["stamp_grid"]; ok {
-			if err := checkJSONNulls(_v, "stamp_grid", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "stamp_grid")
 			}
 		}
 		if _v, ok := raw["stamp_list"]; ok {
-			if err := checkJSONNulls(_v, "stamp_list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "stamp_list")
 			}
 		}
 		if _v, ok := raw["stamp_map"]; ok {
-			if err := checkJSONNulls(_v, "stamp_map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "stamp_map")
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))

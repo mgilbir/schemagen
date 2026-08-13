@@ -68,6 +68,15 @@ type HelperSet struct {
 	// date-time should not carry it, and it is the only block that needs `time`.
 	DateTime bool
 
+	// IPAddr is jsonIPv4Addr and jsonIPv6Addr, the shadows an asserted
+	// `format: ipv4` or `format: ipv6` is decoded through so that an address
+	// that does not parse is refused in the schema's words rather than
+	// netip.ParseAddr's. See issue #282. A block of its own for the reason
+	// DateTime is: a package whose schemas name no ip format should not carry
+	// it, and net/netip is a dependency of the format block it would otherwise
+	// have to be part of.
+	IPAddr bool
+
 	// Canonical is _jsonCanonical, the JSON-equality reduction an "enum" or a
 	// "const" held as raw JSON is decided by, and the number canonicalisation
 	// under it. One flag, because the three functions are one block: the walker
@@ -106,6 +115,14 @@ type HelperSet struct {
 	// block here -- a package whose schemas nest nothing emits none of it.
 	PathJoin bool
 
+	// DecodePath is jsonDecodeMemberError and the three decoders and two
+	// message readers around it: what traces a refusal raised while decoding an
+	// object back to the position in the document that caused it, and puts a
+	// refusal worded from a Go type into the words the schema is written in. See
+	// StructDef.DecodeMembers and issue #282. Conditional like every other block
+	// here -- a package with no struct decode emits none of it.
+	DecodePath bool
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -122,7 +139,7 @@ func (h HelperSet) Empty() bool {
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
 		!h.Canonical && !h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties &&
-		!h.PathJoin
+		!h.PathJoin && !h.DecodePath && !h.IPAddr
 }
 
 // Merge folds another set into this one.
@@ -140,6 +157,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Number = h.Number || other.Number
 	h.NumberCompare = h.NumberCompare || other.NumberCompare
 	h.DateTime = h.DateTime || other.DateTime
+	h.IPAddr = h.IPAddr || other.IPAddr
 	h.Canonical = h.Canonical || other.Canonical
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
@@ -149,6 +167,25 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.AccessPattern = h.AccessPattern || other.AccessPattern
 	h.ExactProperties = h.ExactProperties || other.ExactProperties
 	h.PathJoin = h.PathJoin || other.PathJoin
+	h.DecodePath = h.DecodePath || other.DecodePath
+}
+
+// CloseOverCalls adds the blocks the selected blocks themselves call.
+//
+// The set is read from what a generated *types* file calls (see
+// HelpersReferencedBy), and a call from one helper to another appears in no
+// types file at all: a schema with one string property names checkJSONNullsAt
+// and never names jsonValueErrorf, which that walker's refusal is built by. Left
+// alone, the package gets the walker and not the constructor, and does not
+// compile.
+//
+// Only one direction of dependency exists, so one pass settles it: the message
+// helpers are the leaves, and are what the decode-time blocks reach for to say
+// where a refusal belongs in the caller's document.
+func (h *HelperSet) CloseOverCalls() {
+	if h.Integer || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath {
+		h.PathJoin = true
+	}
 }
 
 // HelpersReferencedBy reports which shared helpers a generated file calls, read
@@ -193,6 +230,14 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "jsonValueErrorf(") || strings.Contains(src, "jsonElemErrorf(") ||
 		strings.Contains(src, "jsonPathf(") || strings.Contains(src, "jsonElemPathf(") {
 		set.PathJoin = true
+	}
+	// The decode-path block. A file reaches it either by tracing a failed struct
+	// decode back to the member at fault or, where it has no struct of its own,
+	// by reading a leaf's refusal for what has to be written in front of it -- an
+	// overflow map's value decode is the second without the first, so both names
+	// are matched.
+	if strings.Contains(src, "jsonDecodeMemberError(") || strings.Contains(src, "jsonDecodeRefusal(") {
+		set.DecodePath = true
 	}
 	// The _dyn* family is matched by its prefix and pulled in whole, rather than
 	// by a list of names that has to be kept in step with the templates by hand.
@@ -291,6 +336,12 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "jsonDateTime") {
 		set.DateTime = true
 	}
+	// The two ip shadows, read the same way. They are one block: the two types
+	// differ only in the word their refusal names, and share the decode under
+	// it, so a file naming either takes both.
+	if strings.Contains(src, "jsonIPv4Addr") || strings.Contains(src, "jsonIPv6Addr") {
+		set.IPAddr = true
+	}
 	// The JSON-equality reduction. One block reached from two names -- the
 	// reduction itself and the list initialiser that applies it at package
 	// initialisation -- and the second appears in a file whose enum type is
@@ -298,12 +349,12 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") {
 		set.Canonical = true
 	}
-	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
+	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type
 	// alone never appears without a call: it exists only as that call's
 	// argument. A struct rejecting a null at its own top level writes the check
 	// inline and needs neither.
-	if strings.Contains(src, "checkJSONNulls(") {
+	if strings.Contains(src, "checkJSONNullsAt(") {
 		set.NullCheck = true
 	}
 	// Every format check calls a schemagenFormat* function, and the general

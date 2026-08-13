@@ -135,10 +135,10 @@ type ContentPostureDraft7BranchOption0 string
 
 func (c *ContentPostureDraft7BranchOption0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ContentPostureDraft7BranchOption0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ContentPostureDraft7BranchOption0
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks ContentPostureDraft7BranchOption0 against its JSON Schema constraints.
@@ -330,10 +330,10 @@ type ContentPostureDraft7TupleItem0 string
 
 func (c *ContentPostureDraft7TupleItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ContentPostureDraft7TupleItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ContentPostureDraft7TupleItem0
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks ContentPostureDraft7TupleItem0 against its JSON Schema constraints.
@@ -408,7 +408,7 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 	c._jsonNulls = nil
 	c.Branch = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ContentPostureDraft7")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -446,7 +446,16 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"blob", jsonDecodeValue[*ContentPostureDraft7Blob]},
+			{"boundedBlob", jsonDecodeValue[*ContentPostureDraft7BoundedBlob]},
+			{"doc", jsonDecodeValue[*string]},
+			{"encodedDoc", jsonDecodeValue[*ContentPostureDraft7EncodedDoc]},
+			{"list", jsonDecodeItems(jsonDecodeValue[string])},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"unknownEncoding", jsonDecodeValue[*ContentPostureDraft7UnknownEncoding]},
+			{"viaAllOf", jsonDecodeValue[*ContentPostureDraft7ViaAllOf]},
+		})
 	}
 
 	{
@@ -537,12 +546,12 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "list")
 			}
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))

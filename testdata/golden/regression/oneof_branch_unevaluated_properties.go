@@ -56,7 +56,9 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption0) UnmarshalJSON(data []byte
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"b", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -80,7 +82,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption0) UnmarshalJSON(data []byte
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -216,7 +218,9 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption1) UnmarshalJSON(data []byte
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -240,7 +244,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption1) UnmarshalJSON(data []byte
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -366,7 +370,7 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 	o._jsonRawProps = nil
 	o.Value = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfBranchUnevaluatedProperties")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OneOfBranchUnevaluatedProperties
 	aux := &struct {
@@ -376,7 +380,7 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 
 	{

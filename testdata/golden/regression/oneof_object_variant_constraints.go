@@ -18,7 +18,7 @@ func (o *OneOfObjectVariantConstraintsAOption0) UnmarshalJSON(data []byte) error
 	o.AdditionalProperties = nil
 	o._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfObjectVariantConstraintsAOption0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -47,7 +47,9 @@ func (o *OneOfObjectVariantConstraintsAOption0) UnmarshalJSON(data []byte) error
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"x", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -63,7 +65,7 @@ func (o *OneOfObjectVariantConstraintsAOption0) UnmarshalJSON(data []byte) error
 			"x",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -136,7 +138,7 @@ func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error
 	o.AdditionalProperties = nil
 	o._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfObjectVariantConstraintsAOption1")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -166,7 +168,9 @@ func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"y", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -190,7 +194,7 @@ func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error
 			"y",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -308,7 +312,7 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 	o._jsonKeys = nil
 	o.A = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfObjectVariantConstraints")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -338,7 +342,7 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 
 	{
@@ -441,7 +445,7 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))

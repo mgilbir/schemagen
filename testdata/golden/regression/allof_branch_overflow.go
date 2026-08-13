@@ -20,7 +20,7 @@ type StrictBase struct {
 func (s *StrictBase) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type StrictBase")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -50,7 +50,9 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"base", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -74,7 +76,7 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 			"base",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -139,7 +141,7 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowAdjacent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -171,7 +173,10 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+			{"b", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -200,7 +205,7 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -349,16 +354,16 @@ type AllOfBranchOverflowBareBranch0Value int64
 
 func (a *AllOfBranchOverflowBareBranch0Value) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBareBranch0Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfBranchOverflowBareBranch0Value")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfBranchOverflowBareBranch0Value(_i)
@@ -371,7 +376,7 @@ func (a *AllOfBranchOverflowBareBranch0Value) UnmarshalJSON(data []byte) error {
 		*a = AllOfBranchOverflowBareBranch0Value(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowBareBranch0Value against its JSON Schema constraints.
@@ -394,7 +399,7 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBare")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -424,7 +429,9 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -448,7 +455,7 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -524,10 +531,10 @@ type AllOfBranchOverflowBranchUnevaluatedBranch0Value string
 
 func (a *AllOfBranchOverflowBranchUnevaluatedBranch0Value) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBranchUnevaluatedBranch0Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfBranchOverflowBranchUnevaluatedBranch0Value
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfBranchOverflowBranchUnevaluatedBranch0Value against its JSON Schema constraints.
@@ -551,7 +558,7 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBranchUnevaluated")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -583,7 +590,10 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+			{"b", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -612,7 +622,7 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -704,7 +714,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBranchUnevaluatedFalse")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -736,7 +746,10 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+			{"b", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -765,7 +778,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -846,7 +859,7 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowForbid")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -876,7 +889,9 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -900,7 +915,7 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -966,16 +981,16 @@ type AllOfBranchOverflowNestedAllOfBranch0Value int64
 
 func (a *AllOfBranchOverflowNestedAllOfBranch0Value) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowNestedAllOfBranch0Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfBranchOverflowNestedAllOfBranch0Value")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfBranchOverflowNestedAllOfBranch0Value(_i)
@@ -988,7 +1003,7 @@ func (a *AllOfBranchOverflowNestedAllOfBranch0Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowNestedAllOfBranch0Value(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowNestedAllOfBranch0Value against its JSON Schema constraints.
@@ -1011,7 +1026,7 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowNestedAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1041,7 +1056,9 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1065,7 +1082,7 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -1145,7 +1162,7 @@ type AllOfBranchOverflowObjectValueA struct {
 func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValueA")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1175,7 +1192,9 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"n", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1199,7 +1218,7 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 			"n",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -1254,7 +1273,7 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValueBranch0Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1284,7 +1303,9 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"n", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1308,7 +1329,7 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 			"n",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -1383,7 +1404,7 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1412,7 +1433,9 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*AllOfBranchOverflowObjectValueA]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1428,7 +1451,7 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -1515,7 +1538,7 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowOwnAdditional")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1545,7 +1568,9 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1569,7 +1594,7 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -1584,14 +1609,14 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]int64)
 			}
 			var _iv jsonInteger
 			if err := json.Unmarshal(rawVal, &_iv); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			a.AdditionalProperties[rawKey] = int64(_iv)
 		}
@@ -1655,7 +1680,7 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowPlain")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1685,7 +1710,9 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1709,7 +1736,7 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -1776,7 +1803,7 @@ type AllOfBranchOverflowSoleBranch struct {
 func (a *AllOfBranchOverflowSoleBranch) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowSoleBranch")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfBranchOverflowSoleBranch
 	aux := &struct {
@@ -1786,7 +1813,7 @@ func (a *AllOfBranchOverflowSoleBranch) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1799,14 +1826,14 @@ func (a *AllOfBranchOverflowSoleBranch) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if a.AdditionalProperties == nil {
 				a.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			a.AdditionalProperties[rawKey] = val
 		}
@@ -1853,16 +1880,16 @@ type AllOfBranchOverflowTwoBranchesBranch0Value int64
 
 func (a *AllOfBranchOverflowTwoBranchesBranch0Value) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowTwoBranchesBranch0Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfBranchOverflowTwoBranchesBranch0Value")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfBranchOverflowTwoBranchesBranch0Value(_i)
@@ -1875,7 +1902,7 @@ func (a *AllOfBranchOverflowTwoBranchesBranch0Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowTwoBranchesBranch0Value(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch0Value against its JSON Schema constraints.
@@ -1890,16 +1917,16 @@ type AllOfBranchOverflowTwoBranchesBranch1Value int64
 
 func (a *AllOfBranchOverflowTwoBranchesBranch1Value) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowTwoBranchesBranch1Value")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfBranchOverflowTwoBranchesBranch1Value")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfBranchOverflowTwoBranchesBranch1Value(_i)
@@ -1912,7 +1939,7 @@ func (a *AllOfBranchOverflowTwoBranchesBranch1Value) UnmarshalJSON(data []byte) 
 		*a = AllOfBranchOverflowTwoBranchesBranch1Value(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfBranchOverflowTwoBranchesBranch1Value against its JSON Schema constraints.
@@ -1935,7 +1962,7 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowTwoBranches")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1965,7 +1992,9 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1989,7 +2018,7 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -2093,7 +2122,7 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowViaRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -2125,7 +2154,10 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"base", jsonDecodeValue[*jsonInteger]},
+			{"other", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -2154,7 +2186,7 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 			"other",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -2242,7 +2274,7 @@ type AllOfBranchOverflow struct {
 func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchOverflow")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -2282,7 +2314,20 @@ func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"adjacent", jsonDecodeValue[*AllOfBranchOverflowAdjacent]},
+			{"bare", jsonDecodeValue[*AllOfBranchOverflowBare]},
+			{"branchUnevaluated", jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluated]},
+			{"branchUnevaluatedFalse", jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluatedFalse]},
+			{"forbid", jsonDecodeValue[*AllOfBranchOverflowForbid]},
+			{"nestedAllOf", jsonDecodeValue[*AllOfBranchOverflowNestedAllOf]},
+			{"objectValue", jsonDecodeValue[*AllOfBranchOverflowObjectValue]},
+			{"ownAdditional", jsonDecodeValue[*AllOfBranchOverflowOwnAdditional]},
+			{"plain", jsonDecodeValue[*AllOfBranchOverflowPlain]},
+			{"soleBranch", jsonDecodeValue[*AllOfBranchOverflowSoleBranch]},
+			{"twoBranches", jsonDecodeValue[*AllOfBranchOverflowTwoBranches]},
+			{"viaRef", jsonDecodeValue[*AllOfBranchOverflowViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -2309,7 +2354,7 @@ func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{

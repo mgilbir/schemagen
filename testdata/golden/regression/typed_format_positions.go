@@ -14,10 +14,10 @@ type TypedV4 string
 
 func (t *TypedV4) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedV4")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TypedV4
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks TypedV4 against its JSON Schema constraints.
@@ -29,11 +29,11 @@ type TypedChainInner TypedV4
 
 func (t *TypedChainInner) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedChainInner")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target TypedV4
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*t = TypedChainInner(_target)
 	return nil
@@ -55,11 +55,11 @@ type TypedChainOuter TypedChainInner
 
 func (t *TypedChainOuter) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedChainOuter")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target TypedChainInner
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*t = TypedChainOuter(_target)
 	return nil
@@ -81,10 +81,10 @@ type TypedFormatPositionsBucketsPattern0 string
 
 func (t *TypedFormatPositionsBucketsPattern0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedFormatPositionsBucketsPattern0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TypedFormatPositionsBucketsPattern0
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks TypedFormatPositionsBucketsPattern0 against its JSON Schema constraints.
@@ -101,7 +101,7 @@ func (t *TypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedFormatPositionsBuckets")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TypedFormatPositionsBuckets
 	aux := &struct {
@@ -111,7 +111,7 @@ func (t *TypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -205,10 +205,10 @@ type TypedFormatPositionsWrapped string
 
 func (t *TypedFormatPositionsWrapped) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedFormatPositionsWrapped")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TypedFormatPositionsWrapped
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks TypedFormatPositionsWrapped against its JSON Schema constraints.
@@ -278,7 +278,7 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t.Branch = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TypedFormatPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -318,7 +318,18 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"buckets", jsonDecodeValue[*TypedFormatPositionsBuckets]},
+			{"chain", jsonDecodeValue[*TypedChainOuter]},
+			{"inline", jsonDecodeValue[*string]},
+			{"list", jsonDecodeItems(jsonDecodeValue[string])},
+			{"mailList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"map", jsonDecodeValues(jsonDecodeValue[string])},
+			{"ref", jsonDecodeValue[*TypedV4]},
+			{"stampList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"wrapped", jsonDecodeValue[*TypedFormatPositionsWrapped]},
+		})
 	}
 
 	{
@@ -386,27 +397,27 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 			"wrapped",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "list")
 			}
 		}
 		if _v, ok := raw["mailList"]; ok {
-			if err := checkJSONNulls(_v, "mailList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mailList")
 			}
 		}
 		if _v, ok := raw["map"]; ok {
-			if err := checkJSONNulls(_v, "map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "map")
 			}
 		}
 		if _v, ok := raw["stampList"]; ok {
-			if err := checkJSONNulls(_v, "stampList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "stampList")
 			}
 		}
 		knownFields := map[string]bool{

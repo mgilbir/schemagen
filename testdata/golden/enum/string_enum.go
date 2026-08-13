@@ -56,7 +56,7 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Task")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -87,7 +87,11 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"priority", jsonDecodeValue[*TaskPriority]},
+			{"status", jsonDecodeValue[TaskStatus]},
+			{"title", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -105,7 +109,7 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 			"title",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))

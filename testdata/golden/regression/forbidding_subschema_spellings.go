@@ -90,7 +90,7 @@ func (f *ForbiddingSubschemaSpellingsAnyOfNames) UnmarshalJSON(data []byte) erro
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsAnyOfNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsAnyOfNames
 	aux := &struct {
@@ -100,7 +100,7 @@ func (f *ForbiddingSubschemaSpellingsAnyOfNames) UnmarshalJSON(data []byte) erro
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -231,10 +231,10 @@ type ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1 string
 
 func (f *ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1
-	return json.Unmarshal(data, (*Alias)(f))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(f)))
 }
 
 // Validate checks ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1 against its JSON Schema constraints.
@@ -735,7 +735,7 @@ func (f *ForbiddingSubschemaSpellingsInlineDepRequired) UnmarshalJSON(data []byt
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineDepRequired")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineDepRequired
 	aux := &struct {
@@ -745,7 +745,7 @@ func (f *ForbiddingSubschemaSpellingsInlineDepRequired) UnmarshalJSON(data []byt
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -811,7 +811,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) UnmarshalJSON(data []
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineFalseDependent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineFalseDependent
 	aux := &struct {
@@ -821,7 +821,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) UnmarshalJSON(data []
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -885,7 +885,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseNames) UnmarshalJSON(data []byte
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineFalseNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineFalseNames
 	aux := &struct {
@@ -895,7 +895,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseNames) UnmarshalJSON(data []byte
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -959,7 +959,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMaxProps) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineMaxProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineMaxProps
 	aux := &struct {
@@ -969,7 +969,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMaxProps) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1041,7 +1041,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMinProps) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineMinProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineMinProps
 	aux := &struct {
@@ -1051,7 +1051,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMinProps) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1120,7 +1120,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotDependent) UnmarshalJSON(data []by
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineNotDependent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineNotDependent
 	aux := &struct {
@@ -1130,7 +1130,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotDependent) UnmarshalJSON(data []by
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1194,7 +1194,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotNames) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineNotNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineNotNames
 	aux := &struct {
@@ -1204,7 +1204,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotNames) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1268,7 +1268,7 @@ func (f *ForbiddingSubschemaSpellingsInlineRequired) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsInlineRequired")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsInlineRequired
 	aux := &struct {
@@ -1278,7 +1278,7 @@ func (f *ForbiddingSubschemaSpellingsInlineRequired) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1349,7 +1349,7 @@ func (f *ForbiddingSubschemaSpellingsNotDependent) UnmarshalJSON(data []byte) er
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsNotDependent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsNotDependent
 	aux := &struct {
@@ -1359,7 +1359,7 @@ func (f *ForbiddingSubschemaSpellingsNotDependent) UnmarshalJSON(data []byte) er
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1531,7 +1531,7 @@ func (f *ForbiddingSubschemaSpellingsNotNames) UnmarshalJSON(data []byte) error 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsNotNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsNotNames
 	aux := &struct {
@@ -1541,7 +1541,7 @@ func (f *ForbiddingSubschemaSpellingsNotNames) UnmarshalJSON(data []byte) error 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -1719,7 +1719,7 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsNotUnevalProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1748,7 +1748,9 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1881,7 +1883,7 @@ func (f *ForbiddingSubschemaSpellingsNullableInlineNames) UnmarshalJSON(data []b
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -2000,7 +2002,7 @@ func (f *ForbiddingSubschemaSpellingsOkNames) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsOkNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsOkNames
 	aux := &struct {
@@ -2010,7 +2012,7 @@ func (f *ForbiddingSubschemaSpellingsOkNames) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -2076,7 +2078,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfDependent) UnmarshalJSON(data []byte) 
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsOneOfDependent")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsOneOfDependent
 	aux := &struct {
@@ -2086,7 +2088,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfDependent) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -2150,7 +2152,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfNames) UnmarshalJSON(data []byte) erro
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsOneOfNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsOneOfNames
 	aux := &struct {
@@ -2160,7 +2162,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfNames) UnmarshalJSON(data []byte) erro
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -2284,7 +2286,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) UnmarshalJSON(data []byte
 	f.AdditionalProperties = nil
 	f._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsOneOfUnevalProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -2313,7 +2315,9 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) UnmarshalJSON(data []byte
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -2427,7 +2431,7 @@ func (f *ForbiddingSubschemaSpellingsRefNotNames) UnmarshalJSON(data []byte) err
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellingsRefNotNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ForbiddingSubschemaSpellingsRefNotNames
 	aux := &struct {
@@ -2437,7 +2441,7 @@ func (f *ForbiddingSubschemaSpellingsRefNotNames) UnmarshalJSON(data []byte) err
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -2650,7 +2654,7 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 	f._jsonNulls = nil
 	f.StrBranchRequired = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ForbiddingSubschemaSpellings")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -2720,7 +2724,48 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"allOfContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"allOfNot", jsonDecodeValue[ForbiddingSubschemaSpellingsAllOfNot]},
+			{"anyOfNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsAnyOfNames]},
+			{"anyOfNot", jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfNot]},
+			{"anyOfOneFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfOneFalse]},
+			{"inferredNotItems", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotItems]},
+			{"inferredNotSlot", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotSlot]},
+			{"inferredNotTail", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotTail]},
+			{"inferredOneOfItems", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfItems]},
+			{"inferredOneOfTail", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfTail]},
+			{"inlineDepRequired", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineDepRequired]},
+			{"inlineFalseDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseDependent]},
+			{"inlineFalseNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseNames]},
+			{"inlineMaxProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMaxProps]},
+			{"inlineMinProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMinProps]},
+			{"inlineNotDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotDependent]},
+			{"inlineNotNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotNames]},
+			{"inlineRequired", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineRequired]},
+			{"mapWithMinProps", jsonDecodeValues(jsonDecodeValue[string])},
+			{"notContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"notDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotDependent]},
+			{"notEnumBranch", jsonDecodeValue[ForbiddingSubschemaSpellingsNotEnumBranch]},
+			{"notFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsNotFalse]},
+			{"notNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotNames]},
+			{"notShallowEnum", jsonDecodeValue[ForbiddingSubschemaSpellingsNotShallowEnum]},
+			{"notTypedConst", jsonDecodeValue[ForbiddingSubschemaSpellingsNotTypedConst]},
+			{"notUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
+			{"notUnevalProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotUnevalProps]},
+			{"nullableInlineNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsNullableInlineNames]},
+			{"okContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"okNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsOkNames]},
+			{"oneOfContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"oneOfDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfDependent]},
+			{"oneOfNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfNames]},
+			{"oneOfOneFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsOneOfOneFalse]},
+			{"oneOfUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
+			{"oneOfUnevalProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfUnevalProps]},
+			{"plainItems", jsonDecodeItems(jsonDecodeValue[string])},
+			{"refNotNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsRefNotNames]},
+			{"unionBranchRequired", jsonDecodeValue[ForbiddingSubschemaSpellingsUnionBranchRequired]},
+		})
 	}
 
 	{
@@ -2807,17 +2852,17 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 			"unionBranchRequired",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["mapWithMinProps"]; ok {
-			if err := checkJSONNulls(_v, "mapWithMinProps", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapWithMinProps")
 			}
 		}
 		if _v, ok := raw["plainItems"]; ok {
-			if err := checkJSONNulls(_v, "plainItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "plainItems")
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))

@@ -20,7 +20,7 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	r.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Root")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Root
 	aux := &struct {
@@ -30,7 +30,7 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage

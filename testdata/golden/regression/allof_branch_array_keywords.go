@@ -12,10 +12,10 @@ type ContainsInt []any
 
 func (c *ContainsInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ContainsInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ContainsInt
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks ContainsInt against its JSON Schema constraints.
@@ -124,10 +124,10 @@ type OwnPrefix []any
 
 func (o *OwnPrefix) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OwnPrefix")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OwnPrefix
-	return json.Unmarshal(data, (*Alias)(o))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(o)))
 }
 
 // Validate checks OwnPrefix against its JSON Schema constraints.
@@ -148,10 +148,10 @@ type PrefixStr []any
 
 func (p *PrefixStr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PrefixStr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PrefixStr
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PrefixStr against its JSON Schema constraints.
@@ -172,10 +172,10 @@ type RefToContains []any
 
 func (r *RefToContains) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefToContains")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefToContains
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefToContains against its JSON Schema constraints.
@@ -207,10 +207,10 @@ type TwoBranches []any
 
 func (t *TwoBranches) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TwoBranches")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TwoBranches
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks TwoBranches against its JSON Schema constraints.
@@ -232,7 +232,7 @@ func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBranchArrayKeywords")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -265,7 +265,13 @@ func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"contains", jsonDecodeValue[ContainsInt]},
+			{"ownPrefix", jsonDecodeValue[OwnPrefix]},
+			{"prefix", jsonDecodeValue[PrefixStr]},
+			{"twoBranches", jsonDecodeValue[TwoBranches]},
+			{"viaRef", jsonDecodeValue[RefToContains]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -285,7 +291,7 @@ func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

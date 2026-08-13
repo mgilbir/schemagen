@@ -18,7 +18,7 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 	d.AdditionalProperties = nil
 	d._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DatabaseConfig")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -49,7 +49,10 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"host", jsonDecodeValue[string]},
+			{"port", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -74,7 +77,7 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 			"port",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))
@@ -148,7 +151,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	c._jsonKeys = nil
 	c._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Config")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -178,7 +181,10 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"database", jsonDecodeValue[*DatabaseConfig]},
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -194,7 +200,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			"name",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))

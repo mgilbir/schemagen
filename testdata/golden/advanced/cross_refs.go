@@ -19,7 +19,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	m.AdditionalProperties = nil
 	m._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Metadata")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -50,7 +50,11 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"created", jsonDecodeValue[string]},
+			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+			{"title", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -67,12 +71,12 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 			"title",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "tags")
 			}
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))
@@ -145,7 +149,7 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Person")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -175,7 +179,10 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"email", jsonDecodeValue[*string]},
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -192,7 +199,7 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 			"name",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
@@ -265,7 +272,7 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	s._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Section")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -296,7 +303,11 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"body", jsonDecodeValue[*string]},
+			{"heading", jsonDecodeValue[string]},
+			{"subsections", jsonDecodeItems(jsonDecodeValue[Section])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -313,12 +324,12 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 			"heading",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["subsections"]; ok {
-			if err := checkJSONNulls(_v, "subsections", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "subsections")
 			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))
@@ -398,7 +409,7 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 	d.AdditionalProperties = nil
 	d._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Document")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -429,7 +440,11 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"author", jsonDecodeValue[*Person]},
+			{"metadata", jsonDecodeValue[Metadata]},
+			{"sections", jsonDecodeItems(jsonDecodeValue[Section])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -446,12 +461,12 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 			"metadata",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["sections"]; ok {
-			if err := checkJSONNulls(_v, "sections", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "sections")
 			}
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))

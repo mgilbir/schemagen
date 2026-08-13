@@ -19,7 +19,7 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Address")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -50,7 +50,11 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"city", jsonDecodeValue[string]},
+			{"street", jsonDecodeValue[string]},
+			{"zip", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -68,7 +72,7 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 			"zip",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -142,7 +146,7 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Item")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -174,7 +178,11 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"name", jsonDecodeValue[string]},
+			{"price", jsonDecodeValue[float64]},
+			{"quantity", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -200,7 +208,7 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 			"quantity",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		i._jsonKeys = make(map[string]bool, len(raw))
@@ -275,7 +283,7 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 	o.AdditionalProperties = nil
 	o._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Order")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -307,7 +315,12 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"billing_address", jsonDecodeValue[*Address]},
+			{"items", jsonDecodeItems(jsonDecodeValue[Item])},
+			{"order_id", jsonDecodeValue[string]},
+			{"shipping_address", jsonDecodeValue[Address]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -325,12 +338,12 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 			"shipping_address",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["items"]; ok {
-			if err := checkJSONNulls(_v, "items", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "items")
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))

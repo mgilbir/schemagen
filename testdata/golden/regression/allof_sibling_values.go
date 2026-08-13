@@ -22,10 +22,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (n *NarrowingAllOf) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NarrowingAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NarrowingAllOf
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NarrowingAllOf against its JSON Schema constraints.
@@ -53,10 +53,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (o *OnlyB) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OnlyB")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OnlyB
-	return json.Unmarshal(data, (*Alias)(o))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(o)))
 }
 
 // Validate checks OnlyB against its JSON Schema constraints.
@@ -101,10 +101,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesAllOfThroughRef) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesAllOfThroughRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesAllOfThroughRef
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesAllOfThroughRef against its JSON Schema constraints.
@@ -132,10 +132,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesBranchNarrows) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesBranchNarrows")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesBranchNarrows
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesBranchNarrows against its JSON Schema constraints.
@@ -163,10 +163,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesChain) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesChain")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesChain
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesChain against its JSON Schema constraints.
@@ -194,10 +194,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesConstInBranch) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesConstInBranch")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesConstInBranch
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesConstInBranch against its JSON Schema constraints.
@@ -225,10 +225,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesLaterBranchNarrows) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesLaterBranchNarrows")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesLaterBranchNarrows
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesLaterBranchNarrows against its JSON Schema constraints.
@@ -256,10 +256,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesListItemsItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesListItemsItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesListItemsItem
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesListItemsItem against its JSON Schema constraints.
@@ -287,10 +287,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesMapValuesValue) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesMapValuesValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesMapValuesValue
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesMapValuesValue against its JSON Schema constraints.
@@ -318,10 +318,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesNestedChain) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesNestedChain")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesNestedChain
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesNestedChain against its JSON Schema constraints.
@@ -349,10 +349,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesNumberSpelling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesNumberSpelling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesNumberSpelling
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesNumberSpelling against its JSON Schema constraints.
@@ -413,10 +413,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesViaRef) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesViaRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfSiblingValuesViaRef
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfSiblingValuesViaRef against its JSON Schema constraints.
@@ -452,7 +452,7 @@ func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValues")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -494,7 +494,22 @@ func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"agrees", jsonDecodeValue[*AllOfSiblingValuesAgrees]},
+			{"allOfThroughRef", jsonDecodeValue[*AllOfSiblingValuesAllOfThroughRef]},
+			{"branchNarrows", jsonDecodeValue[*AllOfSiblingValuesBranchNarrows]},
+			{"chain", jsonDecodeValue[*AllOfSiblingValuesChain]},
+			{"constInBranch", jsonDecodeValue[*AllOfSiblingValuesConstInBranch]},
+			{"constOnProperty", jsonDecodeValue[*string]},
+			{"laterBranchNarrows", jsonDecodeValue[*AllOfSiblingValuesLaterBranchNarrows]},
+			{"listItems", jsonDecodeItems(jsonDecodeValue[AllOfSiblingValuesListItemsItem])},
+			{"mapValues", jsonDecodeValues(jsonDecodeValue[AllOfSiblingValuesMapValuesValue])},
+			{"nestedChain", jsonDecodeValue[*AllOfSiblingValuesNestedChain]},
+			{"numberSpelling", jsonDecodeValue[*AllOfSiblingValuesNumberSpelling]},
+			{"rootNarrows", jsonDecodeValue[*AllOfSiblingValuesRootNarrows]},
+			{"silentBranch", jsonDecodeValue[*AllOfSiblingValuesSilentBranch]},
+			{"viaRef", jsonDecodeValue[*AllOfSiblingValuesViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -521,17 +536,17 @@ func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["listItems"]; ok {
-			if err := checkJSONNulls(_v, "listItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "listItems")
 			}
 		}
 		if _v, ok := raw["mapValues"]; ok {
-			if err := checkJSONNulls(_v, "mapValues", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapValues")
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

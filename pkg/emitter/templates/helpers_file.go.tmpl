@@ -12,6 +12,9 @@ import (
 {{- if .Helpers.PathJoin}}
 {{template "pathjoin_helpers"}}
 {{- end}}
+{{- if .Helpers.DecodePath}}
+{{template "decodepath_helpers"}}
+{{- end}}
 {{- if .Helpers.ExactProperties}}
 {{template "exact_properties_helper"}}
 {{- end}}
@@ -41,6 +44,9 @@ import (
 {{- end}}
 {{- if .Helpers.DateTime}}
 {{template "datetime_helpers"}}
+{{- end}}
+{{- if .Helpers.IPAddr}}
+{{template "ipaddr_helpers"}}
 {{- end}}
 {{- if .Helpers.Canonical}}
 {{template "canonical_helpers"}}

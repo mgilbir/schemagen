@@ -17,7 +17,7 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 	c.AdditionalProperties = nil
 	c._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Circle")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -46,7 +46,9 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"radius", jsonDecodeValue[float64]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -62,7 +64,7 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 			"radius",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		c._jsonKeys = make(map[string]bool, len(raw))
@@ -133,7 +135,7 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	r._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Rectangle")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -163,7 +165,10 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"height", jsonDecodeValue[float64]},
+			{"width", jsonDecodeValue[float64]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -180,7 +185,7 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 			"width",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		r._jsonKeys = make(map[string]bool, len(raw))
@@ -295,7 +300,7 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 	d._jsonKeys = nil
 	d.Shape = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Drawing")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -326,7 +331,9 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 
 	{
@@ -430,7 +437,7 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			"shape",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))

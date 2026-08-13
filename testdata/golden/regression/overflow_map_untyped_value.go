@@ -216,7 +216,7 @@ func (o *OverflowMapUntypedValueObjReqValue) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -423,7 +423,7 @@ type OverflowMapUntypedValue struct {
 func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 	o.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OverflowMapUntypedValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -457,7 +457,14 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"arrLen", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueArrLenValue])},
+			{"bare", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueBareValue])},
+			{"objReq", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueObjReqValue])},
+			{"strLen", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueStrLenValue])},
+			{"typed", jsonDecodeValues(jsonDecodeValue[float64])},
+			{"viaRef", jsonDecodeValues(jsonDecodeValue[AtLeastFive])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -477,12 +484,12 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["typed"]; ok {
-			if err := checkJSONNulls(_v, "typed", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "typed")
 			}
 		}
 		knownFields := map[string]bool{
@@ -502,7 +509,7 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 			}
 			var val OverflowMapUntypedValueValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			o.AdditionalProperties[rawKey] = val
 		}

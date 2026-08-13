@@ -74,10 +74,10 @@ type RefSiblingTypeArr []any
 
 func (r *RefSiblingTypeArr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeArr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeArr
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeArr against its JSON Schema constraints.
@@ -89,10 +89,10 @@ type RefSiblingTypeBounded string
 
 func (r *RefSiblingTypeBounded) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeBounded")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeBounded
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeBounded against its JSON Schema constraints.
@@ -107,10 +107,10 @@ type RefSiblingTypeBoundedElemItem string
 
 func (r *RefSiblingTypeBoundedElemItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeBoundedElemItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeBoundedElemItem
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeBoundedElemItem against its JSON Schema constraints.
@@ -125,10 +125,10 @@ type RefSiblingTypeBoundedMapvValue string
 
 func (r *RefSiblingTypeBoundedMapvValue) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeBoundedMapvValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeBoundedMapvValue
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeBoundedMapvValue against its JSON Schema constraints.
@@ -143,10 +143,10 @@ type RefSiblingTypeElemItem string
 
 func (r *RefSiblingTypeElemItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeElemItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeElemItem
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeElemItem against its JSON Schema constraints.
@@ -158,10 +158,10 @@ type RefSiblingTypeMapvValue string
 
 func (r *RefSiblingTypeMapvValue) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeMapvValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeMapvValue
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeMapvValue against its JSON Schema constraints.
@@ -173,10 +173,10 @@ type RefSiblingTypeNum float64
 
 func (r *RefSiblingTypeNum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeNum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeNum
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeNum against its JSON Schema constraints.
@@ -188,10 +188,10 @@ type RefSiblingTypeStr string
 
 func (r *RefSiblingTypeStr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeStr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeStr
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeStr against its JSON Schema constraints.
@@ -203,10 +203,10 @@ type RefSiblingTypeBoundedSlotItem0 string
 
 func (r *RefSiblingTypeBoundedSlotItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeBoundedSlotItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeBoundedSlotItem0
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeBoundedSlotItem0 against its JSON Schema constraints.
@@ -221,10 +221,10 @@ type RefSiblingTypeSlotItem0 string
 
 func (r *RefSiblingTypeSlotItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeSlotItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeSlotItem0
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingTypeSlotItem0 against its JSON Schema constraints.
@@ -254,7 +254,7 @@ func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
 	r._jsonKeys = nil
 	r._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingType")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -293,7 +293,19 @@ func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"arr", jsonDecodeValue[RefSiblingTypeArr]},
+			{"bounded", jsonDecodeValue[*RefSiblingTypeBounded]},
+			{"boundedElem", jsonDecodeItems(jsonDecodeValue[RefSiblingTypeBoundedElemItem])},
+			{"boundedMapv", jsonDecodeValues(jsonDecodeValue[RefSiblingTypeBoundedMapvValue])},
+			{"boundedSlot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"elem", jsonDecodeItems(jsonDecodeValue[RefSiblingTypeElemItem])},
+			{"mapv", jsonDecodeValues(jsonDecodeValue[RefSiblingTypeMapvValue])},
+			{"num", jsonDecodeValue[*RefSiblingTypeNum]},
+			{"plain", jsonDecodeValue[*MinLen3]},
+			{"slot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"str", jsonDecodeValue[*RefSiblingTypeStr]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -314,27 +326,27 @@ func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
 			"str",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["boundedElem"]; ok {
-			if err := checkJSONNulls(_v, "boundedElem", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "boundedElem")
 			}
 		}
 		if _v, ok := raw["boundedMapv"]; ok {
-			if err := checkJSONNulls(_v, "boundedMapv", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "boundedMapv")
 			}
 		}
 		if _v, ok := raw["elem"]; ok {
-			if err := checkJSONNulls(_v, "elem", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "elem")
 			}
 		}
 		if _v, ok := raw["mapv"]; ok {
-			if err := checkJSONNulls(_v, "mapv", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapv")
 			}
 		}
 		r._jsonKeys = make(map[string]bool, len(raw))

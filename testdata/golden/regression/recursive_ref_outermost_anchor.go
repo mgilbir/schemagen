@@ -33,7 +33,7 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -50,7 +50,7 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 			}
 			var val *Inner
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			i.AdditionalProperties[rawKey] = val
 		}

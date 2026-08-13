@@ -30,21 +30,21 @@ type {{.Name}} {{goType .Underlying}}
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type {{.Name}}")
+		return jsonValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- with .NullCheck}}
 	{{- /* The elements this container holds. The check above answers for the
 	       container itself; a null *inside* one is erased by the decode below --
 	       []string turns [null] into [""] and reports nothing. */}}
-	if _err := checkJSONNulls(data, "", {{template "nullrule" .}}); _err != nil {
+	if _err := checkJSONNullsAt(data, {{template "nullrule" .}}); _err != nil {
 		return _err
 	}
 	{{- end}}
 	{{- if .UnmarshalAs}}
 	var _target {{.UnmarshalAs}}
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.Name}}(_target)
 	return nil
@@ -68,7 +68,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- end}}
 	var _iv {{goType .LeafDecode.ShadowType}}
 	if _err := json.Unmarshal(data, &_iv); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.LeafDecode.Convert}}
 	return nil
@@ -76,18 +76,18 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type {{.Name}}")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
 	{{- if .StrictInteger}}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 	{{- end}}
 	// Float notation with nothing after the point (1.0, 1e2), read exactly.
 	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
@@ -96,10 +96,15 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 	{{- else}}
+	{{- /* The refusal is read for the schema's words before it leaves. What
+	       encoding/json writes here names the shadow: `cannot unmarshal object
+	       into Go value of type p.Alias` -- a type that exists for four lines
+	       inside this function, qualified by whichever package the caller
+	       generated into. Issue #282. */}}
 	type Alias {{.Name}}
-	return json.Unmarshal(data, (*Alias)({{$recv}}))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
 	{{- end}}
 }
 {{- end}}

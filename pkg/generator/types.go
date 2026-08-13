@@ -786,6 +786,79 @@ func (d *StructDef) DecodeJSONNames() []string {
 	return names
 }
 
+// DecodeMemberDef is one member the opening struct decode fills, together with
+// the Go expression that decodes a value at that member's position on its own.
+// See StructDef.DecodeMembers.
+type DecodeMemberDef struct {
+	JSONName string
+	// Decoder is a func([]byte) error built out of the emitted jsonDecode*
+	// helpers, and is what the member's position would have been decoded by had
+	// it been decoded alone.
+	Decoder string
+}
+
+// DecodeMembers lists the members of the opening struct decode, so that a decode
+// which failed can be traced back to the position at fault.
+//
+// encoding/json reports a refusal in the words of the Go value it was filling: a
+// field path through the `type Alias T` shadow that decode goes through, with no
+// array index in it at all, or -- where the member's own type refused -- whatever
+// that type said, with nothing in front of it. Neither is a path into the
+// caller's document. Issue #282.
+//
+// So the members are described once here and put to their own decode again, one
+// at a time, after a decode has already failed. Each decoder is built from the
+// position's own Go type, and from its shadow where it has one: a member whose
+// decode goes through jsonInteger has to be probed through jsonInteger too, or a
+// number written 1.0 would be reported as the fault in a document whose fault is
+// somewhere else entirely.
+//
+// A member held back for hand decoding is not one of them, for the reason it is
+// not one of DecodeJSONNames: it is tagged `json:"-"`, the opening decode never
+// sees it, and the block that does read it wraps its own refusal. Neither is a
+// oneOf, whose property is decoded into a json.RawMessage that nothing refuses,
+// and whose branch loop reports for itself.
+func (d *StructDef) DecodeMembers() []DecodeMemberDef {
+	var members []DecodeMemberDef
+	for i := range d.Fields {
+		f := &d.Fields[i]
+		if f.ManualJSON || f.JSONName == "" {
+			continue
+		}
+		t := f.Type
+		if f.LeafDecode != nil {
+			t = f.LeafDecode.ShadowType
+		}
+		members = append(members, DecodeMemberDef{
+			JSONName: f.JSONName,
+			Decoder:  decodeMemberExpr(t),
+		})
+	}
+	return members
+}
+
+// decodeMemberExpr is the decode of one position, written over the emitted
+// helpers.
+//
+// A slice and a map are opened up rather than decoded whole, because the whole
+// is where the index and the key go missing: decoding into a []T reports the
+// element's refusal with nothing saying which element it was. Everything else --
+// a scalar, a named type, a pointer to either -- is decoded as itself.
+//
+// A pointer is deliberately not descended through. encoding/json fills a
+// settable pointer with nil for a JSON null without consulting the type's own
+// UnmarshalJSON at all, so a probe that dropped the pointer would refuse a null
+// the real decode accepts, and name a member that is not at fault.
+func decodeMemberExpr(t GoType) string {
+	switch v := t.(type) {
+	case *ArrayType:
+		return "jsonDecodeItems(" + decodeMemberExpr(v.ItemType) + ")"
+	case *MapType:
+		return "jsonDecodeValues(" + decodeMemberExpr(v.ValueType) + ")"
+	}
+	return "jsonDecodeValue[" + t.GoTypeName() + "]"
+}
+
 // NeedsExactPropertyDecode reports whether UnmarshalJSON has to hand its opening
 // struct decode an object cut down to the properties the schema declares, rather
 // than the document itself.

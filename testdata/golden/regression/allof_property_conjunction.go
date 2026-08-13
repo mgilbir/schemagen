@@ -118,7 +118,9 @@ func (c *CapBranch) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"viaRef", jsonDecodeValue[*CapBranchViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -238,10 +240,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionConstAgainstEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionConstAgainstEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionConstAgainstEnum
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionConstAgainstEnum against its JSON Schema constraints.
@@ -258,10 +260,10 @@ type AllOfPropertyConjunctionDeclared string
 
 func (a *AllOfPropertyConjunctionDeclared) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionDeclared")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionDeclared
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionDeclared against its JSON Schema constraints.
@@ -285,10 +287,10 @@ type AllOfPropertyConjunctionDocumented string
 
 func (a *AllOfPropertyConjunctionDocumented) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionDocumented")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionDocumented
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionDocumented against its JSON Schema constraints.
@@ -308,10 +310,10 @@ type AllOfPropertyConjunctionDocumentedWriteOnly string
 
 func (a *AllOfPropertyConjunctionDocumentedWriteOnly) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionDocumentedWriteOnly")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionDocumentedWriteOnly
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionDocumentedWriteOnly against its JSON Schema constraints.
@@ -340,10 +342,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionEnumBranchNarrower) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionEnumBranchNarrower")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionEnumBranchNarrower
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionEnumBranchNarrower against its JSON Schema constraints.
@@ -371,10 +373,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionEnumRootNarrower) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionEnumRootNarrower")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionEnumRootNarrower
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionEnumRootNarrower against its JSON Schema constraints.
@@ -391,16 +393,16 @@ type AllOfPropertyConjunctionHighBound int64
 
 func (a *AllOfPropertyConjunctionHighBound) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionHighBound")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionHighBound")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionHighBound(_i)
@@ -413,7 +415,7 @@ func (a *AllOfPropertyConjunctionHighBound) UnmarshalJSON(data []byte) error {
 		*a = AllOfPropertyConjunctionHighBound(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionHighBound against its JSON Schema constraints.
@@ -428,16 +430,16 @@ type AllOfPropertyConjunctionHighBoundRootTighter int64
 
 func (a *AllOfPropertyConjunctionHighBoundRootTighter) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionHighBoundRootTighter")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionHighBoundRootTighter")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionHighBoundRootTighter(_i)
@@ -450,7 +452,7 @@ func (a *AllOfPropertyConjunctionHighBoundRootTighter) UnmarshalJSON(data []byte
 		*a = AllOfPropertyConjunctionHighBoundRootTighter(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionHighBoundRootTighter against its JSON Schema constraints.
@@ -465,10 +467,10 @@ type AllOfPropertyConjunctionLenRootTighter string
 
 func (a *AllOfPropertyConjunctionLenRootTighter) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionLenRootTighter")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionLenRootTighter
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionLenRootTighter against its JSON Schema constraints.
@@ -483,16 +485,16 @@ type AllOfPropertyConjunctionLowBound int64
 
 func (a *AllOfPropertyConjunctionLowBound) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionLowBound")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionLowBound")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionLowBound(_i)
@@ -505,7 +507,7 @@ func (a *AllOfPropertyConjunctionLowBound) UnmarshalJSON(data []byte) error {
 		*a = AllOfPropertyConjunctionLowBound(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionLowBound against its JSON Schema constraints.
@@ -520,16 +522,16 @@ type AllOfPropertyConjunctionLowBoundRootTighter int64
 
 func (a *AllOfPropertyConjunctionLowBoundRootTighter) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionLowBoundRootTighter")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionLowBoundRootTighter")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionLowBoundRootTighter(_i)
@@ -542,7 +544,7 @@ func (a *AllOfPropertyConjunctionLowBoundRootTighter) UnmarshalJSON(data []byte)
 		*a = AllOfPropertyConjunctionLowBoundRootTighter(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionLowBoundRootTighter against its JSON Schema constraints.
@@ -557,10 +559,10 @@ type AllOfPropertyConjunctionNestedA string
 
 func (a *AllOfPropertyConjunctionNestedA) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNestedA")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionNestedA
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionNestedA against its JSON Schema constraints.
@@ -585,7 +587,7 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNested")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -616,7 +618,10 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[AllOfPropertyConjunctionNestedA]},
+			{"b", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -641,7 +646,7 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -709,16 +714,16 @@ type AllOfPropertyConjunctionNumberMeetsInteger int64
 
 func (a *AllOfPropertyConjunctionNumberMeetsInteger) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNumberMeetsInteger")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionNumberMeetsInteger")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionNumberMeetsInteger(_i)
@@ -731,7 +736,7 @@ func (a *AllOfPropertyConjunctionNumberMeetsInteger) UnmarshalJSON(data []byte) 
 		*a = AllOfPropertyConjunctionNumberMeetsInteger(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionNumberMeetsInteger against its JSON Schema constraints.
@@ -754,10 +759,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionNumberSpelling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNumberSpelling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionNumberSpelling
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionNumberSpelling against its JSON Schema constraints.
@@ -774,10 +779,10 @@ type AllOfPropertyConjunctionPatternFirstWins string
 
 func (a *AllOfPropertyConjunctionPatternFirstWins) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionPatternFirstWins")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionPatternFirstWins
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionPatternFirstWins against its JSON Schema constraints.
@@ -792,10 +797,10 @@ type AllOfPropertyConjunctionReversed string
 
 func (a *AllOfPropertyConjunctionReversed) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionReversed")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionReversed
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionReversed against its JSON Schema constraints.
@@ -813,10 +818,10 @@ type AllOfPropertyConjunctionTwice string
 
 func (a *AllOfPropertyConjunctionTwice) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionTwice")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionTwice
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionTwice against its JSON Schema constraints.
@@ -834,16 +839,16 @@ type AllOfPropertyConjunctionTypeBranchNarrower int64
 
 func (a *AllOfPropertyConjunctionTypeBranchNarrower) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionTypeBranchNarrower")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionTypeBranchNarrower")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionTypeBranchNarrower(_i)
@@ -856,7 +861,7 @@ func (a *AllOfPropertyConjunctionTypeBranchNarrower) UnmarshalJSON(data []byte) 
 		*a = AllOfPropertyConjunctionTypeBranchNarrower(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionTypeBranchNarrower against its JSON Schema constraints.
@@ -868,16 +873,16 @@ type AllOfPropertyConjunctionTypeRootNarrower int64
 
 func (a *AllOfPropertyConjunctionTypeRootNarrower) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionTypeRootNarrower")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AllOfPropertyConjunctionTypeRootNarrower")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AllOfPropertyConjunctionTypeRootNarrower(_i)
@@ -890,7 +895,7 @@ func (a *AllOfPropertyConjunctionTypeRootNarrower) UnmarshalJSON(data []byte) er
 		*a = AllOfPropertyConjunctionTypeRootNarrower(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AllOfPropertyConjunctionTypeRootNarrower against its JSON Schema constraints.
@@ -902,10 +907,10 @@ type AllOfPropertyConjunctionViaRef string
 
 func (a *AllOfPropertyConjunctionViaRef) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionViaRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfPropertyConjunctionViaRef
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfPropertyConjunctionViaRef against its JSON Schema constraints.
@@ -957,7 +962,7 @@ func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunction")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1006,7 +1011,29 @@ func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"branchOnly", jsonDecodeValue[*string]},
+			{"constAgainstEnum", jsonDecodeValue[*AllOfPropertyConjunctionConstAgainstEnum]},
+			{"declared", jsonDecodeValue[*AllOfPropertyConjunctionDeclared]},
+			{"documented", jsonDecodeValue[*AllOfPropertyConjunctionDocumented]},
+			{"documentedWriteOnly", jsonDecodeValue[*AllOfPropertyConjunctionDocumentedWriteOnly]},
+			{"enumBranchNarrower", jsonDecodeValue[*AllOfPropertyConjunctionEnumBranchNarrower]},
+			{"enumRootNarrower", jsonDecodeValue[*AllOfPropertyConjunctionEnumRootNarrower]},
+			{"highBound", jsonDecodeValue[*AllOfPropertyConjunctionHighBound]},
+			{"highBoundRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionHighBoundRootTighter]},
+			{"lenRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionLenRootTighter]},
+			{"lowBound", jsonDecodeValue[*AllOfPropertyConjunctionLowBound]},
+			{"lowBoundRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionLowBoundRootTighter]},
+			{"nested", jsonDecodeValue[*AllOfPropertyConjunctionNested]},
+			{"numberMeetsInteger", jsonDecodeValue[*AllOfPropertyConjunctionNumberMeetsInteger]},
+			{"numberSpelling", jsonDecodeValue[*AllOfPropertyConjunctionNumberSpelling]},
+			{"patternFirstWins", jsonDecodeValue[*AllOfPropertyConjunctionPatternFirstWins]},
+			{"reversed", jsonDecodeValue[*AllOfPropertyConjunctionReversed]},
+			{"twice", jsonDecodeValue[*AllOfPropertyConjunctionTwice]},
+			{"typeBranchNarrower", jsonDecodeValue[*AllOfPropertyConjunctionTypeBranchNarrower]},
+			{"typeRootNarrower", jsonDecodeValue[*AllOfPropertyConjunctionTypeRootNarrower]},
+			{"viaRef", jsonDecodeValue[*AllOfPropertyConjunctionViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1042,7 +1069,7 @@ func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,7 +78,7 @@ func writeSharedHelpers(t *testing.T, dir, content string) {
 // make. The families are matched by prefix rather than by name so that a helper
 // added to a block is covered the day it is written -- a list of names is what
 // failed on PR #59 and again on the format block.
-var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|_dyn\w*|_schemaNode|_evalNode)\(`)
+var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|jsonDecode\w*|jsonValueErrorf|jsonElemErrorf|jsonPathf|jsonElemPathf|checkJSONNullsAt|_dyn\w*|_schemaNode|_evalNode)\(`)
 
 // TestHelperFileDeclaresEveryHelperCalled compiles the one claim the helper file
 // has to satisfy: everything the generated code calls, it declares.
@@ -140,10 +141,20 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 					declared = string(helperSrc)
 				}
 
-				for _, m := range helperCallPattern.FindAllStringSubmatch(string(src), -1) {
-					name := m[1]
-					if !declaresFunc(declared, name) {
-						t.Errorf("%s calls %s, which the helper file does not declare", filepath.Base(path), name)
+				// The helper file is held to the same claim as the generated
+				// types, and against itself as well as against them. Which
+				// helpers a package needs is read from what the *types* call,
+				// and a call from one helper block to another appears in no
+				// types file at all -- the null walker's refusal is built by
+				// jsonValueErrorf, and a schema with one string property names
+				// the walker and never the constructor. See
+				// HelperSet.CloseOverCalls and issue #282.
+				for _, src := range []string{string(src), declared} {
+					for _, m := range helperCallPattern.FindAllStringSubmatch(src, -1) {
+						name := m[1]
+						if !declaresFunc(declared, name) {
+							t.Errorf("%s calls %s, which the helper file does not declare", filepath.Base(path), name)
+						}
 					}
 				}
 			})
@@ -151,12 +162,94 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 	}
 }
 
-// declaresFunc reports whether src declares a function of this name. The type
-// parameter list is optional: three of the integer rebuilders are generic, and
-// matching only "func name(" reported them as undeclared when they were right
-// there.
+// TestHelperFileDeclaresWhatItsOwnBlocksCall is the same claim for a call made
+// inside the helper file, which is a hole the fixture walk above cannot see.
+//
+// Which helpers a package needs is read from what the generated *types* call,
+// and a call from one helper block to another appears in no types file at all.
+// The blocks that refuse a document at decode time -- the null walker, the two
+// numeric shadows, the date-time and ip shadows, the decode trace -- all build
+// their refusal with the path-join constructors, and a schema can reach any of
+// them while naming none of those constructors itself. See
+// HelperSet.CloseOverCalls and issue #282.
+//
+// The schemas below are the smallest that do it, and they are inline rather than
+// corpus fixtures because that is the property being pinned: `{"properties":
+// {"b":{}}}` names jsonDecodeMemberError and nothing else at all. Every corpus
+// schema outside the adversarial set happens to name a constructor for some
+// other reason, so the fixture walk passes with the closure removed.
+func TestHelperFileDeclaresWhatItsOwnBlocksCall(t *testing.T) {
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatalf("creating emitter: %v", err)
+	}
+	for _, tc := range []struct {
+		name   string
+		schema string
+		why    string
+	}{
+		{"one untyped property", `{"properties":{"b":{}}}`,
+			"the types file names jsonDecodeMemberError and no other helper"},
+		{"a nullable property", `{"properties":{"b":{"type":["string","null"]}}}`,
+			"the same, with the null admitted so no null rule is emitted either"},
+		{"a container alias", `{"type":"array","items":{"type":"string"}}`,
+			"the null walker is reached from the alias template, which has no path to put in front of it"},
+		{"an integer property", `{"properties":{"n":{"type":"integer"}}}`,
+			"the integer shadow"},
+		{"a date-time property", `{"properties":{"d":{"type":"string","format":"date-time"}}}`,
+			"the date-time shadow"},
+		{"an ipv4 property", `{"properties":{"a":{"type":"string","format":"ipv4"}}}`,
+			"the ip shadows"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var s schema.Schema
+			if err := json.Unmarshal([]byte(tc.schema), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			ir, err := generator.New(generator.Config{
+				PackageName:     "testpkg",
+				OmitEmpty:       true,
+				FormatAssertion: true,
+			}).Generate(&s)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			src, err := em.Emit(ir)
+			if err != nil {
+				t.Fatalf("emit: %v", err)
+			}
+			helperSrc, needed, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
+			if err != nil {
+				t.Fatalf("emitting helpers: %v", err)
+			}
+			declared := ""
+			if needed {
+				declared = string(helperSrc)
+			}
+			for _, text := range []string{string(src), declared} {
+				for _, m := range helperCallPattern.FindAllStringSubmatch(text, -1) {
+					if !declaresFunc(declared, m[1]) {
+						t.Errorf("%s: %s is called and not declared (%s)", tc.name, m[1], tc.why)
+					}
+				}
+			}
+		})
+	}
+}
+
+// declaresFunc reports whether src declares this name. The type parameter list
+// is optional: three of the integer rebuilders are generic, and matching only
+// "func name(" reported them as undeclared when they were right there.
+//
+// A type of the same name counts, because the pattern above cannot tell a call
+// from a conversion and does not need to: `jsonInteger(_i)` and `jsonIPv4Addr(_a)`
+// are conversions to the shadows the same block declares, and what is being
+// asked either way is whether the file the name appears in has it.
 func declaresFunc(src, name string) bool {
-	return regexp.MustCompile(`func\s+` + regexp.QuoteMeta(name) + `\s*[\[(]`).MatchString(src)
+	q := regexp.QuoteMeta(name)
+	return regexp.MustCompile(`func\s+`+q+`\s*[\[(]`).MatchString(src) ||
+		regexp.MustCompile(`(?m)^type\s+`+q+`\b`).MatchString(src)
 }
 
 // allRegressionSchemas lists every schema fixture in the tree, which is the

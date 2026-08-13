@@ -37,6 +37,40 @@ const dateTimeShadowName = "jsonDateTime"
 // stay descriptions of the same leaf.
 const dateTimeGoTypeName = "time.Time"
 
+// ipv4ShadowName and ipv6ShadowName are the types an asserted `format: ipv4` or
+// `format: ipv6` is decoded through, and they are here for the reason
+// jsonDateTime is: the Go type the format maps to refuses a value in words of
+// its own, and those words are the parser's rather than the schema's.
+//
+// netip.Addr is filled through encoding.TextUnmarshaler, whose error
+// encoding/json passes back untouched -- so `{"a":"nope"}` came back as
+// `ParseAddr("nope"): unable to parse IP`: no path, no keyword, and no mention
+// of the format the document broke. The same format one sibling string keyword
+// away is held as a string and answered with `"nope" is not a valid IPv4
+// address`, which the generator already knows how to write. See issue #282.
+//
+// Two shadows rather than one because the two messages differ, and the message
+// is the whole point: which of them a position takes is decided from the format
+// at that position (see leafIPFormat). Neither shadow judges the address family
+// -- ParseAddr accepts "::1" for both -- because that verdict is Validate's, and
+// moving it here would change what the decode refuses.
+const (
+	ipv4ShadowName = "jsonIPv4Addr"
+	ipv6ShadowName = "jsonIPv6Addr"
+)
+
+// ipAddrGoTypeName is the Go type an asserted ipv4 or ipv6 format maps to. See
+// formatGoType, which is where the mapping is made.
+const ipAddrGoTypeName = "netip.Addr"
+
+// ipShadowName is the shadow one of the two ip formats is decoded through.
+func ipShadowName(format string) string {
+	if format == "ipv6" {
+		return ipv6ShadowName
+	}
+	return ipv4ShadowName
+}
+
 // LeafDecodeDef says how one decode position recovers its declared value from
 // JSON that encoding/json would otherwise read into the wrong thing.
 //
@@ -82,6 +116,12 @@ type LeafDecodeDef struct {
 	Integers  bool
 	Numbers   bool
 	DateTimes bool
+	// IPAddrs says this decode replaced a netip.Addr leaf. Unlike the three
+	// above it does not select a sentence of commentary -- the shadow changes
+	// only the words a bad address is refused in, and the decode it performs is
+	// the one that always ran -- but it is recorded beside them so that a
+	// position's leaves are described in one place.
+	IPAddrs bool
 }
 
 // leafShadowVar is the variable the Convert expression reads. Every site that
@@ -110,6 +150,13 @@ type shadowLeaves struct {
 	integers  bool
 	numbers   bool
 	dateTimes bool
+	// ipAddr is the ip format governing this position's netip.Addr leaf, and is
+	// empty where the position has none. It is a format rather than a flag
+	// because the two formats are refused in different words and so are decoded
+	// through different shadows; the walk descends only containers, so one
+	// position reaches at most one such leaf and one answer settles it. See
+	// leafIPFormat.
+	ipAddr string
 }
 
 // leafShadowType replaces every leaf the walk is asked for with its shadow
@@ -133,6 +180,9 @@ func leafShadowType(t GoType, want shadowLeaves) (GoType, bool) {
 		}
 		if want.dateTimes && v.Name == dateTimeGoTypeName {
 			return &PrimitiveType{Name: dateTimeShadowName}, true
+		}
+		if want.ipAddr != "" && v.Name == ipAddrGoTypeName {
+			return &PrimitiveType{Name: ipShadowName(want.ipAddr)}, true
 		}
 	case *PointerType:
 		if inner, ok := leafShadowType(v.Inner, want); ok {
@@ -170,6 +220,9 @@ func leafConvert(t GoType, expr string, depth int, want shadowLeaves) string {
 		}
 		if want.dateTimes && v.Name == dateTimeGoTypeName {
 			return dateTimeGoTypeName + "(" + expr + ")"
+		}
+		if want.ipAddr != "" && v.Name == ipAddrGoTypeName {
+			return ipAddrGoTypeName + "(" + expr + ")"
 		}
 		return "int64(" + expr + ")"
 	case *PointerType:
@@ -213,6 +266,7 @@ func (g *Generator) leafDecodeFor(t GoType, s *schema.Schema) *LeafDecodeDef {
 		integers:  !g.requiresStrictIntegerToken(s),
 		numbers:   g.config.ExactNumbers,
 		dateTimes: true,
+		ipAddr:    leafIPFormat(t, s),
 	}
 	shadow, ok := leafShadowType(t, want)
 	if !ok {
@@ -224,7 +278,47 @@ func (g *Generator) leafDecodeFor(t GoType, s *schema.Schema) *LeafDecodeDef {
 		Integers:   want.integers && typeHoldsLeaf(t, "int64"),
 		Numbers:    want.numbers && typeHoldsLeaf(t, GoNumberTypeName),
 		DateTimes:  want.dateTimes && typeHoldsLeaf(t, dateTimeGoTypeName),
+		IPAddrs:    want.ipAddr != "",
 	}
+}
+
+// leafIPFormat is the ip format governing this position's netip.Addr leaf, or ""
+// where the position holds none.
+//
+// The schema is descended in step with the Go type, through the same containers
+// the shadow walk descends and no others, so what is found is the format of the
+// leaf that will be replaced. Reading the format off the outermost schema would
+// answer for the wrong position -- an array of ipv4 states the format on its
+// items -- and searching the schema on its own would run into a $ref that
+// contains itself. The Go type is finite by construction, so this walk ends.
+//
+// A nil schema, or a container whose element schema is absent, answers "": the
+// position keeps the decode it had, which is the behaviour every position had
+// before the shadow existed.
+func leafIPFormat(t GoType, s *schema.Schema) string {
+	if s == nil {
+		return ""
+	}
+	switch v := t.(type) {
+	case *PrimitiveType:
+		if v.Name != ipAddrGoTypeName || s.Format == nil {
+			return ""
+		}
+		if *s.Format == "ipv4" || *s.Format == "ipv6" {
+			return *s.Format
+		}
+	case *PointerType:
+		return leafIPFormat(v.Inner, s)
+	case *ArrayType:
+		if s.Items != nil && s.Items.Schema != nil {
+			return leafIPFormat(v.ItemType, s.Items.Schema)
+		}
+	case *MapType:
+		if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
+			return leafIPFormat(v.ValueType, s.AdditionalProperties.Schema)
+		}
+	}
+	return ""
 }
 
 // typeHoldsLeaf reports whether the type reaches a primitive of this name

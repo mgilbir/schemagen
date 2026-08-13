@@ -21,7 +21,7 @@ const (
 // the enum would reject a document its own schema admits.
 func (i *IntEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type IntEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _iv jsonInteger
 	if _err := _iv.UnmarshalJSON(data); _err != nil {
@@ -45,11 +45,11 @@ type IntAlias IntEnum
 
 func (i *IntAlias) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type IntAlias")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target IntEnum
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*i = IntAlias(_target)
 	return nil
@@ -112,7 +112,7 @@ type RawAlias RawEnum
 func (r *RawAlias) UnmarshalJSON(data []byte) error {
 	var _target RawEnum
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*r = RawAlias(_target)
 	return nil
@@ -148,7 +148,7 @@ func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 	e._jsonKeys = nil
 	e._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EnumAliasDelegation")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -179,7 +179,11 @@ func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"num", jsonDecodeValue[IntAlias]},
+			{"raw", jsonDecodeValue[RawAlias]},
+			{"raw_list", jsonDecodeItems(jsonDecodeValue[RawAlias])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -196,7 +200,7 @@ func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 			"raw_list",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))

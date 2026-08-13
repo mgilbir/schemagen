@@ -16,7 +16,7 @@ type Base struct {
 func (b *Base) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Base")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -46,7 +46,10 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"condition", jsonDecodeValue[*string]},
+			{"delay", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -63,7 +66,7 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 			"delay",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -119,7 +122,7 @@ func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TriggerToolItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -148,7 +151,9 @@ func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"id", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -164,7 +169,7 @@ func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
 			"id",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))
@@ -260,7 +265,7 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 	t._jsonRawProps = nil
 	t._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Trigger")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -296,7 +301,16 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"condition", jsonDecodeValue[*string]},
+			{"default", jsonDecodeValue[any]},
+			{"delay", jsonDecodeValue[*string]},
+			{"message", jsonDecodeValue[*string]},
+			{"notify", jsonDecodeItems(jsonDecodeValue[string])},
+			{"title", jsonDecodeValue[*string]},
+			{"tool", jsonDecodeItems(jsonDecodeValue[TriggerToolItem])},
+			{"type", jsonDecodeValue[*TriggerType]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -313,7 +327,7 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 			"delay",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		t._jsonRawProps = raw

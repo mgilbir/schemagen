@@ -12,7 +12,7 @@
 {{define "enum_null_guard"}}
 {{- if .NeedsNullCheck}}
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type {{.Name}}")
+		return jsonValueErrorf("null is not allowed")
 	}
 {{- end}}
 {{- end}}
@@ -85,7 +85,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	       type carries the base type and none of the methods, so the decode
 	       cannot re-enter this one. */}}
 	type Alias {{.Name}}
-	return json.Unmarshal(data, (*Alias)({{$recv}}))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
 }
 {{- end}}
 

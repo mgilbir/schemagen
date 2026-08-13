@@ -450,7 +450,7 @@ func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableCompositionBranchesAnyObj")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -479,7 +479,9 @@ func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -495,7 +497,7 @@ func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))
@@ -707,7 +709,7 @@ func (n *NullableCompositionBranches) UnmarshalJSON(data []byte) error {
 	n._jsonKeys = nil
 	n._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableCompositionBranches")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -748,7 +750,21 @@ func (n *NullableCompositionBranches) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"anyArr", jsonDecodeValue[*[]string]},
+			{"anyBound", jsonDecodeValue[NullableCompositionBranchesAnyBound]},
+			{"anyConst", jsonDecodeValue[NullableCompositionBranchesAnyConst]},
+			{"anyEmpty", jsonDecodeValue[NullableCompositionBranchesAnyEmpty]},
+			{"anyEnum", jsonDecodeValue[*NullableCompositionBranchesAnyEnum]},
+			{"anyFalse", jsonDecodeValue[NullableCompositionBranchesAnyFalse]},
+			{"anyItems", jsonDecodeValue[NullableCompositionBranchesAnyItems]},
+			{"anyLen", jsonDecodeValue[NullableCompositionBranchesAnyLen]},
+			{"anyMinIt", jsonDecodeValue[NullableCompositionBranchesAnyMinIt]},
+			{"anyObj", jsonDecodeValue[*NullableCompositionBranchesAnyObj]},
+			{"anyPlain", jsonDecodeValue[*string]},
+			{"oneConst", jsonDecodeValue[NullableCompositionBranchesOneConst]},
+			{"oneMapVal", jsonDecodeValue[NullableCompositionBranchesOneMapVal]},
+		})
 	}
 	{
 		if _rawErr != nil {

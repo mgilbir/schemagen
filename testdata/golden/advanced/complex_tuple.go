@@ -13,10 +13,10 @@ type Timestamp string
 
 func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Timestamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Timestamp
-	return json.Unmarshal(data, (*Alias)(t))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
 }
 
 // Validate checks Timestamp against its JSON Schema constraints.
@@ -29,10 +29,10 @@ type EventRecordItem0 string
 
 func (e *EventRecordItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EventRecordItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EventRecordItem0
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks EventRecordItem0 against its JSON Schema constraints.
@@ -75,7 +75,7 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	e._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EventRecordItem2")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -106,7 +106,10 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"code", jsonDecodeValue[*jsonInteger]},
+			{"level", jsonDecodeValue[EventRecordItem2Level]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -131,7 +134,7 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 			"level",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))
@@ -210,10 +213,10 @@ type EventRecord []any
 
 func (e *EventRecord) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type EventRecord")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EventRecord
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks EventRecord against its JSON Schema constraints.

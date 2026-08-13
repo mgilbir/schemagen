@@ -19,7 +19,7 @@ func (a *AnyOfSummary) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfSummary")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -48,7 +48,9 @@ func (a *AnyOfSummary) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -64,7 +66,7 @@ func (a *AnyOfSummary) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -153,7 +155,7 @@ func (a *AnyOfSummaryFalse) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfSummaryFalse")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -182,7 +184,9 @@ func (a *AnyOfSummaryFalse) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -198,7 +202,7 @@ func (a *AnyOfSummaryFalse) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -501,7 +505,7 @@ func (h *HiddenKeywordSpellingsPatternConstNull) UnmarshalJSON(data []byte) erro
 	h.AdditionalProperties = nil
 	h.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type HiddenKeywordSpellingsPatternConstNull")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias HiddenKeywordSpellingsPatternConstNull
 	aux := &struct {
@@ -511,7 +515,7 @@ func (h *HiddenKeywordSpellingsPatternConstNull) UnmarshalJSON(data []byte) erro
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -616,10 +620,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (h *HiddenKeywordSpellingsPatternConstStringPattern0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type HiddenKeywordSpellingsPatternConstStringPattern0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias HiddenKeywordSpellingsPatternConstStringPattern0
-	return json.Unmarshal(data, (*Alias)(h))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(h)))
 }
 
 // Validate checks HiddenKeywordSpellingsPatternConstStringPattern0 against its JSON Schema constraints.
@@ -641,7 +645,7 @@ func (h *HiddenKeywordSpellingsPatternConstString) UnmarshalJSON(data []byte) er
 	h.AdditionalProperties = nil
 	h.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type HiddenKeywordSpellingsPatternConstString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias HiddenKeywordSpellingsPatternConstString
 	aux := &struct {
@@ -651,7 +655,7 @@ func (h *HiddenKeywordSpellingsPatternConstString) UnmarshalJSON(data []byte) er
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -776,7 +780,7 @@ func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
 	h.AdditionalProperties = nil
 	h._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type HiddenKeywordSpellings")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -812,7 +816,16 @@ func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"anyOfSummaryEmptyEnum", jsonDecodeValue[*AnyOfSummary]},
+			{"anyOfSummaryFalse", jsonDecodeValue[*AnyOfSummaryFalse]},
+			{"constNullBranch", jsonDecodeValue[HiddenKeywordSpellingsConstNullBranch]},
+			{"constStringBranch", jsonDecodeValue[HiddenKeywordSpellingsConstStringBranch]},
+			{"oneOfConstNull", jsonDecodeValue[HiddenKeywordSpellingsOneOfConstNull]},
+			{"patternConstNull", jsonDecodeValue[*HiddenKeywordSpellingsPatternConstNull]},
+			{"patternConstString", jsonDecodeValue[*HiddenKeywordSpellingsPatternConstString]},
+			{"plainEnum", jsonDecodeValue[*HiddenKeywordSpellingsPlainEnum]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -833,7 +846,7 @@ func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
 			"plainEnum",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		h._jsonKeys = make(map[string]bool, len(raw))

@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type PrimitiveTypes struct {
@@ -21,7 +20,7 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	p._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PrimitiveTypes")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -55,7 +54,13 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"bool_field", jsonDecodeValue[*bool]},
+			{"int_field", jsonDecodeValue[*jsonInteger]},
+			{"nullable_str", jsonDecodeValue[*string]},
+			{"num_field", jsonDecodeValue[*float64]},
+			{"str_field", jsonDecodeValue[*string]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -82,7 +87,7 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 			"str_field",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		// The properties whose schema permits a null. The decode above has

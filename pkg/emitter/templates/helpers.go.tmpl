@@ -47,12 +47,19 @@ func jsonElemErrorf(format string, args ...any) error {
 
 // jsonPathf puts the path segment that reaches a value in front of an error the
 // value itself raised, joined the way that error says it has to be.
+//
+// What it builds opens with a member name, and says so, so that a container of
+// its own joins it with the "." a member name takes. That was already the
+// default for an unmarked error, and is recorded rather than assumed because a
+// decode refusal arriving from encoding/json or from a leaf's own parser is
+// unmarked too and is a sentence rather than a path -- the two have to be told
+// apart, and only the message that is a path can say so. See jsonDecodeRefusal.
 func jsonPathf(err error, segFormat string, args ...any) error {
 	sep := "."
 	if p, ok := err.(interface{ JSONPathSeparator() string }); ok {
 		sep = p.JSONPathSeparator()
 	}
-	return fmt.Errorf("%s%s%w", fmt.Sprintf(segFormat, args...), sep, err)
+	return jsonPathError{sep: ".", err: fmt.Errorf("%s%s%w", fmt.Sprintf(segFormat, args...), sep, err)}
 }
 
 // jsonElemPathf is jsonPathf for a segment that is an accessor rather than a
@@ -60,6 +67,215 @@ func jsonPathf(err error, segFormat string, args ...any) error {
 // to be told as much.
 func jsonElemPathf(err error, segFormat string, args ...any) error {
 	return jsonPathError{sep: "", err: jsonPathf(err, segFormat, args...)}
+}
+{{- end}}
+
+{{define "decodepath_helpers"}}
+// jsonMemberDecode is one member a schema declares, together with the decode
+// that member's own position performs. See jsonDecodeMemberError.
+type jsonMemberDecode struct {
+	name   string
+	decode func([]byte) error
+}
+
+// jsonDecodeMemberError gives a refusal raised while decoding an object the path
+// of the value that caused it.
+//
+// encoding/json decodes every member in one call and reports the first refusal
+// in its own words. None of the three forms that come back is a path into the
+// caller's document: a Go field path carrying the `type Alias T` shadow this
+// file decodes through and no array index at all (`.Alias.items.Alias.name`); a
+// sentence about a Go type from a leaf that answers for itself (`cannot
+// unmarshal string into Go value of type int64`); or, where a member's own type
+// refused, whatever that type said with nothing in front of it -- which is how
+// {"name":null} and {"owner":{"name":null}} came back as one message naming a
+// property that was not at fault. Issue #282.
+//
+// So once a decode has already failed, each declared member the document
+// carries is put to its own decode again, on its own. The member that refuses is
+// the position at fault, and its message is joined to that member's name by the
+// same rule every other message is joined by (see jsonPathError). Decoding the
+// value alone is also what takes the Alias out of the message: the destination
+// is the member's own type rather than a field of a shadow struct.
+//
+// It runs only after a decode has failed, so a document that decodes pays
+// nothing at all for it. Members are visited in the order the schema declares
+// them, so a document with two faults fails the same way every time. If no
+// member refuses -- the refusal came from a position this list does not describe
+// -- the decode's own error is what is reported, in the words it always used.
+func jsonDecodeMemberError(data []byte, err error, members []jsonMemberDecode) error {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return jsonDecodeRefusal(err)
+	}
+	for _, m := range members {
+		v, ok := raw[m.name]
+		if !ok {
+			continue
+		}
+		if mErr := m.decode(v); mErr != nil {
+			return jsonPathf(mErr, "%s", m.name)
+		}
+	}
+	return jsonDecodeRefusal(err)
+}
+
+// jsonDecodeValue is the decode of a position that holds a T, which is what the
+// member decode of a scalar, a named type or a pointer to either is made of.
+func jsonDecodeValue[T any](data []byte) error {
+	var v T
+	return jsonDecodeRefusal(json.Unmarshal(data, &v))
+}
+
+// jsonDecodeItems is the decode of a position that holds an array, run one
+// element at a time so that the element at fault is named by its index. The
+// index is what encoding/json's own message has never carried: a caller with a
+// 200-element array learns nothing from "Go struct field .Alias.items".
+func jsonDecodeItems(elem func([]byte) error) func([]byte) error {
+	return func(data []byte) error {
+		var elems []json.RawMessage
+		if err := json.Unmarshal(data, &elems); err != nil {
+			return jsonDecodeRefusal(err)
+		}
+		for i, e := range elems {
+			if err := elem(e); err != nil {
+				return jsonElemPathf(err, "[%d]", i)
+			}
+		}
+		return nil
+	}
+}
+
+// jsonDecodeValues is jsonDecodeItems for a position that holds a map, naming
+// the key at fault. Keys are visited in order for the reason checkJSONNullsAt
+// sorts them: range order over a map is unspecified, and a document carrying two
+// bad values would otherwise fail differently from one run to the next.
+func jsonDecodeValues(elem func([]byte) error) func([]byte) error {
+	return func(data []byte) error {
+		var vals map[string]json.RawMessage
+		if err := json.Unmarshal(data, &vals); err != nil {
+			return jsonDecodeRefusal(err)
+		}
+		keys := make([]string, 0, len(vals))
+		for k := range vals {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := elem(vals[k]); err != nil {
+				return jsonElemPathf(err, "[%q]", k)
+			}
+		}
+		return nil
+	}
+}
+
+// jsonDecodeRefusal says what has to be written between a decode refusal and the
+// path of the value it was raised on, and puts a refusal encoding/json worded
+// from the Go type it was filling into the words the schema is written in.
+//
+// A message this file built already carries the answer and is passed through
+// untouched -- that is what tells a nested type's path (`b.c: ...`, joined with
+// a ".") from a sentence about the value itself (`null is not allowed`, joined
+// with a ": "). Anything else reaching here came from encoding/json or from a
+// leaf's own parser, and is a sentence: an unmarked message is not a path, so
+// gluing a "." in front of one invents a step the document does not have.
+func jsonDecodeRefusal(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := err.(interface{ JSONPathSeparator() string }); ok {
+		return err
+	}
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		if want := jsonDecodeTypeName(fmt.Sprint(typeErr.Type), typeErr.Type.Kind().String()); want != "" {
+			// encoding/json writes the literal beside the kind, and only there,
+			// when the token was of the kind the destination wanted and the
+			// value would not go into it -- 1e400 for a number, 1.5 for an
+			// integer on a draft that requires the integer token. "expected
+			// number, got number 1e400" would be a mystery; what is wrong with
+			// the document is the value, not its type.
+			if lit, over := strings.CutPrefix(typeErr.Value, "number "); over {
+				return jsonValueErrorf("value %s cannot be held as %s", lit, jsonDecodeArticled(want))
+			}
+			return jsonValueErrorf("expected %s, got %s", want, jsonDecodeTokenName(typeErr.Value))
+		}
+	}
+	return jsonValueErrorf("%s", err)
+}
+
+// jsonDecodeTypeName is the JSON type a Go destination was standing for, or ""
+// where nothing here can say -- in which case the refusal is reported in the
+// words it arrived in rather than in words invented for it.
+//
+// name is the destination type, package qualifier and all, and is asked first:
+// a Go kind cannot answer for the leaves this file decodes a schema value
+// through. json.Number and its shadow are strings underneath and stand for a
+// JSON number; jsonDateTime is a time.Time and stands for a JSON string; and
+// jsonInteger's kind says int64, which is also what a schema "number" held in a
+// float64 would have to be told apart from.
+//
+// The kind answers for everything else, including every type generated from the
+// schema, which is why there is no list of those here to fall out of step with
+// the ones the generator emits.
+func jsonDecodeTypeName(name, kind string) string {
+	switch name {
+	case "json.Number":
+		return "number"
+	case "time.Time", "netip.Addr":
+		return "string"
+	}
+	// The shadows are unexported, so what reaches here is qualified by whichever
+	// package the types were generated into.
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	switch name {
+	case "jsonInteger":
+		return "integer"
+	case "jsonNumber":
+		return "number"
+	case "jsonDateTime":
+		return "string"
+	}
+	switch kind {
+	case "string":
+		return "string"
+	case "bool":
+		return "boolean"
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
+		return "integer"
+	case "float32", "float64":
+		return "number"
+	case "slice", "array":
+		return "array"
+	case "map", "struct":
+		return "object"
+	}
+	return ""
+}
+
+// jsonDecodeArticled writes a JSON type name with the article that goes in front
+// of it, for the one message that reads as a sentence about a value.
+func jsonDecodeArticled(name string) string {
+	if name == "integer" {
+		return "an integer"
+	}
+	return "a " + name
+}
+
+// jsonDecodeTokenName is the JSON kind encoding/json saw, in the vocabulary the
+// schema is written in: JSON Schema spells the type "boolean". Every other
+// spelling encoding/json uses -- "string", "number", "array", "object", "null",
+// and the "number <literal>" it writes for a value no destination holds -- is
+// already the schema's own.
+func jsonDecodeTokenName(value string) string {
+	if value == "bool" {
+		return "boolean"
+	}
+	return value
 }
 {{- end}}
 
@@ -300,7 +516,13 @@ type jsonInteger int64
 
 func (j *jsonInteger) UnmarshalJSON(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type int64")
+		// In the schema's own words, and not in the destination type's, because
+		// this is the one refusal at a scalar position encoding/json does not
+		// raise itself: a type that answers for its own decode is handed the
+		// bytes, so its error is the whole message. Saying `Go value of type
+		// int64` here is what left an integer the odd one out among the scalars.
+		// See jsonDecodeRefusal and issue #282.
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
@@ -315,7 +537,12 @@ func (j *jsonInteger) UnmarshalJSON(data []byte) error {
 		*j = jsonInteger(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	// In the schema's words: the two ways a number fails here -- a fractional
+	// part, and a magnitude no int64 holds -- are one sentence to a caller who
+	// asked for an integer, and int64 is a fact about this program rather than
+	// about their document. The same sentence is what jsonDecodeRefusal writes
+	// where encoding/json raised the refusal instead. Issue #282.
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // jsonIntegerFromLiteral reads a JSON number literal as an int64, exactly.
@@ -454,7 +681,11 @@ type jsonNumber json.Number
 
 func (j *jsonNumber) UnmarshalJSON(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type number")
+		// In the schema's words for the reason jsonInteger's is: a type that
+		// answers for its own decode is handed the bytes, so encoding/json never
+		// words this one and `Go value of type number` is the only thing the
+		// caller is told. See jsonDecodeRefusal and issue #282.
+		return jsonValueErrorf("expected number, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
@@ -484,9 +715,16 @@ func (j *jsonNumber) UnmarshalJSON(data []byte) error {
 //
 // The retry is deliberately narrow: it respells those two positions and hands
 // the result to the same decoder, so what is accepted is exactly what that
-// decoder accepts once the case is settled. Nothing else is loosened, and the
-// error returned on failure is the first one, so every value that was malformed
-// for some other reason is refused in the words it always used.
+// decoder accepts once the case is settled. Nothing else is loosened, and no
+// value the format admits reaches the refusal below.
+//
+// What is refused is refused in the schema's words rather than the parser's.
+// time.Time is read from a layout, and a layout's complaint is about the layout
+// -- `parsing time "nope" as "2006-01-02T15:04:05Z07:00": cannot parse "nope" as
+// "2006"` names neither the keyword nor anything the caller wrote. The same
+// format one sibling keyword away is held as a string and answered with `"nope"
+// is not a valid date-time (RFC 3339)`, which is the message this one now gives
+// too. See schemagenFormatDateTime and issue #282.
 //
 // The respelling is done to the JSON literal's own bytes rather than to a
 // decoded string, so there is nothing to re-quote afterwards and no escape to
@@ -510,23 +748,106 @@ func (j *jsonDateTime) UnmarshalJSON(data []byte) error {
 		*j = jsonDateTime(_t)
 		return nil
 	}
-	if len(data) < 22 {
+	if len(data) >= 22 {
+		// Index 11 is the "T" position of the value; the offset's "Z" is the
+		// byte before the closing quote.
+		_upper := append([]byte(nil), data...)
+		if _upper[11] == 't' {
+			_upper[11] = 'T'
+		}
+		if _upper[len(_upper)-2] == 'z' {
+			_upper[len(_upper)-2] = 'Z'
+		}
+		if json.Unmarshal(_upper, &_t) == nil {
+			*j = jsonDateTime(_t)
+			return nil
+		}
+	}
+	return jsonDateTimeRefusal(data)
+}
+
+// jsonDateTimeRefusal words the refusal above. A value that is a JSON string is
+// a date-time that does not hold, and is answered for as one.
+//
+// A value that is not a JSON string is a type error, and is reported by the
+// string decode rather than by time.Time's: `Time.UnmarshalJSON: input is not a
+// JSON string` names a Go method and not the token the document carried, while
+// the string decode's refusal names the token and is read for the schema's own
+// words by jsonDecodeRefusal.
+func jsonDateTimeRefusal(data []byte) error {
+	var _s string
+	if _err := json.Unmarshal(data, &_s); _err != nil {
 		return _err
 	}
-	// Index 11 is the "T" position of the value; the offset's "Z" is the byte
-	// before the closing quote.
-	_upper := append([]byte(nil), data...)
-	if _upper[11] == 't' {
-		_upper[11] = 'T'
-	}
-	if _upper[len(_upper)-2] == 'z' {
-		_upper[len(_upper)-2] = 'Z'
-	}
-	if json.Unmarshal(_upper, &_t) != nil {
+	return jsonValueErrorf("%q is not a valid date-time (RFC 3339)", _s)
+}
+{{- end}}
+
+{{define "ipaddr_helpers"}}
+// jsonIPv4Addr and jsonIPv6Addr are the decode destinations for an asserted
+// `format: ipv4` and `format: ipv6`, and they exist because netip.Addr refuses a
+// bad address in the parser's words rather than the schema's.
+//
+// netip.Addr is filled through encoding.TextUnmarshaler, and encoding/json hands
+// an Unmarshaler's error straight back, so `{"a":"nope"}` came back as
+// `ParseAddr("nope"): unable to parse IP` -- which names no path, no keyword and
+// nothing the caller wrote. One sibling string keyword away the same format at
+// the same position is held as a string and answered with `"nope" is not a valid
+// IPv4 address`, from schemagenFormatIPv4. These say the same thing, so a format
+// reads the same however the position it sits at happens to be typed. Issue
+// #282.
+//
+// Neither judges the address family: netip.ParseAddr accepts "::1" for an ipv4
+// position and 1.2.3.4 for an ipv6 one, and so did the decode these replace.
+// That verdict belongs to schemagenFormatIPv4Addr and schemagenFormatIPv6Addr in
+// Validate, and moving it here would change what a document is refused by rather
+// than what it is refused in.
+type jsonIPv4Addr netip.Addr
+
+func (j *jsonIPv4Addr) UnmarshalJSON(data []byte) error {
+	_a, _err := jsonIPAddrDecode(data, "IPv4")
+	if _err != nil {
 		return _err
 	}
-	*j = jsonDateTime(_t)
+	*j = jsonIPv4Addr(_a)
 	return nil
+}
+
+type jsonIPv6Addr netip.Addr
+
+func (j *jsonIPv6Addr) UnmarshalJSON(data []byte) error {
+	_a, _err := jsonIPAddrDecode(data, "IPv6")
+	if _err != nil {
+		return _err
+	}
+	*j = jsonIPv6Addr(_a)
+	return nil
+}
+
+// jsonIPAddrDecode reads an address, refusing a string that names none in the
+// words the format is asserted in. family is the spelling that goes in the
+// message, and is the only thing that differs between the two shadows.
+//
+// What is accepted is exactly what netip.Addr's own decoder accepted, so that
+// this changes the words a document is refused in and never the documents. That
+// includes the empty string, which that decoder reads as the zero address and
+// reports nothing for.
+func jsonIPAddrDecode(data []byte, family string) (netip.Addr, error) {
+	var _s string
+	if _err := json.Unmarshal(data, &_s); _err != nil {
+		// Not a JSON string at all, which is a type error rather than a bad
+		// address: encoding/json's own message names the token it saw, and
+		// nothing here can recover that once the decode has failed.
+		return netip.Addr{}, _err
+	}
+	if _s == "" {
+		return netip.Addr{}, nil
+	}
+	_a, _err := netip.ParseAddr(_s)
+	if _err != nil {
+		return netip.Addr{}, jsonValueErrorf("%q is not a valid %s address", _s, family)
+	}
+	return _a, nil
 }
 {{- end}}
 
@@ -773,17 +1094,16 @@ type jsonNullRule struct {
 	Elem   *jsonNullRule
 }
 
-// checkJSONNulls reports the first position beneath data at which the document
-// carries a null the schema does not admit. path names that position, and is
-// empty where the value handed in is the whole of what the caller answers for
-// and no path reaches it -- a container alias, say, whose elements are then
-// named by the accessor alone.
+// checkJSONNullsAt reports the first position beneath data at which the document
+// carries a null the schema does not admit, as a message relative to data
+// itself: the caller puts its own path in front, by the rule that path takes.
 //
-// An empty path is never the position reported, so the format above never writes
-// a bare colon: a caller with no path is one whose own value its container has
-// already answered for, and it hands in a rule whose outermost Reject is clear.
-// A guard for that case was written here and removed, because nothing could make
-// it fire and a check that cannot fail says nothing about the code around it.
+// Relative rather than given a path to print, because who joins decides how. The
+// same walk is reached from a named member, from an entry of an overflow map,
+// and from a container alias whose own value its container has already answered
+// for -- a member name, an accessor and nothing at all -- and a walk that built
+// the path itself could not tell a "." from a "[" without being told. See
+// jsonPathError.
 //
 // It reads the raw JSON rather than the decoded value because the decoded value
 // no longer holds the answer. encoding/json turns an explicit null into a nil
@@ -794,13 +1114,13 @@ type jsonNullRule struct {
 // A value whose shape does not match the rule is passed over rather than
 // reported. The decoder has already had its say about the type, and a second
 // complaint from here would be a worse-worded version of the same one.
-func checkJSONNulls(data []byte, path string, rule *jsonNullRule) error {
+func checkJSONNullsAt(data []byte, rule *jsonNullRule) error {
 	if rule == nil {
 		return nil
 	}
 	if string(data) == "null" {
 		if rule.Reject {
-			return fmt.Errorf("%s: null is not allowed", path)
+			return jsonValueErrorf("null is not allowed")
 		}
 		return nil
 	}
@@ -821,8 +1141,8 @@ func checkJSONNulls(data []byte, path string, rule *jsonNullRule) error {
 		// them would otherwise fail differently from one run to the next.
 		sort.Strings(keys)
 		for _, k := range keys {
-			if err := checkJSONNulls(obj[k], fmt.Sprintf("%s[%q]", path, k), rule.Elem); err != nil {
-				return err
+			if err := checkJSONNullsAt(obj[k], rule.Elem); err != nil {
+				return jsonElemPathf(err, "[%q]", k)
 			}
 		}
 		return nil
@@ -832,8 +1152,8 @@ func checkJSONNulls(data []byte, path string, rule *jsonNullRule) error {
 		return nil
 	}
 	for i, v := range arr {
-		if err := checkJSONNulls(v, fmt.Sprintf("%s[%d]", path, i), rule.Elem); err != nil {
-			return err
+		if err := checkJSONNullsAt(v, rule.Elem); err != nil {
+			return jsonElemPathf(err, "[%d]", i)
 		}
 	}
 	return nil

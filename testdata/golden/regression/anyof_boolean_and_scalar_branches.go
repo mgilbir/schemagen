@@ -152,7 +152,7 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) er
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfBooleanAndScalarBranchesFalseBranch")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -181,7 +181,9 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) er
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -197,7 +199,7 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) er
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -426,7 +428,7 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) er
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfBooleanAndScalarBranchesObjectsOnly")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -456,7 +458,10 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) er
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"j", jsonDecodeValue[*string]},
+			{"k", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -473,7 +478,7 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) er
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -704,7 +709,7 @@ func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyOfBooleanAndScalarBranches")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -739,7 +744,15 @@ func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"bareObjectBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesBareObjectBranch]},
+			{"constBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesConstBranch]},
+			{"falseBranch", jsonDecodeValue[*AnyOfBooleanAndScalarBranchesFalseBranch]},
+			{"mixed", jsonDecodeValue[AnyOfBooleanAndScalarBranchesMixed]},
+			{"notBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesNotBranch]},
+			{"objectsOnly", jsonDecodeValue[*AnyOfBooleanAndScalarBranchesObjectsOnly]},
+			{"trueBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesTrueBranch]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -759,7 +772,7 @@ func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
 			"objectsOnly",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

@@ -35,7 +35,7 @@ func (o *OneOfRequiredOnlyObjectValueOption0) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -136,7 +136,7 @@ func (o *OneOfRequiredOnlyObjectValueOption1) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -264,7 +264,7 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 	o._jsonRawProps = nil
 	o.Value = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfRequiredOnlyObject")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OneOfRequiredOnlyObject
 	aux := &struct {
@@ -274,7 +274,7 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 
 	{

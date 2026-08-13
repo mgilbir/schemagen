@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 	"unicode/utf8"
 )
 
@@ -12,10 +11,10 @@ type OneOfStringLengthVariants string
 
 func (o *OneOfStringLengthVariants) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfStringLengthVariants")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OneOfStringLengthVariants
-	return json.Unmarshal(data, (*Alias)(o))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(o)))
 }
 
 // Validate checks OneOfStringLengthVariants against its JSON Schema constraints.

@@ -37,6 +37,11 @@ type errorPathFixture struct {
 	Name   string
 	Schema string
 	Cases  []errorPathCase
+	// Config is applied to the generator configuration this fixture is built
+	// under, for the fixtures whose message depends on one -- a "format" is an
+	// assertion or an annotation by flag, and the two produce different types at
+	// the same position. Left nil, the fixture is built under the defaults.
+	Config func(*generator.Config)
 }
 
 // TestErrorPathsNameTheDocument holds every validation message to a path a
@@ -481,11 +486,15 @@ func runErrorPathFixtures(t *testing.T, module string, fixtures []errorPathFixtu
 				t.Fatalf("loading schema: %v", err)
 			}
 			s.Normalize()
-			ir, err := generator.New(generator.Config{
+			cfg := generator.Config{
 				PackageName:  "testpkg",
 				OmitEmpty:    true,
 				RootTypeName: "Root",
-			}).Generate(s)
+			}
+			if fx.Config != nil {
+				fx.Config(&cfg)
+			}
+			ir, err := generator.New(cfg).Generate(s)
 			if err != nil {
 				t.Fatalf("generating IR: %v", err)
 			}

@@ -21,7 +21,7 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 	u.AdditionalProperties = nil
 	u._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type UserProfile")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -54,7 +54,12 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"age", jsonDecodeValue[*jsonInteger]},
+			{"bio", jsonDecodeValue[*string]},
+			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+			{"username", jsonDecodeValue[string]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -80,12 +85,12 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 			"username",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "tags")
 			}
 		}
 		u._jsonKeys = make(map[string]bool, len(raw))

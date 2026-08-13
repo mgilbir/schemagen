@@ -18,7 +18,7 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ArrayTypesMetadataItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -48,7 +48,10 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"key", jsonDecodeValue[string]},
+			{"value", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -65,7 +68,7 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 			"value",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -136,7 +139,7 @@ type ArrayTypes struct {
 func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ArrayTypes")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -167,25 +170,29 @@ func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"metadata", jsonDecodeItems(jsonDecodeValue[ArrayTypesMetadataItem])},
+			{"scores", jsonDecodeItems(jsonDecodeValue[float64])},
+			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+		})
 	}
 	{
 		if _rawErr != nil {
 			return _rawErr
 		}
 		if _v, ok := raw["metadata"]; ok {
-			if err := checkJSONNulls(_v, "metadata", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "metadata")
 			}
 		}
 		if _v, ok := raw["scores"]; ok {
-			if err := checkJSONNulls(_v, "scores", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "scores")
 			}
 		}
 		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "tags")
 			}
 		}
 		knownFields := map[string]bool{

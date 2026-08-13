@@ -53,7 +53,9 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"p", jsonDecodeItems(jsonDecodeValue[jsonInteger])},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -68,8 +70,8 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 			return _rawErr
 		}
 		if _v, ok := raw["p"]; ok {
-			if err := checkJSONNulls(_v, "p", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "p")
 			}
 		}
 		knownFields := map[string]bool{

@@ -90,7 +90,7 @@ func (n *NeverWithK) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NeverWithK")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NeverWithK
 	aux := &struct {
@@ -100,7 +100,7 @@ func (n *NeverWithK) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -164,7 +164,7 @@ func (n *NoNames) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NoNames")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NoNames
 	aux := &struct {
@@ -174,7 +174,7 @@ func (n *NoNames) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -405,7 +405,7 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) UnmarshalJSON(data []byte) e
 	i.AdditionalProperties = nil
 	i.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InlineForbiddingPositionsEmptyEnumPattern")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias InlineForbiddingPositionsEmptyEnumPattern
 	aux := &struct {
@@ -415,7 +415,7 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) UnmarshalJSON(data []byte) e
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -504,7 +504,7 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) UnmarshalJSON(data []byt
 	i.AdditionalProperties = nil
 	i._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InlineForbiddingPositionsEmptyEnumUnevalProps")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -533,7 +533,9 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) UnmarshalJSON(data []byt
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1482,7 +1484,7 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 	i._jsonKeys = nil
 	i._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InlineForbiddingPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1541,7 +1543,39 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"emptyEnumAllOf", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAllOf]},
+			{"emptyEnumAnyOf", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAnyOf]},
+			{"emptyEnumBranch", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumBranch]},
+			{"emptyEnumContains", jsonDecodeItems(jsonDecodeValue[any])},
+			{"emptyEnumDependent", jsonDecodeValue[*NeverWithK]},
+			{"emptyEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumItemsItem])},
+			{"emptyEnumNames", jsonDecodeValue[*NoNames]},
+			{"emptyEnumPattern", jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumPattern]},
+			{"emptyEnumSlot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"emptyEnumUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
+			{"emptyEnumUnevalProps", jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumUnevalProps]},
+			{"emptyEnumValues", jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumValuesValue])},
+			{"falseItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsFalseItemsItem])},
+			{"inferredEmptyEnumItems", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumItems]},
+			{"inferredEmptyEnumSlot", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumSlot]},
+			{"inferredEmptyEnumTail", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumTail]},
+			{"nestedFalseItems", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNestedFalseItemsItemItem]))},
+			{"notAnyOfEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotAnyOfEmptyEnum]},
+			{"notEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnum]},
+			{"notEmptyEnumBound", jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnumBound]},
+			{"notEmptyItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNotEmptyItemsItem])},
+			{"notTypedConst", jsonDecodeValue[InlineForbiddingPositionsNotTypedConst]},
+			{"notTypedEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotTypedEmptyEnum]},
+			{"nullableEmptyEnumValues", jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsNullableEmptyEnumValuesValue])},
+			{"nullableFalseItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNullableFalseItemsItem])},
+			{"okEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsOkEnumItemsItem])},
+			{"plainItems", jsonDecodeItems(jsonDecodeValue[string])},
+			{"refEmptyEnumAnyOf", jsonDecodeValue[InlineForbiddingPositionsRefEmptyEnumAnyOf]},
+			{"typedEmptyEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsTypedEmptyEnumItemsItem])},
+			{"viaRefEmptyEnum", jsonDecodeItems(jsonDecodeValue[NeverEnum])},
+			{"viaRefFalse", jsonDecodeItems(jsonDecodeValue[Never])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1568,62 +1602,62 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 			"refEmptyEnumAnyOf",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["emptyEnumItems"]; ok {
-			if err := checkJSONNulls(_v, "emptyEnumItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "emptyEnumItems")
 			}
 		}
 		if _v, ok := raw["emptyEnumValues"]; ok {
-			if err := checkJSONNulls(_v, "emptyEnumValues", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "emptyEnumValues")
 			}
 		}
 		if _v, ok := raw["falseItems"]; ok {
-			if err := checkJSONNulls(_v, "falseItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "falseItems")
 			}
 		}
 		if _v, ok := raw["nestedFalseItems"]; ok {
-			if err := checkJSONNulls(_v, "nestedFalseItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "nestedFalseItems")
 			}
 		}
 		if _v, ok := raw["nullableEmptyEnumValues"]; ok {
-			if err := checkJSONNulls(_v, "nullableEmptyEnumValues", &jsonNullRule{IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "nullableEmptyEnumValues")
 			}
 		}
 		if _v, ok := raw["nullableFalseItems"]; ok {
-			if err := checkJSONNulls(_v, "nullableFalseItems", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "nullableFalseItems")
 			}
 		}
 		if _v, ok := raw["okEnumItems"]; ok {
-			if err := checkJSONNulls(_v, "okEnumItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "okEnumItems")
 			}
 		}
 		if _v, ok := raw["plainItems"]; ok {
-			if err := checkJSONNulls(_v, "plainItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "plainItems")
 			}
 		}
 		if _v, ok := raw["typedEmptyEnumItems"]; ok {
-			if err := checkJSONNulls(_v, "typedEmptyEnumItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "typedEmptyEnumItems")
 			}
 		}
 		if _v, ok := raw["viaRefEmptyEnum"]; ok {
-			if err := checkJSONNulls(_v, "viaRefEmptyEnum", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "viaRefEmptyEnum")
 			}
 		}
 		if _v, ok := raw["viaRefFalse"]; ok {
-			if err := checkJSONNulls(_v, "viaRefFalse", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "viaRefFalse")
 			}
 		}
 		i._jsonKeys = make(map[string]bool, len(raw))

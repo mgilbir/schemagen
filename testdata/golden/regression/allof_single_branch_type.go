@@ -11,10 +11,10 @@ type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Addr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Addr
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
@@ -38,10 +38,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (c *Choice) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Choice")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Choice
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks Choice against its JSON Schema constraints.
@@ -98,10 +98,10 @@ type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Stamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Stamp
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -113,10 +113,10 @@ type WrappedAddr string
 
 func (w *WrappedAddr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type WrappedAddr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias WrappedAddr
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks WrappedAddr against its JSON Schema constraints.
@@ -140,10 +140,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (w *WrappedChoice) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type WrappedChoice")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias WrappedChoice
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks WrappedChoice against its JSON Schema constraints.
@@ -171,10 +171,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (w *WrappedLevel) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type WrappedLevel")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias WrappedLevel
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks WrappedLevel against its JSON Schema constraints.
@@ -231,10 +231,10 @@ type WrappedStamp string
 
 func (w *WrappedStamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type WrappedStamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias WrappedStamp
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks WrappedStamp against its JSON Schema constraints.
@@ -259,7 +259,7 @@ func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSingleBranchType")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -292,7 +292,13 @@ func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"addr", jsonDecodeValue[*WrappedAddr]},
+			{"choice", jsonDecodeValue[WrappedChoice]},
+			{"level", jsonDecodeValue[*WrappedLevel]},
+			{"raw", jsonDecodeValue[WrappedRaw]},
+			{"stamp", jsonDecodeValue[WrappedStamp]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -311,7 +317,7 @@ func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
 			"stamp",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
