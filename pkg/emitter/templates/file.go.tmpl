@@ -10,11 +10,25 @@ package {{.PackageName}}
 //	{{.}}
 {{- end}}
 //
-// Whatever those references said is not in this file. A position that held one
-// is `any` -- no Validate to call, no decode that can fail -- or names a type
-// nothing here declares, so every document reaches your code unexamined at
-// those places, including the ones the schema forbids. Supply the referenced
-// documents, or drop --lenient-refs to have generation refuse instead.
+// Whatever those references said is not in this file. Where `any` fitted the
+// position that held one, it is `any` -- no Validate to call, no decode that
+// can fail -- so every document reaches your code unexamined there, including
+// the ones the schema forbids. Supply the referenced documents, or drop
+// --lenient-refs to have generation refuse instead.
+{{- if .UndeclaredRefTypes}}
+//
+// DOES NOT COMPILE: `any` did not fit every position one of those refs held --
+// an array element, a map value and a oneOf variant each need a name -- so this
+// file spells names nothing declares:
+//
+{{- range .UndeclaredRefTypes}}
+//	{{.Ref}} -> {{.TypeName}}
+{{- end}}
+//
+// Supplying the referenced documents is the fix. Declaring those types by hand
+// in this package is the workaround, and makes the file build without making it
+// check anything.
+{{- end}}
 {{- end}}
 {{- if .Imports}}
 

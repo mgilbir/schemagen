@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FormatCanon",
+  "type": "object",
+  "properties": {
+    "dt": {"type": "string", "format": "date-time"},
+    "v4": {"type": "string", "format": "ipv4"},
+    "v6": {"type": "string", "format": "ipv6"},
+    "d": {"type": "string", "format": "date"},
+    "tm": {"type": "string", "format": "time"},
+    "uid": {"type": "string", "format": "uuid"},
+    "dur": {"type": "string", "format": "duration"},
+    "bounded": {"type": "string", "format": "date-time", "minLength": 1}
+  }
+}
