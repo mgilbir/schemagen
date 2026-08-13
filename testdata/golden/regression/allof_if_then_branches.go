@@ -455,10 +455,7 @@ func (t Trigger) Validate() error {
 				}),
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
-					return fmt.Errorf("if: value does not satisfy the schema")
-				}
-				return fmt.Errorf("if: %s", _rbRes.reason)
+				return fmt.Errorf("%s", _rbRes.reason)
 			}
 		}
 		{
@@ -496,10 +493,7 @@ func (t Trigger) Validate() error {
 				}),
 			}
 			if _rbRes := _evalNode(&_rbNode1, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
-					return fmt.Errorf("if: value does not satisfy the schema")
-				}
-				return fmt.Errorf("if: %s", _rbRes.reason)
+				return fmt.Errorf("%s", _rbRes.reason)
 			}
 		}
 	}

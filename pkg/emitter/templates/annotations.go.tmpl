@@ -539,6 +539,13 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if n.Not != nil && {{$ev}}(n.Not, v{{$sc}}).ok {
 		return res.fail("value matches a forbidden schema")
 	}
+	// The branch that refused names itself, the way a property this node
+	// descended into does. "if" cannot name it: a condition is not an assertion,
+	// so a document is never refused by it -- a condition that fails selects
+	// "else", or, where there is no "else", accepts. A message that opened with
+	// "if" therefore sent the caller to a sub-schema that says nothing about the
+	// value at fault (issue #281), and only this site knows which of "then" and
+	// "else" was the one that ran.
 	if n.If != nil {
 		r := {{$ev}}(n.If, v{{$sc}})
 		if r.ok {
@@ -546,14 +553,14 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			if n.Then != nil {
 				tr := {{$ev}}(n.Then, v{{$sc}})
 				if !tr.ok {
-					return res.fail(tr.reason)
+					return res.fail("then: " + tr.reason)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
 			er := {{$ev}}(n.Else, v{{$sc}})
 			if !er.ok {
-				return res.fail(er.reason)
+				return res.fail("else: " + er.reason)
 			}
 			res.absorb(er)
 		}
