@@ -145,7 +145,23 @@ type StructDef struct {
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
 	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonObject        bool // true when schema has no explicit "type":"object" — silently accept non-object JSON data
+	AcceptNonObject        bool // true when the schema admits a document that is not an object — accept it, keeping the raw bytes, and judge it with NonObjectValidations
+	// RejectObject is set when the schema positively excludes a JSON object at
+	// its own position, and is the same sentence NeedsNullCheck is about a null.
+	//
+	// A struct is chosen from `properties` and its neighbours, which describe an
+	// object without requiring one. Where the schema's `type` names some other
+	// kind -- {"type":"null","properties":{"a":{"type":"string"}}} -- the struct
+	// is a description of the shape an instance would have if it were an object,
+	// and no instance may be. Nothing else in the emitted type says so: a
+	// document that is an object decodes into the fields and never reaches the
+	// non-object hatch, where the type rule lives, so `{}` and `{"a":"x"}` were
+	// accepted outright (issue #270).
+	//
+	// Set by applyTypeReconciliation from the schema as written, which is the
+	// only place that can see it: the merge paths hand generateStructDef a
+	// schema the parent's `type` never reached.
+	RejectObject bool
 }
 
 // NullCheckDef says where a JSON null is forbidden beneath one value, so that

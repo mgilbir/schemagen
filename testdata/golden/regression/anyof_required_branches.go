@@ -12,6 +12,8 @@ type AnyOfRequiredBranches struct {
 	A                    *string                    `json:"a,omitempty"`
 	B                    *string                    `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
@@ -20,6 +22,16 @@ func (a *AnyOfRequiredBranches) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	a._nonObject = false
+	a._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		a._nonObject = true
+		a._rawNonObject = append(a._rawNonObject[:0], data...)
+		return nil
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -91,6 +103,13 @@ func (a *AnyOfRequiredBranches) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (a AnyOfRequiredBranches) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if a._nonObject {
+		if len(a._rawNonObject) > 0 {
+			return a._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias AnyOfRequiredBranches
 	aux := struct {
 		Alias
@@ -113,6 +132,10 @@ func (a AnyOfRequiredBranches) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnyOfRequiredBranches against its JSON Schema constraints.
 func (a AnyOfRequiredBranches) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if a._nonObject {
+		return nil
+	}
 	// object-level anyOf: at least one flattened variant must match.
 	// This check depends on JSON key presence (_jsonKeys), so it is skipped
 	// for hand-constructed values (nil _jsonKeys), consistent with how the

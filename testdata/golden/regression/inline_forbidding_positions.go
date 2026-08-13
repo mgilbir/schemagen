@@ -1555,26 +1555,49 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 		// spelling of the same rule.
 		for _, _nullKey := range []string{
 			"emptyEnumAllOf",
+			"emptyEnumAnyOf",
+			"emptyEnumBranch",
 			"emptyEnumContains",
 			"emptyEnumDependent",
-			"emptyEnumItems",
 			"emptyEnumNames",
 			"emptyEnumPattern",
 			"emptyEnumSlot",
 			"emptyEnumUnevalItems",
 			"emptyEnumUnevalProps",
-			"emptyEnumValues",
-			"falseItems",
 			"notEmptyItems",
-			"viaRefEmptyEnum",
-			"viaRefFalse",
+			"refEmptyEnumAnyOf",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
 			}
 		}
+		if _v, ok := raw["emptyEnumItems"]; ok {
+			if err := checkJSONNulls(_v, "emptyEnumItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["emptyEnumValues"]; ok {
+			if err := checkJSONNulls(_v, "emptyEnumValues", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["falseItems"]; ok {
+			if err := checkJSONNulls(_v, "falseItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
 		if _v, ok := raw["nestedFalseItems"]; ok {
-			if err := checkJSONNulls(_v, "nestedFalseItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			if err := checkJSONNulls(_v, "nestedFalseItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["nullableEmptyEnumValues"]; ok {
+			if err := checkJSONNulls(_v, "nullableEmptyEnumValues", &jsonNullRule{IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["nullableFalseItems"]; ok {
+			if err := checkJSONNulls(_v, "nullableFalseItems", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
 				return err
 			}
 		}
@@ -1590,6 +1613,16 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 		}
 		if _v, ok := raw["typedEmptyEnumItems"]; ok {
 			if err := checkJSONNulls(_v, "typedEmptyEnumItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["viaRefEmptyEnum"]; ok {
+			if err := checkJSONNulls(_v, "viaRefEmptyEnum", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["viaRefFalse"]; ok {
+			if err := checkJSONNulls(_v, "viaRefFalse", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
 				return err
 			}
 		}

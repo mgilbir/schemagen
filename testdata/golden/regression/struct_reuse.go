@@ -18,8 +18,9 @@ func (s *StructReuse) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	s._nonObject = false
 	s._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		s._nonObject = true
 		s._rawNonObject = append(s._rawNonObject[:0], data...)

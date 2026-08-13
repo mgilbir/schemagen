@@ -13,8 +13,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- range $struct.NonObjectValidations}}
 		{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
 		{
-			var num float64
-			if err := json.Unmarshal(v, &num); err == nil {
+			// Decoded through a pointer so that a JSON null is told apart from a
+			// number. encoding/json takes a null into any Go type as a no-op and
+			// reports no error, so a plain float64 came back at its zero and the
+			// bound was measured against a value the document never wrote --
+			// `null` against {"properties":{...},"minimum":5} was refused for
+			// being 0 (issue #270). A numeric keyword does not apply to a value
+			// that is not a number.
+			var _num *float64
+			if err := json.Unmarshal(v, &_num); err == nil && _num != nil {
+				num := *_num
 				{{- if eq .RuleType "ppMinimum"}}
 				if num < {{.Value}} {
 					return fmt.Errorf("value %v is less than minimum {{.Value}}", num)
@@ -46,8 +54,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 		{{- if or (eq .RuleType "ppMinLength") (eq .RuleType "ppMaxLength")}}
 		{
-			var s string
-			if err := json.Unmarshal(v, &s); err == nil {
+			// Through a pointer, so that a null is not measured as the empty
+			// string. See the numeric block above.
+			var _s *string
+			if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+				s := *_s
 				{{- if eq .RuleType "ppMinLength"}}
 				if utf8.RuneCountInString(s) < {{.Value}} {
 					return fmt.Errorf("string length is less than minLength {{.Value}}")
@@ -63,8 +74,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 		{{- if eq .RuleType "ppPattern"}}
 		{
-			var s string
-			if err := json.Unmarshal(v, &s); err == nil {
+			// Through a pointer, so that a null is not matched as the empty
+			// string. See the numeric block above.
+			var _s *string
+			if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+				s := *_s
 				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 					return fmt.Errorf("value does not match pattern {{.Value}}")
 				}
@@ -73,8 +87,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 		{{- if or (eq .RuleType "ppMinItems") (eq .RuleType "ppMaxItems")}}
 		{
-			var arr []json.RawMessage
-			if err := json.Unmarshal(v, &arr); err == nil {
+			// Through a pointer, so that a null is not measured as the empty
+			// array. See the numeric block above.
+			var _arr *[]json.RawMessage
+			if err := json.Unmarshal(v, &_arr); err == nil && _arr != nil {
+				arr := *_arr
 				{{- if eq .RuleType "ppMinItems"}}
 				if len(arr) < {{.Value}} {
 					return fmt.Errorf("array length %d is less than minItems {{.Value}}", len(arr))
@@ -751,8 +768,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
 				{
-					var num float64
-					if err := json.Unmarshal(v, &num); err == nil {
+					// Through a pointer, so that a null is told apart from a
+					// number: encoding/json takes a null into a float64 as a
+					// no-op and reports no error, so the bound was measured
+					// against a zero the document never wrote (issue #270).
+					var _num *float64
+					if err := json.Unmarshal(v, &_num); err == nil && _num != nil {
+						num := *_num
 						{{- if eq .RuleType "ppMinimum"}}
 						if num < {{.Value}} {
 							return fmt.Errorf("patternProperties %s: key %q value %v is less than minimum {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
@@ -784,8 +806,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if or (eq .RuleType "ppMinItems") (eq .RuleType "ppMaxItems")}}
 				{
-					var arr []json.RawMessage
-					if err := json.Unmarshal(v, &arr); err == nil {
+					// Through a pointer, so that a null is not measured as the
+					// empty array. See the numeric block above.
+					var _arr *[]json.RawMessage
+					if err := json.Unmarshal(v, &_arr); err == nil && _arr != nil {
+						arr := *_arr
 						{{- if eq .RuleType "ppMinItems"}}
 						if len(arr) < {{.Value}} {
 							return fmt.Errorf("patternProperties %s: key %q array length %d is less than minItems {{.Value}}", {{printf "%q" $pp.Pattern}}, k, len(arr))
@@ -801,8 +826,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if or (eq .RuleType "ppMinLength") (eq .RuleType "ppMaxLength")}}
 				{
-					var s string
-					if err := json.Unmarshal(v, &s); err == nil {
+					// Through a pointer, so that a null is not measured as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+						s := *_s
 						{{- if eq .RuleType "ppMinLength"}}
 						if utf8.RuneCountInString(s) < {{.Value}} {
 							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
@@ -818,8 +846,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if eq .RuleType "ppPattern"}}
 				{
-					var s string
-					if err := json.Unmarshal(v, &s); err == nil {
+					// Through a pointer, so that a null is not matched as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+						s := *_s
 						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
 							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
 						}

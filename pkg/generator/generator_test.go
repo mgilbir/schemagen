@@ -8673,6 +8673,67 @@ func TestSchemaForbidsNullReadsComposition(t *testing.T) {
 	}
 }
 
+// TestSchemaForbidsKindReadsEveryJSONKind is the same walk asked about the kinds
+// other than null, which is what issue #270 needed from it.
+//
+// The composition arms are already pinned above and are not repeated: one
+// function answers both questions, so an allOf that excludes a null for the
+// reason tested there excludes an object for the same reason. What is here is
+// what the *leaf* has to get right once the argument is no longer "null", and
+// each of these is a line no schema written as text could falsify:
+//
+//   - "integer" and "number" name overlapping sets of values, so neither
+//     excludes the other. Answering on the name alone would make
+//     {"type":"integer"} claim to forbid every number -- and that claim is what
+//     decides whether a struct built from a `properties` sibling keeps the raw
+//     escape hatch its integers need.
+//   - a kind this file cannot name must overlap with everything, or the
+//     predicate stops being "false for what it cannot settle" and starts
+//     excluding on ignorance. Reachable only through a schema built in Go rather
+//     than parsed, which is why it is tested here rather than with a fixture.
+//   - a const or enum member's own kind is what it excludes by, and the null
+//     const has a spelling of its own because the decoder cannot tell {"const":
+//     null} from an absent one.
+func TestSchemaForbidsKindReadsEveryJSONKind(t *testing.T) {
+	g := New(Config{PackageName: "testpkg", OmitEmpty: true})
+	cases := []struct {
+		name   string
+		schema *schema.Schema
+		kind   string
+		want   bool
+	}{
+		{"integer does not forbid a number", &schema.Schema{Type: schema.TypeList{"integer"}}, jsonKindNumber, false},
+		{"number does not forbid an integer", &schema.Schema{Type: schema.TypeList{"number"}}, "integer", false},
+		{"integer forbids a string", &schema.Schema{Type: schema.TypeList{"integer"}}, jsonKindString, true},
+		{"integer forbids an object", &schema.Schema{Type: schema.TypeList{"integer"}}, jsonKindObject, true},
+		{"a type list forbids what it does not name", &schema.Schema{Type: schema.TypeList{"string", "object"}}, jsonKindArray, true},
+		{"a type list forbids nothing it names", &schema.Schema{Type: schema.TypeList{"string", "object"}}, jsonKindObject, false},
+		{"no type forbids nothing", &schema.Schema{}, jsonKindObject, false},
+
+		{"a const excludes every other kind", &schema.Schema{Const: constOf("a")}, jsonKindObject, true},
+		{"a const excludes nothing of its own kind", &schema.Schema{Const: constOf("a")}, jsonKindString, false},
+		{"a numeric const does not exclude an integer", &schema.Schema{Const: constOf(json.Number("5"))}, "integer", false},
+		{"a null const excludes every other kind", &schema.Schema{ConstIsNull: true}, jsonKindString, true},
+		{"a null const does not exclude a null", &schema.Schema{ConstIsNull: true}, jsonKindNull, false},
+
+		{"an enum excludes a kind no member has", &schema.Schema{Enum: []any{"a", "b"}}, jsonKindNumber, true},
+		{"an enum excludes nothing a member has", &schema.Schema{Enum: []any{"a", json.Number("1")}}, jsonKindNumber, false},
+
+		{"a value of no nameable kind excludes nothing", &schema.Schema{Enum: []any{struct{ X int }{}}}, jsonKindString, false},
+		{"and is not itself excluded", &schema.Schema{Enum: []any{struct{ X int }{}}}, jsonKindObject, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := g.schemaForbidsKind(tc.schema, tc.kind); got != tc.want {
+				t.Fatalf("schemaForbidsKind(%v, %q) = %v, want %v", tc.schema, tc.kind, got, tc.want)
+			}
+		})
+	}
+}
+
+// constOf builds the *any a parsed {"const": v} leaves behind.
+func constOf(v any) *any { return &v }
+
 // TestRefOverridingSiblingsDecidesNullAlone pins the draft-dependent half of the
 // same question. Before 2019-09 a $ref replaces every keyword beside it, so
 // {"$ref":"#/definitions/N","type":"string"} is the definition and nothing else

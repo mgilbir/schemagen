@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeNonObjectBounds",
+  "$comment": "Issue #270's third shape in the three families the numeric one shares its rendering with. A bound written beside `properties` and no `type` binds only on the kind it is about, and every one of them judged a JSON null instead -- the decode into a Go string or slice takes a null as a no-op with no error, so the null was measured as \"\" and as an empty array.",
+  "properties": {"a": {"type": "string"}},
+  "minLength": 3,
+  "pattern": "^z",
+  "minItems": 2
+}

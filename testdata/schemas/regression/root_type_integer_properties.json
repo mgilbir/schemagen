@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeIntegerProperties",
+  "$comment": "Issue #270 where the admitted kind is a subset of another. `integer` names some numbers, so a type list that says integer does not exclude the number kind and the raw escape hatch has to stay open for it -- an exclusion decided by comparing the two names would close it and refuse every integer the schema exists to admit.",
+  "type": "integer",
+  "properties": {"a": {"type": "string"}}
+}

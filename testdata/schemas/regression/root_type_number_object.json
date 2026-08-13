@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeNumberObject",
+  "$comment": "Issue #270, the widening direction with a scalar bound beside it. The bound applies to the number half and to nothing else, so the object half must not be measured against it and neither must a null.",
+  "type": ["number", "object"],
+  "properties": {"a": {"type": "string"}},
+  "minimum": 5
+}

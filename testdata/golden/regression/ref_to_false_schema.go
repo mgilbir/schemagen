@@ -355,12 +355,25 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 		for _, _nullKey := range []string{
 			"alwaysList",
 			"beside",
-			"list",
-			"map",
+			"prop",
 			"tuple",
+			"viaAllOf",
+			"viaAnyOf",
+			"viaNested",
+			"viaOneOf",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				return fmt.Errorf("%s: null is not allowed", _nullKey)
+			}
+		}
+		if _v, ok := raw["list"]; ok {
+			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
+			}
+		}
+		if _v, ok := raw["map"]; ok {
+			if err := checkJSONNulls(_v, "map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return err
 			}
 		}
 		r._jsonKeys = make(map[string]bool, len(raw))
@@ -376,7 +389,6 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 		for _, _nullKey := range []string{
 			"always",
 			"alwaysAllOf",
-			"viaOneOf",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
 				if r._jsonNulls == nil {

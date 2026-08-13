@@ -4,26 +4,20 @@ package testpkg
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
-type Root struct {
-	P                    []int64                    `json:"p,omitzero"`
+type RootTypeObjectOnly struct {
+	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
-func (r *Root) UnmarshalJSON(data []byte) error {
+func (r *RootTypeObjectOnly) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
-	r._nonObject = false
-	r._rawNonObject = nil
-	// The schema admits a document that is not an object, so object constraints
-	// are type-conditional. Non-object JSON data is accepted here and judged by
-	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
-		r._nonObject = true
-		r._rawNonObject = append(r._rawNonObject[:0], data...)
-		return nil
+	r._jsonKeys = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RootTypeObjectOnly")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -39,15 +33,14 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	_decodeData := data
 	if _rawErr == nil {
 		if _exact := jsonExactProperties(raw,
-			"p",
+			"a",
 		); _exact != nil {
 			_decodeData = _exact
 		}
 	}
-	type Alias Root
+	type Alias RootTypeObjectOnly
 	aux := &struct {
 		*Alias
-		P *[]jsonInteger `json:"p"`
 	}{
 		Alias: (*Alias)(r),
 	}
@@ -55,25 +48,29 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
 	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.P != nil {
-		_iv := *aux.P
-		r.P = jsonIntegerSlice(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
 	{
 		if _rawErr != nil {
 			return _rawErr
 		}
-		if _v, ok := raw["p"]; ok {
-			if err := checkJSONNulls(_v, "p", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+		// A property the schema gives a type to may not be written as null. By
+		// the time the decode above has run there is nothing left to see: a null
+		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+		// is exactly what an absent property leaves, so the verdict has to be
+		// taken from the document's own keys. See jsonNullRule for the nested
+		// spelling of the same rule.
+		for _, _nullKey := range []string{
+			"a",
+		} {
+			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
+				return fmt.Errorf("%s: null is not allowed", _nullKey)
 			}
 		}
+		r._jsonKeys = make(map[string]bool, len(raw))
+		for _k := range raw {
+			r._jsonKeys[_k] = true
+		}
 		knownFields := map[string]bool{
-			"p": true,
+			"a": true,
 		}
 		for rawKey, rawVal := range raw {
 			if knownFields[rawKey] {
@@ -88,15 +85,8 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
-func (r Root) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
-	if r._nonObject {
-		if len(r._rawNonObject) > 0 {
-			return r._rawNonObject, nil
-		}
-		return []byte("null"), nil
-	}
-	type Alias Root
+func (r RootTypeObjectOnly) MarshalJSON() ([]byte, error) {
+	type Alias RootTypeObjectOnly
 	aux := struct {
 		Alias
 	}{
@@ -116,11 +106,18 @@ func (r Root) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-// Validate checks Root against its JSON Schema constraints.
-func (r Root) Validate() error {
-	// Non-object data was silently accepted — validate non-object constraints if any.
-	if r._nonObject {
-		return nil
+// Validate checks RootTypeObjectOnly against its JSON Schema constraints.
+func (r RootTypeObjectOnly) Validate() error {
+	// Required properties must be present in the source JSON. _jsonKeys is
+	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
+	// presence is untracked and the check is skipped, consistent with how
+	// optional-property validation below treats _jsonKeys.
+	if r._jsonKeys != nil {
+		for _, _req := range []string{"a"} {
+			if !r._jsonKeys[_req] {
+				return fmt.Errorf("%s: required property is missing", _req)
+			}
+		}
 	}
 	return nil
 }

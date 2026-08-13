@@ -3,6 +3,7 @@
 package testpkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -11,12 +12,24 @@ type NullableArrayItemsRowsItem struct {
 	ID                   string                     `json:"id"`
 	Qty                  *int64                     `json:"qty,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
+	n._nonObject = false
+	n._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		n._nonObject = true
+		n._rawNonObject = append(n._rawNonObject[:0], data...)
+		return nil
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -96,6 +109,13 @@ func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (n NullableArrayItemsRowsItem) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if n._nonObject {
+		if len(n._rawNonObject) > 0 {
+			return n._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias NullableArrayItemsRowsItem
 	aux := struct {
 		Alias
@@ -118,6 +138,54 @@ func (n NullableArrayItemsRowsItem) MarshalJSON() ([]byte, error) {
 
 // Validate checks NullableArrayItemsRowsItem against its JSON Schema constraints.
 func (n NullableArrayItemsRowsItem) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if n._nonObject {
+		v := n._rawNonObject
+		_ = v
+		{
+			b := bytes.TrimSpace(v)
+			var jt string
+			if len(b) == 0 {
+				jt = "unknown"
+			} else {
+				switch b[0] {
+				case '"':
+					jt = "string"
+				case '{':
+					jt = "object"
+				case '[':
+					jt = "array"
+				case 't', 'f':
+					jt = "boolean"
+				case 'n':
+					jt = "null"
+				default:
+					jt = "number"
+					isInt := true
+					for _, c := range b {
+						if c == '.' || c == 'e' || c == 'E' {
+							isInt = false
+							break
+						}
+					}
+					if isInt {
+						jt = "integer"
+					}
+				}
+			}
+			_ppTypeOK := false
+			if jt == "object" {
+				_ppTypeOK = true
+			}
+			if jt == "null" {
+				_ppTypeOK = true
+			}
+			if !_ppTypeOK {
+				return fmt.Errorf("value must be one of: object, null")
+			}
+		}
+		return nil
+	}
 	// Required properties must be present in the source JSON. _jsonKeys is
 	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
 	// presence is untracked and the check is skipped, consistent with how

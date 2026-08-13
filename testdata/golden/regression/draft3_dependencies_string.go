@@ -19,8 +19,9 @@ func (d *Draft3dependenciesString) UnmarshalJSON(data []byte) error {
 	d._jsonKeys = nil
 	d._nonObject = false
 	d._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		d._nonObject = true
 		d._rawNonObject = append(d._rawNonObject[:0], data...)

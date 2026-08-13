@@ -626,8 +626,11 @@ func (p PatternValueSubschemasPattern10) Validate() error {
 					}
 				}
 				{
-					var s string
-					if err := json.Unmarshal(v, &s); err == nil {
+					// Through a pointer, so that a null is not measured as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+						s := *_s
 						if utf8.RuneCountInString(s) < 5 {
 							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^z", k)
 						}
@@ -1539,8 +1542,11 @@ func (p PatternValueSubschemas) Validate() error {
 					}
 				}
 				{
-					var s string
-					if err := json.Unmarshal(v, &s); err == nil {
+					// Through a pointer, so that a null is not measured as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
+						s := *_s
 						if utf8.RuneCountInString(s) < 5 {
 							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^s", k)
 						}

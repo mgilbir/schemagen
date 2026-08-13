@@ -76,6 +76,17 @@ func allGoldenTests() []goldenTestCase {
 		// and the pair is the whole statement of what that flag changes.
 		{"regression/number_positions", "testdata/schemas/regression/number_positions.json", "testdata/golden/regression/number_positions.go"},
 		{"regression/anyof_required_branches", "testdata/schemas/regression/anyof_required_branches.json", "testdata/golden/regression/anyof_required_branches.go"},
+		// Issue #270's two ends, pinned as text because that is where they
+		// differ. root_type_object_only is `type` naming object and nothing else
+		// -- the shape nearly every schema in the corpus has, and the one the
+		// reconciliation must leave untouched; it is byte for byte what the
+		// generator emitted before applyTypeReconciliation existed.
+		// root_type_object_null is the same struct with a second kind admitted
+		// beside it, and pins the raw escape hatch and the type rule that judges
+		// what goes down it. A verdict-level test cannot tell the two apart:
+		// both accept the same objects.
+		{"regression/root_type_object_only", "testdata/schemas/regression/root_type_object_only.json", "testdata/golden/regression/root_type_object_only.go"},
+		{"regression/root_type_object_null", "testdata/schemas/regression/root_type_object_null.json", "testdata/golden/regression/root_type_object_null.go"},
 		{"regression/anyof_required_only", "testdata/schemas/regression/anyof_required_only.json", "testdata/golden/regression/anyof_required_only.go"},
 		{"regression/validatable_field_fmt", "testdata/schemas/regression/validatable_field_fmt.json", "testdata/golden/regression/validatable_field_fmt.go"},
 		{"regression/quoted_property_name", "testdata/schemas/regression/quoted_property_name.json", "testdata/golden/regression/quoted_property_name.go"},

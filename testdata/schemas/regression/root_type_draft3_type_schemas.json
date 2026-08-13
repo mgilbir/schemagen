@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "title": "RootTypeDraft3TypeSchemas",
+  "$comment": "Issue #270 against draft 3's schema-valued type alternatives. The names in the type array describe only part of what the schema admits -- the other entry is a whole schema, here one that describes an object -- so the array is not a statement about which kinds are excluded, and reading it as one would refuse the objects the alternative exists to admit. What this fixture does NOT claim is that the alternative's own keywords are enforced: an object with a wrong-typed 'a' is accepted here and python-jsonschema calls it invalid, before this change and after. That is the draft-3 type-schema arm going unenforced, a gap of its own and not one issue #270 touches.",
+  "type": [
+    "string",
+    {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "b": {
+      "type": "string"
+    }
+  }
+}

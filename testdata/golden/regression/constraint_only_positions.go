@@ -414,12 +414,24 @@ func (c ConstraintOnlyPositionsProp) Validate() error {
 type ConstraintOnlyPositionsUnevaluated struct {
 	B                    *int64                     `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
 func (c *ConstraintOnlyPositionsUnevaluated) UnmarshalJSON(data []byte) error {
 	c.AdditionalProperties = nil
 	c._jsonRawProps = nil
+	c._nonObject = false
+	c._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		c._nonObject = true
+		c._rawNonObject = append(c._rawNonObject[:0], data...)
+		return nil
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -493,6 +505,13 @@ func (c *ConstraintOnlyPositionsUnevaluated) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (c ConstraintOnlyPositionsUnevaluated) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if c._nonObject {
+		if len(c._rawNonObject) > 0 {
+			return c._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias ConstraintOnlyPositionsUnevaluated
 	aux := struct {
 		Alias
@@ -515,6 +534,10 @@ func (c ConstraintOnlyPositionsUnevaluated) MarshalJSON() ([]byte, error) {
 
 // Validate checks ConstraintOnlyPositionsUnevaluated against its JSON Schema constraints.
 func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if c._nonObject {
+		return nil
+	}
 	// Keywords the generated checks cannot state in full, held as schema data and
 	// evaluated against the document.
 	if c._jsonRawProps != nil {

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootTypeUntypedProperties",
+  "$comment": "Issue #270's baseline: `properties` with no `type` beside it admits every JSON value, and constrains only the ones that are objects. This is the shape the reconciliation must leave exactly as it found it.",
+  "properties": {"a": {"type": "string"}},
+  "required": ["a"]
+}

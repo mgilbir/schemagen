@@ -725,6 +725,8 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 		for _, _nullKey := range []string{
 			"boundBranch",
 			"constBranch",
+			"emptyEnum",
+			"falseBranch",
 			"objBranch",
 			"twoBranch",
 			"typedBranch",

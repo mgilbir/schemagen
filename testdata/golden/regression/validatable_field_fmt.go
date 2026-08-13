@@ -18,8 +18,9 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
 	b._nonObject = false
 	b._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		b._nonObject = true
 		b._rawNonObject = append(b._rawNonObject[:0], data...)
@@ -135,8 +136,9 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._nonObject = false
 	i._rawNonObject = nil
-	// Schema has no explicit "type":"object" — object constraints are type-conditional.
-	// Non-object JSON data is silently accepted; raw bytes are preserved for roundtrip.
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
 	if len(data) == 0 || data[0] != '{' {
 		i._nonObject = true
 		i._rawNonObject = append(i._rawNonObject[:0], data...)
@@ -245,12 +247,24 @@ type ValidatableFieldFmt struct {
 	Foo                  *Inner                     `json:"foo,omitempty"`
 	X                    *string                    `json:"x,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (v *ValidatableFieldFmt) UnmarshalJSON(data []byte) error {
 	v.AdditionalProperties = nil
 	v._jsonNulls = nil
+	v._nonObject = false
+	v._rawNonObject = nil
+	// The schema admits a document that is not an object, so object constraints
+	// are type-conditional. Non-object JSON data is accepted here and judged by
+	// Validate; raw bytes are preserved for roundtrip.
+	if len(data) == 0 || data[0] != '{' {
+		v._nonObject = true
+		v._rawNonObject = append(v._rawNonObject[:0], data...)
+		return nil
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -332,6 +346,13 @@ func (v *ValidatableFieldFmt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (v ValidatableFieldFmt) MarshalJSON() ([]byte, error) {
+	// Non-object data was silently accepted — return the original raw bytes.
+	if v._nonObject {
+		if len(v._rawNonObject) > 0 {
+			return v._rawNonObject, nil
+		}
+		return []byte("null"), nil
+	}
 	type Alias ValidatableFieldFmt
 	aux := struct {
 		Alias
@@ -379,6 +400,10 @@ func (v ValidatableFieldFmt) MarshalJSON() ([]byte, error) {
 
 // Validate checks ValidatableFieldFmt against its JSON Schema constraints.
 func (v ValidatableFieldFmt) Validate() error {
+	// Non-object data was silently accepted — validate non-object constraints if any.
+	if v._nonObject {
+		return nil
+	}
 	if v.Foo != nil {
 		if err := v.Foo.Validate(); err != nil {
 			return fmt.Errorf("foo.%w", err)
