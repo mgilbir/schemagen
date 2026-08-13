@@ -34,7 +34,15 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 	// Try typed unmarshal first.
+	{{- if .IsExactNumber}}
+	{{- /* Through the shadow, so that a JSON string holding digits is not
+	       taken for the number this wrapper's constraints judge: json.Number
+	       accepts "1.5" as readily as 1.5, and a string is a non-matching type
+	       whose keywords do not apply. */}}
+	if _err := json.Unmarshal(data, (*jsonNumber)(&{{$recv}}._value)); _err == nil {
+	{{- else}}
 	if _err := json.Unmarshal(data, &{{$recv}}._value); _err == nil {
+	{{- end}}
 		{{$recv}}._isRaw = false
 		return nil
 	}
@@ -104,32 +112,62 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} {
+		return fmt.Errorf("value: %v is less than minimum {{numBoundMsg .}}", {{$recv}}._value)
+	}
+	{{- else}}
 	if float64({{$recv}}._value) < {{.Value}} {
 		return fmt.Errorf("value: %v is less than minimum {{.Value}}", {{$recv}}._value)
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "maximum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} {
+		return fmt.Errorf("value: %v exceeds maximum {{numBoundMsg .}}", {{$recv}}._value)
+	}
+	{{- else}}
 	if float64({{$recv}}._value) > {{.Value}} {
 		return fmt.Errorf("value: %v exceeds maximum {{.Value}}", {{$recv}}._value)
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} {
+		return fmt.Errorf("value: %v must be greater than {{numBoundMsg .}}", {{$recv}}._value)
+	}
+	{{- else}}
 	if float64({{$recv}}._value) <= {{.Value}} {
 		return fmt.Errorf("value: %v must be greater than {{.Value}}", {{$recv}}._value)
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} {
+		return fmt.Errorf("value: %v must be less than {{numBoundMsg .}}", {{$recv}}._value)
+	}
+	{{- else}}
 	if float64({{$recv}}._value) >= {{.Value}} {
 		return fmt.Errorf("value: %v must be less than {{.Value}}", {{$recv}}._value)
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
+	{{- if .ExactCompare}}
+	if !{{exactMultipleOf . (printf "%s._value" $recv)}} {
+		return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}}._value)
+	}
+	{{- else}}
 	{
 		_q := float64({{$recv}}._value) / {{.Value}}
 		if math.Abs(_q - math.Round(_q)) > 1e-9 {
 			return fmt.Errorf("value: %v is not a multiple of {{.Value}}", {{$recv}}._value)
 		}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched {
@@ -206,22 +244,42 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if utf8.RuneCountInString(string({{$recv}}._value)) > {{.Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) < {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "maximum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) > {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) <= {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) >= {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
+			{{- if .ExactCompare}}
+			if !{{exactMultipleOf . (printf "%s._value" $recv)}} { _variantValid = false }
+			{{- else}}
 			{
 				_q := float64({{$recv}}._value) / {{.Value}}
 				if math.Abs(_q - math.Round(_q)) > 1e-9 { _variantValid = false }
 			}
+			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
@@ -261,22 +319,42 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if utf8.RuneCountInString(string({{$recv}}._value)) > {{.Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) < {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "maximum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) > {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) <= {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
+			{{- if .ExactCompare}}
+			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
+			{{- else}}
 			if float64({{$recv}}._value) >= {{.Value}} { _variantValid = false }
 			{{- end}}
+			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
+			{{- if .ExactCompare}}
+			if !{{exactMultipleOf . (printf "%s._value" $recv)}} { _variantValid = false }
+			{{- else}}
 			{
 				_q := float64({{$recv}}._value) / {{.Value}}
 				if math.Abs(_q - math.Round(_q)) > 1e-9 { _variantValid = false }
 			}
+			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }

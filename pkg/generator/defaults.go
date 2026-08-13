@@ -81,6 +81,24 @@ func defaultToGoLiteral(defaultVal any, goType GoType) (string, error) {
 			return "", nil // zero value, no-op (for non-pointer)
 		}
 		return strconv.FormatFloat(f, 'f', -1, 64), nil
+	case GoNumberTypeName, "*" + GoNumberTypeName:
+		// A number held exactly, so the default is written as the literal the
+		// schema wrote and not as the shortest decimal that reads back to the
+		// same float64. Those are different numbers to a type that keeps every
+		// digit: a default of 1.2345678901234567890 would otherwise be planted
+		// as 1.2345678901234567, and the value the caller never set would be
+		// the one this flag exists to stop them seeing.
+		n, isNum := schemaNumber(defaultVal)
+		if !isNum {
+			break
+		}
+		// The empty json.Number is the untouched field, so a default that is
+		// not written at all cannot be told from one that is. Every other
+		// spelling of zero is, and is planted.
+		if typeName == GoNumberTypeName && n == "" {
+			return "", nil
+		}
+		return GoNumberTypeName + "(" + strconv.Quote(string(n)) + ")", nil
 	case "bool", "*bool":
 		if b, ok := defaultVal.(bool); ok {
 			if typeName == "bool" && !b {
@@ -123,7 +141,7 @@ func defaultToGoLiteral(defaultVal any, goType GoType) (string, error) {
 // default at all.
 //
 // Runs after the type definitions are complete, in the manner of
-// resolveIntegerDecodes and for the same reason: the answer is a property of a
+// resolveLeafDecodes and for the same reason: the answer is a property of a
 // whole declaration, not of the one property that happens to reference it, and
 // asking during field construction would make it depend on generation order.
 func (g *Generator) resolveNamedTypeDefaults() error {
@@ -280,7 +298,7 @@ func (g *Generator) collectionUnderlyingOf(name string) GoType {
 //
 // The literal names the wrapper's unexported fields, which is why the caller
 // holds it to a type this run declared. That is a coupling to the shape
-// bigint_alias.go.tmpl emits, in the manner of IntegerDecodeDef.Convert's
+// bigint_alias.go.tmpl emits, in the manner of LeafDecodeDef.Convert's
 // coupling to the jsonInteger helpers, and it is the only construction the
 // wrapper has: it carries no exported field and no constructor, so a value of it
 // can otherwise only be reached by decoding JSON.
@@ -474,6 +492,15 @@ func scalarValueLiteral(v any, goTypeName string) (string, bool) {
 			return "", false
 		}
 		return strconv.FormatFloat(f, 'f', -1, 64), true
+	case GoNumberTypeName:
+		// The literal, for the reason defaultToGoLiteral gives: this type keeps
+		// every digit it is given, so re-rendering the number would plant a
+		// different one.
+		n, isNum := schemaNumber(v)
+		if !isNum {
+			return "", false
+		}
+		return GoNumberTypeName + "(" + strconv.Quote(string(n)) + ")", true
 	case "bool":
 		b, ok := v.(bool)
 		if !ok {

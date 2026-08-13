@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NumberPositions",
+  "description": "Every position a \"number\" can occupy, read twice: once under the default configuration, where it is a float64, and once under --exact-numbers, where it is the literal the document wrote. The two goldens are the same document and differ in that and nothing else, which is what makes the flag's reach readable rather than asserted. Issue #252.",
+  "type": "object",
+  "properties": {
+    "scalar": {"type": "number"},
+    "required": {"type": "number"},
+    "bounded": {"type": "number", "minimum": 1.5, "exclusiveMaximum": 10, "multipleOf": 0.5},
+    "constant": {"type": "number", "const": 2.5},
+    "choices": {"type": "number", "enum": [1.5, 2.5]},
+    "elements": {"type": "array", "items": {"type": "number", "minimum": 0}},
+    "values": {"type": "object", "additionalProperties": {"type": "number", "exclusiveMaximum": 1}},
+    "aliased": {"$ref": "#/$defs/Temperature"},
+    "aliasedList": {"$ref": "#/$defs/Readings"},
+    "nullable": {"type": ["number", "null"]},
+    "withDefault": {"type": "number", "default": 1.2345678901234567890},
+    "counted": {"type": "array", "items": {"type": "number"}, "contains": {"minimum": 7.5}},
+    "constrained": {"minimum": 3.5},
+    "integerBeside": {"type": "integer", "minimum": 1}
+  },
+  "required": ["required"],
+  "$defs": {
+    "Temperature": {"type": "number", "minimum": -273.15},
+    "Readings": {"type": "array", "items": {"type": "number"}}
+  }
+}

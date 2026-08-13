@@ -155,8 +155,14 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.NullCheck || helpers.Format, "fmt")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
+	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NullCheck || helpers.Format, "fmt")
+	// The exact-number comparisons read the literal as decimal digits: strconv
+	// for the exponent, math/big for the one question -- does this divide that
+	// -- that digit arithmetic alone does not answer. Neither is needed by the
+	// shadow type, which only decides whether a token is a number at all.
+	add(helpers.NumberCompare, "strconv")
+	add(helpers.NumberCompare, "math/big")
 	// jsonExactProperties compares a document's keys the way encoding/json
 	// compares them, which is strings.EqualFold and not an ASCII rule.
 	add(helpers.ExactProperties, "strings")

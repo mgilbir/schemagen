@@ -71,6 +71,10 @@ func allGoldenTests() []goldenTestCase {
 		// property gains an alias to the reference's target instead of naming it.
 		// Only a golden sees that, which is why this one is pinned.
 		{"regression/allof_sibling_values_ref_displaces", "testdata/schemas/regression/allof_sibling_values_ref_displaces.json", "testdata/golden/regression/allof_sibling_values_ref_displaces.go"},
+		// Issue #252's position matrix under the default configuration, where a
+		// "number" is a float64. Its --exact-numbers twin is TestGoldenExactNumbers,
+		// and the pair is the whole statement of what that flag changes.
+		{"regression/number_positions", "testdata/schemas/regression/number_positions.json", "testdata/golden/regression/number_positions.go"},
 		{"regression/anyof_required_branches", "testdata/schemas/regression/anyof_required_branches.json", "testdata/golden/regression/anyof_required_branches.go"},
 		{"regression/anyof_required_only", "testdata/schemas/regression/anyof_required_only.json", "testdata/golden/regression/anyof_required_only.go"},
 		{"regression/validatable_field_fmt", "testdata/schemas/regression/validatable_field_fmt.json", "testdata/golden/regression/validatable_field_fmt.go"},
@@ -462,6 +466,92 @@ func TestGoldenBigInt(t *testing.T) {
 						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
 					}
 				}
+			}
+		})
+	}
+}
+
+// TestGoldenExactNumbers tests golden output with --exact-numbers enabled.
+//
+// The same two documents the default golden set reads, so that the difference
+// between the files is the whole of what the flag does: a "number" held as the
+// literal the document wrote, every keyword on it compared exactly, and nothing
+// else moved. The integer property in the position matrix is the control -- it
+// is exact under every configuration and must read identically in both files.
+func TestGoldenExactNumbers(t *testing.T) {
+	tests := []goldenTestCase{
+		{"exactnum/number_positions", "testdata/schemas/regression/number_positions.json", "testdata/golden/exactnum/number_positions.go"},
+		// A document whose numbers are all integers and strings, to pin that a
+		// schema naming no "number" comes out of this flag unchanged. Compared
+		// against the default golden of the same document rather than a golden
+		// of its own; see the assertion below.
+		{"exactnum/numeric_constraints", "testdata/schemas/validation/numeric_constraints.json", "testdata/golden/exactnum/numeric_constraints.go"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := generateFromSchemaWithConfig(t, tc.SchemaPath, generator.Config{
+				PackageName:  "testpkg",
+				OmitEmpty:    true,
+				ExactNumbers: true,
+			})
+
+			goldenPath := filepath.Join("..", tc.GoldenPath)
+			if os.Getenv("UPDATE_GOLDEN") == "true" {
+				dir := filepath.Dir(goldenPath)
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("creating golden dir: %v", err)
+				}
+				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+					t.Fatalf("updating golden file: %v", err)
+				}
+				t.Logf("Updated golden file: %s", goldenPath)
+				return
+			}
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
+				gotLines := strings.Split(string(got), "\n")
+				wantLines := strings.Split(string(want), "\n")
+				for i := range gotLines {
+					if i >= len(wantLines) {
+						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], "")
+						continue
+					}
+					if gotLines[i] != wantLines[i] {
+						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestExactNumbersLeavesNumberlessSchemasAlone is the other half of the golden
+// pair above, stated as an equality rather than as a second file: a document
+// that names no "number" generates the same source under --exact-numbers as it
+// does under the default.
+//
+// It is the flag's boundary written as a check, and it is the cheap half of the
+// corpus-wide equality: the documents named below carry strings, integers,
+// enums, $refs and a composition between them, so a change that reached any
+// path other than "number" -- a bound re-rendered, a comparison rewritten, a
+// helper pulled in -- shows here rather than in a golden nobody re-reads.
+func TestExactNumbersLeavesNumberlessSchemasAlone(t *testing.T) {
+	for _, path := range []string{
+		"testdata/schemas/validation/string_constraints.json",
+		"testdata/schemas/basic/simple_object.json",
+		"testdata/schemas/enum/string_enum.json",
+		"testdata/schemas/refs/definitions_ref.json",
+		"testdata/schemas/composition/allof_simple.json",
+	} {
+		t.Run(path, func(t *testing.T) {
+			base := generateFromSchemaWithConfig(t, path, generator.Config{PackageName: "testpkg", OmitEmpty: true})
+			exact := generateFromSchemaWithConfig(t, path, generator.Config{PackageName: "testpkg", OmitEmpty: true, ExactNumbers: true})
+			if string(base) != string(exact) {
+				t.Errorf("%s: --exact-numbers changed a document that names no \"number\"", path)
 			}
 		})
 	}

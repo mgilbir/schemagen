@@ -13,7 +13,7 @@
 {{- end}}
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" (or (ne .Description "") (ne .Unenforced ""))}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .IntegerDecode .NullCheck)}}
+{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .LeafDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
@@ -48,15 +48,23 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	*{{$recv}} = {{.Name}}(_target)
 	return nil
-	{{- else if .IntegerDecode}}
+	{{- else if .LeafDecode}}
+	{{- if .LeafDecode.Integers}}
 	// A named container of integers. Decoding through the shadow is what lets a
 	// number written 1.0 reach the int64 the schema asked for -- encoding/json
 	// decides from the destination type, and []int64 refuses it outright.
-	var _iv {{goType .IntegerDecode.ShadowType}}
+	{{- end}}
+	{{- if .LeafDecode.Numbers}}
+	// A named container of numbers held exactly. Decoding through the shadow is
+	// what keeps a JSON string out of one -- encoding/json decides from the
+	// destination type, and json.Number is a string underneath, so
+	// []json.Number would take ["1.5"] for a list of numbers.
+	{{- end}}
+	var _iv {{goType .LeafDecode.ShadowType}}
 	if _err := json.Unmarshal(data, &_iv); _err != nil {
 		return _err
 	}
-	*{{$recv}} = {{.IntegerDecode.Convert}}
+	*{{$recv}} = {{.LeafDecode.Convert}}
 	return nil
 	{{- else if .IsIntegerType}}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
@@ -141,36 +149,42 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
 	if {{numOperand . $recv}} < {{numBound .}} {
-		return fmt.Errorf("value: %v is less than minimum {{numBound .}}", {{$recv}})
+		return fmt.Errorf("value: %v is less than minimum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	if {{numOperand . $recv}} > {{numBound .}} {
-		return fmt.Errorf("value: %v exceeds maximum {{numBound .}}", {{$recv}})
+		return fmt.Errorf("value: %v exceeds maximum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	if {{numOperand . $recv}} <= {{numBound .}} {
-		return fmt.Errorf("value: %v must be greater than {{numBound .}}", {{$recv}})
+		return fmt.Errorf("value: %v must be greater than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	if {{numOperand . $recv}} >= {{numBound .}} {
-		return fmt.Errorf("value: %v must be less than {{numBound .}}", {{$recv}})
+		return fmt.Errorf("value: %v must be less than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .IntegerCompare}}
+	{{- if .ExactCompare}}
+	// Exact: the two decimals are lined up and one integer divided by the
+	// other, rather than a float64 quotient compared against a tolerance.
+	if !{{exactMultipleOf . $recv}} {
+		return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
+	}
+	{{- else if .IntegerCompare}}
 	// Exact: both operands are int64, so divisibility is a remainder rather
 	// than a float64 quotient compared against a tolerance.
 	if {{$recv}} % {{numBound .}} != 0 {
-		return fmt.Errorf("value: %v is not a multiple of {{numBound .}}", {{$recv}})
+		return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- else}}
 	{
 		q := float64({{$recv}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("value: %v is not a multiple of {{numBound .}}", {{$recv}})
+			return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 		}
 	}
 	{{- end}}

@@ -166,6 +166,23 @@ func foldNumbersToFloat(v any) any {
 	return v
 }
 
+// JSONNumberLiteral renders a schema-supplied number as the JSON number
+// literal it was written as, or "" for a value that is not a number.
+//
+// It is what a value held as a json.Number is written with -- an enum member,
+// a default, the bound a jsonNumberCmp call carries. GoNumberLiteral is the
+// wrong renderer there: it writes a whole number in integer notation so that
+// {"const":1e2} declares a Go constant of 100, and against a type that keeps
+// every digit that turns 1e308 into three hundred and nine of them. Both name
+// the same number, and only one of them is what the document said.
+func JSONNumberLiteral(v any) string {
+	n, ok := schemaNumber(v)
+	if !ok {
+		return ""
+	}
+	return string(n)
+}
+
 // numCmp compares two schema numbers exactly, returning -1, 0 or 1, and reports
 // whether both could be read. big.Rat parses the JSON number grammar without
 // rounding, so 9223372036854775806 and 9223372036854775807 compare as the

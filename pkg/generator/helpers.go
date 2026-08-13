@@ -50,9 +50,19 @@ type HelperSet struct {
 	// stack, nor pay for threading it through every call in the evaluator.
 	AnnotationsDynamic bool
 	Integer            bool // jsonInteger and the shape-preserving converters
-	NullCheck          bool // jsonNullRule and the recursive walker that applies one
-	Format             bool // schemagenFormat* -- one function per asserted format
-	Content            bool // schemagenContentString -- the content vocabulary's decode-and-parse check
+
+	// Number is jsonNumber, the shadow a "number" held exactly is decoded
+	// through, and NumberCompare the exact decimal comparisons its keywords are
+	// enforced by. Two flags rather than one because they arrive apart: a
+	// schema that types a property "number" and states no numeric keyword needs
+	// the shadow and no comparison, and a file that carries only the checks --
+	// a $defs alias validated from another document of a shared-types run --
+	// needs the comparison and no shadow.
+	Number        bool
+	NumberCompare bool
+	NullCheck     bool // jsonNullRule and the recursive walker that applies one
+	Format        bool // schemagenFormat* -- one function per asserted format
+	Content       bool // schemagenContentString -- the content vocabulary's decode-and-parse check
 
 	// Access is --strict-read-write's raw-JSON walker: the path model that
 	// reaches the readOnly/writeOnly locations no Go field answers for, and the
@@ -86,8 +96,8 @@ type HelperSet struct {
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
-		!h.Annotations && !h.Integer && !h.NullCheck && !h.Format && !h.FormatHostname &&
-		!h.Content && !h.Access && !h.ExactProperties
+		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.NullCheck &&
+		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties
 }
 
 // Merge folds another set into this one.
@@ -102,6 +112,8 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.AnnotationsFormats = mergeSortedUnique(h.AnnotationsFormats, other.AnnotationsFormats)
 	h.AnnotationsContent = h.AnnotationsContent || other.AnnotationsContent
 	h.Integer = h.Integer || other.Integer
+	h.Number = h.Number || other.Number
+	h.NumberCompare = h.NumberCompare || other.NumberCompare
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
@@ -220,6 +232,20 @@ func HelpersReferencedBy(src string) HelperSet {
 	// name appears in every use of any of them.
 	if strings.Contains(src, "jsonInteger") {
 		set.Integer = true
+	}
+	// The exact-number blocks. The shadow type's name appears wherever a number
+	// is decoded through it, and the two comparisons' names at every check they
+	// are the argument of, so a substring each pulls in what the file uses. A
+	// file holding a container of them names jsonIntegerSlice as well, and so
+	// takes the integer block too: those three rebuilders are written over the
+	// shape rather than the leaf and serve both, which costs a package a
+	// jsonInteger it never calls and keeps one copy of each rebuilder rather
+	// than two.
+	if strings.Contains(src, "jsonNumber") {
+		set.Number = true
+	}
+	if strings.Contains(src, "jsonNumberCmp(") || strings.Contains(src, "jsonNumberIsMultipleOf(") {
+		set.NumberCompare = true
 	}
 	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type

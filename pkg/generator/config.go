@@ -15,6 +15,43 @@ type Config struct {
 	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI, except for embedded/remote resources that declare both $id and their own $schema.
 	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
 
+	// ExactNumbers holds "type":"number" as the literal the document wrote
+	// rather than as the float64 it rounds to.
+	//
+	// JSON has one number type and no precision limit; float64 has both. A
+	// property typed "number" is a float64 by default, so a document carrying
+	// 1.2345678901234567890 comes back as 1.2345678901234567 and one carrying
+	// 123456789012345678901234567890 comes back as 1.2345678901234568e+29 --
+	// a read-modify-write silently rewrites a field the caller never touched
+	// (issue #252). Integers have not had that problem since #230: an int64
+	// holds every integer JSON Schema's "integer" can name up to its own range,
+	// and --big-int carries the rest. "number" had no equivalent, and that
+	// asymmetry is what this closes.
+	//
+	// On, the Go type becomes encoding/json's json.Number, which is the literal
+	// as written. Nothing rounds, so the value that arrives is the value that
+	// leaves, byte for byte, in every position the schema gives the type to: a
+	// scalar property, an array element, a map value, a $defs alias, a default.
+	// Every numeric keyword -- minimum, maximum, the two exclusive forms,
+	// multipleOf, const and enum -- is then compared exactly through math/big
+	// rather than through the float64 that cannot tell 2^53+1 from 2^53.
+	//
+	// It is opt-in because it changes the generated type, and a caller who is
+	// doing arithmetic on a float64 field wants the float64. json.Number is a
+	// string underneath: it is exact, it costs no dependency, and it hands the
+	// arithmetic question back to the caller, who is the only one who knows
+	// which precision their sum wants.
+	//
+	// Independent of BigIntSupport, which answers the same question for the
+	// other JSON numeric type and can be set beside this or without it.
+	//
+	// Where it does not reach: a position the schema gives no type to. Those
+	// are held as `any`, and encoding/json makes a float64 of a JSON number on
+	// the way into one whatever this says -- a tuple element, an overflow value
+	// judged by a runtime rule, an `any` field. The type is what this flag acts
+	// on, so a schema that states none gets what it always got.
+	ExactNumbers bool
+
 	// FormatAssertion turns "format" into an assertion on every draft.
 	//
 	// Without it the dialect decides. Draft 3, 4, 6 and 7 leave format
