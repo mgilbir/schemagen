@@ -56,3 +56,21 @@ jobs:
       # with `make test-external` before merging generator or emitter changes.
       - name: test
         run: go test ./... -count=1
+
+      # A short cogen sweep, not the search. The nightly job in cogen.yml is the
+      # search, and explains why a meaningful run is too slow for this one. What
+      # this catches is different: the harness going invalid.
+      #
+      # It has happened. The additionalPropertiesSchema mutant asserted its
+      # rejection names "additionalProperties"; #280 established that printing a
+      # schema keyword where a document member goes is a defect, #283 removed it,
+      # and the expectation was left pinning the old text. Every iteration then
+      # failed for the same reason, on main, through four merges -- because
+      # nothing on this path ran cogen at all.
+      #
+      # The budget is measured, not guessed: with that expectation planted back,
+      # 8 and 20 iterations at seed 1 both pass and 40 fails. 50 is 40 plus
+      # margin, and costs ~25s. A defect the search finds still belongs in a
+      # fixture, exactly as before -- this only proves the harness still runs.
+      - name: cogen smoke
+        run: make cogen COGEN_SEED=1 COGEN_ITERS=50
