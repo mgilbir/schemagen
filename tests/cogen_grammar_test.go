@@ -2950,7 +2950,13 @@ func (d *coDoc) collectKeyKeywords(n *coNode, path []any, prop string, out *[]co
 		*out = append(*out, coMutation{
 			Keyword: "additionalPropertiesSchema", Path: coPath(path, coExtraKey), Prop: prop,
 			Value: n.unevalBadValue(),
-			Want:  []string{"additionalProperties", coExtraKey, "is less than minimum"},
+			// The key and the violated bound are what prove this fired: no other
+			// check produces a minimum violation on the extra key. The keyword
+			// itself is deliberately not named -- #280 established that printing
+			// "additionalProperties" as a path segment is indistinguishable from a
+			// document that really has a property of that name, and #283 removed
+			// it. Asserting it here would pin the defect.
+			Want: []string{coExtraKey, "is less than minimum"},
 		})
 	case n.extra == coExtraUnevalFalse:
 		*out = append(*out, coMutation{
