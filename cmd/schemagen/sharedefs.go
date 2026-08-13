@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/generator"
@@ -56,6 +57,15 @@ import (
 // name a definition gets does not change when a single-document run is handed
 // --shared-types, and a definition is never moved off a name nothing was about
 // to take from it.
+//
+// Neither half reaches two $defs keys of one document that fold onto one Go name
+// -- "X" and "!", "a~b" and "a/b", "my-type" and "my_type" -- because there is
+// nothing else in the document to name them after: same document, same keyword,
+// and the derivation has dropped what told them apart. Those took one type
+// between them and a property carried a schema written at the other key, in
+// whichever direction the surviving definition happened to point. Issue #271;
+// they are numbered, which is what splitFoldedClaims does and where the reasoning
+// for it is.
 
 // nameClaim is one document's claim on a Go type name.
 type nameClaim struct {
@@ -109,6 +119,16 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 
 	shareable := shareableNames(claims)
 
+	// Every Go type name this run already knows about, so a name minted below to
+	// separate two claims is not minted onto a third. It cannot hold the names
+	// the generator itself creates for positions inside a document -- those are
+	// not claims and are not visible from here -- and a qualified name that lands
+	// on one of those is what PinnedNameCollisionError refuses.
+	taken := make(map[string]bool, len(claims))
+	for name := range claims {
+		taken[name] = true
+	}
+
 	pinned := make(map[*schema.Schema]string)
 	var reports []string
 	for _, name := range sortedClaimNames(claims) {
@@ -117,6 +137,9 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			continue
 		}
 		documents := distinctClaimPaths(group)
+		// Which of the three answers below the group needed, so that the
+		// diagnostic describes what was done to it and not what could have been.
+		var split splitMechanisms
 		moved := false
 		for i := range group {
 			if group[i].defKey == "" {
@@ -132,6 +155,7 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			// order the two questions are asked in.
 			if keywordSeparatesClaim(group, i) {
 				qualified = keywordPrefix(group[i].keyword) + qualified
+				split.keyword = true
 			}
 			// The qualified name is built from the contested name and not from
 			// the $defs key, so a document that spells the same definition twice
@@ -152,19 +176,24 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			}
 			group[i].final = qualified
 			pinned[group[i].node] = qualified
+			taken[qualified] = true
+			moved = true
+		}
+		// The claims the two qualifiers above could not separate, which is every
+		// pair whose $defs keys differ only in what the Go name derivation drops.
+		// See splitFoldedClaims.
+		if splitFoldedClaims(group, taken, pinned) {
+			split.numbered = true
 			moved = true
 		}
 		if !moved {
-			// A contested name no qualifier could act on. Two $defs keys of one
-			// document that fold onto one Go name ("foo-bar" and "foo_bar") are
-			// the shape that reaches here: same document, same keyword, so
-			// neither half of the qualifier separates them, and they still merge.
-			// That is a third collision with a third answer -- there is no
-			// discriminator in the document to name them by -- and it is left as
-			// it was rather than answered here by guesswork.
+			// A contested name nothing here could act on: every claim on it is a
+			// document's root type, which is the one claim that never moves. Two
+			// documents of one package claiming one root name is issue #217's
+			// collision and packageDecls' refusal, not a name to rewrite.
 			continue
 		}
-		reports = append(reports, describeNameSplit(name, group, len(documents)))
+		reports = append(reports, describeNameSplit(name, group, len(documents), split))
 	}
 
 	if warnings != nil {
@@ -173,6 +202,159 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 		}
 	}
 	return pinned
+}
+
+// splitFoldedClaims separates the claims of one group that still hold a single
+// Go type name once the document and keyword qualifiers have run, and reports
+// whether it moved any of them.
+//
+// Those two qualifiers answer with something the document wrote -- the root type
+// name, the declaring keyword -- and neither reaches the claims that differ only
+// in what the Go name derivation drops. "X" and "!" are two $defs keys of one
+// document under one keyword, and SchemaNameToGoName folds the second onto the
+// first ("!" has no letters at all, so it comes back as the "X" sanitizeGoIdentifier
+// substitutes for an empty name). So do "a~b" and "a/b", which are the same two
+// JSON Pointer escapes, and "my-type", "my_type" and "MyType", which are three
+// spellings of one identifier. The document is unambiguous in every case -- these
+// are different keys naming different schemas -- and it is this generator's name
+// derivation, not the input, that loses the difference.
+//
+// Left alone they merged: the first definition generated claimed the name and the
+// re-entrancy guard dropped the rest, so every $ref to any of them reached one
+// type. {"$defs":{"X":{"type":"string"},"!":{"type":"integer"}}} typed both
+// properties as the integer, and a document with {"a":"s"} was rejected against a
+// schema that permits it. The direction reverses with the definitions: where the
+// surviving type is the looser one the merge accepts what the schema forbids,
+// which is the same defect and the one nothing downstream can see. Issue #271.
+//
+// So the name is numbered rather than qualified. There is no third thing in the
+// document to name these by -- that is what makes them fold -- and every
+// alternative invents one: deriving from the key spells the same fold again, and
+// a hash or an escape of the raw key is not a name anyone would write. Refusing
+// was the other candidate and is wrong here for the reason #260 gives: the
+// document is well-formed and unambiguous JSON Schema, so there is nothing to
+// refuse, and a caller who does not own the schema would have no remedy. A
+// numbered suffix is what generateStruct already does with two property names
+// that fold onto one Go field name, which is the same fold one level down.
+//
+// Which claim keeps the unnumbered name is decided by the claims themselves and
+// not by the order they were collected in, so listing the inputs differently or
+// writing the document's keys in another order cannot change the generated names
+// -- the trap issue #228 came out of. A document's root type is first, because it
+// is the name the caller asked for and never moves. Then a key already spelled as
+// the Go name it derives, so $defs/X keeps X and $defs/! is the one that moves.
+// Then the document path, the keyword and the key, in that order.
+//
+// Claims that describe the same schema are not split. Two keys that fold onto one
+// name and hold the same definition are one type, and every $ref to either of
+// them reaches a type that says what its own schema says -- so there is nothing to
+// separate, and separating anyway would emit a duplicate declaration to no end.
+// Agreement is definitionCanonicalForm, the comparison shareableNames and
+// keywordSeparatesClaim already use, and a definition it cannot compare is taken
+// to agree with nothing.
+func splitFoldedClaims(group []nameClaim, taken map[string]bool, pinned map[*schema.Schema]string) bool {
+	byName := make(map[string][]int, len(group))
+	for i := range group {
+		byName[group[i].final] = append(byName[group[i].final], i)
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	moved := false
+	for _, name := range names {
+		idx := byName[name]
+		if len(idx) < 2 {
+			continue
+		}
+		sort.Slice(idx, func(a, b int) bool {
+			return claimSplitOrderLess(group[idx[a]], group[idx[b]])
+		})
+		// The name given to each distinct definition seen so far, so that claims
+		// agreeing with one already placed join it instead of being numbered
+		// again.
+		type placed struct {
+			form       string
+			comparable bool
+			name       string
+		}
+		var seen []placed
+		for _, i := range idx {
+			form, _, ok := definitionCanonicalForm(group[i].node)
+			target := ""
+			if ok {
+				for _, p := range seen {
+					if p.comparable && p.form == form {
+						target = p.name
+						break
+					}
+				}
+			}
+			switch {
+			case target != "":
+				// Agrees with a claim already placed; share its name.
+			case len(seen) == 0 || group[i].defKey == "":
+				// The first claim keeps the name, and a document's root type
+				// keeps it wherever it sorts: it is the caller's name, and the
+				// definitions are what move to make room for it.
+				target = name
+			default:
+				target = numberedTypeName(name, taken)
+			}
+			seen = append(seen, placed{form: form, comparable: ok, name: target})
+			if target == group[i].final {
+				continue
+			}
+			group[i].final = target
+			pinned[group[i].node] = target
+			moved = true
+		}
+	}
+	return moved
+}
+
+// claimSplitOrderLess orders the claims contesting one name for the split above:
+// the one that keeps the name comes first. See splitFoldedClaims.
+func claimSplitOrderLess(a, b nameClaim) bool {
+	if ra, rb := claimSplitRank(a), claimSplitRank(b); ra != rb {
+		return ra < rb
+	}
+	if a.path != b.path {
+		return a.path < b.path
+	}
+	if a.keyword != b.keyword {
+		return a.keyword < b.keyword
+	}
+	return a.defKey < b.defKey
+}
+
+// claimSplitRank ranks a claim's title to the name it asked for: a document's
+// root type first, then a definition whose key is already spelled as the Go name
+// it derives, then everything else.
+func claimSplitRank(c nameClaim) int {
+	switch {
+	case c.defKey == "":
+		return 0
+	case generator.SchemaNameToGoName(c.defKey) == c.defKey:
+		return 1
+	default:
+		return 2
+	}
+}
+
+// numberedTypeName returns the first numbered spelling of base that no name in
+// this run has been given, and records it as given.
+func numberedTypeName(base string, taken map[string]bool) string {
+	for i := 2; ; i++ {
+		candidate := base + strconv.Itoa(i)
+		if taken[candidate] {
+			continue
+		}
+		taken[candidate] = true
+		return candidate
+	}
 }
 
 // collectNameClaims lists, per Go type name, every claim the documents make on
@@ -232,6 +414,18 @@ func claimsBothDefinitionKeywords(group []nameClaim) bool {
 		}
 	}
 	return defs && definitions
+}
+
+// claimsDocumentRoot reports whether a document's own root type is one of the
+// claims on the name -- the shape where the remedy is about the root name and
+// not about the definitions, since the root is the claim that never moves.
+func claimsDocumentRoot(group []nameClaim) bool {
+	for _, c := range group {
+		if c.defKey == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // distinctClaimPaths counts the input documents a group of claims comes from.
@@ -457,6 +651,20 @@ func canonicalJSON(raw json.RawMessage) (string, error) {
 	return string(out), nil
 }
 
+// splitMechanisms records which of the answers resolveSharedDefinitionNames
+// holds a contested name apart with were needed for one group. The diagnostic
+// reads it so that it describes what was done rather than what could have been:
+// a message naming the keyword as "the only thing in the document that tells
+// them apart" is false for two $defs keys under one keyword, and it is the
+// sentence a reader would act on.
+type splitMechanisms struct {
+	// keyword is set when a claim took the name of the container that declared
+	// it, and numbered when a claim took a numbered spelling because nothing in
+	// the document separated it at all.
+	keyword  bool
+	numbered bool
+}
+
 // describeNameSplit phrases the diagnostic for one contested name: what was
 // asked for, what schemagen did with it, why, and what the caller can change.
 //
@@ -466,7 +674,7 @@ func canonicalJSON(raw json.RawMessage) (string, error) {
 // with itself is a property of that document, and telling its author that "1
 // input documents" disagree names neither the problem nor anything they can act
 // on.
-func describeNameSplit(name string, group []nameClaim, documents int) string {
+func describeNameSplit(name string, group []nameClaim, documents int, split splitMechanisms) string {
 	// One line per claim, deduplicated: a document that spells one definition
 	// under both "definitions" and "$defs" and means it both times makes two
 	// claims that say and become the same thing, and reporting it twice would
@@ -493,23 +701,36 @@ func describeNameSplit(name string, group []nameClaim, documents int) string {
 		// type and every position named after it, and does nothing at all to a
 		// definition spelled twice.
 		var tail strings.Builder
-		tail.WriteString("Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. ")
-		if claimsBothDefinitionKeywords(group) {
+		if split.keyword {
+			tail.WriteString("Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. ")
+		}
+		if split.numbered {
+			tail.WriteString("These keys derive one Go name -- the derivation drops what separates them, as it does for \"my-type\" and \"my_type\", for the two spellings of a JSON Pointer escape, and for a key with no letters in it at all -- so the ones after the first are numbered. ")
+		}
+		switch {
+		case claimsBothDefinitionKeywords(group):
 			tail.WriteString("$defs and definitions name the same container in every draft that defines both, so if these were meant to be one definition make them identical or delete one; otherwise rename one of them in the schema to choose the Go names yourself.")
-		} else {
+		case claimsDocumentRoot(group):
 			tail.WriteString("The document's root type keeps the name -- it is the one the caller asked for, by the document's title or by --root-name. " +
 				"Rename the definition in the schema, or give the document another root name with --root-name, to choose the Go names yourself.")
+		default:
+			tail.WriteString("Make the definitions identical if they were meant to be one type, or rename one of the keys in the schema -- to something that differs by more than punctuation or case -- to choose the Go names yourself.")
 		}
 		return fmt.Sprintf("warning: %s declares the Go type name %s in %d places, and those declarations do not describe the same type, so they cannot be one:\n%s\n"+
 			"one Go package holds one type per name, so declaring them all as %s would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. %s\n",
 			group[0].path, name, len(lines), strings.Join(lines, "\n"), name, tail.String())
 	}
+	folded := ""
+	if split.numbered {
+		folded = "Where two keys of one document derive one Go name even so -- the derivation drops what separates them -- the ones after the first are numbered. "
+	}
 	return fmt.Sprintf("warning: %d input documents claim the Go type name %s, and those claims do not describe the same type, so they cannot be one:\n%s\n"+
 		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. "+
 		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. "+
+		"%s"+
 		"A document's own root type keeps the name it was given; --root-name sets both. "+
 		"Make the definitions identical if they were meant to be one type, or rename one of them in the schema to choose the Go names yourself.\n",
-		documents, name, strings.Join(lines, "\n"))
+		documents, name, strings.Join(lines, "\n"), folded)
 }
 
 // explainPinnedNameCollision turns the generator's refusal of a qualified name

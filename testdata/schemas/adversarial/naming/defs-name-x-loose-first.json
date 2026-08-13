@@ -1,0 +1,1 @@
+{"$defs":{"!":{"type":"string"},"X":{"type":"string","minLength":3,"pattern":"^[a-z]+$"}},"type":"object","properties":{"a":{"$ref":"#/$defs/!"},"b":{"$ref":"#/$defs/X"}}}
