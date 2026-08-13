@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullOneOfNullBranch",
+  "$comment": "The acceptance control for regression/oneof_root_scalar_branch.json, which is issue #267 (c): the same root union with a {\"type\":\"null\"} branch beside the scalar one. The union's branch loop steps over a null, and that step is only wrong where the schema forbids one.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["k"],
+      "properties": { "k": { "type": "string" } }
+    },
+    { "type": "string" },
+    { "type": "null" }
+  ]
+}

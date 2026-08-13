@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullEnumEmptyMember",
+  "$comment": "Issue #267 (b). A const enum is `type Root string` with a list of constants and, until this was fixed, no UnmarshalJSON at all -- so a JSON null was a silent Go no-op that left the zero value behind and Validate judged that zero rather than the document. Every enum whose zero is not a member caught it by accident; this one admits \"\" and so accepted the null outright.",
+  "type": "string",
+  "enum": ["a", ""]
+}

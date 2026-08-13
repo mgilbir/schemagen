@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullEnumAdmitsNull",
+  "$comment": "The acceptance control for root_null_enum_empty_member.json: an enum that lists null among its members, under a type list that admits one. The guard must not reach it.",
+  "type": ["string", "null"],
+  "enum": ["a", null]
+}

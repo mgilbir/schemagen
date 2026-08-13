@@ -142,6 +142,9 @@ type AnyOfBranchUnevaluatedNoProperties struct {
 func (a *AnyOfBranchUnevaluatedNoProperties) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AnyOfBranchUnevaluatedNoProperties")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a

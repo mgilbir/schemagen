@@ -4,6 +4,19 @@
 {{- end}}
 {{- end}}
 
+{{/* enum_null_guard is the first statement of whichever UnmarshalJSON a const
+     enum ends up with. It is a template rather than three copies because which
+     decoder the type declares is decided by its base type and its draft, and
+     the refusal is decided by its schema -- the two are independent, and every
+     combination has to carry it. */}}
+{{define "enum_null_guard"}}
+{{- if .NeedsNullCheck}}
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type {{.Name}}")
+	}
+{{- end}}
+{{- end}}
+
 {{define "enum_const"}}
 {{- if .Description}}
 // {{.Name}} - {{comment "" .Description}}
@@ -25,6 +38,7 @@ const (
 // Go string to encoding/json and refuses a number outright, and json.Number
 // itself would take a JSON *string* for a number, which the schema does not.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- template "enum_null_guard" .}}
 	var _nv jsonNumber
 	if _err := _nv.UnmarshalJSON(data); _err != nil {
 		return _err
@@ -47,12 +61,31 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 // type is an int64 to encoding/json, which takes only the first spelling, and
 // the enum would reject a document its own schema admits.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- template "enum_null_guard" .}}
 	var _iv jsonInteger
 	if _err := _iv.UnmarshalJSON(data); _err != nil {
 		return _err
 	}
 	*{{$recv}} = {{.Name}}(_iv)
 	return nil
+}
+{{- end}}
+{{- if and .NeedsNullCheck (not .IsNumberBase) (not .IntegerToken)}}
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- template "enum_null_guard" .}}
+	{{- /* The same spelling the alias template's own fallback uses: the local
+	       type carries the base type and none of the methods, so the decode
+	       cannot re-enter this one. */}}
+	type Alias {{.Name}}
+	return json.Unmarshal(data, (*Alias)({{$recv}}))
 }
 {{- end}}
 

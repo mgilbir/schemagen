@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullBigIntMergedType",
+  "$comment": "Issue #267, fourth shape, and the one that only exists under --big-int: the big-integer wrapper's two null fields are set from one schemaAllowsNull call, and the schema that call asks is the allOf *merge*. A merge takes a type off a branch, so a branch admitting null told the wrapper the value may be null while the parent's own type excludes it -- the wrapper grew the state and dropped the refusal, and accepted a null the schema forbids. Under the default configuration this document is a defect of its own and NOT one this fixture pins: the merged type is what resolveType is handed, so the root comes out `type Root *int64`, which carries no methods at all and still accepts the null. That is the merge widening a declared type, not a null guard going missing, and it wants a fix in the merge.",
+  "type": "integer",
+  "allOf": [
+    { "type": ["integer", "null"] }
+  ]
+}

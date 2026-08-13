@@ -28,6 +28,9 @@ func (d DefaultedString) Validate() error {
 type AliasOfDefaultedString DefaultedString
 
 func (a *AliasOfDefaultedString) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AliasOfDefaultedString")
+	}
 	var _target DefaultedString
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

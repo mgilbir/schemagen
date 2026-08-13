@@ -237,6 +237,21 @@ const (
 	AnnEnumGreen AnnEnum = "green"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AnnEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AnnEnum")
+	}
+	type Alias AnnEnum
+	return json.Unmarshal(data, (*Alias)(a))
+}
+
 // Validate checks AnnEnum against its JSON Schema constraints.
 func (a AnnEnum) Validate() error {
 	switch a {
@@ -869,6 +884,21 @@ const (
 	DepEnumOff DepEnum = "off"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (d *DepEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type DepEnum")
+	}
+	type Alias DepEnum
+	return json.Unmarshal(data, (*Alias)(d))
+}
+
 // Validate checks DepEnum against its JSON Schema constraints.
 func (d DepEnum) Validate() error {
 	switch d {
@@ -1439,6 +1469,21 @@ const (
 	PlainEnumUp   PlainEnum = "up"
 	PlainEnumDown PlainEnum = "down"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (p *PlainEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type PlainEnum")
+	}
+	type Alias PlainEnum
+	return json.Unmarshal(data, (*Alias)(p))
+}
 
 // Validate checks PlainEnum against its JSON Schema constraints.
 func (p PlainEnum) Validate() error {

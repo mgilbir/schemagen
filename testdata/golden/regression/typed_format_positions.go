@@ -28,6 +28,9 @@ func (t TypedV4) Validate() error {
 type TypedChainInner TypedV4
 
 func (t *TypedChainInner) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type TypedChainInner")
+	}
 	var _target TypedV4
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err
@@ -47,6 +50,9 @@ func (t TypedChainInner) Validate() error {
 type TypedChainOuter TypedChainInner
 
 func (t *TypedChainOuter) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type TypedChainOuter")
+	}
 	var _target TypedChainInner
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

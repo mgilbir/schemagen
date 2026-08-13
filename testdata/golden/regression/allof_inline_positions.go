@@ -29,6 +29,21 @@ const (
 	ColourGreen Colour = "green"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (c *Colour) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Colour")
+	}
+	type Alias Colour
+	return json.Unmarshal(data, (*Alias)(c))
+}
+
 // Validate checks Colour against its JSON Schema constraints.
 func (c Colour) Validate() error {
 	switch c {
@@ -145,6 +160,21 @@ const (
 	AllOfInlinePositionsLvlHigh AllOfInlinePositionsLvl = "high"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfInlinePositionsLvl) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsLvl")
+	}
+	type Alias AllOfInlinePositionsLvl
+	return json.Unmarshal(data, (*Alias)(a))
+}
+
 // Validate checks AllOfInlinePositionsLvl against its JSON Schema constraints.
 func (a AllOfInlinePositionsLvl) Validate() error {
 	switch a {
@@ -161,6 +191,21 @@ const (
 	AllOfInlinePositionsMapValueRed   AllOfInlinePositionsMapValue = "red"
 	AllOfInlinePositionsMapValueGreen AllOfInlinePositionsMapValue = "green"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfInlinePositionsMapValue) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsMapValue")
+	}
+	type Alias AllOfInlinePositionsMapValue
+	return json.Unmarshal(data, (*Alias)(a))
+}
 
 // Validate checks AllOfInlinePositionsMapValue against its JSON Schema constraints.
 func (a AllOfInlinePositionsMapValue) Validate() error {
@@ -193,6 +238,21 @@ const (
 	AllOfInlinePositionsPickRed   AllOfInlinePositionsPick = "red"
 	AllOfInlinePositionsPickGreen AllOfInlinePositionsPick = "green"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfInlinePositionsPick) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsPick")
+	}
+	type Alias AllOfInlinePositionsPick
+	return json.Unmarshal(data, (*Alias)(a))
+}
 
 // Validate checks AllOfInlinePositionsPick against its JSON Schema constraints.
 func (a AllOfInlinePositionsPick) Validate() error {
@@ -250,6 +310,21 @@ const (
 	AllOfInlinePositionsUnionOption0Red   AllOfInlinePositionsUnionOption0 = "red"
 	AllOfInlinePositionsUnionOption0Green AllOfInlinePositionsUnionOption0 = "green"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfInlinePositionsUnionOption0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsUnionOption0")
+	}
+	type Alias AllOfInlinePositionsUnionOption0
+	return json.Unmarshal(data, (*Alias)(a))
+}
 
 // Validate checks AllOfInlinePositionsUnionOption0 against its JSON Schema constraints.
 func (a AllOfInlinePositionsUnionOption0) Validate() error {

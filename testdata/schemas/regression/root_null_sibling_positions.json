@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullSiblingPositions",
+  "$comment": "The three shapes of issue #267 at every position that is not the root. Each of these already refused a null before the fix -- the parent's own NullChecks judge the raw property, element or map value before the value's type is ever consulted -- so they are the controls that say the fix reached the root and moved nothing else.",
+  "type": "object",
+  "properties": {
+    "mergedAtProperty": { "type": "object", "allOf": [{ "properties": { "a": { "type": "string" } } }] },
+    "enumAtProperty": { "type": "string", "enum": ["a", ""] },
+    "unionAtProperty": { "oneOf": [{ "type": "object", "required": ["k"], "properties": { "k": { "type": "string" } } }, { "type": "string" }] },
+
+    "mergedAtElement": { "type": "array", "items": { "type": "object", "allOf": [{ "properties": { "a": { "type": "string" } } }] } },
+    "enumAtElement": { "type": "array", "items": { "type": "string", "enum": ["a", ""] } },
+    "unionAtElement": { "type": "array", "items": { "oneOf": [{ "type": "object", "required": ["k"], "properties": { "k": { "type": "string" } } }, { "type": "string" }] } },
+
+    "mergedAtMapValue": { "type": "object", "additionalProperties": { "type": "object", "allOf": [{ "properties": { "a": { "type": "string" } } }] } },
+    "enumAtMapValue": { "type": "object", "additionalProperties": { "type": "string", "enum": ["a", ""] } },
+    "unionAtMapValue": { "type": "object", "additionalProperties": { "oneOf": [{ "type": "object", "required": ["k"], "properties": { "k": { "type": "string" } } }, { "type": "string" }] } },
+
+    "nullableEnumAtProperty": { "type": ["string", "null"], "enum": ["a", null] },
+    "nullableMergeAtElement": { "type": "array", "items": { "type": ["object", "null"], "allOf": [{ "properties": { "a": { "type": "string" } } }] } }
+  }
+}

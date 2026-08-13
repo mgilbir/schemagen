@@ -20,6 +20,9 @@ const (
 // type is an int64 to encoding/json, which takes only the first spelling, and
 // the enum would reject a document its own schema admits.
 func (i *IntEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type IntEnum")
+	}
 	var _iv jsonInteger
 	if _err := _iv.UnmarshalJSON(data); _err != nil {
 		return _err
@@ -41,6 +44,9 @@ func (i IntEnum) Validate() error {
 type IntAlias IntEnum
 
 func (i *IntAlias) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type IntAlias")
+	}
 	var _target IntEnum
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

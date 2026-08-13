@@ -340,6 +340,9 @@ func (c *CanvasShapesItem) UnmarshalJSON(data []byte) error {
 	c._jsonKeys = nil
 	c._jsonRawProps = nil
 	c.Value = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type CanvasShapesItem")
+	}
 	type Alias CanvasShapesItem
 	aux := &struct {
 		*Alias

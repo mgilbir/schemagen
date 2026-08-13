@@ -73,6 +73,9 @@ func (w Wrapped) Validate() error {
 type RefToRuntimeWrapper Wrapped
 
 func (r *RefToRuntimeWrapper) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RefToRuntimeWrapper")
+	}
 	var _target Wrapped
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

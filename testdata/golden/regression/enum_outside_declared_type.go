@@ -380,6 +380,21 @@ const (
 	OnlyAA OnlyA = "a"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (o *OnlyA) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type OnlyA")
+	}
+	type Alias OnlyA
+	return json.Unmarshal(data, (*Alias)(o))
+}
+
 // Validate checks OnlyA against its JSON Schema constraints.
 func (o OnlyA) Validate() error {
 	switch o {
@@ -946,6 +961,21 @@ const (
 	EnumOutsideDeclaredTypeEnumPartialPatternPattern0A EnumOutsideDeclaredTypeEnumPartialPatternPattern0 = "a"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (e *EnumOutsideDeclaredTypeEnumPartialPatternPattern0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeEnumPartialPatternPattern0")
+	}
+	type Alias EnumOutsideDeclaredTypeEnumPartialPatternPattern0
+	return json.Unmarshal(data, (*Alias)(e))
+}
+
 // Validate checks EnumOutsideDeclaredTypeEnumPartialPatternPattern0 against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeEnumPartialPatternPattern0) Validate() error {
 	switch e {
@@ -1398,6 +1428,21 @@ type EnumOutsideDeclaredTypeEnumPartialSlotItem0 string
 const (
 	EnumOutsideDeclaredTypeEnumPartialSlotItem0A EnumOutsideDeclaredTypeEnumPartialSlotItem0 = "a"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (e *EnumOutsideDeclaredTypeEnumPartialSlotItem0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type EnumOutsideDeclaredTypeEnumPartialSlotItem0")
+	}
+	type Alias EnumOutsideDeclaredTypeEnumPartialSlotItem0
+	return json.Unmarshal(data, (*Alias)(e))
+}
 
 // Validate checks EnumOutsideDeclaredTypeEnumPartialSlotItem0 against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeEnumPartialSlotItem0) Validate() error {

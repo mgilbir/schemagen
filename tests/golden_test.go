@@ -428,6 +428,13 @@ func TestGoldenBigInt(t *testing.T) {
 		// position-matrix document read twice, so the two goldens differ in that
 		// kind and nothing else.
 		{"bigint/annotation_positions", "testdata/schemas/regression/annotation_positions.json", "testdata/golden/bigint/annotation_positions.go"},
+		// The wrapper's two null answers, pinned as source. Refusing the null is
+		// a verdict and TestRootNullIsRefusedInTheBigIntWrapper puts a document
+		// to it; *not carrying a state for one* is a shape, and nothing a
+		// document does can see the difference between a dead _isNull branch and
+		// an absent one. See root_null_bigint_merged_type.json.
+		{"bigint/root_null_merged_type", "testdata/schemas/regression/root_null_bigint_merged_type.json", "testdata/golden/bigint/root_null_merged_type.go"},
+		{"bigint/root_null_nullable", "testdata/schemas/regression/root_null_bigint_nullable.json", "testdata/golden/bigint/root_null_nullable.go"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {

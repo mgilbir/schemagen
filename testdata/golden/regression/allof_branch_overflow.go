@@ -138,6 +138,9 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 	a.PatternProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowAdjacent")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -390,6 +393,9 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBare")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -544,6 +550,9 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBranchUnevaluated")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -694,6 +703,9 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowBranchUnevaluatedFalse")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -833,6 +845,9 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowForbid")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -995,6 +1010,9 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowNestedAllOf")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -1364,6 +1382,9 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowObjectValue")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -1493,6 +1514,9 @@ type AllOfBranchOverflowOwnAdditional struct {
 func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowOwnAdditional")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -1630,6 +1654,9 @@ type AllOfBranchOverflowPlain struct {
 func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowPlain")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -1907,6 +1934,9 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfBranchOverflowTwoBranches")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
