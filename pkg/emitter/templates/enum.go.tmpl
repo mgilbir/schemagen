@@ -13,10 +13,33 @@ type {{.Name}} {{goType .BaseType}}
 
 const (
 {{- range .Values}}
-	{{.Name}} {{$.Name}} = {{enumValue .Value}}
+	{{.Name}} {{$.Name}} = {{if $.IsNumberBase}}{{numberEnumValue .Value}}{{else}}{{enumValue .Value}}{{end}}
 {{- end}}
 )
 {{- $recv := receiverName .Name}}
+{{- if .IsNumberBase}}
+
+// UnmarshalJSON decodes the number as the literal it was written as, which is
+// what this type holds it as. It goes through jsonNumber rather than straight
+// into the named type for two reasons: a named type over json.Number is a plain
+// Go string to encoding/json and refuses a number outright, and json.Number
+// itself would take a JSON *string* for a number, which the schema does not.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	var _nv jsonNumber
+	if _err := _nv.UnmarshalJSON(data); _err != nil {
+		return _err
+	}
+	*{{$recv}} = {{.Name}}(_nv)
+	return nil
+}
+
+// MarshalJSON writes the literal back out as the number it is. Without it the
+// named type is a Go string to encoding/json and the member leaves quoted --
+// 1.5 written back out as "1.5", with nothing failing to say so.
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	return json.Marshal(json.Number({{$recv}}))
+}
+{{- end}}
 {{- if .IntegerToken}}
 
 // UnmarshalJSON decodes an integer written any way its draft allows -- 1, 1.0
@@ -35,12 +58,25 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .IsNumberBase}}
+	{{- /* Compared as numbers rather than as the strings they are held as: the
+	       member spelled 1.5 is the same number as a document's 1.50 or 15e-1,
+	       and an equality on the literal would admit only the first. */}}
+	switch {
+	{{- range .Values}}
+	case jsonNumberCmp(json.Number({{$recv}}), {{numberEnumValue .Value}}) == 0:
+		return nil
+	{{- end}}
+	}
+	return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
+	{{- else}}
 	switch {{$recv}} {
 	case {{range $i, $v := .Values}}{{if $i}}, {{end}}{{$v.Name}}{{end}}:
 		return nil
 	default:
 		return fmt.Errorf("invalid {{.Name}} value: %v", {{$recv}})
 	}
+	{{- end}}
 }
 {{- end}}
 

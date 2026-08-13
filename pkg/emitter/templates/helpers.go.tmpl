@@ -368,6 +368,271 @@ func jsonIntegerPtr[E any, T any](p *E, f func(E) T) *T {
 }
 {{- end}}
 
+{{define "number_helpers"}}
+// jsonNumber is the decode destination for a "number" that this package holds
+// exactly, as the literal the document wrote rather than as the float64 it
+// rounds to.
+//
+// The declared type is encoding/json's json.Number, which keeps the literal and
+// writes it back unchanged. What it does not do is refuse a JSON *string*:
+// json.Number is a string underneath, so {"n":"1.5"} fills one as readily as
+// {"n":1.5} does, and the float64 this replaces refused that outright. A
+// document the schema forbids would have been accepted and then written back
+// out unquoted, as a number nobody sent.
+//
+// encoding/json decides what a token may fill from the destination type alone,
+// so a type of our own is the only place that decision can be intercepted --
+// the same reason jsonInteger exists for the other JSON numeric type. The
+// declared type is unchanged; this one is only ever the shadow the decode runs
+// through.
+type jsonNumber json.Number
+
+func (j *jsonNumber) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return fmt.Errorf("cannot unmarshal string into Go value of type number")
+	}
+	var _n json.Number
+	if _err := json.Unmarshal(data, &_n); _err != nil {
+		return _err
+	}
+	*j = jsonNumber(_n)
+	return nil
+}
+{{- end}}
+
+{{define "number_compare_helpers"}}
+// jsonNumberParts splits a JSON number literal into its sign, its significant
+// digits and the power of ten the last of those digits stands for: the value is
+// (neg ? -1 : 1) * digits * 10^scale, with digits carrying no leading zero.
+//
+// Nothing is expanded. 1e1000000000 is a three-field answer rather than a
+// billion digits, which is what lets the comparisons below be total: every
+// number the JSON grammar allows has an answer here, at a cost set by the
+// length of the literal rather than by its magnitude. A parse into float64
+// cannot be asked these questions at all -- it holds 2^53 and 2^53+1 as one
+// number, and holds 1e400 as an infinity -- which is the whole reason the value
+// is kept as its literal.
+//
+// A zero of any spelling -- 0, -0.0, 0e100 -- answers with no digits at all,
+// and its sign goes with them. JSON Schema has no -0 distinct from 0:
+// {"minimum":0} admits -0.0, and float64, which does keep the sign, agrees only
+// because -0.0 < 0 is false there too.
+//
+// ok is false for a string that is not a JSON number. Nothing decoded can be
+// one -- the decode goes through jsonNumber, which refuses anything that is not
+// a number token -- so it takes a caller assigning a literal by hand, and
+// json.Number's own MarshalJSON refuses that value in turn.
+func jsonNumberParts(s string) (neg bool, digits string, scale int64, ok bool) {
+	if s == "" {
+		// json.Number's zero value, which encoding/json writes back out as 0.
+		return false, "", 0, true
+	}
+	_i := 0
+	if _i < len(s) && (s[_i] == '-' || s[_i] == '+') {
+		neg = s[_i] == '-'
+		_i++
+	}
+	_start := _i
+	for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
+		_i++
+	}
+	_int := s[_start:_i]
+	_frac := ""
+	if _i < len(s) && s[_i] == '.' {
+		_i++
+		_start = _i
+		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
+			_i++
+		}
+		_frac = s[_start:_i]
+	}
+	if _int == "" && _frac == "" {
+		return false, "", 0, false
+	}
+	_exp := int64(0)
+	if _i < len(s) && (s[_i] == 'e' || s[_i] == 'E') {
+		_i++
+		_esign := int64(1)
+		if _i < len(s) && (s[_i] == '+' || s[_i] == '-') {
+			if s[_i] == '-' {
+				_esign = -1
+			}
+			_i++
+		}
+		_start = _i
+		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
+			_i++
+		}
+		if _start == _i {
+			return false, "", 0, false
+		}
+		// Saturated rather than parsed into whatever fits. An exponent past
+		// this limit is further from zero, or nearer to it, than any other
+		// literal can be by a margin no comparison can close, so clamping
+		// changes no answer; letting an int64 wrap would answer the opposite.
+		_e, _err := strconv.ParseInt(s[_start:_i], 10, 64)
+		if _err != nil || _e > 1<<40 {
+			_e = 1 << 40
+		}
+		_exp = _esign * _e
+	}
+	if _i != len(s) {
+		return false, "", 0, false
+	}
+	digits = _int + _frac
+	scale = _exp - int64(len(_frac))
+	// Leading zeros go, and they are what makes two spellings of one number
+	// line up: the comparison below reads the position of the leading digit as
+	// the scale plus the digit count, so 0.1 kept as two digits would sit one
+	// decimal place above 1e-1 kept as one, and the two would not compare
+	// equal. Trailing zeros are left where they are -- 1.50 is three digits at
+	// a scale two lower than 1.5's two, which is the same leading position and
+	// the same digits once the shorter run is padded, so nothing is gained by
+	// moving them.
+	for len(digits) > 0 && digits[0] == '0' {
+		digits = digits[1:]
+	}
+	// Nothing left is a zero of some spelling -- 0, -0.0, 0e100 -- and its sign
+	// goes with its digits.
+	if digits == "" {
+		return false, "", 0, true
+	}
+	return neg, digits, scale, true
+}
+
+// jsonNumberCmp compares a JSON number against a decimal literal exactly,
+// answering -1, 0 or 1 as the number is less than, equal to or greater than the
+// literal.
+//
+// Exactly is the point: this is what every numeric keyword on an exactly held
+// number is enforced through, and a comparison made in float64 would give the
+// value and the bound one reading between them wherever they differ past the
+// 53rd bit. It is also what makes 1.50 equal to 1.5 and 1e2 equal to 100, which
+// a comparison of the literals as text would not.
+//
+// A value neither side can read compares equal, so no check fires on it. That
+// costs nothing a decode can produce -- jsonNumber refuses a token that is not
+// a number -- and a hand-assigned non-number is reported by MarshalJSON, which
+// refuses to write it at all.
+func jsonNumberCmp(a json.Number, b string) int {
+	_aNeg, _aDig, _aScale, _aOK := jsonNumberParts(string(a))
+	_bNeg, _bDig, _bScale, _bOK := jsonNumberParts(b)
+	if !_aOK || !_bOK {
+		return 0
+	}
+	if _aDig == "" || _bDig == "" {
+		switch {
+		case _aDig == "" && _bDig == "":
+			return 0
+		case _aDig == "":
+			if _bNeg {
+				return 1
+			}
+			return -1
+		default:
+			if _aNeg {
+				return -1
+			}
+			return 1
+		}
+	}
+	if _aNeg != _bNeg {
+		if _aNeg {
+			return -1
+		}
+		return 1
+	}
+	// The position of the leading digit settles it whenever the two differ: a
+	// number with more digits before the point is the larger one, whatever
+	// those digits are. Both runs are free of leading and trailing zeros, so
+	// the position is the scale plus the digit count.
+	_c := 0
+	_aLead := _aScale + int64(len(_aDig))
+	_bLead := _bScale + int64(len(_bDig))
+	switch {
+	case _aLead < _bLead:
+		_c = -1
+	case _aLead > _bLead:
+		_c = 1
+	default:
+		for _k := 0; _k < len(_aDig) || _k < len(_bDig); _k++ {
+			_x, _y := byte('0'), byte('0')
+			if _k < len(_aDig) {
+				_x = _aDig[_k]
+			}
+			if _k < len(_bDig) {
+				_y = _bDig[_k]
+			}
+			if _x != _y {
+				if _x < _y {
+					_c = -1
+				} else {
+					_c = 1
+				}
+				break
+			}
+		}
+	}
+	if _aNeg {
+		return -_c
+	}
+	return _c
+}
+
+// jsonNumberIsMultipleOf reports whether v is an exact multiple of m.
+//
+// Both are decimals, so the question is whether one integer divides another
+// once the two scales are lined up: v is Dv*10^sv and m is Dm*10^sm, and v/m is
+// a whole number exactly when Dm divides Dv*10^(sv-sm). The float64 quotient
+// this replaces was compared against a tolerance of 1e-9, which called
+// 4611686018427387905 a multiple of 4611686018427387904 -- the two share a
+// float64 -- and would call any large enough pair of neighbours the same.
+//
+// Neither power of ten is ever built. A positive difference of scales is folded
+// into the divisor by modular exponentiation, and a negative one is decided by
+// length first: a divisor with more digits than the dividend divides nothing
+// but zero.
+//
+// A multipleOf of zero divides nothing, and the keyword forbids it; the answer
+// here is the one the float64 path gave, which is to accept, because a division
+// by zero produced a NaN that no tolerance test rejected.
+func jsonNumberIsMultipleOf(v json.Number, m string) bool {
+	_, _vDig, _vScale, _vOK := jsonNumberParts(string(v))
+	_, _mDig, _mScale, _mOK := jsonNumberParts(m)
+	if !_vOK || !_mOK || _mDig == "" {
+		return true
+	}
+	if _vDig == "" {
+		// Zero is a multiple of every number.
+		return true
+	}
+	_dv, _dvOK := new(big.Int).SetString(_vDig, 10)
+	_dm, _dmOK := new(big.Int).SetString(_mDig, 10)
+	if !_dvOK || !_dmOK {
+		return true
+	}
+	_ten := big.NewInt(10)
+	_k := _vScale - _mScale
+	if _k >= 0 {
+		// 10^_k mod _dm, computed without building 10^_k: the exponent may be
+		// astronomical and the answer is smaller than _dm either way.
+		_p := new(big.Int).Exp(_ten, big.NewInt(_k), _dm)
+		_r := new(big.Int).Mod(_dv, _dm)
+		_r.Mul(_r, _p)
+		_r.Mod(_r, _dm)
+		return _r.Sign() == 0
+	}
+	// The divisor is _dm followed by -_k zeros, so once that run is as long as
+	// the dividend's own digits the divisor is the larger number and divides it
+	// only if it is zero, which it is not.
+	if -_k >= int64(len(_vDig)) {
+		return false
+	}
+	_d := new(big.Int).Mul(_dm, new(big.Int).Exp(_ten, big.NewInt(-_k), nil))
+	return new(big.Int).Mod(_dv, _d).Sign() == 0
+}
+{{- end}}
+
 {{define "nullcheck_helpers"}}
 // jsonNullRule says where a JSON null is forbidden beneath one value: at the
 // value itself when Reject is set, and beneath it at the level Elem names. A

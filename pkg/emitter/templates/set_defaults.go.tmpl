@@ -41,6 +41,15 @@ func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
 		_default := float64({{.DefaultLiteral}})
 		{{$recv}}.{{.Name}} = &_default
 	}
+	{{- else if eq (goType .Type) "*json.Number"}}
+	{{- /* A number held exactly. The literal already carries its own
+	       conversion -- json.Number("1.25") -- because the value is the text
+	       the schema wrote and re-rendering it would plant a different
+	       number. */}}
+	if {{$recv}}.{{.Name}} == nil {
+		_default := {{.DefaultLiteral}}
+		{{$recv}}.{{.Name}} = &_default
+	}
 	{{- else if eq (goType .Type) "*bool"}}
 	if {{$recv}}.{{.Name}} == nil {
 		_default := {{.DefaultLiteral}}

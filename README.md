@@ -56,6 +56,7 @@ This reads `person.json`, generates Go types, and writes the output to `./models
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output. Read on every object schema, including the sub-schemas the generator compiles to schema data rather than to a struct. An `allOf` branch's properties are pooled into the object the branches compose, as the merged struct pools them; every other applicator's sub-schema is a schema object in its own right and is read on its own terms, which is `additionalProperties`' own reading and can make a discriminated or conditional object unsatisfiable |
 | `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
+| `--exact-numbers` | | `false` | Hold `"type":"number"` as the literal the document wrote (`json.Number`) rather than the `float64` it rounds to, and compare every numeric keyword on it exactly (see below) |
 | `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
 | `--format-annotation` | | `false` | Treat `format` as an annotation on every draft. The opposite of `--format-assertion`, and mutually exclusive with it |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
@@ -195,6 +196,48 @@ So an absent optional property stays absent, a present null comes back as a
 null, and a present empty collection comes back as `[]` or `{}`. All three are
 distinguishable. A value built in Go rather than decoded carries no such record,
 and its nil fields are simply omitted.
+
+### Numbers: exact, or `float64`
+
+A JSON number has no precision limit and a `float64` has two. By default a
+property typed `"number"` is a `float64`, so a document carrying
+`1.2345678901234567890` comes back as `1.2345678901234567`, and one carrying
+`123456789012345678901234567890` comes back as `1.2345678901234568e+29`. A
+read-modify-write then rewrites a field the caller never touched, silently.
+
+Integers have not had that problem for some time: an `int64` holds every integer
+up to its own range exactly, and `--big-int` carries the rest. `--exact-numbers`
+is the same guarantee for the other JSON numeric type.
+
+```bash
+schemagen generate schema.json --exact-numbers
+```
+
+With it, a `"number"` is `encoding/json`'s `json.Number` — the literal as
+written. Nothing rounds, so the value that arrives is the value that leaves,
+byte for byte, in every position the schema gives the type to: a scalar
+property, an array element, a map value, a `$defs` alias, an enum member, a
+`default`. Values past `float64`'s range (`1e400`) decode rather than being
+refused, and `-0.0` comes back as `-0.0` rather than as `-0`.
+
+Every numeric keyword — `minimum`, `maximum`, both `exclusive` forms,
+`multipleOf`, `const` and `enum` — is then compared on the literal, through
+exact decimal arithmetic rather than through a `float64` that cannot tell
+`0.1` from the number it actually holds for `0.1`. Two spellings of one number
+compare equal, so `1.50` satisfies a `const` of `1.5` and `1e-1` satisfies a
+`maximum` of `0.1`.
+
+What it costs is arithmetic: `json.Number` is a string underneath and has
+`Float64()`, `Int64()` and `String()` and no operators. That is the trade the
+flag exists to let you make — the alternative is a dependency, and only the
+caller knows which precision their sum wants. It is opt-in for the same reason:
+turning it on changes the generated Go type.
+
+Where it does not reach: a position the schema gives no type to. Those are held
+as `any`, and `encoding/json` makes a `float64` of a JSON number on the way into
+one whatever this flag says — a tuple element, an `any` field, a value judged
+only by a runtime rule. `--exact-numbers` acts on the declared type, so a schema
+that declares none gets what it always got.
 
 ### Property names are case-sensitive
 
@@ -547,6 +590,10 @@ schemagen generate --config schemagen.json
 - The config is used only when `--config` names it: there is no auto-discovery,
   so a build never changes behaviour because of a stray file in the working
   directory.
+- Every boolean flag above has a config key of the same name in camel case --
+  `omitEmpty`, `strictProperties`, `strictReadWrite`, `bigInt`, `exactNumbers`,
+  `formatAssertion`, `formatAnnotation`, `allowRemoteRefs`, `lenientRefs`,
+  `sharedTypes`, `rootNameFromFilename`.
 - `--field-map` keeps working and takes precedence over a document's
   `fieldNames`. The config form is preferred, since it keys by document rather
   than by file base name, which is not unique across an input set.

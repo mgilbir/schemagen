@@ -7404,7 +7404,7 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 		if got := field.Type.GoTypeName(); got != wantType {
 			t.Fatalf("%s type = %q, want %q -- the decode changes, the type does not", jsonName, got, wantType)
 		}
-		if field.IntegerDecode == nil {
+		if field.LeafDecode == nil {
 			t.Fatalf("%s has no integer decode: encoding/json would see the int64 itself and refuse 1.0", jsonName)
 		}
 	}
@@ -7419,7 +7419,7 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 		"mp":      "map[string]jsonInteger",
 		"nullint": "*jsonInteger",
 	} {
-		def := fieldNamedJSON(t, doc, jsonName).IntegerDecode
+		def := fieldNamedJSON(t, doc, jsonName).LeafDecode
 		if got := def.ShadowType.GoTypeName(); got != wantShadow {
 			t.Fatalf("%s shadow = %q, want %q -- a shadow of another shape decodes a different document", jsonName, got, wantShadow)
 		}
@@ -7442,7 +7442,7 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 	if intVariant == nil {
 		t.Fatalf("no int64 oneOf variant on Doc: %+v", doc.OneOfs)
 	}
-	if intVariant.IntegerDecode == nil {
+	if intVariant.LeafDecode == nil {
 		t.Fatalf("the integer oneOf branch decodes without the shadow, so selection gates on a different reading of the number than the rest of the file")
 	}
 
@@ -7452,7 +7452,7 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 	if counts == nil {
 		t.Fatalf("expected an alias Counts; got %v", ir.TypeDefs)
 	}
-	if counts.IntegerDecode == nil {
+	if counts.LeafDecode == nil {
 		t.Fatalf("Counts (%s) decodes its elements as bare int64", counts.Underlying.GoTypeName())
 	}
 
@@ -7467,7 +7467,7 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 	// int64, and attaching the shadow to them would either not compile or would
 	// change how a number that is *not* an integer is read.
 	for _, jsonName := range []string{"str", "num", "free"} {
-		if def := fieldNamedJSON(t, doc, jsonName).IntegerDecode; def != nil {
+		if def := fieldNamedJSON(t, doc, jsonName).LeafDecode; def != nil {
 			t.Fatalf("%s has an integer decode (%s) -- it holds no int64", jsonName, def.ShadowType.GoTypeName())
 		}
 	}
@@ -7489,21 +7489,21 @@ func TestDraft4IntegerPositionsKeepTheStrictToken(t *testing.T) {
 		ir := generateForDraft(t, integerPositionsSchema, draft)
 		doc := structNamed(t, ir, "Doc")
 		for i := range doc.Fields {
-			if doc.Fields[i].IntegerDecode != nil {
+			if doc.Fields[i].LeafDecode != nil {
 				t.Fatalf("draft %v: %s decodes 1.0 as an integer, which this draft says it is not", draft, doc.Fields[i].JSONName)
 			}
 		}
-		if doc.AdditionalProperties != nil && doc.AdditionalProperties.IntegerDecode != nil {
+		if doc.AdditionalProperties != nil && doc.AdditionalProperties.LeafDecode != nil {
 			t.Fatalf("draft %v: the overflow map decodes 1.0 as an integer", draft)
 		}
 		for i := range doc.OneOfs {
 			for j := range doc.OneOfs[i].Variants {
-				if doc.OneOfs[i].Variants[j].IntegerDecode != nil {
+				if doc.OneOfs[i].Variants[j].LeafDecode != nil {
 					t.Fatalf("draft %v: a oneOf branch decodes 1.0 as an integer", draft)
 				}
 			}
 		}
-		if counts := aliasNamed(ir, "Counts"); counts == nil || counts.IntegerDecode != nil {
+		if counts := aliasNamed(ir, "Counts"); counts == nil || counts.LeafDecode != nil {
 			t.Fatalf("draft %v: Counts was not generated, or decodes 1.0 as an integer", draft)
 		}
 		if enm := enumNamed(t, ir, "DocEnm"); enm.IntegerToken {
@@ -7531,10 +7531,10 @@ func TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation(t *testing.T)
 	if got := doc.AdditionalProperties.ValueType.GoTypeName(); got != "int64" {
 		t.Fatalf("overflow value type = %q, want int64", got)
 	}
-	if doc.AdditionalProperties.IntegerDecode == nil {
+	if doc.AdditionalProperties.LeafDecode == nil {
 		t.Fatalf("the overflow map decodes its values as bare int64, so 1.0 is refused for a key the schema types integer")
 	}
-	if got := doc.AdditionalProperties.IntegerDecode.ShadowType.GoTypeName(); got != "jsonInteger" {
+	if got := doc.AdditionalProperties.LeafDecode.ShadowType.GoTypeName(); got != "jsonInteger" {
 		t.Fatalf("overflow shadow = %q, want jsonInteger", got)
 	}
 }

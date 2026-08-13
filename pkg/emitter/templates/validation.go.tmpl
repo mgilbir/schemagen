@@ -199,58 +199,71 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if eq .RuleType "minimum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} < {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBound .}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} < {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBound .}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} > {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBound .}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} > {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBound .}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} <= {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBound .}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} <= {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBound .}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} >= {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBound .}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} >= {{numBound .}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBound .}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .IntegerCompare}}
+	{{- if .ExactCompare}}
+	{{- /* Exact: the two decimals are lined up and one integer divided by the
+	       other, rather than a float64 quotient compared against a tolerance
+	       that cannot tell neighbouring large numbers apart. */}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && !{{exactMultipleOf . (printf "*%s.%s" $recv .FieldName)}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
+	if !{{exactMultipleOf . (printf "%s.%s" $recv .FieldName)}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- else if .IntegerCompare}}
 	{{- /* Exact: both operands are int64, so divisibility is a remainder
 	       rather than a float64 quotient compared against a tolerance. */}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && *{{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
 	if {{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- else}}
@@ -259,13 +272,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		if {{$recv}}.{{.FieldName}} != nil {
 		q := float64(*{{$recv}}.{{.FieldName}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", *{{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 		}
 		}
 		{{- else}}
 		q := float64({{$recv}}.{{.FieldName}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBound .}}", {{$recv}}.{{.FieldName}})
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 		}
 		{{- end}}
 	}
@@ -339,6 +352,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
+	{{- if .ExactCompare}}
+	{{- /* The const is a number and the value is held as its literal, so the
+	       two are compared as numbers. The general arm below marshals the value
+	       and compares the JSON text, which reads 2.50 and 2.5 as different
+	       constants; they are one number, and the schema named the number. */}}
+	{{- if .IsPointer}}
+	if {{$recv}}.{{.FieldName}} != nil && {{exactConstViolated . (printf "*%s.%s" $recv .FieldName)}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %v", {{printf "%q" .Value}}, *{{$recv}}.{{.FieldName}})
+	}
+	{{- else}}
+	if {{exactConstViolated . (printf "%s.%s" $recv .FieldName)}} {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %v", {{printf "%q" .Value}}, {{$recv}}.{{.FieldName}})
+	}
+	{{- end}}
+	{{- else}}
 	{
 		_constGot, _constErr := json.Marshal({{$recv}}.{{.FieldName}})
 		if _constErr != nil {
@@ -348,6 +376,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, string(_constGot))
 		}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maxProperties"}}
 	{
@@ -1539,32 +1568,62 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . $elem}} < {{numBound .}} {
+		return fmt.Errorf("{{$path}}: value %v is less than minimum {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	}
+	{{- else}}
 	if float64({{$elem}}) < {{.Value}} {
 		return fmt.Errorf("{{$path}}: value %v is less than minimum {{.Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "maximum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . $elem}} > {{numBound .}} {
+		return fmt.Errorf("{{$path}}: value %v exceeds maximum {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	}
+	{{- else}}
 	if float64({{$elem}}) > {{.Value}} {
 		return fmt.Errorf("{{$path}}: value %v exceeds maximum {{.Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . $elem}} <= {{numBound .}} {
+		return fmt.Errorf("{{$path}}: value %v must be greater than {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	}
+	{{- else}}
 	if float64({{$elem}}) <= {{.Value}} {
 		return fmt.Errorf("{{$path}}: value %v must be greater than {{.Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
+	{{- if .ExactCompare}}
+	if {{numOperand . $elem}} >= {{numBound .}} {
+		return fmt.Errorf("{{$path}}: value %v must be less than {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	}
+	{{- else}}
 	if float64({{$elem}}) >= {{.Value}} {
 		return fmt.Errorf("{{$path}}: value %v must be less than {{.Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
+	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
+	{{- if .ExactCompare}}
+	if !{{exactMultipleOf . $elem}} {
+		return fmt.Errorf("{{$path}}: value %v is not a multiple of {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	}
+	{{- else}}
 	{
 		_q := float64({{$elem}}) / {{.Value}}
 		if math.Abs(_q - math.Round(_q)) > 1e-9 {
 			return fmt.Errorf("{{$path}}: value %v is not a multiple of {{.Value}}", {{$args}}, {{$elem}})
 		}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$elem}}) < {{.Value}} {
@@ -1599,6 +1658,11 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	{{- template "string_content_check" (mkStringContentCtxArgs $elem $path $args .)}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
+	{{- if .ExactCompare}}
+	if {{exactConstViolated . $elem}} {
+		return fmt.Errorf("{{$path}}: value must be %s, got %v", {{$args}}, {{printf "%q" .Value}}, {{$elem}})
+	}
+	{{- else}}
 	{
 		_constGot, _constErr := json.Marshal({{$elem}})
 		if _constErr != nil {
@@ -1608,6 +1672,7 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 			return fmt.Errorf("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, string(_constGot))
 		}
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
 	{{- /*
@@ -1672,24 +1737,48 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 				}
 {{- end}}
 {{- if eq .RuleType "minimum"}}
+{{- if .ExactCompare}}
+				if {{numOperand . "_uVal"}} < {{numBound .}} {
+					return fmt.Errorf("unevaluated property %q: value %v is less than minimum {{numBoundMsg .}}", k, _uVal)
+				}
+{{- else}}
 				if float64(_uVal) < {{.Value}} {
 					return fmt.Errorf("unevaluated property %q: value %v is less than minimum {{.Value}}", k, _uVal)
 				}
 {{- end}}
+{{- end}}
 {{- if eq .RuleType "maximum"}}
+{{- if .ExactCompare}}
+				if {{numOperand . "_uVal"}} > {{numBound .}} {
+					return fmt.Errorf("unevaluated property %q: value %v exceeds maximum {{numBoundMsg .}}", k, _uVal)
+				}
+{{- else}}
 				if float64(_uVal) > {{.Value}} {
 					return fmt.Errorf("unevaluated property %q: value %v exceeds maximum {{.Value}}", k, _uVal)
 				}
 {{- end}}
+{{- end}}
 {{- if eq .RuleType "exclusiveMinimum"}}
+{{- if .ExactCompare}}
+				if {{numOperand . "_uVal"}} <= {{numBound .}} {
+					return fmt.Errorf("unevaluated property %q: value %v must be greater than {{numBoundMsg .}}", k, _uVal)
+				}
+{{- else}}
 				if float64(_uVal) <= {{.Value}} {
 					return fmt.Errorf("unevaluated property %q: value %v must be greater than {{.Value}}", k, _uVal)
 				}
 {{- end}}
+{{- end}}
 {{- if eq .RuleType "exclusiveMaximum"}}
+{{- if .ExactCompare}}
+				if {{numOperand . "_uVal"}} >= {{numBound .}} {
+					return fmt.Errorf("unevaluated property %q: value %v must be less than {{numBoundMsg .}}", k, _uVal)
+				}
+{{- else}}
 				if float64(_uVal) >= {{.Value}} {
 					return fmt.Errorf("unevaluated property %q: value %v must be less than {{.Value}}", k, _uVal)
 				}
+{{- end}}
 {{- end}}
 {{- if eq .RuleType "pattern"}}
 				{
@@ -1699,12 +1788,18 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 				}
 {{- end}}
 {{- if eq .RuleType "multipleOf"}}
+{{- if .ExactCompare}}
+				if !{{exactMultipleOf . "_uVal"}} {
+					return fmt.Errorf("unevaluated property %q: value %v is not a multiple of {{numBoundMsg .}}", k, _uVal)
+				}
+{{- else}}
 				{
 					_q := float64(_uVal) / {{.Value}}
 					if math.Abs(_q - math.Round(_q)) > 1e-9 {
 						return fmt.Errorf("unevaluated property %q: value %v is not a multiple of {{.Value}}", k, _uVal)
 					}
 				}
+{{- end}}
 {{- end}}
 {{- end}}
 
@@ -1880,38 +1975,72 @@ declares a field for it at all.
 			{{- else if eq .CheckType "minimum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
+				{{- if $.Def.ExactNumbers}}
+				var _cn jsonNumber
+				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) < 0 {
+					_cMatch = false
+				}
+				{{- else}}
 				var _cf float64
 				if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{.Value}} {
 					_cMatch = false
 				}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "maximum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
+				{{- if $.Def.ExactNumbers}}
+				var _cn jsonNumber
+				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) > 0 {
+					_cMatch = false
+				}
+				{{- else}}
 				var _cf float64
 				if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{.Value}} {
 					_cMatch = false
 				}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "exclusiveMinimum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
+				{{- if $.Def.ExactNumbers}}
+				var _cn jsonNumber
+				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) <= 0 {
+					_cMatch = false
+				}
+				{{- else}}
 				var _cf float64
 				if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{.Value}} {
 					_cMatch = false
 				}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "exclusiveMaximum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
+				{{- if $.Def.ExactNumbers}}
+				var _cn jsonNumber
+				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) >= 0 {
+					_cMatch = false
+				}
+				{{- else}}
 				var _cf float64
 				if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{.Value}} {
 					_cMatch = false
 				}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "multipleOf"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
+				{{- if $.Def.ExactNumbers}}
+				var _cn jsonNumber
+				if json.Unmarshal(_cBytes, &_cn) != nil || !jsonNumberIsMultipleOf(json.Number(_cn), {{jsonNumberLiteral .Value}}) {
+					_cMatch = false
+				}
+				{{- else}}
 				var _cf float64
 				if json.Unmarshal(_cBytes, &_cf) != nil {
 					_cMatch = false
@@ -1921,6 +2050,7 @@ declares a field for it at all.
 						_cMatch = false
 					}
 				}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "minLength"}}
 			if _cMatch {

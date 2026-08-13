@@ -458,7 +458,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Must run after resolveAliasMethodability: an alias that cannot carry
 	// methods has nowhere to put a tolerant decode. And after
 	// populateAliasDelegates, whose UnmarshalAs it reads.
-	g.resolveIntegerDecodes()
+	g.resolveLeafDecodes()
 	// Must run after every type definition exists: the literal it writes is a
 	// conversion into a named type, and whether that conversion is sound is a
 	// property of the declaration, not of the property that references it.
@@ -815,6 +815,18 @@ func (g *Generator) addRequiredImports() {
 
 	if g.output.ValidationCapability.RequiresRuntime && g.output.ValidationCapability.Mode != ValidationModeStatic {
 		needsValidationRuntime = true
+	}
+
+	// A "number" held exactly names encoding/json in the *type*, not only in the
+	// code: a field, an array element, a map value, an alias's underlying and an
+	// enum's base type are all spelled json.Number. Claimed from the flag rather
+	// than from a walk of every position that could hold one, because
+	// over-claiming is the safe direction here and under-claiming is not:
+	// keepReferencedImports drops an import the rendered file never qualifies,
+	// while one the file names and the model omitted is a file that does not
+	// compile. Under the default configuration this is not reached at all.
+	if g.config.ExactNumbers {
+		needsJSON = true
 	}
 
 	for _, td := range g.output.TypeDefs {
@@ -3796,10 +3808,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			ZeroJSON:        zeroJSON,
 			DefaultLiteral:  defaultLiteral,
 			pendingDefault:  pendingDefault,
-			IntegerDecode:   g.integerDecodeFor(goType, propSchema),
+			LeafDecode:      g.leafDecodeFor(goType, propSchema),
 			ConditionalOnly: conditionalOnly[propName],
 		})
-		if needsUnmarshalForIntegers(fields[len(fields)-1]) {
+		if needsUnmarshalForLeafDecode(fields[len(fields)-1]) {
 			needsUnmarshal = true
 		}
 		// A default written into a field with no nil state is settled against
@@ -3813,7 +3825,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// already claimed UnmarshalJSON, because its schema refuses null or it
 		// captures overflow -- and neutering it changes no golden and no
 		// generated file in the corpus. It is kept for the same reason
-		// needsUnmarshalForIntegers is: so the two are decided together rather
+		// needsUnmarshalForLeafDecode is: so the two are decided together rather
 		// than by coincidence. The fields whose literal is settled later ask the
 		// same question from resolveNamedTypeDefaults.
 		if fields[len(fields)-1].DefaultAsksJSONKeys() {
@@ -4097,6 +4109,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 						continue
 					}
 				}
+				// A number held exactly is compared on its literal. The
+				// field is a json.Number there, which no float64 conversion
+				// accepts, so a rule this misses does not compile.
+				markExactNumberRule(&rules[i], ft)
 				// The string rules pass the field to functions that take a
 				// string; a field typed as a named string needs an explicit
 				// conversion for that to compile.
@@ -7427,7 +7443,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			RequiredFields: result.RequiredFields,
 			Checks:         checks,
 			FullyChecked:   g.oneOfVariantFullyChecked(variant, result.Type, result.RequiredFields, checks),
-			IntegerDecode:  g.integerDecodeFor(result.Type, variant),
+			LeafDecode:     g.leafDecodeFor(result.Type, variant),
 		})
 	}
 
@@ -7713,7 +7729,7 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 		switch t.Name {
 		case "string":
 			kind = "string"
-		case "int64", "float64":
+		case "int64", "float64", GoNumberTypeName:
 			kind = "number"
 		}
 	case *ArrayType:
@@ -7739,6 +7755,7 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 			}
 		}
 	}
+	markExactNumberRules(checks, goType)
 	return checks
 }
 
@@ -8043,7 +8060,7 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// Primitive variant
 	pt := primarySchemaType(variant)
 	if pt != "" {
-		goType := PrimitiveTypeFromSchema(pt)
+		goType := g.primitiveTypeFromSchema(pt)
 		if goType != nil {
 			goName := SchemaNameToGoName(pt)
 			return oneOfVariantResult{Name: goName, Type: goType}, nil
@@ -8770,7 +8787,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if mapValueSchema(s, inner) != nil {
 			return g.resolveType(s, parentName+fieldName), nil
 		}
-		baseType := PrimitiveTypeFromSchema(inner)
+		baseType := g.primitiveTypeFromSchema(inner)
 		if baseType == nil {
 			baseType = &PrimitiveType{Name: "any"}
 		}
@@ -9222,7 +9239,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			valueType := g.resolveArrayItemType(mapVals, contextName+"Value")
 			return &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: valueType}
 		}
-		baseType := PrimitiveTypeFromSchema(inner)
+		baseType := g.primitiveTypeFromSchema(inner)
 		if baseType == nil {
 			baseType = &PrimitiveType{Name: "any"}
 		}
@@ -9298,7 +9315,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 				return goType
 			}
 		}
-		t := PrimitiveTypeFromSchema(primaryType)
+		t := g.primitiveTypeFromSchema(primaryType)
 		if t != nil {
 			return t
 		}
@@ -10881,7 +10898,7 @@ func (g *Generator) resolveRef(ref string) *schema.Schema {
 func (g *Generator) resolveBaseType(s *schema.Schema) GoType {
 	pt := primarySchemaType(s)
 	if pt != "" {
-		t := PrimitiveTypeFromSchema(pt)
+		t := g.primitiveTypeFromSchema(pt)
 		if t != nil {
 			return t
 		}
@@ -11152,7 +11169,7 @@ func isZeroLossyPrimitive(goType GoType) bool {
 		return false
 	}
 	switch pt.Name {
-	case "string", "bool", "int64", "float64", "time.Time", "netip.Addr":
+	case "string", "bool", "int64", "float64", GoNumberTypeName, "time.Time", "netip.Addr":
 		return true
 	}
 	return false
@@ -12370,7 +12387,7 @@ func (g *Generator) zeroJSONKind(t GoType, depth int) (string, bool) {
 		switch v.Name {
 		case "string":
 			return zeroKindString, true
-		case "int64", "float64":
+		case "int64", "float64", GoNumberTypeName:
 			return zeroKindNumber, true
 		case "bool":
 			return zeroKindBoolean, true
@@ -14112,7 +14129,7 @@ func enumFitsConstForm(base GoType, values []any) bool {
 			if _, ok := v.(bool); !ok {
 				return false
 			}
-		case "float64":
+		case "float64", GoNumberTypeName:
 			if _, ok := jsonNumericValue(v); !ok {
 				return false
 			}
@@ -14699,6 +14716,7 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 			}
 			rule.StringBacked = stringBacked
 		}
+		markExactNumberRule(&rule, elemType)
 		out = append(out, rule)
 	}
 	return out
@@ -14776,7 +14794,7 @@ func elementGoKind(t GoType) string {
 		switch v.Name {
 		case "string":
 			return "string"
-		case "int64", "float64":
+		case "int64", "float64", GoNumberTypeName:
 			return "number"
 		case "json.RawMessage":
 			return "raw"
@@ -14859,6 +14877,30 @@ func (g *Generator) populateAliasDelegates() {
 		if !ok || !ad.CanHaveMethods() {
 			continue
 		}
+		// An alias over the json.Number a "number" is held as under
+		// Config.ExactNumbers routes both directions too, and to two different
+		// types, which is why it is not one more name in the list below.
+		//
+		// Neither direction is optional and neither is inherited. Decoding, a
+		// named type over json.Number is a plain Go string to encoding/json: it
+		// refuses a number outright. Encoding, it is *accepted* as a string and
+		// written back out quoted, so 1.5 leaves as "1.5" with nothing failing
+		// -- the silent half, and the reason this is settled here rather than
+		// left to each construction site to remember.
+		//
+		// The decode goes through the shadow rather than through json.Number
+		// itself because json.Number takes a JSON string as readily as a number
+		// (see LeafDecodeDef); the encode goes through json.Number, whose
+		// MarshalJSON writes the literal back exactly as it arrived.
+		if ad.IsNumberType() {
+			if ad.UnmarshalAs == "" {
+				ad.UnmarshalAs = numberShadowName
+			}
+			if ad.MarshalAs == "" {
+				ad.MarshalAs = GoNumberTypeName
+			}
+			continue
+		}
 		name := selfMarshallingTypeName(ad.Underlying)
 		if name == "" {
 			continue
@@ -14897,10 +14939,10 @@ func (g *Generator) populateAliasDelegates() {
 			// which an alias over the enum does not inherit. Left out of these
 			// tables, `type Root RawEnum` decoded its own "a" as base64 and
 			// `type Root IntEnum` refused the 1.0 the enum exists to accept.
-			if d.IsRaw || d.IntegerToken {
+			if d.IsRaw || d.IntegerToken || d.IsNumberBase() {
 				unmarshalTypes[d.Name] = true
 			}
-			if d.IsRaw {
+			if d.IsRaw || d.IsNumberBase() {
 				marshalTypes[d.Name] = true
 			}
 		case *InferredAliasDef:
@@ -15333,6 +15375,12 @@ func zeroForPrimitive(name string) string {
 		return "0"
 	case "bool":
 		return "false"
+	case GoNumberTypeName:
+		// A string underneath, so its zero literal is "" -- which is also what
+		// the fallback below answers, and this arm is here so that agreement is
+		// stated rather than relied on. encoding/json writes that zero back out
+		// as 0, exactly as the float64 zero it replaces was written.
+		return `""`
 	case "json.RawMessage":
 		// A byte slice: its zero value is nil, not "". Raw (heterogeneous)
 		// enums and multi-type wrappers are backed by json.RawMessage.
@@ -15817,10 +15865,21 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			constJSON = "null"
 		}
 		if constJSON != "" {
-			rules = append(rules, ValidationRule{
+			rule := ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "const", Value: constJSON,
-			})
+			}
+			// The const's own literal, kept beside the JSON text the general
+			// check compares. Value has already been folded through float64 by
+			// constJSONValue -- deliberately, because the general check marshals
+			// an `any` whose number encoding/json made a float64 of -- and a
+			// position holding the number exactly has to compare against what
+			// the schema wrote instead. Empty for a const that is not a number,
+			// which is every position that has no exact comparison to make.
+			if s.Const != nil {
+				rule.ExactValue = JSONNumberLiteral(*s.Const)
+			}
+			rules = append(rules, rule)
 		}
 	}
 	return rules
@@ -15888,6 +15947,7 @@ func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldT
 		}
 		out = append(out, r)
 	}
+	markExactNumberRules(out, fieldType)
 	return out
 }
 
@@ -15913,7 +15973,7 @@ func ruleCompilesForType(t GoType, ruleType string) bool {
 		return ok && prim.Name == "string"
 	case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf":
 		prim, ok := t.(*PrimitiveType)
-		return ok && (prim.Name == "int64" || prim.Name == "float64")
+		return ok && (prim.Name == "int64" || prim.Name == "float64" || prim.Name == GoNumberTypeName)
 	case "minItems", "maxItems", "uniqueItems":
 		_, ok := t.(*ArrayType)
 		return ok
@@ -15946,7 +16006,7 @@ func jsonKindForGoType(t GoType) string {
 			return "string"
 		case "int64":
 			return "integer"
-		case "float64":
+		case "float64", GoNumberTypeName:
 			return "number"
 		case "bool":
 			return "boolean"
@@ -17690,7 +17750,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 		return &ContainsDef{IsTrue: true}, minC, maxC
 	}
 
-	def := &ContainsDef{}
+	def := &ContainsDef{ExactNumbers: g.config.ExactNumbers}
 
 	// Const → marshal to JSON for exact matching.
 	if containsSch.Const != nil {
@@ -17811,6 +17871,7 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 		}
 		rules = append(rules, r)
 	}
+	markExactNumberRules(rules, goType)
 	if len(rules) == 0 {
 		return nil
 	}
@@ -17983,6 +18044,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 		}
 		rules = append(rules, r)
 	}
+	markExactNumberRules(rules, goType)
 	return rules, true
 }
 
@@ -18440,10 +18502,11 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 			// was missing.
 			def.ValueIsNull = true
 		} else if unevalType != "" {
-			goType := PrimitiveTypeFromSchema(unevalType)
+			goType := g.primitiveTypeFromSchema(unevalType)
 			if goType != nil {
 				def.ValueType = goType.GoTypeName()
 				rules := extractValidationRules("", "", uneval)
+				markExactNumberRules(rules, goType)
 				def.Validations = rules
 			} else {
 				// Non-primitive type (object/array) — too complex, allow permissively.
@@ -19120,7 +19183,7 @@ func (g *Generator) oneOfVariantSelectionType(v *schema.Schema) GoType {
 		return nil
 	}
 	if pt := primarySchemaType(v); pt != "" {
-		if goType := PrimitiveTypeFromSchema(pt); goType != nil {
+		if goType := g.primitiveTypeFromSchema(pt); goType != nil {
 			return goType
 		}
 	}

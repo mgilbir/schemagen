@@ -2,6 +2,7 @@ package emitter
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 	"unicode"
@@ -73,6 +74,11 @@ func FuncMap() template.FuncMap {
 		"mkUnevalItemsCtxIn":     mkUnevalItemsCtxInFunc,
 		"mkItemLevelCtx":         mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":     mkBigIntVariantCtxFunc,
+		"numBoundMsg":            numBoundMsgFunc,
+		"exactMultipleOf":        exactMultipleOfFunc,
+		"exactConstViolated":     exactConstViolatedFunc,
+		"numberEnumValue":        numberEnumValueFunc,
+		"jsonNumberLiteral":      jsonNumberLiteralFunc,
 		"mkAliasFormatCtx":       mkAliasFormatCtxFunc,
 		"mkStringFormatCtx":      mkStringFormatCtxFunc,
 		"mkStringFormatCtxArgs":  mkStringFormatCtxArgsFunc,
@@ -687,6 +693,26 @@ func enumValueFunc(v any) string {
 
 // receiverNameFunc takes a type name and returns a single lowercase character
 // suitable for use as a Go method receiver name.
+// numberEnumValueFunc renders one member of an enum whose base type is the
+// json.Number a "number" is held as. The member is the literal the schema
+// wrote, quoted: json.Number is a string underneath, and 1.5 unquoted is a
+// float constant that cannot be assigned to it.
+// jsonNumberLiteralFunc renders a schema-supplied number as the quoted decimal
+// literal the exact comparisons take as their bound.
+func jsonNumberLiteralFunc(v any) string {
+	if lit := generator.JSONNumberLiteral(v); lit != "" {
+		return strconv.Quote(lit)
+	}
+	return strconv.Quote(fmt.Sprintf("%v", v))
+}
+
+func numberEnumValueFunc(v any) string {
+	if lit := generator.JSONNumberLiteral(v); lit != "" {
+		return strconv.Quote(lit)
+	}
+	return strconv.Quote(fmt.Sprintf("%v", v))
+}
+
 func receiverNameFunc(name string) string {
 	if name == "" {
 		return "x"
@@ -866,20 +892,95 @@ func requiredFieldsListFunc(fields []string) string {
 // A rule that never sets the flag -- every one built for a "number" -- emits
 // the source it emitted before.
 func numOperandFunc(rule generator.ValidationRule, expr string) string {
+	if rule.ExactCompare {
+		// The whole comparison, folded into the operand so that the four
+		// ordering keywords keep the one shape they are written in: each is a
+		// relational operator against a bound, and numBoundFunc answers 0 for
+		// the other side. json.Number is a string underneath -- float64(x) does
+		// not compile against one -- so a rule this flag failed to reach fails
+		// the build rather than going on comparing through float64.
+		return "jsonNumberCmp(" + exactNumberOperand(expr) + ", " + strconv.Quote(exactNumberBound(rule)) + ")"
+	}
 	if rule.IntegerCompare {
 		return expr
 	}
 	return "float64(" + expr + ")"
 }
 
+// exactNumberOperand converts the instance expression to the json.Number the
+// comparison takes.
+//
+// Written for every operand rather than only the ones that need it. A named
+// type over json.Number -- a $defs alias, an enum -- is not a json.Number to
+// Go and has to be converted; a field already is one and the conversion is the
+// identity. Deciding which by inspecting the expression would be guessing at
+// the Go type from a string, and getting it wrong in the first direction does
+// not compile while getting it wrong in the second costs nothing.
+func exactNumberOperand(expr string) string {
+	return "json.Number(" + expr + ")"
+}
+
+// exactNumberBound is the bound as the decimal literal jsonNumberCmp reads,
+// which is the literal the schema wrote. It is compared digit by digit against
+// the value's own literal, so nothing is gained by re-rendering it and one
+// thing is lost: 1e308 written out in integer notation is three hundred and
+// nine digits of the same number.
+func exactNumberBound(rule generator.ValidationRule) string {
+	if lit := generator.JSONNumberLiteral(rule.Value); lit != "" {
+		return lit
+	}
+	return fmt.Sprintf("%v", rule.Value)
+}
+
 // numBoundFunc renders a rule's bound as the Go constant its comparison needs:
 // integer notation when the check is made in int64, and the literal the schema
 // wrote otherwise.
 func numBoundFunc(rule generator.ValidationRule) string {
+	if rule.ExactCompare {
+		// numOperandFunc emitted the comparison; what is left for the operator
+		// to test it against is zero.
+		return "0"
+	}
 	if lit := generator.GoNumberLiteral(rule.Value); lit != "" {
 		return lit
 	}
 	return fmt.Sprintf("%v", rule.Value)
+}
+
+// numBoundMsgFunc is the bound as it is named in an error message, which is
+// always a number and never the 0 numBoundFunc answers for an exact
+// comparison: "is less than minimum 0" would be a message about the wrong one.
+//
+// The exact form names the literal the schema wrote, which is what the check it
+// accompanies compares against. Everywhere else this is numBoundFunc exactly,
+// so no message that existed before moves -- and a Go constant is what those
+// checks still compare, so the integer notation GoNumberLiteral chooses for a
+// whole number is still the right rendering there.
+func numBoundMsgFunc(rule generator.ValidationRule) string {
+	if rule.ExactCompare {
+		return exactNumberBound(rule)
+	}
+	return numBoundFunc(rule)
+}
+
+// exactMultipleOfFunc renders the divisibility test for a number held exactly.
+// The float64 quotient it replaces was compared against a tolerance of 1e-9,
+// which is not a comparison the value can survive; see jsonNumberIsMultipleOf.
+func exactMultipleOfFunc(rule generator.ValidationRule, expr string) string {
+	return "jsonNumberIsMultipleOf(" + exactNumberOperand(expr) + ", " + strconv.Quote(exactNumberBound(rule)) + ")"
+}
+
+// exactConstViolatedFunc renders the const test for a number held exactly, as
+// the condition under which the rule is broken -- which is the shape the
+// emitted check wants and the shape an equality would need parenthesising to
+// reach.
+//
+// The general arm marshals the value and compares the JSON text, which reads
+// 2.50 and 2.5 as different constants and 1.0000000000000000000000000000001 as
+// 1; they are one number and two, respectively, and the schema said the
+// numbers.
+func exactConstViolatedFunc(rule generator.ValidationRule, expr string) string {
+	return "jsonNumberCmp(" + exactNumberOperand(expr) + ", " + strconv.Quote(rule.ExactValue) + ") != 0"
 }
 
 // dynNumFunc renders a JSON Schema numeric constraint as a Go float64 literal.

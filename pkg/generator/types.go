@@ -704,15 +704,32 @@ func (d *StructDef) OneOfIsWholeValue() bool {
 		!d.HasNullChecks()
 }
 
-// HasIntegerDecodes reports whether any field is decoded through an integer
-// shadow, so the unmarshal template can introduce the block once.
-func (d *StructDef) HasIntegerDecodes() bool {
+// HasIntegerLeafDecodes and HasNumberLeafDecodes report which kind of leaf the
+// shadows above are for, which is what the emitted commentary has to say: the
+// integer shadow exists so a number written 1.0 reaches an int64, and the
+// number shadow so a JSON string does not reach a json.Number. A struct
+// carrying both gets both sentences.
+func (d *StructDef) HasIntegerLeafDecodes() bool {
+	return d.hasLeafDecode(func(l *LeafDecodeDef) bool { return l.Integers })
+}
+
+func (d *StructDef) HasNumberLeafDecodes() bool {
+	return d.hasLeafDecode(func(l *LeafDecodeDef) bool { return l.Numbers })
+}
+
+func (d *StructDef) hasLeafDecode(want func(*LeafDecodeDef) bool) bool {
 	for i := range d.Fields {
-		if d.Fields[i].IntegerDecode != nil && !d.Fields[i].ManualJSON {
+		if d.Fields[i].LeafDecode != nil && !d.Fields[i].ManualJSON && want(d.Fields[i].LeafDecode) {
 			return true
 		}
 	}
 	return false
+}
+
+// HasLeafDecodes reports whether any field is decoded through a shadow leaf,
+// so the unmarshal template can introduce the block once.
+func (d *StructDef) HasLeafDecodes() bool {
+	return d.hasLeafDecode(func(*LeafDecodeDef) bool { return true })
 }
 
 // DecodeJSONNames lists the JSON property names the opening struct decode in
@@ -867,9 +884,9 @@ type PatternPropertyDef struct {
 type AdditionalPropertiesDef struct {
 	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
 	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
-	// IntegerDecode is set when the value type holds an int64 the draft lets be
+	// LeafDecode is set when the value type holds an int64 the draft lets be
 	// written in float notation; the per-key decode goes through it.
-	IntegerDecode *IntegerDecodeDef
+	LeafDecode *LeafDecodeDef
 }
 
 // UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
@@ -1132,6 +1149,39 @@ type ValidationRule struct {
 	// a float64 and has no int64 reading, and a bound of 1.5 is not an integer.
 	// The emitted code is unchanged there.
 	IntegerCompare bool
+
+	// ExactCompare is IntegerCompare's counterpart for the other JSON numeric
+	// type: it is set on a numeric rule whose instance is held as the
+	// json.Number Config.ExactNumbers types a "number" as, and the check is
+	// then made on the literal through jsonNumberCmp rather than by converting
+	// the value to float64 first.
+	//
+	// It is not an alternative reading of the same value, it is the only one
+	// available. json.Number is a string underneath, so float64(x) does not
+	// compile at all -- which is the useful half of this: a numeric position
+	// this flag failed to reach is a build failure rather than a check that
+	// quietly went on comparing through float64. And where it does reach, the
+	// comparison is exact for the same reason the value is kept: a bound of
+	// 0.1 and a bound of 0.1000000000000000055511151231257827 are one float64
+	// and two different numbers.
+	//
+	// Set from the Go type rather than from the schema, because that is what
+	// the several places building a numeric rule -- a property, an array
+	// element, a map value, an alias's own underlying -- all have in common.
+	// False under the default configuration, where no position is a
+	// json.Number and every emitted check is what it was.
+	ExactCompare bool
+
+	// ExactValue is the number a "const" rule names, as the schema wrote it.
+	//
+	// Value holds that same const as the JSON text the general check compares,
+	// which constJSONValue produced by folding the number through float64 --
+	// deliberately, because the other side of that comparison is a float64 too.
+	// A position holding the number exactly compares against neither, so it
+	// needs the literal, and the literal is not recoverable from the folded
+	// text: {"const":1.0000000000000000000000000000001} arrives at the check as
+	// "1". Empty for a const that is not a number.
+	ExactValue string
 }
 
 func (d *StructDef) TypeName() string { return d.Name }
@@ -1266,9 +1316,9 @@ type FieldDef struct {
 	// package, and no template, has any use for a value that has not been
 	// decided yet.
 	pendingDefault *any
-	// IntegerDecode is set when the field's type holds an int64 that the
-	// document's draft lets be written in float notation. See IntegerDecodeDef.
-	IntegerDecode *IntegerDecodeDef
+	// LeafDecode is set when the field's type holds an int64 that the
+	// document's draft lets be written in float notation. See LeafDecodeDef.
+	LeafDecode *LeafDecodeDef
 	// ConditionalOnly marks a field whose every describing schema arrived
 	// through an if/then/else consequence that is applied in full elsewhere. The
 	// branch still supplies the Go type -- that is what the merge is for -- but
@@ -1388,12 +1438,12 @@ type OneOfVariant struct {
 	// and while such a branch is in play the narrowing does not run. See
 	// oneOfVariantFullyChecked.
 	FullyChecked bool
-	// IntegerDecode is set when the variant's type holds an int64 the draft lets
+	// LeafDecode is set when the variant's type holds an int64 the draft lets
 	// be written in float notation. Selection gates on whether the candidate
 	// decodes, so without it an integer branch could fail to be selected for a
 	// document the branch accepts -- a disagreement about what an integer is,
 	// reported as "no matching oneOf variant".
-	IntegerDecode *IntegerDecodeDef
+	LeafDecode *LeafDecodeDef
 }
 
 // EnumDef represents an enum type.
@@ -1407,6 +1457,26 @@ type EnumDef struct {
 	// IntegerToken is set on an int64-based const enum whose draft admits a
 	// number written in float notation, which the bare named type would refuse.
 	IntegerToken bool
+}
+
+// IsNumberBase reports whether this is a const-form enum over the json.Number a
+// "number" is held as under Config.ExactNumbers.
+//
+// Such an enum needs three things a const-form enum does not otherwise have,
+// and the enum template emits them together: an UnmarshalJSON, because a named
+// type over json.Number is a plain Go string to encoding/json and refuses a
+// number; a MarshalJSON, because that same string is what it would write back
+// out, quoted; and a Validate that compares by value rather than by switching
+// on the constant, because 1.50 and 1.5 are one member written two ways.
+//
+// The raw form is excluded: it holds the document's own bytes and answers all
+// three questions already.
+func (d *EnumDef) IsNumberBase() bool {
+	if d.IsRaw {
+		return false
+	}
+	pt, ok := d.BaseType.(*PrimitiveType)
+	return ok && pt.Name == GoNumberTypeName
 }
 
 func (d *EnumDef) TypeName() string { return d.Name }
@@ -1456,10 +1526,10 @@ type AliasDef struct {
 	UnevaluatedItems *UnevaluatedItemsDef
 	ValidateAs       string // named underlying type whose Validate method should be delegated to
 	UnmarshalAs      string // named underlying type whose UnmarshalJSON behavior should be delegated to
-	// IntegerDecode is set when the underlying is a container holding int64
+	// LeafDecode is set when the underlying is a container holding int64
 	// that the draft lets be written in float notation. A bare int64 underlying
 	// is not here: it takes the IsIntegerType arm, which already does this.
-	IntegerDecode  *IntegerDecodeDef
+	LeafDecode     *LeafDecodeDef
 	MarshalAs      string // named underlying type whose MarshalJSON behavior should be delegated to
 	StrictInteger  bool   // true when integer JSON must use an integer token, not 1.0/1e0
 	NoMethods      bool   // set by resolveAliasMethodability when underlying chain resolves to pointer/interface
@@ -1531,6 +1601,23 @@ func (d *AliasDef) CanHaveMethods() bool {
 func (d *AliasDef) IsIntegerType() bool {
 	if pt, ok := d.Underlying.(*PrimitiveType); ok {
 		return pt.Name == "int64"
+	}
+	return false
+}
+
+// IsNumberType returns true if the underlying type is the json.Number a
+// "number" is held as under Config.ExactNumbers.
+//
+// Such an alias needs both halves of the JSON contract written for it, and
+// neither is optional. A named type does not inherit its underlying type's
+// methods, so `type Temp json.Number` is a plain string to encoding/json: it
+// refuses to decode a number into one at all, and -- the silent half -- it
+// encodes one back out as a JSON *string*, turning 1.5 into "1.5" with nothing
+// failing to say so. populateAliasDelegates is where both are assigned, and
+// says which type each direction routes through.
+func (d *AliasDef) IsNumberType() bool {
+	if pt, ok := d.Underlying.(*PrimitiveType); ok {
+		return pt.Name == GoNumberTypeName
 	}
 	return false
 }
@@ -1803,6 +1890,17 @@ type ContainsDef struct {
 	// "no element matches the contains schema" for a document the schema
 	// permits.
 	StrictReadWrite bool
+	// ExactNumbers says the file was generated under Config.ExactNumbers, which
+	// decides how a numeric check below reads an element.
+	//
+	// The checks are made on the element re-marshalled and read back, which is
+	// what lets one loop judge an element of any Go type. Read back into a
+	// float64 that reading is where the exactness goes: an element held as its
+	// literal is rounded on the way into the comparison, so a contains counting
+	// the elements at or above a bound could not tell one from its neighbour --
+	// and an element past float64's range, which this flag admits, would not be
+	// read as a number at all.
+	ExactNumbers bool
 }
 
 // ContainsCheck describes one validation check applied to each element
@@ -1892,6 +1990,12 @@ func (d *InferredAliasDef) typeDef()         {}
 func (d *InferredAliasDef) AccessorName() string {
 	switch d.InferredJSONType {
 	case "number":
+		// A number held exactly is not a float64 and the accessor may not say
+		// it is: the value comes back as its literal, and a caller reading
+		// Float64() would take the name for the type.
+		if d.IsExactNumber() {
+			return "Number"
+		}
 		return "Float64"
 	case "string":
 		return "StringValue"
@@ -1914,6 +2018,17 @@ func (d *InferredAliasDef) TypeCheckName() string {
 	default:
 		return "IsTyped"
 	}
+}
+
+// IsExactNumber reports whether the value this wrapper holds when the instance
+// is a number is the json.Number Config.ExactNumbers types one as.
+//
+// Three things follow from it, and the template asks this rather than the flag
+// because the flag is not in the IR: the typed decode goes through the shadow
+// so a JSON string is not taken for a number, the accessor is named for what it
+// returns, and the numeric checks are made on the literal.
+func (d *InferredAliasDef) IsExactNumber() bool {
+	return isExactNumberType(d.InferredGoType)
 }
 
 // GoTypeName returns the Go type name of the inferred type.

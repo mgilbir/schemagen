@@ -41,6 +41,7 @@ func newGenerateCmd() *cobra.Command {
 		strictProperties bool
 		strictReadWrite  bool
 		bigInt           bool
+		exactNumbers     bool
 		formatAssertion  bool
 		formatAnnotation bool
 		verbose          bool
@@ -86,6 +87,7 @@ func newGenerateCmd() *cobra.Command {
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
 				applyBool(cmd, "strict-read-write", cfg.StrictReadWrite, &strictReadWrite)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
+				applyBool(cmd, "exact-numbers", cfg.ExactNumbers, &exactNumbers)
 				applyBool(cmd, "format-assertion", cfg.FormatAssertion, &formatAssertion)
 				applyBool(cmd, "format-annotation", cfg.FormatAnnotation, &formatAnnotation)
 				applyBool(cmd, "allow-remote-refs", cfg.AllowRemoteRefs, &allowRemoteRefs)
@@ -218,6 +220,7 @@ func newGenerateCmd() *cobra.Command {
 					strictProperties: strictProperties,
 					strictReadWrite:  strictReadWrite,
 					bigInt:           bigInt,
+					exactNumbers:     exactNumbers,
 					formatAssertion:  formatAssertion,
 					formatAnnotation: formatAnnotation,
 					allowRemoteRefs:  allowRemoteRefs,
@@ -379,6 +382,7 @@ func newGenerateCmd() *cobra.Command {
 					StrictProperties:    strictProperties,
 					StrictReadWrite:     strictReadWrite,
 					BigIntSupport:       bigInt,
+					ExactNumbers:        exactNumbers,
 					FormatAssertion:     formatAssertion,
 					FormatAnnotation:    formatAnnotation,
 					Resolver:            schema.NewCompositeResolver(resolvers...),
@@ -442,6 +446,7 @@ func newGenerateCmd() *cobra.Command {
 						StrictProperties: strictProperties,
 						StrictReadWrite:  strictReadWrite,
 						BigIntSupport:    bigInt,
+						ExactNumbers:     exactNumbers,
 						FormatAssertion:  formatAssertion,
 						FormatAnnotation: formatAnnotation,
 						Resolver:         resolver,
@@ -586,6 +591,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
 	cmd.Flags().BoolVar(&strictReadWrite, "strict-read-write", false, "Make \"readOnly\" and \"writeOnly\" change what the type accepts and emits, rather than only its doc comment. The generated type becomes the owning authority's view: UnmarshalJSON rejects a document that sets a readOnly property, and MarshalJSON omits every writeOnly one. Validation is unaffected under either setting -- both keywords are annotations in every draft that defines them. A type built this way deliberately does not round-trip")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Generate *big.Int wrapper for integer types (supports arbitrary-precision integers)")
+	cmd.Flags().BoolVar(&exactNumbers, "exact-numbers", false, "Hold \"type\":\"number\" as the literal the document wrote (json.Number) instead of the float64 it rounds to, so a value round-trips byte for byte and every numeric keyword on it is compared exactly. Integers need no flag: they are exact under every configuration, and --big-int is what carries the ones past int64")
 	cmd.Flags().BoolVar(&formatAssertion, "format-assertion", false, "Assert \"format\" on every draft. Without it the dialect decides: draft 3-7 and v1 assert, 2019-09 and 2020-12 treat format as an annotation (the format-annotation vocabulary), and a document with no $schema follows 2020-12. Assertion also restores the Go type mapping, so date-time is time.Time and ipv4/ipv6 netip.Addr")
 	cmd.Flags().BoolVar(&formatAnnotation, "format-annotation", false, "Treat \"format\" as an annotation on every draft, including the ones whose dialect asserts (draft 3-7 and v1). The opposite of --format-assertion, and mutually exclusive with it")
 	cmd.Flags().BoolVar(&allowRemoteRefs, "allow-remote-refs", false, "Allow fetching remote $ref schemas over HTTP/HTTPS")
@@ -786,6 +792,7 @@ type multiPackageParams struct {
 	strictProperties bool
 	strictReadWrite  bool
 	bigInt           bool
+	exactNumbers     bool
 	formatAssertion  bool
 	formatAnnotation bool
 	allowRemoteRefs  bool
@@ -965,6 +972,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			StrictProperties: p.strictProperties,
 			StrictReadWrite:  p.strictReadWrite,
 			BigIntSupport:    p.bigInt,
+			ExactNumbers:     p.exactNumbers,
 			FormatAssertion:  p.formatAssertion,
 			FormatAnnotation: p.formatAnnotation,
 			Resolver:         resolver,

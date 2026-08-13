@@ -102,11 +102,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- end}}
 		{{- range $struct.Fields}}
-		{{- if and .IntegerDecode (not .ManualJSON)}}
+		{{- if and .LeafDecode (not .ManualJSON)}}
 		{{- /* Shadows the promoted field of the same name: an outer field wins
 		       over an embedded one, so encoding/json fills this instead and the
 		       declared int64 is never the decode destination. See jsonInteger. */}}
-		{{.Name}} *{{goType .IntegerDecode.ShadowType}} `json:"{{.JSONName}}"`
+		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{.JSONName}}"`
 		{{- end}}
 		{{- end}}
 	}{
@@ -131,16 +131,25 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 	}
 	{{- end}}
-	{{- if $struct.HasIntegerDecodes}}
+	{{- if $struct.HasLeafDecodes}}
+	{{- if $struct.HasIntegerLeafDecodes}}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
 	// above are what let encoding/json see it. Each outer pointer is nil when
 	// the property was absent or null, both of which leave the field as it was.
+	{{- end}}
+	{{- if $struct.HasNumberLeafDecodes}}
+
+	// A number held exactly is a json.Number, which is a string underneath and
+	// would take a JSON string for a number; the shadows above are what refuse
+	// one. Each outer pointer is nil when the property was absent or null, both
+	// of which leave the field as it was.
+	{{- end}}
 	{{- range $struct.Fields}}
-	{{- if and .IntegerDecode (not .ManualJSON)}}
+	{{- if and .LeafDecode (not .ManualJSON)}}
 	if aux.{{.Name}} != nil {
 		_iv := *aux.{{.Name}}
-		{{$recv}}.{{.Name}} = {{.IntegerDecode.Convert}}
+		{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 	}
 	{{- end}}
 	{{- end}}
@@ -162,15 +171,22 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- range $struct.Fields}}
 		{{- if .ManualJSON}}
 		if v, ok := raw[{{printf "%q" .JSONName}}]; ok {
-			{{- if .IntegerDecode}}
+			{{- if .LeafDecode}}
+			{{- if .LeafDecode.Integers}}
 			// Decoded through the shadow for the reason the aux fields above are:
 			// a property name that cannot go in a struct tag is decoded by hand,
 			// but its integers are the same integers.
-			var _iv {{goType .IntegerDecode.ShadowType}}
+			{{- end}}
+			{{- if .LeafDecode.Numbers}}
+			// Decoded through the shadow for the reason the aux fields above are:
+			// a property name that cannot go in a struct tag is decoded by hand,
+			// but its numbers are the same numbers.
+			{{- end}}
+			var _iv {{goType .LeafDecode.ShadowType}}
 			if err := json.Unmarshal(v, &_iv); err != nil {
 				return fmt.Errorf("unmarshaling {{$struct.Name}}.{{.Name}}: %w", err)
 			}
-			{{$recv}}.{{.Name}} = {{.IntegerDecode.Convert}}
+			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 			{{- else}}
 			if err := json.Unmarshal(v, &{{$recv}}.{{.Name}}); err != nil {
 				return fmt.Errorf("unmarshaling {{$struct.Name}}.{{.Name}}: %w", err)
@@ -202,12 +218,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- if $v.DiscriminatorValues}}
 			case {{requiredFieldsList $v.DiscriminatorValues}}:
 				var candidate {{goType $v.Type}}
-				{{- if $v.IntegerDecode}}
-				var _iv {{goType $v.IntegerDecode.ShadowType}}
+				{{- if $v.LeafDecode}}
+				var _iv {{goType $v.LeafDecode.ShadowType}}
 				if err := json.Unmarshal(oneofData, &_iv); err != nil {
 					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)
 				}
-				candidate = {{$v.IntegerDecode.Convert}}
+				candidate = {{$v.LeafDecode.Convert}}
 				{{- else}}
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
 					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)
@@ -247,15 +263,15 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				if oneofHasRequiredFields(oneofData, {{requiredFieldsList $v.RequiredFields}}) {
 				{{- end}}
 					var candidate {{goType $v.Type}}
-					{{- if $v.IntegerDecode}}
+					{{- if $v.LeafDecode}}
 					// Selection gates on whether the branch decodes, so an
 					// integer branch has to read a number the same way the rest
 					// of the file does -- otherwise a document this branch
 					// accepts is reported as matching no branch at all.
-					var _iv {{goType $v.IntegerDecode.ShadowType}}
+					var _iv {{goType $v.LeafDecode.ShadowType}}
 					_ivErr := json.Unmarshal(oneofData, &_iv)
 					if _ivErr == nil {
-						candidate = {{$v.IntegerDecode.Convert}}
+						candidate = {{$v.LeafDecode.Convert}}
 					}
 					if err := _ivErr; err == nil {
 					{{- else}}
@@ -276,22 +292,42 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, candidate); !matched { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "minimum"}}
+						{{- if .ExactCompare}}
+						if {{numOperand . "candidate"}} < {{numBound .}} { oneofOK = false }
+						{{- else}}
 						if float64(candidate) < {{.Value}} { oneofOK = false }
 						{{- end}}
+						{{- end}}
 						{{- if eq .RuleType "maximum"}}
+						{{- if .ExactCompare}}
+						if {{numOperand . "candidate"}} > {{numBound .}} { oneofOK = false }
+						{{- else}}
 						if float64(candidate) > {{.Value}} { oneofOK = false }
 						{{- end}}
+						{{- end}}
 						{{- if eq .RuleType "exclusiveMinimum"}}
+						{{- if .ExactCompare}}
+						if {{numOperand . "candidate"}} <= {{numBound .}} { oneofOK = false }
+						{{- else}}
 						if float64(candidate) <= {{.Value}} { oneofOK = false }
 						{{- end}}
+						{{- end}}
 						{{- if eq .RuleType "exclusiveMaximum"}}
+						{{- if .ExactCompare}}
+						if {{numOperand . "candidate"}} >= {{numBound .}} { oneofOK = false }
+						{{- else}}
 						if float64(candidate) >= {{.Value}} { oneofOK = false }
 						{{- end}}
+						{{- end}}
 						{{- if eq .RuleType "multipleOf"}}
+						{{- if .ExactCompare}}
+						if !{{exactMultipleOf . "candidate"}} { oneofOK = false }
+						{{- else}}
 						{
 							_q := float64(candidate) / {{.Value}}
 							if math.Abs(_q - math.Round(_q)) > 1e-9 { oneofOK = false }
 						}
+						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "minItems"}}
 						if len(candidate) < {{.Value}} { oneofOK = false }
@@ -552,12 +588,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			}
 			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
 			{{$recv}}.AdditionalProperties[rawKey] = rawVal
-			{{- else if $struct.AdditionalProperties.IntegerDecode}}
-			var _iv {{goType $struct.AdditionalProperties.IntegerDecode.ShadowType}}
+			{{- else if $struct.AdditionalProperties.LeafDecode}}
+			var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
 			if err := json.Unmarshal(rawVal, &_iv); err != nil {
 				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
 			}
-			{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.IntegerDecode.Convert}}
+			{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
 			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
 			if err := json.Unmarshal(rawVal, &val); err != nil {
