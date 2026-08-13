@@ -49,6 +49,21 @@ const (
 	NamedSiblingA NamedSibling = "a"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (n *NamedSibling) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type NamedSibling")
+	}
+	type Alias NamedSibling
+	return json.Unmarshal(data, (*Alias)(n))
+}
+
 // Validate checks NamedSibling against its JSON Schema constraints.
 func (n NamedSibling) Validate() error {
 	switch n {
@@ -79,6 +94,21 @@ type RefSiblingValues2020ConstSibling string
 const (
 	RefSiblingValues2020ConstSiblingA RefSiblingValues2020ConstSibling = "a"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (r *RefSiblingValues2020ConstSibling) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RefSiblingValues2020ConstSibling")
+	}
+	type Alias RefSiblingValues2020ConstSibling
+	return json.Unmarshal(data, (*Alias)(r))
+}
 
 // Validate checks RefSiblingValues2020ConstSibling against its JSON Schema constraints.
 func (r RefSiblingValues2020ConstSibling) Validate() error {
@@ -133,6 +163,21 @@ const (
 	RefSiblingValues2020EnumSiblingC RefSiblingValues2020EnumSibling = "c"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (r *RefSiblingValues2020EnumSibling) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RefSiblingValues2020EnumSibling")
+	}
+	type Alias RefSiblingValues2020EnumSibling
+	return json.Unmarshal(data, (*Alias)(r))
+}
+
 // Validate checks RefSiblingValues2020EnumSibling against its JSON Schema constraints.
 func (r RefSiblingValues2020EnumSibling) Validate() error {
 	switch r {
@@ -149,6 +194,21 @@ const (
 	RefSiblingValues2020ListSiblingItemA RefSiblingValues2020ListSiblingItem = "a"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (r *RefSiblingValues2020ListSiblingItem) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RefSiblingValues2020ListSiblingItem")
+	}
+	type Alias RefSiblingValues2020ListSiblingItem
+	return json.Unmarshal(data, (*Alias)(r))
+}
+
 // Validate checks RefSiblingValues2020ListSiblingItem against its JSON Schema constraints.
 func (r RefSiblingValues2020ListSiblingItem) Validate() error {
 	switch r {
@@ -164,6 +224,21 @@ type RefSiblingValues2020MapSiblingValue string
 const (
 	RefSiblingValues2020MapSiblingValueA RefSiblingValues2020MapSiblingValue = "a"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (r *RefSiblingValues2020MapSiblingValue) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type RefSiblingValues2020MapSiblingValue")
+	}
+	type Alias RefSiblingValues2020MapSiblingValue
+	return json.Unmarshal(data, (*Alias)(r))
+}
 
 // Validate checks RefSiblingValues2020MapSiblingValue against its JSON Schema constraints.
 func (r RefSiblingValues2020MapSiblingValue) Validate() error {

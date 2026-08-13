@@ -175,6 +175,13 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 	{
 		// Top-level oneOf: the entire JSON object is the variant data.
 		oneofData := json.RawMessage(data)
+		// The schema behind this union excludes a JSON null, and the loop below
+		// steps over one rather than judging it -- which at the top level, where
+		// the union is the whole value and no parent check runs first, is an
+		// acceptance. See OneOfDef.RejectNull.
+		if string(oneofData) == "null" {
+			return fmt.Errorf("OneOfRootScalarBranch.Value: null is not allowed")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error

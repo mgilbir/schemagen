@@ -224,6 +224,25 @@ func TestNotIsEnforcedAndDoesNotOverNegate(t *testing.T) {
 // throwaway directory it came from.
 func runInstanceFixtures(t *testing.T, module string, fixtures []notFixture) {
 	t.Helper()
+	runInstanceFixturesWithConfig(t, module, fixtures, generator.Config{
+		PackageName:  "testpkg",
+		OmitEmpty:    true,
+		RootTypeName: "Root",
+	})
+}
+
+// runInstanceFixturesWithConfig is the same runner under a stated generator
+// configuration, for a defect that only exists under one. A big-int wrapper is
+// the clearest case: under the default configuration the same schema comes out a
+// plain int64 alias, so a group written for that wrapper has to name the flag or
+// it exercises a different type entirely.
+//
+// PackageName and RootTypeName are the caller's to set, and both are load
+// bearing: the package rename below looks for "package testpkg", and the
+// document is put to a type named Root rather than to one recovered from the
+// emitted source.
+func runInstanceFixturesWithConfig(t *testing.T, module string, fixtures []notFixture, cfg generator.Config) {
+	t.Helper()
 	for _, fx := range fixtures {
 		t.Run(fx.Name, func(t *testing.T) {
 			// The root type is named rather than recovered from the emitted
@@ -232,11 +251,7 @@ func runInstanceFixtures(t *testing.T, module string, fixtures []notFixture) {
 			// answered with the *element* wrapper for the items fixture here,
 			// which put every document to the wrong type and reported a control
 			// case failing for a reason that had nothing to do with the schema.
-			generated := generateFromSchemaWithConfig(t, fx.SchemaPath, generator.Config{
-				PackageName:  "testpkg",
-				OmitEmpty:    true,
-				RootTypeName: "Root",
-			})
+			generated := generateFromSchemaWithConfig(t, fx.SchemaPath, cfg)
 			const rootType = "Root"
 
 			tmpDir := t.TempDir()

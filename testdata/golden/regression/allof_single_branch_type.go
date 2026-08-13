@@ -29,6 +29,21 @@ const (
 	ChoiceGreen Choice = "green"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (c *Choice) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type Choice")
+	}
+	type Alias Choice
+	return json.Unmarshal(data, (*Alias)(c))
+}
+
 // Validate checks Choice against its JSON Schema constraints.
 func (c Choice) Validate() error {
 	switch c {
@@ -116,6 +131,21 @@ const (
 	WrappedChoiceGreen WrappedChoice = "green"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (w *WrappedChoice) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type WrappedChoice")
+	}
+	type Alias WrappedChoice
+	return json.Unmarshal(data, (*Alias)(w))
+}
+
 // Validate checks WrappedChoice against its JSON Schema constraints.
 func (w WrappedChoice) Validate() error {
 	switch w {
@@ -131,6 +161,21 @@ type WrappedLevel string
 const (
 	WrappedLevelHigh WrappedLevel = "high"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (w *WrappedLevel) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type WrappedLevel")
+	}
+	type Alias WrappedLevel
+	return json.Unmarshal(data, (*Alias)(w))
+}
 
 // Validate checks WrappedLevel against its JSON Schema constraints.
 func (w WrappedLevel) Validate() error {

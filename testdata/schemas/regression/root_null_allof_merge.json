@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullAllOfMerge",
+  "$comment": "Issue #267 (a). An object root whose shape comes from an allOf merge. generateAllOfDef hands generateStructDef a merged schema carrying the branch's properties and not the parent's \"type\", so the decoder's null question was asked of a schema nobody wrote and answered \"null is fine\": json.Unmarshal filled a nil map, the decode was a no-op, and Validate judged a zero struct. The identical schema written without the allOf around it has always refused one.",
+  "type": "object",
+  "allOf": [
+    {
+      "properties": {
+        "a": { "type": "string" }
+      }
+    }
+  ]
+}

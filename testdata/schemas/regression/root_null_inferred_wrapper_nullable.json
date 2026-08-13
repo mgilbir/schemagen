@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullInferredWrapperNullable",
+  "$comment": "The acceptance control for root_null_inferred_wrapper.json: the same wrapper with a {\"type\":\"null\"} branch added, so the disjunction admits a null and the wrapper must go on storing it raw. The third branch is what keeps this a wrapper at all -- a two-branch anyOf of one type and null is taken by the nullable-alias arm instead, which produces a pointer with no Validate and could not have failed either way.",
+  "minLength": 2,
+  "anyOf": [
+    { "type": "string" },
+    { "type": "integer" },
+    { "type": "null" }
+  ]
+}

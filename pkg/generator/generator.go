@@ -1264,6 +1264,16 @@ func (g *Generator) addRequiredImports() {
 			if ed.IsRaw {
 				needsJSON = true // raw enums use json.RawMessage + UnmarshalJSON/MarshalJSON
 			}
+			if ed.NeedsNullCheck {
+				// The guard gives a const enum an UnmarshalJSON it would not
+				// otherwise declare, and that decoder routes the non-null case
+				// through json.Unmarshal. Claimed for every enum that carries
+				// the flag rather than for the const form alone: an import the
+				// rendered file never qualifies is dropped again by
+				// keepReferencedImports, while one the file names and this list
+				// omitted is a file that does not compile.
+				needsJSON = true
+			}
 		}
 		if ad, ok := td.(*AliasDef); ok {
 			if usesTimeType(ad.Underlying) {
@@ -2516,6 +2526,36 @@ func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) Ty
 
 // generateTypeDef creates the appropriate TypeDef for a schema and adds it to
 // the output File. It skips schemas that have already been generated.
+//
+// The null rejection is settled here rather than by the arm that happens to
+// claim the schema, and that is the point of the split below.
+//
+// Every arm used to decide it for itself, from `!schemaAllowsNull(node)` and
+// whatever node that arm had in hand. Three things go wrong with that, and all
+// three were live (issue #267):
+//
+//   - an arm that rewrites the node before it builds a def asks about the
+//     rewrite. generateAllOfDef hands generateStructDef a *merged* schema that
+//     carries the branches' properties and not the parent's "type", so
+//     {"type":"object","allOf":[{"properties":{...}}]} asked "does this untyped
+//     merge exclude null" and correctly answered no -- about a schema nobody
+//     wrote.
+//   - an arm whose def kind has no field for the answer never asks at all. A
+//     const enum is `type Root string` with no UnmarshalJSON, so
+//     {"type":"string","enum":["a",""]} decoded a null as a Go no-op and judged
+//     the "" it left behind, which the enum admits.
+//   - an arm whose emitted code steps over a null before the answer is
+//     consulted. A top-level oneOf skips selection for a null and leaves the
+//     union unset, so {"oneOf":[{object},{"type":"string"}]} accepted a value
+//     matching no branch.
+//
+// So the question is asked once, of the schema *as written*, with the predicate
+// the property and element positions already use -- schemaForbidsNull, which
+// reads $ref, allOf, anyOf/oneOf, enum and const rather than the type list
+// alone. What each def kind then needs is a way to carry the answer, not a
+// decision of its own. The per-arm assignments stay where they are: they answer
+// the same question about the same node in every case but the merge, and this
+// only ever strengthens what they decided.
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// The re-entrancy guard comes first, ahead of both arms that claim a schema
 	// before the static ones. The same name arrives here more than once -- a
@@ -2530,11 +2570,131 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// definition", and a second visit to a name that has one has nothing left to
 	// decide -- it is the same schema under the same name, so the arm that
 	// claimed it the first time is the arm that would claim it again.
+	//
+	// It is also what makes the null rejection below a once-per-name question:
+	// the second visit returns here, so the def is never re-judged against a
+	// schema other than the one it was built from.
 	if g.generated[name] {
 		g.notePinnedNameTaken(name, s)
 		return nil
 	}
 
+	if err := g.generateTypeDefBody(name, s); err != nil {
+		return err
+	}
+	g.applyNullRejection(name, s)
+	return nil
+}
+
+// applyNullRejection records, on the def generateTypeDef just built for this
+// name, that the schema excludes a JSON null at its own position.
+//
+// The def is found by name, which is the same lookup isEnumType and
+// zeroLossyTypeName make and is exact: the re-entrancy guard above lets one
+// name be declared once, so at most one def in the output carries it, and since
+// #271 a position deriving a name another node holds is given a numbered one
+// rather than that node's. An arm that generated a $ref target or a variant type
+// alongside its own def declared those under names of their own, and each has
+// already been through here under the schema it was built from.
+//
+// A name held by an earlier *call* cannot be reached either, and the two halves
+// of that are worth keeping together. Under --shared-types g.generated survives
+// between documents, so such a name returns at the guard above and never arrives
+// here -- which is right, since the type was stamped when it was declared. And
+// g.output is rebuilt by every Generate whether or not the run shares types, so
+// there is no earlier call's def in the slice this walks.
+//
+// Searched from the end because that is where the answer is: every arm appends
+// the def for its own name last, after the nested types it had to resolve first.
+// (No corpus schema in any configuration produces a second def under one name,
+// or finds this one anywhere but the last position -- so neither a duplicate nor
+// an earlier match is a case this has been able to see.)
+//
+// It only ever turns a rejection on. schemaForbidsNull answers false for
+// everything it cannot settle, so a def it says nothing about keeps exactly the
+// answer its own arm gave it.
+func (g *Generator) applyNullRejection(name string, s *schema.Schema) {
+	if !g.schemaForbidsNull(s) {
+		return
+	}
+	for i := len(g.output.TypeDefs) - 1; i >= 0; i-- {
+		td := g.output.TypeDefs[i]
+		if td.TypeName() != name {
+			continue
+		}
+		switch d := td.(type) {
+		case *StructDef:
+			// Asked before the field is set, because the answer changes once it
+			// is: a struct whose whole value is a union must keep skipping the
+			// opening object decode, or every scalar branch is refused before it
+			// is tried. The union carries the refusal instead, one line further
+			// in. See OneOfDef.RejectNull.
+			if d.OneOfIsWholeValue() {
+				for j := range d.OneOfs {
+					if d.OneOfs[j].JSONName == "" {
+						d.OneOfs[j].RejectNull = true
+					}
+				}
+				return
+			}
+			// NeedsUnmarshal is not set alongside. The template gates the whole
+			// method on it, so a struct without it would swallow the guard --
+			// but no schema in the corpus reaches here with it clear, in either
+			// configuration, because every struct this generator emits carries
+			// an overflow map and an UnmarshalJSON to fill it. An assertion no
+			// plant can falsify is one nobody can maintain.
+			d.NeedsNullCheck = true
+		case *AliasDef:
+			d.NeedsNullCheck = true
+		case *EnumDef:
+			d.NeedsNullCheck = true
+		case *InferredAliasDef:
+			d.NeedsNullCheck = true
+		case *BigIntAliasDef:
+			// AllowsNull is this def's representation of a permitted null, so
+			// it is cleared alongside: a wrapper that refuses the value must not
+			// also carry a state, a decode branch and a Validate arm for it.
+			//
+			// The two are complements at both construction sites, which set
+			// them from one schemaAllowsNull call -- but the schema they ask is
+			// the *merged* one, and a merge takes a type off a branch. So
+			// {"type":"integer","allOf":[{"type":["integer","null"]}]} under
+			// --big-int reached those sites saying null was permitted, when the
+			// parent's own type excludes it, and accepted a null the schema
+			// forbids. The question this arm asks is the one the schema wrote.
+			//
+			// Both halves are needed and neither implies the other. Clearing the
+			// state is what turns the verdict around -- without it the wrapper
+			// takes the null into _isNull and returns -- while the guard is what
+			// makes the refusal say so, rather than letting the null fall
+			// through to json.Number and come back as "value  cannot be
+			// represented as int64" about a value the document never wrote.
+			d.NeedsNullCheck = true
+			d.AllowsNull = false
+		}
+		return
+	}
+}
+
+// generateTypeDefBody is the arms: everything that can declare a type under
+// this name. Split out of generateTypeDef so that the null rejection above runs
+// once, after whichever of them claimed the schema.
+//
+// The ownership record sits here rather than in the wrapper, and the two are not
+// the same placement. It has to cover exactly the code that can leave a name
+// declared -- that is what makes it a statement about what was declared rather
+// than about what was asked for -- and applyNullRejection is not such code: it
+// appends no def, marks nothing generated, and only sets fields on a def one of
+// these arms already built. Deferring it around that call as well would extend
+// the record over a step that cannot change its answer, and assert an ordering
+// between the two that does not exist. See typeOwner.
+//
+// The two are independent in fact and not only by inspection: noteTypeOwner
+// reads g.generated and writes g.typeOwner, applyNullRejection reads
+// g.output.TypeDefs and writes fields on one of them, and neither touches what
+// the other reads. Built both ways, the corpus emits identical source under
+// every configuration.
+func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// Whatever this call leaves declared under name belongs to s, unless an
 	// earlier node already holds it. Taken on the way out, so that it describes
 	// what was declared rather than what was asked for: several arms below
@@ -15093,6 +15253,12 @@ func (g *Generator) populateAliasDelegates() {
 			// which an alias over the enum does not inherit. Left out of these
 			// tables, `type Root RawEnum` decoded its own "a" as base64 and
 			// `type Root IntEnum` refused the 1.0 the enum exists to accept.
+			// NeedsNullCheck is deliberately not a fourth term. It is the third
+			// thing that gives a const enum an UnmarshalJSON, but an alias over
+			// such an enum reaches this table only through a $ref, and
+			// schemaForbidsNull follows a $ref -- so the alias has already been
+			// given a guard of its own, and no corpus schema and no plant could
+			// tell a borrowed one from it.
 			if d.IsRaw || d.IntegerToken || d.IsNumberBase() {
 				unmarshalTypes[d.Name] = true
 			}

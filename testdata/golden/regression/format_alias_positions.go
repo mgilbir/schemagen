@@ -40,6 +40,9 @@ func (s Stamp) Validate() error {
 type StampAlias Stamp
 
 func (s *StampAlias) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type StampAlias")
+	}
 	var _target Stamp
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

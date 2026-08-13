@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullInferredWrapper",
+  "$comment": "Issue #267 at the fourth def kind: a root with no \"type\" of its own, whose Go type is inferred from the bound beside it and whose branches are what exclude a null. The inferred wrapper's rule is that a non-matching JSON type is stored raw and left unjudged -- which is right for a keyword that only applies to its own type, and wrong for a null every branch of the anyOf refuses. Reading the type list alone answered \"null is fine\" because there is no type list to read.",
+  "minLength": 2,
+  "anyOf": [
+    { "type": "string" },
+    { "type": "integer" }
+  ]
+}

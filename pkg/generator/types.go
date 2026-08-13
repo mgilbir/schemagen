@@ -1386,6 +1386,26 @@ type OneOfDef struct {
 	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
 	DiscriminatorMap   map[string]int // maps discriminator value → variant index (when DiscriminatorField is set)
 	Required           bool           // true when this oneOf's JSONName is in the parent schema's required array
+	// RejectNull is set when the schema the union came from positively excludes
+	// a JSON null.
+	//
+	// The branch loop opens by stepping over a null -- selection has nothing to
+	// offer a value no branch describes, and a group that carries a
+	// {"type":"null"} branch is not built as a union at all -- and stepping over
+	// it leaves the field unset and Validate with nothing to judge. At a property
+	// position that costs nothing, because the parent's own NullChecks refuse the
+	// null before the loop is reached. At the top level the union *is* the value
+	// and there is no parent, so {"oneOf":[{object},{"type":"string"}]} accepted
+	// a bare null that matches neither branch (issue #267). This turns the step
+	// into a refusal for exactly the groups whose schema forbids one.
+	//
+	// Not folded into StructDef.NeedsNullCheck, which would have said the same
+	// thing one line earlier: OneOfIsWholeValue reads that field as evidence the
+	// document is being decoded as an object, and setting it would have put the
+	// opening struct decode back in front of every scalar branch -- refusing the
+	// strings the schema admits, which is the defect that method exists to
+	// prevent.
+	RejectNull bool
 }
 
 // HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.
@@ -1468,6 +1488,21 @@ type EnumDef struct {
 	// IntegerToken is set on an int64-based const enum whose draft admits a
 	// number written in float notation, which the bare named type would refuse.
 	IntegerToken bool
+	// NeedsNullCheck is set when the schema positively excludes a JSON null, and
+	// is the same rejection AliasDef.NeedsNullCheck carries for the same reason.
+	//
+	// A const enum is `type Root string` with a list of constants, and until this
+	// existed it had no UnmarshalJSON at all -- so a `null` was a silent Go
+	// no-op that left the zero value behind, and Validate then judged that zero
+	// rather than the document. Where the zero is not a member the enum caught it
+	// by accident; where it is -- {"type":"string","enum":["a",""]} -- the null
+	// was accepted outright (issue #267).
+	//
+	// Only the const form reads it. The raw form keeps the document's own bytes,
+	// so a null reaches its Validate as the four characters it was written as
+	// and is compared against the member list like every other value -- it needs
+	// nothing here, and its template asks nothing.
+	NeedsNullCheck bool
 }
 
 // IsNumberBase reports whether this is a const-form enum over the json.Number a

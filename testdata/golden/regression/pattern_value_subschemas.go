@@ -58,6 +58,21 @@ const (
 	PatternValueSubschemasPattern0Bbb PatternValueSubschemasPattern0 = "bbb"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (p *PatternValueSubschemasPattern0) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern0")
+	}
+	type Alias PatternValueSubschemasPattern0
+	return json.Unmarshal(data, (*Alias)(p))
+}
+
 // Validate checks PatternValueSubschemasPattern0 against its JSON Schema constraints.
 func (p PatternValueSubschemasPattern0) Validate() error {
 	switch p {
@@ -73,6 +88,21 @@ type PatternValueSubschemasPattern1 string
 const (
 	PatternValueSubschemasPattern1Aaa PatternValueSubschemasPattern1 = "aaa"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (p *PatternValueSubschemasPattern1) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern1")
+	}
+	type Alias PatternValueSubschemasPattern1
+	return json.Unmarshal(data, (*Alias)(p))
+}
 
 // Validate checks PatternValueSubschemasPattern1 against its JSON Schema constraints.
 func (p PatternValueSubschemasPattern1) Validate() error {

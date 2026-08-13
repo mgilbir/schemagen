@@ -228,6 +228,21 @@ const (
 	AllOfPropertyConjunctionConstAgainstEnumQ AllOfPropertyConjunctionConstAgainstEnum = "q"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfPropertyConjunctionConstAgainstEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionConstAgainstEnum")
+	}
+	type Alias AllOfPropertyConjunctionConstAgainstEnum
+	return json.Unmarshal(data, (*Alias)(a))
+}
+
 // Validate checks AllOfPropertyConjunctionConstAgainstEnum against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionConstAgainstEnum) Validate() error {
 	switch a {
@@ -315,6 +330,21 @@ const (
 	AllOfPropertyConjunctionEnumBranchNarrowerB AllOfPropertyConjunctionEnumBranchNarrower = "b"
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfPropertyConjunctionEnumBranchNarrower) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionEnumBranchNarrower")
+	}
+	type Alias AllOfPropertyConjunctionEnumBranchNarrower
+	return json.Unmarshal(data, (*Alias)(a))
+}
+
 // Validate checks AllOfPropertyConjunctionEnumBranchNarrower against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionEnumBranchNarrower) Validate() error {
 	switch a {
@@ -330,6 +360,21 @@ type AllOfPropertyConjunctionEnumRootNarrower string
 const (
 	AllOfPropertyConjunctionEnumRootNarrowerB AllOfPropertyConjunctionEnumRootNarrower = "b"
 )
+
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfPropertyConjunctionEnumRootNarrower) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionEnumRootNarrower")
+	}
+	type Alias AllOfPropertyConjunctionEnumRootNarrower
+	return json.Unmarshal(data, (*Alias)(a))
+}
 
 // Validate checks AllOfPropertyConjunctionEnumRootNarrower against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionEnumRootNarrower) Validate() error {
@@ -699,6 +744,21 @@ const (
 	AllOfPropertyConjunctionNumberSpelling1 AllOfPropertyConjunctionNumberSpelling = 1
 )
 
+// UnmarshalJSON refuses a JSON null, which the schema's own type excludes.
+//
+// Without it the named type has no decoder at all, and encoding/json leaves a
+// named string, bool or int64 exactly as it found it for a null -- so the
+// document was accepted and Validate judged the zero value it never wrote. That
+// is invisible whenever the zero is a member of the enum. The two arms above
+// carry the same guard inside the decoders they already declare.
+func (a *AllOfPropertyConjunctionNumberSpelling) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunctionNumberSpelling")
+	}
+	type Alias AllOfPropertyConjunctionNumberSpelling
+	return json.Unmarshal(data, (*Alias)(a))
+}
+
 // Validate checks AllOfPropertyConjunctionNumberSpelling against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionNumberSpelling) Validate() error {
 	switch a {
@@ -895,6 +955,9 @@ type AllOfPropertyConjunction struct {
 func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfPropertyConjunction")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a

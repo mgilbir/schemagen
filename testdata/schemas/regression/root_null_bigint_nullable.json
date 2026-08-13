@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullBigIntNullable",
+  "$comment": "The acceptance control for root_null_bigint_merged_type.json: an integer whose own type list admits null. The big-integer wrapper's explicit null state (issue #85) must survive, and a fix that cleared it here would report a permitted null as \"not a valid integer\".",
+  "type": ["integer", "null"]
+}

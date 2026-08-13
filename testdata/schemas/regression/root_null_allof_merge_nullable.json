@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RootNullAllOfMergeNullable",
+  "$comment": "The acceptance control for root_null_allof_merge.json: the same merge under a type list that admits null. A fix that reads the parent's type must read all of it, and refusing this document would be a false rejection -- worse than the missed one it replaces.",
+  "type": ["object", "null"],
+  "allOf": [
+    {
+      "properties": {
+        "a": { "type": "string" }
+      }
+    }
+  ]
+}

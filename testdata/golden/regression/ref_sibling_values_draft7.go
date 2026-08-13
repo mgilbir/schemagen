@@ -29,6 +29,9 @@ func (w Word) Validate() error {
 type NamedEmptyEnum Word
 
 func (n *NamedEmptyEnum) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type NamedEmptyEnum")
+	}
 	var _target Word
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err
@@ -48,6 +51,9 @@ func (n NamedEmptyEnum) Validate() error {
 type NamedSibling Word
 
 func (n *NamedSibling) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type NamedSibling")
+	}
 	var _target Word
 	if _err := json.Unmarshal(data, &_target); _err != nil {
 		return _err

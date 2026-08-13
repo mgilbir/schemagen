@@ -55,6 +55,9 @@ type AllOfObjectEnumConstMember struct {
 func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumConstMember")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -190,6 +193,9 @@ type AllOfObjectEnumInline struct {
 func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumInline")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -326,6 +332,9 @@ type AllOfObjectEnumNested struct {
 func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumNested")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -452,6 +461,9 @@ type AllOfObjectEnumPlain struct {
 func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumPlain")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -574,6 +586,9 @@ type AllOfObjectEnumReordered struct {
 func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumReordered")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
@@ -756,6 +771,9 @@ type AllOfObjectEnumViaRef struct {
 func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
+	if string(data) == "null" {
+		return fmt.Errorf("null is not allowed for type AllOfObjectEnumViaRef")
+	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
 	// exactly a second time case-insensitively, and would fill "name" from a
