@@ -511,7 +511,7 @@ func newGenerateCmd() *cobra.Command {
 				}
 
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
-				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs())
+				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 
 				// Record applied overrides for unused-entry reporting.
@@ -634,13 +634,32 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 // place to say it. The generated source carries the matching statement as a
 // file-level comment; this puts it in front of whoever ran the command. Issue
 // #224.
-func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string) {
+//
+// Those two outcomes are not equally bad and the line says which one happened.
+// A position that took `any` still builds; one that could not takes the name the
+// ref would have produced, nothing declares it, and the package does not
+// compile -- a failure that otherwise first appears in the caller's own `go
+// build`, in their project, long after the run that caused it said it had
+// succeeded. undeclared is the generator's list of the second kind, keyed by
+// ref. Issue #240.
+func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string, undeclared []generator.UndeclaredRefType) {
 	if w == nil {
 		return
 	}
+	byRef := make(map[string]string, len(undeclared))
+	for _, u := range undeclared {
+		byRef[u.Ref] = u.TypeName
+	}
 	for _, ref := range refs {
-		fmt.Fprintf(w, "warning: %s: $ref %q could not be resolved; --lenient-refs generated the file anyway, so nothing that reference stated is checked -- the position it held is `any`, or names a type this package does not declare\n",
-			schemaPath, ref)
+		const opening = "warning: %s: $ref %q could not be resolved; --lenient-refs generated the file anyway, so nothing that reference stated is checked -- "
+		name, hazard := byRef[ref]
+		if !hazard {
+			fmt.Fprintf(w, opening+"the position it held is `any`, which has no Validate to call and no decode that can fail\n",
+				schemaPath, ref)
+			continue
+		}
+		fmt.Fprintf(w, opening+"and `any` did not fit the position it held (an array element, a map value and a oneOf variant each need a name), so the file spells type %s and this package declares no such type. The generated package does not compile; without this line that would first surface in your own `go build`. Supply the referenced document, drop --lenient-refs to have generation refuse here instead, or declare %s in this package by hand (`type %s any` makes it build without making it check anything)\n",
+			schemaPath, ref, name, name, name)
 	}
 }
 
@@ -1008,7 +1027,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			}
 
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
-			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs())
+			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 
 			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {

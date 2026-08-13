@@ -2165,6 +2165,12 @@ type File struct {
 	// is wherever the ref appeared. So it is stated once for the file, which is
 	// the smallest unit that certainly contains it. See issue #224.
 	UnresolvedRefs []string
+
+	// UndeclaredRefTypes is the subset of UnresolvedRefs whose position could
+	// not degrade to `any`, so the file spells a type name nothing declares and
+	// the package does not build. Empty when every degraded ref landed
+	// somewhere `any` fits. See UndeclaredRefType and issue #240.
+	UndeclaredRefTypes []UndeclaredRefType
 }
 
 // Import represents a Go import.

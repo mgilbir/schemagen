@@ -9502,3 +9502,128 @@ func TestUnusedDefinitionsDoNotDisableUnevaluatedItems(t *testing.T) {
 		},
 	)
 }
+
+// ---------- issue #253: --format-assertion rewrites the caller's bytes ----------
+
+// formatCanonCase is one document and what comes back out of it. want is
+// compared byte for byte: the whole point is that the bytes differ while the
+// value does not, so a comparison through `any` -- which every other round-trip
+// helper here does -- cannot see it.
+type formatCanonCase struct {
+	in   string
+	want string
+}
+
+// The README states that asserting `format` changes the representation as well
+// as the verdict, and names which formats it happens to. That claim is only
+// worth what it is measured against: the types involved are stdlib, their
+// canonical spellings are theirs to change, and a table written from the type's
+// documentation rather than from its output is a table that can be wrong on the
+// day it is written.
+//
+// So both halves are asserted from the generated code: every rewrite the README
+// tabulates, and every format it says is left alone.
+func TestFormatAssertionCanonicalisesExactlyTheFormatsTheREADMENames(t *testing.T) {
+	rewritten := []formatCanonCase{
+		// date-time -> time.Time. A zero fractional second disappears, a
+		// trailing zero inside one is trimmed, and a zero offset becomes Z.
+		{`{"dt":"2020-01-02T03:04:05.000Z"}`, `{"dt":"2020-01-02T03:04:05Z"}`},
+		{`{"dt":"2020-01-02T03:04:05.500+02:00"}`, `{"dt":"2020-01-02T03:04:05.5+02:00"}`},
+		{`{"dt":"2020-01-02T03:04:05+00:00"}`, `{"dt":"2020-01-02T03:04:05Z"}`},
+		{`{"dt":"2020-01-02T03:04:05-00:00"}`, `{"dt":"2020-01-02T03:04:05Z"}`},
+		// ipv6 -> netip.Addr, written in the RFC 5952 form.
+		{`{"v6":"2001:0db8:0000:0000:0000:0000:0000:0001"}`, `{"v6":"2001:db8::1"}`},
+		{`{"v6":"2001:DB8::1"}`, `{"v6":"2001:db8::1"}`},
+		{`{"v6":"::ffff:c0a8:1"}`, `{"v6":"::ffff:192.168.0.1"}`},
+	}
+	// The controls. A value already in canonical form is not moved; ipv4 has
+	// one spelling and so cannot be; the string-typed formats keep their bytes;
+	// and a `format` beside minLength keeps the string, which is the escape
+	// route the README offers.
+	unchanged := []formatCanonCase{
+		{`{"dt":"2020-01-02T03:04:05Z"}`, `{"dt":"2020-01-02T03:04:05Z"}`},
+		{`{"dt":"2020-01-02T03:04:05.123456789Z"}`, `{"dt":"2020-01-02T03:04:05.123456789Z"}`},
+		{`{"v6":"2001:db8::1"}`, `{"v6":"2001:db8::1"}`},
+		{`{"v6":"::ffff:192.168.0.1"}`, `{"v6":"::ffff:192.168.0.1"}`},
+		{`{"v4":"192.168.0.1"}`, `{"v4":"192.168.0.1"}`},
+		{`{"d":"2020-01-02"}`, `{"d":"2020-01-02"}`},
+		{`{"tm":"03:04:05.000Z"}`, `{"tm":"03:04:05.000Z"}`},
+		{`{"uid":"C73BCDCC-2669-4BF6-81D3-E4AE73FB11FD"}`, `{"uid":"C73BCDCC-2669-4BF6-81D3-E4AE73FB11FD"}`},
+		{`{"dur":"P1DT2H"}`, `{"dur":"P1DT2H"}`},
+		{`{"bounded":"2020-01-02T03:04:05.000Z"}`, `{"bounded":"2020-01-02T03:04:05.000Z"}`},
+	}
+
+	t.Run("asserting", func(t *testing.T) {
+		runGeneratedMainProgramWithConfig(t,
+			"testdata/schemas/regression/format_assertion_canonicalises.json",
+			"format_canon_asserting",
+			formatCanonProgram(append(append([]formatCanonCase{}, rewritten...), unchanged...)),
+			formatAssertingConfig())
+	})
+
+	// The same documents under the dialect's own answer, where `format` is an
+	// annotation and every value stays a string. Every case round-trips to
+	// itself, including the seven the flag rewrites -- which is what makes this
+	// a property of the posture rather than of the fixture.
+	t.Run("annotating", func(t *testing.T) {
+		var same []formatCanonCase
+		for _, c := range append(append([]formatCanonCase{}, rewritten...), unchanged...) {
+			same = append(same, formatCanonCase{in: c.in, want: c.in})
+		}
+		runGeneratedMainProgramWithConfig(t,
+			"testdata/schemas/regression/format_assertion_canonicalises.json",
+			"format_canon_annotating",
+			formatCanonProgram(same),
+			generator.Config{PackageName: "testpkg", OmitEmpty: true})
+	})
+}
+
+// formatCanonProgram renders a program that decodes and re-encodes each
+// document and compares the result to want as bytes.
+func formatCanonProgram(cases []formatCanonCase) string {
+	var rows strings.Builder
+	for _, c := range cases {
+		fmt.Fprintf(&rows, "\t\t{%q, %q},\n", c.in, c.want)
+	}
+	return fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	cases := []struct{ in, want string }{
+%s	}
+	failed := false
+	for _, c := range cases {
+		var obj FormatCanon
+		if err := json.Unmarshal([]byte(c.in), &obj); err != nil {
+			fmt.Fprintf(os.Stderr, "unmarshal %%s: %%v\n", c.in, err)
+			failed = true
+			continue
+		}
+		if err := obj.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "validate %%s: %%v\n", c.in, err)
+			failed = true
+			continue
+		}
+		out, err := json.Marshal(obj)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "marshal %%s: %%v\n", c.in, err)
+			failed = true
+			continue
+		}
+		if string(out) != c.want {
+			fmt.Fprintf(os.Stderr, "BYTES\n  in:   %%s\n  out:  %%s\n  want: %%s\n", c.in, string(out), c.want)
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`, rows.String())
+}

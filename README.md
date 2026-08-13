@@ -101,6 +101,46 @@ represent a leap second, so `1998-12-31T23:59:60Z` — which RFC 3339 admits —
 refused by a `date-time` field held as one. A `format` written without a `type`
 keeps the JSON string and accepts it.
 
+#### Asserting `format` changes the bytes, not only the verdict
+
+`time.Time` and `netip.Addr` hold a parsed value, not the text it was parsed
+from, so marshalling writes that type's canonical spelling rather than the one
+the document arrived with. Read a document, change one unrelated field, write it
+back, and fields nobody touched come out rewritten — which shows up as a
+spurious diff, and breaks a signature taken over the document bytes. Nothing is
+lost semantically; the two spellings denote the same instant and the same
+address.
+
+| Field | In | Out |
+| --- | --- | --- |
+| `date-time` | `"2020-01-02T03:04:05.000Z"` | `"2020-01-02T03:04:05Z"` |
+| `date-time` | `"2020-01-02T03:04:05.500+02:00"` | `"2020-01-02T03:04:05.5+02:00"` |
+| `date-time` | `"2020-01-02T03:04:05+00:00"` | `"2020-01-02T03:04:05Z"` |
+| `ipv6` | `"2001:0db8:0000:0000:0000:0000:0000:0001"` | `"2001:db8::1"` |
+| `ipv6` | `"2001:DB8::1"` | `"2001:db8::1"` |
+| `ipv6` | `"::ffff:c0a8:1"` | `"::ffff:192.168.0.1"` |
+
+Trailing zeros in the fractional second are dropped, `+00:00` and `-00:00`
+become `Z`, and an IPv6 address is written in the RFC 5952 form. `ipv4` maps to
+`netip.Addr` too, but a dotted quad has only one accepted spelling — a
+non-canonical one such as `010.1.1.1` is *rejected* on decode rather than
+rewritten — so nothing there changes shape.
+
+Those three formats are the whole of it. `date`, `time`, `duration`, `uuid`,
+`email`, `hostname`, `uri` and the rest stay `string`, are checked in `Validate`,
+and come back out byte for byte.
+
+This follows the type mapping, not the flag, so it applies wherever `format`
+asserts: drafts 3, 4, 6 and 7 and v1 by default, 2019-09 and 2020-12 under
+`--format-assertion`. Under an annotating posture — 2019-09 and 2020-12 by
+default, or `--format-annotation` anywhere — the value stays a `string` and
+round-trips exactly.
+
+To assert the format and keep the caller's bytes, give the schema a
+`minLength`, `maxLength` or `pattern` beside the `format`. That combination
+already keeps the string (neither type carries those keywords), and the format is
+still checked, by parsing the string in `Validate`.
+
 `hostname`, `idn-hostname`, `email` and `idn-email` are checked with
 [`golang.org/x/net/idna`](https://pkg.go.dev/golang.org/x/net/idna), which is the
 only dependency generated code takes beyond the ECMA-262 engine `pattern`
@@ -348,6 +388,22 @@ the output looked plausible while dropping type information. Pass
 `warning:` line on stderr, and the generated file carries a `NOT VALIDATED`
 comment naming them: whatever those references said is not in the file, and the
 positions that held them check nothing.
+
+**The output may not compile.** `any` fits some positions and not others. A
+property, a `$defs` entry, an `allOf` member, a tuple slot and `contains` all
+take it, and the package builds. An array element, a map value and a `oneOf` or
+`anyOf` variant each need a *name*, so the file spells the name the reference
+would have produced — `{"xs":{"type":"array","items":{"$ref":"gone.json"}}}`
+emits `[]GoneJSON` — and nothing declares it.
+
+The two cases are told apart rather than lumped together. A ref that degraded
+into a name says so, names the identifier, and says the package does not
+compile; a ref that became `any` says that instead, and the generated file
+repeats the split under a `DOES NOT COMPILE` heading. Supplying the referenced
+document is the fix; dropping `--lenient-refs` moves the failure back to
+generation time, where it can be read; and declaring the named type by hand in
+the same package (`type GoneJSON any`) makes the package build without making it
+check anything.
 
 ### Root Type Names
 

@@ -508,6 +508,11 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		// the silent degradation the NOT VALIDATED banner exists to prevent
 		// elsewhere (issue #224).
 		g.output.UnresolvedRefs = refs
+		// Which of them left a name behind is decided here, after every
+		// definition exists: the question is whether the finished IR spells a
+		// name the finished IR does not declare, and neither half of that is
+		// knowable while the walk is still running. Issue #240.
+		g.output.UndeclaredRefTypes = g.undeclaredRefTypes(refs)
 	}
 
 	if len(g.crossPackageMisses) > 0 {
@@ -3403,6 +3408,19 @@ func (g *Generator) UnresolvedRefs() []string {
 		return nil
 	}
 	return g.output.UnresolvedRefs
+}
+
+// UndeclaredRefTypes returns the never-resolved $refs of the last Generate call
+// that left a reference to a type the package does not declare, so that the
+// generated package does not compile.
+//
+// A subset of UnresolvedRefs, and the half of it a caller can act on before
+// their own build fails. See File.UndeclaredRefTypes and issue #240.
+func (g *Generator) UndeclaredRefTypes() []UndeclaredRefType {
+	if g.output == nil {
+		return nil
+	}
+	return g.output.UndeclaredRefTypes
 }
 
 // UnsatisfiableRequired names a property that --strict-read-write made

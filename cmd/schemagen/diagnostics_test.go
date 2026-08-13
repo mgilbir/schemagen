@@ -247,6 +247,333 @@ func TestLenientRefsSaysNothingWhenEverythingResolves(t *testing.T) {
 	if strings.Contains(string(gen), "NOT VALIDATED: --lenient-refs") {
 		t.Errorf("no ref failed, so the source should carry no banner:\n%s", gen)
 	}
+	if strings.Contains(string(gen), "DOES NOT COMPILE") {
+		t.Errorf("no ref failed, so the source should carry no compile notice:\n%s", gen)
+	}
+}
+
+// ---------- issue #240: --lenient-refs output that does not compile ----------
+
+// lenientRefPositions is the same schema shape at every position a degraded
+// $ref can land in, with the one thing that matters recorded: whether the
+// package that comes out builds.
+//
+// Positions that can hold `any` -- a property, a $defs entry, an allOf member,
+// a tuple slot, `contains`, the document root -- build. Positions that need a
+// name -- an array element, a map value, a oneOf or anyOf variant, and any
+// nesting of those -- do not, because the emitted file spells the name the ref
+// would have produced and nothing declares it.
+//
+// patternProperties is deliberately absent: it belongs with the first group
+// (checked by hand against the repository's own module), but the package it
+// emits imports goecma262, which the bare go.mod buildGenerated writes does not
+// have, so it would fail to build for a reason that has nothing to do with the
+// ref.
+var lenientRefPositions = []struct {
+	name      string
+	schema    string
+	wantBuild bool
+}{
+	{"property", `{"title":"T","type":"object","properties":{"x":{"$ref":"gone.json"}}}`, true},
+	{"document root", `{"title":"T","$ref":"gone.json"}`, true},
+	{"defs entry", `{"title":"T","type":"object","properties":{"x":{"$ref":"#/$defs/D"}},"$defs":{"D":{"$ref":"gone.json"}}}`, true},
+	{"allOf member", `{"title":"T","type":"object","properties":{"x":{"allOf":[{"$ref":"gone.json"}]}}}`, true},
+	{"tuple slot", `{"title":"T","type":"object","properties":{"xs":{"type":"array","prefixItems":[{"$ref":"gone.json"}]}}}`, true},
+	{"contains", `{"title":"T","type":"object","properties":{"xs":{"type":"array","contains":{"$ref":"gone.json"}}}}`, true},
+
+	{"array element", `{"title":"T","type":"object","properties":{"xs":{"type":"array","items":{"$ref":"gone.json"}}}}`, false},
+	{"map value", `{"title":"T","type":"object","additionalProperties":{"$ref":"gone.json"}}`, false},
+	{"oneOf variant", `{"title":"T","type":"object","properties":{"x":{"oneOf":[{"$ref":"gone.json"},{"type":"string"}]}}}`, false},
+	{"nullable oneOf variant", `{"title":"T","type":"object","properties":{"x":{"oneOf":[{"$ref":"gone.json"},{"type":"null"}]}}}`, false},
+	{"anyOf variant", `{"title":"T","type":"object","properties":{"x":{"anyOf":[{"$ref":"gone.json"},{"type":"string"}]}}}`, false},
+	{"array of arrays", `{"title":"T","type":"object","properties":{"xs":{"type":"array","items":{"type":"array","items":{"$ref":"gone.json"}}}}}`, false},
+	{"map of arrays", `{"title":"T","type":"object","additionalProperties":{"type":"array","items":{"$ref":"gone.json"}}}`, false},
+}
+
+// The warning has to say which of the two things happened, and the only
+// authority on that is the Go compiler. So the assertion is not that some text
+// appeared: it is that the warning's verdict and `go build`'s verdict agree,
+// case by case, and that when they agree on failure the identifier the compiler
+// calls undefined is the identifier the warning named.
+//
+// A warning that fired everywhere would fail on the six positions that build; a
+// warning that fired nowhere would fail on the seven that do not; one that fired
+// in the right places under the wrong name would fail on the identifier check.
+func TestLenientRefsWarnsExactlyWhenTheGeneratedPackageDoesNotBuild(t *testing.T) {
+	for _, tc := range lenientRefPositions {
+		t.Run(tc.name, func(t *testing.T) {
+			src := t.TempDir()
+			mainPath := filepath.Join(src, "main.json")
+			writeFile(t, mainPath, tc.schema)
+
+			out := t.TempDir()
+			stderr, err := runGenerateCapturing(t, mainPath, "-o", out, "-p", "m", "--lenient-refs")
+			if err != nil {
+				t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+			}
+			// Whatever else happens, the ref is reported as unresolved.
+			if !strings.Contains(stderr, `$ref "gone.json" could not be resolved`) {
+				t.Fatalf("every case here has an unresolvable ref, so #224's line must be there:\n%s", stderr)
+			}
+
+			buildOut, buildErr := buildGenerated(t, out, "lenientpos")
+			builds := buildErr == nil
+			warnsAboutCompiling := strings.Contains(stderr, "The generated package does not compile")
+
+			if builds != tc.wantBuild {
+				t.Fatalf("go build: got builds=%v, want %v\n%s", builds, tc.wantBuild, buildOut)
+			}
+			if warnsAboutCompiling != !builds {
+				t.Fatalf("the warning says the package does not compile: %v, but go build says it does: %v\nstderr:\n%s\nbuild:\n%s",
+					warnsAboutCompiling, builds, stderr, buildOut)
+			}
+
+			gen, readErr := os.ReadFile(filepath.Join(out, "main.go"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if strings.Contains(string(gen), "DOES NOT COMPILE") != !builds {
+				t.Errorf("the file's own notice must agree with go build (builds=%v):\n%s", builds, gen)
+			}
+			if builds {
+				// Not crying wolf: the harmless case says the position is `any`
+				// and offers no advice about a build that is not going to fail.
+				if !strings.Contains(stderr, "the position it held is `any`") {
+					t.Errorf("a ref that degraded cleanly should say so:\n%s", stderr)
+				}
+				return
+			}
+
+			// The compiler names the identifier it could not find; the warning
+			// has to have named the same one.
+			undefined := undefinedIdentifiers(buildOut)
+			if len(undefined) == 0 {
+				t.Fatalf("expected the build failure to be an undefined identifier:\n%s", buildOut)
+			}
+			for _, name := range undefined {
+				if !strings.Contains(stderr, "so the file spells type "+name+" and this package declares no such type") {
+					t.Errorf("go build calls %q undefined; the warning does not name it:\n%s", name, stderr)
+				}
+				if !strings.Contains(string(gen), "gone.json -> "+name) {
+					t.Errorf("the file's notice should pair the ref with %q:\n%s", name, gen)
+				}
+			}
+		})
+	}
+}
+
+// undefinedIdentifiers pulls the names out of `go build`'s "undefined: X" lines.
+func undefinedIdentifiers(buildOutput string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(buildOutput, "\n") {
+		_, name, ok := strings.Cut(line, "undefined: ")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// One document with both kinds of degraded ref: the diagnostic has to split
+// them rather than tar both with the worse verdict. Without this a warning that
+// simply repeated the compile advice for every unresolved ref would pass every
+// case of the table above.
+func TestLenientRefsSeparatesTheHarmlessRefFromTheBuildBreakingOne(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "main.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "MixedDoc", "type": "object",
+		"properties": {
+			"p": {"$ref": "absent.json"},
+			"xs": {"type": "array", "items": {"$ref": "gone.json"}}
+		}
+	}`)
+
+	out := t.TempDir()
+	stderr, err := runGenerateCapturing(t, mainPath, "-o", out, "-p", "m", "--lenient-refs")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+
+	var harmless, hazard string
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		switch {
+		case strings.Contains(line, `"absent.json"`):
+			harmless = line
+		case strings.Contains(line, `"gone.json"`):
+			hazard = line
+		}
+	}
+	if harmless == "" || hazard == "" {
+		t.Fatalf("expected a line for each ref:\n%s", stderr)
+	}
+	if !strings.Contains(harmless, "the position it held is `any`") {
+		t.Errorf("absent.json degraded to `any` and should be reported as such:\n%s", harmless)
+	}
+	if strings.Contains(harmless, "does not compile") {
+		t.Errorf("absent.json costs nothing at build time; its line must not claim otherwise:\n%s", harmless)
+	}
+	if !strings.Contains(hazard, "The generated package does not compile") ||
+		!strings.Contains(hazard, "so the file spells type GoneJSON and this package declares no such type") {
+		t.Errorf("gone.json is the one that breaks the build:\n%s", hazard)
+	}
+	// The advice is what the caller does next, and there are three routes.
+	for _, want := range []string{
+		"Supply the referenced document",
+		"drop --lenient-refs to have generation refuse here instead",
+		"declare GoneJSON in this package by hand (`type GoneJSON any`",
+	} {
+		if !strings.Contains(hazard, want) {
+			t.Errorf("the warning should offer %q:\n%s", want, hazard)
+		}
+	}
+
+	gen, readErr := os.ReadFile(filepath.Join(out, "main.go"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	src2 := string(gen)
+	if !strings.Contains(src2, "DOES NOT COMPILE") || !strings.Contains(src2, "gone.json -> GoneJSON") {
+		t.Errorf("the file should name the type it spells and does not declare:\n%s", src2)
+	}
+	if strings.Contains(src2, "absent.json -> ") {
+		t.Errorf("absent.json left no name behind and must not be listed as if it had:\n%s", src2)
+	}
+}
+
+// A $ref that names a definition inside a document nothing can serve takes its
+// name from the fragment, not from the file. The warning has to name the
+// identifier the file actually spells, whichever of the two that is.
+func TestLenientRefsNamesTheIdentifierTakenFromTheFragment(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "main.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "FragDoc", "type": "object",
+		"properties": {"xs": {"type": "array", "items": {"$ref": "missing.json#/$defs/Widget"}}}
+	}`)
+
+	out := t.TempDir()
+	stderr, err := runGenerateCapturing(t, mainPath, "-o", out, "-p", "m", "--lenient-refs")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "so the file spells type Widget and this package declares no such type") {
+		t.Errorf("the name comes from the fragment, so it is Widget, not MissingJSON:\n%s", stderr)
+	}
+	buildOut, buildErr := buildGenerated(t, out, "lenientfrag")
+	if buildErr == nil {
+		t.Fatalf("expected the generated package not to build:\n%s", buildOut)
+	}
+	if !strings.Contains(buildOut, "undefined: Widget") {
+		t.Errorf("go build should be the one calling Widget undefined:\n%s", buildOut)
+	}
+}
+
+// A ref that cannot be served, in a position that needs a name, whose name
+// another definition of the same file already declares. The package builds --
+// the field is typed as the wrong Widget, which is exactly what the
+// unresolved-ref warning is for -- so the compile advice must not fire. Undeclared
+// is the question, not unresolved.
+func TestLenientRefsStaysQuietWhenAnotherDefinitionAlreadyHoldsTheName(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "main.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "ShadowDoc", "type": "object",
+		"properties": {
+			"a": {"$ref": "#/$defs/Widget"},
+			"xs": {"type": "array", "items": {"$ref": "missing.json#/$defs/Widget"}}
+		},
+		"$defs": {"Widget": {"type": "object", "properties": {"n": {"type": "string"}}}}
+	}`)
+
+	out := t.TempDir()
+	stderr, err := runGenerateCapturing(t, mainPath, "-o", out, "-p", "m", "--lenient-refs")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, `$ref "missing.json#/$defs/Widget" could not be resolved`) {
+		t.Fatalf("the ref is still unresolved and still reported:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "does not compile") {
+		t.Errorf("Widget is declared in this file, so the package builds:\n%s", stderr)
+	}
+	buildOut, buildErr := buildGenerated(t, out, "lenientshadow")
+	if buildErr != nil {
+		t.Fatalf("the package should build -- the name is taken by the local Widget:\n%s", buildOut)
+	}
+	gen, readErr := os.ReadFile(filepath.Join(out, "main.go"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(gen), "DOES NOT COMPILE") {
+		t.Errorf("the file compiles; its own notice must not say otherwise:\n%s", gen)
+	}
+	if !strings.Contains(string(gen), "[]Widget") {
+		t.Errorf("the degraded element should have taken the declared Widget:\n%s", gen)
+	}
+}
+
+// A name this file spells but does not declare is only a build failure when it
+// is unqualified. Under --schema-package a type belonging to a sibling package
+// is written `f.GoneJSON` and declared over there, so a degraded ref whose name
+// happens to match it must not be reported as undeclared -- the ref itself is
+// still gone, and that is all the line may say.
+//
+// The definition is deliberately named "gone.json" so that the foreign type and
+// the unresolvable ref land on the same Go identifier; nothing else brings the
+// two together.
+func TestLenientRefsDoesNotMistakeASiblingPackagesTypeForAnUndeclaredOne(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "f.json"), `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/f.json",
+		"title": "FDoc", "type": "object",
+		"$defs": {"gone.json": {"type": "object", "properties": {"n": {"type": "string"}}}}
+	}`)
+	writeFile(t, filepath.Join(src, "main.json"), `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/main.json",
+		"title": "MainDoc", "type": "object",
+		"properties": {
+			"a": {"$ref": "https://ex.test/f.json#/$defs/gone.json"},
+			"b": {"$ref": "gone.json"}
+		}
+	}`)
+
+	out := t.TempDir()
+	stderr, err := runGenerateCapturing(t,
+		filepath.Join(src, "f.json"), filepath.Join(src, "main.json"),
+		"-o", out, "--lenient-refs", "--validation", "static",
+		"--schema-package", "https://ex.test/f.json=x/f",
+		"--schema-package", "https://ex.test/main.json=x/mainp")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, `$ref "gone.json" could not be resolved`) {
+		t.Fatalf("the ref is still unresolved and still reported:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "does not compile") {
+		t.Errorf("GoneJSON here is f.GoneJSON, declared in the sibling package:\n%s", stderr)
+	}
+	gen, readErr := os.ReadFile(filepath.Join(out, "mainp", "main.go"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(gen), "*f.GoneJSON") {
+		t.Fatalf("the fixture depends on the foreign type being spelled f.GoneJSON:\n%s", gen)
+	}
+	if strings.Contains(string(gen), "DOES NOT COMPILE") {
+		t.Errorf("nothing here is undeclared; the file must not say it is:\n%s", gen)
+	}
 }
 
 // ---------- issue #176: required + readOnly under --strict-read-write ----------
