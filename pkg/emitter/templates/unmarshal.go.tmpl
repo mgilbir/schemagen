@@ -105,7 +105,8 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- if and .LeafDecode (not .ManualJSON)}}
 		{{- /* Shadows the promoted field of the same name: an outer field wins
 		       over an embedded one, so encoding/json fills this instead and the
-		       declared int64 is never the decode destination. See jsonInteger. */}}
+		       declared int64, json.Number or time.Time is never the decode
+		       destination. See jsonInteger, jsonNumber and jsonDateTime. */}}
 		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{.JSONName}}"`
 		{{- end}}
 		{{- end}}
@@ -145,6 +146,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// one. Each outer pointer is nil when the property was absent or null, both
 	// of which leave the field as it was.
 	{{- end}}
+	{{- if $struct.HasDateTimeLeafDecodes}}
+
+	// A date-time may be spelled with a lower case "t" or "z", which RFC 3339
+	// permits and time.Time's parse layout refuses; the shadows above are what
+	// let encoding/json see one. Each outer pointer is nil when the property was
+	// absent or null, both of which leave the field as it was.
+	{{- end}}
 	{{- range $struct.Fields}}
 	{{- if and .LeafDecode (not .ManualJSON)}}
 	if aux.{{.Name}} != nil {
@@ -181,6 +189,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			// Decoded through the shadow for the reason the aux fields above are:
 			// a property name that cannot go in a struct tag is decoded by hand,
 			// but its numbers are the same numbers.
+			{{- end}}
+			{{- if .LeafDecode.DateTimes}}
+			// Decoded through the shadow for the reason the aux fields above are:
+			// a property name that cannot go in a struct tag is decoded by hand,
+			// but its date-times are the same date-times.
 			{{- end}}
 			var _iv {{goType .LeafDecode.ShadowType}}
 			if err := json.Unmarshal(v, &_iv); err != nil {

@@ -4154,6 +4154,270 @@ func main() {
 	)
 }
 
+// TestDateTimeAcceptsTheLowerCaseSpelling is issue #264.
+//
+// RFC 3339 section 5.6 gives date-time as full-date "T" full-time, and its ABNF
+// carries a NOTE saying the "T" and the offset's "Z" "may alternatively be lower
+// case 't' or 'z' respectively". time.Time is read from a layout, and a layout
+// matches both literally, so {"req":"2020-01-02t03:04:05z"} came back as
+//
+//	cannot parse "t03:04:05z" as "T"
+//
+// -- a document the format permits, refused at decode.
+//
+// The schema is draft-07 and the configuration is the plain one, deliberately.
+// This was never confined to --format-assertion: drafts 3, 4, 6, 7 and v1 assert
+// `format` by default, and assertion is what restores the Go type mapping, so
+// the *default* posture on five of the seven dialects rejected the document. A
+// test written under formatAssertingConfig would have proved a smaller claim.
+//
+// It also cannot be left to the official suite. Its optional/format/date-time.json
+// does carry the lower case case ("case-insensitive T and Z", marked valid), but
+// its schema is a bare {"format":"date-time"} with no "type" -- which resolves to
+// the string wrapper of issue #106 and never reaches time.Time at all. Every
+// position below states the type, which is what takes the mapping, and none of
+// the 2255 group schemas in the pinned suite does. The external gate is green on
+// this defect and cannot be made to see it.
+//
+// Every position is here for the reason the integer ones are in issue #90:
+// fixing the scalar field alone would leave an array element rejecting what the
+// field accepts, which is the same defect one level down.
+//
+// The rejections at the end are the other half, and they are what a fix that
+// merely loosened the parse would fail. Only the case of those two characters
+// moves; a value that is not an RFC 3339 date-time for any other reason is
+// refused exactly as before.
+func TestDateTimeAcceptsTheLowerCaseSpelling(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+// Every date-time is written in the lower case spelling, at every position that
+// reaches a time.Time through encoding/json rather than through a method.
+const lower = ` + "`" + `{"aliased":"2020-01-02t03:04:05z","bag":{"k":"2020-01-02t03:04:05z"},"chained":"2020-01-02t03:04:05z","grid":[["2020-01-02t03:04:05z"]],"list":["2020-01-02t03:04:05z"],"mp":{"k":"2020-01-02t03:04:05z"},"namedlist":["2020-01-02t03:04:05z"],"nest":{"inner":"2020-01-02t03:04:05z"},"opt":"2020-01-02t03:04:05z","plain":"2020-01-02t03:04:05z","req":"2020-01-02t03:04:05z","tuple":["2020-01-02t03:04:05z","x"],"un":"2020-01-02t03:04:05z"}` + "`" + `
+
+func main() {
+	want := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	var v DateTimeCase
+	if err := json.Unmarshal([]byte(lower), &v); err != nil {
+		fail("decoding the lower case spelling: %v", err)
+	}
+	if err := v.Validate(); err != nil {
+		fail("validating the lower case spelling: %v", err)
+	}
+
+	// The instant itself, position by position. A position that decoded into
+	// time.Time's zero would satisfy "no error" and nothing else.
+	for _, c := range []struct {
+		where string
+		got   time.Time
+	}{
+		{"req", v.Req},
+		{"opt", *v.Opt},
+		{"list[0]", v.List[0]},
+		{"grid[0][0]", v.Grid[0][0]},
+		{"mp[k]", v.Mp["k"]},
+		{"nest.inner", *v.Nest.Inner},
+		{"bag[k]", v.Bag.AdditionalProperties["k"]},
+		{"aliased", time.Time(*v.Aliased)},
+		{"chained", time.Time(Stamp(*v.Chained))},
+		{"namedlist[0]", v.Namedlist[0]},
+		{"un", time.Time(v.GetDateTimeCaseUnOption0())},
+	} {
+		if !c.got.Equal(want) {
+			fail("%s decoded to %v, want %v", c.where, c.got, want)
+		}
+	}
+
+	// A string the schema does not call a date-time is not respelled, whatever
+	// it happens to hold. The rewrite is reached from the destination type, so
+	// nothing that is not going to a time.Time can be touched by it -- and a
+	// fix that scanned the document instead would corrupt this value.
+	if *v.Plain != "2020-01-02t03:04:05z" {
+		fail("plain was rewritten to %q; it is an ordinary string", *v.Plain)
+	}
+	if v.Tuple[0] != "2020-01-02t03:04:05z" {
+		fail("tuple position 0 was rewritten to %v; the document's own bytes are kept", v.Tuple[0])
+	}
+
+	// What comes back out. time.Time holds an instant and not the spelling it
+	// arrived in, so it writes the canonical upper case one -- the same
+	// canonicalisation issue #253 documents for a zero second fraction. That is
+	// deliberate and is not what this test is about; it is asserted so that a
+	// change to it has to be a decision rather than a discovery.
+	out, err := json.Marshal(v)
+	if err != nil {
+		fail("marshalling: %v", err)
+	}
+	const upper = ` + "`" + `{"aliased":"2020-01-02T03:04:05Z","bag":{"k":"2020-01-02T03:04:05Z"},"chained":"2020-01-02T03:04:05Z","grid":[["2020-01-02T03:04:05Z"]],"list":["2020-01-02T03:04:05Z"],"mp":{"k":"2020-01-02T03:04:05Z"},"namedlist":["2020-01-02T03:04:05Z"],"nest":{"inner":"2020-01-02T03:04:05Z"},"opt":"2020-01-02T03:04:05Z","plain":"2020-01-02t03:04:05z","req":"2020-01-02T03:04:05Z","tuple":["2020-01-02t03:04:05z","x"],"un":"2020-01-02T03:04:05Z"}` + "`" + `
+	if string(out) != upper {
+		fail("the marshalled form is not the canonical spelling\n  want: %s\n  got:  %s", upper, string(out))
+	}
+
+	// Both mixed spellings, and the upper case one that always worked.
+	for _, s := range []string{
+		"2020-01-02T03:04:05Z",
+		"2020-01-02t03:04:05z",
+		"2020-01-02t03:04:05Z",
+		"2020-01-02T03:04:05z",
+		"2020-01-02t03:04:05.500z",
+		"2020-01-02t03:04:05+01:00",
+		"2020-01-02t03:04:05-08:00",
+	} {
+		doc := ` + "`" + `{"req":"` + "`" + ` + s + ` + "`" + `"}` + "`" + `
+		var mv DateTimeCase
+		if err := json.Unmarshal([]byte(doc), &mv); err != nil {
+			fail("decoding %s: %v", doc, err)
+		}
+		if err := mv.Validate(); err != nil {
+			fail("validating %s: %v", doc, err)
+		}
+	}
+
+	// A value that is not an RFC 3339 date-time is still refused, at every
+	// position. Accepting the lower case spelling by loosening the parse into
+	// taking anything would be a worse defect than the one being fixed.
+	for _, bad := range []string{
+		` + "`" + `{"req":"2020-01-02X03:04:05Z"}` + "`" + `,
+		` + "`" + `{"req":"2020-13-01T00:00:00Z"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02t13:00:00"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02t99:99:99z"}` + "`" + `,
+		` + "`" + `{"req":"not-a-date"}` + "`" + `,
+		` + "`" + `{"req":""}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","opt":"nope"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","list":["nope"]}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","grid":[["nope"]]}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","mp":{"k":"nope"}}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","nest":{"inner":"nope"}}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","bag":{"k":"nope"}}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","aliased":"nope"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","chained":"nope"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","namedlist":["nope"]}` + "`" + `,
+	} {
+		var bv DateTimeCase
+		if err := json.Unmarshal([]byte(bad), &bv); err == nil {
+			fail("accepted a malformed date-time: %s", bad)
+		}
+	}
+
+	// The tuple position is judged by re-decoding the element through the
+	// position's own type, so its refusal arrives from Validate rather than
+	// from the decode.
+	badTuple := ` + "`" + `{"req":"2020-01-02T03:04:05Z","tuple":["nope","x"]}` + "`" + `
+	var tv DateTimeCase
+	if err := json.Unmarshal([]byte(badTuple), &tv); err != nil {
+		fail("decoding %s: %v", badTuple, err)
+	}
+	if err := tv.Validate(); err == nil {
+		fail("tuple position 0 accepted %q as a date-time", "nope")
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/date_time_case.json",
+		"date_time_case_test",
+		mainGo,
+	)
+}
+
+// TestDraft4DateTimeAcceptsTheLowerCaseSpelling is the half of issue #264 that a
+// fix modelled too closely on issue #90 would get wrong.
+//
+// Both defects are cured by decoding through a shadow type, and the walk that
+// substitutes those shadows is shared. But the integer leaf is draft-conditional
+// and the date-time leaf is not. Draft 3 and draft 4 define an integer as a
+// number written without a fraction, so 1.0 is not one there and the plain int64
+// decode -- which refuses that notation -- is already the right answer;
+// substituting jsonInteger under those drafts would be a new defect, and
+// TestDraft4IntegerPositionsKeepTheStrictToken holds that line.
+//
+// No draft has ever meant a different RFC 3339 by `format: date-time`, and draft
+// 3 and draft 4 are two of the five dialects that assert `format` by default --
+// so they are among the drafts the defect was worst on, and are exactly the ones
+// a single shared gate would have left unfixed. Both leaves are exercised here
+// in one document so that a gate applied to the wrong one cannot pass.
+func TestDraft4DateTimeAcceptsTheLowerCaseSpelling(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	want := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	const doc = ` + "`" + `{"list":["2020-01-02t03:04:05z"],"n":7,"req":"2020-01-02t03:04:05z"}` + "`" + `
+	var v DateTimeCaseDraft4
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		fail("decoding the lower case spelling under draft 4: %v", err)
+	}
+	if err := v.Validate(); err != nil {
+		fail("validating the lower case spelling under draft 4: %v", err)
+	}
+	if !v.Req.Equal(want) {
+		fail("req decoded to %v, want %v", v.Req, want)
+	}
+	if !v.List[0].Equal(want) {
+		fail("list[0] decoded to %v, want %v", v.List[0], want)
+	}
+	if *v.N != 7 {
+		fail("n decoded to %d, want 7", *v.N)
+	}
+
+	// The other leaf keeps this draft's answer. 1.0 is not an integer in draft
+	// 4, and the plain int64 decode is what refuses it; a shadow applied to both
+	// leaves on the same gate would have accepted it here.
+	const floatInt = ` + "`" + `{"req":"2020-01-02T03:04:05Z","n":1.0}` + "`" + `
+	var fv DateTimeCaseDraft4
+	if err := json.Unmarshal([]byte(floatInt), &fv); err == nil {
+		fail("draft 4 accepted %s; 1.0 is not an integer in this draft", floatInt)
+	}
+
+	// And a malformed date-time is still refused under this draft too.
+	for _, bad := range []string{
+		` + "`" + `{"req":"not-a-date"}` + "`" + `,
+		` + "`" + `{"req":""}` + "`" + `,
+		` + "`" + `{"req":"2020-13-01T00:00:00Z"}` + "`" + `,
+		` + "`" + `{"req":"2020-01-02T03:04:05Z","list":["nope"]}` + "`" + `,
+	} {
+		var bv DateTimeCaseDraft4
+		if err := json.Unmarshal([]byte(bad), &bv); err == nil {
+			fail("accepted a malformed date-time: %s", bad)
+		}
+	}
+
+	fmt.Println("PASS")
+}
+`
+	runGeneratedMainProgram(t,
+		"testdata/schemas/regression/date_time_case_draft4.json",
+		"date_time_case_draft4_test",
+		mainGo,
+	)
+}
+
 // TestEnumAliasBorrowsEnumMethods is the same defect as #99 reached through a
 // generated type rather than a stdlib one. Two enum shapes carry JSON methods
 // of their own -- a heterogeneous enum is a json.RawMessage that keeps the bytes

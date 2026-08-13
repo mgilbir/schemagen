@@ -704,17 +704,23 @@ func (d *StructDef) OneOfIsWholeValue() bool {
 		!d.HasNullChecks()
 }
 
-// HasIntegerLeafDecodes and HasNumberLeafDecodes report which kind of leaf the
-// shadows above are for, which is what the emitted commentary has to say: the
-// integer shadow exists so a number written 1.0 reaches an int64, and the
-// number shadow so a JSON string does not reach a json.Number. A struct
-// carrying both gets both sentences.
+// HasIntegerLeafDecodes, HasNumberLeafDecodes and HasDateTimeLeafDecodes report
+// which kind of leaf the shadows above are for, which is what the emitted
+// commentary has to say: the integer shadow exists so a number written 1.0
+// reaches an int64, the number shadow so a JSON string does not reach a
+// json.Number, and the date-time shadow so the lower case spelling RFC 3339
+// permits reaches a time.Time. A struct carrying more than one gets a sentence
+// for each.
 func (d *StructDef) HasIntegerLeafDecodes() bool {
 	return d.hasLeafDecode(func(l *LeafDecodeDef) bool { return l.Integers })
 }
 
 func (d *StructDef) HasNumberLeafDecodes() bool {
 	return d.hasLeafDecode(func(l *LeafDecodeDef) bool { return l.Numbers })
+}
+
+func (d *StructDef) HasDateTimeLeafDecodes() bool {
+	return d.hasLeafDecode(func(l *LeafDecodeDef) bool { return l.DateTimes })
 }
 
 func (d *StructDef) hasLeafDecode(want func(*LeafDecodeDef) bool) bool {
@@ -884,8 +890,11 @@ type PatternPropertyDef struct {
 type AdditionalPropertiesDef struct {
 	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
 	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
-	// LeafDecode is set when the value type holds an int64 the draft lets be
-	// written in float notation; the per-key decode goes through it.
+	// LeafDecode is set when the value type holds a leaf encoding/json would
+	// read into the wrong thing: an int64 the draft lets be written in float
+	// notation, a json.Number a JSON string could fill, or a time.Time whose
+	// decoder is stricter than the RFC 3339 it names. The per-key decode goes
+	// through it.
 	LeafDecode *LeafDecodeDef
 }
 
@@ -1316,8 +1325,10 @@ type FieldDef struct {
 	// package, and no template, has any use for a value that has not been
 	// decided yet.
 	pendingDefault *any
-	// LeafDecode is set when the field's type holds an int64 that the
-	// document's draft lets be written in float notation. See LeafDecodeDef.
+	// LeafDecode is set when the field's type holds an int64 the document's
+	// draft lets be written in float notation, a json.Number a JSON string
+	// could fill, or a time.Time whose decoder refuses spellings RFC 3339
+	// permits. See LeafDecodeDef.
 	LeafDecode *LeafDecodeDef
 	// ConditionalOnly marks a field whose every describing schema arrived
 	// through an if/then/else consequence that is applied in full elsewhere. The
@@ -1438,11 +1449,11 @@ type OneOfVariant struct {
 	// and while such a branch is in play the narrowing does not run. See
 	// oneOfVariantFullyChecked.
 	FullyChecked bool
-	// LeafDecode is set when the variant's type holds an int64 the draft lets
-	// be written in float notation. Selection gates on whether the candidate
-	// decodes, so without it an integer branch could fail to be selected for a
-	// document the branch accepts -- a disagreement about what an integer is,
-	// reported as "no matching oneOf variant".
+	// LeafDecode is set when the variant's type holds any of the shadowed
+	// leaves. Selection gates on whether the candidate decodes, so without it
+	// such a branch could fail to be selected for a document the branch accepts
+	// -- a disagreement about what an integer, an exact number or an RFC 3339
+	// date-time is, reported as "no matching oneOf variant".
 	LeafDecode *LeafDecodeDef
 }
 
@@ -1526,9 +1537,11 @@ type AliasDef struct {
 	UnevaluatedItems *UnevaluatedItemsDef
 	ValidateAs       string // named underlying type whose Validate method should be delegated to
 	UnmarshalAs      string // named underlying type whose UnmarshalJSON behavior should be delegated to
-	// LeafDecode is set when the underlying is a container holding int64
-	// that the draft lets be written in float notation. A bare int64 underlying
-	// is not here: it takes the IsIntegerType arm, which already does this.
+	// LeafDecode is set when the underlying is a container holding one of the
+	// shadowed leaves. A bare underlying is not here: an int64 takes the
+	// IsIntegerType arm and a json.Number the IsNumberType arm, both of which
+	// already do this, and a time.Time reaches jsonDateTime through the
+	// UnmarshalAs populateAliasDelegates gives it.
 	LeafDecode     *LeafDecodeDef
 	MarshalAs      string // named underlying type whose MarshalJSON behavior should be delegated to
 	StrictInteger  bool   // true when integer JSON must use an integer token, not 1.0/1e0

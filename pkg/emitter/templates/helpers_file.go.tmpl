@@ -36,6 +36,9 @@ import (
 {{- if .Helpers.NumberCompare}}
 {{template "number_compare_helpers"}}
 {{- end}}
+{{- if .Helpers.DateTime}}
+{{template "datetime_helpers"}}
+{{- end}}
 {{- if .Helpers.NullCheck}}
 {{template "nullcheck_helpers"}}
 {{- end}}

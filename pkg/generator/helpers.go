@@ -60,9 +60,17 @@ type HelperSet struct {
 	// needs the comparison and no shadow.
 	Number        bool
 	NumberCompare bool
-	NullCheck     bool // jsonNullRule and the recursive walker that applies one
-	Format        bool // schemagenFormat* -- one function per asserted format
-	Content       bool // schemagenContentString -- the content vocabulary's decode-and-parse check
+
+	// DateTime is jsonDateTime, the shadow an asserted `format: date-time` is
+	// decoded through so that the lower case "t" and "z" RFC 3339 permits are
+	// not refused by time.Time's layout-driven parser. See issue #264. It is a
+	// block of its own for the reason Number is: a package whose schemas name no
+	// date-time should not carry it, and it is the only block that needs `time`.
+	DateTime bool
+
+	NullCheck bool // jsonNullRule and the recursive walker that applies one
+	Format    bool // schemagenFormat* -- one function per asserted format
+	Content   bool // schemagenContentString -- the content vocabulary's decode-and-parse check
 
 	// Access is --strict-read-write's raw-JSON walker: the path model that
 	// reaches the readOnly/writeOnly locations no Go field answers for, and the
@@ -96,7 +104,8 @@ type HelperSet struct {
 // Empty reports whether no helpers are needed at all.
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
-		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.NullCheck &&
+		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
+		!h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties
 }
 
@@ -114,6 +123,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Integer = h.Integer || other.Integer
 	h.Number = h.Number || other.Number
 	h.NumberCompare = h.NumberCompare || other.NumberCompare
+	h.DateTime = h.DateTime || other.DateTime
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
@@ -246,6 +256,13 @@ func HelpersReferencedBy(src string) HelperSet {
 	}
 	if strings.Contains(src, "jsonNumberCmp(") || strings.Contains(src, "jsonNumberIsMultipleOf(") {
 		set.NumberCompare = true
+	}
+	// The date-time shadow, read the same way and taking the same bargain as the
+	// number one: a file holding a container of them names jsonIntegerSlice as
+	// well and so takes the integer block too, which is one jsonInteger nobody
+	// calls against one copy of each rebuilder rather than three.
+	if strings.Contains(src, "jsonDateTime") {
+		set.DateTime = true
 	}
 	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type

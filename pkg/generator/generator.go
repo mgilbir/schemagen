@@ -14906,7 +14906,19 @@ func (g *Generator) populateAliasDelegates() {
 			continue
 		}
 		if ad.UnmarshalAs == "" {
-			ad.UnmarshalAs = name
+			// One of the three does not answer for its own format, and it is
+			// split the same way the json.Number arm above is. time.Time's
+			// decoder refuses the lower case "t" and "z" RFC 3339 permits, so an
+			// alias delegating to it inherited the refusal (issue #264); it
+			// delegates to the shadow instead, which is a defined type over
+			// time.Time and so converts back into the alias directly. The encode
+			// is untouched: MarshalAs stays time.Time, whose output is the
+			// canonical spelling and is what #253 established.
+			if name == dateTimeGoTypeName {
+				ad.UnmarshalAs = dateTimeShadowName
+			} else {
+				ad.UnmarshalAs = name
+			}
 		}
 		if ad.MarshalAs == "" {
 			ad.MarshalAs = name

@@ -20,10 +20,27 @@ const integerShadowName = "jsonInteger"
 // can be intercepted.
 const numberShadowName = "jsonNumber"
 
+// dateTimeShadowName is the helper type a `format: date-time` is decoded
+// through, and it is here because time.Time's decoder is stricter than the
+// format it names. RFC 3339 section 5.6 admits a lower case "t" between the
+// date and the time and a lower case "z" for the UTC offset -- its ABNF says so
+// in a NOTE -- and time.Time is read from a parse layout, which matches both
+// characters literally. {"a":"2020-01-02t03:04:05z"} came back as `cannot parse
+// "t03:04:05z" as "T"`: a document the format permits, refused at decode. That
+// verdict is made from the destination Go type and can be intercepted nowhere
+// else. See issue #264.
+const dateTimeShadowName = "jsonDateTime"
+
+// dateTimeGoTypeName is the Go type a `format: date-time` maps to, and so the
+// leaf the walk below looks for. Written once here rather than quoted at each
+// of the three places that ask, which is how the shadow and the conversion
+// stay descriptions of the same leaf.
+const dateTimeGoTypeName = "time.Time"
+
 // LeafDecodeDef says how one decode position recovers its declared value from
 // JSON that encoding/json would otherwise read into the wrong thing.
 //
-// Two leaves need it, for the same structural reason and with the same remedy.
+// Three leaves need it, for the same structural reason and with the same remedy.
 //
 // An int64: from draft 6 onwards a number with a zero fractional part *is* an
 // integer, so {"n":1.0} satisfies {"type":"integer"} and every independent
@@ -39,6 +56,11 @@ const numberShadowName = "jsonNumber"
 // alone, {"n":"1.5"} would satisfy {"type":"number"} -- a document the schema
 // forbids, accepted and then written back out unquoted as a number nobody sent.
 //
+// A time.Time, which is what an asserted `format: date-time` maps to: its
+// decoder refuses the lower case "t" and "z" spellings RFC 3339 permits, so a
+// document the format allows was refused. Same shape of defect, same only
+// possible cure. See dateTimeShadowName and issue #264.
+//
 // ShadowType is the position's Go type with every such leaf replaced by the
 // helper type that answers for itself, so encoding/json performs the whole
 // decode -- nesting, nils, nulls, absence -- and only the leaves behave
@@ -50,14 +72,16 @@ type LeafDecodeDef struct {
 	ShadowType GoType // the position's type, with its leaves replaced by shadows
 	Convert    string // expression over leafShadowVar producing the declared type
 
-	// Integers and Numbers say which leaves this decode replaced. Both may be
-	// true -- {"type":"array","items":{"type":["integer","number"]}} does not
-	// produce one, but a struct holding an integer property and a number one
-	// produces a decode of each, and the emitted commentary has to say which
-	// question it is answering. Nothing else reads them: the shadow and the
-	// conversion above are what the decode is made of.
-	Integers bool
-	Numbers  bool
+	// Integers, Numbers and DateTimes say which leaves this decode replaced.
+	// More than one may be true -- {"type":"array","items":{"type":["integer",
+	// "number"]}} does not produce one, but a struct holding an integer
+	// property, a number one and a date-time one produces a decode of each, and
+	// the emitted commentary has to say which question it is answering. Nothing
+	// else reads them: the shadow and the conversion above are what the decode
+	// is made of.
+	Integers  bool
+	Numbers   bool
+	DateTimes bool
 }
 
 // leafShadowVar is the variable the Convert expression reads. Every site that
@@ -67,18 +91,26 @@ const leafShadowVar = "_iv"
 
 // shadowLeaves says which leaves a shadow walk is allowed to replace.
 //
-// The two are decided separately because they are refused separately. A draft
-// that requires an integer *token* -- draft 3 and draft 4, where 1.0 is not an
-// integer -- wants the plain int64 decode and no shadow, while a json.Number in
-// the same type still has to be kept from taking a JSON string. Reading them as
-// one flag made a draft-4 schema with both kinds of leaf give up the number's
-// guard to keep the integer's.
+// The three are decided separately because they are refused separately, and no
+// two of the conditions are the same one. A draft that requires an integer
+// *token* -- draft 3 and draft 4, where 1.0 is not an integer -- wants the plain
+// int64 decode and no shadow, while a json.Number in the same type still has to
+// be kept from taking a JSON string. Reading those two as one flag made a
+// draft-4 schema with both kinds of leaf give up the number's guard to keep the
+// integer's.
+//
+// The date-time leaf is neither draft-conditional nor flag-conditional: no draft
+// has ever meant a different RFC 3339 by `format: date-time`, and the mapping to
+// time.Time is what a document is refused by, so wherever the mapping is taken
+// the leaf is wanted. It matters that this is not the integer's condition --
+// draft 3 and draft 4 are two of the five dialects that assert `format` by
+// default, so a date-time leaf sharing the integer's gate would be missing on
+// exactly the drafts the defect was worst on.
 type shadowLeaves struct {
-	integers bool
-	numbers  bool
+	integers  bool
+	numbers   bool
+	dateTimes bool
 }
-
-func (l shadowLeaves) none() bool { return !l.integers && !l.numbers }
 
 // leafShadowType replaces every leaf the walk is asked for with its shadow
 // type, and reports whether the type held any.
@@ -87,9 +119,9 @@ func (l shadowLeaves) none() bool { return !l.integers && !l.numbers }
 // structurally -- a pointer, a slice, a map -- because those are the shapes
 // where the leaf is reached by the *outer* decode and so has no chance to speak
 // for itself. It deliberately stops at a NamedType: a named integer, a named
-// number, a named enum and a named struct each carry their own UnmarshalJSON,
-// and substituting one would both fail to compile and throw away the behaviour
-// that type was generated to have.
+// number, a named enum, a named struct and an alias over time.Time each carry
+// their own UnmarshalJSON, and substituting one would both fail to compile and
+// throw away the behaviour that type was generated to have.
 func leafShadowType(t GoType, want shadowLeaves) (GoType, bool) {
 	switch v := t.(type) {
 	case *PrimitiveType:
@@ -98,6 +130,9 @@ func leafShadowType(t GoType, want shadowLeaves) (GoType, bool) {
 		}
 		if want.numbers && v.Name == GoNumberTypeName {
 			return &PrimitiveType{Name: numberShadowName}, true
+		}
+		if want.dateTimes && v.Name == dateTimeGoTypeName {
+			return &PrimitiveType{Name: dateTimeShadowName}, true
 		}
 	case *PointerType:
 		if inner, ok := leafShadowType(v.Inner, want); ok {
@@ -133,6 +168,9 @@ func leafConvert(t GoType, expr string, depth int, want shadowLeaves) string {
 		if want.numbers && v.Name == GoNumberTypeName {
 			return GoNumberTypeName + "(" + expr + ")"
 		}
+		if want.dateTimes && v.Name == dateTimeGoTypeName {
+			return dateTimeGoTypeName + "(" + expr + ")"
+		}
 		return "int64(" + expr + ")"
 	case *PointerType:
 		return leafConvertCall("jsonIntegerPtr", v.Inner, expr, depth, want)
@@ -161,17 +199,20 @@ func leafConvertCall(helper string, elem GoType, expr string, depth int, want sh
 // served exactly right by the plain int64 decode, which refuses the float
 // notation. Emitting the tolerant path there would not fix a defect, it would
 // introduce one in the other direction; so that draft asks for no integer
-// shadow, and a json.Number in the same type still gets its own.
+// shadow, and a json.Number or a time.Time in the same type still gets its own.
+//
+// There is no "no leaf was asked for" exit here. There was one while the two
+// conditional leaves were the only ones, and the date-time leaf is asked for
+// unconditionally, so it could no longer be reached; what decides now is the
+// walk's own answer, which is the question that was really being asked.
 func (g *Generator) leafDecodeFor(t GoType, s *schema.Schema) *LeafDecodeDef {
 	if t == nil {
 		return nil
 	}
 	want := shadowLeaves{
-		integers: !g.requiresStrictIntegerToken(s),
-		numbers:  g.config.ExactNumbers,
-	}
-	if want.none() {
-		return nil
+		integers:  !g.requiresStrictIntegerToken(s),
+		numbers:   g.config.ExactNumbers,
+		dateTimes: true,
 	}
 	shadow, ok := leafShadowType(t, want)
 	if !ok {
@@ -182,6 +223,7 @@ func (g *Generator) leafDecodeFor(t GoType, s *schema.Schema) *LeafDecodeDef {
 		Convert:    leafConvert(t, leafShadowVar, 0, want),
 		Integers:   want.integers && typeHoldsLeaf(t, "int64"),
 		Numbers:    want.numbers && typeHoldsLeaf(t, GoNumberTypeName),
+		DateTimes:  want.dateTimes && typeHoldsLeaf(t, dateTimeGoTypeName),
 	}
 }
 
@@ -251,7 +293,7 @@ func (g *Generator) resolveEnumIntegerTokens() {
 
 // resolveLeafDecodes settles the positions that are decided from a whole type
 // definition rather than from one property: a named type whose underlying is a
-// container of integers or of exact numbers, and the overflow map of an object
+// container of integers, of exact numbers or of date-times, and the overflow map of an object
 // whose values one sub-schema types. The integer enum is settled by
 // resolveEnumIntegerTokens, which has to run earlier; see its comment.
 //
@@ -266,7 +308,10 @@ func (g *Generator) resolveEnumIntegerTokens() {
 // every other position against. A named type over a bare json.Number is left
 // alone for the mirror-image reason: the alias template's IsNumberType arm
 // decodes it, and that arm is also what gives the type the MarshalJSON a named
-// type over json.Number does not inherit.
+// type over json.Number does not inherit. A named type over a bare time.Time is
+// left alone here too, and reaches the shadow by a third route:
+// populateAliasDelegates has already pointed its UnmarshalAs at jsonDateTime,
+// and the UnmarshalAs arm runs before this one.
 func (g *Generator) resolveLeafDecodes() {
 	for _, td := range g.output.TypeDefs {
 		switch d := td.(type) {
