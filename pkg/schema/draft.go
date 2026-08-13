@@ -222,8 +222,54 @@ func (s *Schema) normalizeNode(d Draft) {
 		s.normalizeDependencies()
 	}
 
+	// Every draft: drop the enum members a member before them already admits.
+	if len(s.Enum) > 1 {
+		s.dedupeEnum()
+	}
+
 	// Recursively normalize nested schemas.
 	s.normalizeChildren(d)
+}
+
+// dedupeEnum drops every enum member some earlier member is already equal to.
+//
+// The specification says members SHOULD be unique -- a recommendation, not a
+// requirement -- so {"enum":["a","a","a"]} is a legal schema that admits "a"
+// and nothing else. It reached the generator as three members, which became
+// three Go constants of one value and a switch naming all three: "duplicate
+// case RootA2 in expression switch", gofmt-clean generated code that does not
+// compile, behind a zero exit code. See issue #269.
+//
+// Deduplicating here rather than at the one site that emitted the switch is
+// deliberate. "enum" is read in a dozen places -- to pick the Go base type, to
+// name the constants, to build the runtime evaluator's node, to write the raw
+// member list -- and a duplicate is meaningless to every one of them. One pass
+// over the parsed document is what makes them agree; a filter at the emitter
+// would leave the others counting members that say nothing.
+//
+// Equality is JSON equality and not text equality, which is what the keyword is
+// defined over: 1, 1.0 and 1e0 are one member, and so are {"a":1,"b":2} and
+// {"b":2,"a":1}. A member that cannot be canonicalised at all is kept, and kept
+// distinct from every other, because dropping it would be dropping a value the
+// enum admits.
+//
+// Order is the document's, and the first spelling of a repeated value is the
+// one that survives -- so the constant an enum member is named by does not move
+// when a later duplicate is removed.
+func (s *Schema) dedupeEnum() {
+	seen := make(map[string]bool, len(s.Enum))
+	out := s.Enum[:0:0]
+	for _, v := range s.Enum {
+		key, ok := CanonicalJSON(v)
+		if ok {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		out = append(out, v)
+	}
+	s.Enum = out
 }
 
 // normalizeDisallow converts Draft 3's "disallow" to an equivalent "not" schema.
@@ -254,6 +300,27 @@ func (s *Schema) normalizeDisallow() {
 					if json.Unmarshal(elem, &t) == nil {
 						branches = append(branches, &Schema{Type: TypeList{t}})
 					}
+					continue
+				}
+				// Draft 3 defines each entry as "either a string or a schema",
+				// and draft 3 has no boolean schemas -- so an entry that is not
+				// a quoted string or an object names nothing to forbid and
+				// contributes no branch.
+				//
+				// Reading one as a schema anyway is how {"disallow":[null]}
+				// came to refuse every document there is. A JSON null decodes
+				// into a Schema without error and leaves it at its zero value,
+				// which is the empty schema; the empty schema matches
+				// everything, and "not: everything" admits nothing at all --
+				// {}, "x", 5, [] and null were all rejected by a keyword that
+				// should have said nothing. See issue #272.
+				//
+				// An entry skipped here leaves the branch list shorter, and a
+				// list left empty leaves "not" unset, so a disallow naming
+				// nothing legible constrains nothing. That is also the answer
+				// every dialect but draft 3 gives the keyword, which is to
+				// ignore it.
+				if len(elemTrimmed) == 0 || elemTrimmed[0] != '{' {
 					continue
 				}
 				var branch Schema

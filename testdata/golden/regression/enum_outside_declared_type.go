@@ -407,9 +407,12 @@ func (o OnlyA) Validate() error {
 
 type EnumOutsideDeclaredTypeArrayEnum json.RawMessage
 
-var enumOutsideDeclaredTypeArrayEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var enumOutsideDeclaredTypeArrayEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"[1]",
-}
+})
 
 func (e *EnumOutsideDeclaredTypeArrayEnum) UnmarshalJSON(data []byte) error {
 	*e = EnumOutsideDeclaredTypeArrayEnum(data)
@@ -425,16 +428,13 @@ func (e EnumOutsideDeclaredTypeArrayEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeArrayEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeArrayEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(e), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(e))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", string(e))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", string(e))
-	}
-	_canon := string(canonical)
 	for _, allowed := range enumOutsideDeclaredTypeArrayEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -1275,9 +1275,12 @@ func (e EnumOutsideDeclaredTypeNumberEnum) Validate() error {
 
 type EnumOutsideDeclaredTypeObjectEnum json.RawMessage
 
-var enumOutsideDeclaredTypeObjectEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var enumOutsideDeclaredTypeObjectEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"{\"k\":1}",
-}
+})
 
 func (e *EnumOutsideDeclaredTypeObjectEnum) UnmarshalJSON(data []byte) error {
 	*e = EnumOutsideDeclaredTypeObjectEnum(data)
@@ -1293,16 +1296,13 @@ func (e EnumOutsideDeclaredTypeObjectEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeObjectEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeObjectEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(e), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(e))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", string(e))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", string(e))
-	}
-	_canon := string(canonical)
 	for _, allowed := range enumOutsideDeclaredTypeObjectEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -1347,10 +1347,13 @@ func (e EnumOutsideDeclaredTypeTypedEnum) Validate() error {
 
 type EnumOutsideDeclaredTypeUnionEnum json.RawMessage
 
-var enumOutsideDeclaredTypeUnionEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var enumOutsideDeclaredTypeUnionEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"5",
-}
+})
 
 func (e *EnumOutsideDeclaredTypeUnionEnum) UnmarshalJSON(data []byte) error {
 	*e = EnumOutsideDeclaredTypeUnionEnum(data)
@@ -1366,16 +1369,13 @@ func (e EnumOutsideDeclaredTypeUnionEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUnionEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(e), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(e))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", string(e))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", string(e))
-	}
-	_canon := string(canonical)
 	for _, allowed := range enumOutsideDeclaredTypeUnionEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -1386,10 +1386,13 @@ func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
 
 type EnumOutsideDeclaredTypeUntypedEnum json.RawMessage
 
-var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"5",
-}
+})
 
 func (e *EnumOutsideDeclaredTypeUntypedEnum) UnmarshalJSON(data []byte) error {
 	*e = EnumOutsideDeclaredTypeUntypedEnum(data)
@@ -1405,16 +1408,13 @@ func (e EnumOutsideDeclaredTypeUntypedEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUntypedEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUntypedEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(e), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(e))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", string(e))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", string(e))
-	}
-	_canon := string(canonical)
 	for _, allowed := range enumOutsideDeclaredTypeUntypedEnumAllowedJSON {
 		if _canon == allowed {
 			return nil

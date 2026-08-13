@@ -56,11 +56,14 @@ func (c Choice) Validate() error {
 
 type Raw json.RawMessage
 
-var rawAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var rawAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
-}
+})
 
 func (r *Raw) UnmarshalJSON(data []byte) error {
 	*r = Raw(data)
@@ -76,16 +79,13 @@ func (r Raw) MarshalJSON() ([]byte, error) {
 
 // Validate checks Raw against its JSON Schema constraints.
 func (r Raw) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(r), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(r))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid Raw value: %s", string(r))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid Raw value: %s", string(r))
-	}
-	_canon := string(canonical)
 	for _, allowed := range rawAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -189,11 +189,14 @@ func (w WrappedLevel) Validate() error {
 
 type WrappedRaw json.RawMessage
 
-var wrappedRawAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var wrappedRawAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
-}
+})
 
 func (w *WrappedRaw) UnmarshalJSON(data []byte) error {
 	*w = WrappedRaw(data)
@@ -209,16 +212,13 @@ func (w WrappedRaw) MarshalJSON() ([]byte, error) {
 
 // Validate checks WrappedRaw against its JSON Schema constraints.
 func (w WrappedRaw) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(w), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(w))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid WrappedRaw value: %s", string(w))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid WrappedRaw value: %s", string(w))
-	}
-	_canon := string(canonical)
 	for _, allowed := range wrappedRawAllowedJSON {
 		if _canon == allowed {
 			return nil

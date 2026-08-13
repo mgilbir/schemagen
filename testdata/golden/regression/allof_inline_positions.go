@@ -56,11 +56,14 @@ func (c Colour) Validate() error {
 
 type RawEnum json.RawMessage
 
-var rawEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var rawEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
-}
+})
 
 func (r *RawEnum) UnmarshalJSON(data []byte) error {
 	*r = RawEnum(data)
@@ -76,16 +79,13 @@ func (r RawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks RawEnum against its JSON Schema constraints.
 func (r RawEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(r), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(r))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid RawEnum value: %s", string(r))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid RawEnum value: %s", string(r))
-	}
-	_canon := string(canonical)
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -266,11 +266,14 @@ func (a AllOfInlinePositionsPick) Validate() error {
 
 type AllOfInlinePositionsRaw json.RawMessage
 
-var allOfInlinePositionsRawAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var allOfInlinePositionsRawAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
-}
+})
 
 func (a *AllOfInlinePositionsRaw) UnmarshalJSON(data []byte) error {
 	*a = AllOfInlinePositionsRaw(data)
@@ -286,16 +289,13 @@ func (a AllOfInlinePositionsRaw) MarshalJSON() ([]byte, error) {
 
 // Validate checks AllOfInlinePositionsRaw against its JSON Schema constraints.
 func (a AllOfInlinePositionsRaw) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(a), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(a))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid AllOfInlinePositionsRaw value: %s", string(a))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid AllOfInlinePositionsRaw value: %s", string(a))
-	}
-	_canon := string(canonical)
 	for _, allowed := range allOfInlinePositionsRawAllowedJSON {
 		if _canon == allowed {
 			return nil

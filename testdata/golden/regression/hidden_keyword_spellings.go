@@ -456,9 +456,12 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 
 type HiddenKeywordSpellingsPatternConstNullPattern0 json.RawMessage
 
-var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = _jsonCanonicalTexts([]string{
 	"null",
-}
+})
 
 func (h *HiddenKeywordSpellingsPatternConstNullPattern0) UnmarshalJSON(data []byte) error {
 	*h = HiddenKeywordSpellingsPatternConstNullPattern0(data)
@@ -474,16 +477,13 @@ func (h HiddenKeywordSpellingsPatternConstNullPattern0) MarshalJSON() ([]byte, e
 
 // Validate checks HiddenKeywordSpellingsPatternConstNullPattern0 against its JSON Schema constraints.
 func (h HiddenKeywordSpellingsPatternConstNullPattern0) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(h), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(h))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", string(h))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", string(h))
-	}
-	_canon := string(canonical)
 	for _, allowed := range hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON {
 		if _canon == allowed {
 			return nil

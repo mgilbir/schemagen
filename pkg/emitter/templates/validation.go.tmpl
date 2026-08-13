@@ -1239,26 +1239,22 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       the way a required-property check is. */}}
 	// enum: the object as a whole must be one of the permitted documents.
 	if {{$recv}}._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			{{- range $struct.ObjectEnum}}
 			{{goStringQuote .}},
 			{{- end}}
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal({{$recv}}._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}

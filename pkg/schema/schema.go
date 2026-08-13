@@ -752,6 +752,29 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		s.ConstIsNull = true
 	}
 
+	// {"$ref": ""} is a reference, and an empty Ref field is how this package
+	// spells "this schema has no $ref" -- so the keyword disappeared and the
+	// position it stood in became `any`. {"properties":{"a":{"$ref":""}}}
+	// accepted {"a":"x"}, and it was wrong twice over: a legal reference was
+	// not resolved, and it was not refused either, while a $ref naming a
+	// definition that does not exist fails generation outright. See issue #272.
+	//
+	// The empty string is a URI-reference like any other and RFC 3986 §5.2
+	// resolves it against the base URI, which is the same target "#" names: a
+	// same-document reference to the resource in scope. So the two spellings
+	// are made one here, at the only point in the pipeline that can still tell
+	// {"$ref": ""} from a schema with no $ref at all -- and everything
+	// downstream resolves, and cycle-checks, the reference it already knew.
+	//
+	// Rewriting to the fixed string "#" rather than to whatever URI the
+	// enclosing $id established is what makes this correct under a nested
+	// resource too: "#" is itself resolved against the base URI in scope, so a
+	// node inside {"$id": "http://x/sub"} reaches that subschema and not the
+	// document root.
+	if refRaw, ok := raw["$ref"]; ok && string(trimJSONWhitespace(refRaw)) == `""` {
+		s.Ref = "#"
+	}
+
 	// Draft 3 allows schema-valued entries in the type array. Preserve them so
 	// validation can treat the type keyword as an anyOf over primitive names and
 	// schema branches.

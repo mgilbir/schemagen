@@ -25,8 +25,27 @@ func TestGoNumberLiteral(t *testing.T) {
 		{"an integer written with an exponent", json.Number("1e2"), "100"},
 		{"an integer written with a point", json.Number("100.0"), "100"},
 		{"a fraction is left as written", json.Number("1.5"), "1.5"},
-		{"a magnitude past float64 is written out", json.Number("1e400"), "1" + strings.Repeat("0", 400)},
+		// Every row below is a whole number too wide for the integer constant
+		// the rows above become. Writing one out in full is what issue #269
+		// was: a Go integer constant is only guaranteed 256 bits, gc gives 512
+		// and refuses more, and 1e308 -- a perfectly ordinary "maximum" -- is
+		// three hundred and nine digits and 1024 bits once expanded. So the
+		// spelling the document used is kept where it is already a
+		// floating-point one, and a whole number written out in full becomes
+		// the float64 it rounds to. See goConstLiteral.
+		{"a magnitude past float64 keeps its exponent", json.Number("1e400"), "1e400"},
 		{"an exponent past what Rat will build is left as written", json.Number("1e999999"), "1e999999"},
+		{"the largest float64 stays in exponent notation", schema.Number("1.7976931348623157e308"), "1.7976931348623157e308"},
+		{"a whole number at the top of float64's range keeps its exponent", schema.Number("1e308"), "1e308"},
+		{"a whole number just inside the constant bound is written out", json.Number("1e70"), "1" + strings.Repeat("0", 70)},
+		{"a whole number just past it keeps the exponent it was written with", json.Number("1e78"), "1e78"},
+		{"a wide whole number written out in full is folded to float64", json.Number("1" + strings.Repeat("0", 159)), "1e+159"},
+		// And past float64 as well as past the constant bound, which is the one
+		// arm with no float64 to fall back on. The digits are kept and the point
+		// is moved, so what is written is a floating-point constant -- refused
+		// where it is converted to float64, which is a magnitude no float64
+		// holds, rather than refused as an integer constant nobody could hold.
+		{"a wide whole number past float64 keeps its digits", json.Number("1" + strings.Repeat("1", 399)), "1." + strings.Repeat("1", 399) + "e399"},
 		{"a Go-built float that is whole", 5.0, "5"},
 		{"a Go-built int", 7, "7"},
 		{"MinInt64 built in Go as a float", -float64(1 << 63), "-9223372036854775808"},

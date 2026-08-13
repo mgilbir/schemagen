@@ -68,6 +68,15 @@ type HelperSet struct {
 	// date-time should not carry it, and it is the only block that needs `time`.
 	DateTime bool
 
+	// Canonical is _jsonCanonical, the JSON-equality reduction an "enum" or a
+	// "const" held as raw JSON is decided by, and the number canonicalisation
+	// under it. One flag, because the three functions are one block: the walker
+	// calls the number reader, and the list initialiser calls the walker.
+	//
+	// Conditional like every other block here. A package whose schemas state
+	// no whole-document enum or const emits none of it.
+	Canonical bool
+
 	NullCheck bool // jsonNullRule and the recursive walker that applies one
 	Format    bool // schemagenFormat* -- one function per asserted format
 	Content   bool // schemagenContentString -- the content vocabulary's decode-and-parse check
@@ -105,7 +114,7 @@ type HelperSet struct {
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
-		!h.NullCheck &&
+		!h.Canonical && !h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties
 }
 
@@ -124,6 +133,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Number = h.Number || other.Number
 	h.NumberCompare = h.NumberCompare || other.NumberCompare
 	h.DateTime = h.DateTime || other.DateTime
+	h.Canonical = h.Canonical || other.Canonical
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
@@ -263,6 +273,13 @@ func HelpersReferencedBy(src string) HelperSet {
 	// calls against one copy of each rebuilder rather than three.
 	if strings.Contains(src, "jsonDateTime") {
 		set.DateTime = true
+	}
+	// The JSON-equality reduction. One block reached from two names -- the
+	// reduction itself and the list initialiser that applies it at package
+	// initialisation -- and the second appears in a file whose enum type is
+	// declared elsewhere, so both are matched.
+	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") {
+		set.Canonical = true
 	}
 	// jsonNullRule and checkJSONNulls come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type

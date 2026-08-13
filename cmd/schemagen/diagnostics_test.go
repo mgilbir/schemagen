@@ -1125,3 +1125,48 @@ func TestANameTakenByANonInputDocumentKeepsTheGeneratorsMessage(t *testing.T) {
 		t.Errorf("the inputs are not in the wrong order; ext.json is not one of them:\n%s", err)
 	}
 }
+
+// ---------- issue #272: {"$ref": ""} ----------
+
+// An empty $ref is a same-document reference, and this package's spelling of
+// "no $ref at all" -- so the keyword disappeared and the position it stood in
+// became `any`, accepting values the reference forbids. It is resolved now,
+// against the base URI, which is the target "#" names.
+//
+// The pair is the point. Resolving a reference that can be served must not have
+// relaxed anything about one that cannot, and the refusal for the second is
+// what a caller reads to fix their schema: it names the ref and then the four
+// ways to make it resolve. That whole message is assembled here rather than in
+// the generator, so this is the layer that can hold it.
+func TestEmptyRefResolvesWhileAnUnservableRefStillFails(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "empty.json"), `{"type":"object","properties":{"a":{"$ref":""}}}`)
+	writeFile(t, filepath.Join(src, "missing.json"), `{"type":"object","properties":{"a":{"$ref":"#/$defs/nope"}}}`)
+
+	out := t.TempDir()
+	if _, err := runGenerateCapturing(t, "--output-dir", out, filepath.Join(src, "empty.json")); err != nil {
+		t.Fatalf(`{"$ref": ""} must resolve against the base URI, not fail: %v`, err)
+	}
+	generated, readErr := os.ReadFile(filepath.Join(out, "empty.go"))
+	if readErr != nil {
+		t.Fatalf("reading the generated file: %v", readErr)
+	}
+	if !strings.Contains(string(generated), "*Root") {
+		t.Errorf("the empty $ref did not resolve to the root; generated:\n%s", string(generated))
+	}
+
+	_, err := runGenerateCapturing(t, "--output-dir", t.TempDir(), filepath.Join(src, "missing.json"))
+	if err == nil {
+		t.Fatal("a $ref naming a definition that does not exist generated without error")
+	}
+	for _, want := range []string{
+		`cannot resolve $ref "#/$defs/nope"`,
+		"pass the referenced document as an input too",
+		"--allow-remote-refs",
+		"--lenient-refs",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the strict-ref refusal no longer says %q:\n%v", want, err)
+		}
+	}
+}

@@ -9,10 +9,13 @@ import (
 
 type Pair json.RawMessage
 
-var pairAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var pairAllowedJSON = _jsonCanonicalTexts([]string{
 	"{\"k\":1}",
 	"{\"k\":2}",
-}
+})
 
 func (p *Pair) UnmarshalJSON(data []byte) error {
 	*p = Pair(data)
@@ -28,16 +31,13 @@ func (p Pair) MarshalJSON() ([]byte, error) {
 
 // Validate checks Pair against its JSON Schema constraints.
 func (p Pair) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(p), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(p))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid Pair value: %s", string(p))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid Pair value: %s", string(p))
-	}
-	_canon := string(canonical)
 	for _, allowed := range pairAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -155,24 +155,20 @@ func (a AllOfObjectEnumConstMember) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnumConstMember) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			"{\"k\":1}",
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal(a._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}
@@ -293,25 +289,21 @@ func (a AllOfObjectEnumInline) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnumInline) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			"{\"k\":1}",
 			"{\"k\":2}",
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal(a._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}
@@ -423,24 +415,20 @@ func (a AllOfObjectEnumNested) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnumNested) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			"{\"k\":{\"n\":[1,2]}}",
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal(a._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}
@@ -694,24 +682,20 @@ func (a AllOfObjectEnumReordered) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnumReordered) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			"{\"a\":1,\"b\":2}",
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal(a._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}
@@ -725,10 +709,13 @@ func (a AllOfObjectEnumReordered) Validate() error {
 
 type AllOfObjectEnumStandalone json.RawMessage
 
-var allOfObjectEnumStandaloneAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var allOfObjectEnumStandaloneAllowedJSON = _jsonCanonicalTexts([]string{
 	"{\"k\":1}",
 	"{\"k\":2}",
-}
+})
 
 func (a *AllOfObjectEnumStandalone) UnmarshalJSON(data []byte) error {
 	*a = AllOfObjectEnumStandalone(data)
@@ -744,16 +731,13 @@ func (a AllOfObjectEnumStandalone) MarshalJSON() ([]byte, error) {
 
 // Validate checks AllOfObjectEnumStandalone against its JSON Schema constraints.
 func (a AllOfObjectEnumStandalone) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(a), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(a))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
-	}
-	_canon := string(canonical)
 	for _, allowed := range allOfObjectEnumStandaloneAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -871,25 +855,21 @@ func (a AllOfObjectEnumViaRef) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnumViaRef) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
-		_enumAllowed := []string{
+		_enumAllowed := _jsonCanonicalTexts([]string{
 			"{\"k\":1}",
 			"{\"k\":2}",
-		}
+		})
 		_enumRaw, _enumErr := json.Marshal(a._jsonRawProps)
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
 		}
-		var _enumAny any
-		if _enumErr := json.Unmarshal(_enumRaw, &_enumAny); _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := json.Marshal(_enumAny)
+		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
+			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
 		}
 		_enumOK := false
 		for _, _allowed := range _enumAllowed {
-			if string(_enumCanon) == _allowed {
+			if _enumCanon == _allowed {
 				_enumOK = true
 				break
 			}

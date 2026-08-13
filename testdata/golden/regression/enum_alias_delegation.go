@@ -65,11 +65,14 @@ func (i IntAlias) Validate() error {
 
 type RawEnum json.RawMessage
 
-var rawEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var rawEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
-}
+})
 
 func (r *RawEnum) UnmarshalJSON(data []byte) error {
 	*r = RawEnum(data)
@@ -85,16 +88,13 @@ func (r RawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks RawEnum against its JSON Schema constraints.
 func (r RawEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(r), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(r))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid RawEnum value: %s", string(r))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid RawEnum value: %s", string(r))
-	}
-	_canon := string(canonical)
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil

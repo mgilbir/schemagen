@@ -343,10 +343,13 @@ func (a AnnNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type AnnRawEnum json.RawMessage
 
-var annRawEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var annRawEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"mixed\"",
 	"7",
-}
+})
 
 func (a *AnnRawEnum) UnmarshalJSON(data []byte) error {
 	*a = AnnRawEnum(data)
@@ -362,16 +365,13 @@ func (a AnnRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnnRawEnum against its JSON Schema constraints.
 func (a AnnRawEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(a), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(a))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid AnnRawEnum value: %s", string(a))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid AnnRawEnum value: %s", string(a))
-	}
-	_canon := string(canonical)
 	for _, allowed := range annRawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
@@ -910,10 +910,13 @@ func (d DepNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type DepRawEnum json.RawMessage
 
-var depRawEnumAllowedJSON = []string{
+// The members as the schema wrote them, reduced at package initialisation to
+// the one spelling every JSON value equal to each of them shares -- which is
+// the same reduction Validate puts the instance through. See _jsonCanonical.
+var depRawEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"\"either\"",
 	"9",
-}
+})
 
 func (d *DepRawEnum) UnmarshalJSON(data []byte) error {
 	*d = DepRawEnum(data)
@@ -929,16 +932,13 @@ func (d DepRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks DepRawEnum against its JSON Schema constraints.
 func (d DepRawEnum) Validate() error {
-	// Normalize to compact JSON for comparison (handles whitespace, key order, number format).
-	var tmp any
-	if err := json.Unmarshal([]byte(d), &tmp); err != nil {
+	// Reduced to one spelling per JSON value, which is what the member list was
+	// reduced to as well: whitespace, member order and number spelling are not
+	// what an enum is decided on.
+	_canon, _canonErr := _jsonCanonical([]byte(d))
+	if _canonErr != nil {
 		return fmt.Errorf("invalid DepRawEnum value: %s", string(d))
 	}
-	canonical, err := json.Marshal(tmp)
-	if err != nil {
-		return fmt.Errorf("invalid DepRawEnum value: %s", string(d))
-	}
-	_canon := string(canonical)
 	for _, allowed := range depRawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil

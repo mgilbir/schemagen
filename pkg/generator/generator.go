@@ -4803,7 +4803,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var objectEnum []string
 	if g.validationKeywordsEnabled() {
 		if promoted := promoteConstToEnum(s); len(promoted.Enum) > 0 {
-			objectEnum = canonicalJSONValues(promoted.Enum)
+			objectEnum = enumMemberJSON(promoted.Enum)
 		}
 	}
 	if len(objectEnum) > 0 {
@@ -8660,26 +8660,30 @@ func isHeterogeneousEnum(values []any) bool {
 	return false
 }
 
-// canonicalJSONValues renders enum members to the form an instance is compared
-// against: the JSON encoding of the decoded value, which is what makes the
-// comparison sound at all. An enum member and an instance are equal as JSON
-// *documents*, not as byte strings -- {"a":1,"b":2} and {"b":2,"a":1} are the
-// same document, and so are 1, 1.0 and 1e0 -- so both sides are put through one
-// encoder before being compared. encoding/json writes a map's keys in sorted
-// order and a number in one format, which settles both.
+// enumMemberJSON renders enum members as the JSON the schema wrote for each of
+// them, which is the form the generated code compares an instance against.
 //
-// This is the form generateRawEnumDef already stores and the form its Validate
-// already computes for the instance. Sharing it is what keeps a whole-document
-// enum answering the same way whether the merge left it a standalone raw enum
-// type or a struct that carries the enum itself.
+// An enum member and an instance are equal as JSON *documents* and not as byte
+// strings -- {"a":1,"b":2} and {"b":2,"a":1} are the same document, and so are
+// 1, 1.0 and 1e0 -- so both sides are reduced to one spelling per value before
+// being compared. That reduction is _jsonCanonical, in the generated code,
+// and it is applied to this list at package initialisation as well as to the
+// instance; what is written here is only the member as the document had it.
+//
+// Doing it that way rather than baking the reduced form is what keeps the two
+// sides of the comparison out of two implementations. It also stopped the fold
+// through float64 the reduction used to be: every enum member was encoded
+// through a float64 on the way in and every instance decoded through one on the
+// way out, so {"const":123456789012345678901234567890} accepted every integer
+// inside that rounding. See issue #272.
 //
 // A member that cannot be encoded is dropped rather than compared as its Go
 // rendering: an entry no instance could ever equal would turn the enum into a
 // rejection of documents the schema admits.
-func canonicalJSONValues(values []any) []string {
+func enumMemberJSON(values []any) []string {
 	out := make([]string, 0, len(values))
 	for _, v := range values {
-		b, err := constJSONValue(v)
+		b, err := exactJSONValue(v)
 		if err != nil {
 			continue
 		}
@@ -8697,7 +8701,7 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 	constNames := enumConstNames(name, s.Enum)
 	values := make([]EnumValue, len(s.Enum))
 	for i, v := range s.Enum {
-		rawBytes, err := constJSONValue(v)
+		rawBytes, err := exactJSONValue(v)
 		if err != nil {
 			rawBytes = []byte(fmt.Sprintf("%v", v))
 		}
