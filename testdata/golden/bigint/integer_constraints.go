@@ -97,7 +97,7 @@ func (c Counter) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("0")
 		if _val.Cmp(_limit) < 0 {
-			return fmt.Errorf("value: %s is less than minimum 0", c.BigInt().String())
+			return jsonValueErrorf("%s is less than minimum 0", c.BigInt().String())
 		}
 	}
 	{
@@ -105,7 +105,7 @@ func (c Counter) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("1e30")
 		if _val.Cmp(_limit) >= 0 {
-			return fmt.Errorf("value: %s must be less than 1e30", c.BigInt().String())
+			return jsonValueErrorf("%s must be less than 1e30", c.BigInt().String())
 		}
 	}
 	return nil

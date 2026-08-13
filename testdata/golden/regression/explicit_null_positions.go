@@ -115,7 +115,7 @@ func (n *Names) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Names")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias Names
@@ -315,14 +315,14 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if o.AdditionalProperties == nil {
 				o.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			o.AdditionalProperties[rawKey] = val
 		}
@@ -373,7 +373,7 @@ func (s *Short) UnmarshalJSON(data []byte) error {
 // Validate checks Short against its JSON Schema constraints.
 func (s Short) Validate() error {
 	if utf8.RuneCountInString(string(s)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(s)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(s)))
 	}
 	return nil
 }
@@ -548,7 +548,7 @@ func (e ExplicitNullPositionsBoundOnly) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(e._value)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(e._value)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(e._value)))
 	}
 	return nil
 }
@@ -566,7 +566,7 @@ func (e *ExplicitNullPositionsBounded) UnmarshalJSON(data []byte) error {
 // Validate checks ExplicitNullPositionsBounded against its JSON Schema constraints.
 func (e ExplicitNullPositionsBounded) Validate() error {
 	if utf8.RuneCountInString(string(e)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(e)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(e)))
 	}
 	return nil
 }
@@ -1113,43 +1113,43 @@ func (e ExplicitNullPositions) Validate() error {
 	}
 	if e.Alias != nil {
 		if err := e.Alias.Validate(); err != nil {
-			return fmt.Errorf("alias.%w", err)
+			return jsonPathf(err, "alias")
 		}
 	}
 	if e.BoundOnly != nil {
 		if err := e.BoundOnly.Validate(); err != nil {
-			return fmt.Errorf("boundOnly.%w", err)
+			return jsonPathf(err, "boundOnly")
 		}
 	}
 	if e.Bounded != nil {
 		if err := e.Bounded.Validate(); err != nil {
-			return fmt.Errorf("bounded.%w", err)
+			return jsonPathf(err, "bounded")
 		}
 	}
 	if e.Inline != nil {
 		if err := e.Inline.Validate(); err != nil {
-			return fmt.Errorf("inline.%w", err)
+			return jsonPathf(err, "inline")
 		}
 	}
 	if e.NamedArray != nil {
 		if err := e.NamedArray.Validate(); err != nil {
-			return fmt.Errorf("namedArray.%w", err)
+			return jsonPathf(err, "namedArray")
 		}
 	}
 	if e.Overflow != nil {
 		if err := e.Overflow.Validate(); err != nil {
-			return fmt.Errorf("overflow.%w", err)
+			return jsonPathf(err, "overflow")
 		}
 	}
 	if err := e.ReqAlias.Validate(); err != nil {
-		return fmt.Errorf("reqAlias.%w", err)
+		return jsonPathf(err, "reqAlias")
 	}
 	if err := e.ReqStruct.Validate(); err != nil {
-		return fmt.Errorf("reqStruct.%w", err)
+		return jsonPathf(err, "reqStruct")
 	}
 	if e.Struct != nil {
 		if err := e.Struct.Validate(); err != nil {
-			return fmt.Errorf("struct.%w", err)
+			return jsonPathf(err, "struct")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -1162,13 +1162,13 @@ func (e ExplicitNullPositions) Validate() error {
 	case *ExplicitNullPositions_Tagged:
 		if _oneOfSel.Tagged != nil {
 			if err := _oneOfSel.Tagged.Validate(); err != nil {
-				return fmt.Errorf("union.%w", err)
+				return jsonPathf(err, "union")
 			}
 		}
 	case *ExplicitNullPositions_Numbered:
 		if _oneOfSel.Numbered != nil {
 			if err := _oneOfSel.Numbered.Validate(); err != nil {
-				return fmt.Errorf("union.%w", err)
+				return jsonPathf(err, "union")
 			}
 		}
 	}

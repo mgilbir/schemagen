@@ -53,8 +53,12 @@ func (s *StampAlias) UnmarshalJSON(data []byte) error {
 
 // Validate checks StampAlias against its JSON Schema constraints.
 func (s StampAlias) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (Stamp(s)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -222,41 +226,41 @@ func (f FormatAliasPositions) Validate() error {
 	}
 	if f.Addr != nil {
 		if err := f.Addr.Validate(); err != nil {
-			return fmt.Errorf("addr.%w", err)
+			return jsonPathf(err, "addr")
 		}
 	}
 	for _i, _item := range f.AddrList {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("addr_list[%d].%w", _i, err)
+			return jsonPathf(err, "addr_list[%d]", _i)
 		}
 	}
 	if f.ChainedStamp != nil {
 		if err := f.ChainedStamp.Validate(); err != nil {
-			return fmt.Errorf("chained_stamp.%w", err)
+			return jsonPathf(err, "chained_stamp")
 		}
 	}
 	if f.OptionalStamp != nil {
 		if err := f.OptionalStamp.Validate(); err != nil {
-			return fmt.Errorf("optional_stamp.%w", err)
+			return jsonPathf(err, "optional_stamp")
 		}
 	}
 	if err := f.RequiredStamp.Validate(); err != nil {
-		return fmt.Errorf("required_stamp.%w", err)
+		return jsonPathf(err, "required_stamp")
 	}
 	for _i, _item := range f.StampList {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("stamp_list[%d].%w", _i, err)
+			return jsonPathf(err, "stamp_list[%d]", _i)
 		}
 	}
 	for _k, _val := range f.StampMap {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("stamp_map[%q].%w", _k, err)
+			return jsonPathf(err, "stamp_map[%q]", _k)
 		}
 	}
 	for _i0, _e0 := range f.StampGrid {
 		for _i1, _e1 := range _e0 {
 			if _err := _e1.Validate(); _err != nil {
-				return fmt.Errorf("stamp_grid[%d][%d].%w", _i0, _i1, _err)
+				return jsonPathf(_err, "stamp_grid[%d][%d]", _i0, _i1)
 			}
 		}
 	}

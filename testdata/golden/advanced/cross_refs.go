@@ -379,7 +379,7 @@ func (s Section) Validate() error {
 	}
 	for _i, _item := range s.Subsections {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("subsections[%d].%w", _i, err)
+			return jsonPathf(err, "subsections[%d]", _i)
 		}
 	}
 	return nil
@@ -512,15 +512,15 @@ func (d Document) Validate() error {
 	}
 	if d.Author != nil {
 		if err := d.Author.Validate(); err != nil {
-			return fmt.Errorf("author.%w", err)
+			return jsonPathf(err, "author")
 		}
 	}
 	if err := d.Metadata.Validate(); err != nil {
-		return fmt.Errorf("metadata.%w", err)
+		return jsonPathf(err, "metadata")
 	}
 	for _i, _item := range d.Sections {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("sections[%d].%w", _i, err)
+			return jsonPathf(err, "sections[%d]", _i)
 		}
 	}
 	return nil

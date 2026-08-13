@@ -37,7 +37,7 @@ func (i IntEnum) Validate() error {
 	case IntEnum1, IntEnum2, IntEnum3:
 		return nil
 	default:
-		return fmt.Errorf("invalid IntEnum value: %v", i)
+		return jsonValueErrorf("invalid IntEnum value: %v", i)
 	}
 }
 
@@ -57,8 +57,12 @@ func (i *IntAlias) UnmarshalJSON(data []byte) error {
 
 // Validate checks IntAlias against its JSON Schema constraints.
 func (i IntAlias) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (IntEnum(i)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -93,14 +97,14 @@ func (r RawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid RawEnum value: %s", string(r))
+		return jsonValueErrorf("invalid RawEnum value: %s", string(r))
 	}
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid RawEnum value: %s", _canon)
+	return jsonValueErrorf("invalid RawEnum value: %s", _canon)
 }
 
 type RawAlias RawEnum
@@ -119,8 +123,12 @@ func (r RawAlias) MarshalJSON() ([]byte, error) {
 
 // Validate checks RawAlias against its JSON Schema constraints.
 func (r RawAlias) Validate() error {
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := (RawEnum(r)).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	return nil
 }
@@ -289,18 +297,18 @@ func (e EnumAliasDelegation) Validate() error {
 		}
 	}
 	if err := e.Num.Validate(); err != nil {
-		return fmt.Errorf("num.%w", err)
+		return jsonPathf(err, "num")
 	}
 	// A property written as null leaves the same Go zero an absent one does,
 	// and the schema permits the null, so the zero is not a value to judge.
 	if !e._jsonNulls["raw"] {
 		if err := e.Raw.Validate(); err != nil {
-			return fmt.Errorf("raw.%w", err)
+			return jsonPathf(err, "raw")
 		}
 	}
 	for _i, _item := range e.RawList {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("raw_list[%d].%w", _i, err)
+			return jsonPathf(err, "raw_list[%d]", _i)
 		}
 	}
 	return nil

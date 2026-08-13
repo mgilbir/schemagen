@@ -256,7 +256,7 @@ func (a Address) Validate() error {
 	}
 	if a.Location != nil {
 		if err := a.Location.Validate(); err != nil {
-			return fmt.Errorf("location.%w", err)
+			return jsonPathf(err, "location")
 		}
 	}
 	return nil

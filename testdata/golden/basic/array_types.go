@@ -231,7 +231,7 @@ func (a ArrayTypes) MarshalJSON() ([]byte, error) {
 func (a ArrayTypes) Validate() error {
 	for _i, _item := range a.Metadata {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("metadata[%d].%w", _i, err)
+			return jsonPathf(err, "metadata[%d]", _i)
 		}
 	}
 	return nil

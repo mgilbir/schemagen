@@ -838,7 +838,7 @@ func (o OneOfSingleBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["constBranch"] {
 		if err := o.ConstBranch.Validate(); err != nil {
-			return fmt.Errorf("constBranch.%w", err)
+			return jsonPathf(err, "constBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -847,7 +847,7 @@ func (o OneOfSingleBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["emptyEnum"] {
 		if err := o.EmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("emptyEnum.%w", err)
+			return jsonPathf(err, "emptyEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -856,17 +856,17 @@ func (o OneOfSingleBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["falseBranch"] {
 		if err := o.FalseBranch.Validate(); err != nil {
-			return fmt.Errorf("falseBranch.%w", err)
+			return jsonPathf(err, "falseBranch")
 		}
 	}
 	for _i, _item := range o.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	for _k, _val := range o.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -875,7 +875,7 @@ func (o OneOfSingleBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if o._jsonKeys == nil || o._jsonKeys["twoBranch"] {
 		if err := o.TwoBranch.Validate(); err != nil {
-			return fmt.Errorf("twoBranch.%w", err)
+			return jsonPathf(err, "twoBranch")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -888,7 +888,7 @@ func (o OneOfSingleBranchPositions) Validate() error {
 	case *OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0:
 		if _oneOfSel.OneOfSingleBranchPositionsObjBranchOption0 != nil {
 			if err := _oneOfSel.OneOfSingleBranchPositionsObjBranchOption0.Validate(); err != nil {
-				return fmt.Errorf("objBranch.%w", err)
+				return jsonPathf(err, "objBranch")
 			}
 		}
 	}

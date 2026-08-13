@@ -388,12 +388,12 @@ func (f FalsePropertyExplicitNull) Validate() error {
 	}
 	for _i, _item := range f.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	if f.Nested != nil {
 		if err := f.Nested.Validate(); err != nil {
-			return fmt.Errorf("nested.%w", err)
+			return jsonPathf(err, "nested")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -402,7 +402,7 @@ func (f FalsePropertyExplicitNull) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["viaRef"] {
 		if err := f.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

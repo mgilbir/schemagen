@@ -899,13 +899,13 @@ func (n Notification) Validate() error {
 	case *Notification_TextContent:
 		if _oneOfSel.TextContent != nil {
 			if err := _oneOfSel.TextContent.Validate(); err != nil {
-				return fmt.Errorf("content.%w", err)
+				return jsonPathf(err, "content")
 			}
 		}
 	case *Notification_HTMLContent:
 		if _oneOfSel.HTMLContent != nil {
 			if err := _oneOfSel.HTMLContent.Validate(); err != nil {
-				return fmt.Errorf("content.%w", err)
+				return jsonPathf(err, "content")
 			}
 		}
 	}
@@ -919,13 +919,13 @@ func (n Notification) Validate() error {
 	case *Notification_EmailTarget:
 		if _oneOfSel.EmailTarget != nil {
 			if err := _oneOfSel.EmailTarget.Validate(); err != nil {
-				return fmt.Errorf("target.%w", err)
+				return jsonPathf(err, "target")
 			}
 		}
 	case *Notification_SmsTarget:
 		if _oneOfSel.SmsTarget != nil {
 			if err := _oneOfSel.SmsTarget.Validate(); err != nil {
-				return fmt.Errorf("target.%w", err)
+				return jsonPathf(err, "target")
 			}
 		}
 	}

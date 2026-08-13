@@ -1119,47 +1119,47 @@ func (u UntypedFormatPositions) MarshalJSON() ([]byte, error) {
 func (u UntypedFormatPositions) Validate() error {
 	if u.Buckets != nil {
 		if err := u.Buckets.Validate(); err != nil {
-			return fmt.Errorf("buckets.%w", err)
+			return jsonPathf(err, "buckets")
 		}
 	}
 	if u.Chain != nil {
 		if err := u.Chain.Validate(); err != nil {
-			return fmt.Errorf("chain.%w", err)
+			return jsonPathf(err, "chain")
 		}
 	}
 	if u.Inline != nil {
 		if err := u.Inline.Validate(); err != nil {
-			return fmt.Errorf("inline.%w", err)
+			return jsonPathf(err, "inline")
 		}
 	}
 	for _i, _item := range u.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	if u.Mail != nil {
 		if err := u.Mail.Validate(); err != nil {
-			return fmt.Errorf("mail.%w", err)
+			return jsonPathf(err, "mail")
 		}
 	}
 	for _k, _val := range u.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	if u.Ref != nil {
 		if err := u.Ref.Validate(); err != nil {
-			return fmt.Errorf("ref.%w", err)
+			return jsonPathf(err, "ref")
 		}
 	}
 	if u.Stamp != nil {
 		if err := u.Stamp.Validate(); err != nil {
-			return fmt.Errorf("stamp.%w", err)
+			return jsonPathf(err, "stamp")
 		}
 	}
 	if u.Wrapped != nil {
 		if err := u.Wrapped.Validate(); err != nil {
-			return fmt.Errorf("wrapped.%w", err)
+			return jsonPathf(err, "wrapped")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -1171,7 +1171,7 @@ func (u UntypedFormatPositions) Validate() error {
 	switch _oneOfSel := u.Branch.(type) {
 	case *UntypedFormatPositions_UntypedFormatPositionsBranchOption0:
 		if err := _oneOfSel.UntypedFormatPositionsBranchOption0.Validate(); err != nil {
-			return fmt.Errorf("branch.%w", err)
+			return jsonPathf(err, "branch")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

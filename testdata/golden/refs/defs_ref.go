@@ -392,16 +392,16 @@ func (o Order) Validate() error {
 	}
 	if o.BillingAddress != nil {
 		if err := o.BillingAddress.Validate(); err != nil {
-			return fmt.Errorf("billing_address.%w", err)
+			return jsonPathf(err, "billing_address")
 		}
 	}
 	for _i, _item := range o.Items {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("items[%d].%w", _i, err)
+			return jsonPathf(err, "items[%d]", _i)
 		}
 	}
 	if err := o.ShippingAddress.Validate(); err != nil {
-		return fmt.Errorf("shipping_address.%w", err)
+		return jsonPathf(err, "shipping_address")
 	}
 	return nil
 }

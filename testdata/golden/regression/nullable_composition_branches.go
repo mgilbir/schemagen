@@ -196,7 +196,7 @@ func (n NullableCompositionBranchesAnyEnum) Validate() error {
 	case NullableCompositionBranchesAnyEnumA, NullableCompositionBranchesAnyEnumC:
 		return nil
 	default:
-		return fmt.Errorf("invalid NullableCompositionBranchesAnyEnum value: %v", n)
+		return jsonValueErrorf("invalid NullableCompositionBranchesAnyEnum value: %v", n)
 	}
 }
 
@@ -859,7 +859,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyBound"] {
 		if err := n.AnyBound.Validate(); err != nil {
-			return fmt.Errorf("anyBound.%w", err)
+			return jsonPathf(err, "anyBound")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -868,7 +868,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyConst"] {
 		if err := n.AnyConst.Validate(); err != nil {
-			return fmt.Errorf("anyConst.%w", err)
+			return jsonPathf(err, "anyConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -877,12 +877,12 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyEmpty"] {
 		if err := n.AnyEmpty.Validate(); err != nil {
-			return fmt.Errorf("anyEmpty.%w", err)
+			return jsonPathf(err, "anyEmpty")
 		}
 	}
 	if n.AnyEnum != nil {
 		if err := n.AnyEnum.Validate(); err != nil {
-			return fmt.Errorf("anyEnum.%w", err)
+			return jsonPathf(err, "anyEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -891,7 +891,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyFalse"] {
 		if err := n.AnyFalse.Validate(); err != nil {
-			return fmt.Errorf("anyFalse.%w", err)
+			return jsonPathf(err, "anyFalse")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -900,7 +900,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyItems"] {
 		if err := n.AnyItems.Validate(); err != nil {
-			return fmt.Errorf("anyItems.%w", err)
+			return jsonPathf(err, "anyItems")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -909,7 +909,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyLen"] {
 		if err := n.AnyLen.Validate(); err != nil {
-			return fmt.Errorf("anyLen.%w", err)
+			return jsonPathf(err, "anyLen")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -918,12 +918,12 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["anyMinIt"] {
 		if err := n.AnyMinIt.Validate(); err != nil {
-			return fmt.Errorf("anyMinIt.%w", err)
+			return jsonPathf(err, "anyMinIt")
 		}
 	}
 	if n.AnyObj != nil {
 		if err := n.AnyObj.Validate(); err != nil {
-			return fmt.Errorf("anyObj.%w", err)
+			return jsonPathf(err, "anyObj")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -932,7 +932,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["oneConst"] {
 		if err := n.OneConst.Validate(); err != nil {
-			return fmt.Errorf("oneConst.%w", err)
+			return jsonPathf(err, "oneConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -941,7 +941,7 @@ func (n NullableCompositionBranches) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if n._jsonKeys == nil || n._jsonKeys["oneMapVal"] {
 		if err := n.OneMapVal.Validate(); err != nil {
-			return fmt.Errorf("oneMapVal.%w", err)
+			return jsonPathf(err, "oneMapVal")
 		}
 	}
 	return nil

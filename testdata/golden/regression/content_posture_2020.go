@@ -506,22 +506,22 @@ func (c ContentPosture2020) MarshalJSON() ([]byte, error) {
 func (c ContentPosture2020) Validate() error {
 	if c.Blob != nil {
 		if err := c.Blob.Validate(); err != nil {
-			return fmt.Errorf("blob.%w", err)
+			return jsonPathf(err, "blob")
 		}
 	}
 	if c.EncodedDoc != nil {
 		if err := c.EncodedDoc.Validate(); err != nil {
-			return fmt.Errorf("encodedDoc.%w", err)
+			return jsonPathf(err, "encodedDoc")
 		}
 	}
 	if c.ViaAllOf != nil {
 		if err := c.ViaAllOf.Validate(); err != nil {
-			return fmt.Errorf("viaAllOf.%w", err)
+			return jsonPathf(err, "viaAllOf")
 		}
 	}
 	if c.WithSchema != nil {
 		if err := c.WithSchema.Validate(); err != nil {
-			return fmt.Errorf("withSchema.%w", err)
+			return jsonPathf(err, "withSchema")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

@@ -22,7 +22,7 @@ func (c ConfigMode) Validate() error {
 	case ConfigModeFast, ConfigModeSlow, ConfigModeAuto:
 		return nil
 	default:
-		return fmt.Errorf("invalid ConfigMode value: %v", c)
+		return jsonValueErrorf("invalid ConfigMode value: %v", c)
 	}
 }
 
@@ -39,7 +39,7 @@ func (c ConfigVersion) Validate() error {
 	case ConfigVersionX20:
 		return nil
 	default:
-		return fmt.Errorf("invalid ConfigVersion value: %v", c)
+		return jsonValueErrorf("invalid ConfigVersion value: %v", c)
 	}
 }
 
@@ -234,10 +234,10 @@ func (c Config) Validate() error {
 		}
 	}
 	if err := c.Mode.Validate(); err != nil {
-		return fmt.Errorf("mode.%w", err)
+		return jsonPathf(err, "mode")
 	}
 	if err := c.Version.Validate(); err != nil {
-		return fmt.Errorf("version.%w", err)
+		return jsonPathf(err, "version")
 	}
 	return nil
 }

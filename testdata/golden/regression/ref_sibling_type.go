@@ -65,7 +65,7 @@ func (m MinLen3) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(m._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(m._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(m._value)))
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (r *RefSiblingTypeBounded) UnmarshalJSON(data []byte) error {
 // Validate checks RefSiblingTypeBounded against its JSON Schema constraints.
 func (r RefSiblingTypeBounded) Validate() error {
 	if utf8.RuneCountInString(string(r)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
 	}
 	return nil
 }
@@ -116,7 +116,7 @@ func (r *RefSiblingTypeBoundedElemItem) UnmarshalJSON(data []byte) error {
 // Validate checks RefSiblingTypeBoundedElemItem against its JSON Schema constraints.
 func (r RefSiblingTypeBoundedElemItem) Validate() error {
 	if utf8.RuneCountInString(string(r)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
 	}
 	return nil
 }
@@ -134,7 +134,7 @@ func (r *RefSiblingTypeBoundedMapvValue) UnmarshalJSON(data []byte) error {
 // Validate checks RefSiblingTypeBoundedMapvValue against its JSON Schema constraints.
 func (r RefSiblingTypeBoundedMapvValue) Validate() error {
 	if utf8.RuneCountInString(string(r)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func (r *RefSiblingTypeBoundedSlotItem0) UnmarshalJSON(data []byte) error {
 // Validate checks RefSiblingTypeBoundedSlotItem0 against its JSON Schema constraints.
 func (r RefSiblingTypeBoundedSlotItem0) Validate() error {
 	if utf8.RuneCountInString(string(r)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(r)))
 	}
 	return nil
 }
@@ -433,47 +433,47 @@ func (r RefSiblingType) MarshalJSON() ([]byte, error) {
 func (r RefSiblingType) Validate() error {
 	if r.Arr != nil {
 		if err := r.Arr.Validate(); err != nil {
-			return fmt.Errorf("arr.%w", err)
+			return jsonPathf(err, "arr")
 		}
 	}
 	if r.Bounded != nil {
 		if err := r.Bounded.Validate(); err != nil {
-			return fmt.Errorf("bounded.%w", err)
+			return jsonPathf(err, "bounded")
 		}
 	}
 	for _i, _item := range r.BoundedElem {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("boundedElem[%d].%w", _i, err)
+			return jsonPathf(err, "boundedElem[%d]", _i)
 		}
 	}
 	for _k, _val := range r.BoundedMapv {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("boundedMapv[%q].%w", _k, err)
+			return jsonPathf(err, "boundedMapv[%q]", _k)
 		}
 	}
 	for _i, _item := range r.Elem {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("elem[%d].%w", _i, err)
+			return jsonPathf(err, "elem[%d]", _i)
 		}
 	}
 	for _k, _val := range r.Mapv {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("mapv[%q].%w", _k, err)
+			return jsonPathf(err, "mapv[%q]", _k)
 		}
 	}
 	if r.Num != nil {
 		if err := r.Num.Validate(); err != nil {
-			return fmt.Errorf("num.%w", err)
+			return jsonPathf(err, "num")
 		}
 	}
 	if r.Plain != nil {
 		if err := r.Plain.Validate(); err != nil {
-			return fmt.Errorf("plain.%w", err)
+			return jsonPathf(err, "plain")
 		}
 	}
 	if r.Str != nil {
 		if err := r.Str.Validate(); err != nil {
-			return fmt.Errorf("str.%w", err)
+			return jsonPathf(err, "str")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

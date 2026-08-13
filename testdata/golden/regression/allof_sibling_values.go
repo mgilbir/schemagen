@@ -34,7 +34,7 @@ func (n NarrowingAllOf) Validate() error {
 	case NarrowingAllOfC:
 		return nil
 	default:
-		return fmt.Errorf("invalid NarrowingAllOf value: %v", n)
+		return jsonValueErrorf("invalid NarrowingAllOf value: %v", n)
 	}
 }
 
@@ -65,7 +65,7 @@ func (o OnlyB) Validate() error {
 	case OnlyBB:
 		return nil
 	default:
-		return fmt.Errorf("invalid OnlyB value: %v", o)
+		return jsonValueErrorf("invalid OnlyB value: %v", o)
 	}
 }
 
@@ -82,7 +82,7 @@ func (a AllOfSiblingValuesAgrees) Validate() error {
 	case AllOfSiblingValuesAgreesA, AllOfSiblingValuesAgreesB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesAgrees value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesAgrees value: %v", a)
 	}
 }
 
@@ -113,7 +113,7 @@ func (a AllOfSiblingValuesAllOfThroughRef) Validate() error {
 	case AllOfSiblingValuesAllOfThroughRefC:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesAllOfThroughRef value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesAllOfThroughRef value: %v", a)
 	}
 }
 
@@ -144,7 +144,7 @@ func (a AllOfSiblingValuesBranchNarrows) Validate() error {
 	case AllOfSiblingValuesBranchNarrowsB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesBranchNarrows value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesBranchNarrows value: %v", a)
 	}
 }
 
@@ -175,7 +175,7 @@ func (a AllOfSiblingValuesChain) Validate() error {
 	case AllOfSiblingValuesChainB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesChain value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesChain value: %v", a)
 	}
 }
 
@@ -206,7 +206,7 @@ func (a AllOfSiblingValuesConstInBranch) Validate() error {
 	case AllOfSiblingValuesConstInBranchQ:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesConstInBranch value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesConstInBranch value: %v", a)
 	}
 }
 
@@ -237,7 +237,7 @@ func (a AllOfSiblingValuesLaterBranchNarrows) Validate() error {
 	case AllOfSiblingValuesLaterBranchNarrowsB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesLaterBranchNarrows value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesLaterBranchNarrows value: %v", a)
 	}
 }
 
@@ -268,7 +268,7 @@ func (a AllOfSiblingValuesListItemsItem) Validate() error {
 	case AllOfSiblingValuesListItemsItemB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesListItemsItem value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesListItemsItem value: %v", a)
 	}
 }
 
@@ -299,7 +299,7 @@ func (a AllOfSiblingValuesMapValuesValue) Validate() error {
 	case AllOfSiblingValuesMapValuesValueB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesMapValuesValue value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesMapValuesValue value: %v", a)
 	}
 }
 
@@ -330,7 +330,7 @@ func (a AllOfSiblingValuesNestedChain) Validate() error {
 	case AllOfSiblingValuesNestedChainC:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesNestedChain value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesNestedChain value: %v", a)
 	}
 }
 
@@ -361,7 +361,7 @@ func (a AllOfSiblingValuesNumberSpelling) Validate() error {
 	case AllOfSiblingValuesNumberSpelling1:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesNumberSpelling value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesNumberSpelling value: %v", a)
 	}
 }
 
@@ -377,7 +377,7 @@ func (a AllOfSiblingValuesRootNarrows) Validate() error {
 	case AllOfSiblingValuesRootNarrowsB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesRootNarrows value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesRootNarrows value: %v", a)
 	}
 }
 
@@ -394,7 +394,7 @@ func (a AllOfSiblingValuesSilentBranch) Validate() error {
 	case AllOfSiblingValuesSilentBranchA, AllOfSiblingValuesSilentBranchB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesSilentBranch value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesSilentBranch value: %v", a)
 	}
 }
 
@@ -425,7 +425,7 @@ func (a AllOfSiblingValuesViaRef) Validate() error {
 	case AllOfSiblingValuesViaRefB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfSiblingValuesViaRef value: %v", a)
+		return jsonValueErrorf("invalid AllOfSiblingValuesViaRef value: %v", a)
 	}
 }
 
@@ -603,67 +603,67 @@ func (a AllOfSiblingValues) Validate() error {
 	}
 	if a.Agrees != nil {
 		if err := a.Agrees.Validate(); err != nil {
-			return fmt.Errorf("agrees.%w", err)
+			return jsonPathf(err, "agrees")
 		}
 	}
 	if a.AllOfThroughRef != nil {
 		if err := a.AllOfThroughRef.Validate(); err != nil {
-			return fmt.Errorf("allOfThroughRef.%w", err)
+			return jsonPathf(err, "allOfThroughRef")
 		}
 	}
 	if a.BranchNarrows != nil {
 		if err := a.BranchNarrows.Validate(); err != nil {
-			return fmt.Errorf("branchNarrows.%w", err)
+			return jsonPathf(err, "branchNarrows")
 		}
 	}
 	if a.Chain != nil {
 		if err := a.Chain.Validate(); err != nil {
-			return fmt.Errorf("chain.%w", err)
+			return jsonPathf(err, "chain")
 		}
 	}
 	if a.ConstInBranch != nil {
 		if err := a.ConstInBranch.Validate(); err != nil {
-			return fmt.Errorf("constInBranch.%w", err)
+			return jsonPathf(err, "constInBranch")
 		}
 	}
 	if a.LaterBranchNarrows != nil {
 		if err := a.LaterBranchNarrows.Validate(); err != nil {
-			return fmt.Errorf("laterBranchNarrows.%w", err)
+			return jsonPathf(err, "laterBranchNarrows")
 		}
 	}
 	for _i, _item := range a.ListItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("listItems[%d].%w", _i, err)
+			return jsonPathf(err, "listItems[%d]", _i)
 		}
 	}
 	for _k, _val := range a.MapValues {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("mapValues[%q].%w", _k, err)
+			return jsonPathf(err, "mapValues[%q]", _k)
 		}
 	}
 	if a.NestedChain != nil {
 		if err := a.NestedChain.Validate(); err != nil {
-			return fmt.Errorf("nestedChain.%w", err)
+			return jsonPathf(err, "nestedChain")
 		}
 	}
 	if a.NumberSpelling != nil {
 		if err := a.NumberSpelling.Validate(); err != nil {
-			return fmt.Errorf("numberSpelling.%w", err)
+			return jsonPathf(err, "numberSpelling")
 		}
 	}
 	if a.RootNarrows != nil {
 		if err := a.RootNarrows.Validate(); err != nil {
-			return fmt.Errorf("rootNarrows.%w", err)
+			return jsonPathf(err, "rootNarrows")
 		}
 	}
 	if a.SilentBranch != nil {
 		if err := a.SilentBranch.Validate(); err != nil {
-			return fmt.Errorf("silentBranch.%w", err)
+			return jsonPathf(err, "silentBranch")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

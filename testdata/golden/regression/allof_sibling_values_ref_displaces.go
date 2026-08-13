@@ -119,7 +119,7 @@ func (a AllOfSiblingValuesRefDisplaces) MarshalJSON() ([]byte, error) {
 func (a AllOfSiblingValuesRefDisplaces) Validate() error {
 	if a.P != nil {
 		if err := a.P.Validate(); err != nil {
-			return fmt.Errorf("p.%w", err)
+			return jsonPathf(err, "p")
 		}
 	}
 	return nil

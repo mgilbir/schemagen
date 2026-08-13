@@ -1,3 +1,68 @@
+{{define "pathjoin_helpers"}}
+// jsonPathError is a validation message that does not open with the name of a
+// member, together with what has to be written between it and the path of
+// whatever value contains it.
+//
+// A message that does open with a member name is joined to its container's path
+// with a ".", which is how a caller reads "a.b.r" as three steps into their
+// document. Two other kinds of message cannot be joined that way, and gluing a
+// "." in front of either invents a step the document does not have:
+//
+//   - a message about the value itself ("length 2 is less than minimum 3", "too
+//     many properties: 2 exceeds maximum 1"), which names no member at all and
+//     is separated from the path by ": "; and
+//   - a message opening with an accessor ("[2].name: ...", `["kk"]: ...`),
+//     which is already the next step and needs nothing between.
+//
+// A type reports what it can see, and only its container knows the path that
+// reaches it, so which of the three applies is a fact about the message that has
+// to travel with it. See issues #279 and #280.
+type jsonPathError struct {
+	sep string
+	err error
+}
+
+func (e jsonPathError) Error() string { return e.err.Error() }
+func (e jsonPathError) Unwrap() error { return e.err }
+
+// JSONPathSeparator reports what to write between a containing value's path and
+// this message. It is exported so that a type generated into another package is
+// joined by the same rule -- an unexported method belongs to the package that
+// declares it, and would not satisfy the interface across that boundary.
+// Nothing outside generated code needs to call it.
+func (e jsonPathError) JSONPathSeparator() string { return e.sep }
+
+// jsonValueErrorf builds a message about the value it is raised on rather than
+// about a member inside it.
+func jsonValueErrorf(format string, args ...any) error {
+	return jsonPathError{sep: ": ", err: fmt.Errorf(format, args...)}
+}
+
+// jsonElemErrorf builds a message that opens with an accessor into the value it
+// is raised on -- the spelling used where a container has no name of its own to
+// report under, such as an array or map that is the whole document.
+func jsonElemErrorf(format string, args ...any) error {
+	return jsonPathError{sep: "", err: fmt.Errorf(format, args...)}
+}
+
+// jsonPathf puts the path segment that reaches a value in front of an error the
+// value itself raised, joined the way that error says it has to be.
+func jsonPathf(err error, segFormat string, args ...any) error {
+	sep := "."
+	if p, ok := err.(interface{ JSONPathSeparator() string }); ok {
+		sep = p.JSONPathSeparator()
+	}
+	return fmt.Errorf("%s%s%w", fmt.Sprintf(segFormat, args...), sep, err)
+}
+
+// jsonElemPathf is jsonPathf for a segment that is an accessor rather than a
+// name, so what it builds opens with an accessor too and its own container has
+// to be told as much.
+func jsonElemPathf(err error, segFormat string, args ...any) error {
+	return jsonPathError{sep: "", err: jsonPathf(err, segFormat, args...)}
+}
+{{- end}}
+
 {{define "oneof_helpers"}}
 // oneofHasRequiredFields checks if a JSON object contains all the specified field names.
 func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
@@ -709,7 +774,16 @@ type jsonNullRule struct {
 }
 
 // checkJSONNulls reports the first position beneath data at which the document
-// carries a null the schema does not admit. path names that position.
+// carries a null the schema does not admit. path names that position, and is
+// empty where the value handed in is the whole of what the caller answers for
+// and no path reaches it -- a container alias, say, whose elements are then
+// named by the accessor alone.
+//
+// An empty path is never the position reported, so the format above never writes
+// a bare colon: a caller with no path is one whose own value its container has
+// already answered for, and it hands in a rule whose outermost Reject is clear.
+// A guard for that case was written here and removed, because nothing could make
+// it fire and a check that cannot fail says nothing about the code around it.
 //
 // It reads the raw JSON rather than the decoded value because the decoded value
 // no longer holds the answer. encoding/json turns an explicit null into a nil

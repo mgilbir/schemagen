@@ -237,7 +237,7 @@ func (t TriggerType) Validate() error {
 	case TriggerTypeTool, TriggerTypeNotify:
 		return nil
 	default:
-		return fmt.Errorf("invalid TriggerType value: %v", t)
+		return jsonValueErrorf("invalid TriggerType value: %v", t)
 	}
 }
 
@@ -416,7 +416,7 @@ func (t Trigger) Validate() error {
 		for _rbKey, _rbRaw := range t._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}

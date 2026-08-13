@@ -63,7 +63,7 @@ func (a AtLeastFive) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(a._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", a._value)
+		return jsonValueErrorf("%v is less than minimum 5", a._value)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func (i InlineUntypedPositionsArr) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if len(i._value) < 2 {
-		return fmt.Errorf("value: has %d items, minimum is 2", len(i._value))
+		return jsonValueErrorf("has %d items, minimum is 2", len(i._value))
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (i InlineUntypedPositionsNullableMapValue) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(i._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", i._value)
+		return jsonValueErrorf("%v is less than minimum 5", i._value)
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func (i InlineUntypedPositionsNum) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(i._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", i._value)
+		return jsonValueErrorf("%v is less than minimum 5", i._value)
 	}
 	return nil
 }
@@ -303,7 +303,7 @@ func (i InlineUntypedPositionsNumItemsItem) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if float64(i._value) < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", i._value)
+		return jsonValueErrorf("%v is less than minimum 5", i._value)
 	}
 	return nil
 }
@@ -565,7 +565,7 @@ func (i InlineUntypedPositionsStr) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(i._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(i._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(i._value)))
 	}
 	return nil
 }
@@ -625,7 +625,7 @@ func (i InlineUntypedPositionsStrItemsItem) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(i._value)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(i._value)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(i._value)))
 	}
 	return nil
 }
@@ -883,47 +883,47 @@ func (i InlineUntypedPositions) Validate() error {
 	}
 	if i.Arr != nil {
 		if err := i.Arr.Validate(); err != nil {
-			return fmt.Errorf("arr.%w", err)
+			return jsonPathf(err, "arr")
 		}
 	}
 	for _k, _val := range i.NullableMap {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("nullableMap[%q].%w", _k, err)
+			return jsonPathf(err, "nullableMap[%q]", _k)
 		}
 	}
 	if i.Num != nil {
 		if err := i.Num.Validate(); err != nil {
-			return fmt.Errorf("num.%w", err)
+			return jsonPathf(err, "num")
 		}
 	}
 	for _i, _item := range i.NumItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("numItems[%d].%w", _i, err)
+			return jsonPathf(err, "numItems[%d]", _i)
 		}
 	}
 	if i.Obj != nil {
 		if err := i.Obj.Validate(); err != nil {
-			return fmt.Errorf("obj.%w", err)
+			return jsonPathf(err, "obj")
 		}
 	}
 	for _i, _item := range i.ObjItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("objItems[%d].%w", _i, err)
+			return jsonPathf(err, "objItems[%d]", _i)
 		}
 	}
 	if i.Str != nil {
 		if err := i.Str.Validate(); err != nil {
-			return fmt.Errorf("str.%w", err)
+			return jsonPathf(err, "str")
 		}
 	}
 	for _i, _item := range i.StrItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("strItems[%d].%w", _i, err)
+			return jsonPathf(err, "strItems[%d]", _i)
 		}
 	}
 	if i.ViaRef != nil {
 		if err := i.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	for _i0, _e0 := range i.TypedItems {

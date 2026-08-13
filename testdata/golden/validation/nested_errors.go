@@ -419,11 +419,11 @@ func (c Company) Validate() error {
 		return fmt.Errorf("name: length %d exceeds maximum 100", utf8.RuneCountInString(c.Name))
 	}
 	if err := c.Address.Validate(); err != nil {
-		return fmt.Errorf("address.%w", err)
+		return jsonPathf(err, "address")
 	}
 	for _i, _item := range c.Employees {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("employees[%d].%w", _i, err)
+			return jsonPathf(err, "employees[%d]", _i)
 		}
 	}
 	return nil

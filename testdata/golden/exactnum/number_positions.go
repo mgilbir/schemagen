@@ -13,7 +13,7 @@ func (r *Readings) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type Readings")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	// A named container of numbers held exactly. Decoding through the shadow is
@@ -53,7 +53,7 @@ func (t Temperature) MarshalJSON() ([]byte, error) {
 // Validate checks Temperature against its JSON Schema constraints.
 func (t Temperature) Validate() error {
 	if jsonNumberCmp(json.Number(t), "-273.15") < 0 {
-		return fmt.Errorf("value: %v is less than minimum -273.15", t)
+		return jsonValueErrorf("%v is less than minimum -273.15", t)
 	}
 	return nil
 }
@@ -94,7 +94,7 @@ func (n NumberPositionsChoices) Validate() error {
 	case jsonNumberCmp(json.Number(n), "2.5") == 0:
 		return nil
 	}
-	return fmt.Errorf("invalid NumberPositionsChoices value: %v", n)
+	return jsonValueErrorf("invalid NumberPositionsChoices value: %v", n)
 }
 
 // NumberPositionsConstrained accepts any JSON value. Constraints apply only when the value is number.
@@ -152,7 +152,7 @@ func (n NumberPositionsConstrained) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if jsonNumberCmp(json.Number(n._value), "3.5") < 0 {
-		return fmt.Errorf("value: %v is less than minimum 3.5", n._value)
+		return jsonValueErrorf("%v is less than minimum 3.5", n._value)
 	}
 	return nil
 }
@@ -484,22 +484,22 @@ func (n NumberPositions) Validate() error {
 	}
 	if n.Aliased != nil {
 		if err := n.Aliased.Validate(); err != nil {
-			return fmt.Errorf("aliased.%w", err)
+			return jsonPathf(err, "aliased")
 		}
 	}
 	if n.AliasedList != nil {
 		if err := n.AliasedList.Validate(); err != nil {
-			return fmt.Errorf("aliasedList.%w", err)
+			return jsonPathf(err, "aliasedList")
 		}
 	}
 	if n.Choices != nil {
 		if err := n.Choices.Validate(); err != nil {
-			return fmt.Errorf("choices.%w", err)
+			return jsonPathf(err, "choices")
 		}
 	}
 	if n.Constrained != nil {
 		if err := n.Constrained.Validate(); err != nil {
-			return fmt.Errorf("constrained.%w", err)
+			return jsonPathf(err, "constrained")
 		}
 	}
 	for _i0, _e0 := range n.Elements {

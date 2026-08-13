@@ -695,17 +695,17 @@ func (i InferredArrayTupleDraft7) MarshalJSON() ([]byte, error) {
 func (i InferredArrayTupleDraft7) Validate() error {
 	if i.One != nil {
 		if err := i.One.Validate(); err != nil {
-			return fmt.Errorf("one.%w", err)
+			return jsonPathf(err, "one")
 		}
 	}
 	if i.Ref != nil {
 		if err := i.Ref.Validate(); err != nil {
-			return fmt.Errorf("ref.%w", err)
+			return jsonPathf(err, "ref")
 		}
 	}
 	if i.Tup != nil {
 		if err := i.Tup.Validate(); err != nil {
-			return fmt.Errorf("tup.%w", err)
+			return jsonPathf(err, "tup")
 		}
 	}
 	return nil

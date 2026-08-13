@@ -38,10 +38,10 @@ func (e *EventRecordItem0) UnmarshalJSON(data []byte) error {
 // Validate checks EventRecordItem0 against its JSON Schema constraints.
 func (e EventRecordItem0) Validate() error {
 	if utf8.RuneCountInString(string(e)) < 1 {
-		return fmt.Errorf("value: length %d is less than minimum 1", utf8.RuneCountInString(string(e)))
+		return jsonValueErrorf("length %d is less than minimum 1", utf8.RuneCountInString(string(e)))
 	}
 	if utf8.RuneCountInString(string(e)) > 100 {
-		return fmt.Errorf("value: length %d exceeds maximum 100", utf8.RuneCountInString(string(e)))
+		return jsonValueErrorf("length %d exceeds maximum 100", utf8.RuneCountInString(string(e)))
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func (e EventRecordItem2Level) Validate() error {
 	case EventRecordItem2LevelInfo, EventRecordItem2LevelWarn, EventRecordItem2LevelError:
 		return nil
 	default:
-		return fmt.Errorf("invalid EventRecordItem2Level value: %v", e)
+		return jsonValueErrorf("invalid EventRecordItem2Level value: %v", e)
 	}
 }
 
@@ -200,7 +200,7 @@ func (e EventRecordItem2) Validate() error {
 		}
 	}
 	if err := e.Level.Validate(); err != nil {
-		return fmt.Errorf("level.%w", err)
+		return jsonPathf(err, "level")
 	}
 	return nil
 }
@@ -219,7 +219,7 @@ func (e *EventRecord) UnmarshalJSON(data []byte) error {
 // Validate checks EventRecord against its JSON Schema constraints.
 func (e EventRecord) Validate() error {
 	if len(e) > 3 {
-		return fmt.Errorf("value: has %d items, maximum is 3", len(e))
+		return jsonValueErrorf("has %d items, maximum is 3", len(e))
 	}
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range e {

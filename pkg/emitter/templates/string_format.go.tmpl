@@ -9,7 +9,8 @@ to -- so the three cannot disagree about what a format means, which they did for
 as long as each carried a copy of the checks. See format_helpers.
 
 .Expr  a Go expression of type string
-.Path  what to name the value in the error message ("value", a JSON pointer, ...)
+.Path  the path to name the value under, or empty where the value is the whole
+       of what the type answers for and there is no path to it
 .Value the format keyword
 
 An unrecognised format renders nothing: `format` is an annotation unless
@@ -22,7 +23,11 @@ a rule for one nothing judges.
 {{- $fn := formatHelperName .Value .StringBacked}}
 {{- if $fn}}
 if _err := {{$fn}}({{$v}}); _err != nil {
-	return fmt.Errorf("{{$path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
+	{{- if $path}}
+	return {{pathErrf $path}}("{{$path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
+	{{- else}}
+	return jsonValueErrorf("%w", _err)
+	{{- end}}
 }
 {{- end}}
 {{- end}}

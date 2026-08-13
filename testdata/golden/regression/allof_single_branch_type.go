@@ -50,7 +50,7 @@ func (c Choice) Validate() error {
 	case ChoiceRed, ChoiceGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid Choice value: %v", c)
+		return jsonValueErrorf("invalid Choice value: %v", c)
 	}
 }
 
@@ -84,14 +84,14 @@ func (r Raw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid Raw value: %s", string(r))
+		return jsonValueErrorf("invalid Raw value: %s", string(r))
 	}
 	for _, allowed := range rawAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid Raw value: %s", _canon)
+	return jsonValueErrorf("invalid Raw value: %s", _canon)
 }
 
 type Stamp string
@@ -152,7 +152,7 @@ func (w WrappedChoice) Validate() error {
 	case WrappedChoiceRed, WrappedChoiceGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid WrappedChoice value: %v", w)
+		return jsonValueErrorf("invalid WrappedChoice value: %v", w)
 	}
 }
 
@@ -183,7 +183,7 @@ func (w WrappedLevel) Validate() error {
 	case WrappedLevelHigh:
 		return nil
 	default:
-		return fmt.Errorf("invalid WrappedLevel value: %v", w)
+		return jsonValueErrorf("invalid WrappedLevel value: %v", w)
 	}
 }
 
@@ -217,14 +217,14 @@ func (w WrappedRaw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(w))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid WrappedRaw value: %s", string(w))
+		return jsonValueErrorf("invalid WrappedRaw value: %s", string(w))
 	}
 	for _, allowed := range wrappedRawAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid WrappedRaw value: %s", _canon)
+	return jsonValueErrorf("invalid WrappedRaw value: %s", _canon)
 }
 
 type WrappedStamp string
@@ -415,26 +415,26 @@ func (a AllOfSingleBranchType) Validate() error {
 	}
 	if a.Addr != nil {
 		if err := a.Addr.Validate(); err != nil {
-			return fmt.Errorf("addr.%w", err)
+			return jsonPathf(err, "addr")
 		}
 	}
 	if err := a.Choice.Validate(); err != nil {
-		return fmt.Errorf("choice.%w", err)
+		return jsonPathf(err, "choice")
 	}
 	if a.Level != nil {
 		if err := a.Level.Validate(); err != nil {
-			return fmt.Errorf("level.%w", err)
+			return jsonPathf(err, "level")
 		}
 	}
 	// A property written as null leaves the same Go zero an absent one does,
 	// and the schema permits the null, so the zero is not a value to judge.
 	if !a._jsonNulls["raw"] {
 		if err := a.Raw.Validate(); err != nil {
-			return fmt.Errorf("raw.%w", err)
+			return jsonPathf(err, "raw")
 		}
 	}
 	if err := a.Stamp.Validate(); err != nil {
-		return fmt.Errorf("stamp.%w", err)
+		return jsonPathf(err, "stamp")
 	}
 	return nil
 }

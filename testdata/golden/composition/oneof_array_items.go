@@ -20,7 +20,7 @@ func (c CircleKind) Validate() error {
 	case CircleKindCircle:
 		return nil
 	default:
-		return fmt.Errorf("invalid CircleKind value: %v", c)
+		return jsonValueErrorf("invalid CircleKind value: %v", c)
 	}
 }
 
@@ -141,7 +141,7 @@ func (c Circle) Validate() error {
 		}
 	}
 	if err := c.Kind.Validate(); err != nil {
-		return fmt.Errorf("kind.%w", err)
+		return jsonPathf(err, "kind")
 	}
 	return nil
 }
@@ -158,7 +158,7 @@ func (r RectangleKind) Validate() error {
 	case RectangleKindRectangle:
 		return nil
 	default:
-		return fmt.Errorf("invalid RectangleKind value: %v", r)
+		return jsonValueErrorf("invalid RectangleKind value: %v", r)
 	}
 }
 
@@ -283,7 +283,7 @@ func (r Rectangle) Validate() error {
 		}
 	}
 	if err := r.Kind.Validate(); err != nil {
-		return fmt.Errorf("kind.%w", err)
+		return jsonPathf(err, "kind")
 	}
 	return nil
 }
@@ -725,7 +725,7 @@ func (c Canvas) Validate() error {
 	}
 	for _i, _item := range c.Shapes {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("shapes[%d].%w", _i, err)
+			return jsonPathf(err, "shapes[%d]", _i)
 		}
 	}
 	return nil

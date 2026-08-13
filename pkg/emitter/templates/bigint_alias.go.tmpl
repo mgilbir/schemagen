@@ -172,7 +172,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) < 0 {
-			return fmt.Errorf("value: %s is less than minimum {{.Value}}", {{$recv}}.BigInt().String())
+			return jsonValueErrorf("%s is less than minimum {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
@@ -182,7 +182,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) > 0 {
-			return fmt.Errorf("value: %s exceeds maximum {{.Value}}", {{$recv}}.BigInt().String())
+			return jsonValueErrorf("%s exceeds maximum {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
@@ -192,7 +192,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) <= 0 {
-			return fmt.Errorf("value: %s must be greater than {{.Value}}", {{$recv}}.BigInt().String())
+			return jsonValueErrorf("%s must be greater than {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
@@ -202,7 +202,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_limit := new(big.Float).SetPrec(256)
 		_limit.SetString("{{.Value}}")
 		if _val.Cmp(_limit) >= 0 {
-			return fmt.Errorf("value: %s must be less than {{.Value}}", {{$recv}}.BigInt().String())
+			return jsonValueErrorf("%s must be less than {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
@@ -213,7 +213,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_divisor.SetString("{{.Value}}")
 		_quotient := new(big.Float).SetPrec(256).Quo(_val, _divisor)
 		if !_quotient.IsInt() {
-			return fmt.Errorf("value: %s is not a multiple of {{.Value}}", {{$recv}}.BigInt().String())
+			return jsonValueErrorf("%s is not a multiple of {{.Value}}", {{$recv}}.BigInt().String())
 		}
 	}
 	{{- end}}
@@ -230,7 +230,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if !anyOfValid {
-			return fmt.Errorf("value does not match any anyOf variant")
+			return jsonValueErrorf("value does not match any anyOf variant")
 		}
 	}
 	{{- end}}
@@ -246,7 +246,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if oneOfCount != 1 {
-			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
 		}
 	}
 	{{- end}}

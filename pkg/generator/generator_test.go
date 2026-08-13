@@ -7598,10 +7598,11 @@ func TestOverflowAdditionalPropertiesValuesAreChecked(t *testing.T) {
 	if got := itemRuleTypes(def, 0); !containsString(got, "minimum") {
 		t.Fatalf("overflow rules = %v, want the subschema's minimum", got)
 	}
-	// The error path names the keyword that constrains the value, since the
-	// overflow map has no JSON property name of its own to report under.
-	if def.PathName != "additionalProperties" {
-		t.Fatalf("PathName = %q, want %q", def.PathName, "additionalProperties")
+	// The overflow map is no declared property, so it has no JSON name and its
+	// error path opens with the key accessor alone. Naming it after the keyword
+	// that governs it printed what a member of that name would print. See #280.
+	if def.JSONName != "" {
+		t.Fatalf("JSONName = %q, want \"\" -- the overflow map is no declared property and must invent no leading segment", def.JSONName)
 	}
 }
 
@@ -8560,8 +8561,8 @@ func TestOverflowMapOfTuplesChecksItsPositions(t *testing.T) {
 
 	doc := structNamed(t, ir, "Doc")
 	iv := overflowValidationFor(t, doc)
-	if iv.PathName != "additionalProperties" {
-		t.Fatalf("overflow PathName = %q, want %q -- the map is no declared property and must report under its keyword", iv.PathName, "additionalProperties")
+	if iv.JSONName != "" {
+		t.Fatalf("overflow JSONName = %q, want \"\" -- the map is no declared property and must invent no leading segment for its error path", iv.JSONName)
 	}
 	if !iv.OwnsOutermost {
 		t.Fatalf("overflow definition does not own its outermost element; nothing else dispatches to it, so its values would go unchecked")

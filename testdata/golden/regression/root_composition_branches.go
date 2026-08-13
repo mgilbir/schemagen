@@ -39,7 +39,7 @@ func (p *Positive) UnmarshalJSON(data []byte) error {
 // Validate checks Positive against its JSON Schema constraints.
 func (p Positive) Validate() error {
 	if p < 1 {
-		return fmt.Errorf("value: %v is less than minimum 1", p)
+		return jsonValueErrorf("%v is less than minimum 1", p)
 	}
 	return nil
 }

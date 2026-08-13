@@ -631,7 +631,7 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -1363,7 +1363,7 @@ func (i InlineForbiddingPositionsOkEnumItemsItem) Validate() error {
 	case InlineForbiddingPositionsOkEnumItemsItemA, InlineForbiddingPositionsOkEnumItemsItemB:
 		return nil
 	default:
-		return fmt.Errorf("invalid InlineForbiddingPositionsOkEnumItemsItem value: %v", i)
+		return jsonValueErrorf("invalid InlineForbiddingPositionsOkEnumItemsItem value: %v", i)
 	}
 }
 
@@ -1755,7 +1755,7 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["emptyEnumAllOf"] {
 		if err := i.EmptyEnumAllOf.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumAllOf.%w", err)
+			return jsonPathf(err, "emptyEnumAllOf")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1764,7 +1764,7 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["emptyEnumAnyOf"] {
 		if err := i.EmptyEnumAnyOf.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumAnyOf.%w", err)
+			return jsonPathf(err, "emptyEnumAnyOf")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1773,57 +1773,57 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["emptyEnumBranch"] {
 		if err := i.EmptyEnumBranch.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumBranch.%w", err)
+			return jsonPathf(err, "emptyEnumBranch")
 		}
 	}
 	if i.EmptyEnumDependent != nil {
 		if err := i.EmptyEnumDependent.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumDependent.%w", err)
+			return jsonPathf(err, "emptyEnumDependent")
 		}
 	}
 	for _i, _item := range i.EmptyEnumItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumItems[%d].%w", _i, err)
+			return jsonPathf(err, "emptyEnumItems[%d]", _i)
 		}
 	}
 	if i.EmptyEnumNames != nil {
 		if err := i.EmptyEnumNames.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumNames.%w", err)
+			return jsonPathf(err, "emptyEnumNames")
 		}
 	}
 	if i.EmptyEnumPattern != nil {
 		if err := i.EmptyEnumPattern.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumPattern.%w", err)
+			return jsonPathf(err, "emptyEnumPattern")
 		}
 	}
 	if i.EmptyEnumUnevalProps != nil {
 		if err := i.EmptyEnumUnevalProps.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumUnevalProps.%w", err)
+			return jsonPathf(err, "emptyEnumUnevalProps")
 		}
 	}
 	for _k, _val := range i.EmptyEnumValues {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("emptyEnumValues[%q].%w", _k, err)
+			return jsonPathf(err, "emptyEnumValues[%q]", _k)
 		}
 	}
 	for _i, _item := range i.FalseItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("falseItems[%d].%w", _i, err)
+			return jsonPathf(err, "falseItems[%d]", _i)
 		}
 	}
 	if i.InferredEmptyEnumItems != nil {
 		if err := i.InferredEmptyEnumItems.Validate(); err != nil {
-			return fmt.Errorf("inferredEmptyEnumItems.%w", err)
+			return jsonPathf(err, "inferredEmptyEnumItems")
 		}
 	}
 	if i.InferredEmptyEnumSlot != nil {
 		if err := i.InferredEmptyEnumSlot.Validate(); err != nil {
-			return fmt.Errorf("inferredEmptyEnumSlot.%w", err)
+			return jsonPathf(err, "inferredEmptyEnumSlot")
 		}
 	}
 	if i.InferredEmptyEnumTail != nil {
 		if err := i.InferredEmptyEnumTail.Validate(); err != nil {
-			return fmt.Errorf("inferredEmptyEnumTail.%w", err)
+			return jsonPathf(err, "inferredEmptyEnumTail")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1832,7 +1832,7 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["notAnyOfEmptyEnum"] {
 		if err := i.NotAnyOfEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("notAnyOfEmptyEnum.%w", err)
+			return jsonPathf(err, "notAnyOfEmptyEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1841,7 +1841,7 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["notEmptyEnum"] {
 		if err := i.NotEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("notEmptyEnum.%w", err)
+			return jsonPathf(err, "notEmptyEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1850,12 +1850,12 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["notEmptyEnumBound"] {
 		if err := i.NotEmptyEnumBound.Validate(); err != nil {
-			return fmt.Errorf("notEmptyEnumBound.%w", err)
+			return jsonPathf(err, "notEmptyEnumBound")
 		}
 	}
 	for _i, _item := range i.NotEmptyItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("notEmptyItems[%d].%w", _i, err)
+			return jsonPathf(err, "notEmptyItems[%d]", _i)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1864,7 +1864,7 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["notTypedConst"] {
 		if err := i.NotTypedConst.Validate(); err != nil {
-			return fmt.Errorf("notTypedConst.%w", err)
+			return jsonPathf(err, "notTypedConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1873,22 +1873,22 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["notTypedEmptyEnum"] {
 		if err := i.NotTypedEmptyEnum.Validate(); err != nil {
-			return fmt.Errorf("notTypedEmptyEnum.%w", err)
+			return jsonPathf(err, "notTypedEmptyEnum")
 		}
 	}
 	for _k, _val := range i.NullableEmptyEnumValues {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("nullableEmptyEnumValues[%q].%w", _k, err)
+			return jsonPathf(err, "nullableEmptyEnumValues[%q]", _k)
 		}
 	}
 	for _i, _item := range i.NullableFalseItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("nullableFalseItems[%d].%w", _i, err)
+			return jsonPathf(err, "nullableFalseItems[%d]", _i)
 		}
 	}
 	for _i, _item := range i.OkEnumItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("okEnumItems[%d].%w", _i, err)
+			return jsonPathf(err, "okEnumItems[%d]", _i)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1897,28 +1897,28 @@ func (i InlineForbiddingPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["refEmptyEnumAnyOf"] {
 		if err := i.RefEmptyEnumAnyOf.Validate(); err != nil {
-			return fmt.Errorf("refEmptyEnumAnyOf.%w", err)
+			return jsonPathf(err, "refEmptyEnumAnyOf")
 		}
 	}
 	for _i, _item := range i.TypedEmptyEnumItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("typedEmptyEnumItems[%d].%w", _i, err)
+			return jsonPathf(err, "typedEmptyEnumItems[%d]", _i)
 		}
 	}
 	for _i, _item := range i.ViaRefEmptyEnum {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("viaRefEmptyEnum[%d].%w", _i, err)
+			return jsonPathf(err, "viaRefEmptyEnum[%d]", _i)
 		}
 	}
 	for _i, _item := range i.ViaRefFalse {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("viaRefFalse[%d].%w", _i, err)
+			return jsonPathf(err, "viaRefFalse[%d]", _i)
 		}
 	}
 	for _i0, _e0 := range i.NestedFalseItems {
 		for _i1, _e1 := range _e0 {
 			if _err := _e1.Validate(); _err != nil {
-				return fmt.Errorf("nestedFalseItems[%d][%d].%w", _i0, _i1, _err)
+				return jsonPathf(_err, "nestedFalseItems[%d][%d]", _i0, _i1)
 			}
 		}
 	}

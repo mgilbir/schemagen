@@ -1026,7 +1026,7 @@ func (f ForbiddingSubschemaSpellingsInlineMaxProps) Validate() error {
 			totalProps = len(f._jsonKeys)
 		}
 		if totalProps > 1 {
-			return fmt.Errorf("too many properties: %d exceeds maximum 1", totalProps)
+			return jsonValueErrorf("too many properties: %d exceeds maximum 1", totalProps)
 		}
 	}
 	return nil
@@ -1105,7 +1105,7 @@ func (f ForbiddingSubschemaSpellingsInlineMinProps) Validate() error {
 			totalProps = len(f._jsonKeys)
 		}
 		if totalProps < 2 {
-			return fmt.Errorf("too few properties: %d is less than minimum 2", totalProps)
+			return jsonValueErrorf("too few properties: %d is less than minimum 2", totalProps)
 		}
 	}
 	return nil
@@ -1846,7 +1846,7 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -1979,7 +1979,7 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 				_ppTypeOK = true
 			}
 			if !_ppTypeOK {
-				return fmt.Errorf("value must be one of: object, null")
+				return jsonValueErrorf("value must be one of: object, null")
 			}
 		}
 		return nil
@@ -2411,7 +2411,7 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -2983,12 +2983,12 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["allOfNot"] {
 		if err := f.AllOfNot.Validate(); err != nil {
-			return fmt.Errorf("allOfNot.%w", err)
+			return jsonPathf(err, "allOfNot")
 		}
 	}
 	if f.AnyOfNames != nil {
 		if err := f.AnyOfNames.Validate(); err != nil {
-			return fmt.Errorf("anyOfNames.%w", err)
+			return jsonPathf(err, "anyOfNames")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2997,7 +2997,7 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["anyOfNot"] {
 		if err := f.AnyOfNot.Validate(); err != nil {
-			return fmt.Errorf("anyOfNot.%w", err)
+			return jsonPathf(err, "anyOfNot")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3006,77 +3006,77 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["anyOfOneFalse"] {
 		if err := f.AnyOfOneFalse.Validate(); err != nil {
-			return fmt.Errorf("anyOfOneFalse.%w", err)
+			return jsonPathf(err, "anyOfOneFalse")
 		}
 	}
 	if f.InferredNotItems != nil {
 		if err := f.InferredNotItems.Validate(); err != nil {
-			return fmt.Errorf("inferredNotItems.%w", err)
+			return jsonPathf(err, "inferredNotItems")
 		}
 	}
 	if f.InferredNotSlot != nil {
 		if err := f.InferredNotSlot.Validate(); err != nil {
-			return fmt.Errorf("inferredNotSlot.%w", err)
+			return jsonPathf(err, "inferredNotSlot")
 		}
 	}
 	if f.InferredNotTail != nil {
 		if err := f.InferredNotTail.Validate(); err != nil {
-			return fmt.Errorf("inferredNotTail.%w", err)
+			return jsonPathf(err, "inferredNotTail")
 		}
 	}
 	if f.InferredOneOfItems != nil {
 		if err := f.InferredOneOfItems.Validate(); err != nil {
-			return fmt.Errorf("inferredOneOfItems.%w", err)
+			return jsonPathf(err, "inferredOneOfItems")
 		}
 	}
 	if f.InferredOneOfTail != nil {
 		if err := f.InferredOneOfTail.Validate(); err != nil {
-			return fmt.Errorf("inferredOneOfTail.%w", err)
+			return jsonPathf(err, "inferredOneOfTail")
 		}
 	}
 	if f.InlineDepRequired != nil {
 		if err := f.InlineDepRequired.Validate(); err != nil {
-			return fmt.Errorf("inlineDepRequired.%w", err)
+			return jsonPathf(err, "inlineDepRequired")
 		}
 	}
 	if f.InlineFalseDependent != nil {
 		if err := f.InlineFalseDependent.Validate(); err != nil {
-			return fmt.Errorf("inlineFalseDependent.%w", err)
+			return jsonPathf(err, "inlineFalseDependent")
 		}
 	}
 	if f.InlineFalseNames != nil {
 		if err := f.InlineFalseNames.Validate(); err != nil {
-			return fmt.Errorf("inlineFalseNames.%w", err)
+			return jsonPathf(err, "inlineFalseNames")
 		}
 	}
 	if f.InlineMaxProps != nil {
 		if err := f.InlineMaxProps.Validate(); err != nil {
-			return fmt.Errorf("inlineMaxProps.%w", err)
+			return jsonPathf(err, "inlineMaxProps")
 		}
 	}
 	if f.InlineMinProps != nil {
 		if err := f.InlineMinProps.Validate(); err != nil {
-			return fmt.Errorf("inlineMinProps.%w", err)
+			return jsonPathf(err, "inlineMinProps")
 		}
 	}
 	if f.InlineNotDependent != nil {
 		if err := f.InlineNotDependent.Validate(); err != nil {
-			return fmt.Errorf("inlineNotDependent.%w", err)
+			return jsonPathf(err, "inlineNotDependent")
 		}
 	}
 	if f.InlineNotNames != nil {
 		if err := f.InlineNotNames.Validate(); err != nil {
-			return fmt.Errorf("inlineNotNames.%w", err)
+			return jsonPathf(err, "inlineNotNames")
 		}
 	}
 	if f.InlineRequired != nil {
 		if err := f.InlineRequired.Validate(); err != nil {
-			return fmt.Errorf("inlineRequired.%w", err)
+			return jsonPathf(err, "inlineRequired")
 		}
 	}
 	if f.NotDependent != nil {
 		if err := f.NotDependent.Validate(); err != nil {
-			return fmt.Errorf("notDependent.%w", err)
+			return jsonPathf(err, "notDependent")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3085,7 +3085,7 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["notEnumBranch"] {
 		if err := f.NotEnumBranch.Validate(); err != nil {
-			return fmt.Errorf("notEnumBranch.%w", err)
+			return jsonPathf(err, "notEnumBranch")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3094,12 +3094,12 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["notFalse"] {
 		if err := f.NotFalse.Validate(); err != nil {
-			return fmt.Errorf("notFalse.%w", err)
+			return jsonPathf(err, "notFalse")
 		}
 	}
 	if f.NotNames != nil {
 		if err := f.NotNames.Validate(); err != nil {
-			return fmt.Errorf("notNames.%w", err)
+			return jsonPathf(err, "notNames")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3108,7 +3108,7 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["notShallowEnum"] {
 		if err := f.NotShallowEnum.Validate(); err != nil {
-			return fmt.Errorf("notShallowEnum.%w", err)
+			return jsonPathf(err, "notShallowEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3117,32 +3117,32 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["notTypedConst"] {
 		if err := f.NotTypedConst.Validate(); err != nil {
-			return fmt.Errorf("notTypedConst.%w", err)
+			return jsonPathf(err, "notTypedConst")
 		}
 	}
 	if f.NotUnevalProps != nil {
 		if err := f.NotUnevalProps.Validate(); err != nil {
-			return fmt.Errorf("notUnevalProps.%w", err)
+			return jsonPathf(err, "notUnevalProps")
 		}
 	}
 	if f.NullableInlineNames != nil {
 		if err := f.NullableInlineNames.Validate(); err != nil {
-			return fmt.Errorf("nullableInlineNames.%w", err)
+			return jsonPathf(err, "nullableInlineNames")
 		}
 	}
 	if f.OkNames != nil {
 		if err := f.OkNames.Validate(); err != nil {
-			return fmt.Errorf("okNames.%w", err)
+			return jsonPathf(err, "okNames")
 		}
 	}
 	if f.OneOfDependent != nil {
 		if err := f.OneOfDependent.Validate(); err != nil {
-			return fmt.Errorf("oneOfDependent.%w", err)
+			return jsonPathf(err, "oneOfDependent")
 		}
 	}
 	if f.OneOfNames != nil {
 		if err := f.OneOfNames.Validate(); err != nil {
-			return fmt.Errorf("oneOfNames.%w", err)
+			return jsonPathf(err, "oneOfNames")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3151,17 +3151,17 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["oneOfOneFalse"] {
 		if err := f.OneOfOneFalse.Validate(); err != nil {
-			return fmt.Errorf("oneOfOneFalse.%w", err)
+			return jsonPathf(err, "oneOfOneFalse")
 		}
 	}
 	if f.OneOfUnevalProps != nil {
 		if err := f.OneOfUnevalProps.Validate(); err != nil {
-			return fmt.Errorf("oneOfUnevalProps.%w", err)
+			return jsonPathf(err, "oneOfUnevalProps")
 		}
 	}
 	if f.RefNotNames != nil {
 		if err := f.RefNotNames.Validate(); err != nil {
-			return fmt.Errorf("refNotNames.%w", err)
+			return jsonPathf(err, "refNotNames")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -3170,7 +3170,7 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if f._jsonKeys == nil || f._jsonKeys["unionBranchRequired"] {
 		if err := f.UnionBranchRequired.Validate(); err != nil {
-			return fmt.Errorf("unionBranchRequired.%w", err)
+			return jsonPathf(err, "unionBranchRequired")
 		}
 	}
 	if f._jsonKeys["allOfContains"] {

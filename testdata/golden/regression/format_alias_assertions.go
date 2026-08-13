@@ -231,42 +231,42 @@ func (f FormatAliasAssertions) MarshalJSON() ([]byte, error) {
 func (f FormatAliasAssertions) Validate() error {
 	if f.Day != nil {
 		if err := f.Day.Validate(); err != nil {
-			return fmt.Errorf("day.%w", err)
+			return jsonPathf(err, "day")
 		}
 	}
 	if f.Email != nil {
 		if err := f.Email.Validate(); err != nil {
-			return fmt.Errorf("email.%w", err)
+			return jsonPathf(err, "email")
 		}
 	}
 	for _k, _val := range f.EmailMap {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("email_map[%q].%w", _k, err)
+			return jsonPathf(err, "email_map[%q]", _k)
 		}
 	}
 	if f.Site != nil {
 		if err := f.Site.Validate(); err != nil {
-			return fmt.Errorf("site.%w", err)
+			return jsonPathf(err, "site")
 		}
 	}
 	if f.UUID != nil {
 		if err := f.UUID.Validate(); err != nil {
-			return fmt.Errorf("uuid.%w", err)
+			return jsonPathf(err, "uuid")
 		}
 	}
 	if f.V4 != nil {
 		if err := f.V4.Validate(); err != nil {
-			return fmt.Errorf("v4.%w", err)
+			return jsonPathf(err, "v4")
 		}
 	}
 	for _i, _item := range f.V4List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("v4_list[%d].%w", _i, err)
+			return jsonPathf(err, "v4_list[%d]", _i)
 		}
 	}
 	if f.V6 != nil {
 		if err := f.V6.Validate(); err != nil {
-			return fmt.Errorf("v6.%w", err)
+			return jsonPathf(err, "v6")
 		}
 	}
 	return nil

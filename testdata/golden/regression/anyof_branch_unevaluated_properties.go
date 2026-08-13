@@ -121,7 +121,7 @@ func (a AnyOfBranchUnevaluatedProperties) Validate() error {
 		for _rbKey, _rbRaw := range a._jsonRawProps {
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return fmt.Errorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 		}

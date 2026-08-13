@@ -37,7 +37,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- /* The elements this container holds. The check above answers for the
 	       container itself; a null *inside* one is erased by the decode below --
 	       []string turns [null] into [""] and reports nothing. */}}
-	if _err := checkJSONNulls(data, "value", {{template "nullrule" .}}); _err != nil {
+	if _err := checkJSONNulls(data, "", {{template "nullrule" .}}); _err != nil {
 		return _err
 	}
 	{{- end}}
@@ -129,7 +129,7 @@ dropped there rather than emitted as a check that cannot fail.
 */}}
 {{define "alias_format_check"}}
 {{- $recv := .Recv}}
-{{- template "string_format_check" (mkStringFormatCtx (formatValueExpr $recv .StringBacked) "value" .Value .StringBacked)}}
+{{- template "string_format_check" (mkStringFormatCtx (formatValueExpr $recv .StringBacked) "" .Value .StringBacked)}}
 {{- end}}
 
 {{define "alias_validate"}}
@@ -138,39 +138,43 @@ dropped there rather than emitted as a check that cannot fail.
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .ValidateAs}}
+	// Returned as it stands: the type this delegates to answers for the very same
+	// value, so there is no step of path between the two and nothing to put in
+	// front of its message. Wrapping it also lost what the message had recorded
+	// about how a container must join it. See issue #279.
 	if _err := ({{.ValidateAs}}({{$recv}})).Validate(); _err != nil {
-		return fmt.Errorf("value: %w", _err)
+		return _err
 	}
 	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} {
-		return fmt.Errorf("value: length %d is less than minimum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
+		return jsonValueErrorf("length %d is less than minimum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} {
-		return fmt.Errorf("value: length %d exceeds maximum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
+		return jsonValueErrorf("length %d exceeds maximum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
 	if {{numOperand . $recv}} < {{numBound .}} {
-		return fmt.Errorf("value: %v is less than minimum {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	if {{numOperand . $recv}} > {{numBound .}} {
-		return fmt.Errorf("value: %v exceeds maximum {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	if {{numOperand . $recv}} <= {{numBound .}} {
-		return fmt.Errorf("value: %v must be greater than {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	if {{numOperand . $recv}} >= {{numBound .}} {
-		return fmt.Errorf("value: %v must be less than {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
@@ -178,26 +182,26 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	// Exact: the two decimals are lined up and one integer divided by the
 	// other, rather than a float64 quotient compared against a tolerance.
 	if !{{exactMultipleOf . $recv}} {
-		return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- else if .IntegerCompare}}
 	// Exact: both operands are int64, so divisibility is a remainder rather
 	// than a float64 quotient compared against a tolerance.
 	if {{$recv}} % {{numBound .}} != 0 {
-		return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
+		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- else}}
 	{
 		q := float64({{$recv}}) / {{numBound .}}
 		if math.Abs(q - math.Round(q)) > 1e-9 {
-			return fmt.Errorf("value: %v is not a multiple of {{numBoundMsg .}}", {{$recv}})
+			return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 		}
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched {
-		return fmt.Errorf("value: %q does not match pattern %s", {{$recv}}, {{printf "%q" .Value}})
+		return jsonValueErrorf("%q does not match pattern %s", {{$recv}}, {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
@@ -207,16 +211,16 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- /* The alias's own value is the string: an alias over any other Go type
 	       never carries this rule, because ruleVacuousForType drops a keyword
 	       that speaks only about strings. */}}
-	{{- template "string_content_check" (mkStringContentCtx (printf "string(%s)" $recv) "value" .)}}
+	{{- template "string_content_check" (mkStringContentCtx (printf "string(%s)" $recv) "" .)}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$recv}}) < {{.Value}} {
-		return fmt.Errorf("value: has %d items, minimum is {{.Value}}", len({{$recv}}))
+		return jsonValueErrorf("has %d items, minimum is {{.Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
 	if len({{$recv}}) > {{.Value}} {
-		return fmt.Errorf("value: has %d items, maximum is {{.Value}}", len({{$recv}}))
+		return jsonValueErrorf("has %d items, maximum is {{.Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
@@ -225,11 +229,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		for i, item := range {{$recv}} {
 			b, err := json.Marshal(item)
 			if err != nil {
-				return fmt.Errorf("value: uniqueItems check: marshal error at index %d: %w", i, err)
+				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", i, err)
 			}
 			key := string(b)
 			if seen[key] {
-				return fmt.Errorf("value: items are not unique (duplicate at index %d)", i)
+				return jsonValueErrorf("items are not unique (duplicate at index %d)", i)
 			}
 			seen[key] = true
 		}
@@ -293,7 +297,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if !anyOfValid {
-			return fmt.Errorf("value does not match any anyOf variant")
+			return jsonValueErrorf("value does not match any anyOf variant")
 		}
 	}
 	{{- end}}
@@ -348,7 +352,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if oneOfCount != 1 {
-			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
 		}
 	}
 	{{- end}}

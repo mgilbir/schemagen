@@ -162,7 +162,7 @@ func (r RootTypeObjectNull) Validate() error {
 				_ppTypeOK = true
 			}
 			if !_ppTypeOK {
-				return fmt.Errorf("value must be one of: object, null")
+				return jsonValueErrorf("value must be one of: object, null")
 			}
 		}
 		return nil

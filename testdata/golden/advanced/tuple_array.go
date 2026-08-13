@@ -21,10 +21,10 @@ func (c *Coordinate) UnmarshalJSON(data []byte) error {
 // Validate checks Coordinate against its JSON Schema constraints.
 func (c Coordinate) Validate() error {
 	if len(c) < 2 {
-		return fmt.Errorf("value: has %d items, minimum is 2", len(c))
+		return jsonValueErrorf("has %d items, minimum is 2", len(c))
 	}
 	if len(c) > 3 {
-		return fmt.Errorf("value: has %d items, maximum is 3", len(c))
+		return jsonValueErrorf("has %d items, maximum is 3", len(c))
 	}
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range c {

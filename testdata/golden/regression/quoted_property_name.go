@@ -21,7 +21,7 @@ func (n *Num) UnmarshalJSON(data []byte) error {
 // Validate checks Num against its JSON Schema constraints.
 func (n Num) Validate() error {
 	if float64(n) < 0 {
-		return fmt.Errorf("value: %v is less than minimum 0", n)
+		return jsonValueErrorf("%v is less than minimum 0", n)
 	}
 	return nil
 }
@@ -214,7 +214,7 @@ func (q QuotedPropertyName) Validate() error {
 	}
 	if q.FooBar != nil {
 		if err := q.FooBar.Validate(); err != nil {
-			return fmt.Errorf("foo\"bar.%w", err)
+			return jsonPathf(err, "foo\"bar")
 		}
 	}
 	return nil

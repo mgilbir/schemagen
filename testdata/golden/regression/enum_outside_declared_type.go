@@ -401,7 +401,7 @@ func (o OnlyA) Validate() error {
 	case OnlyAA:
 		return nil
 	default:
-		return fmt.Errorf("invalid OnlyA value: %v", o)
+		return jsonValueErrorf("invalid OnlyA value: %v", o)
 	}
 }
 
@@ -433,14 +433,14 @@ func (e EnumOutsideDeclaredTypeArrayEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", string(e))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeArrayEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", _canon)
+	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", _canon)
 }
 
 // EnumOutsideDeclaredTypeConstOutsideAllOf accepts any JSON value and validates a root-level "not" constraint.
@@ -824,7 +824,7 @@ func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) Validate() error {
 				evaluated = true
 			}
 			if !evaluated {
-				return fmt.Errorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", k)
 			}
 		}
 	}
@@ -951,7 +951,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialItemsItem) Validate() error {
 	case EnumOutsideDeclaredTypeEnumPartialItemsItemA:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeEnumPartialItemsItem value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeEnumPartialItemsItem value: %v", e)
 	}
 }
 
@@ -982,7 +982,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialPatternPattern0) Validate() error {
 	case EnumOutsideDeclaredTypeEnumPartialPatternPattern0A:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeEnumPartialPatternPattern0 value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeEnumPartialPatternPattern0 value: %v", e)
 	}
 }
 
@@ -1107,7 +1107,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialProp) Validate() error {
 	case EnumOutsideDeclaredTypeEnumPartialPropA:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeEnumPartialProp value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeEnumPartialProp value: %v", e)
 	}
 }
 
@@ -1123,7 +1123,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialValuesValue) Validate() error {
 	case EnumOutsideDeclaredTypeEnumPartialValuesValueA:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeEnumPartialValuesValue value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeEnumPartialValuesValue value: %v", e)
 	}
 }
 
@@ -1152,7 +1152,7 @@ func (e EnumOutsideDeclaredTypeFracInInteger) Validate() error {
 	case EnumOutsideDeclaredTypeFracInInteger1:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeFracInInteger value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeFracInInteger value: %v", e)
 	}
 }
 
@@ -1182,7 +1182,7 @@ func (e EnumOutsideDeclaredTypeIntegerEnum) Validate() error {
 	case EnumOutsideDeclaredTypeIntegerEnum1, EnumOutsideDeclaredTypeIntegerEnum2:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeIntegerEnum value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeIntegerEnum value: %v", e)
 	}
 }
 
@@ -1252,7 +1252,7 @@ func (e EnumOutsideDeclaredTypeNullableEnum) Validate() error {
 	case EnumOutsideDeclaredTypeNullableEnumA:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeNullableEnum value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeNullableEnum value: %v", e)
 	}
 }
 
@@ -1269,7 +1269,7 @@ func (e EnumOutsideDeclaredTypeNumberEnum) Validate() error {
 	case EnumOutsideDeclaredTypeNumberEnum1_5, EnumOutsideDeclaredTypeNumberEnum2:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeNumberEnum value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeNumberEnum value: %v", e)
 	}
 }
 
@@ -1301,14 +1301,14 @@ func (e EnumOutsideDeclaredTypeObjectEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", string(e))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeObjectEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", _canon)
+	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", _canon)
 }
 
 type EnumOutsideDeclaredTypeOkItemsItem string
@@ -1324,7 +1324,7 @@ func (e EnumOutsideDeclaredTypeOkItemsItem) Validate() error {
 	case EnumOutsideDeclaredTypeOkItemsItemA, EnumOutsideDeclaredTypeOkItemsItemB:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeOkItemsItem value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeOkItemsItem value: %v", e)
 	}
 }
 
@@ -1341,7 +1341,7 @@ func (e EnumOutsideDeclaredTypeTypedEnum) Validate() error {
 	case EnumOutsideDeclaredTypeTypedEnumA, EnumOutsideDeclaredTypeTypedEnumB:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeTypedEnum value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeTypedEnum value: %v", e)
 	}
 }
 
@@ -1374,14 +1374,14 @@ func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", string(e))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeUnionEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", _canon)
+	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", _canon)
 }
 
 type EnumOutsideDeclaredTypeUntypedEnum json.RawMessage
@@ -1413,14 +1413,14 @@ func (e EnumOutsideDeclaredTypeUntypedEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", string(e))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeUntypedEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", _canon)
+	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", _canon)
 }
 
 type EnumOutsideDeclaredTypeEnumPartialSlotItem0 string
@@ -1450,7 +1450,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialSlotItem0) Validate() error {
 	case EnumOutsideDeclaredTypeEnumPartialSlotItem0A:
 		return nil
 	default:
-		return fmt.Errorf("invalid EnumOutsideDeclaredTypeEnumPartialSlotItem0 value: %v", e)
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeEnumPartialSlotItem0 value: %v", e)
 	}
 }
 
@@ -1815,7 +1815,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	}
 	if e.ArrayEnum != nil {
 		if err := e.ArrayEnum.Validate(); err != nil {
-			return fmt.Errorf("arrayEnum.%w", err)
+			return jsonPathf(err, "arrayEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1824,7 +1824,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["arrayOutsideConst"] {
 		if err := e.ArrayOutsideConst.Validate(); err != nil {
-			return fmt.Errorf("arrayOutsideConst.%w", err)
+			return jsonPathf(err, "arrayOutsideConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1833,7 +1833,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["boolOutsideConst"] {
 		if err := e.BoolOutsideConst.Validate(); err != nil {
-			return fmt.Errorf("boolOutsideConst.%w", err)
+			return jsonPathf(err, "boolOutsideConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1842,7 +1842,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["constOutsideAllOf"] {
 		if err := e.ConstOutsideAllOf.Validate(); err != nil {
-			return fmt.Errorf("constOutsideAllOf.%w", err)
+			return jsonPathf(err, "constOutsideAllOf")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1851,22 +1851,22 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["constOutsideAnyOf"] {
 		if err := e.ConstOutsideAnyOf.Validate(); err != nil {
-			return fmt.Errorf("constOutsideAnyOf.%w", err)
+			return jsonPathf(err, "constOutsideAnyOf")
 		}
 	}
 	if e.ConstOutsideDependent != nil {
 		if err := e.ConstOutsideDependent.Validate(); err != nil {
-			return fmt.Errorf("constOutsideDependent.%w", err)
+			return jsonPathf(err, "constOutsideDependent")
 		}
 	}
 	for _i, _item := range e.ConstOutsideItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("constOutsideItems[%d].%w", _i, err)
+			return jsonPathf(err, "constOutsideItems[%d]", _i)
 		}
 	}
 	if e.ConstOutsideNames != nil {
 		if err := e.ConstOutsideNames.Validate(); err != nil {
-			return fmt.Errorf("constOutsideNames.%w", err)
+			return jsonPathf(err, "constOutsideNames")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1875,12 +1875,12 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["constOutsideOneOf"] {
 		if err := e.ConstOutsideOneOf.Validate(); err != nil {
-			return fmt.Errorf("constOutsideOneOf.%w", err)
+			return jsonPathf(err, "constOutsideOneOf")
 		}
 	}
 	if e.ConstOutsidePattern != nil {
 		if err := e.ConstOutsidePattern.Validate(); err != nil {
-			return fmt.Errorf("constOutsidePattern.%w", err)
+			return jsonPathf(err, "constOutsidePattern")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1889,17 +1889,17 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["constOutsideRef"] {
 		if err := e.ConstOutsideRef.Validate(); err != nil {
-			return fmt.Errorf("constOutsideRef.%w", err)
+			return jsonPathf(err, "constOutsideRef")
 		}
 	}
 	if e.ConstOutsideUnevalProps != nil {
 		if err := e.ConstOutsideUnevalProps.Validate(); err != nil {
-			return fmt.Errorf("constOutsideUnevalProps.%w", err)
+			return jsonPathf(err, "constOutsideUnevalProps")
 		}
 	}
 	for _k, _val := range e.ConstOutsideValues {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("constOutsideValues[%q].%w", _k, err)
+			return jsonPathf(err, "constOutsideValues[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1908,7 +1908,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["enumAllOutsideProp"] {
 		if err := e.EnumAllOutsideProp.Validate(); err != nil {
-			return fmt.Errorf("enumAllOutsideProp.%w", err)
+			return jsonPathf(err, "enumAllOutsideProp")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1917,42 +1917,42 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["enumOutsideProp"] {
 		if err := e.EnumOutsideProp.Validate(); err != nil {
-			return fmt.Errorf("enumOutsideProp.%w", err)
+			return jsonPathf(err, "enumOutsideProp")
 		}
 	}
 	for _i, _item := range e.EnumPartialItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("enumPartialItems[%d].%w", _i, err)
+			return jsonPathf(err, "enumPartialItems[%d]", _i)
 		}
 	}
 	if e.EnumPartialPattern != nil {
 		if err := e.EnumPartialPattern.Validate(); err != nil {
-			return fmt.Errorf("enumPartialPattern.%w", err)
+			return jsonPathf(err, "enumPartialPattern")
 		}
 	}
 	if e.EnumPartialProp != nil {
 		if err := e.EnumPartialProp.Validate(); err != nil {
-			return fmt.Errorf("enumPartialProp.%w", err)
+			return jsonPathf(err, "enumPartialProp")
 		}
 	}
 	if e.EnumPartialRef != nil {
 		if err := e.EnumPartialRef.Validate(); err != nil {
-			return fmt.Errorf("enumPartialRef.%w", err)
+			return jsonPathf(err, "enumPartialRef")
 		}
 	}
 	for _k, _val := range e.EnumPartialValues {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("enumPartialValues[%q].%w", _k, err)
+			return jsonPathf(err, "enumPartialValues[%q]", _k)
 		}
 	}
 	if e.FracInInteger != nil {
 		if err := e.FracInInteger.Validate(); err != nil {
-			return fmt.Errorf("fracInInteger.%w", err)
+			return jsonPathf(err, "fracInInteger")
 		}
 	}
 	if e.IntegerEnum != nil {
 		if err := e.IntegerEnum.Validate(); err != nil {
-			return fmt.Errorf("integerEnum.%w", err)
+			return jsonPathf(err, "integerEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1961,7 +1961,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["notConstOutside"] {
 		if err := e.NotConstOutside.Validate(); err != nil {
-			return fmt.Errorf("notConstOutside.%w", err)
+			return jsonPathf(err, "notConstOutside")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1970,7 +1970,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["nullOutsideConst"] {
 		if err := e.NullOutsideConst.Validate(); err != nil {
-			return fmt.Errorf("nullOutsideConst.%w", err)
+			return jsonPathf(err, "nullOutsideConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1979,12 +1979,12 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["nullableEnum"] {
 		if err := e.NullableEnum.Validate(); err != nil {
-			return fmt.Errorf("nullableEnum.%w", err)
+			return jsonPathf(err, "nullableEnum")
 		}
 	}
 	if e.NumberEnum != nil {
 		if err := e.NumberEnum.Validate(); err != nil {
-			return fmt.Errorf("numberEnum.%w", err)
+			return jsonPathf(err, "numberEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -1993,12 +1993,12 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["numberOutsideConst"] {
 		if err := e.NumberOutsideConst.Validate(); err != nil {
-			return fmt.Errorf("numberOutsideConst.%w", err)
+			return jsonPathf(err, "numberOutsideConst")
 		}
 	}
 	if e.ObjectEnum != nil {
 		if err := e.ObjectEnum.Validate(); err != nil {
-			return fmt.Errorf("objectEnum.%w", err)
+			return jsonPathf(err, "objectEnum")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -2007,27 +2007,27 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if e._jsonKeys == nil || e._jsonKeys["objectOutsideConst"] {
 		if err := e.ObjectOutsideConst.Validate(); err != nil {
-			return fmt.Errorf("objectOutsideConst.%w", err)
+			return jsonPathf(err, "objectOutsideConst")
 		}
 	}
 	for _i, _item := range e.OkItems {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("okItems[%d].%w", _i, err)
+			return jsonPathf(err, "okItems[%d]", _i)
 		}
 	}
 	if e.TypedEnum != nil {
 		if err := e.TypedEnum.Validate(); err != nil {
-			return fmt.Errorf("typedEnum.%w", err)
+			return jsonPathf(err, "typedEnum")
 		}
 	}
 	if e.UnionEnum != nil {
 		if err := e.UnionEnum.Validate(); err != nil {
-			return fmt.Errorf("unionEnum.%w", err)
+			return jsonPathf(err, "unionEnum")
 		}
 	}
 	if e.UntypedEnum != nil {
 		if err := e.UntypedEnum.Validate(); err != nil {
-			return fmt.Errorf("untypedEnum.%w", err)
+			return jsonPathf(err, "untypedEnum")
 		}
 	}
 	if e._jsonKeys["constOutsideContains"] {

@@ -50,7 +50,7 @@ func (c Colour) Validate() error {
 	case ColourRed, ColourGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid Colour value: %v", c)
+		return jsonValueErrorf("invalid Colour value: %v", c)
 	}
 }
 
@@ -84,14 +84,14 @@ func (r RawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid RawEnum value: %s", string(r))
+		return jsonValueErrorf("invalid RawEnum value: %s", string(r))
 	}
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid RawEnum value: %s", _canon)
+	return jsonValueErrorf("invalid RawEnum value: %s", _canon)
 }
 
 type Stamp string
@@ -181,7 +181,7 @@ func (a AllOfInlinePositionsLvl) Validate() error {
 	case AllOfInlinePositionsLvlHigh:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfInlinePositionsLvl value: %v", a)
+		return jsonValueErrorf("invalid AllOfInlinePositionsLvl value: %v", a)
 	}
 }
 
@@ -213,7 +213,7 @@ func (a AllOfInlinePositionsMapValue) Validate() error {
 	case AllOfInlinePositionsMapValueRed, AllOfInlinePositionsMapValueGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfInlinePositionsMapValue value: %v", a)
+		return jsonValueErrorf("invalid AllOfInlinePositionsMapValue value: %v", a)
 	}
 }
 
@@ -260,7 +260,7 @@ func (a AllOfInlinePositionsPick) Validate() error {
 	case AllOfInlinePositionsPickRed, AllOfInlinePositionsPickGreen:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfInlinePositionsPick value: %v", a)
+		return jsonValueErrorf("invalid AllOfInlinePositionsPick value: %v", a)
 	}
 }
 
@@ -294,14 +294,14 @@ func (a AllOfInlinePositionsRaw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid AllOfInlinePositionsRaw value: %s", string(a))
+		return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", string(a))
 	}
 	for _, allowed := range allOfInlinePositionsRawAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid AllOfInlinePositionsRaw value: %s", _canon)
+	return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", _canon)
 }
 
 type AllOfInlinePositionsUnionOption0 string
@@ -332,7 +332,7 @@ func (a AllOfInlinePositionsUnionOption0) Validate() error {
 	case AllOfInlinePositionsUnionOption0Red, AllOfInlinePositionsUnionOption0Green:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfInlinePositionsUnionOption0 value: %v", a)
+		return jsonValueErrorf("invalid AllOfInlinePositionsUnionOption0 value: %v", a)
 	}
 }
 
@@ -685,42 +685,42 @@ func (a AllOfInlinePositions) MarshalJSON() ([]byte, error) {
 func (a AllOfInlinePositions) Validate() error {
 	if a.Chain != nil {
 		if err := a.Chain.Validate(); err != nil {
-			return fmt.Errorf("chain.%w", err)
+			return jsonPathf(err, "chain")
 		}
 	}
 	if a.IP != nil {
 		if err := a.IP.Validate(); err != nil {
-			return fmt.Errorf("ip.%w", err)
+			return jsonPathf(err, "ip")
 		}
 	}
 	for _i, _item := range a.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	if a.Lvl != nil {
 		if err := a.Lvl.Validate(); err != nil {
-			return fmt.Errorf("lvl.%w", err)
+			return jsonPathf(err, "lvl")
 		}
 	}
 	for _k, _val := range a.Map {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("map[%q].%w", _k, err)
+			return jsonPathf(err, "map[%q]", _k)
 		}
 	}
 	if a.Nested != nil {
 		if err := a.Nested.Validate(); err != nil {
-			return fmt.Errorf("nested.%w", err)
+			return jsonPathf(err, "nested")
 		}
 	}
 	if a.Pick != nil {
 		if err := a.Pick.Validate(); err != nil {
-			return fmt.Errorf("pick.%w", err)
+			return jsonPathf(err, "pick")
 		}
 	}
 	if a.Raw != nil {
 		if err := a.Raw.Validate(); err != nil {
-			return fmt.Errorf("raw.%w", err)
+			return jsonPathf(err, "raw")
 		}
 	}
 	// oneOf union: the branch selection settled on one variant, whose own type
@@ -732,7 +732,7 @@ func (a AllOfInlinePositions) Validate() error {
 	switch _oneOfSel := a.Union.(type) {
 	case *AllOfInlinePositions_AllOfInlinePositionsUnionOption0:
 		if err := _oneOfSel.AllOfInlinePositionsUnionOption0.Validate(); err != nil {
-			return fmt.Errorf("union.%w", err)
+			return jsonPathf(err, "union")
 		}
 	}
 	// Tuple items: validate each position against its schema type.

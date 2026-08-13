@@ -46,7 +46,7 @@ func (d *D) UnmarshalJSON(data []byte) error {
 // Validate checks D against its JSON Schema constraints.
 func (d D) Validate() error {
 	if d < 5 {
-		return fmt.Errorf("value: %v is less than minimum 5", d)
+		return jsonValueErrorf("%v is less than minimum 5", d)
 	}
 	return nil
 }
@@ -79,7 +79,7 @@ func (p PatternValueSubschemasPattern0) Validate() error {
 	case PatternValueSubschemasPattern0Aaa, PatternValueSubschemasPattern0Bbb:
 		return nil
 	default:
-		return fmt.Errorf("invalid PatternValueSubschemasPattern0 value: %v", p)
+		return jsonValueErrorf("invalid PatternValueSubschemasPattern0 value: %v", p)
 	}
 }
 
@@ -110,7 +110,7 @@ func (p PatternValueSubschemasPattern1) Validate() error {
 	case PatternValueSubschemasPattern1Aaa:
 		return nil
 	default:
-		return fmt.Errorf("invalid PatternValueSubschemasPattern1 value: %v", p)
+		return jsonValueErrorf("invalid PatternValueSubschemasPattern1 value: %v", p)
 	}
 }
 
@@ -310,7 +310,7 @@ func (p *PatternValueSubschemasPattern5) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return fmt.Errorf("null is not allowed for type PatternValueSubschemasPattern5")
 	}
-	if _err := checkJSONNulls(data, "value", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNulls(data, "", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias PatternValueSubschemasPattern5
@@ -321,7 +321,7 @@ func (p *PatternValueSubschemasPattern5) UnmarshalJSON(data []byte) error {
 func (p PatternValueSubschemasPattern5) Validate() error {
 	for _i0, _e0 := range p {
 		if utf8.RuneCountInString(string(_e0)) < 5 {
-			return fmt.Errorf("items[%d]: length %d is less than minimum 5", _i0, utf8.RuneCountInString(string(_e0)))
+			return jsonElemErrorf("[%d]: length %d is less than minimum 5", _i0, utf8.RuneCountInString(string(_e0)))
 		}
 	}
 	return nil
@@ -344,11 +344,11 @@ func (p PatternValueSubschemasPattern6) Validate() error {
 		for i, item := range p {
 			b, err := json.Marshal(item)
 			if err != nil {
-				return fmt.Errorf("value: uniqueItems check: marshal error at index %d: %w", i, err)
+				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", i, err)
 			}
 			key := string(b)
 			if seen[key] {
-				return fmt.Errorf("value: items are not unique (duplicate at index %d)", i)
+				return jsonValueErrorf("items are not unique (duplicate at index %d)", i)
 			}
 			seen[key] = true
 		}
@@ -413,7 +413,7 @@ func (p *PatternValueSubschemasPattern8) UnmarshalJSON(data []byte) error {
 // Validate checks PatternValueSubschemasPattern8 against its JSON Schema constraints.
 func (p PatternValueSubschemasPattern8) Validate() error {
 	if utf8.RuneCountInString(string(p)) < 5 {
-		return fmt.Errorf("value: length %d is less than minimum 5", utf8.RuneCountInString(string(p)))
+		return jsonValueErrorf("length %d is less than minimum 5", utf8.RuneCountInString(string(p)))
 	}
 	return nil
 }
@@ -494,7 +494,7 @@ func (p PatternValueSubschemasPattern9) Validate() error {
 			totalProps = len(p._jsonKeys)
 		}
 		if totalProps > 1 {
-			return fmt.Errorf("too many properties: %d exceeds maximum 1", totalProps)
+			return jsonValueErrorf("too many properties: %d exceeds maximum 1", totalProps)
 		}
 	}
 	return nil
@@ -672,14 +672,14 @@ func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if p.AdditionalProperties == nil {
 				p.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			p.AdditionalProperties[rawKey] = val
 		}
@@ -716,7 +716,7 @@ func (p PatternValueSubschemasPattern11) MarshalJSON() ([]byte, error) {
 func (p PatternValueSubschemasPattern11) Validate() error {
 	for _k0, _e0 := range p.AdditionalProperties {
 		if utf8.RuneCountInString(string(_e0)) < 5 {
-			return fmt.Errorf("additionalProperties[%q]: length %d is less than minimum 5", _k0, utf8.RuneCountInString(string(_e0)))
+			return jsonElemErrorf("[%q]: length %d is less than minimum 5", _k0, utf8.RuneCountInString(string(_e0)))
 		}
 	}
 	return nil
@@ -1039,7 +1039,7 @@ func (p PatternValueSubschemasPattern16) MarshalJSON() ([]byte, error) {
 func (p PatternValueSubschemasPattern16) Validate() error {
 	if len(p.AdditionalProperties) > 0 {
 		for k := range p.AdditionalProperties {
-			return fmt.Errorf("additional property %q is not allowed", k)
+			return jsonValueErrorf("additional property %q is not allowed", k)
 		}
 	}
 	return nil

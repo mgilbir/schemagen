@@ -23,7 +23,7 @@ func (b *BoundedStamp) UnmarshalJSON(data []byte) error {
 // Validate checks BoundedStamp against its JSON Schema constraints.
 func (b BoundedStamp) Validate() error {
 	if utf8.RuneCountInString(string(b)) < 25 {
-		return fmt.Errorf("value: length %d is less than minimum 25", utf8.RuneCountInString(string(b)))
+		return jsonValueErrorf("length %d is less than minimum 25", utf8.RuneCountInString(string(b)))
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func (b *BoundedV4) UnmarshalJSON(data []byte) error {
 // Validate checks BoundedV4 against its JSON Schema constraints.
 func (b BoundedV4) Validate() error {
 	if utf8.RuneCountInString(string(b)) < 9 {
-		return fmt.Errorf("value: length %d is less than minimum 9", utf8.RuneCountInString(string(b)))
+		return jsonValueErrorf("length %d is less than minimum 9", utf8.RuneCountInString(string(b)))
 	}
 	return nil
 }
@@ -101,7 +101,7 @@ func (f FormatBesideLengthInferredV4) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(f._value)) < 9 {
-		return fmt.Errorf("value: length %d is less than minimum 9", utf8.RuneCountInString(string(f._value)))
+		return jsonValueErrorf("length %d is less than minimum 9", utf8.RuneCountInString(string(f._value)))
 	}
 	return nil
 }
@@ -289,17 +289,17 @@ func (f FormatBesideLength) Validate() error {
 	}
 	if f.InferredV4 != nil {
 		if err := f.InferredV4.Validate(); err != nil {
-			return fmt.Errorf("inferredV4.%w", err)
+			return jsonPathf(err, "inferredV4")
 		}
 	}
 	if f.RefStamp != nil {
 		if err := f.RefStamp.Validate(); err != nil {
-			return fmt.Errorf("refStamp.%w", err)
+			return jsonPathf(err, "refStamp")
 		}
 	}
 	if f.RefV4 != nil {
 		if err := f.RefV4.Validate(); err != nil {
-			return fmt.Errorf("refV4.%w", err)
+			return jsonPathf(err, "refV4")
 		}
 	}
 	return nil

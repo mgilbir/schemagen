@@ -14940,9 +14940,12 @@ func (g *Generator) buildOverflowValidation(parentName string, valueType GoType,
 	if valueType == nil || valueSchema == nil || valueSchema.IsBooleanSchema() {
 		return nil
 	}
+	// No JSONName: the overflow map is not a declared property, so there is no
+	// name to lead its error path with and it leads with the key accessor alone.
+	// It used to lead with "additionalProperties", which is what a member of that
+	// name would print. See issue #280.
 	def := &ItemValidationDef{
 		FieldName:     overflowFieldName,
-		PathName:      "additionalProperties",
 		OwnsOutermost: true,
 	}
 	g.descendItemLevels(def, valueType, valueSchema, true, parentName+"Value")

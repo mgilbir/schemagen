@@ -77,14 +77,14 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("additionalProperties[%q]: null is not allowed", rawKey)
+				return fmt.Errorf("[%q]: null is not allowed", rawKey)
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("additionalProperties[%s]: %w", rawKey, err)
+				return fmt.Errorf("[%q]: %w", rawKey, err)
 			}
 			m.AdditionalProperties[rawKey] = val
 		}

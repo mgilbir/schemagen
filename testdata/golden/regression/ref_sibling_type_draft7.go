@@ -23,7 +23,7 @@ func (s *Str) UnmarshalJSON(data []byte) error {
 // Validate checks Str against its JSON Schema constraints.
 func (s Str) Validate() error {
 	if utf8.RuneCountInString(string(s)) < 3 {
-		return fmt.Errorf("value: length %d is less than minimum 3", utf8.RuneCountInString(string(s)))
+		return jsonValueErrorf("length %d is less than minimum 3", utf8.RuneCountInString(string(s)))
 	}
 	return nil
 }
@@ -175,12 +175,12 @@ func (r RefSiblingTypeDraft7) MarshalJSON() ([]byte, error) {
 func (r RefSiblingTypeDraft7) Validate() error {
 	if r.Bounded != nil {
 		if err := r.Bounded.Validate(); err != nil {
-			return fmt.Errorf("bounded.%w", err)
+			return jsonPathf(err, "bounded")
 		}
 	}
 	if r.Plain != nil {
 		if err := r.Plain.Validate(); err != nil {
-			return fmt.Errorf("plain.%w", err)
+			return jsonPathf(err, "plain")
 		}
 	}
 	return nil

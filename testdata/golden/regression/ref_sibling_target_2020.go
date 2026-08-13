@@ -36,7 +36,7 @@ func (l *Long) UnmarshalJSON(data []byte) error {
 // Validate checks Long against its JSON Schema constraints.
 func (l Long) Validate() error {
 	if utf8.RuneCountInString(string(l)) < 5 {
-		return fmt.Errorf("value: length %d is less than minimum 5", utf8.RuneCountInString(string(l)))
+		return jsonValueErrorf("length %d is less than minimum 5", utf8.RuneCountInString(string(l)))
 	}
 	return nil
 }
@@ -309,7 +309,7 @@ func (r RefSiblingTarget2020DynSibling) Validate() error {
 	case RefSiblingTarget2020DynSiblingAbc:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingTarget2020DynSibling value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingTarget2020DynSibling value: %v", r)
 	}
 }
 
@@ -518,7 +518,7 @@ func (r RefSiblingTarget2020NoRef) Validate() error {
 	case RefSiblingTarget2020NoRefAbc, RefSiblingTarget2020NoRefAbcde:
 		return nil
 	default:
-		return fmt.Errorf("invalid RefSiblingTarget2020NoRef value: %v", r)
+		return jsonValueErrorf("invalid RefSiblingTarget2020NoRef value: %v", r)
 	}
 }
 
@@ -674,7 +674,7 @@ func (r RefSiblingTarget2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["constForbidden"] {
 		if err := r.ConstForbidden.Validate(); err != nil {
-			return fmt.Errorf("constForbidden.%w", err)
+			return jsonPathf(err, "constForbidden")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -683,12 +683,12 @@ func (r RefSiblingTarget2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["constSatisfied"] {
 		if err := r.ConstSatisfied.Validate(); err != nil {
-			return fmt.Errorf("constSatisfied.%w", err)
+			return jsonPathf(err, "constSatisfied")
 		}
 	}
 	if r.DynSibling != nil {
 		if err := r.DynSibling.Validate(); err != nil {
-			return fmt.Errorf("dynSibling.%w", err)
+			return jsonPathf(err, "dynSibling")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -697,17 +697,17 @@ func (r RefSiblingTarget2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["enumSibling"] {
 		if err := r.EnumSibling.Validate(); err != nil {
-			return fmt.Errorf("enumSibling.%w", err)
+			return jsonPathf(err, "enumSibling")
 		}
 	}
 	for _i, _item := range r.ListSibling {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("listSibling[%d].%w", _i, err)
+			return jsonPathf(err, "listSibling[%d]", _i)
 		}
 	}
 	for _k, _val := range r.MapSibling {
 		if err := _val.Validate(); err != nil {
-			return fmt.Errorf("mapSibling[%q].%w", _k, err)
+			return jsonPathf(err, "mapSibling[%q]", _k)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -716,7 +716,7 @@ func (r RefSiblingTarget2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["namedConst"] {
 		if err := r.NamedConst.Validate(); err != nil {
-			return fmt.Errorf("namedConst.%w", err)
+			return jsonPathf(err, "namedConst")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -725,17 +725,17 @@ func (r RefSiblingTarget2020) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if r._jsonKeys == nil || r._jsonKeys["namedEnum"] {
 		if err := r.NamedEnum.Validate(); err != nil {
-			return fmt.Errorf("namedEnum.%w", err)
+			return jsonPathf(err, "namedEnum")
 		}
 	}
 	if r.NoRef != nil {
 		if err := r.NoRef.Validate(); err != nil {
-			return fmt.Errorf("noRef.%w", err)
+			return jsonPathf(err, "noRef")
 		}
 	}
 	if r.NoSibling != nil {
 		if err := r.NoSibling.Validate(); err != nil {
-			return fmt.Errorf("noSibling.%w", err)
+			return jsonPathf(err, "noSibling")
 		}
 	}
 	return nil

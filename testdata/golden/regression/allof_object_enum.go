@@ -36,14 +36,14 @@ func (p Pair) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(p))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid Pair value: %s", string(p))
+		return jsonValueErrorf("invalid Pair value: %s", string(p))
 	}
 	for _, allowed := range pairAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid Pair value: %s", _canon)
+	return jsonValueErrorf("invalid Pair value: %s", _canon)
 }
 
 type AllOfObjectEnumConstMember struct {
@@ -736,14 +736,14 @@ func (a AllOfObjectEnumStandalone) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
+		return jsonValueErrorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
 	}
 	for _, allowed := range allOfObjectEnumStandaloneAllowedJSON {
 		if _canon == allowed {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid AllOfObjectEnumStandalone value: %s", _canon)
+	return jsonValueErrorf("invalid AllOfObjectEnumStandalone value: %s", _canon)
 }
 
 type AllOfObjectEnumViaRef struct {
@@ -1008,37 +1008,37 @@ func (a AllOfObjectEnum) MarshalJSON() ([]byte, error) {
 func (a AllOfObjectEnum) Validate() error {
 	if a.ConstMember != nil {
 		if err := a.ConstMember.Validate(); err != nil {
-			return fmt.Errorf("constMember.%w", err)
+			return jsonPathf(err, "constMember")
 		}
 	}
 	if a.Inline != nil {
 		if err := a.Inline.Validate(); err != nil {
-			return fmt.Errorf("inline.%w", err)
+			return jsonPathf(err, "inline")
 		}
 	}
 	if a.Nested != nil {
 		if err := a.Nested.Validate(); err != nil {
-			return fmt.Errorf("nested.%w", err)
+			return jsonPathf(err, "nested")
 		}
 	}
 	if a.Plain != nil {
 		if err := a.Plain.Validate(); err != nil {
-			return fmt.Errorf("plain.%w", err)
+			return jsonPathf(err, "plain")
 		}
 	}
 	if a.Reordered != nil {
 		if err := a.Reordered.Validate(); err != nil {
-			return fmt.Errorf("reordered.%w", err)
+			return jsonPathf(err, "reordered")
 		}
 	}
 	if a.Standalone != nil {
 		if err := a.Standalone.Validate(); err != nil {
-			return fmt.Errorf("standalone.%w", err)
+			return jsonPathf(err, "standalone")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

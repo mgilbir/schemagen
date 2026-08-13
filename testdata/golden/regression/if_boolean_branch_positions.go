@@ -482,7 +482,7 @@ func (i IfBooleanBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["elseFalse"] {
 		if err := i.ElseFalse.Validate(); err != nil {
-			return fmt.Errorf("elseFalse.%w", err)
+			return jsonPathf(err, "elseFalse")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -491,7 +491,7 @@ func (i IfBooleanBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["ifFalse"] {
 		if err := i.IfFalse.Validate(); err != nil {
-			return fmt.Errorf("ifFalse.%w", err)
+			return jsonPathf(err, "ifFalse")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -500,12 +500,12 @@ func (i IfBooleanBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["ifTrue"] {
 		if err := i.IfTrue.Validate(); err != nil {
-			return fmt.Errorf("ifTrue.%w", err)
+			return jsonPathf(err, "ifTrue")
 		}
 	}
 	for _i, _item := range i.List {
 		if err := _item.Validate(); err != nil {
-			return fmt.Errorf("list[%d].%w", _i, err)
+			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -514,7 +514,7 @@ func (i IfBooleanBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["thenFalse"] {
 		if err := i.ThenFalse.Validate(); err != nil {
-			return fmt.Errorf("thenFalse.%w", err)
+			return jsonPathf(err, "thenFalse")
 		}
 	}
 	// An optional property the source JSON did not carry left its Go zero
@@ -523,7 +523,7 @@ func (i IfBooleanBranchPositions) Validate() error {
 	// presence is unknowable, so the check still runs.
 	if i._jsonKeys == nil || i._jsonKeys["viaRef"] {
 		if err := i.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

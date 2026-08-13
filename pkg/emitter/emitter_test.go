@@ -622,6 +622,18 @@ func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmp, "types.go"), out, 0o644); err != nil {
 		t.Fatalf("write types.go: %v", err)
 	}
+	// The shared helpers the emitted file calls, written the way the command
+	// writes them: read off the source rather than assumed, so this compiles
+	// whatever block a check in it happens to reach for.
+	helperSrc, needed, err := e.EmitHelpers("main", generator.HelpersReferencedBy(string(out)))
+	if err != nil {
+		t.Fatalf("EmitHelpers() error: %v", err)
+	}
+	if needed {
+		if err := os.WriteFile(filepath.Join(tmp, "schemagen_helpers.go"), helperSrc, 0o644); err != nil {
+			t.Fatalf("write helpers: %v", err)
+		}
+	}
 	mainSrc := `package main
 
 import (
@@ -846,7 +858,7 @@ func TestEmitOneOfUnionValidateDispatch(t *testing.T) {
 		"case *Envelope_Payload:",
 		"if _oneOfSel.Payload != nil {",
 		"if err := _oneOfSel.Payload.Validate(); err != nil {",
-		`return fmt.Errorf("body.%w", err)`,
+		`return jsonPathf(err, "body")`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("Envelope.Validate is missing %q:\n%s", want, src)

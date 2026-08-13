@@ -65,7 +65,7 @@ func (c CapBranchViaRef) Validate() error {
 		return nil // Constraints don't apply to non-matching types.
 	}
 	if utf8.RuneCountInString(string(c._value)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(c._value)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(c._value)))
 	}
 	return nil
 }
@@ -217,7 +217,7 @@ func (c CapBranch) Validate() error {
 	}
 	if c.ViaRef != nil {
 		if err := c.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil
@@ -250,7 +250,7 @@ func (a AllOfPropertyConjunctionConstAgainstEnum) Validate() error {
 	case AllOfPropertyConjunctionConstAgainstEnumQ:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfPropertyConjunctionConstAgainstEnum value: %v", a)
+		return jsonValueErrorf("invalid AllOfPropertyConjunctionConstAgainstEnum value: %v", a)
 	}
 }
 
@@ -267,10 +267,10 @@ func (a *AllOfPropertyConjunctionDeclared) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionDeclared against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionDeclared) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -294,10 +294,10 @@ func (a *AllOfPropertyConjunctionDocumented) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionDocumented against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionDocumented) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -317,10 +317,10 @@ func (a *AllOfPropertyConjunctionDocumentedWriteOnly) UnmarshalJSON(data []byte)
 // Validate checks AllOfPropertyConjunctionDocumentedWriteOnly against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionDocumentedWriteOnly) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -352,7 +352,7 @@ func (a AllOfPropertyConjunctionEnumBranchNarrower) Validate() error {
 	case AllOfPropertyConjunctionEnumBranchNarrowerB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfPropertyConjunctionEnumBranchNarrower value: %v", a)
+		return jsonValueErrorf("invalid AllOfPropertyConjunctionEnumBranchNarrower value: %v", a)
 	}
 }
 
@@ -383,7 +383,7 @@ func (a AllOfPropertyConjunctionEnumRootNarrower) Validate() error {
 	case AllOfPropertyConjunctionEnumRootNarrowerB:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfPropertyConjunctionEnumRootNarrower value: %v", a)
+		return jsonValueErrorf("invalid AllOfPropertyConjunctionEnumRootNarrower value: %v", a)
 	}
 }
 
@@ -419,7 +419,7 @@ func (a *AllOfPropertyConjunctionHighBound) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionHighBound against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionHighBound) Validate() error {
 	if a > 50 {
-		return fmt.Errorf("value: %v exceeds maximum 50", a)
+		return jsonValueErrorf("%v exceeds maximum 50", a)
 	}
 	return nil
 }
@@ -456,7 +456,7 @@ func (a *AllOfPropertyConjunctionHighBoundRootTighter) UnmarshalJSON(data []byte
 // Validate checks AllOfPropertyConjunctionHighBoundRootTighter against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionHighBoundRootTighter) Validate() error {
 	if a > 50 {
-		return fmt.Errorf("value: %v exceeds maximum 50", a)
+		return jsonValueErrorf("%v exceeds maximum 50", a)
 	}
 	return nil
 }
@@ -474,7 +474,7 @@ func (a *AllOfPropertyConjunctionLenRootTighter) UnmarshalJSON(data []byte) erro
 // Validate checks AllOfPropertyConjunctionLenRootTighter against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionLenRootTighter) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 4 {
-		return fmt.Errorf("value: length %d is less than minimum 4", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 4", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -511,7 +511,7 @@ func (a *AllOfPropertyConjunctionLowBound) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionLowBound against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionLowBound) Validate() error {
 	if a < 10 {
-		return fmt.Errorf("value: %v is less than minimum 10", a)
+		return jsonValueErrorf("%v is less than minimum 10", a)
 	}
 	return nil
 }
@@ -548,7 +548,7 @@ func (a *AllOfPropertyConjunctionLowBoundRootTighter) UnmarshalJSON(data []byte)
 // Validate checks AllOfPropertyConjunctionLowBoundRootTighter against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionLowBoundRootTighter) Validate() error {
 	if a < 10 {
-		return fmt.Errorf("value: %v is less than minimum 10", a)
+		return jsonValueErrorf("%v is less than minimum 10", a)
 	}
 	return nil
 }
@@ -566,10 +566,10 @@ func (a *AllOfPropertyConjunctionNestedA) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionNestedA against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionNestedA) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -700,7 +700,7 @@ func (a AllOfPropertyConjunctionNested) Validate() error {
 		}
 	}
 	if err := a.A.Validate(); err != nil {
-		return fmt.Errorf("a.%w", err)
+		return jsonPathf(err, "a")
 	}
 	return nil
 }
@@ -766,7 +766,7 @@ func (a AllOfPropertyConjunctionNumberSpelling) Validate() error {
 	case AllOfPropertyConjunctionNumberSpelling1:
 		return nil
 	default:
-		return fmt.Errorf("invalid AllOfPropertyConjunctionNumberSpelling value: %v", a)
+		return jsonValueErrorf("invalid AllOfPropertyConjunctionNumberSpelling value: %v", a)
 	}
 }
 
@@ -783,7 +783,7 @@ func (a *AllOfPropertyConjunctionPatternFirstWins) UnmarshalJSON(data []byte) er
 // Validate checks AllOfPropertyConjunctionPatternFirstWins against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionPatternFirstWins) Validate() error {
 	if matched, _ := ecma262.MatchString("^a", ecmaflags.Unicode, string(a)); !matched {
-		return fmt.Errorf("value: %q does not match pattern %s", a, "^a")
+		return jsonValueErrorf("%q does not match pattern %s", a, "^a")
 	}
 	return nil
 }
@@ -801,10 +801,10 @@ func (a *AllOfPropertyConjunctionReversed) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionReversed against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionReversed) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -822,10 +822,10 @@ func (a *AllOfPropertyConjunctionTwice) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionTwice against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionTwice) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 4 {
-		return fmt.Errorf("value: length %d is less than minimum 4", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 4", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -911,10 +911,10 @@ func (a *AllOfPropertyConjunctionViaRef) UnmarshalJSON(data []byte) error {
 // Validate checks AllOfPropertyConjunctionViaRef against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionViaRef) Validate() error {
 	if utf8.RuneCountInString(string(a)) < 2 {
-		return fmt.Errorf("value: length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d is less than minimum 2", utf8.RuneCountInString(string(a)))
 	}
 	if utf8.RuneCountInString(string(a)) > 9 {
-		return fmt.Errorf("value: length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
+		return jsonValueErrorf("length %d exceeds maximum 9", utf8.RuneCountInString(string(a)))
 	}
 	return nil
 }
@@ -1137,102 +1137,102 @@ func (a AllOfPropertyConjunction) Validate() error {
 	}
 	if a.ConstAgainstEnum != nil {
 		if err := a.ConstAgainstEnum.Validate(); err != nil {
-			return fmt.Errorf("constAgainstEnum.%w", err)
+			return jsonPathf(err, "constAgainstEnum")
 		}
 	}
 	if a.Declared != nil {
 		if err := a.Declared.Validate(); err != nil {
-			return fmt.Errorf("declared.%w", err)
+			return jsonPathf(err, "declared")
 		}
 	}
 	if a.Documented != nil {
 		if err := a.Documented.Validate(); err != nil {
-			return fmt.Errorf("documented.%w", err)
+			return jsonPathf(err, "documented")
 		}
 	}
 	if a.DocumentedWriteOnly != nil {
 		if err := a.DocumentedWriteOnly.Validate(); err != nil {
-			return fmt.Errorf("documentedWriteOnly.%w", err)
+			return jsonPathf(err, "documentedWriteOnly")
 		}
 	}
 	if a.EnumBranchNarrower != nil {
 		if err := a.EnumBranchNarrower.Validate(); err != nil {
-			return fmt.Errorf("enumBranchNarrower.%w", err)
+			return jsonPathf(err, "enumBranchNarrower")
 		}
 	}
 	if a.EnumRootNarrower != nil {
 		if err := a.EnumRootNarrower.Validate(); err != nil {
-			return fmt.Errorf("enumRootNarrower.%w", err)
+			return jsonPathf(err, "enumRootNarrower")
 		}
 	}
 	if a.HighBound != nil {
 		if err := a.HighBound.Validate(); err != nil {
-			return fmt.Errorf("highBound.%w", err)
+			return jsonPathf(err, "highBound")
 		}
 	}
 	if a.HighBoundRootTighter != nil {
 		if err := a.HighBoundRootTighter.Validate(); err != nil {
-			return fmt.Errorf("highBoundRootTighter.%w", err)
+			return jsonPathf(err, "highBoundRootTighter")
 		}
 	}
 	if a.LenRootTighter != nil {
 		if err := a.LenRootTighter.Validate(); err != nil {
-			return fmt.Errorf("lenRootTighter.%w", err)
+			return jsonPathf(err, "lenRootTighter")
 		}
 	}
 	if a.LowBound != nil {
 		if err := a.LowBound.Validate(); err != nil {
-			return fmt.Errorf("lowBound.%w", err)
+			return jsonPathf(err, "lowBound")
 		}
 	}
 	if a.LowBoundRootTighter != nil {
 		if err := a.LowBoundRootTighter.Validate(); err != nil {
-			return fmt.Errorf("lowBoundRootTighter.%w", err)
+			return jsonPathf(err, "lowBoundRootTighter")
 		}
 	}
 	if a.Nested != nil {
 		if err := a.Nested.Validate(); err != nil {
-			return fmt.Errorf("nested.%w", err)
+			return jsonPathf(err, "nested")
 		}
 	}
 	if a.NumberMeetsInteger != nil {
 		if err := a.NumberMeetsInteger.Validate(); err != nil {
-			return fmt.Errorf("numberMeetsInteger.%w", err)
+			return jsonPathf(err, "numberMeetsInteger")
 		}
 	}
 	if a.NumberSpelling != nil {
 		if err := a.NumberSpelling.Validate(); err != nil {
-			return fmt.Errorf("numberSpelling.%w", err)
+			return jsonPathf(err, "numberSpelling")
 		}
 	}
 	if a.PatternFirstWins != nil {
 		if err := a.PatternFirstWins.Validate(); err != nil {
-			return fmt.Errorf("patternFirstWins.%w", err)
+			return jsonPathf(err, "patternFirstWins")
 		}
 	}
 	if a.Reversed != nil {
 		if err := a.Reversed.Validate(); err != nil {
-			return fmt.Errorf("reversed.%w", err)
+			return jsonPathf(err, "reversed")
 		}
 	}
 	if a.Twice != nil {
 		if err := a.Twice.Validate(); err != nil {
-			return fmt.Errorf("twice.%w", err)
+			return jsonPathf(err, "twice")
 		}
 	}
 	if a.TypeBranchNarrower != nil {
 		if err := a.TypeBranchNarrower.Validate(); err != nil {
-			return fmt.Errorf("typeBranchNarrower.%w", err)
+			return jsonPathf(err, "typeBranchNarrower")
 		}
 	}
 	if a.TypeRootNarrower != nil {
 		if err := a.TypeRootNarrower.Validate(); err != nil {
-			return fmt.Errorf("typeRootNarrower.%w", err)
+			return jsonPathf(err, "typeRootNarrower")
 		}
 	}
 	if a.ViaRef != nil {
 		if err := a.ViaRef.Validate(); err != nil {
-			return fmt.Errorf("viaRef.%w", err)
+			return jsonPathf(err, "viaRef")
 		}
 	}
 	return nil

@@ -60,7 +60,7 @@ func (r Root) Validate() error {
 			}
 		}
 		if oneOfCount != 1 {
-			return fmt.Errorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
 		}
 	}
 	return nil
