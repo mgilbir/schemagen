@@ -400,6 +400,71 @@ func (j *jsonNumber) UnmarshalJSON(data []byte) error {
 }
 {{- end}}
 
+{{define "datetime_helpers"}}
+// jsonDateTime is the decode destination for an asserted `format: date-time`,
+// and it exists because time.Time's own decoder is stricter than the format it
+// names.
+//
+// RFC 3339 section 5.6 defines date-time as full-date "T" full-time, and its
+// ABNF carries the NOTE that the "T" and "Z" characters "may alternatively be
+// lower case 't' or 'z' respectively". time.Time is read from a layout, and a
+// layout matches those two characters literally, so {"a":"2020-01-02t03:04:05z"}
+// came back as `cannot parse "t03:04:05z" as "T"` -- a document the format
+// permits, refused at decode.
+//
+// encoding/json decides what a token may fill from the destination type alone,
+// so a type of our own is the only place that decision can be intercepted --
+// the same reason jsonInteger and jsonNumber exist. The declared type is
+// unchanged; this one is only ever the shadow the decode runs through.
+//
+// The retry is deliberately narrow: it respells those two positions and hands
+// the result to the same decoder, so what is accepted is exactly what that
+// decoder accepts once the case is settled. Nothing else is loosened, and the
+// error returned on failure is the first one, so every value that was malformed
+// for some other reason is refused in the words it always used.
+//
+// The respelling is done to the JSON literal's own bytes rather than to a
+// decoded string, so there is nothing to re-quote afterwards and no escape to
+// reason about. An escaped character is not a byte being looked for: "t" and
+// "z" are not hex digits, so neither position can fall inside a \uXXXX, and a
+// "\t" or "\z" respelled here is an escape the retry refuses -- leaving the
+// original error, which is the answer that was wanted anyway.
+//
+// Nothing checks that data is a JSON string at all, and no check would be
+// reachable: the two bytes touched are neither the first nor the last, so a
+// value that was not a quoted string before the respelling is not one after,
+// and the retry hands the result to a decoder that accepts nothing else.
+// Twenty-two bytes is the shortest a quoted RFC 3339 date-time can be, so
+// anything below it has nothing to respell whatever its case.
+type jsonDateTime time.Time
+
+func (j *jsonDateTime) UnmarshalJSON(data []byte) error {
+	var _t time.Time
+	_err := json.Unmarshal(data, &_t)
+	if _err == nil {
+		*j = jsonDateTime(_t)
+		return nil
+	}
+	if len(data) < 22 {
+		return _err
+	}
+	// Index 11 is the "T" position of the value; the offset's "Z" is the byte
+	// before the closing quote.
+	_upper := append([]byte(nil), data...)
+	if _upper[11] == 't' {
+		_upper[11] = 'T'
+	}
+	if _upper[len(_upper)-2] == 'z' {
+		_upper[len(_upper)-2] = 'Z'
+	}
+	if json.Unmarshal(_upper, &_t) != nil {
+		return _err
+	}
+	*j = jsonDateTime(_t)
+	return nil
+}
+{{- end}}
+
 {{define "number_compare_helpers"}}
 // jsonNumberParts splits a JSON number literal into its sign, its significant
 // digits and the power of ten the last of those digits stands for: the value is

@@ -48,12 +48,27 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	type Alias Event
 	aux := &struct {
 		*Alias
+		EndsAt   **jsonDateTime `json:"ends_at"`
+		StartsAt *jsonDateTime  `json:"starts_at"`
 	}{
 		Alias: (*Alias)(e),
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return err
+	}
+
+	// A date-time may be spelled with a lower case "t" or "z", which RFC 3339
+	// permits and time.Time's parse layout refuses; the shadows above are what
+	// let encoding/json see one. Each outer pointer is nil when the property was
+	// absent or null, both of which leave the field as it was.
+	if aux.EndsAt != nil {
+		_iv := *aux.EndsAt
+		e.EndsAt = jsonIntegerPtr(_iv, func(_ix0 jsonDateTime) time.Time { return time.Time(_ix0) })
+	}
+	if aux.StartsAt != nil {
+		_iv := *aux.StartsAt
+		e.StartsAt = time.Time(_iv)
 	}
 	{
 		if _rawErr != nil {

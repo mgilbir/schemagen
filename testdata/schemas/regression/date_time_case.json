@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DateTimeCase",
+  "description": "Every position a date-time reaches a time.Time through encoding/json rather than through a method of its own, on a draft whose dialect asserts format by default",
+  "type": "object",
+  "properties": {
+    "req": { "type": "string", "format": "date-time" },
+    "opt": { "type": "string", "format": "date-time" },
+    "list": { "type": "array", "items": { "type": "string", "format": "date-time" } },
+    "grid": { "type": "array", "items": { "type": "array", "items": { "type": "string", "format": "date-time" } } },
+    "mp": { "type": "object", "additionalProperties": { "type": "string", "format": "date-time" } },
+    "nest": { "type": "object", "properties": { "inner": { "type": "string", "format": "date-time" } } },
+    "bag": {
+      "type": "object",
+      "properties": { "note": { "type": "string" } },
+      "additionalProperties": { "type": "string", "format": "date-time" }
+    },
+    "aliased": { "$ref": "#/definitions/Stamp" },
+    "chained": { "$ref": "#/definitions/StampAlias" },
+    "namedlist": { "$ref": "#/definitions/Stamps" },
+    "tuple": { "type": "array", "items": [{ "type": "string", "format": "date-time" }, { "type": "string" }] },
+    "un": { "oneOf": [{ "type": "string", "format": "date-time" }, { "type": "integer" }] },
+    "plain": { "type": "string" }
+  },
+  "required": ["req"],
+  "definitions": {
+    "Stamp": { "type": "string", "format": "date-time" },
+    "StampAlias": { "$ref": "#/definitions/Stamp" },
+    "Stamps": { "type": "array", "items": { "type": "string", "format": "date-time" } }
+  }
+}

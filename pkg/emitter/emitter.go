@@ -155,7 +155,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		imports = append(imports, generator.Import{Path: path, Alias: alias})
 	}
 	add := func(cond bool, path string) { addAliased(cond, path, "") }
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.NullCheck || helpers.ExactProperties, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NullCheck || helpers.Format, "fmt")
 	// The exact-number comparisons read the literal as decimal digits: strconv
 	// for the exponent, math/big for the one question -- does this divide that
@@ -171,6 +171,10 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// makes it exact where a parse into float64 could not be.
 	add(helpers.Integer, "strconv")
 	add(helpers.Integer, "strings")
+	// jsonDateTime is a defined type over time.Time and hands every value it is
+	// given to that type's own decoder; the respelling it retries through needs
+	// nothing else.
+	add(helpers.DateTime, "time")
 	add(helpers.Annotations, "reflect")
 	add(helpers.Annotations, "strconv")
 	// The regexp engine only comes in when a compiled schema actually names a

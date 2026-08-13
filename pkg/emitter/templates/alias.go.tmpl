@@ -60,6 +60,12 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	// destination type, and json.Number is a string underneath, so
 	// []json.Number would take ["1.5"] for a list of numbers.
 	{{- end}}
+	{{- if .LeafDecode.DateTimes}}
+	// A named container of date-times. Decoding through the shadow is what lets
+	// the lower case spelling RFC 3339 permits reach a time.Time -- encoding/json
+	// decides from the destination type, and []time.Time refuses
+	// ["2020-01-02t03:04:05z"] outright.
+	{{- end}}
 	var _iv {{goType .LeafDecode.ShadowType}}
 	if _err := json.Unmarshal(data, &_iv); _err != nil {
 		return _err

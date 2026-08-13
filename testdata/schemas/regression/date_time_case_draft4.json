@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "DateTimeCaseDraft4",
+  "description": "A draft whose integers must be written as integer tokens and whose format is asserted by default: the two shadowed leaves are decided separately",
+  "type": "object",
+  "properties": {
+    "req": { "type": "string", "format": "date-time" },
+    "list": { "type": "array", "items": { "type": "string", "format": "date-time" } },
+    "n": { "type": "integer" }
+  },
+  "required": ["req"]
+}
