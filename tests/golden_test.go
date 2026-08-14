@@ -210,6 +210,12 @@ func allGoldenTests() []goldenTestCase {
 		// one reading without the other shows up as a diff in the same
 		// function. TestAnnotationReachThroughApplicators names the cells.
 		{"regression/annotation_reach_positions", "testdata/schemas/regression/annotation_reach_positions.json", "testdata/golden/regression/annotation_reach_positions.go"},
+		// The two prose keywords over that same reach. The golden is what pins
+		// the paragraph layout: a title and a description are two paragraphs and
+		// a description alone is one, and gofmt normalises a comment block
+		// enough that a check reading for substrings passes either way.
+		// TestProseReachesEveryPositionAndStopsWhereTheReachDoes names the cells.
+		{"regression/doc_prose_positions", "testdata/schemas/regression/doc_prose_positions.json", "testdata/golden/regression/doc_prose_positions.go"},
 		// Pins which oneOf groups keep the sealed-interface union and which
 		// leave it for the evaluator: a branch selection would count wrongly --
 		// a `false`, a `const`, an enum beside a `type` -- takes the group away,
@@ -427,6 +433,33 @@ func generateFromSchemaWithConfig(t *testing.T, schemaPath string, cfg generator
 	}
 
 	return src
+}
+
+// generateWithRootName runs the pipeline with the root type name the CLI's
+// --root-name flag supplies, which overrides the title.
+func generateWithRootName(t *testing.T, schemaPath, rootName string) string {
+	t.Helper()
+
+	s, err := schema.LoadFromFile(filepath.Join("..", schemaPath))
+	if err != nil {
+		t.Fatalf("loading schema %s: %v", schemaPath, err)
+	}
+	s.NormalizeForDraft(schema.DraftUnknown)
+
+	gen := generator.New(generator.Config{PackageName: "testpkg", OmitEmpty: true})
+	ir, err := gen.Generate(s, generator.WithRootTypeName(rootName))
+	if err != nil {
+		t.Fatalf("generating IR for %s: %v", schemaPath, err)
+	}
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatalf("creating emitter: %v", err)
+	}
+	src, err := em.Emit(ir)
+	if err != nil {
+		t.Fatalf("emitting code for %s: %v", schemaPath, err)
+	}
+	return string(src)
 }
 
 // TestGoldenBigInt tests golden output with --big-int enabled.

@@ -1383,7 +1383,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !ok {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1)}
+	return &AnnotationSchemaDef{Name: name, Doc: g.docFor(name, s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1)}
 }
 
 // dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
@@ -1554,10 +1554,9 @@ func (g *Generator) acceptsEveryValue(s *schema.Schema, depth int, onPath map[*s
 func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef {
 	dropped := unenforcedKeywords(s)
 	def := &AliasDef{
-		Name:        name,
-		Underlying:  &PrimitiveType{Name: "any"},
-		Description: s.Description,
-		Annotations: annotationsOf(s),
+		Name:       name,
+		Underlying: &PrimitiveType{Name: "any"},
+		Doc:        g.docFor(name, s),
 	}
 	if len(dropped) > 0 {
 		def.Unenforced = strings.Join(dropped, ", ")
@@ -1724,8 +1723,7 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 	}
 	return &AnnotationSchemaDef{
 		Name:         name,
-		Description:  s.Description,
-		Annotations:  annotationsOf(s),
+		Doc:          g.docFor(name, s),
 		NodeLiteral:  lit,
 		Nodes:        nodes,
 		NeedsPattern: b.usesPattern,

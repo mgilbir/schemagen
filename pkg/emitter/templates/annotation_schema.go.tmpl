@@ -1,8 +1,6 @@
 {{define "annotation_schema"}}
 {{- $recv := receiverName .Name -}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
+{{- template "type_doc" .}}
 // {{.Name}} accepts any JSON value. Its schema is held as data and interpreted
 // at validation time, either because an unevaluatedItems constraint depends on
 // which items the applicators evaluate for the value in hand, or because the

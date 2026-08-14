@@ -174,6 +174,12 @@ type Generator struct {
 	// both ways) must keep its check there.
 	mergedPropertyOrigins map[*schema.Schema]map[string]*mergedPropertyOrigin
 
+	// mergeDocSources maps a synthesized merge target back to the schema node the
+	// merge was built from, so that the type's doc comment is read off the schema
+	// the author wrote rather than off the node this generator invented. See
+	// Generator.docSchemaFor.
+	mergeDocSources map[*schema.Schema]*schema.Schema
+
 	// patternMintedTypes maps a name minted for a patternProperties bucket to the
 	// node it was minted from. Only names invented here are listed -- a bucket
 	// whose sub-schema is a $ref uses the target's own name, which this mechanism
@@ -272,6 +278,7 @@ func New(cfg Config) *Generator {
 
 		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
 		mergedPropertyOrigins:       make(map[*schema.Schema]map[string]*mergedPropertyOrigin),
+		mergeDocSources:             make(map[*schema.Schema]*schema.Schema),
 	}
 }
 
@@ -2517,10 +2524,9 @@ func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) Ty
 		return nil
 	}
 	return &AliasDef{
-		Name:        name,
-		Underlying:  &PrimitiveType{Name: "any"},
-		Description: s.Description,
-		Annotations: annotationsOf(s),
+		Name:       name,
+		Underlying: &PrimitiveType{Name: "any"},
+		Doc:        g.docFor(name, s),
 	}
 }
 
@@ -2947,8 +2953,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		})
 		return nil
@@ -2986,8 +2991,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		})
 		return nil
@@ -3058,8 +3062,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		})
 		return nil
@@ -3074,8 +3077,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Doc:         g.docFor(name, s),
 				IsForbidden: true,
 			})
 			return nil
@@ -3085,8 +3087,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Doc:         g.docFor(name, s),
 				IsForbidden: true,
 			})
 			return nil
@@ -3141,10 +3142,9 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-				Name:        name,
-				Underlying:  goType,
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Name:       name,
+				Underlying: goType,
+				Doc:        g.docFor(name, s),
 			})
 			return nil
 		}
@@ -3254,10 +3254,9 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-				Name:        name,
-				Underlying:  &NamedType{Name: refName},
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Name:       name,
+				Underlying: &NamedType{Name: refName},
+				Doc:        g.docFor(name, s),
 			})
 			return nil
 		}
@@ -3285,10 +3284,9 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			}
 			g.generated[name] = true
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
-				Name:        name,
-				Underlying:  &NamedType{Name: refName},
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Name:       name,
+				Underlying: &NamedType{Name: refName},
+				Doc:        g.docFor(name, s),
 			})
 			return nil
 		}
@@ -3330,8 +3328,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		branches, allowed := g.typeUnionBranches(s, name)
 		g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 			Name:         name,
-			Description:  s.Description,
-			Annotations:  annotationsOf(s),
+			Doc:          g.docFor(name, s),
 			AllowedTypes: allowed,
 			TypeBranches: branches,
 		})
@@ -3364,8 +3361,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// accepts any JSON value but validates only matching types.
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:             name,
-				Description:      s.Description,
-				Annotations:      annotationsOf(s),
+				Doc:              g.docFor(name, s),
 				StrictReadWrite:  g.config.StrictReadWrite,
 				InferredGoType:   goType,
 				InferredJSONType: primaryType,
@@ -3378,8 +3374,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// BigInt support: generate wrapper struct with int64 + *big.Int.
 			g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
 				Name:           name,
-				Description:    s.Description,
-				Annotations:    annotationsOf(s),
+				Doc:            g.docFor(name, s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -3391,8 +3386,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
 				Underlying:     goType,
-				Description:    s.Description,
-				Annotations:    annotationsOf(s),
+				Doc:            g.docFor(name, s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -3458,8 +3452,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:                    name,
-				Description:             s.Description,
-				Annotations:             annotationsOf(s),
+				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
@@ -3504,8 +3497,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:             name,
 				Underlying:       goType,
-				Description:      s.Description,
-				Annotations:      annotationsOf(s),
+				Doc:              g.docFor(name, s),
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
@@ -3680,8 +3672,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	}
 	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
 		Name:                 name,
-		Description:          s.Description,
-		Annotations:          annotationsOf(s),
+		Doc:                  g.docFor(name, s),
 		AdditionalProperties: additionalProps,
 		DependentSchemas:     depSchemas,
 		DependentRequired:    depRequired,
@@ -4047,8 +4038,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// contributed is not asserted of every document (#174, #175)
 				// and one an allOf on the property states is not dropped
 				// (#187).
-				oneOfDef.Description = g.propertyDescription(s, propName, propSchema)
-				oneOfDef.Annotations = g.propertyAnnotations(s, propName, propSchema)
+				oneOfDef.Doc = g.propertyDoc(s, propName, propSchema)
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
 				needsUnmarshal = true
@@ -4233,8 +4223,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			OmitEmpty:       omitEmpty,
 			OmitZero:        omitZero,
 			Required:        required,
-			Description:     g.propertyDescription(s, propName, propSchema),
-			Annotations:     g.propertyAnnotations(s, propName, propSchema),
+			Doc:             g.propertyDoc(s, propName, propSchema),
 			ManualJSON:      manualJSON,
 			ManualOmit:      manualOmit,
 			ZeroJSON:        zeroJSON,
@@ -5078,8 +5067,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 
 	structDef := &StructDef{
 		Name:                   name,
-		Description:            s.Description,
-		Annotations:            annotationsOf(s),
+		Doc:                    g.docFor(name, s),
 		ReadOnlyKeys:           readOnlyKeys,
 		WriteOnlyKeys:          writeOnlyKeys,
 		AccessRules:            accessRules,
@@ -5150,8 +5138,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		})
 		return nil
@@ -5159,10 +5146,14 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 
 	// Merge all properties and required fields from allOf sub-schemas.
 	merged := &schema.Schema{
-		Title:       s.Title,
-		Description: s.Description,
-		Properties:  make(map[string]*schema.Schema),
+		Properties: make(map[string]*schema.Schema),
 	}
+	// The comment above the type this merge produces is read off s, not off the
+	// node being built here: the merge copies the two prose keywords across by
+	// hand and nothing else, so what an allOf branch says -- and what s itself
+	// says through the annotation vocabulary -- has no other way back. See
+	// Generator.docSchemaFor.
+	g.mergeDocSources[merged] = s
 
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
@@ -5345,8 +5336,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		})
 		return nil
@@ -5453,8 +5443,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				g.generated[name] = true
 				g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 					Name:         name,
-					Description:  s.Description,
-					Annotations:  annotationsOf(s),
+					Doc:          g.docFor(name, s),
 					AllowedTypes: merged.Type,
 					TypeBranches: g.extractTypeSchemaBranches(merged.TypeSchemas, name),
 				})
@@ -5607,8 +5596,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:             name,
 				Underlying:       goType,
-				Description:      s.Description,
-				Annotations:      annotationsOf(s),
+				Doc:              g.docFor(name, s),
 				Validations:      rules,
 				AnyOfVariants:    anyOfVariants,
 				OneOfVariants:    oneOfVariants,
@@ -5697,8 +5685,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			}
 			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 				Name:                    name,
-				Description:             s.Description,
-				Annotations:             annotationsOf(s),
+				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
@@ -5744,8 +5731,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				// string -- without making the Go type refuse everything else.
 				g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
 					Name:             name,
-					Description:      s.Description,
-					Annotations:      annotationsOf(s),
+					Doc:              g.docFor(name, s),
 					StrictReadWrite:  g.config.StrictReadWrite,
 					InferredGoType:   goType,
 					InferredJSONType: primaryType,
@@ -5764,8 +5750,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				// exists to provide was gone with no diagnostic.
 				g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
 					Name:           name,
-					Description:    s.Description,
-					Annotations:    annotationsOf(s),
+					Doc:            g.docFor(name, s),
 					Validations:    rules,
 					AnyOfVariants:  anyOfVariants,
 					OneOfVariants:  oneOfVariants,
@@ -5778,8 +5763,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
 				Name:           name,
 				Underlying:     goType,
-				Description:    s.Description,
-				Annotations:    annotationsOf(s),
+				Doc:            g.docFor(name, s),
 				Validations:    rules,
 				AnyOfVariants:  anyOfVariants,
 				OneOfVariants:  oneOfVariants,
@@ -6248,49 +6232,25 @@ func (g *Generator) conjoinAllOfProperty(existing, next *schema.Schema) *schema.
 	// TestConjoinedPropertyAnswersForTheContributionItStandsIn is what holds
 	// that, since no document in the corpus distinguishes the two dialects at
 	// this position.
-	conjoined := &schema.Schema{
+	// Nothing is lifted onto the conjunction from the contributions it stands
+	// for. The node's own allOf *is* both of them, and every reading of an
+	// annotation walks that: the doc comment through propertyDocSources and
+	// --strict-read-write through readWriteAtLocation, both over
+	// unconditionalReachAt, which follows an allOf by definition. Until issue
+	// #200 the description and the two read/write markers were copied up here by
+	// hand, because a named type's comment was read off the node in hand and
+	// nothing below it -- so a property documented beside the allOf lost its
+	// comment the moment a branch mentioned it. Now that all six annotation
+	// keywords are read over one reach, the copy is a second mechanism answering
+	// the same question, and neutering it changed no byte of any of the 596
+	// documents in the corpus that generate. A hand-copy is also the shape of
+	// the other half of #200: it took the description and left the deprecation
+	// behind, which is what a copy does and what a fold cannot.
+	return &schema.Schema{
 		AllOf:        []*schema.Schema{existing, next},
 		Schema:       existing.Schema,
 		BaseURI:      existing.BaseURI,
 		DocumentRoot: existing.DocumentRoot,
-	}
-	carryPropertyAnnotations(conjoined, existing)
-	carryPropertyAnnotations(conjoined, next)
-	return conjoined
-}
-
-// carryPropertyAnnotations lifts the annotations of one contribution onto the
-// node standing for the conjunction of several.
-//
-// They have to be lifted rather than left where they are: the description and
-// the two read/write markers are read off the property's own schema node, and
-// the synthesized conjunction is that node now -- so without this a property
-// documented beside the allOf lost its comment, and one marked readOnly there
-// stopped being marked, the moment a branch mentioned it. Nothing here changes a
-// verdict; every keyword below is an annotation in every draft. The first
-// contribution to state one wins, as mergeConstraints does for the keywords with
-// a single slot.
-//
-// `title`, `default` and `examples` are deliberately not among them. They reach
-// the emitted source by another route -- the field's default is read from the
-// contributing node and the title is a naming input rather than documentation --
-// and planting each of them away changed no byte of any fixture's output, which
-// is this repository's test for whether a line belongs here at all.
-func carryPropertyAnnotations(dst, src *schema.Schema) {
-	if dst == nil || src == nil {
-		return
-	}
-	if dst.Description == "" {
-		dst.Description = src.Description
-	}
-	if dst.Deprecated == nil {
-		dst.Deprecated = src.Deprecated
-	}
-	if dst.ReadOnly == nil {
-		dst.ReadOnly = src.ReadOnly
-	}
-	if dst.WriteOnly == nil {
-		dst.WriteOnly = src.WriteOnly
 	}
 }
 
@@ -7639,10 +7599,14 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	}
 
 	merged := &schema.Schema{
-		Title:       s.Title,
-		Description: s.Description,
-		Properties:  make(map[string]*schema.Schema),
+		Properties: make(map[string]*schema.Schema),
 	}
+	// The comment above the type this merge produces is read off s, not off the
+	// node being built here: the merge copies the two prose keywords across by
+	// hand and nothing else, so what an allOf branch says -- and what s itself
+	// says through the annotation vocabulary -- has no other way back. See
+	// Generator.docSchemaFor.
+	g.mergeDocSources[merged] = s
 
 	// Copy any properties from the parent schema itself.
 	for k, v := range s.Properties {
@@ -8768,8 +8732,7 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		if len(kept) == 0 {
 			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
 				Name:        name,
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Doc:         g.docFor(name, s),
 				IsForbidden: true,
 			})
 			return nil
@@ -8812,11 +8775,10 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	}
 
 	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
-		Name:        name,
-		BaseType:    baseType,
-		Values:      values,
-		Description: s.Description,
-		Annotations: annotationsOf(s),
+		Name:     name,
+		BaseType: baseType,
+		Values:   values,
+		Doc:      g.docFor(name, s),
 	})
 	return nil
 }
@@ -8910,12 +8872,11 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 	}
 
 	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
-		Name:        name,
-		BaseType:    &PrimitiveType{Name: "json.RawMessage"},
-		Values:      values,
-		Description: s.Description,
-		Annotations: annotationsOf(s),
-		IsRaw:       true,
+		Name:     name,
+		BaseType: &PrimitiveType{Name: "json.RawMessage"},
+		Values:   values,
+		Doc:      g.docFor(name, s),
+		IsRaw:    true,
 	})
 	return nil
 }
@@ -10685,39 +10646,155 @@ func (g *Generator) propertyDocSources(owner *schema.Schema, name string, propSc
 	return out
 }
 
-// propertyAnnotations reads the annotation vocabulary for a struct field, over
-// everything that unconditionally describes the field's location.
+// propertyDoc is the whole comment block above a struct field: the two prose
+// keywords and the annotation vocabulary, read over everything that
+// unconditionally describes the field's location.
 //
-// All four keywords answer the same reach question, and they answer it here
-// together with Description (propertyDescription, over the same sources) so that
-// the whole comment block speaks for one set of schemas. Issue #174 narrowed
-// readOnly and writeOnly alone, on the ground that only those two change what
-// the code accepts; but "Deprecated:" is read by gopls and staticcheck as an
-// assertion about this field, so a deprecation only a `then` branch states is a
-// false claim with a tool-visible effect, and an "examples" entry from a branch
-// the document does not match is an example of something else. The narrowing is
-// therefore total.
-func (g *Generator) propertyAnnotations(owner *schema.Schema, name string, propSchema *schema.Schema) Annotations {
-	var a Annotations
+// All of it answers the same reach question, and it is answered once here so
+// that the block speaks for one set of schemas. Issue #174 narrowed readOnly and
+// writeOnly alone, on the ground that only those two change what the code
+// accepts; but "Deprecated:" is read by gopls and staticcheck as an assertion
+// about this field, so a deprecation only a `then` branch states is a false claim
+// with a tool-visible effect, and an "examples" entry from a branch the document
+// does not match is an example of something else. Prose is the same again: a
+// title or a description that answers for a different set of documents than the
+// paragraph under it documents two things at once. The narrowing is therefore
+// total, and a title is narrowed with the rest (issue #188).
+//
+// The nearest statement wins for each of the two prose keywords, and they are
+// taken independently: a property whose own schema states a title and whose
+// allOf branch states a description gets both, which is the reading that loses
+// nothing. Nothing here suppresses a title that also named a type, because
+// nothing here names one -- a field is named after its JSON property. See
+// Generator.docFor for the position where the two do compete.
+func (g *Generator) propertyDoc(owner *schema.Schema, name string, propSchema *schema.Schema) Doc {
+	var d Doc
 	for _, src := range g.propertyDocSources(owner, name, propSchema) {
-		b := annotationsOf(src)
-		a.Deprecated = a.Deprecated || b.Deprecated
-		a.ReadOnly = a.ReadOnly || b.ReadOnly
-		a.WriteOnly = a.WriteOnly || b.WriteOnly
-		a.Examples = append(a.Examples, b.Examples...)
+		d.readFrom(src)
 	}
-	return a
+	return d
 }
 
-// propertyDescription is the prose above a struct field: the nearest
-// unconditional one, the property's own if it states one.
-func (g *Generator) propertyDescription(owner *schema.Schema, name string, propSchema *schema.Schema) string {
-	for _, src := range g.propertyDocSources(owner, name, propSchema) {
-		if src.Description != "" {
-			return src.Description
-		}
+// docFor is the whole comment block above a named type: the two prose keywords
+// and the annotation vocabulary of every schema that describes the type's
+// position on every valid document.
+//
+// It is the one reading all forty-odd construction sites go through, and that is
+// the point of it. Before issue #200 each site wrote `s.Description` and
+// `annotationsOf(s)` -- the node in hand and nothing else -- so a $defs entry
+// written {"allOf":[{"description":"prose"}]} declared a Go type with no comment
+// at all and lost its prose entirely, there being no field above it to carry it.
+// The reach is unconditionalReachAt's, for the reasons stated there, and it is
+// the same reach the field above such a type already read (issue #187), so the
+// two now agree instead of one of them answering from one node.
+//
+// The $ref half is not followed, on the rule unconditionalReachAt states: a
+// reference survives into the generated source as a type of its own, carrying
+// the referenced schema's comment (issue #171), so following it here would
+// document the same schema twice.
+//
+// name is what the declaration ended up being called, and it is asked for one
+// question: whether "title" is already spelled in the identifier. See
+// titleNamedTheDeclaration.
+func (g *Generator) docFor(name string, s *schema.Schema) Doc {
+	src := g.docSchemaFor(s)
+	var d Doc
+	for _, node := range g.unconditionalReachAt(src, false) {
+		d.readFrom(node)
 	}
-	return ""
+	if g.titleNamedTheDeclaration(name, d.Title) {
+		d.Title = ""
+	}
+	return d
+}
+
+// titleNamedTheDeclaration reports whether "title" is already spelled in the
+// identifier this declaration got, in which case it is not written above it as
+// well.
+//
+// The keyword names a type at two positions -- the document root
+// (DefaultRootTypeName) and a oneOf variant, whose derived name would otherwise
+// be the positional ParentFieldOptionN -- and at both of them a summary line
+// repeating the identifier is noise rather than documentation:
+// {"title":"Person","description":"A person."} would emit `// Person - Person`
+// above `type Person`, pushing the sentence that says something into second
+// place. It is also the overwhelmingly common shape: 242 of the 651 schemas in
+// this repository's corpus state a title and 5 of them state one anywhere but
+// the root, so without this the change would have been 242 files of noise and
+// five of documentation.
+//
+// The comparison is through SchemaNameToGoName rather than on the raw string,
+// because that is the function that put the title into the identifier: "Root
+// Title" is the type RootTitle, and a literal comparison would miss it.
+//
+// A second question is asked because the root's value does not always get the
+// root type name itself. A root that is not an object is declared as a wrapper
+// and its shapes as types beside it, each named rootTypeName with a suffix:
+// {"title":"NullableFormatRoot","type":["string","null"],"format":"ipv4"}
+// declares NullableFormatRoot and NullableFormatRootString, and the title is
+// spelled just as plainly in the second. So a name that opens with the root type
+// name counts as spelling whatever named that -- but only when the title is what
+// named it, which is the conjunction below and not either half alone. A general
+// "one name contains the other" test would take the prose off a $defs entry
+// "Address" titled "Address details", which is documentation and not a name.
+func (g *Generator) titleNamedTheDeclaration(name string, title string) bool {
+	if title == "" || name == "" {
+		return false
+	}
+	goName := SchemaNameToGoName(title)
+	if goName == name {
+		return true
+	}
+	return g.rootTypeName != "" && goName == g.rootTypeName && strings.HasPrefix(name, g.rootTypeName)
+}
+
+// readFrom folds one more schema into a doc comment being assembled.
+//
+// The two prose keywords take the first statement and the four annotation
+// keywords take every one, which is the difference between a slot and a set. A
+// comment has one summary line and one paragraph under it, so where several
+// unconditional schemas state a description the nearest wins -- the house rule
+// for a merge, and the order the reaches are walked in is the written one. The
+// annotation vocabulary has no such limit: two schemas that both apply and both
+// mark the location deprecated say one thing, and their examples are both
+// examples of it.
+func (d *Doc) readFrom(s *schema.Schema) {
+	if s == nil {
+		return
+	}
+	if d.Title == "" {
+		d.Title = s.Title
+	}
+	if d.Description == "" {
+		d.Description = s.Description
+	}
+	a := annotationsOf(s)
+	d.Annotations.Deprecated = d.Annotations.Deprecated || a.Deprecated
+	d.Annotations.ReadOnly = d.Annotations.ReadOnly || a.ReadOnly
+	d.Annotations.WriteOnly = d.Annotations.WriteOnly || a.WriteOnly
+	d.Annotations.Examples = append(d.Annotations.Examples, a.Examples...)
+}
+
+// docSchemaFor answers which schema node a named type's comment is read from,
+// which is not always the node the type was built from.
+//
+// An allOf or an anyOf is generated by merging its branches into a synthesized
+// node, and that node is what every construction site below the merge is handed.
+// It carries the properties the merge produced and nothing the merge did not
+// need: no allOf to walk, and none of the annotation vocabulary -- so
+// {"deprecated":true,"description":"...","allOf":[...]} kept the prose the merge
+// copied across by hand and dropped the deprecation beside it, which is the
+// #173 invariant broken by a node rather than by a construction site.
+//
+// So the merge records what it was built from and the reading starts there. Same
+// mechanism, and same reason, as mergedPropertyOrigins: what a merge did is not
+// recoverable from what it produced, and a second walk that tried to reconstruct
+// it would be free to drift from the first.
+func (g *Generator) docSchemaFor(s *schema.Schema) *schema.Schema {
+	if orig, ok := g.mergeDocSources[s]; ok {
+		return orig
+	}
+	return s
 }
 
 // propertyDefault is the "default" SetDefaults writes for a property: the
@@ -16849,8 +16926,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		(g.acceptsEveryInstance(s.Not) || s.Not.IsTrueSchema()) {
 		return &NotSchemaDef{
 			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
+			Doc:         g.docFor(name, s),
 			IsForbidden: true,
 		}
 	}
@@ -16886,10 +16962,9 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	// not: {type: X} or not: {type: [X, Y]} → reject values of those types.
 	if len(not.Type) > 0 && g.isTypeOnlyNegationOperand(not) {
 		return &NotSchemaDef{
-			Name:        name,
-			Description: s.Description,
-			Annotations: annotationsOf(s),
-			NotTypes:    not.Type,
+			Name:     name,
+			Doc:      g.docFor(name, s),
+			NotTypes: not.Type,
 		}
 	}
 
@@ -16900,8 +16975,7 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		if len(branches) == len(not.AnyOf) {
 			return &NotSchemaDef{
 				Name:        name,
-				Description: s.Description,
-				Annotations: annotationsOf(s),
+				Doc:         g.docFor(name, s),
 				NotBranches: branches,
 			}
 		}
@@ -17101,8 +17175,7 @@ func (g *Generator) extractTypeOnlySchemaDef(name string, s *schema.Schema) *Typ
 	branches, allowed := g.typeUnionBranches(s, name)
 	return &TypeOnlySchemaDef{
 		Name:         name,
-		Description:  s.Description,
-		Annotations:  annotationsOf(s),
+		Doc:          g.docFor(name, s),
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	}
@@ -17210,8 +17283,7 @@ func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType
 	g.generated[contextName] = true
 	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 		Name:         contextName,
-		Description:  s.Description,
-		Annotations:  annotationsOf(s),
+		Doc:          g.docFor(contextName, s),
 		TypeBranches: branches,
 	})
 	return &NamedType{Name: contextName}, true
@@ -17268,8 +17340,7 @@ func (g *Generator) typeUnionWrapper(s *schema.Schema, contextName string) (GoTy
 	g.generated[contextName] = true
 	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
 		Name:         contextName,
-		Description:  s.Description,
-		Annotations:  annotationsOf(s),
+		Doc:          g.docFor(contextName, s),
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	})
@@ -17445,8 +17516,7 @@ func (g *Generator) stringAnnotationOnlyDef(name string, s *schema.Schema) *Infe
 	}
 	return &InferredAliasDef{
 		Name:             name,
-		Description:      s.Description,
-		Annotations:      annotationsOf(s),
+		Doc:              g.docFor(name, s),
 		StrictReadWrite:  g.config.StrictReadWrite,
 		InferredGoType:   &PrimitiveType{Name: "string"},
 		InferredJSONType: "string",

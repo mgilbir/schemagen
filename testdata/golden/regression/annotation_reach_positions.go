@@ -630,6 +630,15 @@ func (s SelfReferential) Validate() error {
 
 type UntypedDefault any
 
+// AnnotationReachPositionsAnnViaAllOf - Prose written on an allOf branch of the property.
+//
+// Read-only: the schema says "readOnly", so the owning authority manages
+// this value and an application is not expected to send it.
+// Examples from the schema:
+//
+//	"from-the-branch"
+//
+// Deprecated: the schema marks this deprecated.
 type AnnotationReachPositionsAnnViaAllOf string
 
 func (a *AnnotationReachPositionsAnnViaAllOf) UnmarshalJSON(data []byte) error {
@@ -645,6 +654,12 @@ func (a AnnotationReachPositionsAnnViaAllOf) Validate() error {
 	return nil
 }
 
+// AnnotationReachPositionsAnnViaNestedAllOf - Prose two allOf levels below the property.
+//
+// Write-only: the schema says "writeOnly", so the value is not expected
+// to be present when the instance is retrieved.
+//
+// Deprecated: the schema marks this deprecated.
 type AnnotationReachPositionsAnnViaNestedAllOf string
 
 func (a *AnnotationReachPositionsAnnViaNestedAllOf) UnmarshalJSON(data []byte) error {

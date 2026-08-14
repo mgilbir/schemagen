@@ -92,9 +92,8 @@ type TypeDef interface {
 
 // StructDef represents a Go struct.
 type StructDef struct {
-	Name        string
-	Description string
-	Annotations Annotations
+	Name string
+	Doc
 	// ReadOnlyKeys and WriteOnlyKeys are the JSON property names the annotation
 	// vocabulary marked, and they are populated only under
 	// Config.StrictReadWrite. Empty under the default configuration, so the
@@ -1316,22 +1315,71 @@ type ValidationRule struct {
 func (d *StructDef) TypeName() string { return d.Name }
 func (d *StructDef) typeDef()         {}
 
+// Doc is everything a schema says *about* a generated declaration rather than
+// about the documents it judges: the two prose keywords and the annotation
+// vocabulary rendered beside them.
+//
+// It is one embedded field rather than three named ones because the three have
+// to be read off the same schemas or the comment block documents more than one
+// thing. #173 stated that as an invariant on Annotations -- "a kind that carries
+// Description carries this beside it, or neither" -- and a stated invariant held
+// at 40 construction sites is one an edit can miss: {"deprecated":true,
+// "description":"...","allOf":[...]} dropped its deprecation and kept its prose,
+// because the merge target the struct was built from copied one keyword and not
+// the other. Embedding makes the invariant structural: there is no literal that
+// can set one of the three and leave the others behind, and Generator.docFor is
+// the single place that decides what all three are.
+//
+// Every kind of named type carries it, and so do the two members of a struct
+// that document a property of their own (FieldDef and OneOfDef). A new kind
+// wants this or nothing; testdata/schemas/regression/annotation_positions.json
+// and doc_prose_positions.json are the matrices that say so per kind.
+type Doc struct {
+	// Title is "title", where it did not already name this declaration.
+	//
+	// The keyword reaches Go by two routes and they do not compete. It *names* a
+	// type at the two positions whose name would otherwise be a placeholder --
+	// the document root, which has no enclosing location to derive one from
+	// (DefaultRootTypeName), and a oneOf variant, whose derived name is the
+	// positional ParentFieldOptionN. Everywhere else the location already gives a
+	// name that means something -- the $defs key, the property, the element --
+	// and a title would displace it with prose, renaming the package's exported
+	// API on an edit to a comment.
+	//
+	// So at those two positions it is a name and this is left empty (see
+	// Generator.docFor), and everywhere else it is the summary line of the doc
+	// comment. Before #188 it was neither at any other position: a schema whose
+	// only prose was a title documented nothing at all.
+	Title string
+	// Description is "description": the paragraph below the summary line, or the
+	// whole comment where there is no title.
+	Description string
+	// Annotations is the vocabulary rendered below the prose. See its own type.
+	Annotations Annotations
+}
+
+// HasProse reports whether a comment line has already been written above the
+// point the annotation vocabulary starts, which is what decides whether that
+// vocabulary needs a blank comment line in front of it. See mkAnnotationCtxFunc.
+func (d Doc) HasProse() bool {
+	return d.Title != "" || d.Description != ""
+}
+
 // Annotations carries the annotation-vocabulary keywords that describe a schema
 // position without constraining it: "deprecated", "readOnly", "writeOnly" and
 // "examples".
 //
-// They are held apart from Description because they are not prose. Description
-// is whatever the schema author wrote and is copied through; these four have a
-// defined meaning that the generator renders, and one of them -- deprecated --
-// has an exact Go spelling that gopls, staticcheck and `go doc` all read.
+// They are held apart from the two prose keywords because they are not prose.
+// A title and a description are whatever the schema author wrote and are copied
+// through; these four have a defined meaning that the generator renders, and one
+// of them -- deprecated -- has an exact Go spelling that gopls, staticcheck and
+// `go doc` all read.
 //
-// Every kind of named type carries this field, and every construction site that
-// sets Description sets this beside it from the same schema. That is the whole
-// of issue #171: Description already reached all nine kinds and this reached the
-// two struct ones, so a $defs entry the schema marked deprecated produced a Go
-// type nothing warned about. A new kind of TypeDef wants both fields or neither;
-// testdata/schemas/regression/annotation_positions.json is the matrix that says
-// so per kind.
+// They travel with the prose all the same, which is what Doc is: issue #171 was
+// this field reaching the two struct kinds while Description reached all nine,
+// so a $defs entry the schema marked deprecated produced a Go type nothing
+// warned about. testdata/schemas/regression/annotation_positions.json is the
+// matrix that says so per kind.
 //
 // Nothing here may reach a validation verdict. In 2019-09 and 2020-12 all four
 // belong to the meta-data vocabulary and are annotations by definition, and in
@@ -1401,14 +1449,13 @@ func annotationsOf(s *schema.Schema) Annotations {
 
 // FieldDef represents a struct field.
 type FieldDef struct {
-	Name        string // Go field name (PascalCase)
-	JSONName    string // JSON property name (original)
-	Type        GoType // resolved Go type
-	OmitEmpty   bool
-	OmitZero    bool // use ",omitzero" instead of ",omitempty" (optional slice/map fields, to preserve a present-but-empty collection while still omitting an absent one)
-	Required    bool
-	Description string
-	// Annotations and Description are read over the same schemas, so that the
+	Name      string // Go field name (PascalCase)
+	JSONName  string // JSON property name (original)
+	Type      GoType // resolved Go type
+	OmitEmpty bool
+	OmitZero  bool // use ",omitzero" instead of ",omitempty" (optional slice/map fields, to preserve a present-but-empty collection while still omitting an absent one)
+	Required  bool
+	// Doc is read over the same schemas for all three of its parts, so that the
 	// whole comment block speaks for one reading: everything that describes the
 	// field's location unconditionally, minus the $ref half of that reach. See
 	// Generator.propertyDocSources.
@@ -1423,9 +1470,9 @@ type FieldDef struct {
 	// Config.StrictReadWrite does look through the reference, because the check
 	// it emits has nowhere else to live, and so does DefaultLiteral. See
 	// Generator.unconditionalReachAt.
-	Annotations Annotations
-	ManualJSON  bool   // true if a `json:"..."` tag cannot carry JSONName -- see needsManualJSON, which asks encoding/json's own tag grammar rather than listing characters
-	ManualOmit  string // how the hand-written marshal detects a value it must not write: "nil", "iszero", "zerojson", or "" (write unconditionally). Only meaningful with ManualJSON.
+	Doc
+	ManualJSON bool   // true if a `json:"..."` tag cannot carry JSONName -- see needsManualJSON, which asks encoding/json's own tag grammar rather than listing characters
+	ManualOmit string // how the hand-written marshal detects a value it must not write: "nil", "iszero", "zerojson", or "" (write unconditionally). Only meaningful with ManualJSON.
 	// ZeroJSON is the JSON text this field's Go zero marshals to, set only for
 	// ManualOmit "zerojson": the field has no nil and no IsZero, so the
 	// hand-written marshal recognises the value it must not write by the bytes
@@ -1497,11 +1544,10 @@ func (f FieldDef) DefaultAsksJSONKeys() bool {
 // schema's own description and annotations are already on the StructDef, and
 // there is no property name for a key list to name.
 type OneOfDef struct {
-	InterfaceName      string // unexported: isTypeName_FieldName
-	FieldName          string // exported field name on parent struct
-	JSONName           string // JSON property name
-	Description        string
-	Annotations        Annotations
+	InterfaceName string // unexported: isTypeName_FieldName
+	FieldName     string // exported field name on parent struct
+	JSONName      string // JSON property name
+	Doc
 	Variants           []OneOfVariant
 	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
 	DiscriminatorMap   map[string]int // maps discriminator value → variant index (when DiscriminatorField is set)
@@ -1599,12 +1645,11 @@ type OneOfVariant struct {
 
 // EnumDef represents an enum type.
 type EnumDef struct {
-	Name        string
-	BaseType    GoType
-	Values      []EnumValue
-	Description string
-	Annotations Annotations
-	IsRaw       bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
+	Name     string
+	BaseType GoType
+	Values   []EnumValue
+	Doc
+	IsRaw bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
 	// IntegerToken is set on an int64-based const enum whose draft admits a
 	// number written in float notation, which the bare named type would refuse.
 	IntegerToken bool
@@ -1676,10 +1721,9 @@ type TupleItemDef struct {
 // is a pointer or interface (e.g., *T or any), Validate() cannot be
 // attached — CanHaveMethods() returns false and the template skips it.
 type AliasDef struct {
-	Name             string
-	Underlying       GoType
-	Description      string
-	Annotations      Annotations
+	Name       string
+	Underlying GoType
+	Doc
 	Validations      []ValidationRule
 	AnyOfVariants    [][]ValidationRule  // each inner slice is one anyOf variant's rules; at least one must pass
 	OneOfVariants    [][]ValidationRule  // each inner slice is one oneOf variant's rules; exactly one must pass
@@ -1987,9 +2031,8 @@ func (d *ItemValidationDef) trim(keep func(ItemLevel) bool) bool {
 // the expected type. Non-matching JSON types are silently accepted per JSON
 // Schema semantics (constraints only apply to matching types).
 type InferredAliasDef struct {
-	Name             string
-	Description      string
-	Annotations      Annotations
+	Name string
+	Doc
 	InferredGoType   GoType           // float64, string, or []any
 	InferredJSONType string           // "number", "string", "array" — for accessor naming
 	Validations      []ValidationRule // constraint rules (minimum, maxLength, etc.)
@@ -2203,9 +2246,8 @@ func (d *InferredAliasDef) GoTypeName() string {
 // in int64 are stored there; larger values use big.Int. This is only generated
 // when Config.BigIntSupport is true and the schema type is "integer".
 type BigIntAliasDef struct {
-	Name           string
-	Description    string
-	Annotations    Annotations
+	Name string
+	Doc
 	Validations    []ValidationRule
 	AnyOfVariants  [][]ValidationRule
 	OneOfVariants  [][]ValidationRule
@@ -2242,9 +2284,8 @@ func (d *BigIntAliasDef) typeDef()         {}
 // constraint. The generated type accepts any JSON value and rejects those that
 // match the not sub-schema.
 type NotSchemaDef struct {
-	Name        string
-	Description string
-	Annotations Annotations
+	Name string
+	Doc
 	IsForbidden bool              // not:{} or not:true — reject everything
 	NotTypes    []string          // not:{type:X} — reject values of these JSON types
 	NotBranches []NotSchemaBranch // not:anyOf branches from draft3 disallow arrays
@@ -2288,9 +2329,8 @@ type DynamicCheck struct {
 // silently dropped every constraint. Wrapping the raw JSON in a struct, exactly
 // as NotSchemaDef does for root-level "not", makes a Validate() method possible.
 type DynamicSchemaDef struct {
-	Name        string
-	Description string
-	Annotations Annotations
+	Name string
+	Doc
 
 	OneOf [][]DynamicCheck // exactly one branch must match
 	AnyOf [][]DynamicCheck // at least one branch must match
@@ -2316,9 +2356,8 @@ type DynamicSchemaDef struct {
 // composition, a root "not" -- which would otherwise become `type X any`, a type
 // Go forbids methods on and which therefore enforces nothing at all.
 type AnnotationSchemaDef struct {
-	Name        string
-	Description string
-	Annotations Annotations
+	Name string
+	Doc
 	NodeLiteral string // Go composite literal for the root _schemaNode
 
 	// Nodes are the schemas hoisted into variables of their own because a
@@ -2393,9 +2432,8 @@ func (d *NotSchemaDef) typeDef()         {}
 // ["array","object","null"]). It generates a wrapper around json.RawMessage that
 // validates the value's JSON type against the allowed types.
 type TypeOnlySchemaDef struct {
-	Name         string
-	Description  string
-	Annotations  Annotations
+	Name string
+	Doc
 	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
 	TypeBranches []TypeSchemaBranch // one per alternative: draft-3 schema-valued type entries, anyOf variants, or the types of a multi-type union
 }

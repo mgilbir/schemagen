@@ -1,7 +1,5 @@
 {{define "alias"}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
+{{- template "type_doc" .}}
 {{- if .Unenforced}}
 // {{.Name}} is NOT VALIDATED, and its schema does state constraints:
 //	{{.Unenforced}}
@@ -11,7 +9,7 @@
 // no Validate method and json.Unmarshal into it cannot fail -- every document
 // reaches your code unexamined, including the ones the schema forbids.
 {{- end}}
-{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (or (ne .Description "") (ne .Unenforced ""))}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (or .HasProse (ne .Unenforced ""))}}
 type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .LeafDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}

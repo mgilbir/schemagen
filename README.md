@@ -293,6 +293,37 @@ only in case is an **additional property**: it goes to the overflow map (or is
 refused, where the schema forbids extra keys), and the declared property is
 absent unless the document wrote its exact name.
 
+### Prose: `title` and `description`
+
+Both become the doc comment above the declaration, and where a schema states
+both they map onto Go's own shape for one: `title` is the summary line and
+`description` the paragraph under it.
+
+```go
+// ResourceID - The identifier a resource is addressed by
+//
+// Assigned when the resource is created and stable for its lifetime.
+type ResourceID string
+```
+
+A schema stating one of them gets that one as the whole comment. Every kind of
+named type carries it — a struct, a struct field, an alias, an enum, an inferred
+alias, a big-int alias, a type-only wrapper, a dynamic wrapper, a `not` wrapper
+and a runtime-annotation wrapper — and so does every position a type is
+synthesized for: a `$defs` entry, a property, an array element, a map value, a
+`oneOf` variant.
+
+`title` also **names** two of those, and where it does it is not written above
+them as well — the identifier already says it. The two are the positions whose
+name would otherwise be a placeholder: the document root, which has no enclosing
+location to derive a name from (`Root`), and a `oneOf` variant, whose derived
+name is the positional `ParentFieldOption0`. Everywhere else the location
+already gives a name that means something — the `$defs` key, the property, the
+element — and a title is documentation there rather than a name, so a schema
+edit to a comment never renames an exported Go type. `--root-name` takes the
+root's name back off the title, and the title is then written above the type
+like any other prose.
+
 ### Annotations: `deprecated`, `readOnly`, `writeOnly`, `examples`
 
 These four constrain nothing — from 2019-09 they are the meta-data vocabulary
@@ -411,11 +442,20 @@ reading of those decides which variant matched from its required keys and never
 applies a variant's property schemas, so nothing yet stands in for the field.
 
 The doc comment follows the same line, so the generated type does not document a
-contract it does not enforce. It stops short in one place: a `$ref` written on
-the property. That reference survives into the generated source as the field's
-own type, and the referenced type carries the comment already, so the field does
-not repeat it. An `allOf` has no such survivor — the merge flattens it away — so
-what its branches say about the property is written on the field.
+contract it does not enforce. `title` and `description` are read over that same
+reach and are narrowed with the rest: prose that answers for the documents one
+branch selects would document a different set of documents than the declaration
+under it. It stops short in one place: a `$ref` written on the property. That
+reference survives into the generated source as the field's own type, and the
+referenced type carries the comment already, so the field does not repeat it. An
+`allOf` has no such survivor — the merge flattens it away — so what its branches
+say about the property is written on the field.
+
+A **named type** reads the same reach, which is what makes the two spellings of
+one schema document alike. `{"$defs":{"D":{"allOf":[{"description":"..."}]}}}`
+declares a documented `type D`, where before it declared a bare one and lost the
+prose outright — a property at least has a field above it to carry what its
+`allOf` says, and a definition has nothing.
 
 ### `default`
 
@@ -491,8 +531,9 @@ check anything.
 ### Root Type Names
 
 By default the root type is named after the schema `title`, falling back to
-`Root`. `--root-name` overrides it, and its key may name the document three
-ways — the most specific match wins:
+`Root`; a title that named the root is not repeated in the comment above it.
+`--root-name` overrides it, and its key may name the document three ways — the
+most specific match wins:
 
 | Key | Matches |
 |-----|---------|
