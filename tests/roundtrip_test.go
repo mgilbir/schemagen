@@ -9792,6 +9792,155 @@ func TestRecursiveAnchorResolvesOutermost(t *testing.T) {
 	)
 }
 
+// TestScopeWalkPassesOverAFrameThatAnchorsNothing is the three-resource shape the
+// two-frame fixtures above cannot reach: [anchored, unanchored, anchored], with
+// the reference written in the innermost one.
+//
+// It exists for two reasons that pull the same way. It is the only shape in the
+// tree where the generator's scope holds a frame the walk must decide whether to
+// stop at rather than merely pass, and it is the only one the three
+// implementations do not answer alike -- so leaving it unpinned means the
+// behaviour can move to either reading in silence.
+//
+// The split, asked through Bowtie on the whole document, and recorded in #300. js-ajv 8.20.0 and
+// go-jsonschema (santhosh-tekuri) v6.0.2 take the outermost anchored frame
+// wherever it sits, so "v" is judged by the outer resource. python-jsonschema
+// 4.26.0 walks outward from the reference and stops at the first frame that is
+// not anchored -- lookup_recursive_ref breaks rather than skipping -- so "v" is
+// judged by the inner one. Two documents separate the readings and only those
+// two: with "v" present and satisfying exactly one of the resources. Every other
+// document below is unanimous, which is why they are here as well.
+//
+// schemagen answers with the majority, and this pins that rather than settling
+// it. The disagreement is recorded beside resolveRecursiveRef and in the
+// fixture's own $comment; if the tree ever moves to the other reading, that is a
+// decision someone should make on purpose and this test is where they will be
+// stopped.
+//
+// The 2020-12 half is not a duplicate. $dynamicRef searches the scope for a
+// resource that *declares* the anchor, where $recursiveRef asks each frame in
+// turn whether it is anchored, so an undeclaring frame in the middle is passed
+// over by every implementation. All three agree on all eight documents there,
+// and that unanimity is what makes the 2019-09 split a property of
+// $recursiveAnchor rather than of the shape.
+func TestScopeWalkPassesOverAFrameThatAnchorsNothing(t *testing.T) {
+	t.Run("$recursiveRef, where the implementations split", func(t *testing.T) {
+		runValidationCasesForType(t,
+			"testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json",
+			"Root",
+			[]string{
+				// The split, majority side: "v" satisfies the outer resource and
+				// not the inner one. python-jsonschema rejects this document.
+				`{"o":1,"t":{"t":1,"b":1,"v":{"o":9}}}`,
+				// Unanimous: satisfying both resources is satisfying whichever wins.
+				`{"o":1,"t":{"t":1,"b":1,"v":{"o":9,"b":9}}}`,
+				// Unanimous: "v" absent, so the reference is never applied.
+				`{"o":1,"t":{"t":1,"b":1}}`,
+				// Unanimous: nothing reaches the chain at all.
+				`{"o":1}`,
+			},
+			[]string{
+				// The split, majority side: "v" satisfies the inner resource only.
+				// python-jsonschema accepts this document.
+				`{"o":1,"t":{"t":1,"b":1,"v":{"b":9}}}`,
+				// Unanimous: "v" satisfies neither.
+				`{"o":1,"t":{"t":1,"b":1,"v":{}}}`,
+				// Unanimous: the inner resource's own requirement binds.
+				`{"o":1,"t":{"t":1}}`,
+				// Unanimous: and the outer resource's does.
+				`{"t":{"t":1,"b":1}}`,
+			},
+		)
+	})
+
+	// The Root cases above guard the *evaluator's* walk and nothing else, and
+	// which walk a case reaches is the thing #167 got wrong: it pinned a shape
+	// whose root was a runtime-evaluated wrapper and read that as evidence about
+	// the static path. Both halves were planted here rather than assumed.
+	// Reversing _dynResolveRef's loop turns the four Root documents in each
+	// dialect inside out; planting python-jsonschema's reading into
+	// resolveRecursiveRef leaves every one of them passing.
+	//
+	// It leaves the cases below passing too, and that is worth writing down
+	// because it is not obvious: the generator never has this fixture's
+	// unanchored frame on its scope when it resolves anything. That frame is
+	// pushed only by the $ref chain inside T's allOf, and the merge that follows
+	// that chain consults nothing -- the invariant
+	// TestDynamicScopeStaysAtTheTypeItStartedIn holds. Generated in its own
+	// right, B is reached at [outer, b], two anchored frames with nothing between
+	// them, where the two readings agree. So this split is visible to the
+	// evaluator and not to the static path, and only a document routed to the
+	// evaluator can show it.
+	//
+	// What B and T do pin is the *seed*, which is #293's open half: their "v" is
+	// typed by the frame the generator starts a type at, and seeding that at the
+	// type rather than at the document -- candidate 1 -- swaps both lists. That is
+	// a change someone should make deliberately, and this is where they will see
+	// it. Planted and watched: the two lists below swap, and the Root cases above
+	// do not move, because the emitted evaluator has a seed of its own.
+	//
+	// What a fragment type ought to answer for is not settled here. These are the
+	// document's resolution cut down to the type, the same way
+	// TestRecursiveAnchorResolvesOutermost states its Deep cases.
+	t.Run("$recursiveRef, the types the static walk decides", func(t *testing.T) {
+		const fixture = "testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json"
+		for _, typeName := range []string{"B", "T"} {
+			runValidationCasesForType(t, fixture, typeName,
+				[]string{
+					`{"b":1,"v":{"o":9}}`,
+					`{"b":1,"v":{"o":9,"b":9}}`,
+					`{"b":1}`,
+				},
+				[]string{
+					`{"b":1,"v":{"b":9}}`,
+					`{"b":1,"v":{}}`,
+					`{"v":{"o":9}}`,
+				},
+			)
+		}
+	})
+
+	t.Run("$dynamicRef, where they do not", func(t *testing.T) {
+		runValidationCasesForType(t,
+			"testdata/schemas/regression/dynamic_anchor_undeclaring_middle_frame.json",
+			"Root",
+			[]string{
+				`{"o":1,"t":{"t":1,"b":1,"v":{"o":9}}}`,
+				`{"o":1,"t":{"t":1,"b":1,"v":{"o":9,"b":9}}}`,
+				`{"o":1,"t":{"t":1,"b":1}}`,
+				`{"o":1}`,
+			},
+			[]string{
+				`{"o":1,"t":{"t":1,"b":1,"v":{"b":9}}}`,
+				`{"o":1,"t":{"t":1,"b":1,"v":{}}}`,
+				`{"o":1,"t":{"t":1}}`,
+				`{"t":{"t":1,"b":1}}`,
+			},
+		)
+	})
+
+	// The same static-path types under 2020-12. resolveDynamicRef is a different
+	// loop from resolveRecursiveRef and reads a different keyword, so it can move
+	// on its own, and the seed it starts from is the same one.
+	t.Run("$dynamicRef, the types the static walk decides", func(t *testing.T) {
+		const fixture = "testdata/schemas/regression/dynamic_anchor_undeclaring_middle_frame.json"
+		for _, typeName := range []string{"B", "T"} {
+			runValidationCasesForType(t, fixture, typeName,
+				[]string{
+					`{"b":1,"v":{"o":9}}`,
+					`{"b":1,"v":{"o":9,"b":9}}`,
+					`{"b":1}`,
+				},
+				[]string{
+					`{"b":1,"v":{"b":9}}`,
+					`{"b":1,"v":{}}`,
+					`{"v":{"o":9}}`,
+				},
+			)
+		}
+	})
+}
+
 // TestArrayKeywordsSurviveEveryContainerPosition covers one array sub-schema --
 // {"type":"array","items":{"type":"string"},"uniqueItems":true,"minItems":2} --
 // written in every container position a sub-schema can sit in, plus the

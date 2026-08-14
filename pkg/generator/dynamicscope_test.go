@@ -2,6 +2,8 @@ package generator
 
 import (
 	"encoding/json"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -676,4 +678,86 @@ func TestReferenceKeywordsFollowAnExplicitDraft(t *testing.T) {
 	if got := s.Properties["dyn"].DynamicRef; got != "" {
 		t.Errorf("$dynamicRef = %q under --draft 7, want it dropped", got)
 	}
+}
+
+// TestDynamicScopeStaysAtTheTypeItStartedIn holds the invariant
+// resolveRecursiveRef's direction argument rests on: when a bookended reference
+// is resolved, the dynamic scope stands at exactly the depth the type being
+// generated started at, and no frame pushed on the way there is still on it.
+//
+// That is what makes the walk's *order* inert under a scope seeded at the type
+// rather than at the document (#293). Outermost-first and innermost-first are
+// the same walk on one frame, so the two candidate scope constructions differ
+// only in what that one frame is -- the seed -- and not in how it is searched.
+//
+// This is a test and not a comment because the same function has already carried
+// a wrong measurement in a comment for months. #167 recorded that the walk "is
+// called three times, always at len(dynamicScope) == 1", instrumented it once,
+// threw the instrumentation away, and left a fixture that did not reach the code
+// at all; the claim was false and nothing in the tree could say so. So the
+// counters live on the Generator and are read here.
+//
+// Two assertions, because the interesting failure is the quiet one. The depth is
+// the invariant. The consultation count is what stops a zero depth from being
+// vacuous: were the corpus to lose every bookended reference, or a refactor to
+// stop routing through these two functions, the depth would read zero for the
+// uninteresting reason and this test would go on passing. It has been watched
+// failing in both directions -- planting a resolution into mergeAllOfBranches'
+// pushed window makes the depth read 2, and removing the corpus's dynamic
+// references makes the count read 0.
+func TestDynamicScopeStaysAtTheTypeItStartedIn(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "schemas")
+
+	var consultations, generated int
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".json" {
+			return err
+		}
+		s, loadErr := schema.LoadFromFile(path)
+		if loadErr != nil {
+			return nil
+		}
+		s.NormalizeForDraft(schema.DraftUnknown)
+		s.ComputeBaseURIs(nil, s)
+		abs, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return nil
+		}
+		g := New(Config{
+			PackageName: "testpkg",
+			OmitEmpty:   true,
+			Validation:  ValidationModeStatic,
+			// The corpus has schemas whose $ref names a sibling file, and without
+			// a resolver rooted beside them those references are never followed --
+			// which is exactly the path that pushes a frame, so the run would be
+			// measuring the shapes this test is not about.
+			Resolver: schema.NewCompositeResolver(schema.NewFileResolver(filepath.Dir(abs))),
+		})
+		if _, genErr := g.Generate(s); genErr != nil {
+			return nil
+		}
+		generated++
+		consultations += g.dynamicScopeConsultations
+		if g.framesAboveTypeScope != 0 {
+			t.Errorf("%s: the dynamic scope was consulted %d frames above the depth the type being generated started at, want 0.\n"+
+				"A frame pushed inside one generateTypeDefBody is still on the scope when a bookended reference is resolved, so "+
+				"resolveRecursiveRef's walk now has more than one frame to choose between and its direction decides a verdict. "+
+				"See the direction argument on resolveRecursiveRef, which this breaks.",
+				path, g.framesAboveTypeScope)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", root, err)
+	}
+	if generated == 0 {
+		t.Fatalf("no schema under %s generated, so nothing was measured", root)
+	}
+	if consultations == 0 {
+		t.Fatalf("the dynamic scope was never consulted across %d generated schemas, so the depth assertion above is vacuous. "+
+			"Either the corpus lost every bookended $recursiveRef and $dynamicRef, or resolution stopped going through "+
+			"resolveRecursiveRef and resolveDynamicRef -- and in the second case the invariant is no longer being measured at all",
+			generated)
+	}
+	t.Logf("%d schemas generated, dynamic scope consulted %d times", generated, consultations)
 }

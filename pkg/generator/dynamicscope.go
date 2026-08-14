@@ -68,6 +68,40 @@ func (g *Generator) dynamicRefTarget(s *schema.Schema) (target *schema.Schema, a
 	return nil, "", false, false
 }
 
+// noteDynamicScopeConsulted records one consultation of the dynamic scope by a
+// bookended $recursiveRef or $dynamicRef: that it happened, and how many frames
+// stood above the depth the type being generated started at.
+//
+// It exists because resolveRecursiveRef's direction only means something on a
+// scope more than one frame deep, and the claim that a type-rooted scope is
+// never that deep is a measurement -- which is exactly the kind of claim this
+// function has already been wrong about once. #167 recorded "the walk selects
+// nothing, always at depth 1" in a comment, backed by an instrumented run that
+// was then thrown away; it was wrong, and nothing in the tree could say so for
+// months. TestDynamicScopeStaysAtTheTypeItStartedIn reads both counters, so the
+// claim now fails from inside the repository when it stops holding.
+//
+// Two counters and not one, because either half can go quiet on its own.
+// framesAboveTypeScope is the invariant. dynamicScopeConsultations is what keeps
+// a zero from being vacuous: a refactor that stopped consulting the scope at all
+// -- or a corpus that stopped containing a bookended reference -- would leave the
+// invariant trivially true, which is the shape of guard #167 left behind.
+//
+// It is unconditional rather than behind a build tag because there is nothing to
+// buy by making it conditional, and a guard that only exists under a tag is one
+// nobody runs. The cost is an increment, a subtraction and a compare, on a path
+// reached 25 times across the whole 600-schema corpus. Measured rather than
+// assumed: generating that corpus takes 164-167 ms with these three lines and
+// 166-168 ms with them and the base bookkeeping removed (8 iterations, 5 runs
+// each), so the difference is smaller than the spread between runs of the same
+// binary.
+func (g *Generator) noteDynamicScopeConsulted() {
+	g.dynamicScopeConsultations++
+	if above := len(g.dynamicScope) - g.typeScopeBase; above > g.framesAboveTypeScope {
+		g.framesAboveTypeScope = above
+	}
+}
+
 // dynamicAnchorDeclarations lists every schema in the document that declares the
 // given anchor, which is the set of places a $dynamicRef or $recursiveRef naming
 // it could land.

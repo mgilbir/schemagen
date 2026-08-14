@@ -61,6 +61,18 @@ type Generator struct {
 	// local document scope. The root schema's document root is always at index 0.
 	dynamicScope []*schema.Schema
 
+	// typeScopeBase is the depth dynamicScope stood at when the generateTypeDefBody
+	// currently in flight began, and the two counters beside it are what
+	// TestDynamicScopeStaysAtTheTypeItStartedIn reads. Together they hold the
+	// invariant resolveRecursiveRef's comment rests on: no frame pushed while a
+	// type is being generated is still on the scope when that type's bookended
+	// references are resolved, so the walk never sees more than the one frame the
+	// type started with. See noteDynamicScopeConsulted for why it is measured
+	// rather than asserted, and for what it costs.
+	typeScopeBase             int
+	framesAboveTypeScope      int
+	dynamicScopeConsultations int
+
 	// structsInProgress tracks Go type names for structs currently having their
 	// fields resolved (on the call stack). Used to detect recursive value-type
 	// cycles: if a resolved ref points to a type that references a type in this
@@ -402,6 +414,13 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Initialize dynamic scope with the root document root.
 	g.dynamicScope = []*schema.Schema{s}
+	// Nothing is being generated yet, so the depth this run starts at is the
+	// baseline every type is measured against until one of them sets its own.
+	// Reset with it: a Generator reused for a second document must not report the
+	// first one's tallies.
+	g.typeScopeBase = len(g.dynamicScope)
+	g.framesAboveTypeScope = 0
+	g.dynamicScopeConsultations = 0
 	// The anchor index is about this document, so a Generator reused for another
 	// one must not answer from the last one's.
 	g.dynamicAnchorDecls = nil
@@ -2845,6 +2864,12 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// decline, and a name nothing declared has to stay free for the next node
 	// that derives it. See typeOwner.
 	defer g.noteTypeOwner(name, s)
+
+	// The depth this type starts at, restored on the way out so the frame above
+	// goes back to measuring against its own. See noteDynamicScopeConsulted.
+	outerScopeBase := g.typeScopeBase
+	g.typeScopeBase = len(g.dynamicScope)
+	defer func() { g.typeScopeBase = outerScopeBase }()
 
 	// unevaluatedItems next to in-place applicators cannot be decided
 	// statically: which items count as evaluated depends on which branches
@@ -10916,8 +10941,22 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // see lookup_recursive_ref, which breaks out of the dynamic-scope loop rather
 // than skipping the frame. The two readings disagree about a whole document, not
 // only about a fragment type. The suite has no case for it -- its recursiveRef
-// group never nests three resources -- so nothing in the tree pins a side, and
-// this records the split rather than choosing one.
+// group never nests three resources -- so this records the split rather than
+// choosing one (#300), and
+// testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json pins
+// what schemagen does so it cannot drift to either reading unnoticed.
+//
+// The split is $recursiveAnchor's and not the shape's. The identical three-frame
+// document under 2020-12, with $dynamicAnchor and $dynamicRef in place of the
+// two 2019-09 keywords, is answered alike by all three on all eight documents --
+// dynamic_anchor_undeclaring_middle_frame.json, beside it. resolveDynamicRef
+// searches the scope for a resource that *declares* the anchor, so a frame
+// declaring nothing is passed over by everyone; $recursiveRef asks each frame in
+// turn whether it is anchored, which is where "pass over" and "stop" part
+// company. Nothing below needs to distinguish the two, because the generator
+// never has such a frame on its scope when it resolves anything -- see the
+// invariant further down -- so this is a difference the emitted evaluator can
+// show and the static path cannot.
 //
 // Two things kept that shape hard to find, and both are worth knowing before
 // moving anything near it. A root-level $defs entry is generated before the
@@ -10975,14 +11014,16 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // properties is therefore resolved after the pops, at the depth its enclosing
 // type started with.
 //
-// Measured, because a claim of this shape is exactly the one #167 got wrong by
-// reasoning. Instrumented over `go test ./...`, this walk and resolveDynamicRef
-// are consulted 248 times and the frames pushed since the enclosing type began
-// number zero every single time. That zero is not a counter nobody has watched
-// move: the depth reads 2 at the merge sites above, and planting a resolution
-// inside mergeAllOfBranches' window makes the same measurement report a
-// three-frame scope with two anchored frames on it -- the shape that would put
-// the direction back in play, had anything there asked.
+// Measured and kept measured, because a claim of this shape is exactly the one
+// #167 got wrong by reasoning -- and because a measurement recorded in a comment
+// and then thrown away is how that one survived. noteDynamicScopeConsulted
+// counts both halves on the Generator and
+// TestDynamicScopeStaysAtTheTypeItStartedIn reads them: across the corpus the
+// scope is consulted 25 times, every one of them at the depth its type started
+// at. That zero is not a counter nobody has watched move. Planting a resolution
+// into mergeAllOfBranches' pushed window makes it read 2 and names the schema;
+// removing the consultations makes the second counter read 0 and fails for
+// saying nothing at all.
 //
 // So the residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
 // runtimeSchemaDef then declines, which drops back here instead of compiling --
@@ -11008,6 +11049,7 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	// whenever a frame was pushed for it -- but a resource generated as its own
 	// root pushes nothing, and then the plain $ref answer is both the only one
 	// available and the right one, because it names that same resource.
+	g.noteDynamicScopeConsulted()
 	for _, scope := range g.dynamicScope {
 		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
 			return scope
@@ -11086,6 +11128,7 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
 	// innermost, looking for the first resource that declares a $dynamicAnchor
 	// with the same name.
+	g.noteDynamicScopeConsulted()
 	for _, resource := range g.dynamicScope {
 		if found := resourceDynamicAnchor(resource, anchorName); found != nil {
 			return found

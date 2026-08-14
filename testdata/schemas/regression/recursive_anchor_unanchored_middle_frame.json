@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/outer",
+  "$recursiveAnchor": true,
+  "$comment": "Three resources on the dynamic scope, and the middle one is not anchored. js-ajv and go-jsonschema take the outermost anchored frame wherever it sits; python-jsonschema stops walking at the unanchored frame and takes the innermost. See #300 and resolveRecursiveRef, which record the split, and dynamic_anchor_undeclaring_middle_frame.json, which is the same shape under 2020-12 and unanimous.",
+  "type": "object",
+  "required": ["o"],
+  "properties": {
+    "o": { "type": "integer" },
+    "t": { "$ref": "#/$defs/T" }
+  },
+  "$defs": {
+    "T": {
+      "$comment": "No $id: T is not a resource, so it puts no frame on the scope and the frames below are the only ones there are. Its allOf is what makes the chain live inside one generated type, which is the shape that pushes two frames at once.",
+      "type": "object",
+      "properties": { "t": { "type": "integer" } },
+      "allOf": [ { "$ref": "#/$defs/A" } ]
+    },
+    "A": {
+      "$comment": "A resource with an $id and deliberately no $recursiveAnchor: it is the frame the two readings disagree about walking past.",
+      "$id": "https://example.com/a",
+      "$ref": "https://example.com/b"
+    },
+    "B": {
+      "$id": "https://example.com/b",
+      "$recursiveAnchor": true,
+      "type": "object",
+      "required": ["b"],
+      "properties": {
+        "b": { "type": "integer" },
+        "v": { "$recursiveRef": "#" }
+      }
+    }
+  }
+}
