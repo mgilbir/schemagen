@@ -88,13 +88,18 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
+	{{- /* The evaluator's reason is put behind whatever path reaches this value by
+	       the same rule as every other message (see _evalError and
+	       jsonPathError). Handed up bare, a sentence about the value was joined
+	       as though it were a member name: `p.value matches no anyOf branch`,
+	       naming a member p.value the document does not have. Issue #284. */}}
 	if _res := _evalNode(&{{.Name}}Schema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

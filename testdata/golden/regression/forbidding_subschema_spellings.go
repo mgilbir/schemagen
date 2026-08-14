@@ -1457,13 +1457,13 @@ func (f ForbiddingSubschemaSpellingsNotEnumBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsNotEnumBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -1511,13 +1511,13 @@ func (f ForbiddingSubschemaSpellingsNotFalse) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsNotFalseSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -1641,13 +1641,13 @@ func (f ForbiddingSubschemaSpellingsNotShallowEnum) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsNotShallowEnumSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -1698,13 +1698,13 @@ func (f ForbiddingSubschemaSpellingsNotTypedConst) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsNotTypedConstSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -2265,13 +2265,13 @@ func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsOneOfOneFalseSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -2547,13 +2547,13 @@ func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&ForbiddingSubschemaSpellingsUnionBranchRequiredSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -2770,6 +2770,17 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.StrBranchRequired
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// ForbiddingSubschemaSpellings.StrBranchRequired
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "strBranchRequired")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -2806,10 +2817,18 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("ForbiddingSubschemaSpellings.StrBranchRequired: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("ForbiddingSubschemaSpellings.StrBranchRequired: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}

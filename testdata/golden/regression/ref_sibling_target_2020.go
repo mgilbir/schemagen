@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 	"unicode/utf8"
 )
 
@@ -94,13 +93,13 @@ func (n NamedConst) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NamedConstSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -158,13 +157,13 @@ func (n NamedEnum) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NamedEnumSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -222,13 +221,13 @@ func (r RefSiblingTarget2020ConstForbidden) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&RefSiblingTarget2020ConstForbiddenSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -286,13 +285,13 @@ func (r RefSiblingTarget2020ConstSatisfied) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&RefSiblingTarget2020ConstSatisfiedSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -366,13 +365,13 @@ func (r RefSiblingTarget2020EnumSibling) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&RefSiblingTarget2020EnumSiblingSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -430,13 +429,13 @@ func (r RefSiblingTarget2020ListSiblingItem) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&RefSiblingTarget2020ListSiblingItemSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -494,13 +493,13 @@ func (r RefSiblingTarget2020MapSiblingValue) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&RefSiblingTarget2020MapSiblingValueSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

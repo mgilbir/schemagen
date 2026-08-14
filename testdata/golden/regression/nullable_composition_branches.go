@@ -113,13 +113,13 @@ func (n NullableCompositionBranchesAnyConst) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesAnyConstSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -172,13 +172,13 @@ func (n NullableCompositionBranchesAnyEmpty) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesAnyEmptySchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -248,13 +248,13 @@ func (n NullableCompositionBranchesAnyFalse) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesAnyFalseSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -313,13 +313,13 @@ func (n NullableCompositionBranchesAnyItems) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesAnyItemsSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -429,13 +429,13 @@ func (n NullableCompositionBranchesAnyMinIt) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesAnyMinItSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -608,13 +608,13 @@ func (n NullableCompositionBranchesOneConst) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesOneConstSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -673,13 +673,13 @@ func (n NullableCompositionBranchesOneMapVal) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&NullableCompositionBranchesOneMapValSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

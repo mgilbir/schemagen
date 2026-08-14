@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // OneOfBooleanAndConstRoot - Issue #125's own reproducer, at the document root. The root union lives in a Go struct, so besides miscounting the branches it had nowhere for the scalar the `const` branch admits to decode into at all -- "x" was refused by encoding/json before a branch was tried.
@@ -65,13 +64,13 @@ func (o OneOfBooleanAndConstRoot) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&OneOfBooleanAndConstRootSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

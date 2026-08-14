@@ -618,6 +618,17 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.Content
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// Notification.Content
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "content")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -678,7 +689,15 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
 				// Several branches decoded and every one can be judged, so the
@@ -694,17 +713,28 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return fmt.Errorf("Notification.Content: no matching oneOf variant: %w", oneofStrictErr)
+					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
 				}
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("Notification.Content: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}
 
 	{
 		oneofData := aux.Target
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// Notification.Target
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "target")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -765,7 +795,15 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
 				// Several branches decoded and every one can be judged, so the
@@ -781,11 +819,11 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return fmt.Errorf("Notification.Target: no matching oneOf variant: %w", oneofStrictErr)
+					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
 				}
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("Notification.Target: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}

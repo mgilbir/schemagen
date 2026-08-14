@@ -199,8 +199,19 @@ type _schemaDependency struct {
 // evaluated by prefixItems says nothing about a property name, and a schema can
 // state both keywords over the same node.
 type _evalResult struct {
-	ok             bool
-	reason         string
+	ok     bool
+	reason string
+	// reasonIsAStep says reason opens with a step into the value -- a property
+	// this node descended into, or the branch of a conditional that refused --
+	// rather than being a sentence about the value itself.
+	//
+	// It decides what goes between the reason and the path of whatever holds the
+	// value: a "." in front of a step, ": " in front of a sentence. Only the site
+	// that raised the failure knows which of the two it built, so the answer is
+	// recorded there and travels with the reason; a caller who guessed wrote
+	// `p.value matches no anyOf branch`, a member the document does not have.
+	// See issue #284 and jsonPathError.
+	reasonIsAStep  bool
 	evaluated      map[int]bool
 	evaluatedProps map[string]bool
 }
@@ -218,12 +229,55 @@ func (r *_evalResult) absorb(other _evalResult) {
 	}
 }
 
-// fail marks the result as failed, recording the first reason given. Later
-// keywords cannot overwrite it because evaluation returns at the first failure.
+// fail marks the result as failed with a sentence about the value itself, which
+// is what all but a handful of keywords have to say. It records the first reason
+// given; later keywords cannot overwrite it because evaluation returns at the
+// first failure.
 func (r *_evalResult) fail(reason string) _evalResult {
 	r.ok = false
 	r.reason = reason
+	r.reasonIsAStep = false
 	return *r
+}
+
+// failAt is fail for a failure this node reaches by stepping into the value: a
+// property it descended into, a branch of a conditional, a dependent schema. The
+// step and the reason underneath it are joined the way a path is, and the result
+// is marked as opening with a step so that whatever holds this value joins its
+// own path to it with a "." rather than a ": ".
+func (r *_evalResult) failAt(step, reason string) _evalResult {
+	r.ok = false
+	r.reason = step + ": " + reason
+	r.reasonIsAStep = true
+	return *r
+}
+
+// failAs re-raises a child's failure at this node unchanged. An in-place
+// applicator -- allOf, a $dynamicRef, items, unevaluatedItems -- judges the very
+// value this node was handed, so what the child said about it is what this node
+// has to say, and how it joins is the child's answer too.
+func (r *_evalResult) failAs(child _evalResult) _evalResult {
+	r.ok = false
+	r.reason = child.reason
+	r.reasonIsAStep = child.reasonIsAStep
+	return *r
+}
+
+// _evalError turns a failed evaluation into the error a Validate answers with,
+// carrying what has to be written between the reason and the path of the value
+// it was raised on. A reason that opens with a step is joined the way a path is;
+// a sentence about the value takes the ": " jsonValueErrorf records.
+func _evalError(r _evalResult) error {
+	if r.reason == "" {
+		// Structural: nothing sets ok to false without a reason, and this exists
+		// so that a future keyword which did would still say something rather
+		// than answer with an empty message.
+		return jsonValueErrorf("value does not satisfy the schema")
+	}
+	if r.reasonIsAStep {
+		return jsonStepErrorf("%s", r.reason)
+	}
+	return jsonValueErrorf("%s", r.reason)
 }
 
 // _evalNode reports whether v satisfies n, together with the item annotations
@@ -354,7 +408,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			sub := sub
 			r := {{$ev}}(&sub, arr[i]{{$sc}})
 			if !r.ok {
-				return res.fail(r.reason)
+				return res.failAs(r)
 			}
 			res.evaluated[i] = true
 		}
@@ -363,7 +417,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		for i := len(n.PrefixItems); i < len(arr); i++ {
 			r := {{$ev}}(n.Items, arr[i]{{$sc}})
 			if !r.ok {
-				return res.fail(r.reason)
+				return res.failAs(r)
 			}
 			res.evaluated[i] = true
 		}
@@ -406,7 +460,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			for _, key := range _dynSortedKeys(obj) {
 				r := {{$ev}}(n.PropertyNames, key{{$sc}})
 				if !r.ok {
-					return res.fail("property name " + key + ": " + r.reason)
+					return res.failAt("property name "+key, r.reason)
 				}
 			}
 		}
@@ -418,7 +472,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(&member.Node, value{{$sc}})
 			if !r.ok {
-				return res.fail("property " + member.Key + ": " + r.reason)
+				return res.failAt("property "+member.Key, r.reason)
 			}
 			// The property is evaluated by this node, so unevaluatedProperties
 			// no longer speaks about it. The subschema's own annotations are
@@ -435,7 +489,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 				}
 				r := {{$ev}}(&member.Node, obj[key]{{$sc}})
 				if !r.ok {
-					return res.fail("property " + key + ": " + r.reason)
+					return res.failAt("property "+key, r.reason)
 				}
 				res.evaluatedProps[key] = true
 			}
@@ -453,7 +507,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 {{- end}}
 				r := {{$ev}}(n.AdditionalProperties, obj[key]{{$sc}})
 				if !r.ok {
-					return res.fail("property " + key + ": " + r.reason)
+					return res.failAt("property "+key, r.reason)
 				}
 				res.evaluatedProps[key] = true
 			}
@@ -475,7 +529,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(&member.Node, v{{$sc}})
 			if !r.ok {
-				return res.fail("dependent schema for " + member.Key + ": " + r.reason)
+				return res.failAt("dependent schema for "+member.Key, r.reason)
 			}
 			res.absorb(r)
 		}
@@ -491,7 +545,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if n.DynamicRef != nil {
 		r := {{$ev}}(_dynResolveRef(n.DynamicRef, _scope), v{{$sc}})
 		if !r.ok {
-			return res.fail(r.reason)
+			return res.failAs(r)
 		}
 		res.absorb(r)
 	}
@@ -500,7 +554,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		sub := n.AllOf[i]
 		r := {{$ev}}(&sub, v{{$sc}})
 		if !r.ok {
-			return res.fail(r.reason)
+			return res.failAs(r)
 		}
 		res.absorb(r)
 	}
@@ -553,14 +607,14 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			if n.Then != nil {
 				tr := {{$ev}}(n.Then, v{{$sc}})
 				if !tr.ok {
-					return res.fail("then: " + tr.reason)
+					return res.failAt("then", tr.reason)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
 			er := {{$ev}}(n.Else, v{{$sc}})
 			if !er.ok {
-				return res.fail("else: " + er.reason)
+				return res.failAt("else", er.reason)
 			}
 			res.absorb(er)
 		}
@@ -578,7 +632,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(n.UnevaluatedItems, arr[i]{{$sc}})
 			if !r.ok {
-				return res.fail(r.reason)
+				return res.failAs(r)
 			}
 			res.evaluated[i] = true
 		}
@@ -599,7 +653,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(n.UnevaluatedProperties, obj[key]{{$sc}})
 			if !r.ok {
-				return res.fail("unevaluated property " + key + ": " + r.reason)
+				return res.failAt("unevaluated property "+key, r.reason)
 			}
 			res.evaluatedProps[key] = true
 		}

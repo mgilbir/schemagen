@@ -515,33 +515,44 @@ func (s *Shape) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.Geometry
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// Shape.Geometry
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "geometry")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			// Discriminator-based dispatch on "type"
 			discVal, discErr := oneofDiscriminatorValue(oneofData, "type")
 			if discErr != nil {
-				return fmt.Errorf("Shape.Geometry: %w", discErr)
+				return oneofErrf("%w", discErr)
 			}
 			switch discVal {
 			case "circle":
 				var candidate *Circle
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Shape.Geometry (variant Circle): %w", err)
+					return oneofErrf("variant Circle: %w", err)
 				}
 				s.Geometry = &Shape_Circle{Circle: candidate}
 			case "square":
 				var candidate *Square
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Shape.Geometry (variant Square): %w", err)
+					return oneofErrf("variant Square: %w", err)
 				}
 				s.Geometry = &Shape_Square{Square: candidate}
 			case "triangle":
 				var candidate *Triangle
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Shape.Geometry (variant Triangle): %w", err)
+					return oneofErrf("variant Triangle: %w", err)
 				}
 				s.Geometry = &Shape_Triangle{Triangle: candidate}
 			default:
-				return fmt.Errorf("Shape.Geometry: unknown discriminator value %q for field \"type\"", discVal)
+				return oneofErrf("unknown discriminator value %q for property %q", discVal, "type")
 			}
 		}
 	}

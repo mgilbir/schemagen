@@ -334,6 +334,17 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.Branch
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// TypedFormatPositions.Branch
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "branch")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -370,10 +381,18 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("TypedFormatPositions.Branch: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("TypedFormatPositions.Branch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}

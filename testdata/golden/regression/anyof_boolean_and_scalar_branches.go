@@ -64,13 +64,13 @@ func (a AnyOfBooleanAndScalarBranchesBareObjectBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AnyOfBooleanAndScalarBranchesBareObjectBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -131,13 +131,13 @@ func (a AnyOfBooleanAndScalarBranchesConstBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AnyOfBooleanAndScalarBranchesConstBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -335,13 +335,13 @@ func (a AnyOfBooleanAndScalarBranchesMixed) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AnyOfBooleanAndScalarBranchesMixedSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -404,13 +404,13 @@ func (a AnyOfBooleanAndScalarBranchesNotBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AnyOfBooleanAndScalarBranchesNotBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -681,13 +681,13 @@ func (a AnyOfBooleanAndScalarBranchesTrueBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AnyOfBooleanAndScalarBranchesTrueBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

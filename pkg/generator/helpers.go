@@ -183,7 +183,11 @@ func (h *HelperSet) Merge(other HelperSet) {
 // helpers are the leaves, and are what the decode-time blocks reach for to say
 // where a refusal belongs in the caller's document.
 func (h *HelperSet) CloseOverCalls() {
-	if h.Integer || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath {
+	// The runtime evaluator is here for the same reason: _evalError puts a
+	// verdict behind the path that reaches the value it was raised on, and a
+	// generated file names _evalNode without ever naming the constructor that
+	// answer is built with.
+	if h.Integer || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
 	}
 }
@@ -222,12 +226,13 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "jsonExactProperties(") {
 		set.ExactProperties = true
 	}
-	// The path-join block. Four names reach it -- the two constructors a message
-	// that cannot be joined with a "." is built by, and the two joiners that read
-	// what they recorded -- and a file can carry any one without the others: a
-	// leaf alias only ever builds, and a struct whose members are all named only
-	// ever joins. All four are matched for that reason.
+	// The path-join block. Five names reach it -- the three constructors a
+	// message states what precedes it with, and the two joiners that read what
+	// they recorded -- and a file can carry any one without the others: a leaf
+	// alias only ever builds, and a struct whose members are all named only ever
+	// joins. All five are matched for that reason.
 	if strings.Contains(src, "jsonValueErrorf(") || strings.Contains(src, "jsonElemErrorf(") ||
+		strings.Contains(src, "jsonStepErrorf(") ||
 		strings.Contains(src, "jsonPathf(") || strings.Contains(src, "jsonElemPathf(") {
 		set.PathJoin = true
 	}

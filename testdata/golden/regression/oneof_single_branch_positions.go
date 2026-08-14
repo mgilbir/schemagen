@@ -55,13 +55,13 @@ func (o OneOfSingleBranchPositionsConstBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&OneOfSingleBranchPositionsConstBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -186,13 +186,13 @@ func (o OneOfSingleBranchPositionsListItem) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&OneOfSingleBranchPositionsListItemSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -245,13 +245,13 @@ func (o OneOfSingleBranchPositionsMapValue) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&OneOfSingleBranchPositionsMapValueSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -424,13 +424,13 @@ func (o OneOfSingleBranchPositionsTwoBranch) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&OneOfSingleBranchPositionsTwoBranchSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }
@@ -582,6 +582,17 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.BoundBranch
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// OneOfSingleBranchPositions.BoundBranch
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "boundBranch")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -624,16 +635,35 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 				if oneofCheckErr != nil {
 					oneofLastErr = oneofCheckErr
 				}
-				return fmt.Errorf("OneOfSingleBranchPositions.BoundBranch: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("OneOfSingleBranchPositions.BoundBranch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}
 
 	{
 		oneofData := aux.ObjBranch
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// OneOfSingleBranchPositions.ObjBranch
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "objBranch")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -671,7 +701,15 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("OneOfSingleBranchPositions.ObjBranch: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
 				// Several branches decoded and every one can be judged, so the
@@ -687,17 +725,28 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return fmt.Errorf("OneOfSingleBranchPositions.ObjBranch: no matching oneOf variant: %w", oneofStrictErr)
+					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
 				}
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("OneOfSingleBranchPositions.ObjBranch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}
 
 	{
 		oneofData := aux.TypedBranch
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// OneOfSingleBranchPositions.TypedBranch
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "typedBranch")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
 			var oneofLastErr error
@@ -714,10 +763,18 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("OneOfSingleBranchPositions.TypedBranch: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("OneOfSingleBranchPositions.TypedBranch: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}

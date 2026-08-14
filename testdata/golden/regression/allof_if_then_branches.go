@@ -469,7 +469,7 @@ func (t Trigger) Validate() error {
 				}),
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				return fmt.Errorf("%s", _rbRes.reason)
+				return _evalError(_rbRes)
 			}
 		}
 		{
@@ -507,7 +507,7 @@ func (t Trigger) Validate() error {
 				}),
 			}
 			if _rbRes := _evalNode(&_rbNode1, _rbInstance); !_rbRes.ok {
-				return fmt.Errorf("%s", _rbRes.reason)
+				return _evalError(_rbRes)
 			}
 		}
 	}

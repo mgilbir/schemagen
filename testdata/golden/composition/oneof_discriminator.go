@@ -529,33 +529,44 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 
 	{
 		oneofData := aux.Payload
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// Event.Payload
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", "payload")
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			// Discriminator-based dispatch on "kind"
 			discVal, discErr := oneofDiscriminatorValue(oneofData, "kind")
 			if discErr != nil {
-				return fmt.Errorf("Event.Payload: %w", discErr)
+				return oneofErrf("%w", discErr)
 			}
 			switch discVal {
 			case "click":
 				var candidate *ClickEvent
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Event.Payload (variant ClickEvent): %w", err)
+					return oneofErrf("variant ClickEvent: %w", err)
 				}
 				e.Payload = &Event_ClickEvent{ClickEvent: candidate}
 			case "keypress":
 				var candidate *KeypressEvent
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Event.Payload (variant KeypressEvent): %w", err)
+					return oneofErrf("variant KeypressEvent: %w", err)
 				}
 				e.Payload = &Event_KeypressEvent{KeypressEvent: candidate}
 			case "scroll":
 				var candidate *ScrollEvent
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("Event.Payload (variant ScrollEvent): %w", err)
+					return oneofErrf("variant ScrollEvent: %w", err)
 				}
 				e.Payload = &Event_ScrollEvent{ScrollEvent: candidate}
 			default:
-				return fmt.Errorf("Event.Payload: unknown discriminator value %q for field \"kind\"", discVal)
+				return oneofErrf("unknown discriminator value %q for property %q", discVal, "kind")
 			}
 		}
 	}
