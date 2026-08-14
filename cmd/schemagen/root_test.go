@@ -1214,9 +1214,13 @@ func TestGenerateItemsOneOfCrossDocumentVariants(t *testing.T) {
 	if !strings.Contains(src, "[]BoardElementsItem") {
 		t.Errorf("items oneOf should produce a typed element slice, got:\n%s", src)
 	}
-	// Two distinct variant types, disambiguated by owning document.
-	if !strings.Contains(src, "type Element struct") || !strings.Contains(src, "type BetaElement struct") {
-		t.Errorf("expected distinct Element and BetaElement variant types, got:\n%s", src)
+	// Two distinct variant types, each named after the document that owns it.
+	// Both are qualified and not only the second: neither alpha.json nor
+	// beta.json is an input, so nothing about the order they were reached in may
+	// decide which one keeps the bare name (issue #297, and #228's trap before
+	// it).
+	if !strings.Contains(src, "type AlphaElement struct") || !strings.Contains(src, "type BetaElement struct") {
+		t.Errorf("expected distinct AlphaElement and BetaElement variant types, got:\n%s", src)
 	}
 	if strings.Contains(src, "Element2 *Element") {
 		t.Errorf("same-named cross-document variants collapsed onto one type:\n%s", src)

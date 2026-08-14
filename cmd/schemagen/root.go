@@ -135,7 +135,6 @@ func newGenerateCmd() *cobra.Command {
 			if err := rootNames.validate(len(args)); err != nil {
 				return err
 			}
-			defer rootNames.warnUnused(cmd.ErrOrStderr())
 			if (sharedTypes || len(schemaPkgFlags) > 0) && validationMode != generator.ValidationModeStatic {
 				return fmt.Errorf("--shared-types and --schema-package currently require --validation static (per-file validation capability reporting would collide)")
 			}
@@ -144,9 +143,16 @@ func newGenerateCmd() *cobra.Command {
 			// entries seed the maps; flags overwrite per $id.
 			schemaPackages := make(map[string]string)
 			schemaOutputsFromConfig := map[string]string{}
+			// Which of these $ids came from the config rather than a flag, so an
+			// entry that matches no input is reported the way its own source
+			// would be named. A flag overwriting a config entry takes the key
+			// with it. See warnUnmatchedDocumentKeys.
+			pkgKeyFromConfig := map[string]bool{}
+			outKeyFromConfig := map[string]bool{}
 			if cfg != nil {
 				for id, pkg := range cfg.schemaPackages() {
 					schemaPackages[id] = pkg
+					pkgKeyFromConfig[id] = true
 				}
 				schemaOutputsFromConfig = cfg.schemaOutputs()
 			}
@@ -155,18 +161,23 @@ func newGenerateCmd() *cobra.Command {
 				if !ok || id == "" || pkg == "" {
 					return fmt.Errorf("--schema-package %q: expected <document $id>=<Go import path>", sp)
 				}
-				schemaPackages[strings.TrimSuffix(id, "#")] = pkg
+				id = strings.TrimSuffix(id, "#")
+				schemaPackages[id] = pkg
+				delete(pkgKeyFromConfig, id)
 			}
 			schemaOutputs := make(map[string]string)
 			for id, out := range schemaOutputsFromConfig {
 				schemaOutputs[id] = out
+				outKeyFromConfig[id] = true
 			}
 			for _, so := range schemaOutFlags {
 				id, outPath, ok := strings.Cut(so, "=")
 				if !ok || id == "" || outPath == "" {
 					return fmt.Errorf("--schema-output %q: expected <document $id>=<output file path>", so)
 				}
-				schemaOutputs[strings.TrimSuffix(id, "#")] = outPath
+				id = strings.TrimSuffix(id, "#")
+				schemaOutputs[id] = outPath
+				delete(outKeyFromConfig, id)
 			}
 			if len(schemaOutputs) > 0 && len(schemaPackages) == 0 {
 				return fmt.Errorf("--schema-output requires --schema-package mappings")
@@ -188,7 +199,23 @@ func newGenerateCmd() *cobra.Command {
 			// if generation fails partway through.
 			appliedByFile := make(map[string]map[string]map[string]bool)
 			processedFiles := make(map[string]bool)
-			defer warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
+			defer func() {
+				// Nothing is unmatched on a run that never reached its inputs.
+				// A refusal above -- an unsupported flag combination, a config
+				// that will not load -- used to be printed underneath a warning
+				// per --root-name and per --field-map key, every one of which
+				// named a document that was about to match and none of which the
+				// reader could act on. Issue #298. processedFiles is the same
+				// signal both reports already read to decide what matched, so
+				// this asks it once more rather than tracking the run's progress
+				// a second way.
+				if len(processedFiles) == 0 {
+					return
+				}
+				// Order kept as the two separate defers had it.
+				warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
+				rootNames.warnUnused(cmd.ErrOrStderr())
+			}()
 
 			// Reject input sets where two schemas map to the same output file
 			// (same base name in different directories). Without this the second
@@ -213,6 +240,8 @@ func newGenerateCmd() *cobra.Command {
 				return runMultiPackage(cmd.OutOrStdout(), args, multiPackageParams{
 					schemaPackages:   schemaPackages,
 					schemaOutputs:    schemaOutputs,
+					pkgKeyFromConfig: pkgKeyFromConfig,
+					outKeyFromConfig: outKeyFromConfig,
 					rootNames:        rootNames,
 					rootNameFromFile: rootNameFromFile,
 					outputDir:        outputDir,
@@ -357,6 +386,15 @@ func newGenerateCmd() *cobra.Command {
 			// alone. Empty in every run that has no such clash. See
 			// resolveSharedDefinitionNames.
 			var pinnedDefNames map[*schema.Schema]string
+			// The documents of this run, by instance, so the walk that looks for
+			// the documents a $ref materializes can tell those from the ones the
+			// run generates itself. See collectExternalClaims.
+			ownDocs := ownedDocuments(inputByPath)
+			// The paths and documents the pinned-name diagnostic searches for a
+			// definition it had to move. Widened per generation unit below, since
+			// a moved definition may live in a document nobody listed.
+			pinDocPaths := args
+			pinDocsByPath := inputByPath
 			if sharedTypes {
 				// One package, one generator, and therefore one pass over the
 				// inputs in the order given. A $ref chain that runs in a circle
@@ -366,7 +404,6 @@ func newGenerateCmd() *cobra.Command {
 				if err := checkInputRefCycle(args, refEdges); err != nil {
 					return err
 				}
-				pinnedDefNames = resolveSharedDefinitionNames(args, inputByPath, effectiveRootNameOf, cmd.ErrOrStderr())
 				absPath, _ := filepath.Abs(args[0])
 				resolvers := []schema.SchemaResolver{
 					schema.NewMappingResolver(inputByID),
@@ -375,6 +412,15 @@ func newGenerateCmd() *cobra.Command {
 				if allowRemoteRefs {
 					resolvers = append(resolvers, schema.NewHTTPResolver())
 				}
+				// Resolved before the names are, and through the very resolver
+				// the generator is handed: a document reached by $ref declares
+				// types in this package too, and the pins that separate them are
+				// keyed by the node instance the generator will see.
+				sharedResolver := schema.NewCompositeResolver(resolvers...)
+				external := collectExternalClaims(args, inputByPath, sharedResolver, ownDocs, rootNameOf)
+				pinDocsByPath = external.merge(inputByPath)
+				pinDocPaths = external.documentPaths(args)
+				pinnedDefNames = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr())
 				sharedGen = generator.New(generator.Config{
 					PackageName:         pkgName,
 					OutputDir:           outputDir,
@@ -385,7 +431,7 @@ func newGenerateCmd() *cobra.Command {
 					ExactNumbers:        exactNumbers,
 					FormatAssertion:     formatAssertion,
 					FormatAnnotation:    formatAnnotation,
-					Resolver:            schema.NewCompositeResolver(resolvers...),
+					Resolver:            sharedResolver,
 					Draft:               draft,
 					Validation:          validationMode,
 					LenientRefs:         lenientRefs,
@@ -430,31 +476,38 @@ func newGenerateCmd() *cobra.Command {
 						resolver = schema.NewCompositeResolver(resolvers...)
 					}
 
-					// This document alone. A document can contest a Go type name
-					// with itself -- "$defs/X" and "definitions/X" are two
-					// schema locations, and a document may write different
-					// schemas at them -- and that needs no other input to see,
-					// so it is resolved here as well as in the modes that share
-					// a package. Passing only this path is what keeps it to
-					// that question: each input writes its own file here, so
-					// two of them claiming one name is issue #217's collision
-					// and packageDecls' refusal, not a name to rewrite.
+					// This document, and whatever its $refs pull in beside it.
+					// Only this input path is listed: each input writes its own
+					// file here, so two of them claiming one name is issue
+					// #217's collision and packageDecls' refusal, not a name to
+					// rewrite. What that leaves out is the documents this file
+					// declares types for without anybody listing them -- a
+					// document reached by $ref off disk writes no file of its
+					// own, so neither guard could see it, and two of them
+					// declaring one definition name silently became one type.
+					// Issue #297; see collectExternalClaims.
+					external := collectExternalClaims([]string{schemaPath}, inputByPath, resolver, ownDocs, rootNameOf)
+					pinDocsByPath = external.merge(inputByPath)
+					pinDocPaths = external.documentPaths([]string{schemaPath})
+					// Kept for the collision diagnostic below, which has to say
+					// which definition the name it could not use was chosen for.
+					pinnedDefNames = resolveSharedDefinitionNames(
+						[]string{schemaPath}, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr())
 					gen = generator.New(generator.Config{
-						PackageName:      pkgName,
-						OutputDir:        outputDir,
-						OmitEmpty:        omitEmpty,
-						StrictProperties: strictProperties,
-						StrictReadWrite:  strictReadWrite,
-						BigIntSupport:    bigInt,
-						ExactNumbers:     exactNumbers,
-						FormatAssertion:  formatAssertion,
-						FormatAnnotation: formatAnnotation,
-						Resolver:         resolver,
-						Draft:            draft,
-						Validation:       validationMode,
-						LenientRefs:      lenientRefs,
-						DefinitionTypeNames: resolveSharedDefinitionNames(
-							[]string{schemaPath}, inputByPath, effectiveRootNameOf, cmd.ErrOrStderr()),
+						PackageName:         pkgName,
+						OutputDir:           outputDir,
+						OmitEmpty:           omitEmpty,
+						StrictProperties:    strictProperties,
+						StrictReadWrite:     strictReadWrite,
+						BigIntSupport:       bigInt,
+						ExactNumbers:        exactNumbers,
+						FormatAssertion:     formatAssertion,
+						FormatAnnotation:    formatAnnotation,
+						Resolver:            resolver,
+						Draft:               draft,
+						Validation:          validationMode,
+						LenientRefs:         lenientRefs,
+						DefinitionTypeNames: pinnedDefNames,
 					})
 				}
 
@@ -494,7 +547,7 @@ func newGenerateCmd() *cobra.Command {
 					// that name was chosen for; see explainPinnedNameCollision.
 					var pinnedCollision *generator.PinnedNameCollisionError
 					if errors.As(err, &pinnedCollision) {
-						return explainPinnedNameCollision(schemaPath, pinnedCollision, pinnedDefNames, inputByPath, args)
+						return explainPinnedNameCollision(schemaPath, pinnedCollision, pinnedDefNames, pinDocsByPath, pinDocPaths)
 					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
@@ -687,6 +740,35 @@ func warnUnsatisfiableRequired(w io.Writer, schemaPath string, props []generator
 	}
 }
 
+// warnUnmatchedDocumentKeys reports --schema-package and --schema-output entries
+// whose $id names no input document.
+//
+// Same shape as rootNameSpec.warnUnused and warnUnusedFieldMap, and deliberately
+// so: a key that matched nothing is one thing, and a caller should not have to
+// learn a different sentence for each flag that can hold one. A key the config
+// file supplied is named as the config's, since "--schema-package" would send
+// the reader to a command line that does not contain it.
+func warnUnmatchedDocumentKeys(w io.Writer, flag, configField string, entries map[string]string, fromConfig, matched map[string]bool) {
+	if w == nil {
+		return
+	}
+	warnings := make([]string, 0, len(entries))
+	for id := range entries {
+		if matched[id] {
+			continue
+		}
+		if fromConfig[id] {
+			warnings = append(warnings, fmt.Sprintf("config %s for %q matched no input schema", configField, id))
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("%s %q matched no input schema", flag, id))
+	}
+	sort.Strings(warnings)
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "warning: %s\n", msg)
+	}
+}
+
 // warnUnusedFieldMap emits warnings for field-map config that never took effect:
 // top-level keys that don't name any generated schema file (often a typo or a
 // missing nesting level), and individual overrides that matched no property. All
@@ -783,9 +865,14 @@ func deriveOutputFilename(schemaPath string) string {
 
 // multiPackageParams carries the settings for a multi-package generation run.
 type multiPackageParams struct {
-	schemaPackages   map[string]string // document $id → Go import path
-	schemaOutputs    map[string]string // document $id → output file path
-	rootNames        *rootNameSpec     // resolves each input's root type name
+	schemaPackages map[string]string // document $id → Go import path
+	schemaOutputs  map[string]string // document $id → output file path
+	// The $ids of the two maps above that came from the config file rather than
+	// from a flag, so an entry matching no input names the source that supplied
+	// it. See warnUnmatchedDocumentKeys.
+	pkgKeyFromConfig map[string]bool
+	outKeyFromConfig map[string]bool
+	rootNames        *rootNameSpec // resolves each input's root type name
 	rootNameFromFile bool
 	outputDir        string
 	omitEmpty        bool
@@ -843,15 +930,35 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		if id == "" {
 			return fmt.Errorf("multi-package generation requires every schema to declare $id; %s has none", schemaPath)
 		}
-		pkg := p.schemaPackages[id]
-		if pkg == "" {
-			return fmt.Errorf("no --schema-package mapping for %s ($id %q)", schemaPath, id)
-		}
 		if _, ok := byID[id]; ok {
 			return fmt.Errorf("duplicate $id %q across input schemas", id)
 		}
 		byID[id] = s
-		inputs = append(inputs, &input{path: schemaPath, s: s, id: id, pkg: pkg})
+		inputs = append(inputs, &input{path: schemaPath, s: s, id: id})
+	}
+
+	// Every keyed input in the tool reports a key that matched nothing, and
+	// these two did not: a mistyped $id was dropped in silence, and for
+	// --schema-output the flag has a fallback, so the document was written to
+	// the default path and the run read as having honoured it. Issue #298.
+	//
+	// Reported before the missing-mapping refusal below, not after, because the
+	// two are usually one mistake: a --schema-package key with a typo in it is
+	// both an entry that matched nothing and the reason some input has no
+	// mapping, and the refusal can only name the input, which is the document
+	// that is fine.
+	matchedID := make(map[string]bool, len(inputs))
+	for _, in := range inputs {
+		matchedID[in.id] = true
+	}
+	warnUnmatchedDocumentKeys(p.warnings, "--schema-package", "package", p.schemaPackages, p.pkgKeyFromConfig, matchedID)
+	warnUnmatchedDocumentKeys(p.warnings, "--schema-output", "output", p.schemaOutputs, p.outKeyFromConfig, matchedID)
+
+	for _, in := range inputs {
+		in.pkg = p.schemaPackages[in.id]
+		if in.pkg == "" {
+			return fmt.Errorf("no --schema-package mapping for %s ($id %q)", in.path, in.id)
+		}
 	}
 
 	// Resolve $refs through the instances this run already loaded, and root a
@@ -911,13 +1018,21 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	// both is the same defect and gets the same answer. Resolved per package:
 	// documents in different packages are in different name spaces, and
 	// qualifying a name there would rename types nothing was about to merge.
-	rootNameOf := func(schemaPath string, s *schema.Schema) string {
-		id := docIDOf(s)
-		if name := p.rootNames.lookup(schemaPath, id); name != "" {
+	// The name the caller chose for a document, or "" where none did -- the two
+	// answers below differ in what they fall back to, and a document nobody
+	// listed has no root type name to fall back to at all.
+	chosenRootName := func(schemaPath string, s *schema.Schema) string {
+		if name := p.rootNames.lookup(schemaPath, docIDOf(s)); name != "" {
 			return name
 		}
 		if p.rootNameFromFile {
 			return generator.SchemaNameToGoName(filepath.Base(schemaPath))
+		}
+		return ""
+	}
+	rootNameOf := func(schemaPath string, s *schema.Schema) string {
+		if name := chosenRootName(schemaPath, s); name != "" {
+			return name
 		}
 		return generator.DefaultRootTypeName(s)
 	}
@@ -926,12 +1041,24 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	for _, in := range inputs {
 		byPath[in.path] = in.s
 	}
+	// A $ref into a document this run owns emits an import, not a copy, so the
+	// documents of the other packages are not this package's to name. What is
+	// left over is a document nobody listed at all: it belongs to no package, so
+	// every package that references it declares its own copy of what it reaches,
+	// and two such documents declaring one definition name is the same silent
+	// merge here as anywhere else. Issue #297.
+	ownDocs := ownedDocuments(byPath)
+	pkgDocPaths := make(map[string][]string, len(pkgOrder))
+	pkgDocsByPath := make(map[string]map[string]*schema.Schema, len(pkgOrder))
 	for _, pkg := range pkgOrder {
 		paths := make([]string, 0, len(pkgInputs[pkg]))
 		for _, in := range pkgInputs[pkg] {
 			paths = append(paths, in.path)
 		}
-		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, byPath, rootNameOf, p.warnings)
+		external := collectExternalClaims(paths, byPath, resolver, ownDocs, chosenRootName)
+		pkgDocsByPath[pkg] = external.merge(byPath)
+		pkgDocPaths[pkg] = external.documentPaths(paths)
+		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, pkgDocsByPath[pkg], external.claims, rootNameOf, p.warnings)
 	}
 
 	// Reject resolved output-path collisions before generating anything, and
@@ -1025,11 +1152,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				}
 				var pinnedCollision *generator.PinnedNameCollisionError
 				if errors.As(err, &pinnedCollision) {
-					pkgPaths := make([]string, 0, len(pkgInputs[pkg]))
-					for _, other := range pkgInputs[pkg] {
-						pkgPaths = append(pkgPaths, other.path)
-					}
-					return explainPinnedNameCollision(in.path, pinnedCollision, pinnedDefNames[pkg], byPath, pkgPaths)
+					return explainPinnedNameCollision(in.path, pinnedCollision, pinnedDefNames[pkg], pkgDocsByPath[pkg], pkgDocPaths[pkg])
 				}
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}

@@ -1093,11 +1093,16 @@ func TestDuplicateRootNameFromAnOverrideKeepsItsOwnMessage(t *testing.T) {
 	}
 }
 
-// The name may also have been materialized by something that is not an input at
-// all -- here a $ref into a document the run was never given, whose title is the
-// one a later input wants for its root. No reordering of the inputs can free
-// that name, so nothing here knows better than the generator's own message.
-func TestANameTakenByANonInputDocumentKeepsTheGeneratorsMessage(t *testing.T) {
+// The name may also be wanted by something that is not an input at all -- here a
+// $ref into a document the run was never given, whose title is the one an input
+// wants for its root.
+//
+// No reordering of the inputs frees that name, and the run used to fail with the
+// generator's duplicate-root-name message, which the caller could only act on by
+// renaming a document that is not theirs. The name is the listed document's:
+// nothing in the package is named after ext.json, nobody asked for its title,
+// and its type is what moves. Issue #297.
+func TestANameWantedByANonInputDocumentGoesToTheInput(t *testing.T) {
 	src := t.TempDir()
 	xPath := filepath.Join(src, "x.json")
 	yPath := filepath.Join(src, "y.json")
@@ -1113,16 +1118,22 @@ func TestANameTakenByANonInputDocumentKeepsTheGeneratorsMessage(t *testing.T) {
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"title": "Common", "type": "object", "properties": {"b": {"type": "string"}}}`)
 
-	_, err := runGenerateCapturing(t, xPath, yPath,
-		"-o", t.TempDir(), "-p", "m", "--shared-types")
-	if err == nil {
-		t.Fatal("a root name already materialized from a referenced document should fail")
+	out := t.TempDir()
+	stderr, err := runGenerateCapturing(t, xPath, yPath, "-o", out, "-p", "m", "--shared-types")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
-	if !strings.Contains(err.Error(), "give each schema a distinct root name") {
-		t.Errorf("with no input to reorder, the generator's message should stand, got:\n%s", err)
+	declared := strings.Join(declaredTypeNames(t, out), ",")
+	if !strings.Contains(declared, "Common,") && !strings.HasSuffix(declared, "Common") {
+		t.Errorf("y.json's root should keep Common, declared types = %s", declared)
 	}
-	if strings.Contains(err.Error(), "wrong order") {
-		t.Errorf("the inputs are not in the wrong order; ext.json is not one of them:\n%s", err)
+	if !strings.Contains(declared, "Common2") {
+		t.Errorf("ext.json's type should have moved off Common, declared types = %s", declared)
+	}
+	for _, want := range []string{"reached by $ref", "y.json root type keeps Common"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the split should be reported and say where ext.json came from, missing %q in:\n%s", want, stderr)
+		}
 	}
 }
 
