@@ -276,14 +276,57 @@ var keywordDialects = map[string]keywordDialect{
 	//
 	// Normalize performs the split, and -- as with draft 3's spellings above --
 	// it fires wherever this pass leaves the source keyword standing, which is now
-	// everywhere. The 2019-09 spellings stay gated in the other direction: a
-	// draft-7 document writing "dependentRequired" still states nothing, because
-	// no compatibility file asks for the reverse.
+	// everywhere.
 	"dependencies": {From: Draft03, To: DraftV1, Gate: gateKeep,
 		Why: "2019-09 removed it, but the suite ships optional/dependencies-compatibility.json for 2019-09, " +
 			"2020-12 and v1 and marks the keyword binding in all three; gating it to 3..7 fails 25 suite groups"},
+
+	// The two 2019-09 spellings are deliberately not treated alike, and the
+	// difference is issue #197's decision rather than an oversight.
+	//
+	// "dependentSchemas" is the same shape of question the row above answers, one
+	// direction over: a pre-2019-09 document writing it is writing a word its
+	// dialect has never heard of, exactly as a 2019-09 document writing
+	// "dependencies" is. There the corpus settled it -- the compatibility files
+	// exist, and gating the keyword failed 25 groups. Here it cannot: upstream
+	// ships no compatibility file for "dependentSchemas" in any dialect, so no
+	// measurement is available and the suite has no verdict either way. Note that
+	// this is a third kind of reason from the three gateKeep names above, and it
+	// is weaker than the "dependencies" row's: that row is held up by a
+	// measurement, and this one by a reading of intent.
+	//
+	// The call, then, is on what the document means. A schema that spells out
+	// "dependentSchemas":{"card":{...}} has stated a constraint in full and in an
+	// unambiguous spelling, and the only thing standing between it and being
+	// honoured is that its $schema names a draft one edition too early --
+	// commonly because the $schema was copied and the body was not. Silently
+	// dropping it is the direction that cannot be noticed: the generated type
+	// simply carries no check, and nothing says a keyword was discarded. So the
+	// keyword binds in every dialect, which is a deliberate deviation from the
+	// specification and is recorded here as one.
+	//
+	// "dependentRequired" is NOT given the same treatment, and the asymmetry is
+	// intentional. It has an escape the schema-valued spelling does not: draft 7
+	// expresses exactly that constraint as "dependencies" with an array value,
+	// and Normalize maps it onto dependentRequired in every dialect (see
+	// TestDependenciesIsHonouredAfterItsRemoval). A draft-7 document that means a
+	// required-property dependency can say so in its own vocabulary, so honouring
+	// the later spelling too would add lenience with nothing behind it.
+	// "dependencies" with a *schema* value maps to dependentSchemas the same way,
+	// so a draft-7 document has that route as well -- but the array form and the
+	// schema form share one keyword there, and this row is about the document
+	// that reached for the modern name instead.
+	//
+	// TestKeywordAvailabilityFollowsTheDialect in tests/dialect_keywords_test.go
+	// holds both halves, compiled and run under draft 7 and 2019-09 off one body.
+	// The suite cannot: it has no file that states this keyword under a dialect
+	// that predates it, which is the same reason the readOnly/writeOnly spans
+	// needed in-tree guards.
 	"dependentRequired": {From: Draft201909, To: DraftV1, Gate: gateDrop},
-	"dependentSchemas":  {From: Draft201909, To: DraftV1, Gate: gateDrop},
+	"dependentSchemas": {From: Draft03, To: DraftV1, Gate: gateKeep,
+		Why: "2019-09's spelling, honoured in every dialect on purpose (issue #197): the suite ships no " +
+			"dependentSchemas compatibility file, so nothing can measure the question, and a document that " +
+			"writes the keyword in full has stated a constraint that dropping it would discard in silence"},
 
 	// ── Arrays ───────────────────────────────────────────────────────────
 	"items":       {From: Draft03, To: DraftV1, Gate: gateDrop},

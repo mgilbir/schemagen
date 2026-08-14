@@ -97,10 +97,48 @@ The flag reaches the Go type as well as the check. `date-time` maps to
 by decoding it — an unparseable value simply fails `json.Unmarshal`, whatever
 `Validate` does. Under an annotating dialect the mapping is therefore withheld
 too and the value stays a `string`; pass `--format-assertion` to get the typed
-representation back. One consequence is worth stating: `time.Time` cannot
-represent a leap second, so `1998-12-31T23:59:60Z` — which RFC 3339 admits — is
-refused by a `date-time` field held as one. A `format` written without a `type`
-keeps the JSON string and accepts it.
+representation back.
+
+That mapping has two costs, and they are the same trade seen twice: the Go type
+is the representation, and holding a value as one is not free. The first is that
+a `date-time` field cannot hold a leap second; the second is that it does not
+give back the bytes it was handed. Both are below, and both have the same escape.
+
+#### A `date-time` field cannot hold a leap second
+
+RFC 3339 §5.7 admits second 60 at the end of a UTC day, and the official test
+suite marks `"1998-12-31T23:59:60Z"` valid. `time.Time` cannot represent that
+second at all, so a `date-time` property held as one refuses the value while
+decoding, before `Validate` is reached. No respelling helps: there is no input a
+`time.Time` accepts that denotes second 60, which is what separates this from the
+`t`/`z` case-folding a `date-time` does handle.
+
+Only the typed spelling under an asserting posture is affected, and then every
+spelling of the leap second alike — the `Z` form, the lowercase `z` RFC 3339 also
+admits, and an offset form such as `"1998-12-31T15:59:60.123-08:00"`. Two
+spellings beside it accept the same value:
+
+| Schema | Held as | `"1998-12-31T23:59:60Z"` |
+| --- | --- | --- |
+| `{"type":"string","format":"date-time"}` | `time.Time` | refused, on decode |
+| `{"format":"date-time"}` — no `type` | JSON string | accepted |
+| `{"type":"string","format":"date-time","minLength":1}` | `string` | accepted |
+
+`format: time` is unaffected in either spelling. It is never mapped to a Go type
+— `time.Time` carries a date the keyword does not state — so its own leap second
+`"23:59:60Z"` is checked as a string and accepted whether a `"type":"string"`
+stands beside it or not.
+
+The third row is the escape route, and it is the same one the canonicalisation
+note below gives: a `minLength`, `maxLength` or `pattern` beside the `format`
+keeps the value a `string`, and the format is still asserted, in `Validate`. That
+check is not the weaker of the two. It refuses `"1998-12-31T23:58:60Z"` and
+`"1998-12-31T23:59:61Z"`, because second 60 is only ever the last second of a UTC
+day — the `time.Time` path cannot make that distinction, having refused the whole
+family already.
+
+Under an annotating posture the question does not arise: the value stays a
+`string` and `format` asserts nothing at all.
 
 #### Asserting `format` changes the bytes, not only the verdict
 
@@ -140,7 +178,9 @@ round-trips exactly.
 To assert the format and keep the caller's bytes, give the schema a
 `minLength`, `maxLength` or `pattern` beside the `format`. That combination
 already keeps the string (neither type carries those keywords), and the format is
-still checked, by parsing the string in `Validate`.
+still checked, by parsing the string in `Validate`. It is the same edit that lets
+a `date-time` hold a leap second, for the same reason: what the value is held as
+is what decides both.
 
 `hostname`, `idn-hostname`, `email` and `idn-email` are checked with
 [`golang.org/x/net/idna`](https://pkg.go.dev/golang.org/x/net/idna), which is the

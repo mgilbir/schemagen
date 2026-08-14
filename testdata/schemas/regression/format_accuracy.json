@@ -6,6 +6,7 @@
   "properties": {
     "stamp": {"type": "string", "format": "date-time"},
     "stampStr": {"format": "date-time"},
+    "stampLen": {"type": "string", "format": "date-time", "minLength": 1},
     "clock": {"type": "string", "format": "time"},
     "day": {"type": "string", "format": "date"},
     "pattern": {"type": "string", "format": "regex"},

@@ -185,6 +185,12 @@ func dialectKeywordFixtures() []dialectFixture {
 			// The 2019-09 additions, written in draft 7. dependentRequired and
 			// dependentSchemas are the split of draft 7's own `dependencies`, and
 			// the split spelling is not draft 7's.
+			//
+			// Those two are the fixture's exceptions and they run opposite ways --
+			// `dr` is gated and `ds` is not -- so this body holds both halves of
+			// issue #197's decision, side by side off one schema. Neither can be
+			// falsified by `make test-external`: the suite ships no file stating
+			// either keyword under a dialect that predates it.
 			Name: "2019-09 keywords written in draft 7",
 			Body: `{
 				"type": "object",
@@ -218,7 +224,17 @@ func dialectKeywordFixtures() []dialectFixture {
 						"and v1 and marks the keyword binding in all three. This is what holds that decision " +
 						"without waiting for `make test-external`; see the `dependencies` row in " +
 						"pkg/schema/keyworddialects.go"},
-				{Doc: `{"ds":{"a":1}}`, Without: true, With: false, Why: "dependentSchemas arrived in 2019-09"},
+				{Doc: `{"ds":{"a":1}}`, Without: false, With: false,
+					Why: "the second exception, and the deliberate deviation issue #197 decided. " +
+						"dependentSchemas arrived in 2019-09, so a plain reading gates it under draft 7 -- and " +
+						"unlike `dependencies` above there is no measurement to appeal to, because upstream " +
+						"ships no dependentSchemas compatibility file for any dialect. The call is that a " +
+						"document writing the keyword in full meant it, and that dropping it is the failure " +
+						"nobody can see. Note this row runs opposite to `dr` two lines up, which is the " +
+						"asymmetry the keywordDialects comment argues for: draft 7 can express " +
+						"dependentRequired as `dependencies` with an array and has no need of the later " +
+						"spelling. Re-gating the row flips this line and nothing else; see the " +
+						"`dependentSchemas` row in pkg/schema/keyworddialects.go"},
 				{Doc: `{"mc":[1]}`, Without: true, With: false, Why: "minContains arrived in 2019-09"},
 				{Doc: `{"up":{"b":1}}`, Without: true, With: false, Why: "unevaluatedProperties arrived in 2019-09"},
 				{Doc: `{"ui":[1,2]}`, Without: true, With: false, Why: "unevaluatedItems arrived in 2019-09"},

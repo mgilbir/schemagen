@@ -7921,9 +7921,10 @@ func TestDependentSchemaBranchItCannotReadWholeGoesToTheEvaluator(t *testing.T) 
 
 	// Draft 7 is the dialect where a $ref replaces what stands beside it, and it
 	// spells the keyword "dependencies"; "dependentSchemas" is 2019-09's name for
-	// the same thing and draft 7 does not define it, so writing that spelling here
-	// asked draft 7 to honour a keyword it has never heard of. Normalize maps the
-	// one onto the other, so the sub-schema this reaches is unchanged.
+	// the same thing, which draft 7 does not define. This fixture writes draft 7's
+	// own spelling so that what it exercises is the $ref rule and not the dialect
+	// decision issue #197 took about the other one. Normalize maps the one onto
+	// the other, so the sub-schema this reaches is unchanged either way.
 	refIR := generateForItemTest(t, `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"title": "Doc",
