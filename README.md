@@ -635,6 +635,13 @@ Notes:
 - Each output directory holds exactly one package. By default a document is
   written to `<output-dir>/<last segment of its import path>/`; override with
   `--schema-output`.
+- The rule holds at every position a `$ref` can be written, the document root
+  included: `{"$ref": "https://example.com/common.json"}` as a whole document
+  becomes `type Person common.Common`, not a second copy of the shape. A `$ref`
+  into a node the owning package gives no Go type of its own — a subschema such
+  as `common.json#/properties/postal_code`, which that package emits as a field
+  and never as a declaration — is an error rather than a copy, in that position
+  as in every other. Reference a `$defs` entry instead, which is named.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
 

@@ -33,23 +33,77 @@ type qualifiedType struct {
 	ImportPath string
 	Name       string
 
-	// Filled in once the owning package's Generate call finishes, for use by
-	// referencing packages (validation guards need the zero literal, and only
-	// the owning generator knows the underlying type).
-	ZeroLiteral string
-	Validatable bool
-	// ZeroLossy is the owning generator's isZeroLossyNamedType answer: whether
-	// an optional field of this type needs a pointer to tell absent from a
-	// present zero. Published rather than left to the referencing package to
-	// infer from ZeroLiteral, which cannot see a type whose zero has no literal
-	// at all -- an alias over time.Time, for one.
-	ZeroLossy bool
+	// Shape is filled in once the owning package's Generate call finishes, for
+	// use by referencing packages.
+	Shape     typeShape
 	infoKnown bool
 }
 
-// noteTypeInfo records validation info for a type previously registered via
-// RecordType.
-func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, zeroLiteral string, validatable, zeroLossy bool) {
+// typeShape is everything a referencing package needs to know about a type it
+// holds nothing of but the name.
+//
+// Every field is an answer the *owning* generator worked out by running its own
+// predicate over its own declaration, and none of them can be worked out again
+// on the other side. A referencing package's type table does not contain the
+// foreign declaration, so asking it answers "no" for every question; and where
+// that package happens to declare a type of the same name, it answers about the
+// wrong type entirely, which is worse -- a Go type whose shape decides whether
+// an absent property is omitted or invented would be chosen from a namesake.
+// That is issue #296: `tpkg.OneOf`, `tpkg.Not` and `tpkg.Arr` were all judged by
+// a local lookup that had never heard of them, came back as ordinary structs,
+// and were tagged ",omitempty" -- which never omits a struct, so a property the
+// document did not carry was written out as null or {} and the type then refused
+// to read its own output back.
+//
+// isZeroLossyNamedType was the one predicate that had been given this treatment,
+// and the rest of the family is here for the same reason. Adding a question a
+// referencing package asks of a foreign type means adding a field here; see
+// TestEveryTypeShapeFieldIsPublished, which reads the publication in Generate
+// and fails until it is.
+type typeShape struct {
+	// ZeroLiteral is the Go literal for the type's zero value, or "" where it
+	// has none (a struct). Validation guards compare against it.
+	ZeroLiteral string
+	// Validatable says the type carries a Validate() method to dispatch to.
+	Validatable bool
+	// ZeroLossy says an optional field of this type needs a pointer to tell
+	// absent from a present zero. Published rather than left to the referencing
+	// package to infer from ZeroLiteral, which cannot see a type whose zero has
+	// no literal at all -- an alias over time.Time, for one.
+	ZeroLossy bool
+	// Struct says the type was emitted as a Go struct, which omitempty never
+	// omits: an optional property of one is pointer-wrapped instead.
+	Struct bool
+	// Collection says the type is, or is an alias over, a slice or a map. Its
+	// nil is what an absent property leaves and an empty [] or {} is not, so an
+	// optional field of one takes ",omitzero" rather than ",omitempty".
+	Collection bool
+	// Interface says the type is, or is an alias over, `any`. Like a pointer and
+	// a collection its nil means absent -- and it cannot carry methods.
+	Interface bool
+	// RawWrapper says the type is one of the wrappers that keep the value as raw
+	// JSON and judge it afterwards. It is a struct with a custom MarshalJSON, so
+	// omitempty never drops it; it carries IsZero, so ",omitzero" drops exactly
+	// the absent case.
+	RawWrapper bool
+	// AliasDropsMethods says `type X T` would leave X without the methods T
+	// carries, so a schema whose whole content is a $ref to this type has to be
+	// generated from the schema again rather than aliased to it.
+	AliasDropsMethods bool
+	// Unmarshaler and Marshaler say the type declares an UnmarshalJSON or a
+	// MarshalJSON of its own. A defined type over it inherits neither, so an
+	// alias that does not delegate reaches JSON through the underlying
+	// representation instead -- which for a struct with no exported field is
+	// "refuse every document that is not an object", for a schema that accepts
+	// them. See populateAliasDelegates, which asks exactly these two questions
+	// of a local target through its own tables.
+	Unmarshaler bool
+	Marshaler   bool
+}
+
+// noteTypeInfo records the owning generator's shape for a type previously
+// registered via RecordType.
+func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, shape typeShape) {
 	if r == nil || s == nil {
 		return
 	}
@@ -57,9 +111,7 @@ func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, zeroLiteral string
 	if !ok || qt.infoKnown {
 		return
 	}
-	qt.ZeroLiteral = zeroLiteral
-	qt.Validatable = validatable
-	qt.ZeroLossy = zeroLossy
+	qt.Shape = shape
 	qt.infoKnown = true
 	r.types[s] = qt
 }

@@ -32,15 +32,11 @@ type NamedType struct {
 	Pointer  bool
 	PkgAlias string // import alias when the type lives in another generated package
 
-	// Validation info carried over from the owning package for qualified
-	// types (the local typedef lookup cannot see foreign definitions).
-	foreignZeroLiteral string
-	foreignValidatable bool
-	// foreignZeroLossy is the owning package's answer to isZeroLossyNamedType.
-	// It is carried rather than re-derived here because a type can need the
-	// pointer without having a zero literal to be recognised by -- an alias over
-	// time.Time is a struct, and its literal is empty.
-	foreignZeroLossy bool
+	// foreign is the owning package's own answers about this type, carried over
+	// for qualified names because the local typedef lookup cannot see a foreign
+	// definition -- and, where a local type shares the name, answers about that
+	// one instead. Meaningful only when PkgAlias is set; see typeShape.
+	foreign typeShape
 }
 
 func (t *NamedType) GoTypeName() string {
