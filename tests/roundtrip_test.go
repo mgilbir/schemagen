@@ -9621,17 +9621,20 @@ func TestInferredArrayTupleUnderDraft7JudgesEachPosition(t *testing.T) {
 // unanimously: the "o" document is valid and the "i" document is not. The suite
 // has no case of this shape, which is why it is written out here.
 //
-// What it does NOT guard is resolveRecursiveRef's scope walk, and that was
-// established rather than assumed. That walk is innermost-first where 2019-09
-// says outermost, so this fixture looked like the shape to catch it -- but
-// planting the wrong resolution leaves this test passing. resolveRecursiveRef is
-// called exactly once here and answers from the ordinary $ref resolution before
-// the walk decides anything; instrumented across all 832 schemas in testdata the
-// walk never selects a frame at all.
+// What it does NOT guard is the *direction* resolveRecursiveRef's scope walk
+// takes, and that was established rather than assumed. The walk runs here and
+// decides the answer -- it returns the outer resource where the plain $ref
+// reading would have returned the inner one -- but it decides it from a scope
+// exactly one frame deep, because a resource written directly under the root's
+// $defs is generated before the root and so has nothing pushed above it. One
+// frame makes innermost-first and outermost-first the same walk, and planting
+// either direction leaves this test passing.
 //
-// So this is a behavioural pin on a shape three implementations agree about, and
-// nothing more. Anyone hardening the walk order needs a different fixture, and
-// should treat the absence of one as the open question it is -- see #167.
+// TestRecursiveAnchorResolvesOutermost is the fixture that does guard the
+// direction, and it is the same rule at a scope two frames deep. Both are kept:
+// this one holds the shape a reader reaches for first, and the two differ only
+// by where the inner resource is written, which is the whole reason the
+// direction went unguarded for so long. Issue #167.
 func TestRecursiveAnchorNestedResources(t *testing.T) {
 	// ForType, not runValidationCases: extractRootTypeName picks the *last*
 	// struct carrying JSON tags, which here is the inner resource, and the
@@ -9656,6 +9659,97 @@ func TestRecursiveAnchorNestedResources(t *testing.T) {
 			`{"inner":{"i":1,"v":{"o":9}}}`,
 			// And the inner schema's does.
 			`{"o":1,"inner":{"v":{"o":9}}}`,
+		},
+	)
+}
+
+// TestRecursiveAnchorResolvesOutermost is the fixture that watches which
+// direction resolveRecursiveRef walks the dynamic scope, and it is the one the
+// tree did not have.
+//
+// 2019-09 section 8.2.4.2.1 resolves a bookended $recursiveRef to the
+// *outermost* resource in the dynamic scope whose $recursiveAnchor is true.
+// resolveRecursiveRef walked innermost-first, and nothing failed when the
+// direction was flipped either way, because every case that reached the walk
+// reached it with a single frame on the scope, where the two directions are the
+// same walk. This schema puts two anchored frames there at once, so they name
+// different resources and disagree about every document below.
+//
+// The shape is doing three things at once and none of them are decoration:
+//
+//   - The root is a resource ($id) and is anchored, so it is frame 0 and a
+//     candidate.
+//   - $defs/mid carries neither $id nor $recursiveAnchor. It is therefore not a
+//     schema resource: it puts no frame on any validator's dynamic scope, and no
+//     anchor declaration into the reach that would route the types below it to
+//     the runtime evaluator (#160, dynamicScopeDecidesTheTarget). Anchoring it,
+//     or giving it an $id, moves the schema off the static path this test exists
+//     to cover.
+//   - The anchored resource lives under *mid's* $defs rather than the root's. A
+//     root-level $defs entry is generated before the root type, with nothing
+//     pushed above it -- which is why recursive_anchor_nested_resources.json
+//     resolves at depth 1 and cannot see the direction. One nested a level down
+//     is reached only through the $ref that pushes a frame for it.
+//
+// So the scope when the $recursiveRef is resolved is [outer, deep], both
+// anchored. Outermost-first types "v" as the outer resource; innermost-first
+// types it as deep. The two accept disjoint documents, and planting the old
+// direction back turns both lists below inside out.
+//
+// Deep and Mid, not Root, are what the cases are run against, and that is the
+// point rather than a workaround. Root itself has two anchored resources in
+// reach, so it is compiled to the runtime evaluator, whose own walk is
+// outermost-first already; the whole-document verdict never asked this function
+// anything. What the static path decides is the two named types beside it, and a
+// caller holding one of those and calling Validate is who this was wrong for.
+//
+// The verdicts are not this project's reasoning. python-jsonschema 4.26.0,
+// go-jsonschema (santhosh-tekuri v6.0.2) and js-ajv (ajv 8.20.0) were asked
+// through Bowtie for the whole document on this exact schema and agree
+// unanimously: with "v" set to {"o":9} the document is valid, with {"d":9} it is
+// not, and {} is not. No implementation dissented, so there is no split to
+// record. The cases below are those documents with the outer levels stripped to
+// the type being validated, so a Deep that accepts {"d":1,"v":{"d":9}} is
+// accepting a value that the document it was cut from is rejected for.
+func TestRecursiveAnchorResolvesOutermost(t *testing.T) {
+	const fixture = "testdata/schemas/regression/recursive_anchor_outermost_scope.json"
+
+	// The resource the reference is written in. "v" is typed by the walk, so
+	// this is the narrowest place the direction is visible.
+	runValidationCasesForType(t, fixture, "Deep",
+		[]string{
+			// "v" satisfies the outer resource -- the outermost anchored frame,
+			// and so the one the reference resolves to.
+			`{"d":1,"v":{"o":9}}`,
+			// Satisfying both is still satisfying the outer one.
+			`{"d":1,"v":{"o":9,"d":9}}`,
+			// "v" absent: the reference is never applied.
+			`{"d":1}`,
+		},
+		[]string{
+			// Satisfies the *inner* resource and not the outer one: what
+			// innermost-first accepts, and what all three implementations reject.
+			`{"d":1,"v":{"d":9}}`,
+			// Neither.
+			`{"d":1,"v":{}}`,
+			// The inner resource's own requirement still binds.
+			`{"v":{"o":9}}`,
+		},
+	)
+
+	// And through the $ref that pushes the second frame, which is what made the
+	// scope two deep in the first place.
+	runValidationCasesForType(t, fixture, "Mid",
+		[]string{
+			`{"m":1,"deep":{"d":1,"v":{"o":9}}}`,
+			`{"m":1,"deep":{"d":1}}`,
+			`{"m":1}`,
+		},
+		[]string{
+			`{"m":1,"deep":{"d":1,"v":{"d":9}}}`,
+			`{"m":1,"deep":{"d":1,"v":{}}}`,
+			`{"deep":{"d":1,"v":{"o":9}}}`,
+			`{"m":1,"deep":{"v":{"o":9}}}`,
 		},
 	)
 }
