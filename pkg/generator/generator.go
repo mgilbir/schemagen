@@ -10905,6 +10905,20 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // valid and invalid lists inside out. python-jsonschema, go-jsonschema and
 // js-ajv were asked through Bowtie and answer outermost, unanimously.
 //
+// That unanimity is about a scope whose frames are *all* anchored, and it does
+// not extend to one where they are not. Put an unanchored resource between two
+// anchored ones -- a $defs entry carrying an $id and no $recursiveAnchor, whose
+// $ref leads on to an anchored resource -- and the scope is [anchored,
+// unanchored, anchored]. js-ajv 8.20.0 and go-jsonschema (santhosh-tekuri)
+// v6.0.2 take the outermost anchored frame wherever it sits, which is what the
+// loop below does. python-jsonschema 4.26.0 walks outward from the reference and
+// stops at the first frame that is not anchored, so it takes the innermost one:
+// see lookup_recursive_ref, which breaks out of the dynamic-scope loop rather
+// than skipping the frame. The two readings disagree about a whole document, not
+// only about a fragment type. The suite has no case for it -- its recursiveRef
+// group never nests three resources -- so nothing in the tree pins a side, and
+// this records the split rather than choosing one.
+//
 // Two things kept that shape hard to find, and both are worth knowing before
 // moving anything near it. A root-level $defs entry is generated before the
 // root, at scope depth 1, so an anchored resource written directly under $defs
@@ -10936,6 +10950,46 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // with two anchored resources in reach is compiled to the evaluator anyway; it
 // is visible to a caller holding Deep. Aligning the two is a change to the scope
 // construction rather than to this walk, and it wants deciding on its own.
+//
+// What that leaves is a question about the *seed*, and not about the direction
+// this loop takes -- which is #293's practical half, and it is settled here
+// because the answer is a property of where frames live rather than of what they
+// hold. Seed the scope at the type being generated, as the evaluator does, and
+// this function is never asked with more than one frame on it, so outermost and
+// innermost are the same walk and the choice below cannot decide anything.
+//
+// A frame is live inside one generateTypeDefBody in two places, and only one of
+// them lasts. The three sites that push around a $ref -- the alias arm in
+// generateTypeDef, resolvePropertyType and typeForSchema -- push and then call
+// generateTypeDef, so the frame belongs to the type that call starts and not to
+// the one that pushed it; the only code between the push and the pop is naming
+// and predicate helpers, and a call graph over the package from those helpers
+// reaches 50 functions without meeting this one, resolveDynamicRef or
+// resolveEffectiveRefSchema. The other two are mergeAllOfBranches and
+// mergeApplicatorVariantPropertiesInto, which follow a $ref chain and hold every
+// frame of it across the whole merge. Those windows are real rather than
+// hypothetical -- an allOf branch spelled {"$id":"a","$ref":"b"} puts two frames
+// on at once, inside one type -- but the same call graph from either window
+// reaches 209 and 174 functions and meets none of the three resolvers, and
+// neither window enters a type body. A $recursiveRef carried in on merged
+// properties is therefore resolved after the pops, at the depth its enclosing
+// type started with.
+//
+// Measured, because a claim of this shape is exactly the one #167 got wrong by
+// reasoning. Instrumented over `go test ./...`, this walk and resolveDynamicRef
+// are consulted 248 times and the frames pushed since the enclosing type began
+// number zero every single time. That zero is not a counter nobody has watched
+// move: the depth reads 2 at the merge sites above, and planting a resolution
+// inside mergeAllOfBranches' window makes the same measurement report a
+// three-frame scope with two anchored frames on it -- the shape that would put
+// the direction back in play, had anything there asked.
+//
+// So the residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
+// runtimeSchemaDef then declines, which drops back here instead of compiling --
+// does not bear on the direction. Those schemas exist and are easy to build: an
+// unknown keyword beside the reference, the node-depth bound, the hoist budget
+// and dynamicRefCanLoop each produce one. Every one of them lands here at a
+// scope one frame deep, like everything else.
 func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
 	resolved := g.resolveRefInContext(ref, ctx)
 	if resolved == nil {

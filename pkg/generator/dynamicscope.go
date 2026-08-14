@@ -200,6 +200,13 @@ func resourceDynamicAnchor(root *schema.Schema, name string) *schema.Schema {
 // refers to. Over-counting compiles a schema that did not have to be compiled;
 // under-counting leaves the reference resolved to a guess, so the reach is
 // deliberately the generous one.
+//
+// Nothing here reads g.dynamicScope, and that is worth saying where #293 will be
+// read. The routing question is answered from what s reaches, so which scope the
+// generator maintains -- document-rooted as today, or seeded at the type being
+// generated -- cannot change which schemas arrive at the evaluator. It changes
+// only what the static path resolves for the ones that stay, and
+// resolveRecursiveRef records what is settled and what is not about that.
 func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
 	if s == nil {
 		return false
