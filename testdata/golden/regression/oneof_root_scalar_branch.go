@@ -177,12 +177,18 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 	{
 		// Top-level oneOf: the entire JSON object is the variant data.
 		oneofData := json.RawMessage(data)
+		// The union is the whole of this value, so it has no name of its own to
+		// report under and its refusals are sentences about the value; whatever
+		// contains it puts the path in front. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonValueErrorf(format, args...)
+		}
 		// The schema behind this union excludes a JSON null, and the loop below
 		// steps over one rather than judging it -- which at the top level, where
 		// the union is the whole value and no parent check runs first, is an
 		// acceptance. See OneOfDef.RejectNull.
 		if string(oneofData) == "null" {
-			return fmt.Errorf("OneOfRootScalarBranch.Value: null is not allowed")
+			return oneofErrf("null is not allowed")
 		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			var oneofMatched int
@@ -236,7 +242,15 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 			}
 
 			if oneofMatched == 0 {
-				return fmt.Errorf("OneOfRootScalarBranch.Value: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
 				// Several branches decoded and every one can be judged, so the
@@ -252,11 +266,11 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return fmt.Errorf("OneOfRootScalarBranch.Value: no matching oneOf variant: %w", oneofStrictErr)
+					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
 				}
 			}
 			if oneofMatched > 1 {
-				return fmt.Errorf("OneOfRootScalarBranch.Value: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}

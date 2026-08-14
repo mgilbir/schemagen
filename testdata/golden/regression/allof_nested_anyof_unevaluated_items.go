@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // AllOfNestedAnyOfUnevaluatedItems - Issue #135 asked whether unevaluatedItems has the same nesting gap, and it did. hasCousinUnevaluatedItems read the direct branches of the schema's own in-place applicators, so an anyOf one level down inside an allOf branch was invisible and the keyword fell back to static handling: [1,2] was accepted although the first branch leaves index 1 unevaluated and the second refuses a number. The identical anyOf written directly has always rejected it.
@@ -70,13 +69,13 @@ func (a AllOfNestedAnyOfUnevaluatedItems) Validate() error {
 	}
 	var _v any
 	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
-		return fmt.Errorf("cannot decode value: %w", _err)
+		// A sentence about the value, joined by the same rule as the verdict
+		// below. Structural: the raw bytes came from a decoder that had already
+		// accepted them as JSON, so nothing has been seen to reach this.
+		return jsonValueErrorf("cannot decode value: %w", _err)
 	}
 	if _res := _evalNode(&AllOfNestedAnyOfUnevaluatedItemsSchema, _v); !_res.ok {
-		if _res.reason == "" {
-			return fmt.Errorf("value does not satisfy the schema")
-		}
-		return fmt.Errorf("%s", _res.reason)
+		return _evalError(_res)
 	}
 	return nil
 }

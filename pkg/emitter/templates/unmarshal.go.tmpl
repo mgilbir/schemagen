@@ -265,9 +265,26 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{
 		{{- if $oof.JSONName}}
 		oneofData := aux.{{$oof.FieldName}}
+		// Every refusal this union raises is a sentence about the value the union
+		// holds, and the property that reaches it goes in front of that sentence
+		// by the rule every other message is joined by (see jsonPathError).
+		//
+		// What used to go in front was a Go type and a Go field pasted in by hand:
+		// {{$struct.Name}}.{{$oof.FieldName}}
+		// A caller cannot find either in the document they sent, and at any depth
+		// but the first the pair does not even resemble the path. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonPathf(jsonValueErrorf(format, args...), "%s", {{printf "%q" $oof.JSONName}})
+		}
 		{{- else}}
 		// Top-level oneOf: the entire JSON object is the variant data.
 		oneofData := json.RawMessage(data)
+		// The union is the whole of this value, so it has no name of its own to
+		// report under and its refusals are sentences about the value; whatever
+		// contains it puts the path in front. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonValueErrorf(format, args...)
+		}
 		{{- end}}
 		{{- if $oof.RejectNull}}
 		// The schema behind this union excludes a JSON null, and the loop below
@@ -275,7 +292,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		// the union is the whole value and no parent check runs first, is an
 		// acceptance. See OneOfDef.RejectNull.
 		if string(oneofData) == "null" {
-			return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: null is not allowed")
+			return oneofErrf("null is not allowed")
 		}
 		{{- end}}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
@@ -283,7 +300,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			// Discriminator-based dispatch on "{{$oof.DiscriminatorField}}"
 			discVal, discErr := oneofDiscriminatorValue(oneofData, "{{$oof.DiscriminatorField}}")
 			if discErr != nil {
-				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: %w", discErr)
+				return oneofErrf("%w", discErr)
 			}
 			switch discVal {
 			{{- range $i, $v := $oof.Variants}}
@@ -293,19 +310,25 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{- if $v.LeafDecode}}
 				var _iv {{goType $v.LeafDecode.ShadowType}}
 				if err := json.Unmarshal(oneofData, &_iv); err != nil {
-					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)
+					return oneofErrf("variant {{$v.FieldName}}: %w", err)
 				}
 				candidate = {{$v.LeafDecode.Convert}}
 				{{- else}}
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}} (variant {{$v.FieldName}}): %w", err)
+					return oneofErrf("variant {{$v.FieldName}}: %w", err)
 				}
 				{{- end}}
 				{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
 			{{- end}}
 			{{- end}}
 			default:
-				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: unknown discriminator value %q for field \"{{$oof.DiscriminatorField}}\"", discVal)
+				{{- /* The property is named the way the document names it, and by the
+				       same word the discriminator's own refusals next door use, so
+				       one message does not carry two vocabularies: it used to read
+				       `for field "kind"` behind a Go-spelled prefix. Passed as an
+				       argument rather than pasted into the format string, so a name
+				       carrying a quote cannot break the literal. Issue #289. */}}
+				return oneofErrf("unknown discriminator value %q for property %q", discVal, {{printf "%q" $oof.DiscriminatorField}})
 			}
 			{{- else}}
 			var oneofMatched int
@@ -474,7 +497,15 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 					oneofLastErr = oneofCheckErr
 				}
 				{{- end}}
-				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofLastErr)
+				// A branch is only put to a decode once the keys it selects on are
+				// present, so a value that answers none of them leaves no branch
+				// reason behind at all -- and the %w below then had nothing to
+				// wrap and printed "%!w(<nil>)", which says nothing true about
+				// anything. The refusal stands on its own in that case. Issue #289.
+				if oneofLastErr == nil {
+					return oneofErrf("no matching oneOf variant")
+				}
+				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
 			}
 			{{- if $oof.HasValidatableVariants}}
 			if oneofMatched > 1 && oneofOpaque == 0 {
@@ -491,12 +522,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: no matching oneOf variant: %w", oneofStrictErr)
+					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
 				}
 			}
 			{{- end}}
 			if oneofMatched > 1 {
-				return fmt.Errorf("{{$struct.Name}}.{{$oof.FieldName}}: multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
+				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 			{{- end}}
 		}

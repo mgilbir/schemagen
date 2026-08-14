@@ -983,7 +983,7 @@ func TestEmitOneOfSelectionNarrowsOnBranchConstraints(t *testing.T) {
 		"e.Body = oneofStrictSel",
 		// A value no branch accepts is not ambiguity, and is not reported as a
 		// count.
-		`return fmt.Errorf("Envelope.Body: no matching oneOf variant: %w", oneofStrictErr)`,
+		`return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("Envelope.UnmarshalJSON is missing %q:\n%s", want, src)

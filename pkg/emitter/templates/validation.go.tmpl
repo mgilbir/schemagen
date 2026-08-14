@@ -1260,9 +1260,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			       evaluator opens the reason with the branch that did refuse, so
 			       the message is passed up as it is -- and it is never empty,
 			       because a group compiled here always states a `then` or an
-			       `else` for that opening to name. */}}
+			       `else` for that opening to name.
+
+			       Passed up through _evalError rather than by hand, so that the
+			       branch name is joined to a containing path with the "." a step
+			       takes, and a reason that is a sentence about the value would
+			       take the ": " a sentence takes. Issue #284. */}}
 			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
-				return fmt.Errorf("%s", _rbRes.reason)
+				return _evalError(_rbRes)
 			}
 			{{- else}}
 			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {

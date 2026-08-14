@@ -364,27 +364,33 @@ func (c *CanvasShapesItem) UnmarshalJSON(data []byte) error {
 	{
 		// Top-level oneOf: the entire JSON object is the variant data.
 		oneofData := json.RawMessage(data)
+		// The union is the whole of this value, so it has no name of its own to
+		// report under and its refusals are sentences about the value; whatever
+		// contains it puts the path in front. Issue #289.
+		oneofErrf := func(format string, args ...any) error {
+			return jsonValueErrorf(format, args...)
+		}
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			// Discriminator-based dispatch on "kind"
 			discVal, discErr := oneofDiscriminatorValue(oneofData, "kind")
 			if discErr != nil {
-				return fmt.Errorf("CanvasShapesItem.Value: %w", discErr)
+				return oneofErrf("%w", discErr)
 			}
 			switch discVal {
 			case "circle":
 				var candidate *Circle
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("CanvasShapesItem.Value (variant Circle): %w", err)
+					return oneofErrf("variant Circle: %w", err)
 				}
 				c.Value = &CanvasShapesItem_Circle{Circle: candidate}
 			case "rectangle":
 				var candidate *Rectangle
 				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return fmt.Errorf("CanvasShapesItem.Value (variant Rectangle): %w", err)
+					return oneofErrf("variant Rectangle: %w", err)
 				}
 				c.Value = &CanvasShapesItem_Rectangle{Rectangle: candidate}
 			default:
-				return fmt.Errorf("CanvasShapesItem.Value: unknown discriminator value %q for field \"kind\"", discVal)
+				return oneofErrf("unknown discriminator value %q for property %q", discVal, "kind")
 			}
 		}
 	}

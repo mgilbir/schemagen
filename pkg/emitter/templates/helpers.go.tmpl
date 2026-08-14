@@ -45,6 +45,19 @@ func jsonElemErrorf(format string, args ...any) error {
 	return jsonPathError{sep: "", err: fmt.Errorf(format, args...)}
 }
 
+// jsonStepErrorf builds a message that already opens with a step into the value
+// it is raised on -- a member of it, or the schema keyword a sub-schema that
+// refused is filed under -- which a container's path is joined to with a ".".
+//
+// A "." is what an unmarked message is joined with anyway, so this records what
+// was going to happen rather than changing it. Recorded rather than left
+// implicit because unmarked is also what a refusal from encoding/json or from a
+// leaf's own parser looks like, and that one is a sentence: the two can only be
+// told apart by the message saying which it is. See jsonDecodeRefusal.
+func jsonStepErrorf(format string, args ...any) error {
+	return jsonPathError{sep: ".", err: fmt.Errorf(format, args...)}
+}
+
 // jsonPathf puts the path segment that reaches a value in front of an error the
 // value itself raised, joined the way that error says it has to be.
 //
