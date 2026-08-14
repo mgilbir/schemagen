@@ -6129,6 +6129,13 @@ func TestFormatPostureFollowsTheDialect(t *testing.T) {
 // would satisfy every line above and mean nothing, so each cause has a rejection
 // beside it -- and the leap-second cases in particular, where the rule is not
 // "second 60 is fine" but "second 60 at the last minute of the UTC day".
+//
+// The stampLen documents are the one group that was never a false rejection.
+// They hold issue #274's answer instead: a `date-time` field cannot represent a
+// leap second, and the README says so and names the escape route beside it. Both
+// halves are stated here -- the typed refusal in the invalid list, the escaped
+// acceptance in the valid one -- because a README claim about a verdict is a
+// claim nothing else in this tree is watching.
 func TestFormatChecksMatchTheSuite(t *testing.T) {
 	runValidationCases(t,
 		"testdata/schemas/regression/format_accuracy.json",
@@ -6145,6 +6152,15 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			// is the one that can accept a leap second.
 			`{"stampStr":"1998-12-31T23:59:60Z"}`,
 			`{"stampStr":"1998-12-31T15:59:60.123-08:00"}`,
+			// stampLen is the escape route the README names for issue #274, and
+			// the reason it works is the one the canonicalisation note gives: a
+			// minLength beside the format is a keyword time.Time does not carry,
+			// so the mapping is given up, the value stays a string, and the
+			// check that runs is the one that admits a leap second. The typed
+			// spelling of the very same value is in the invalid list below, so
+			// the pair states the whole of the documented behaviour.
+			`{"stampLen":"1998-12-31T23:59:60Z"}`,
+			`{"stampLen":"1998-12-31T15:59:60.123-08:00"}`,
 			`{"clock":"23:59:60Z"}`,
 			`{"clock":"23:59:60+00:00"}`,
 			`{"clock":"01:29:60+01:30"}`,
@@ -6295,6 +6311,18 @@ func TestFormatChecksMatchTheSuite(t *testing.T) {
 			`{"clock":"23:59:60-01:00"}`,
 			`{"stampStr":"1998-12-31T23:58:60Z"}`,
 			`{"stampStr":"1998-12-31T23:59:61Z"}`,
+			// Issue #274, and the reason the README says a date-time field
+			// cannot hold a leap second: the suite marks this document valid,
+			// and a property held as a time.Time refuses it while decoding,
+			// before any check runs. It is here as a recorded verdict rather
+			// than an accident -- the same value is accepted three rows up
+			// through stampLen, and through stampStr above.
+			`{"stamp":"1998-12-31T23:59:60Z"}`,
+			// The escape route does not weaken the check. Second 60 is only ever
+			// the last second of a UTC day, and stampLen still says so.
+			`{"stampLen":"1998-12-31T23:58:60Z"}`,
+			`{"stampLen":"1998-12-31T23:59:61Z"}`,
+			`{"stampLen":"not-a-timestamp"}`,
 			// An offset is not optional in an RFC 3339 full-time.
 			`{"clock":"12:00:00"}`,
 			`{"clock":"01:02:03Z+00:30"}`,

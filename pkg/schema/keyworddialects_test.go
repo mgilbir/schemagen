@@ -599,9 +599,16 @@ func TestDependenciesIsHonouredAfterItsRemoval(t *testing.T) {
 		}
 	}
 
-	// The reverse compatibility is deliberately not granted: no suite file asks
-	// draft 7 to honour the 2019-09 spellings, and inventing it would be the
-	// forward direction of #203 all over again.
+	// The reverse compatibility is granted for one of the two 2019-09 spellings
+	// and withheld for the other, which is issue #197's decision. Both halves are
+	// asserted here for the same reason the loop above is: re-gating either row
+	// is a one-word edit, and no suite run can catch it.
+	//
+	// dependentRequired stays gated. A draft-7 document that means a
+	// required-property dependency writes `dependencies` with an array value, and
+	// the loop above proves that spelling reaches DependentRequired in every
+	// dialect -- so honouring the later name too would be lenience with nothing
+	// behind it, and the forward direction of #203 all over again.
 	var s Schema
 	if err := json.Unmarshal([]byte(`{"$schema":"http://json-schema.org/draft-07/schema#",`+
 		`"dependentRequired":{"bar":["foo"]}}`), &s); err != nil {
@@ -611,5 +618,58 @@ func TestDependenciesIsHonouredAfterItsRemoval(t *testing.T) {
 	if len(s.DependentRequired) != 0 {
 		t.Errorf("draft 7 honoured dependentRequired = %v; the compatibility the suite ships runs one way",
 			s.DependentRequired)
+	}
+}
+
+// TestDependentSchemasIsHonouredBeforeItArrived holds the deliberate deviation
+// issue #197 decided, in every dialect that predates the keyword.
+//
+// dependentSchemas arrived in 2019-09, so a plain reading of the specification
+// makes it an unknown keyword in drafts 3, 4, 6 and 7 -- and an unknown keyword
+// is one every draft says to ignore. This repository honours it there instead.
+//
+// The reasoning is in the row's comment; what matters here is that the corpus
+// cannot arbitrate. `dependencies` had optional/dependencies-compatibility.json
+// to measure against and the measurement decided it. There is no such file for
+// dependentSchemas in any dialect, and no suite file states the keyword under a
+// dialect that predates it, so `make test-external` answers the same whichever
+// way the row is set. That is exactly the condition under which #211 required an
+// in-tree guard, as readOnly and writeOnly needed one.
+func TestDependentSchemasIsHonouredBeforeItArrived(t *testing.T) {
+	for _, uri := range []string{
+		"http://json-schema.org/draft-03/schema#",
+		"http://json-schema.org/draft-04/schema#",
+		"http://json-schema.org/draft-06/schema#",
+		"http://json-schema.org/draft-07/schema#",
+		"https://json-schema.org/draft/2019-09/schema",
+		"https://json-schema.org/draft/2020-12/schema",
+		"https://json-schema.org/v1",
+	} {
+		var s Schema
+		// The branch states minLength rather than required, because required is
+		// itself dialect-split -- draft 3 spells it as a per-property boolean --
+		// and this test is about the trigger keyword, not about what a branch may
+		// carry. minLength is defined in every draft.
+		doc := `{"$schema":"` + uri + `","dependentSchemas":{"bar":{"minLength":3}}}`
+		if err := json.Unmarshal([]byte(doc), &s); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		s.Normalize()
+		branch := s.DependentSchemas["bar"]
+		if branch == nil {
+			t.Errorf("dependentSchemas[bar] is nil under %s, want the branch kept.\n"+
+				"The keyword is honoured in every dialect on purpose (issue #197): the suite ships no "+
+				"dependentSchemas compatibility file, so nothing measures this, and dropping the branch "+
+				"discards a stated constraint in silence", uri)
+			continue
+		}
+		if branch.MinLength == nil || *branch.MinLength != 3 {
+			t.Errorf("dependentSchemas[bar].minLength = %v under %s, want 3; the branch survived but "+
+				"its own keywords did not", branch.MinLength, uri)
+		}
+		if !KeywordDefinedIn("dependentSchemas", DetectDraft(&s)) {
+			t.Errorf("KeywordDefinedIn(dependentSchemas, %s) = false; the row and the pass must agree, "+
+				"or a later caller reading the table gates a keyword the pass keeps", uri)
+		}
 	}
 }
