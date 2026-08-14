@@ -32,7 +32,7 @@ type FormatHelperPositions struct {
 func (f *FormatHelperPositions) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FormatHelperPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -71,95 +71,134 @@ func (f *FormatHelperPositions) UnmarshalJSON(data []byte) error {
 	type Alias FormatHelperPositions
 	aux := &struct {
 		*Alias
+		Nested *[][]jsonIPv4Addr        `json:"nested"`
+		V4list *[]jsonIPv4Addr          `json:"v4List"`
+		V4map  *map[string]jsonIPv4Addr `json:"v4Map"`
+		V6list *[]jsonIPv6Addr          `json:"v6List"`
 	}{
 		Alias: (*Alias)(f),
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"dateList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"durationList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"hostList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"hostMap", jsonDecodeValues(jsonDecodeValue[string])},
+			{"idnHostList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"idnMailList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"mailList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"mailMap", jsonDecodeValues(jsonDecodeValue[string])},
+			{"nested", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr]))},
+			{"regexList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"timeList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"uriList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"uuidList", jsonDecodeItems(jsonDecodeValue[string])},
+			{"v4List", jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr])},
+			{"v4Map", jsonDecodeValues(jsonDecodeValue[jsonIPv4Addr])},
+			{"v6List", jsonDecodeItems(jsonDecodeValue[jsonIPv6Addr])},
+		})
+	}
+	if aux.Nested != nil {
+		_iv := *aux.Nested
+		f.Nested = jsonIntegerSlice(_iv, func(_ix0 []jsonIPv4Addr) []netip.Addr {
+			return jsonIntegerSlice(_ix0, func(_ix1 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix1) })
+		})
+	}
+	if aux.V4list != nil {
+		_iv := *aux.V4list
+		f.V4list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
+	}
+	if aux.V4map != nil {
+		_iv := *aux.V4map
+		f.V4map = jsonIntegerMap(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
+	}
+	if aux.V6list != nil {
+		_iv := *aux.V6list
+		f.V6list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv6Addr) netip.Addr { return netip.Addr(_ix0) })
 	}
 	{
 		if _rawErr != nil {
 			return _rawErr
 		}
 		if _v, ok := raw["dateList"]; ok {
-			if err := checkJSONNulls(_v, "dateList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "dateList")
 			}
 		}
 		if _v, ok := raw["durationList"]; ok {
-			if err := checkJSONNulls(_v, "durationList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "durationList")
 			}
 		}
 		if _v, ok := raw["hostList"]; ok {
-			if err := checkJSONNulls(_v, "hostList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "hostList")
 			}
 		}
 		if _v, ok := raw["hostMap"]; ok {
-			if err := checkJSONNulls(_v, "hostMap", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "hostMap")
 			}
 		}
 		if _v, ok := raw["idnHostList"]; ok {
-			if err := checkJSONNulls(_v, "idnHostList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "idnHostList")
 			}
 		}
 		if _v, ok := raw["idnMailList"]; ok {
-			if err := checkJSONNulls(_v, "idnMailList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "idnMailList")
 			}
 		}
 		if _v, ok := raw["mailList"]; ok {
-			if err := checkJSONNulls(_v, "mailList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mailList")
 			}
 		}
 		if _v, ok := raw["mailMap"]; ok {
-			if err := checkJSONNulls(_v, "mailMap", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mailMap")
 			}
 		}
 		if _v, ok := raw["nested"]; ok {
-			if err := checkJSONNulls(_v, "nested", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+				return jsonPathf(err, "%s", "nested")
 			}
 		}
 		if _v, ok := raw["regexList"]; ok {
-			if err := checkJSONNulls(_v, "regexList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "regexList")
 			}
 		}
 		if _v, ok := raw["timeList"]; ok {
-			if err := checkJSONNulls(_v, "timeList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "timeList")
 			}
 		}
 		if _v, ok := raw["uriList"]; ok {
-			if err := checkJSONNulls(_v, "uriList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "uriList")
 			}
 		}
 		if _v, ok := raw["uuidList"]; ok {
-			if err := checkJSONNulls(_v, "uuidList", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "uuidList")
 			}
 		}
 		if _v, ok := raw["v4List"]; ok {
-			if err := checkJSONNulls(_v, "v4List", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "v4List")
 			}
 		}
 		if _v, ok := raw["v4Map"]; ok {
-			if err := checkJSONNulls(_v, "v4Map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "v4Map")
 			}
 		}
 		if _v, ok := raw["v6List"]; ok {
-			if err := checkJSONNulls(_v, "v6List", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "v6List")
 			}
 		}
 		knownFields := map[string]bool{

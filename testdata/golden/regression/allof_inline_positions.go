@@ -11,10 +11,10 @@ type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Addr")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Addr
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks Addr against its JSON Schema constraints.
@@ -38,10 +38,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (c *Colour) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Colour")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Colour
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks Colour against its JSON Schema constraints.
@@ -98,10 +98,10 @@ type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Stamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Stamp
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Stamp against its JSON Schema constraints.
@@ -113,10 +113,10 @@ type AllOfInlinePositionsChain string
 
 func (a *AllOfInlinePositionsChain) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsChain")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsChain
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsChain against its JSON Schema constraints.
@@ -128,10 +128,10 @@ type AllOfInlinePositionsIP string
 
 func (a *AllOfInlinePositionsIP) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsIP")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsIP
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsIP against its JSON Schema constraints.
@@ -143,10 +143,10 @@ type AllOfInlinePositionsListItem string
 
 func (a *AllOfInlinePositionsListItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsListItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsListItem
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsListItem against its JSON Schema constraints.
@@ -169,10 +169,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfInlinePositionsLvl) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsLvl")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsLvl
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsLvl against its JSON Schema constraints.
@@ -201,10 +201,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfInlinePositionsMapValue) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsMapValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsMapValue
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsMapValue against its JSON Schema constraints.
@@ -221,10 +221,10 @@ type AllOfInlinePositionsNested string
 
 func (a *AllOfInlinePositionsNested) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsNested")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsNested
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsNested against its JSON Schema constraints.
@@ -248,10 +248,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfInlinePositionsPick) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsPick")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsPick
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsPick against its JSON Schema constraints.
@@ -320,10 +320,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfInlinePositionsUnionOption0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsUnionOption0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsUnionOption0
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsUnionOption0 against its JSON Schema constraints.
@@ -340,10 +340,10 @@ type AllOfInlinePositionsTupleItem0 string
 
 func (a *AllOfInlinePositionsTupleItem0) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositionsTupleItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfInlinePositionsTupleItem0
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AllOfInlinePositionsTupleItem0 against its JSON Schema constraints.
@@ -416,7 +416,7 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 	a._jsonNulls = nil
 	a.Union = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfInlinePositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -455,7 +455,17 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"chain", jsonDecodeValue[*AllOfInlinePositionsChain]},
+			{"ip", jsonDecodeValue[*AllOfInlinePositionsIP]},
+			{"list", jsonDecodeItems(jsonDecodeValue[AllOfInlinePositionsListItem])},
+			{"lvl", jsonDecodeValue[*AllOfInlinePositionsLvl]},
+			{"map", jsonDecodeValues(jsonDecodeValue[AllOfInlinePositionsMapValue])},
+			{"nested", jsonDecodeValue[*AllOfInlinePositionsNested]},
+			{"pick", jsonDecodeValue[*AllOfInlinePositionsPick]},
+			{"raw", jsonDecodeValue[AllOfInlinePositionsRaw]},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+		})
 	}
 
 	{
@@ -559,17 +569,17 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 			"union",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "list")
 			}
 		}
 		if _v, ok := raw["map"]; ok {
-			if err := checkJSONNulls(_v, "map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "map")
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

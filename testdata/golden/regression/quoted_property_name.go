@@ -12,10 +12,10 @@ type Num float64
 
 func (n *Num) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Num")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Num
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks Num against its JSON Schema constraints.
@@ -39,7 +39,7 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 	q.AdditionalProperties = nil
 	q._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type QuotedPropertyName")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -68,7 +68,9 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"pct%d", jsonDecodeValue[*string]},
+		})
 	}
 
 	// Extract fields with JSON names that cannot be represented in struct tags.
@@ -78,12 +80,12 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 		}
 		if v, ok := raw["arr\"key"]; ok {
 			if err := json.Unmarshal(v, &q.ArrKey); err != nil {
-				return fmt.Errorf("unmarshaling QuotedPropertyName.ArrKey: %w", err)
+				return jsonPathf(jsonDecodeRefusal(err), "%s", "arr\"key")
 			}
 		}
 		if v, ok := raw["foo\"bar"]; ok {
 			if err := json.Unmarshal(v, &q.FooBar); err != nil {
-				return fmt.Errorf("unmarshaling QuotedPropertyName.FooBar: %w", err)
+				return jsonPathf(jsonDecodeRefusal(err), "%s", "foo\"bar")
 			}
 		}
 		if v, ok := raw["map\"key"]; ok {
@@ -92,7 +94,7 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 			// but its integers are the same integers.
 			var _iv map[string]jsonInteger
 			if err := json.Unmarshal(v, &_iv); err != nil {
-				return fmt.Errorf("unmarshaling QuotedPropertyName.MapKey: %w", err)
+				return jsonPathf(jsonDecodeRefusal(err), "%s", "map\"key")
 			}
 			q.MapKey = jsonIntegerMap(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 		}
@@ -112,17 +114,17 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 			"pct%d",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["arr\"key"]; ok {
-			if err := checkJSONNulls(_v, "arr\"key", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "arr\"key")
 			}
 		}
 		if _v, ok := raw["map\"key"]; ok {
-			if err := checkJSONNulls(_v, "map\"key", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "map\"key")
 			}
 		}
 		q._jsonKeys = make(map[string]bool, len(raw))

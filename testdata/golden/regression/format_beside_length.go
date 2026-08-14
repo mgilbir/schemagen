@@ -14,10 +14,10 @@ type BoundedStamp string
 
 func (b *BoundedStamp) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type BoundedStamp")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias BoundedStamp
-	return json.Unmarshal(data, (*Alias)(b))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(b)))
 }
 
 // Validate checks BoundedStamp against its JSON Schema constraints.
@@ -32,10 +32,10 @@ type BoundedV4 string
 
 func (b *BoundedV4) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type BoundedV4")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias BoundedV4
-	return json.Unmarshal(data, (*Alias)(b))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(b)))
 }
 
 // Validate checks BoundedV4 against its JSON Schema constraints.
@@ -124,7 +124,7 @@ func (f *FormatBesideLength) UnmarshalJSON(data []byte) error {
 	f._jsonKeys = nil
 	f._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FormatBesideLength")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -158,7 +158,14 @@ func (f *FormatBesideLength) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"declaredStamp", jsonDecodeValue[*string]},
+			{"declaredV4", jsonDecodeValue[*string]},
+			{"inferredV4", jsonDecodeValue[*FormatBesideLengthInferredV4]},
+			{"patternedV4", jsonDecodeValue[*string]},
+			{"refStamp", jsonDecodeValue[*BoundedStamp]},
+			{"refV4", jsonDecodeValue[*BoundedV4]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -178,7 +185,7 @@ func (f *FormatBesideLength) UnmarshalJSON(data []byte) error {
 			"refV4",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))

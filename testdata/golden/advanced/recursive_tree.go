@@ -23,7 +23,7 @@ func (t *TreeNode) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type TreeNode")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -54,7 +54,11 @@ func (t *TreeNode) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"children", jsonDecodeItems(jsonDecodeValue[*TreeNode])},
+			{"parent", jsonDecodeValue[*TreeNode]},
+			{"value", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -71,12 +75,12 @@ func (t *TreeNode) UnmarshalJSON(data []byte) error {
 			"value",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["children"]; ok {
-			if err := checkJSONNulls(_v, "children", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "children")
 			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))

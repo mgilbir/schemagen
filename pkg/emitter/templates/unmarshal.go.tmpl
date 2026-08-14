@@ -1,3 +1,14 @@
+{{/*
+decodemembers renders the call that traces a failed decode back to the member at
+fault. The list is built from the struct's own members and their shadows; see
+StructDef.DecodeMembers and jsonDecodeMemberError.
+*/}}
+{{define "decodemembers"}}jsonDecodeMemberError(data, err, []jsonMemberDecode{
+	{{- range .DecodeMembers}}
+	{{"{"}}{{printf "%q" .JSONName}}, {{.Decoder}}},
+	{{- end}}
+}){{end}}
+
 {{define "unmarshal"}}
 {{- $struct := . -}}
 {{- $recv := receiverName .Name -}}
@@ -48,8 +59,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{{$recv}}.{{.FieldName}} = nil
 	{{- end}}
 	{{- if $struct.NeedsNullCheck}}
+	{{- /* A sentence about this value, with no name of its own in it: the
+	       container that holds it is what knows the path, and puts it in front.
+	       Naming the Go type here instead was what left an array element and a
+	       map value reporting `null is not allowed for type T` -- a type the
+	       caller never wrote and cannot find, in place of the position they can.
+	       Issues #276 and #282. */}}
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type {{$struct.Name}}")
+		return jsonValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- if $struct.RejectObject}}
@@ -58,7 +75,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// rather than left to the constraints: an object decodes into the fields and
 	// never reaches the non-object block, which is where the type is checked.
 	if len(data) > 0 && data[0] == '{' {
-		return fmt.Errorf("object is not allowed for type {{$struct.Name}}")
+		return jsonValueErrorf("object is not allowed")
 	}
 	{{- end}}
 	{{- if $struct.AcceptNonObject}}
@@ -132,13 +149,32 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		// once would leave the presence maps unset and a Validate check reading
 		// this value would under-enforce.
 		if !_isReadOnlyRefusal(err) {
-			return err
+			{{- /* Traced back to the member at fault exactly as under the default
+			       configuration. A guard was written here for the case where a
+			       member put to its own decode raises this flag's refusal and the
+			       decode that failed did not, and it is gone: nothing could make
+			       it fire. The refusal reaches the caller through _roErr, which
+			       is returned ahead of this closure's answer whatever that answer
+			       is, so the branch could only ever have changed a message the
+			       caller was never shown. */}}
+			{{- if $struct.DecodeMembers}}
+			return {{template "decodemembers" $struct}}
+			{{- else}}
+			return jsonDecodeRefusal(err)
+			{{- end}}
 		}
 		if _roErr == nil {
 			_roErr = err
 		}
 		{{- else}}
-		return err
+		{{- if $struct.DecodeMembers}}
+		return {{template "decodemembers" $struct}}
+		{{- else}}
+		{{- /* A struct with no member to trace to still has a refusal worded
+		       from the Go value encoding/json was filling, and the shadow it
+		       names is this function's own `type Alias`. */}}
+		return jsonDecodeRefusal(err)
+		{{- end}}
 		{{- end}}
 	}
 	{{- end}}
@@ -207,12 +243,16 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 			var _iv {{goType .LeafDecode.ShadowType}}
 			if err := json.Unmarshal(v, &_iv); err != nil {
-				return fmt.Errorf("unmarshaling {{$struct.Name}}.{{.Name}}: %w", err)
+				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 			{{- else}}
+			{{- /* Named by the property the document wrote rather than by the Go
+			       field it lands in: this block exists precisely because that name
+			       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
+			       is a name the caller has no way to find. Issue #282. */}}
 			if err := json.Unmarshal(v, &{{$recv}}.{{.Name}}); err != nil {
-				return fmt.Errorf("unmarshaling {{$struct.Name}}.{{.Name}}: %w", err)
+				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{- end}}
 		}
@@ -512,14 +552,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		{{- end}}
 		{{- range $struct.NestedNullChecks}}
 		if _v, ok := raw[{{printf "%q" .JSONName}}]; ok {
-			if err := checkJSONNulls(_v, {{printf "%q" .JSONName}}, {{template "nullrule" .}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, {{template "nullrule" .}}); err != nil {
+				return jsonPathf(err, "%s", {{printf "%q" .JSONName}})
 			}
 		}
 		{{- end}}
@@ -605,12 +645,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			       null: json.Unmarshal of `null` into a string leaves "" and
 			       reports no error at all. */}}
 			{{- if .Nested}}
-			if err := checkJSONNulls(rawVal, fmt.Sprintf("[%q]", rawKey), {{template "nullrule" .}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(rawVal, {{template "nullrule" .}}); err != nil {
+				return jsonElemPathf(err, "[%q]", rawKey)
 			}
 			{{- else}}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			{{- end}}
 			{{- end}}
@@ -623,13 +663,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- else if $struct.AdditionalProperties.LeafDecode}}
 			var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
 			if err := json.Unmarshal(rawVal, &_iv); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
 			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			{{$recv}}.AdditionalProperties[rawKey] = val
 			{{- end}}

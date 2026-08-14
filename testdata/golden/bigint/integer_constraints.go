@@ -19,15 +19,15 @@ type Counter struct {
 
 func (c *Counter) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Counter")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Reject JSON strings (e.g., "1").
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type Counter")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	// Try int64 first.
 	if _i, _iErr := _n.Int64(); _iErr == nil {

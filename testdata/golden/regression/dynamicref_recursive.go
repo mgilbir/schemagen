@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Extended struct {
@@ -15,7 +14,7 @@ type Extended struct {
 func (e *Extended) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Extended")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -44,7 +43,9 @@ func (e *Extended) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"bar", jsonDecodeValue[*Bar]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -60,7 +61,7 @@ func (e *Extended) UnmarshalJSON(data []byte) error {
 			"bar",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -120,7 +121,7 @@ func (b *Bar) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
 	b._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Bar")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -149,7 +150,9 @@ func (b *Bar) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"baz", jsonDecodeValue[*Extended]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -268,7 +271,7 @@ type Root struct {
 func (r *Root) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Root")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -298,7 +301,10 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"bar", jsonDecodeValue[*Bar]},
+			{"foo", jsonDecodeValue[*RootFoo]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -315,7 +321,7 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 			"foo",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{

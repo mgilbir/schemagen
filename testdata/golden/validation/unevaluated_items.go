@@ -95,7 +95,7 @@ func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
 	u.AdditionalProperties = nil
 	u._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type UnevaluatedItemsTest")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -126,7 +126,11 @@ func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"allof_extended_tuple", jsonDecodeValue[UnevaluatedItemsTestAllofExtendedTuple]},
+			{"strict_tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"typed_overflow", jsonDecodeItems(jsonDecodeValue[any])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -144,7 +148,7 @@ func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
 			"typed_overflow",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		u._jsonKeys = make(map[string]bool, len(raw))

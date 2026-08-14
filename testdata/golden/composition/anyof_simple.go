@@ -23,7 +23,7 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 	s._jsonKeys = nil
 	s._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type SearchResultResult")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -55,7 +55,12 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"description", jsonDecodeValue[*string]},
+			{"name", jsonDecodeValue[*string]},
+			{"title", jsonDecodeValue[*string]},
+			{"url", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -74,7 +79,7 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 			"url",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))
@@ -300,7 +305,7 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	s._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type SearchResult")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -330,7 +335,10 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"id", jsonDecodeValue[string]},
+			{"result", jsonDecodeValue[*SearchResultResult]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -347,7 +355,7 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 			"result",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))

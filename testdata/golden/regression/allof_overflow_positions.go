@@ -93,7 +93,7 @@ func (l *Lower) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -110,7 +110,7 @@ func (l *Lower) UnmarshalJSON(data []byte) error {
 			}
 			var val LowerValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			l.AdditionalProperties[rawKey] = val
 		}
@@ -362,7 +362,7 @@ func (a *AllOfOverflowPositionsNamedKey) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfOverflowPositionsNamedKey")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -391,7 +391,9 @@ func (a *AllOfOverflowPositionsNamedKey) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -407,7 +409,7 @@ func (a *AllOfOverflowPositionsNamedKey) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -565,7 +567,7 @@ type AllOfOverflowPositionsSoleBranch struct {
 func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfOverflowPositionsSoleBranch")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AllOfOverflowPositionsSoleBranch
 	aux := &struct {
@@ -575,7 +577,7 @@ func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -592,7 +594,7 @@ func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 			}
 			var val AllOfOverflowPositionsSoleBranchValue
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			a.AdditionalProperties[rawKey] = val
 		}
@@ -786,7 +788,7 @@ func (a *AllOfOverflowPositions) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfOverflowPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -819,7 +821,13 @@ func (a *AllOfOverflowPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"items", jsonDecodeItems(jsonDecodeValue[AllOfOverflowPositionsItemsItem])},
+			{"namedKey", jsonDecodeValue[*AllOfOverflowPositionsNamedKey]},
+			{"soleBranch", jsonDecodeValue[*AllOfOverflowPositionsSoleBranch]},
+			{"twoBranches", jsonDecodeValue[AllOfOverflowPositionsTwoBranches]},
+			{"viaRef", jsonDecodeValue[AllOfOverflowPositionsViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -838,12 +846,12 @@ func (a *AllOfOverflowPositions) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["items"]; ok {
-			if err := checkJSONNulls(_v, "items", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "items")
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

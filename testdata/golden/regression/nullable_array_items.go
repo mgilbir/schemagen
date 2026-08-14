@@ -59,7 +59,10 @@ func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"id", jsonDecodeValue[string]},
+			{"qty", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -84,7 +87,7 @@ func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
 			"qty",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))
@@ -213,7 +216,7 @@ func (n *NullableArrayItems) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableArrayItems")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -244,15 +247,19 @@ func (n *NullableArrayItems) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"rows", jsonDecodeItems(jsonDecodeValue[*NullableArrayItemsRowsItem])},
+			{"scores", jsonDecodeItems(jsonDecodeValue[float64])},
+			{"tags", jsonDecodeItems(jsonDecodeValue[*string])},
+		})
 	}
 	{
 		if _rawErr != nil {
 			return _rawErr
 		}
 		if _v, ok := raw["scores"]; ok {
-			if err := checkJSONNulls(_v, "scores", &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "scores")
 			}
 		}
 		// The properties whose schema permits a null. The decode above has

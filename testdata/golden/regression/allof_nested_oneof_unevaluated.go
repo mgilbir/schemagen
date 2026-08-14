@@ -62,7 +62,11 @@ func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"b", jsonDecodeValue[jsonInteger]},
+			{"m", jsonDecodeValue[any]},
+			{"n", jsonDecodeValue[any]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -86,7 +90,7 @@ func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
@@ -268,7 +272,9 @@ func (p *PickOneValueOption1) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -292,7 +298,7 @@ func (p *PickOneValueOption1) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		p._jsonKeys = make(map[string]bool, len(raw))
@@ -423,7 +429,7 @@ func (p *PickOne) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 
 	{
@@ -633,7 +639,7 @@ func (a *AllOfNestedOneOfUnevaluated) UnmarshalJSON(data []byte) error {
 	a._jsonRawProps = nil
 	a._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfNestedOneOfUnevaluated")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -668,7 +674,13 @@ func (a *AllOfNestedOneOfUnevaluated) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+			{"b", jsonDecodeValue[*jsonInteger]},
+			{"m", jsonDecodeValue[any]},
+			{"n", jsonDecodeValue[any]},
+			{"z", jsonDecodeValue[*string]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -698,7 +710,7 @@ func (a *AllOfNestedOneOfUnevaluated) UnmarshalJSON(data []byte) error {
 			"z",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

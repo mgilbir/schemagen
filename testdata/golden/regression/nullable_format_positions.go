@@ -14,10 +14,10 @@ type NullableV4String string
 
 func (n *NullableV4String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableV4String")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableV4String
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableV4String against its JSON Schema constraints.
@@ -112,10 +112,10 @@ type ChainInnerString string
 
 func (c *ChainInnerString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ChainInnerString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ChainInnerString
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks ChainInnerString against its JSON Schema constraints.
@@ -210,10 +210,10 @@ type ChainOuterString string
 
 func (c *ChainOuterString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ChainOuterString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ChainOuterString
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks ChainOuterString against its JSON Schema constraints.
@@ -308,10 +308,10 @@ type NullableFormatPositionsBranchOption0String string
 
 func (n *NullableFormatPositionsBranchOption0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsBranchOption0String")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsBranchOption0String
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsBranchOption0String against its JSON Schema constraints.
@@ -406,10 +406,10 @@ type NullableFormatPositionsBucketsPattern0String string
 
 func (n *NullableFormatPositionsBucketsPattern0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsBucketsPattern0String")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsBucketsPattern0String
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsBucketsPattern0String against its JSON Schema constraints.
@@ -509,7 +509,7 @@ func (n *NullableFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsBuckets")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsBuckets
 	aux := &struct {
@@ -519,7 +519,7 @@ func (n *NullableFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -613,10 +613,10 @@ type NullableFormatPositionsInlineString string
 
 func (n *NullableFormatPositionsInlineString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsInlineString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsInlineString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsInlineString against its JSON Schema constraints.
@@ -711,10 +711,10 @@ type NullableFormatPositionsListItemString string
 
 func (n *NullableFormatPositionsListItemString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsListItemString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsListItemString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsListItemString against its JSON Schema constraints.
@@ -809,10 +809,10 @@ type NullableFormatPositionsMailString string
 
 func (n *NullableFormatPositionsMailString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsMailString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsMailString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsMailString against its JSON Schema constraints.
@@ -907,10 +907,10 @@ type NullableFormatPositionsMapValueString string
 
 func (n *NullableFormatPositionsMapValueString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsMapValueString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsMapValueString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsMapValueString against its JSON Schema constraints.
@@ -1005,10 +1005,10 @@ type NullableFormatPositionsStampString string
 
 func (n *NullableFormatPositionsStampString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsStampString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsStampString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsStampString against its JSON Schema constraints.
@@ -1103,10 +1103,10 @@ type NullableFormatPositionsWrappedString string
 
 func (n *NullableFormatPositionsWrappedString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsWrappedString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsWrappedString
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsWrappedString against its JSON Schema constraints.
@@ -1201,10 +1201,10 @@ type NullableFormatPositionsTupleItem0String string
 
 func (n *NullableFormatPositionsTupleItem0String) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositionsTupleItem0String")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NullableFormatPositionsTupleItem0String
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NullableFormatPositionsTupleItem0String against its JSON Schema constraints.
@@ -1362,7 +1362,7 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 	n._jsonNulls = nil
 	n.Branch = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NullableFormatPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1402,7 +1402,18 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"buckets", jsonDecodeValue[*NullableFormatPositionsBuckets]},
+			{"chain", jsonDecodeValue[ChainOuter]},
+			{"inline", jsonDecodeValue[NullableFormatPositionsInline]},
+			{"list", jsonDecodeItems(jsonDecodeValue[NullableFormatPositionsListItem])},
+			{"mail", jsonDecodeValue[NullableFormatPositionsMail]},
+			{"map", jsonDecodeValues(jsonDecodeValue[NullableFormatPositionsMapValue])},
+			{"ref", jsonDecodeValue[NullableV4]},
+			{"stamp", jsonDecodeValue[NullableFormatPositionsStamp]},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"wrapped", jsonDecodeValue[NullableFormatPositionsWrapped]},
+		})
 	}
 
 	{
@@ -1503,7 +1514,7 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		n._jsonKeys = make(map[string]bool, len(raw))

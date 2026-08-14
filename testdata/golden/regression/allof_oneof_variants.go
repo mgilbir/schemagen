@@ -20,7 +20,7 @@ func (f *FieldBase) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FieldBase")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -51,7 +51,11 @@ func (f *FieldBase) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"label", jsonDecodeValue[*string]},
+			{"name", jsonDecodeValue[string]},
+			{"type", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -69,7 +73,7 @@ func (f *FieldBase) UnmarshalJSON(data []byte) error {
 			"type",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))
@@ -169,7 +173,7 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 	d._jsonRawProps = nil
 	d._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DiaryField")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -205,7 +209,16 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"choices", jsonDecodeItems(jsonDecodeValue[string])},
+			{"default", jsonDecodeValue[any]},
+			{"label", jsonDecodeValue[*string]},
+			{"max", jsonDecodeValue[*float64]},
+			{"min", jsonDecodeValue[*float64]},
+			{"name", jsonDecodeValue[string]},
+			{"type", jsonDecodeValue[string]},
+			{"widget", jsonDecodeValue[*DiaryFieldWidget]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -226,12 +239,12 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 			"widget",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["choices"]; ok {
-			if err := checkJSONNulls(_v, "choices", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "choices")
 			}
 		}
 		d._jsonKeys = make(map[string]bool, len(raw))

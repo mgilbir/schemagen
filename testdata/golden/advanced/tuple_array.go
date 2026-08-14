@@ -12,10 +12,10 @@ type Coordinate []any
 
 func (c *Coordinate) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Coordinate")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Coordinate
-	return json.Unmarshal(data, (*Alias)(c))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
 }
 
 // Validate checks Coordinate against its JSON Schema constraints.

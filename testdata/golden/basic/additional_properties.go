@@ -17,7 +17,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	m.AdditionalProperties = nil
 	m._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Metadata")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -46,7 +46,9 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"version", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -62,7 +64,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 			"version",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))
@@ -77,14 +79,14 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if m.AdditionalProperties == nil {
 				m.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			m.AdditionalProperties[rawKey] = val
 		}

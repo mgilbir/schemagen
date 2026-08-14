@@ -23,7 +23,7 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 	s.AdditionalProperties = nil
 	s._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ServerConfig")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -60,7 +60,15 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"debug", jsonDecodeValue[*bool]},
+			{"host", jsonDecodeValue[*string]},
+			{"log_level", jsonDecodeValue[*string]},
+			{"max_retries", jsonDecodeValue[*jsonInteger]},
+			{"name", jsonDecodeValue[string]},
+			{"port", jsonDecodeValue[*jsonInteger]},
+			{"timeout", jsonDecodeValue[*float64]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -94,7 +102,7 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 			"timeout",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		s._jsonKeys = make(map[string]bool, len(raw))

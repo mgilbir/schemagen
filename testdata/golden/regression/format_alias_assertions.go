@@ -4,17 +4,16 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Day string
 
 func (d *Day) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Day")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Day
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks Day against its JSON Schema constraints.
@@ -26,10 +25,10 @@ type Email string
 
 func (e *Email) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Email")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Email
-	return json.Unmarshal(data, (*Alias)(e))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
 }
 
 // Validate checks Email against its JSON Schema constraints.
@@ -41,10 +40,10 @@ type Site string
 
 func (s *Site) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Site")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Site
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Site against its JSON Schema constraints.
@@ -56,10 +55,10 @@ type UUID string
 
 func (u *UUID) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type UUID")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias UUID
-	return json.Unmarshal(data, (*Alias)(u))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(u)))
 }
 
 // Validate checks UUID against its JSON Schema constraints.
@@ -71,10 +70,10 @@ type V4 string
 
 func (v *V4) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type V4")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias V4
-	return json.Unmarshal(data, (*Alias)(v))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(v)))
 }
 
 // Validate checks V4 against its JSON Schema constraints.
@@ -86,10 +85,10 @@ type V6 string
 
 func (v *V6) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type V6")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias V6
-	return json.Unmarshal(data, (*Alias)(v))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(v)))
 }
 
 // Validate checks V6 against its JSON Schema constraints.
@@ -113,7 +112,7 @@ type FormatAliasAssertions struct {
 func (f *FormatAliasAssertions) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FormatAliasAssertions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -149,7 +148,16 @@ func (f *FormatAliasAssertions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"day", jsonDecodeValue[*Day]},
+			{"email", jsonDecodeValue[*Email]},
+			{"email_map", jsonDecodeValues(jsonDecodeValue[Email])},
+			{"site", jsonDecodeValue[*Site]},
+			{"uuid", jsonDecodeValue[*UUID]},
+			{"v4", jsonDecodeValue[*V4]},
+			{"v4_list", jsonDecodeItems(jsonDecodeValue[V4])},
+			{"v6", jsonDecodeValue[*V6]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -170,17 +178,17 @@ func (f *FormatAliasAssertions) UnmarshalJSON(data []byte) error {
 			"v6",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["email_map"]; ok {
-			if err := checkJSONNulls(_v, "email_map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "email_map")
 			}
 		}
 		if _v, ok := raw["v4_list"]; ok {
-			if err := checkJSONNulls(_v, "v4_list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "v4_list")
 			}
 		}
 		knownFields := map[string]bool{

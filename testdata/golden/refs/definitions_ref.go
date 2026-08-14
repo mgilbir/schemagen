@@ -18,7 +18,7 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 	m.AdditionalProperties = nil
 	m._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Member")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -48,7 +48,10 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"name", jsonDecodeValue[string]},
+			{"role", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -65,7 +68,7 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 			"role",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))
@@ -137,7 +140,7 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 	t.AdditionalProperties = nil
 	t._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Team")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -167,7 +170,10 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"members", jsonDecodeItems(jsonDecodeValue[Member])},
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -183,12 +189,12 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 			"name",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["members"]; ok {
-			if err := checkJSONNulls(_v, "members", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "members")
 			}
 		}
 		t._jsonKeys = make(map[string]bool, len(raw))

@@ -53,7 +53,7 @@ func (f *FalsePropertyExplicitNullListItem) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FalsePropertyExplicitNullListItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -82,7 +82,9 @@ func (f *FalsePropertyExplicitNullListItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"inner", jsonDecodeValue[any]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -98,7 +100,7 @@ func (f *FalsePropertyExplicitNullListItem) UnmarshalJSON(data []byte) error {
 			"inner",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))
@@ -161,7 +163,7 @@ func (f *FalsePropertyExplicitNullNested) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FalsePropertyExplicitNullNested")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -191,7 +193,10 @@ func (f *FalsePropertyExplicitNullNested) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"inner", jsonDecodeValue[any]},
+			{"ok", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -208,7 +213,7 @@ func (f *FalsePropertyExplicitNullNested) UnmarshalJSON(data []byte) error {
 			"ok",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))
@@ -276,7 +281,7 @@ func (f *FalsePropertyExplicitNull) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	f._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FalsePropertyExplicitNull")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -309,7 +314,13 @@ func (f *FalsePropertyExplicitNull) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"inline", jsonDecodeValue[any]},
+			{"list", jsonDecodeItems(jsonDecodeValue[FalsePropertyExplicitNullListItem])},
+			{"nested", jsonDecodeValue[*FalsePropertyExplicitNullNested]},
+			{"ok", jsonDecodeValue[*string]},
+			{"viaRef", jsonDecodeValue[No]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -328,12 +339,12 @@ func (f *FalsePropertyExplicitNull) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "list")
 			}
 		}
 		f._jsonKeys = make(map[string]bool, len(raw))

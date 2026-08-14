@@ -16,7 +16,7 @@ func (n *NeedsA) UnmarshalJSON(data []byte) error {
 	n.AdditionalProperties = nil
 	n._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NeedsA")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NeedsA
 	aux := &struct {
@@ -26,7 +26,7 @@ func (n *NeedsA) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -97,7 +97,7 @@ func (i *InferredArrayTupleDraft7OneItem) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InferredArrayTupleDraft7OneItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias InferredArrayTupleDraft7OneItem
 	aux := &struct {
@@ -107,7 +107,7 @@ func (i *InferredArrayTupleDraft7OneItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -320,7 +320,7 @@ func (i *InferredArrayTupleDraft7TupItem0) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InferredArrayTupleDraft7TupItem0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias InferredArrayTupleDraft7TupItem0
 	aux := &struct {
@@ -330,7 +330,7 @@ func (i *InferredArrayTupleDraft7TupItem0) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -401,7 +401,7 @@ func (i *InferredArrayTupleDraft7TupRest) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InferredArrayTupleDraft7TupRest")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias InferredArrayTupleDraft7TupRest
 	aux := &struct {
@@ -411,7 +411,7 @@ func (i *InferredArrayTupleDraft7TupRest) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -572,7 +572,7 @@ func (i *InferredArrayTupleDraft7) UnmarshalJSON(data []byte) error {
 	i.AdditionalProperties = nil
 	i._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InferredArrayTupleDraft7")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -603,7 +603,11 @@ func (i *InferredArrayTupleDraft7) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"one", jsonDecodeValue[*InferredArrayTupleDraft7One]},
+			{"ref", jsonDecodeValue[*InferredArrayTupleDraft7Ref]},
+			{"tup", jsonDecodeValue[*InferredArrayTupleDraft7Tup]},
+		})
 	}
 	{
 		if _rawErr != nil {

@@ -12,10 +12,10 @@ type AnyWord string
 
 func (a *AnyWord) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnyWord")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnyWord
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnyWord against its JSON Schema constraints.
@@ -27,10 +27,10 @@ type Long string
 
 func (l *Long) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Long")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Long
-	return json.Unmarshal(data, (*Alias)(l))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(l)))
 }
 
 // Validate checks Long against its JSON Schema constraints.
@@ -542,7 +542,7 @@ func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	r._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTarget2020")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -580,7 +580,18 @@ func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"constForbidden", jsonDecodeValue[RefSiblingTarget2020ConstForbidden]},
+			{"constSatisfied", jsonDecodeValue[RefSiblingTarget2020ConstSatisfied]},
+			{"dynSibling", jsonDecodeValue[*RefSiblingTarget2020DynSibling]},
+			{"enumSibling", jsonDecodeValue[RefSiblingTarget2020EnumSibling]},
+			{"listSibling", jsonDecodeItems(jsonDecodeValue[RefSiblingTarget2020ListSiblingItem])},
+			{"mapSibling", jsonDecodeValues(jsonDecodeValue[RefSiblingTarget2020MapSiblingValue])},
+			{"namedConst", jsonDecodeValue[NamedConst]},
+			{"namedEnum", jsonDecodeValue[NamedEnum]},
+			{"noRef", jsonDecodeValue[*RefSiblingTarget2020NoRef]},
+			{"noSibling", jsonDecodeValue[*Long]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -603,17 +614,17 @@ func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
 			"noSibling",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["listSibling"]; ok {
-			if err := checkJSONNulls(_v, "listSibling", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "listSibling")
 			}
 		}
 		if _v, ok := raw["mapSibling"]; ok {
-			if err := checkJSONNulls(_v, "mapSibling", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapSibling")
 			}
 		}
 		r._jsonKeys = make(map[string]bool, len(raw))

@@ -25,10 +25,10 @@ type AnnAlias string
 
 func (a *AnnAlias) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnAlias")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnAlias
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnAlias against its JSON Schema constraints.
@@ -54,16 +54,16 @@ type AnnBigInt int64
 
 func (a *AnnBigInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnBigInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type AnnBigInt")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*a = AnnBigInt(_i)
@@ -76,7 +76,7 @@ func (a *AnnBigInt) UnmarshalJSON(data []byte) error {
 		*a = AnnBigInt(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks AnnBigInt against its JSON Schema constraints.
@@ -188,10 +188,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (a *AnnEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnEnum
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnEnum against its JSON Schema constraints.
@@ -473,7 +473,7 @@ type AnnStruct struct {
 func (a *AnnStruct) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnStruct")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -502,7 +502,9 @@ func (a *AnnStruct) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -518,7 +520,7 @@ func (a *AnnStruct) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -649,10 +651,10 @@ type DepAlias string
 
 func (d *DepAlias) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DepAlias")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DepAlias
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DepAlias against its JSON Schema constraints.
@@ -670,16 +672,16 @@ type DepBigInt int64
 
 func (d *DepBigInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DepBigInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type DepBigInt")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*d = DepBigInt(_i)
@@ -692,7 +694,7 @@ func (d *DepBigInt) UnmarshalJSON(data []byte) error {
 		*d = DepBigInt(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks DepBigInt against its JSON Schema constraints.
@@ -779,10 +781,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (d *DepEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DepEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DepEnum
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DepEnum against its JSON Schema constraints.
@@ -1024,7 +1026,7 @@ type DepStruct struct {
 func (d *DepStruct) UnmarshalJSON(data []byte) error {
 	d.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DepStruct")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1053,7 +1055,9 @@ func (d *DepStruct) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"c", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1069,7 +1073,7 @@ func (d *DepStruct) UnmarshalJSON(data []byte) error {
 			"c",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -1188,10 +1192,10 @@ type PlainAlias string
 
 func (p *PlainAlias) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PlainAlias")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PlainAlias
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PlainAlias against its JSON Schema constraints.
@@ -1206,16 +1210,16 @@ type PlainBigInt int64
 
 func (p *PlainBigInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PlainBigInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type PlainBigInt")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*p = PlainBigInt(_i)
@@ -1228,7 +1232,7 @@ func (p *PlainBigInt) UnmarshalJSON(data []byte) error {
 		*p = PlainBigInt(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks PlainBigInt against its JSON Schema constraints.
@@ -1309,10 +1313,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (p *PlainEnum) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PlainEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PlainEnum
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PlainEnum against its JSON Schema constraints.
@@ -1500,7 +1504,7 @@ type PlainStruct struct {
 func (p *PlainStruct) UnmarshalJSON(data []byte) error {
 	p.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PlainStruct")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1529,7 +1533,9 @@ func (p *PlainStruct) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"b", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1545,7 +1551,7 @@ func (p *PlainStruct) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -1688,7 +1694,7 @@ func (a *AnnotationPositions) UnmarshalJSON(data []byte) error {
 	a._jsonKeys = nil
 	a._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -1735,7 +1741,27 @@ func (a *AnnotationPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"alias", jsonDecodeValue[*AnnAlias]},
+			{"aliasPlain", jsonDecodeValue[*PlainAlias]},
+			{"bigInt", jsonDecodeValue[*AnnBigInt]},
+			{"bigIntPlain", jsonDecodeValue[*PlainBigInt]},
+			{"dynamic", jsonDecodeValue[AnnDynamic]},
+			{"dynamicPlain", jsonDecodeValue[PlainDynamic]},
+			{"enum", jsonDecodeValue[*AnnEnum]},
+			{"enumPlain", jsonDecodeValue[*PlainEnum]},
+			{"inferred", jsonDecodeValue[*AnnInferred]},
+			{"inferredPlain", jsonDecodeValue[*PlainInferred]},
+			{"not", jsonDecodeValue[AnnNot]},
+			{"notPlain", jsonDecodeValue[PlainNot]},
+			{"rawEnum", jsonDecodeValue[AnnRawEnum]},
+			{"runtime", jsonDecodeValue[AnnRuntime]},
+			{"runtimePlain", jsonDecodeValue[PlainRuntime]},
+			{"struct", jsonDecodeValue[*AnnStruct]},
+			{"structPlain", jsonDecodeValue[*PlainStruct]},
+			{"typeOnly", jsonDecodeValue[AnnTypeOnly]},
+			{"typeOnlyPlain", jsonDecodeValue[PlainTypeOnly]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -1763,7 +1789,7 @@ func (a *AnnotationPositions) UnmarshalJSON(data []byte) error {
 			"typeOnlyPlain",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

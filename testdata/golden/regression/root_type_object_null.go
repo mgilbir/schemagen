@@ -5,7 +5,6 @@ package testpkg
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 )
 
 type RootTypeObjectNull struct {
@@ -54,7 +53,9 @@ func (r *RootTypeObjectNull) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -70,7 +71,7 @@ func (r *RootTypeObjectNull) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{

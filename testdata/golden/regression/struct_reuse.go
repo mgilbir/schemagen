@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type StructReuse struct {
@@ -54,7 +53,9 @@ func (s *StructReuse) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -78,7 +79,7 @@ func (s *StructReuse) UnmarshalJSON(data []byte) error {
 			"a",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{

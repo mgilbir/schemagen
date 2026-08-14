@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type OptionalEmptyArray struct {
@@ -16,7 +15,7 @@ type OptionalEmptyArray struct {
 func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
 	o.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OptionalEmptyArray")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -46,20 +45,23 @@ func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"labels", jsonDecodeItems(jsonDecodeValue[string])},
+			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+		})
 	}
 	{
 		if _rawErr != nil {
 			return _rawErr
 		}
 		if _v, ok := raw["labels"]; ok {
-			if err := checkJSONNulls(_v, "labels", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "labels")
 			}
 		}
 		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNulls(_v, "tags", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "tags")
 			}
 		}
 		knownFields := map[string]bool{

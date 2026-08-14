@@ -58,7 +58,7 @@ func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 	b._jsonKeys = nil
 	b._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type BooleanDefsKeepAny")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -88,7 +88,10 @@ func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[Yes]},
+			{"b", jsonDecodeValue[No]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -104,7 +107,7 @@ func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		b._jsonKeys = make(map[string]bool, len(raw))

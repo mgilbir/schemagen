@@ -18,7 +18,7 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AddressLocation")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -48,7 +48,10 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"latitude", jsonDecodeValue[float64]},
+			{"longitude", jsonDecodeValue[float64]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -65,7 +68,7 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 			"longitude",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -140,7 +143,7 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Address")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -173,7 +176,13 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"city", jsonDecodeValue[string]},
+			{"location", jsonDecodeValue[*AddressLocation]},
+			{"state", jsonDecodeValue[*string]},
+			{"street", jsonDecodeValue[string]},
+			{"zip", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -193,7 +202,7 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 			"zip",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

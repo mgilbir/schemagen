@@ -336,7 +336,7 @@ func (i *InlineUntypedPositionsObj) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -437,7 +437,7 @@ func (i *InlineUntypedPositionsObjItemsItem) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -708,7 +708,7 @@ func (i *InlineUntypedPositions) UnmarshalJSON(data []byte) error {
 	i._jsonKeys = nil
 	i._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type InlineUntypedPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -748,7 +748,20 @@ func (i *InlineUntypedPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"arr", jsonDecodeValue[*InlineUntypedPositionsArr]},
+			{"nullableMap", jsonDecodeValues(jsonDecodeValue[InlineUntypedPositionsNullableMapValue])},
+			{"num", jsonDecodeValue[*InlineUntypedPositionsNum]},
+			{"numItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsNumItemsItem])},
+			{"obj", jsonDecodeValue[*InlineUntypedPositionsObj]},
+			{"objItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsObjItemsItem])},
+			{"slot", jsonDecodeItems(jsonDecodeValue[any])},
+			{"str", jsonDecodeValue[*InlineUntypedPositionsStr]},
+			{"strItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsStrItemsItem])},
+			{"typedItems", jsonDecodeItems(jsonDecodeValue[float64])},
+			{"typedNum", jsonDecodeValue[*float64]},
+			{"viaRef", jsonDecodeValue[*AtLeastFive]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -768,12 +781,12 @@ func (i *InlineUntypedPositions) UnmarshalJSON(data []byte) error {
 			"typedNum",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["typedItems"]; ok {
-			if err := checkJSONNulls(_v, "typedItems", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "typedItems")
 			}
 		}
 		i._jsonKeys = make(map[string]bool, len(raw))

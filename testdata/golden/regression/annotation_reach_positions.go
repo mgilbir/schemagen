@@ -14,10 +14,10 @@ type DefaultedString string
 
 func (d *DefaultedString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DefaultedString
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DefaultedString against its JSON Schema constraints.
@@ -29,11 +29,11 @@ type AliasOfDefaultedString DefaultedString
 
 func (a *AliasOfDefaultedString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AliasOfDefaultedString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	var _target DefaultedString
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	*a = AliasOfDefaultedString(_target)
 	return nil
@@ -61,10 +61,10 @@ type AnnotatedString string
 
 func (a *AnnotatedString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotatedString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotatedString
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotatedString against its JSON Schema constraints.
@@ -82,7 +82,7 @@ func (b *ByID) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
 	b._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ByID")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -112,7 +112,9 @@ func (b *ByID) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"id", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -136,7 +138,7 @@ func (b *ByID) UnmarshalJSON(data []byte) error {
 			"id",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		b._jsonKeys = make(map[string]bool, len(raw))
@@ -206,7 +208,7 @@ func (b *ByName) UnmarshalJSON(data []byte) error {
 	b.AdditionalProperties = nil
 	b._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type ByName")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -235,7 +237,9 @@ func (b *ByName) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"name", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -251,7 +255,7 @@ func (b *ByName) UnmarshalJSON(data []byte) error {
 			"name",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		b._jsonKeys = make(map[string]bool, len(raw))
@@ -315,10 +319,10 @@ type DefaultedBool bool
 
 func (d *DefaultedBool) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedBool")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DefaultedBool
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DefaultedBool against its JSON Schema constraints.
@@ -330,10 +334,10 @@ type DefaultedEmptyString string
 
 func (d *DefaultedEmptyString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedEmptyString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DefaultedEmptyString
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DefaultedEmptyString against its JSON Schema constraints.
@@ -345,16 +349,16 @@ type DefaultedInt int64
 
 func (d *DefaultedInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type DefaultedInt")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*d = DefaultedInt(_i)
@@ -367,7 +371,7 @@ func (d *DefaultedInt) UnmarshalJSON(data []byte) error {
 		*d = DefaultedInt(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks DefaultedInt against its JSON Schema constraints.
@@ -382,10 +386,10 @@ type DefaultedNumber float64
 
 func (d *DefaultedNumber) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedNumber")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias DefaultedNumber
-	return json.Unmarshal(data, (*Alias)(d))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(d)))
 }
 
 // Validate checks DefaultedNumber against its JSON Schema constraints.
@@ -401,7 +405,7 @@ type DefaultedObject struct {
 func (d *DefaultedObject) UnmarshalJSON(data []byte) error {
 	d.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type DefaultedObject")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -430,7 +434,9 @@ func (d *DefaultedObject) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"n", jsonDecodeValue[*string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -446,7 +452,7 @@ func (d *DefaultedObject) UnmarshalJSON(data []byte) error {
 			"n",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{
@@ -495,16 +501,16 @@ type MistypedDefaultInt int64
 
 func (m *MistypedDefaultInt) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type MistypedDefaultInt")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return fmt.Errorf("cannot unmarshal string into Go value of type MistypedDefaultInt")
+		return jsonValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return _err
+		return jsonDecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*m = MistypedDefaultInt(_i)
@@ -517,7 +523,7 @@ func (m *MistypedDefaultInt) UnmarshalJSON(data []byte) error {
 		*m = MistypedDefaultInt(_i)
 		return nil
 	}
-	return fmt.Errorf("value %s cannot be represented as int64", _n.String())
+	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
 }
 
 // Validate checks MistypedDefaultInt against its JSON Schema constraints.
@@ -596,10 +602,10 @@ type PlainString string
 
 func (p *PlainString) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type PlainString")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PlainString
-	return json.Unmarshal(data, (*Alias)(p))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
 }
 
 // Validate checks PlainString against its JSON Schema constraints.
@@ -611,10 +617,10 @@ type SelfReferential string
 
 func (s *SelfReferential) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type SelfReferential")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias SelfReferential
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks SelfReferential against its JSON Schema constraints.
@@ -628,10 +634,10 @@ type AnnotationReachPositionsAnnViaAllOf string
 
 func (a *AnnotationReachPositionsAnnViaAllOf) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositionsAnnViaAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotationReachPositionsAnnViaAllOf
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotationReachPositionsAnnViaAllOf against its JSON Schema constraints.
@@ -643,10 +649,10 @@ type AnnotationReachPositionsAnnViaNestedAllOf string
 
 func (a *AnnotationReachPositionsAnnViaNestedAllOf) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositionsAnnViaNestedAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotationReachPositionsAnnViaNestedAllOf
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotationReachPositionsAnnViaNestedAllOf against its JSON Schema constraints.
@@ -658,10 +664,10 @@ type AnnotationReachPositionsDfltViaAllOf string
 
 func (a *AnnotationReachPositionsDfltViaAllOf) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositionsDfltViaAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotationReachPositionsDfltViaAllOf
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotationReachPositionsDfltViaAllOf against its JSON Schema constraints.
@@ -673,10 +679,10 @@ type AnnotationReachPositionsDfltViaAllOfRef string
 
 func (a *AnnotationReachPositionsDfltViaAllOfRef) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositionsDfltViaAllOfRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotationReachPositionsDfltViaAllOfRef
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotationReachPositionsDfltViaAllOfRef against its JSON Schema constraints.
@@ -688,10 +694,10 @@ type AnnotationReachPositionsDfltViaNestedAllOf string
 
 func (a *AnnotationReachPositionsDfltViaNestedAllOf) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositionsDfltViaNestedAllOf")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnnotationReachPositionsDfltViaNestedAllOf
-	return json.Unmarshal(data, (*Alias)(a))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
 // Validate checks AnnotationReachPositionsDfltViaNestedAllOf against its JSON Schema constraints.
@@ -855,7 +861,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 	a.AnnCondGroup = nil
 	a.AnnGroupPlain = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AnnotationReachPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -923,7 +929,42 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"annCondAnyOf", jsonDecodeValue[*string]},
+			{"annCondThen", jsonDecodeValue[*string]},
+			{"annPlain", jsonDecodeValue[*string]},
+			{"annViaAllOf", jsonDecodeValue[*AnnotationReachPositionsAnnViaAllOf]},
+			{"annViaMergedAllOf", jsonDecodeValue[*string]},
+			{"annViaNestedAllOf", jsonDecodeValue[*AnnotationReachPositionsAnnViaNestedAllOf]},
+			{"annViaRef", jsonDecodeValue[*AnnotatedString]},
+			{"dfltAnyViaRef", jsonDecodeValue[UntypedDefault]},
+			{"dfltBindsBoth", jsonDecodeValue[*string]},
+			{"dfltBoolViaRef", jsonDecodeValue[*DefaultedBool]},
+			{"dfltCondAnyOf", jsonDecodeValue[*string]},
+			{"dfltCondElse", jsonDecodeValue[*string]},
+			{"dfltCondOneOf", jsonDecodeValue[*string]},
+			{"dfltCondThen", jsonDecodeValue[*string]},
+			{"dfltEmptyViaRef", jsonDecodeValue[*DefaultedEmptyString]},
+			{"dfltInline", jsonDecodeValue[*string]},
+			{"dfltIntViaRef", jsonDecodeValue[*DefaultedInt]},
+			{"dfltMismatchViaRef", jsonDecodeValue[*MistypedDefaultInt]},
+			{"dfltMultiTypeViaRef", jsonDecodeValue[MultiTypedDefault]},
+			{"dfltNearestWins", jsonDecodeValue[*string]},
+			{"dfltNone", jsonDecodeValue[*PlainString]},
+			{"dfltNumberViaRef", jsonDecodeValue[*DefaultedNumber]},
+			{"dfltObjectViaRef", jsonDecodeValue[*DefaultedObject]},
+			{"dfltRequiredViaRef", jsonDecodeValue[DefaultedString]},
+			{"dfltViaAllOf", jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOf]},
+			{"dfltViaAllOfRef", jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOfRef]},
+			{"dfltViaCycle", jsonDecodeValue[*SelfReferential]},
+			{"dfltViaMergedAllOf", jsonDecodeValue[*string]},
+			{"dfltViaNestedAllOf", jsonDecodeValue[*AnnotationReachPositionsDfltViaNestedAllOf]},
+			{"dfltViaRef", jsonDecodeValue[*DefaultedString]},
+			{"dfltViaRefChain", jsonDecodeValue[*AliasOfDefaultedString]},
+			{"mode", jsonDecodeValue[*string]},
+			{"pickA", jsonDecodeValue[*jsonInteger]},
+			{"pickB", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -1155,7 +1196,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 			"pickB",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

@@ -670,7 +670,7 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 	a._jsonNulls = nil
 	a.Union = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfBoundOnly")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -708,7 +708,16 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"arr", jsonDecodeValue[*AllOfBoundOnlyArr]},
+			{"list", jsonDecodeItems(jsonDecodeValue[AllOfBoundOnlyListItem])},
+			{"map", jsonDecodeValues(jsonDecodeValue[AllOfBoundOnlyMapValue])},
+			{"nested", jsonDecodeValue[*AllOfBoundOnlyNested]},
+			{"num", jsonDecodeValue[*AllOfBoundOnlyNum]},
+			{"prop", jsonDecodeValue[*AllOfBoundOnlyProp]},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"viaRef", jsonDecodeValue[*AllOfBoundOnlyViaRef]},
+		})
 	}
 
 	{
@@ -799,7 +808,7 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		// The properties whose schema permits a null. The decode above has

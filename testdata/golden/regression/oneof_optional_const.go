@@ -73,7 +73,10 @@ func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"kind", jsonDecodeValue[*OneOfOptionalConstPOption0Kind]},
+			{"x", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -90,7 +93,7 @@ func (o *OneOfOptionalConstPOption0) UnmarshalJSON(data []byte) error {
 			"x",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -233,7 +236,10 @@ func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"kind", jsonDecodeValue[*OneOfOptionalConstPOption1Kind]},
+			{"y", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -250,7 +256,7 @@ func (o *OneOfOptionalConstPOption1) UnmarshalJSON(data []byte) error {
 			"y",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -380,7 +386,7 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 	o._jsonNulls = nil
 	o.P = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfOptionalConst")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -410,7 +416,7 @@ func (o *OneOfOptionalConst) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 
 	{

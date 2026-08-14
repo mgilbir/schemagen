@@ -35,7 +35,7 @@ func (d *Draft3dependenciesString) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage

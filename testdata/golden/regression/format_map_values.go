@@ -15,7 +15,7 @@ type FormatMapValues struct {
 func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 	f.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type FormatMapValues")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias FormatMapValues
 	aux := &struct {
@@ -25,7 +25,7 @@ func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -38,14 +38,14 @@ func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 				continue
 			}
 			if string(rawVal) == "null" {
-				return fmt.Errorf("[%q]: null is not allowed", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
 			}
 			if f.AdditionalProperties == nil {
 				f.AdditionalProperties = make(map[string]string)
 			}
 			var val string
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return fmt.Errorf("[%q]: %w", rawKey, err)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
 			}
 			f.AdditionalProperties[rawKey] = val
 		}

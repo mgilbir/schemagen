@@ -21,7 +21,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	e.AdditionalProperties = nil
 	e._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Event")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -55,7 +55,12 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"ends_at", jsonDecodeValue[*jsonDateTime]},
+			{"name", jsonDecodeValue[string]},
+			{"starts_at", jsonDecodeValue[jsonDateTime]},
+			{"url", jsonDecodeValue[*string]},
+		})
 	}
 
 	// A date-time may be spelled with a lower case "t" or "z", which RFC 3339
@@ -87,7 +92,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 			"url",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		e._jsonKeys = make(map[string]bool, len(raw))

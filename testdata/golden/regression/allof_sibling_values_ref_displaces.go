@@ -4,17 +4,16 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Word string
 
 func (w *Word) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Word")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Word
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks Word against its JSON Schema constraints.
@@ -30,7 +29,7 @@ type AllOfSiblingValuesRefDisplaces struct {
 func (a *AllOfSiblingValuesRefDisplaces) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfSiblingValuesRefDisplaces")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -59,7 +58,9 @@ func (a *AllOfSiblingValuesRefDisplaces) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"p", jsonDecodeValue[*Word]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -75,7 +76,7 @@ func (a *AllOfSiblingValuesRefDisplaces) UnmarshalJSON(data []byte) error {
 			"p",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		knownFields := map[string]bool{

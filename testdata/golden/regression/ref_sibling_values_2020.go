@@ -58,10 +58,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (n *NamedSibling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type NamedSibling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias NamedSibling
-	return json.Unmarshal(data, (*Alias)(n))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(n)))
 }
 
 // Validate checks NamedSibling against its JSON Schema constraints.
@@ -78,10 +78,10 @@ type Word string
 
 func (w *Word) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Word")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Word
-	return json.Unmarshal(data, (*Alias)(w))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(w)))
 }
 
 // Validate checks Word against its JSON Schema constraints.
@@ -104,10 +104,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (r *RefSiblingValues2020ConstSibling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValues2020ConstSibling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingValues2020ConstSibling
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingValues2020ConstSibling against its JSON Schema constraints.
@@ -172,10 +172,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (r *RefSiblingValues2020EnumSibling) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValues2020EnumSibling")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingValues2020EnumSibling
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingValues2020EnumSibling against its JSON Schema constraints.
@@ -203,10 +203,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (r *RefSiblingValues2020ListSiblingItem) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValues2020ListSiblingItem")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingValues2020ListSiblingItem
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingValues2020ListSiblingItem against its JSON Schema constraints.
@@ -234,10 +234,10 @@ const (
 // carry the same guard inside the decoders they already declare.
 func (r *RefSiblingValues2020MapSiblingValue) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValues2020MapSiblingValue")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingValues2020MapSiblingValue
-	return json.Unmarshal(data, (*Alias)(r))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
 }
 
 // Validate checks RefSiblingValues2020MapSiblingValue against its JSON Schema constraints.
@@ -268,7 +268,7 @@ func (r *RefSiblingValues2020) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	r._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingValues2020")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -304,7 +304,16 @@ func (r *RefSiblingValues2020) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"constSibling", jsonDecodeValue[*RefSiblingValues2020ConstSibling]},
+			{"emptyEnumSibling", jsonDecodeValue[RefSiblingValues2020EmptyEnumSibling]},
+			{"enumSibling", jsonDecodeValue[*RefSiblingValues2020EnumSibling]},
+			{"listSibling", jsonDecodeItems(jsonDecodeValue[RefSiblingValues2020ListSiblingItem])},
+			{"mapSibling", jsonDecodeValues(jsonDecodeValue[RefSiblingValues2020MapSiblingValue])},
+			{"namedEmptyEnum", jsonDecodeValue[NamedEmptyEnum]},
+			{"namedSibling", jsonDecodeValue[*NamedSibling]},
+			{"noSibling", jsonDecodeValue[*Word]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -325,17 +334,17 @@ func (r *RefSiblingValues2020) UnmarshalJSON(data []byte) error {
 			"noSibling",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["listSibling"]; ok {
-			if err := checkJSONNulls(_v, "listSibling", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "listSibling")
 			}
 		}
 		if _v, ok := raw["mapSibling"]; ok {
-			if err := checkJSONNulls(_v, "mapSibling", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "mapSibling")
 			}
 		}
 		r._jsonKeys = make(map[string]bool, len(raw))

@@ -56,7 +56,7 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumConstMember")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -86,7 +86,9 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -110,7 +112,7 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -190,7 +192,7 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumInline")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -220,7 +222,9 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -244,7 +248,7 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -325,7 +329,7 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumNested")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -354,7 +358,9 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValues(jsonDecodeValue[any])},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -370,7 +376,7 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -450,7 +456,7 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumPlain")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -480,7 +486,9 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -504,7 +512,7 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))
@@ -575,7 +583,7 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumReordered")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -607,7 +615,10 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"a", jsonDecodeValue[*jsonInteger]},
+			{"b", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -636,7 +647,7 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 			"b",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -756,7 +767,7 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonRawProps = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnumViaRef")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -786,7 +797,9 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[*jsonInteger]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -810,7 +823,7 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonRawProps = raw
@@ -897,7 +910,7 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 	a.AdditionalProperties = nil
 	a._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type AllOfObjectEnum")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -932,7 +945,15 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"constMember", jsonDecodeValue[*AllOfObjectEnumConstMember]},
+			{"inline", jsonDecodeValue[*AllOfObjectEnumInline]},
+			{"nested", jsonDecodeValue[*AllOfObjectEnumNested]},
+			{"plain", jsonDecodeValue[*AllOfObjectEnumPlain]},
+			{"reordered", jsonDecodeValue[*AllOfObjectEnumReordered]},
+			{"standalone", jsonDecodeValue[AllOfObjectEnumStandalone]},
+			{"viaRef", jsonDecodeValue[*AllOfObjectEnumViaRef]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -954,7 +975,7 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 			"viaRef",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		a._jsonKeys = make(map[string]bool, len(raw))

@@ -266,7 +266,7 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) UnmarshalJSON(data []byte) 
 	o.AdditionalProperties = nil
 	o._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfSingleBranchPositionsObjBranchOption0")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -295,7 +295,9 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) UnmarshalJSON(data []byte) 
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"k", jsonDecodeValue[string]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -311,7 +313,7 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) UnmarshalJSON(data []byte) 
 			"k",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))
@@ -528,7 +530,7 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 	o.ObjBranch = nil
 	o.TypedBranch = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type OneOfSingleBranchPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -568,7 +570,14 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"constBranch", jsonDecodeValue[OneOfSingleBranchPositionsConstBranch]},
+			{"emptyEnum", jsonDecodeValue[OneOfSingleBranchPositionsEmptyEnum]},
+			{"falseBranch", jsonDecodeValue[OneOfSingleBranchPositionsFalseBranch]},
+			{"list", jsonDecodeItems(jsonDecodeValue[OneOfSingleBranchPositionsListItem])},
+			{"map", jsonDecodeValues(jsonDecodeValue[OneOfSingleBranchPositionsMapValue])},
+			{"twoBranch", jsonDecodeValue[OneOfSingleBranchPositionsTwoBranch]},
+		})
 	}
 
 	{
@@ -732,17 +741,17 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 			"typedBranch",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNulls(_v, "list", &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "list")
 			}
 		}
 		if _v, ok := raw["map"]; ok {
-			if err := checkJSONNulls(_v, "map", &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return err
+			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+				return jsonPathf(err, "%s", "map")
 			}
 		}
 		o._jsonKeys = make(map[string]bool, len(raw))

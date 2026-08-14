@@ -20,7 +20,7 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 	m.AdditionalProperties = nil
 	m._jsonKeys = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Measurement")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -52,7 +52,11 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"count", jsonDecodeValue[jsonInteger]},
+			{"rating", jsonDecodeValue[*float64]},
+			{"temperature", jsonDecodeValue[float64]},
+		})
 	}
 
 	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
@@ -78,7 +82,7 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 			"temperature",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		m._jsonKeys = make(map[string]bool, len(raw))

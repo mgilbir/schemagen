@@ -4,7 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	"fmt"
 	"unicode/utf8"
 )
 
@@ -14,10 +13,10 @@ type Str string
 
 func (s *Str) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type Str")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Str
-	return json.Unmarshal(data, (*Alias)(s))
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(s)))
 }
 
 // Validate checks Str against its JSON Schema constraints.
@@ -40,7 +39,7 @@ func (r *RefSiblingTypeDraft7) UnmarshalJSON(data []byte) error {
 	r.AdditionalProperties = nil
 	r._jsonNulls = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type RefSiblingTypeDraft7")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -71,7 +70,11 @@ func (r *RefSiblingTypeDraft7) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"bounded", jsonDecodeValue[*Str]},
+			{"plain", jsonDecodeValue[*Str]},
+			{"suppressed", jsonDecodeValue[Anything]},
+		})
 	}
 	{
 		if _rawErr != nil {
@@ -88,7 +91,7 @@ func (r *RefSiblingTypeDraft7) UnmarshalJSON(data []byte) error {
 			"plain",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		// The properties whose schema permits a null. The decode above has

@@ -304,7 +304,7 @@ func (u *UntypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	u.AdditionalProperties = nil
 	u.PatternProperties = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type UntypedFormatPositionsBuckets")
+		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias UntypedFormatPositionsBuckets
 	aux := &struct {
@@ -314,7 +314,7 @@ func (u *UntypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, aux); err != nil {
-		return err
+		return jsonDecodeRefusal(err)
 	}
 	{
 		var raw map[string]json.RawMessage
@@ -868,7 +868,7 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 	u._jsonNulls = nil
 	u.Branch = nil
 	if string(data) == "null" {
-		return fmt.Errorf("null is not allowed for type UntypedFormatPositions")
+		return jsonValueErrorf("null is not allowed")
 	}
 	// The decode below is handed the document cut down to the properties this
 	// schema declares, because encoding/json matches a key that matches no field
@@ -908,7 +908,18 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return err
+		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
+			{"buckets", jsonDecodeValue[*UntypedFormatPositionsBuckets]},
+			{"chain", jsonDecodeValue[*UntypedChainOuter]},
+			{"inline", jsonDecodeValue[*UntypedFormatPositionsInline]},
+			{"list", jsonDecodeItems(jsonDecodeValue[UntypedFormatPositionsListItem])},
+			{"mail", jsonDecodeValue[*UntypedFormatPositionsMail]},
+			{"map", jsonDecodeValues(jsonDecodeValue[UntypedFormatPositionsMapValue])},
+			{"ref", jsonDecodeValue[*BareV4]},
+			{"stamp", jsonDecodeValue[*UntypedFormatPositionsStamp]},
+			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{"wrapped", jsonDecodeValue[*UntypedFormatPositionsWrapped]},
+		})
 	}
 
 	{
@@ -1000,7 +1011,7 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 			"tuple",
 		} {
 			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return fmt.Errorf("%s: null is not allowed", _nullKey)
+				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 			}
 		}
 		// The properties whose schema permits a null. The decode above has
