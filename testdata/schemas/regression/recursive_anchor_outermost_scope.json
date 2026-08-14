@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/outer",
+  "$recursiveAnchor": true,
+  "type": "object",
+  "required": ["o"],
+  "properties": {
+    "o": { "type": "integer" },
+    "mid": { "$ref": "#/$defs/mid" }
+  },
+  "$defs": {
+    "mid": {
+      "$comment": "No $id and no $recursiveAnchor on purpose: this is not a schema resource, so it puts no frame on the dynamic scope and no anchor declaration in reach.",
+      "type": "object",
+      "required": ["m"],
+      "properties": {
+        "m": { "type": "integer" },
+        "deep": { "$ref": "#/$defs/mid/$defs/deep" }
+      },
+      "$defs": {
+        "deep": {
+          "$id": "https://example.com/deep",
+          "$recursiveAnchor": true,
+          "type": "object",
+          "required": ["d"],
+          "properties": {
+            "d": { "type": "integer" },
+            "v": { "$recursiveRef": "#" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -10798,6 +10798,67 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 	return nil
 }
 
+// resolveRecursiveRef resolves a 2019-09 $recursiveRef against the dynamic scope
+// the generator maintains while it walks.
+//
+// The reference is *bookended* -- the dynamic scope decides it at all -- only
+// when the resource the keyword is written in says "$recursiveAnchor": true.
+// Written anywhere else it is a $ref with a longer name, which is the guard
+// above the walk and the answer to the suite's "$recursiveRef with no
+// $recursiveAnchor works like $ref". dynamicRefTarget asks the identical
+// question of the identical node, and the two must keep agreeing: it is what
+// routes a schema to the runtime evaluator, and a schema neither claims is a
+// schema whose reference nothing resolves.
+//
+// Where it is bookended, 2019-09 section 8.2.4.2.1 resolves it to the
+// *outermost* resource in the dynamic scope whose $recursiveAnchor is true --
+// not the nearest one -- so the walk below runs from index 0 upwards. It is the
+// same direction resolveDynamicRef takes for a $dynamicRef and the same one the
+// generated _dynResolveRef takes at runtime, and all three now say so for the
+// same reason rather than by coincidence.
+//
+// The order is load-bearing and has been watched deciding a verdict.
+// testdata/schemas/regression/recursive_anchor_outermost_scope.json puts two
+// anchored resources on the scope at once -- the document root, and a resource
+// under a $defs entry that carries no $id of its own, so the reference reaching
+// it pushes a second frame -- and the $recursiveRef inside the inner one is
+// bookended by both. Innermost-first types its "v" as the inner resource and
+// outermost-first as the outer, and the two disagree about every document:
+// planting the old direction back turns TestRecursiveAnchorResolvesOutermost's
+// valid and invalid lists inside out. python-jsonschema, go-jsonschema and
+// js-ajv were asked through Bowtie and answer outermost, unanimously.
+//
+// Two things kept that shape hard to find, and both are worth knowing before
+// moving anything near it. A root-level $defs entry is generated before the
+// root, at scope depth 1, so an anchored resource written directly under $defs
+// -- the obvious shape, and the one in recursive_anchor_nested_resources.json --
+// resolves its reference before any frame is pushed and the two directions
+// agree. And a schema whose reference could land on two anchored resources
+// *within one generated type's reach* goes to the runtime evaluator instead
+// (#160, dynamicScopeDecidesTheTarget), which is why the case here keeps the
+// intermediate $defs entry unanchored and un-$id'd: it is a resource to neither
+// the routing nor a validator, so the scope is exactly two frames deep and the
+// static path keeps the schema.
+//
+// How rare that is, measured rather than asserted. Over the corpus under
+// testdata/schemas and 2805 schemas lifted out of the JSON Schema Test Suite's
+// test files and remotes, this walk is reached 9 times. Eight are one frame
+// deep, where the two directions are the same walk; the ninth is the fixture
+// above. The suite reaches two frames zero times, which is why adopting a case
+// from it was never going to close this. Generating the 651 corpus schemas that
+// predate this change, plus those 2805, under a binary from before it and one
+// from after produces byte-identical output for every one of them.
+//
+// One thing this does not settle, and it is the second half of #167. Frame 0 is
+// the *document* root, not the type being generated, so a type under a $defs
+// entry is resolved against frames its callers pushed -- while the runtime
+// evaluator seeds its scope empty at whatever type Validate was called on, which
+// is the contract dynamicScopeDecidesTheTarget states and reasons from. The two
+// disagree about a fragment type asked to judge a value on its own. For the
+// fixture above the disagreement is invisible from the document, because a root
+// with two anchored resources in reach is compiled to the evaluator anyway; it
+// is visible to a caller holding Deep. Aligning the two is a change to the scope
+// construction rather than to this walk, and it wants deciding on its own.
 func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
 	resolved := g.resolveRefInContext(ref, ctx)
 	if resolved == nil {
@@ -10806,38 +10867,17 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	if ref != "#" || ctx == nil || ctx.DocumentRoot == nil || ctx.DocumentRoot.RecursiveAnchor == nil || !*ctx.DocumentRoot.RecursiveAnchor {
 		return resolved
 	}
-	// This walk is innermost-first, and 2019-09 says a $recursiveRef resolves to
-	// the *outermost* resource in the dynamic scope whose $recursiveAnchor is
-	// true. The order is left as it is because the walk selects nothing at all:
-	// instrumented over all 832 schemas in testdata (the internal corpus plus
-	// the whole JSON Schema Test Suite), this function is called three times,
-	// reaches this loop three times, always with len(g.dynamicScope) == 1, and
-	// in every case the single frame carries no $recursiveAnchor -- so the loop
-	// falls through to `resolved`, the ordinary $ref answer, and the order it
-	// walked in never decided anything.
+	// Outermost first: g.dynamicScope[0] is the document root and every push
+	// appends, so index order is outer-to-inner and the first anchored frame
+	// found is the one 2019-09 names. See the direction argued above.
 	//
-	// Two things keep it that way rather than luck. A schema with two anchored
-	// resources in reach routes to the runtime evaluator instead (#160), and
-	// that evaluator walks outermost-first, which is where the spec's rule is
-	// actually implemented -- see _dynResolveRef and resolveDynamicRef. What is
-	// left here is the single-resource case, where the two orders name the same
-	// frame anyway.
-	//
-	// So this is not a latent false rejection, and swapping the order would not
-	// fix a reachable defect.
-	//
-	// It is worth knowing what does not cover it. The obvious shape -- two nested
-	// resources both carrying $recursiveAnchor, in
-	// testdata/schemas/regression/recursive_anchor_nested_resources.json -- calls
-	// this function exactly once and answers from `resolved` above, the ordinary
-	// $ref resolution, before this walk decides anything. Planting the opposite
-	// resolution leaves that fixture passing. It pins a verdict three independent
-	// implementations agree on, which is worth having, but it is not a guard on
-	// the order, and no fixture in the tree is. That absence is the open part of
-	// #167, and it should be closed by finding the shape rather than by assuming
-	// one exists.
-	for i := len(g.dynamicScope) - 1; i >= 0; i-- {
-		scope := g.dynamicScope[i]
+	// Falling through to `resolved` is the case where the scope holds no anchored
+	// frame at all. The guard above has already established that the resource
+	// containing the reference is anchored, so that resource is on the scope
+	// whenever a frame was pushed for it -- but a resource generated as its own
+	// root pushes nothing, and then the plain $ref answer is both the only one
+	// available and the right one, because it names that same resource.
+	for _, scope := range g.dynamicScope {
 		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
 			return scope
 		}
