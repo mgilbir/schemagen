@@ -18,10 +18,8 @@
 {{- end}}
 
 {{define "enum_const"}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
-{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (ne .Description "")}}
+{{- template "type_doc" .}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" .HasProse}}
 type {{.Name}} {{goType .BaseType}}
 
 const (
@@ -114,10 +112,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 {{- end}}
 
 {{define "enum_raw"}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
-{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (ne .Description "")}}
+{{- template "type_doc" .}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" .HasProse}}
 type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}
 {{- $allowedVar := lowerFirst .Name | printf "%sAllowedJSON"}}

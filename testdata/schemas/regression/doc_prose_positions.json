@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DocProsePositions",
+  "description": "The two prose keywords, at every position each of them can be written and through every applicator that decides whether it is said about the declaration below it. Issue #188 is the `title` half: the keyword named the root type and a oneOf variant and reached the generated source nowhere else, so a schema whose only prose was a title documented nothing at all -- not a $defs entry, not a property, not an array element, not a map value. Issue #200 is the applicator half: a named type's comment was read off the node in hand and nothing else, so a $defs entry written {\"allOf\":[{\"description\":\"...\"}]} declared a bare Go type and lost its prose entirely, there being no field above it to carry it. The two are one matrix because they are one reading: unconditionalReachAt, folded once in Generator.docFor, for the title and the description and the four annotation keywords together. The *Cond and *Anyof cells are the control that says the reach stops where 2020-12 section 7.7.1 stops it, and the *Ref cells the control that says it stops at a reference, whose target carries its own comment.",
+  "type": "object",
+  "properties": {
+    "titleOnly": {
+      "title": "A label and nothing else",
+      "type": "string"
+    },
+    "titleAndDescription": {
+      "title": "A label above the prose",
+      "description": "The paragraph the label summarises.",
+      "type": "string"
+    },
+    "descriptionOnly": {
+      "description": "Prose with no label above it, which is the comment every schema in this repository's corpus used to produce.",
+      "type": "string"
+    },
+    "plainProperty": {"type": "string"},
+
+    "titledElement": {
+      "type": "array",
+      "items": {
+        "title": "An array element's label",
+        "type": "object",
+        "properties": {"e": {"type": "string"}}
+      }
+    },
+    "titledValue": {
+      "type": "object",
+      "additionalProperties": {
+        "title": "A map value's label",
+        "type": "object",
+        "properties": {"v": {"type": "string"}}
+      }
+    },
+
+    "titleViaAllOf": {
+      "allOf": [{
+        "title": "A label written on an allOf branch of the property",
+        "description": "And the prose beside it, from the same branch.",
+        "type": "string"
+      }]
+    },
+    "titleViaRef": {"$ref": "#/$defs/TitledTarget"},
+
+    "titledDef": {"$ref": "#/$defs/TitledDef"},
+    "titledAndDescribedDef": {"$ref": "#/$defs/TitledAndDescribedDef"},
+    "selfTitledDef": {"$ref": "#/$defs/SelfTitled"},
+    "proseViaAllOfAlias": {"$ref": "#/$defs/ProseViaAllOfAlias"},
+    "proseViaAllOfStruct": {"$ref": "#/$defs/ProseViaAllOfStruct"},
+    "proseViaAllOfEnum": {"$ref": "#/$defs/ProseViaAllOfEnum"},
+    "proseViaAllOfArray": {"$ref": "#/$defs/ProseViaAllOfArray"},
+    "proseViaNestedAllOf": {"$ref": "#/$defs/ProseViaNestedAllOf"},
+    "proseBesideAllOf": {"$ref": "#/$defs/ProseBesideAllOf"},
+    "proseViaAnyOf": {"$ref": "#/$defs/ProseViaAnyOf"},
+    "proseViaThen": {"$ref": "#/$defs/ProseViaThen"},
+    "proseViaRef": {"$ref": "#/$defs/ProseViaRef"},
+    "plainDef": {"$ref": "#/$defs/PlainDef"},
+    "echoesTheRootTitle": {"$ref": "#/$defs/EchoesTheRootTitle"},
+    "nearestProseWins": {"$ref": "#/$defs/NearestProseWins"},
+    "proseSplitAcrossTheReach": {"$ref": "#/$defs/ProseSplitAcrossTheReach"},
+    "examplesAcrossTheReach": {"$ref": "#/$defs/ExamplesAcrossTheReach"},
+    "titledDeprecatedAlias": {"$ref": "#/$defs/TitledDeprecatedAlias"},
+    "titledDeprecatedStruct": {"$ref": "#/$defs/TitledDeprecatedStruct"},
+    "titleThenDeprecated": {
+      "title": "A label with a deprecation under it and no prose between",
+      "deprecated": true,
+      "type": "string"
+    },
+
+    "titledUnion": {
+      "oneOf": [
+        {"title": "ByLabel", "description": "The variant its own title names, so the label is in the identifier and only the prose is written above it.", "type": "object", "required": ["label"], "properties": {"label": {"type": "string"}}},
+        {"title": "ByOrdinal", "type": "object", "required": ["ordinal"], "properties": {"ordinal": {"type": "integer"}}}
+      ]
+    },
+
+    "mode": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "properties": {
+        "titleViaMergedAllOf": {
+          "title": "A label an allOf branch states about a merged property",
+          "type": "string"
+        }
+      }
+    },
+    {
+      "if": {"required": ["mode"]},
+      "then": {
+        "properties": {
+          "titleCondThen": {
+            "title": "A label only a then branch states",
+            "description": "And prose only a then branch states.",
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "TitledDef": {
+      "title": "A definition's label",
+      "type": "string",
+      "minLength": 1
+    },
+    "TitledAndDescribedDef": {
+      "title": "A definition's label above its prose",
+      "description": "The paragraph under the label, which Go documentation wants below a summary line rather than run onto the end of one.",
+      "type": "string"
+    },
+    "SelfTitled": {
+      "title": "Self titled",
+      "description": "A definition whose title, under Go naming rules, is the name it was already given, so repeating it above the declaration would say the identifier twice.",
+      "type": "string"
+    },
+    "TitledTarget": {
+      "title": "A referenced type's label",
+      "description": "Prose on a referenced type, which is where both keywords stay.",
+      "type": "string"
+    },
+    "ProseViaAllOfAlias": {
+      "allOf": [{
+        "title": "A label one allOf branch below the definition",
+        "description": "Prose one allOf branch below the definition, which the merge flattens away and no field above carries.",
+        "deprecated": true,
+        "type": "string",
+        "minLength": 1
+      }]
+    },
+    "ProseViaAllOfStruct": {
+      "allOf": [{
+        "description": "Prose an allOf branch states about an object definition.",
+        "deprecated": true,
+        "type": "object",
+        "properties": {"s": {"type": "string"}}
+      }]
+    },
+    "ProseViaAllOfEnum": {
+      "allOf": [{
+        "description": "Prose an allOf branch states about an enum definition.",
+        "type": "string",
+        "enum": ["red", "green"]
+      }]
+    },
+    "ProseViaAllOfArray": {
+      "allOf": [{
+        "description": "Prose an allOf branch states about an array definition.",
+        "type": "array",
+        "items": {"type": "string"}
+      }]
+    },
+    "ProseViaNestedAllOf": {
+      "allOf": [{"allOf": [{
+        "description": "Prose two allOf levels below the definition.",
+        "deprecated": true,
+        "type": "string"
+      }]}]
+    },
+    "ProseBesideAllOf": {
+      "description": "Prose written beside the allOf rather than inside it, which the merge copied across by hand.",
+      "deprecated": true,
+      "readOnly": true,
+      "allOf": [{"type": "object", "properties": {"b": {"type": "string"}}}]
+    },
+    "ProseViaAnyOf": {
+      "anyOf": [
+        {"description": "Prose only an anyOf branch states.", "deprecated": true, "type": "object", "properties": {"x": {"type": "string"}}},
+        {"type": "object", "properties": {"y": {"type": "string"}}}
+      ]
+    },
+    "ProseViaThen": {
+      "type": "object",
+      "properties": {"k": {"type": "string"}},
+      "if": {"required": ["k"]},
+      "then": {"description": "Prose only a then branch states about a definition.", "deprecated": true}
+    },
+    "ProseViaRef": {"$ref": "#/$defs/TitledTarget"},
+    "PlainDef": {"type": "string", "minLength": 1},
+    "EchoesTheRootTitle": {
+      "title": "DocProsePositions",
+      "type": "string"
+    },
+    "NearestProseWins": {
+      "title": "The title the definition states itself",
+      "description": "The prose the definition states itself.",
+      "allOf": [{
+        "title": "A title one allOf branch further out",
+        "description": "Prose one allOf branch further out.",
+        "type": "string"
+      }]
+    },
+    "ProseSplitAcrossTheReach": {
+      "title": "A title the definition states with no prose beside it",
+      "allOf": [{
+        "description": "Prose one allOf branch further out, with no title beside it.",
+        "type": "string"
+      }]
+    },
+    "ExamplesAcrossTheReach": {
+      "description": "Two unconditional schemas each state an example, and both are examples of this one location.",
+      "examples": ["from-the-definition"],
+      "allOf": [{"type": "string", "examples": ["from-the-branch"]}]
+    },
+    "TitledDeprecatedAlias": {
+      "title": "A label with nothing but a deprecation under it",
+      "deprecated": true,
+      "type": "string"
+    },
+    "TitledDeprecatedStruct": {
+      "title": "An object labelled and deprecated, and described by neither",
+      "deprecated": true,
+      "type": "object",
+      "properties": {"d": {"type": "string"}}
+    }
+  }
+}

@@ -322,6 +322,16 @@ func allRoundTripTests() []roundTripTestCase {
 			SchemaPath:  "testdata/schemas/regression/annotation_reach_positions.json",
 			FixturePath: "testdata/fixtures/regression/annotation_reach_positions.json",
 		},
+		{
+			// The prose matrix, under the reading that changes nothing about a
+			// document. Both keywords are annotations in every draft that
+			// defines them, so a verdict moving anywhere in this document would
+			// be the defect; and every cell that documents a named type also has
+			// to still *be* that type, which a comment-only test cannot see.
+			Name:        "regression/doc_prose_positions",
+			SchemaPath:  "testdata/schemas/regression/doc_prose_positions.json",
+			FixturePath: "testdata/fixtures/regression/doc_prose_positions.json",
+		},
 	}
 }
 
@@ -10012,4 +10022,264 @@ func main() {
 	fmt.Println("PASS")
 }
 `, rows.String())
+}
+
+// TestProseReachesEveryPositionAndStopsWhereTheReachDoes is issues #188 and #200
+// together, which is how they were fixed: one reading of one reach, folded once,
+// for the title and the description and the four annotation keywords.
+//
+// #188 is `title`. It named the root type and a oneOf variant and reached the
+// generated source nowhere else, so a schema whose only prose was a title
+// documented nothing at all -- not a $defs entry, not a property, not an array
+// element, not a map value.
+//
+// #200 is the applicator. A named type's comment was read off the node in hand
+// alone, so {"allOf":[{"description":"prose"}]} written as a $defs entry
+// declared a bare Go type and lost its prose outright: there is no field above a
+// definition to carry it, which is why the property spelling of the same defect
+// was survivable and this one was not.
+//
+// Every cell asserts the comment block *exactly*, and that is the point of the
+// test rather than a stylistic choice. gofmt normalises a comment block on the
+// way out -- it will insert a blank comment line to fence an indented example
+// block, and it rewrites nothing else -- so a check reading for substrings
+// cannot tell "// X - title\n//\n// description" from "// X - description" with
+// the title dropped and the blank line arriving from somewhere else. Two plants
+// against an earlier change in this repository passed for that reason.
+func TestProseReachesEveryPositionAndStopsWhereTheReachDoes(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/doc_prose_positions.json"))
+
+	for _, c := range []struct {
+		why  string
+		decl string
+		want string
+	}{
+		// A title alone is the whole comment, and it takes the opening line
+		// with the identifier in front of it. Nothing at this position
+		// documented anything before #188.
+		{"a title alone documents a definition", "type TitledDef string",
+			"// TitledDef - A definition's label"},
+		// Both keywords are the two paragraphs Go documentation has: a summary
+		// line and the detail under it, fenced by a blank comment line so they
+		// are two paragraphs and not one run-on sentence.
+		{"a title and a description are the summary and the paragraph", "type TitledAndDescribedDef string",
+			"// TitledAndDescribedDef - A definition's label above its prose\n" +
+				"//\n" +
+				"// The paragraph under the label, which Go documentation wants below a summary line rather than run onto the end of one."},
+		// A description alone is the comment this generator has always
+		// produced, unchanged to the byte. 242 of the 651 schemas in the corpus
+		// are this shape.
+		{"a description alone keeps the comment it always had", "type ByLabel struct {",
+			"// ByLabel - The variant its own title names, so the label is in the identifier and only the prose is written above it."},
+		// The title is already spelled in the identifier, because it is what
+		// minted it. Writing it above as well would say the name twice and push
+		// the sentence that means something into second place.
+		{"a title that named the type is not repeated above it", "type SelfTitled string",
+			"// SelfTitled - A definition whose title, under Go naming rules, is the name it was already given, so repeating it above the declaration would say the identifier twice."},
+		{"a oneOf variant named by its title carries no title line", "type ByOrdinal struct {", ""},
+		// The root is the position `title` already reached, and it still does:
+		// the type is DocProsePositions, so only the description is written.
+		{"the root's title still names the root and is not written above it", "type DocProsePositions struct {",
+			"// DocProsePositions - " + docProseRootDescription},
+
+		// #188 at the positions that had nothing at all.
+		{"an array element's title documents its type", "type DocProsePositionsTitledElementItem struct {",
+			"// DocProsePositionsTitledElementItem - An array element's label"},
+		{"a map value's title documents its type", "type DocProsePositionsTitledValueValue struct {",
+			"// DocProsePositionsTitledValueValue - A map value's label"},
+		{"a property's title documents the type synthesized for it", "type DocProsePositionsTitleViaAllOf string",
+			"// DocProsePositionsTitleViaAllOf - A label written on an allOf branch of the property\n" +
+				"//\n" +
+				"// And the prose beside it, from the same branch."},
+
+		// #200: the allOf reach, at each kind of named type it can produce. The
+		// annotation vocabulary travels with the prose, because #173's invariant
+		// is that they are read off the same schemas or the block documents two
+		// things at once.
+		{"an allOf branch documents an alias definition", "type ProseViaAllOfAlias string",
+			"// ProseViaAllOfAlias - A label one allOf branch below the definition\n" +
+				"//\n" +
+				"// Prose one allOf branch below the definition, which the merge flattens away and no field above carries.\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+		{"an allOf branch documents a struct definition", "type ProseViaAllOfStruct struct {",
+			"// ProseViaAllOfStruct - Prose an allOf branch states about an object definition.\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+		{"an allOf branch documents an enum definition", "type ProseViaAllOfEnum string",
+			"// ProseViaAllOfEnum - Prose an allOf branch states about an enum definition."},
+		{"an allOf branch documents an array definition", "type ProseViaAllOfArray []string",
+			"// ProseViaAllOfArray - Prose an allOf branch states about an array definition."},
+		{"the reach follows every allOf level", "type ProseViaNestedAllOf string",
+			"// ProseViaNestedAllOf - Prose two allOf levels below the definition.\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+		// Prose written *beside* an allOf rather than inside it. The merge
+		// copied the description across by hand and nothing else, so this
+		// declaration kept its prose and dropped the deprecation and the
+		// readOnly beside it -- #173's invariant broken by the merge target
+		// rather than by a construction site.
+		{"a merge target reads the schema it was merged from", "type ProseBesideAllOf struct {",
+			"// ProseBesideAllOf - Prose written beside the allOf rather than inside it, which the merge copied across by hand.\n" +
+				"//\n" +
+				"// Read-only: the schema says \"readOnly\", so the owning authority manages\n" +
+				"// this value and an application is not expected to send it.\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+
+		// The controls. A branch that binds only on the documents it matches
+		// says nothing about the type as a whole (2020-12 section 7.7.1), so
+		// carrying its prose would document a different set of documents than
+		// the declaration answers for.
+		{"an anyOf branch documents nothing unconditionally", "type ProseViaAnyOf struct {", ""},
+		{"a then branch documents nothing unconditionally", "type ProseViaThen struct {", ""},
+		// A $ref survives into the generated source as a type of its own, and
+		// that type carries the referenced schema's comment -- asserted below,
+		// so this cell is a relocation and not a loss.
+		{"a definition that is a reference does not repeat its target's comment", "type ProseViaRef TitledTarget", ""},
+		{"the reference's target carries both keywords", "type TitledTarget string",
+			"// TitledTarget - A referenced type's label\n" +
+				"//\n" +
+				"// Prose on a referenced type, which is where both keywords stay."},
+		// Nothing said about it anywhere, which is what says the blocks above
+		// are read off a schema rather than written over every declaration.
+		{"a definition with no prose gets no comment", "type PlainDef string", ""},
+		// The other side of the root's suppression rule. This definition's title
+		// is the root's title word for word, and its own name is not built from
+		// either -- so the identifier above it does not say it, and it is
+		// documentation like any other title.
+		{"a definition echoing the root's title still carries it", "type EchoesTheRootTitle string",
+			"// EchoesTheRootTitle - DocProsePositions"},
+		// Two unconditional schemas state both keywords. A comment has one
+		// summary line and one paragraph under it, so the nearest wins -- the
+		// house rule for a merge, and the order the reach is walked in is the
+		// written one.
+		{"the nearest unconditional statement wins", "type NearestProseWins string",
+			"// NearestProseWins - The title the definition states itself\n" +
+				"//\n" +
+				"// The prose the definition states itself."},
+		// And the two keywords are taken independently rather than as a block,
+		// so a definition that states a title and a branch that states a
+		// description compose into the comment neither could write alone.
+		{"the two keywords are read independently across the reach", "type ProseSplitAcrossTheReach string",
+			"// ProseSplitAcrossTheReach - A title the definition states with no prose beside it\n" +
+				"//\n" +
+				"// Prose one allOf branch further out, with no title beside it."},
+		// "examples" is a set where the two prose keywords are slots: a comment
+		// has one summary line and one paragraph, but two schemas that both
+		// apply give two examples of the same location and both belong.
+		{"every unconditional example is kept, not only the nearest", "type ExamplesAcrossTheReach string",
+			"// ExamplesAcrossTheReach - Two unconditional schemas each state an example, and both are examples of this one location.\n" +
+				"//\n" +
+				"// Examples from the schema:\n" +
+				"//\n" +
+				"//\t\"from-the-definition\"\n" +
+				"//\t\"from-the-branch\""},
+		// A title with no description under it is still prose, so the
+		// annotation vocabulary below needs the blank comment line that makes
+		// "Deprecated: " a paragraph -- gopls, staticcheck and `go doc` all miss
+		// a notice that is not one. Asserted at the alias kind and at the struct
+		// kind, which pass that question through different templates.
+		{"a deprecation below a title alone is its own paragraph", "type TitledDeprecatedAlias string",
+			"// TitledDeprecatedAlias - A label with nothing but a deprecation under it\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+		{"the same, above a struct", "type TitledDeprecatedStruct struct {",
+			"// TitledDeprecatedStruct - An object labelled and deprecated, and described by neither\n" +
+				"//\n" +
+				"// Deprecated: the schema marks this deprecated."},
+	} {
+		if got := docCommentAbove(t, src, c.decl); got != c.want {
+			t.Errorf("%s: the comment above %q is not what the schema says.\ngot:\n%s\nwant:\n%s",
+				c.why, c.decl, got, c.want)
+		}
+	}
+
+	// The same reading at a struct member, where the identifier is on the line
+	// below and the comment does not name it. Looked up by struct tag, so a
+	// property that stopped becoming a field fails here rather than passing
+	// vacuously.
+	for _, c := range []struct {
+		why      string
+		jsonName string
+		want     string
+	}{
+		{"a title alone documents a field", "titleOnly", "\t// A label and nothing else"},
+		{"a title and a description are two paragraphs on a field", "titleAndDescription",
+			"\t// A label above the prose\n\t//\n\t// The paragraph the label summarises."},
+		{"a description alone is the comment a field always had", "descriptionOnly",
+			"\t// Prose with no label above it, which is the comment every schema in this repository's corpus used to produce."},
+		{"an allOf on the property reaches the field", "titleViaAllOf",
+			"\t// A label written on an allOf branch of the property\n\t//\n\t// And the prose beside it, from the same branch."},
+		{"an allOf branch of the object reaches the merged property's field", "titleViaMergedAllOf",
+			"\t// A label an allOf branch states about a merged property"},
+		// The two stops, at a field. The reference carries its own comment on
+		// the type that survives as the field's type; the `then` branch binds
+		// only on the documents its condition selects, so a title it states is
+		// not said about every document this field appears in (#174, #199).
+		{"a field does not repeat the comment on its referenced type", "titleViaRef", ""},
+		{"a title only a then branch states is not asserted of every document", "titleCondThen", ""},
+		{"a field with no prose gets no comment", "plainProperty", ""},
+		// The paragraph break in front of the annotation vocabulary, at a
+		// member: the title alone is what has to be recognised as prose above.
+		{"a deprecation below a field's title alone is its own paragraph", "titleThenDeprecated",
+			"\t// A label with a deprecation under it and no prose between\n" +
+				"\t//\n" +
+				"\t// Deprecated: the schema marks this deprecated."},
+	} {
+		got := docCommentAboveLine(t, src, "`json:\""+c.jsonName+",omitempty\"`")
+		if got != c.want {
+			t.Errorf("%s: the comment above the %q field is not what the schema says.\ngot:\n%s\nwant:\n%s",
+				c.why, c.jsonName, got, c.want)
+		}
+	}
+}
+
+// docProseRootDescription is the root description of doc_prose_positions.json,
+// which is long enough that repeating it in the expectation above would hide
+// what that cell is asserting: that the root's *title* is not written above the
+// type it named, and the description alone is.
+const docProseRootDescription = "The two prose keywords, at every position each of them can be written and through every applicator that decides whether it is said about the declaration below it. Issue #188 is the `title` half: the keyword named the root type and a oneOf variant and reached the generated source nowhere else, so a schema whose only prose was a title documented nothing at all -- not a $defs entry, not a property, not an array element, not a map value. Issue #200 is the applicator half: a named type's comment was read off the node in hand and nothing else, so a $defs entry written {\"allOf\":[{\"description\":\"...\"}]} declared a bare Go type and lost its prose entirely, there being no field above it to carry it. The two are one matrix because they are one reading: unconditionalReachAt, folded once in Generator.docFor, for the title and the description and the four annotation keywords together. The *Cond and *Anyof cells are the control that says the reach stops where 2020-12 section 7.7.1 stops it, and the *Ref cells the control that says it stops at a reference, whose target carries its own comment."
+
+// TestARootTitleIsWrittenAboveARootItDidNotName is the other half of the
+// suppression rule, and the reason it is a rule about the identifier rather than
+// about the root position.
+//
+// A title is left out of the comment when it is already spelled in the name it
+// minted. Take that name away -- --root-name, which the CLI applies over the
+// title -- and the title is prose like any other and is written above the type,
+// because now nothing else in the file says it.
+func TestARootTitleIsWrittenAboveARootItDidNotName(t *testing.T) {
+	src := generateWithRootName(t, "testdata/schemas/regression/doc_prose_positions.json", "RenamedRoot")
+
+	want := "// RenamedRoot - DocProsePositions\n//\n// The two prose keywords, at every position"
+	if got := docCommentAbove(t, src, "type RenamedRoot struct {"); !strings.HasPrefix(got, want) {
+		t.Errorf("a title that named nothing is not written above the root type.\ngot:\n%s\nwant a comment opening:\n%s", got, want)
+	}
+	// The default naming, for comparison: the same document under the same
+	// generator, with the title back in the identifier and out of the comment.
+	if got := docCommentAbove(t, string(generateFromSchema(t, "testdata/schemas/regression/doc_prose_positions.json")), "type DocProsePositions struct {"); strings.HasPrefix(got, "// DocProsePositions - DocProsePositions") {
+		t.Errorf("the title is written above the type it named:\n%s", got)
+	}
+
+	// A root whose value is not an object is declared as a wrapper with its
+	// shapes beside it, each named after the root with a suffix -- so the title
+	// is spelled in both identifiers and is written above neither, while the
+	// description is written above both. Without this cell the rule would read
+	// "the name the title minted", which is only ever one of the two.
+	nullable := string(generateFromSchema(t, "testdata/schemas/regression/nullable_format_root.json"))
+	const nullableProse = "The nullable spelling of a formatted string as the whole document, so the wrapper is the root type itself"
+	for _, c := range []struct{ name, decl, tail string }{
+		// The wrapper writes a sentence of its own about what it is, below the
+		// schema's prose; the branch type has none.
+		{"NullableFormatRoot", "type NullableFormatRoot struct {",
+			"\n// NullableFormatRoot accepts any JSON value and validates that it is one of the allowed types."},
+		{"NullableFormatRootString", "type NullableFormatRootString string", ""},
+	} {
+		want := "// " + c.name + " - " + nullableProse + c.tail
+		if got := docCommentAbove(t, nullable, c.decl); got != want {
+			t.Errorf("the comment above %s is not the description alone; the root's title is spelled in that identifier.\ngot:\n%s\nwant:\n%s",
+				c.name, got, want)
+		}
+	}
 }

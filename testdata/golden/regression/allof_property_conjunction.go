@@ -277,7 +277,9 @@ func (a AllOfPropertyConjunctionDeclared) Validate() error {
 	return nil
 }
 
-// AllOfPropertyConjunctionDocumented - carried onto the conjunction
+// AllOfPropertyConjunctionDocumented - Documented
+//
+// carried onto the conjunction
 //
 // Read-only: the schema says "readOnly", so the owning authority manages
 // this value and an application is not expected to send it.
@@ -928,6 +930,8 @@ type AllOfPropertyConjunction struct {
 	BranchOnly       *string                                   `json:"branchOnly,omitempty"`
 	ConstAgainstEnum *AllOfPropertyConjunctionConstAgainstEnum `json:"constAgainstEnum,omitempty"`
 	Declared         *AllOfPropertyConjunctionDeclared         `json:"declared,omitempty"`
+	// Documented
+	//
 	// carried onto the conjunction
 	//
 	// Read-only: the schema says "readOnly", so the owning authority manages

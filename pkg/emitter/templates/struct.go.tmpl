@@ -1,14 +1,10 @@
 {{define "struct"}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
-{{- template "annotation_comment" mkAnnotationCtx .Annotations "" (ne .Description "")}}
+{{- template "type_doc" .}}
+{{- template "annotation_comment" mkAnnotationCtx .Annotations "" .HasProse}}
 type {{.Name}} struct {
 {{- range .Fields}}
-	{{- if .Description}}
-	// {{comment "\t" .Description}}
-	{{- end}}
-	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" (ne .Description "")}}
+	{{- template "member_doc" .}}
+	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" .HasProse}}
 	{{- if .ManualJSON}}
 	{{.Name}} {{goType .Type}} `json:"-"`
 	{{- else}}
@@ -16,10 +12,8 @@ type {{.Name}} struct {
 	{{- end}}
 {{- end}}
 {{- range .OneOfs}}
-	{{- if .Description}}
-	// {{comment "\t" .Description}}
-	{{- end}}
-	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" (ne .Description "")}}
+	{{- template "member_doc" .}}
+	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" .HasProse}}
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`
 {{- end}}
 {{- if .AdditionalProperties}}

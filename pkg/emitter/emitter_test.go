@@ -49,8 +49,8 @@ func TestEmitStructDef(t *testing.T) {
 		PackageName: "model",
 		TypeDefs: []generator.TypeDef{
 			&generator.StructDef{
-				Name:        "Person",
-				Description: "A person object.",
+				Name: "Person",
+				Doc:  generator.Doc{Description: "A person object."},
 				Fields: []generator.FieldDef{
 					{
 						Name:      "Name",
@@ -60,11 +60,11 @@ func TestEmitStructDef(t *testing.T) {
 						Required:  true,
 					},
 					{
-						Name:        "Age",
-						JSONName:    "age",
-						Type:        &generator.PrimitiveType{Name: "int64"},
-						OmitEmpty:   true,
-						Description: "The person's age.",
+						Name:      "Age",
+						JSONName:  "age",
+						Type:      &generator.PrimitiveType{Name: "int64"},
+						OmitEmpty: true,
+						Doc:       generator.Doc{Description: "The person's age."},
 					},
 					{
 						Name:      "Addresses",
@@ -134,9 +134,9 @@ func TestEmitEnumDef(t *testing.T) {
 		PackageName: "model",
 		TypeDefs: []generator.TypeDef{
 			&generator.EnumDef{
-				Name:        "Color",
-				BaseType:    &generator.PrimitiveType{Name: "string"},
-				Description: "Supported colors.",
+				Name:     "Color",
+				BaseType: &generator.PrimitiveType{Name: "string"},
+				Doc:      generator.Doc{Description: "Supported colors."},
 				Values: []generator.EnumValue{
 					{Name: "ColorRed", Value: "red"},
 					{Name: "ColorGreen", Value: "green"},
@@ -179,9 +179,9 @@ func TestEmitAliasDef(t *testing.T) {
 		PackageName: "model",
 		TypeDefs: []generator.TypeDef{
 			&generator.AliasDef{
-				Name:        "Metadata",
-				Underlying:  &generator.MapType{KeyType: &generator.PrimitiveType{Name: "string"}, ValueType: &generator.PrimitiveType{Name: "any"}},
-				Description: "Arbitrary metadata.",
+				Name:       "Metadata",
+				Underlying: &generator.MapType{KeyType: &generator.PrimitiveType{Name: "string"}, ValueType: &generator.PrimitiveType{Name: "any"}},
+				Doc:        generator.Doc{Description: "Arbitrary metadata."},
 			},
 		},
 	}
@@ -700,14 +700,14 @@ func TestEmitMultilineDescriptions(t *testing.T) {
 		PackageName: "model",
 		TypeDefs: []generator.TypeDef{
 			&generator.StructDef{
-				Name:        "Config",
-				Description: "First line.\nSecond line.",
+				Name: "Config",
+				Doc:  generator.Doc{Description: "First line.\nSecond line."},
 				Fields: []generator.FieldDef{
 					{
-						Name:        "Value",
-						JSONName:    "value",
-						Description: "Field first line.\nField second line.",
-						Type:        &generator.PrimitiveType{Name: "string"},
+						Name:     "Value",
+						JSONName: "value",
+						Doc:      generator.Doc{Description: "Field first line.\nField second line."},
+						Type:     &generator.PrimitiveType{Name: "string"},
 					},
 				},
 			},

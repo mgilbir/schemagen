@@ -1,8 +1,6 @@
 {{define "not_schema"}}
 {{- $recv := receiverName .Name -}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
+{{- template "type_doc" .}}
 // {{.Name}} accepts any JSON value and validates a root-level "not" constraint.
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {

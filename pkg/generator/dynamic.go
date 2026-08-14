@@ -176,7 +176,7 @@ func (g *Generator) dynamicSchemaDef(name string, s *schema.Schema) *DynamicSche
 		return nil
 	}
 
-	def := &DynamicSchemaDef{Name: name, Description: s.Description, Annotations: annotationsOf(s)}
+	def := &DynamicSchemaDef{Name: name, Doc: g.docFor(name, s)}
 
 	if len(s.OneOf) > 0 {
 		branches, ok := dynamicBranches(s.OneOf)

@@ -1,8 +1,6 @@
 {{define "bigint_alias"}}
 {{- $recv := receiverName .Name -}}
-{{- if .Description}}
-// {{.Name}} - {{comment "" .Description}}
-{{- end}}
+{{- template "type_doc" .}}
 // {{.Name}} holds an integer value with arbitrary-precision support (int64 + *big.Int).
 {{- if .AllowsNull}}
 // The schema also admits null, so the wrapper carries an explicit null state:
