@@ -17,16 +17,22 @@ import (
 type refSite struct {
 	Ref  string
 	Base *url.URL
+	// Scope is the schema resource the reference is written in: the nearest
+	// enclosing $id, or the document root where there is none. It is what a
+	// fragment-only ref resolves against, and it is what says whether a
+	// reference stays inside its own resource or crosses out of it — the
+	// question collectExternalClaims is keyed on. ComputeBaseURIs computes it.
+	Scope *schema.Schema
 }
 
 // collectRefSites reports every $ref/$recursiveRef/$dynamicRef in s along with
-// the base URI in effect at its position.
+// the base URI and the schema resource in effect at its position.
 func collectRefSites(s *schema.Schema) []refSite {
 	var out []refSite
 	generator.WalkSchema(s, func(node *schema.Schema) {
 		for _, ref := range []string{node.Ref, node.RecursiveRef, node.DynamicRef} {
 			if ref != "" {
-				out = append(out, refSite{Ref: ref, Base: node.BaseURI})
+				out = append(out, refSite{Ref: ref, Base: node.BaseURI, Scope: node.DocumentRoot})
 			}
 		}
 	})

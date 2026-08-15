@@ -11,43 +11,63 @@ import (
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
-// This file widens the set of documents resolveSharedDefinitionNames judges
-// from "the inputs of this generation unit" to "the documents whose type
-// declarations land in it".
+// This file widens the set resolveSharedDefinitionNames judges from "the inputs
+// of this generation unit" to "the schema resources whose type declarations land
+// in it".
 //
-// Those two sets are not the same, and the difference is what issue #297 is.
-// #249 settled that two documents declaring a same-named definition must not
-// silently become one Go type, and both of the guards it left behind are keyed
-// on inputs: resolveSharedDefinitionNames is handed the paths the caller listed,
-// and packageDecls compares the files those paths produced. A document reached
-// by $ref off disk is neither -- it is never listed and never writes a file --
-// yet its definitions are materialized into the referring document's file all
-// the same. So two referenced documents each declaring "$defs/Inner" took one Go
-// type between them, the second was discarded, and nothing said so: the exact
-// outcome #249 rejected, in the one configuration its guards could not see.
+// The rule being enforced is #249's: two declarations of one Go type name that
+// do not describe the same type must not silently become one type. It has now
+// been broken three times, once per *spelling* of "two declarations", because
+// the claim set was keyed on the wrong thing each time.
 //
-// The answer is to make the existing rule see the case rather than to add a
-// third guard beside it. Two guards that must agree and are keyed differently is
-// the shape issues #178 and #203/#211 came out of, and a third would only widen
-// the gap. So the claims of a referenced document are collected here and handed
-// to resolveSharedDefinitionNames as claims like any other; everything that
-// decides what happens to a contested name -- agreement, qualification,
-// numbering, the diagnostic -- is that function's, unchanged.
+//   - #249 keyed it on the inputs of the run. resolveSharedDefinitionNames is
+//     handed the paths the caller listed and packageDecls compares the files
+//     those paths produced.
+//   - #297 found the spelling neither guard could see: a document reached by
+//     $ref off disk is never listed and writes no file, yet its definitions are
+//     materialized into the referring document's file all the same. Two of them
+//     declaring "$defs/Inner" took one Go type between them and nothing said so.
+//   - #308 found it again one level down: two *embedded* resources of a single
+//     input file, each with its own $id and its own definition namespace, each
+//     declaring "$defs/X". One input, one file, no external document -- so the
+//     walk #297 added, which followed refs *out of* a document, never looked.
+//     A string definition and an integer one became one `type X string`, and
+//     every instance setting the integer property was refused at decode.
 //
-// A referenced document contributes only the nodes a $ref actually reaches, and
-// that restriction is not an optimization. The generator materializes a
-// definition of another document when something refers to it and not otherwise:
-// a document referenced for its "$defs/Inner" leaves its "$defs/Other" ungenerated.
-// Claiming Other anyway would rename a type of the referring document to make
-// room for one that is never declared, which is a defect where today there is
-// none.
+// A third parallel walk would have made it four keys that must agree, which is
+// the shape #178 and #203/#211 came out of. So the key is the thing JSON Schema
+// itself names: the **schema resource**. A resource is a node that establishes
+// its own base URI -- an input document root, a document the resolver fetched,
+// or a subschema carrying $id -- and each owns a definition namespace. All three
+// spellings above are then one case: a reference that leaves the resource it is
+// written in reaches a resource whose declarations this package holds too, and
+// what that resource declares is a claim like any other.
 //
-// The walk resolves through the very resolver the generator is given, so a
-// document comes back as the instance the generator will see -- the pins
-// resolveSharedDefinitionNames produces are keyed by node identity, and a second
-// copy would carry none of them. Where this walk cannot resolve a ref it records
-// nothing, which leaves that reference exactly as it behaves today: the guard
-// can miss, but it cannot invent a collision.
+// A resource the run does not generate as an input contributes only the nodes a
+// $ref actually reaches, and that restriction is not an optimization. The
+// generator declares every definition of a document it is *given*; of any other
+// resource it declares what something refers to and nothing else -- an embedded
+// resource's unreferenced "$defs/Other" is not emitted at all (verified: it is
+// absent from the output). Claiming Other anyway would rename a type of the
+// referring document to make room for one that is never declared, which is a
+// defect where today there is none.
+//
+// The name a claim asks for is the name generation will give the node, taken
+// from the generator's own published derivations rather than described a second
+// time here. That distinction was itself a defect: this walk used to name a
+// referenced node after the $defs key it lives under, which agrees with
+// generation for a JSON Pointer ref and disagrees for an $anchor -- a reference
+// to "a.json#tee" is materialized as Tee, not as the key. So two documents whose
+// $defs/P and $defs/Q both carried {"$anchor":"tee"} collapsed onto one Tee with
+// the guard watching, in the multi-document spelling as well as the single one.
+// See externalClaimName.
+//
+// The walk resolves through the run's own loaded documents and through the very
+// resolver the generator is given, so a node comes back as the instance the
+// generator will see -- the pins resolveSharedDefinitionNames produces are keyed
+// by node identity, and a second copy would carry none of them. Where this walk
+// cannot resolve a ref it records nothing, which leaves that reference exactly
+// as it behaves today: the guard can miss, but it cannot invent a collision.
 
 // externalClaims is what the walk found: the claims referenced documents make,
 // and the identities under which the diagnostic and the qualifier prefix know
@@ -106,9 +126,6 @@ func (e externalClaims) documentPaths(paths []string) []string {
 // no key names -- the caller's say over what a referenced document's claims are
 // qualified with, reached by the flag's "id:" and "file:" keys.
 func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, resolver schema.SchemaResolver, owned map[*schema.Schema]bool, chosenRootName func(path string, s *schema.Schema) string) externalClaims {
-	if resolver == nil {
-		return externalClaims{}
-	}
 	w := &externalWalker{
 		resolver:   resolver,
 		owned:      owned,
@@ -116,11 +133,14 @@ func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, res
 		labelOf:    map[*schema.Schema]string{},
 		takenLabel: map[string]bool{},
 		byLabel:    map[string]*schema.Schema{},
+		resources:  map[string]*schema.Schema{},
+		indexed:    map[*schema.Schema]bool{},
+		fileRoot:   map[*schema.Schema]bool{},
 		scanned:    map[*schema.Schema]bool{},
 		claimed:    map[*schema.Schema]bool{},
 	}
-	// An input's path is its own label, and a referenced document must not take
-	// one: collectNameClaims counts one path as one document, so two documents
+	// An input's path is its own label, and a referenced resource must not take
+	// one: collectNameClaims counts one path as one document, so two of them
 	// sharing a label would have the second's claims read as repeats of the
 	// first's and dropped.
 	for _, path := range paths {
@@ -130,6 +150,12 @@ func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, res
 	var queue []scanTarget
 	for _, path := range paths {
 		if s := byPath[path]; s != nil {
+			// The resources this input embeds, so a $ref naming one by its $id
+			// finds it here. No resolver can: an embedded resource's $id is not a
+			// file and is not an input's $id, so the run's mapping resolver and
+			// its file resolver both answer no -- which is exactly why the walk
+			// could not see issue #308's collision.
+			w.indexResources(s)
 			queue = append(queue, scanTarget{node: s, file: path})
 		}
 	}
@@ -155,9 +181,62 @@ type externalWalker struct {
 	byLabel    map[string]*schema.Schema
 	labels     []string
 
+	// resources maps the canonical URI of every schema resource the walk has
+	// seen -- the run's inputs, the resources they embed, and the same for every
+	// document the resolver hands back -- to that resource's root node. It is
+	// what a $ref naming an embedded resource by its $id resolves through.
+	resources map[string]*schema.Schema
+	indexed   map[*schema.Schema]bool
+	// fileRoot marks the resources that are a whole document -- the root of a
+	// file the caller could open -- as against a resource embedded inside one.
+	// Only the first is named by a file path; an embedded resource's identity is
+	// the $id that makes it one, and letting it take its file's name would give
+	// two resources one label.
+	fileRoot map[*schema.Schema]bool
+
 	scanned map[*schema.Schema]bool
 	claimed map[*schema.Schema]bool
 	claims  []nameClaim
+}
+
+// indexResources records every schema resource in a document, so that a $ref
+// naming one by its $id can be resolved to the node instance the generator will
+// see.
+//
+// A resource is a node ComputeBaseURIs made its own document root, which is what
+// carrying an $id means; the root itself is one whether or not it declares one.
+// The first resource recorded under a URI keeps it: two documents of one run may
+// declare the same $id, and picking the later one would move a claim onto a node
+// the generator will not reach from here.
+func (w *externalWalker) indexResources(root *schema.Schema) {
+	if root == nil || w.indexed[root] {
+		return
+	}
+	w.indexed[root] = true
+	w.fileRoot[root] = true
+	generator.WalkSchema(root, func(node *schema.Schema) {
+		if node != root && node.DocumentRoot != node {
+			return
+		}
+		uri := resourceURI(node)
+		if uri == "" {
+			return
+		}
+		if _, ok := w.resources[uri]; !ok {
+			w.resources[uri] = node
+		}
+	})
+}
+
+// resourceURI is the canonical URI a schema resource is known by: the base URI
+// ComputeBaseURIs computed for it, without an empty fragment. A resource whose
+// document declares no $id at all has none, and is reachable only from inside
+// its own document.
+func resourceURI(s *schema.Schema) string {
+	if s == nil || s.BaseURI == nil {
+		return ""
+	}
+	return strings.TrimSuffix(s.BaseURI.String(), "#")
 }
 
 // run follows every $ref reachable from the seeds, breadth first. A node is
@@ -179,16 +258,34 @@ func (w *externalWalker) run(queue []scanTarget) {
 	}
 }
 
-// follow resolves one $ref and, when it crosses into a document this run does
-// not generate, records what that document declares and returns the node to
-// carry on from.
+// follow resolves one $ref and, when it crosses out of the schema resource it
+// was written in, records what the resource on the other side declares and
+// returns the node to carry on from.
+//
+// Crossing out of the resource is the whole test, and it is the same test for a
+// reference to another file and for one to a resource embedded beside it. What a
+// resource declares of itself, under the names its own keys derive, is either
+// claimed wholesale by collectNameClaims (an input this unit generates) or
+// already counted here once; a reference that stays put reaches nothing new.
 func (w *externalWalker) follow(site refSite, fromFile string) (scanTarget, bool) {
 	docPart, fragment := splitRef(site.Ref)
+
+	// The run's own documents and the resources they embed, first. A ref that
+	// names an embedded resource by its $id reaches nothing else: no resolver
+	// derives a file from such a URI, which is why the pre-#308 walk gave up on
+	// it, and a fragment-only ref never left this document to begin with.
+	if res, node, ok := w.resolveLocally(docPart, fragment, site); ok {
+		if !w.cross(site.Scope, res, node, site.Ref, fragment, fromFile, docPart) {
+			return scanTarget{}, false
+		}
+		return scanTarget{node: node, file: fromFile}, true
+	}
+
 	if docPart == "" {
-		return scanTarget{}, false // stays inside its own document
+		return scanTarget{}, false // stays inside its own document, and unresolvable
 	}
 	doc, docURL := w.resolveDocument(docPart, site.Base)
-	if doc == nil || w.owned[doc] {
+	if doc == nil {
 		return scanTarget{}, false
 	}
 	// What the generator does with a document the resolver handed it, and for
@@ -199,6 +296,7 @@ func (w *externalWalker) follow(site refSite, fromFile string) (scanTarget, bool
 	if doc.DocumentRoot == nil {
 		doc.ComputeBaseURIs(docURL, doc)
 	}
+	w.indexResources(doc)
 	node := doc
 	if fragment != "" {
 		resolved, err := schema.NewLocalResolver(doc).Resolve("#" + fragment)
@@ -208,8 +306,89 @@ func (w *externalWalker) follow(site refSite, fromFile string) (scanTarget, bool
 		node = resolved
 	}
 	file := externalFilePath(docPart, site.Base, fromFile)
-	w.record(w.labelFor(doc, file, docPart), doc, node, site.Ref, fragment)
+	// The resource the node belongs to, which is the document only when the
+	// document embeds none. A fetched document is as free to embed resources as
+	// an input is, and recording the claim against the file would put two
+	// namespaces under one label -- so which of them declared a contested name
+	// would depend on whether the walk reached that file through this arm or
+	// through resolveLocally, the second reference through a file having indexed
+	// its resources for the first.
+	res := node.DocumentRoot
+	if res == nil {
+		res = doc
+	}
+	if !w.cross(site.Scope, res, node, site.Ref, fragment, file, docPart) {
+		return scanTarget{}, false
+	}
 	return scanTarget{node: node, file: file}, true
+}
+
+// resolveLocally resolves a $ref against the resources the walk already holds:
+// the resource named by the ref's document part, or -- for a fragment-only ref
+// -- the one the reference is written in.
+//
+// It answers with the resource the *resolved node* belongs to rather than the
+// one the lookup started from, because those differ exactly where issue #308
+// lives: "#/$defs/A/$defs/X" is a pointer through the outer document that lands
+// inside the resource "$defs/A" establishes, and it is that resource's
+// definition namespace the name X is claimed out of.
+func (w *externalWalker) resolveLocally(docPart, fragment string, site refSite) (res, node *schema.Schema, ok bool) {
+	from := site.Scope
+	if docPart != "" {
+		from = w.resourceNamed(docPart, site.Base)
+	}
+	if from == nil {
+		return nil, nil, false
+	}
+	node = from
+	if fragment != "" {
+		resolved, err := schema.NewLocalResolver(from).Resolve("#" + fragment)
+		if err != nil || resolved == nil {
+			return nil, nil, false
+		}
+		node = resolved
+	}
+	res = node.DocumentRoot
+	if res == nil {
+		res = from
+	}
+	return res, node, true
+}
+
+// resourceNamed reports the resource a ref's document part names, resolved
+// against the base URI in effect. Both spellings are tried -- the URI the ref
+// resolves to and the ref as written -- because an $id is matched verbatim and a
+// document may declare one that is not the URI it would be reached by.
+func (w *externalWalker) resourceNamed(docPart string, base *url.URL) *schema.Schema {
+	refURL, err := url.Parse(docPart)
+	if err != nil {
+		return nil
+	}
+	if base != nil {
+		absolute := *base.ResolveReference(refURL)
+		absolute.Fragment = ""
+		if res := w.resources[strings.TrimSuffix(absolute.String(), "#")]; res != nil {
+			return res
+		}
+	}
+	return w.resources[strings.TrimSuffix(docPart, "#")]
+}
+
+// cross reports whether a resolved reference left the resource it was written in
+// and reached one whose declarations are this walk's to judge, and records the
+// claim when it did.
+//
+// Two resources are exempt. The one the reference is written in declares nothing
+// new to the package by being referred to from inside itself. And an input
+// document root already speaks for itself: collectNameClaims claims all of its
+// definitions because the generator declares all of them, and two inputs
+// claiming one name is issue #217's collision and packageDecls' refusal.
+func (w *externalWalker) cross(scope, res, node *schema.Schema, ref, fragment, file, docPart string) bool {
+	if res == nil || node == nil || res == scope || w.owned[res] {
+		return false
+	}
+	w.record(w.labelFor(res, file, docPart), res, node, ref, fragment)
+	return true
 }
 
 // resolveDocument asks the run's own resolver for the document a ref names, in
@@ -221,6 +400,12 @@ func (w *externalWalker) follow(site refSite, fromFile string) (scanTarget, bool
 // The URL returned is the one the successful call was made with, which is what
 // the generator passes to ComputeBaseURIs for the document it just loaded.
 func (w *externalWalker) resolveDocument(docPart string, base *url.URL) (*schema.Schema, *url.URL) {
+	if w.resolver == nil {
+		// A run with no resolver still has the resources its own inputs embed,
+		// which resolveLocally has already been asked about. There is nothing
+		// off disk to reach.
+		return nil, nil
+	}
 	refURL, err := url.Parse(docPart)
 	if err != nil {
 		return nil, nil
@@ -320,19 +505,28 @@ func documentBaseURI(doc *schema.Schema) *url.URL {
 	return doc.BaseURI
 }
 
-// labelFor names a referenced document for the diagnostic and for the name
+// labelFor names a referenced resource for the diagnostic and for the name
 // qualifier, preferring the file a caller can open over the $id -- the same
 // order of preference nameClaim.path has for an input.
 //
-// The label is also the document's identity for --root-name, whose "file:" and
-// "id:" keys are how a caller sets the qualifier for a document they never
+// A resource embedded inside a document reverses that preference: its file is
+// its *container's*, and a message naming the file would say nothing about which
+// of the resources in it declared the contested name. Its $id is what makes it a
+// resource at all, so that is what names it.
+//
+// The label is also the resource's identity for --root-name, whose "file:" and
+// "id:" keys are how a caller sets the qualifier for something they never
 // listed.
 func (w *externalWalker) labelFor(doc *schema.Schema, file, docPart string) string {
 	if label, ok := w.labelOf[doc]; ok {
 		return label
 	}
+	candidates := []string{file, docIDOf(doc), docPart}
+	if !w.fileRoot[doc] {
+		candidates = []string{docIDOf(doc), docPart, file}
+	}
 	label := ""
-	for _, candidate := range []string{file, docIDOf(doc), docPart} {
+	for _, candidate := range candidates {
 		if candidate == "" || w.takenLabel[candidate] {
 			continue
 		}
@@ -368,26 +562,34 @@ func (w *externalWalker) labelFor(doc *schema.Schema, file, docPart string) stri
 //
 // It has to give the same answer as the generator's goNameForResolvedRef, and
 // what is restated here is only which of that function's arms applies: a node
-// that is a document root in its own right is named after its title or its $id,
-// and anything else after the reference that reached it. The names themselves
-// are the generator's own -- TypeNameForDocumentID and TypeNameForRef -- so
-// there is no second derivation here to drift from the first. Issue #303 left
-// one behind for a turn, because the work could not touch pkg/generator at the
-// time; it is gone. Where the node is one of its document's own
-// definitions those two agree -- the last pointer segment is the $defs key --
-// and the keyword is read off the document so the diagnostic can name the
-// definition the way its author wrote it.
-func externalClaimName(doc, node *schema.Schema, ref, fragment string) (name, keyword, defKey string) {
-	if node == doc || node.DocumentRoot == node {
+// that is a schema resource in its own right is named after its title or its
+// $id, and anything else after the reference that reached it. The names
+// themselves are the generator's own -- TypeNameForDocumentID and TypeNameForRef
+// -- so there is no second derivation here to drift from the first. Issue #303
+// left one behind for a turn, because the work could not touch pkg/generator at
+// the time; it is gone.
+//
+// The name for a node inside a resource is the *reference's*, never the $defs
+// key the node lives under. Those two agree for a JSON Pointer, whose last token
+// is that key, and this used to answer with the key on the strength of that. They
+// disagree for an $anchor: {"$defs":{"P":{"$anchor":"tee",...}}} referred to as
+// "a.json#tee" is materialized as Tee and was claimed as P, so the claim was
+// filed under a name nothing would ever declare and the collision on Tee went
+// unseen -- one document's P and another's Q silently became a single type, with
+// the guard running. The key is still read off the resource, because the
+// diagnostic has to name the definition the way its author wrote it; it is only
+// no longer mistaken for the Go name.
+func externalClaimName(res, node *schema.Schema, ref, fragment string) (name, keyword, defKey string) {
+	if node == res || node.DocumentRoot == node {
 		return documentRootRefName(node, ref), "", ""
 	}
 	for _, container := range []struct {
 		keyword string
 		m       map[string]*schema.Schema
-	}{{"$defs", doc.Defs}, {"definitions", doc.Definitions}} {
+	}{{"$defs", res.Defs}, {"definitions", res.Definitions}} {
 		for _, key := range sortedSchemaKeys(container.m) {
 			if container.m[key] == node {
-				return generator.SchemaNameToGoName(key), container.keyword, key
+				return generator.TypeNameForRef(ref), container.keyword, key
 			}
 		}
 	}
