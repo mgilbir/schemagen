@@ -223,8 +223,11 @@ func newGenerateCmd() *cobra.Command {
 				if len(processedFiles) == 0 {
 					return
 				}
-				// Order kept as the two separate defers had it.
+				// Order kept as the two separate defers had it, with the
+				// config's field names beside the flag's: the two hold the
+				// same kind of entry and are read together.
 				warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
+				fieldNames.warnUnusedConfigFieldNames(cmd.ErrOrStderr())
 				rootNames.warnUnused(cmd.ErrOrStderr())
 			}()
 
@@ -579,8 +582,12 @@ func newGenerateCmd() *cobra.Command {
 				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 
-				// Record applied overrides for unused-entry reporting.
+				// Record applied overrides for unused-entry reporting. Twice
+				// over: by file base name, which is all a --field-map key can
+				// name, and by input path, which is what a config entry names.
+				// See fieldNameSpec.noteApplied.
 				if applied := gen.AppliedOverrides(); len(applied) > 0 {
+					fieldNames.noteApplied(schemaPath, applied)
 					if appliedByFile[fileKey] == nil {
 						appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
@@ -1241,16 +1248,22 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 
-			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
-				if p.appliedByFile[fileKey] == nil {
-					p.appliedByFile[fileKey] = make(map[string]map[string]bool)
-				}
-				for typeName, props := range applied {
-					if p.appliedByFile[fileKey][typeName] == nil {
-						p.appliedByFile[fileKey][typeName] = make(map[string]bool)
+			// Recorded twice over: by file base name, which is all a --field-map
+			// key can name, and by input path, which is what a config entry
+			// names. See fieldNameSpec.noteApplied.
+			if applied := gen.AppliedOverrides(); len(applied) > 0 {
+				p.fieldNames.noteApplied(in.path, applied)
+				if p.appliedByFile != nil {
+					if p.appliedByFile[fileKey] == nil {
+						p.appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
-					for prop := range props {
-						p.appliedByFile[fileKey][typeName][prop] = true
+					for typeName, props := range applied {
+						if p.appliedByFile[fileKey][typeName] == nil {
+							p.appliedByFile[fileKey][typeName] = make(map[string]bool)
+						}
+						for prop := range props {
+							p.appliedByFile[fileKey][typeName][prop] = true
+						}
 					}
 				}
 			}

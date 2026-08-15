@@ -717,9 +717,15 @@ schemagen generate --config schemagen.json
   that has a `path` becomes an input, in file order.
 - **Selectors**: an entry needs an `id`, a `path`, or both. `package` and
   `output` are assigned per document `$id`, so entries setting either must
-  declare `id`.
+  declare `id`. An entry with an `id`, no `path` and no setting at all is
+  refused: nothing reads it, so it selects a document and then does nothing
+  with it.
 - **Unknown fields are rejected**, so a mistyped key fails the run instead of
-  silently doing nothing. An entry matching no input is reported as a warning.
+  silently doing nothing. An entry matching no input is reported as a warning,
+  and so is a mistake one level down, inside a key the loader accepts: a
+  `fieldNames` override naming a type or property the document does not have
+  says so per override (`config fieldNames for "<id>": entry "T.nosuchprop"
+  matched no property`), the same way the equivalent `--field-map` entry does.
 - The config is used only when `--config` names it: there is no auto-discovery,
   so a build never changes behaviour because of a stray file in the working
   directory.
