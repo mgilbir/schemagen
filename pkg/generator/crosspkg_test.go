@@ -70,6 +70,23 @@ func TestGenerateFailsWhenForeignTypeWasNotRegistered(t *testing.T) {
 	if !strings.Contains(err.Error(), "example.com/m/apkg") {
 		t.Errorf("error should name the owning package, got: %v", err)
 	}
+	// This is the cause the old message described for both of them, and the
+	// only one it described correctly: nothing from a.json was generated, so
+	// the answer is about the run's inputs. The other cause -- a document that
+	// *was* generated, referenced at a node it gives no declaration of its own
+	// -- got this sentence too and was sent to check inputs that were fine
+	// (issue #310). Held here so the two do not collapse back into one.
+	if !strings.Contains(err.Error(), "generated no type from it") {
+		t.Errorf("a document its owning package never generated should say so, and point at the inputs.\ngot: %v", err)
+	}
+	if strings.Contains(err.Error(), "no Go type of its own") {
+		t.Errorf("that is the sentence for a node inside a document that *was* generated; this document was not.\ngot: %v", err)
+	}
+	// And the reference is named as it was written, which is what a reader has
+	// to grep for when a document carries several.
+	if !strings.Contains(err.Error(), "https://ex.test/a.json#/definitions/widget") {
+		t.Errorf("error should name the $ref that failed, got: %v", err)
+	}
 }
 
 // When the owning package registered the type, the reference resolves to a
