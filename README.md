@@ -656,9 +656,17 @@ Notes:
 - Generation order is derived from the `$refs` between documents, so inputs can
   be listed in any order. Documents that reference each other across packages
   cannot be ordered — Go has no import cycles — and are reported as an error.
-- Each output directory holds exactly one package. By default a document is
-  written to `<output-dir>/<last segment of its import path>/`; override with
-  `--schema-output`.
+- Each output directory holds exactly one package, and each package writes into
+  exactly one directory. By default a document is written to
+  `<output-dir>/<last segment of its import path>/`; override with
+  `--schema-output`. Both directions are refused before anything is generated:
+  a directory holding two packages is a directory Go cannot compile, and a
+  package split across two directories is two Go packages under two import
+  paths, neither of them the one `--schema-package` named — the helper file
+  would land in only one of them, and a `$ref` between the two documents would
+  name a type the other directory declares with no import for it. Give every
+  document of a package the same output directory (the config's `output` says
+  the same thing and is held to the same rule).
 - The rule holds at every position a `$ref` can be written, the document root
   included: `{"$ref": "https://example.com/common.json"}` as a whole document
   becomes `type Person common.Common`, not a second copy of the shape. A `$ref`
