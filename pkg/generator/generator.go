@@ -15902,7 +15902,18 @@ func (g *Generator) populateAliasDelegates() {
 	// and unguarded machinery is worse than none.
 	for _, td := range g.output.TypeDefs {
 		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
-			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
+			// ValidateAs is emitted as a conversion -- `(<name>(r._value)).Validate()`
+			// -- so it is a name in generated source, and validatableTypes is a
+			// table of what *this* package declares. For a value already typed
+			// as another package's, the qualified name is the one that compiles,
+			// and a local namesake would convert to itself and dispatch the
+			// wrong Validate (the AliasDef arm below settles the same question
+			// for the same reason; see issues #299 and #306).
+			if foreign := namedTypeAt(ia.InferredGoType); foreign != nil && foreign.PkgAlias != "" {
+				if foreign.foreign.Validatable {
+					ia.ValidateAs = foreign.GoTypeName()
+				}
+			} else if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
 				ia.ValidateAs = name
 			}
 		}
@@ -16119,13 +16130,28 @@ func (g *Generator) aliasUnderlyingIs(name string, src GoType) bool {
 // firstAllOfArrayAliasName is the search half: the first branch of the allOf
 // that names an array alias, generating it on demand. It carries no judgement
 // about whether the delegation can be spelled -- that is aliasUnderlyingIs.
+//
+// A branch owned by another package of the run is skipped, and the local name
+// it would have taken is not minted. Two reasons, and either is sufficient. The
+// name would be that package's type spelled without its qualifier -- the defect
+// of issue #306, and here it would compile whenever this package happened to
+// declare a namesake, delegating the branch to whatever that namesake is. And
+// minting it declares a second Go type for a JSON shape the other package
+// already owns, which is issue #299 and the thing --schema-package exists to
+// prevent. Converting to the qualified name instead is not available: the
+// delegation is emitted as a Go conversion, legal only between identical
+// underlying types, and the record the owning package publishes says nothing
+// about a type's underlying (see typeShape) -- so there is no way to establish
+// here what aliasUnderlyingIs establishes for a local target. Declining costs
+// exactly what the doc comment above says it costs: the branch is still merged
+// into `merged` and what it asserts is read from there.
 func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 	for _, sub := range allOf {
 		if sub == nil {
 			continue
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" {
-			if resolved := g.resolveEffectiveRefSchema(sub); resolved != nil {
+			if resolved := g.resolveEffectiveRefSchema(sub); resolved != nil && !g.ownedByAnotherPackage(resolved) {
 				name := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 				if !g.generated[name] && !g.nodesInProgress[resolved] {
 					_ = g.generateTypeDef(name, resolved)
@@ -16136,7 +16162,7 @@ func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 			}
 		}
 		if sub.DynamicRef != "" {
-			if resolved := g.resolveDynamicRef(sub.DynamicRef, sub); resolved != nil {
+			if resolved := g.resolveDynamicRef(sub.DynamicRef, sub); resolved != nil && !g.ownedByAnotherPackage(resolved) {
 				name := g.goNameForResolvedRef(sub.DynamicRef, resolved, refToGoName(sub.DynamicRef))
 				if !g.generated[name] && !g.nodesInProgress[resolved] {
 					_ = g.generateTypeDef(name, resolved)
@@ -16208,17 +16234,61 @@ func (g *Generator) isInterfaceType(t GoType) bool {
 	return false
 }
 
-// namedTypeName extracts the type name from a GoType if it's a NamedType
-// (possibly wrapped in a PointerType). Returns "" otherwise.
-func namedTypeName(t GoType) string {
+// namedTypeAt returns the NamedType a GoType names, looking through a pointer,
+// or nil when the position holds something else. It is the node namedTypeName
+// and emittedTypeName each read a different part of.
+func namedTypeAt(t GoType) *NamedType {
 	switch v := t.(type) {
 	case *NamedType:
-		return v.Name
+		return v
 	case *PointerType:
-		return namedTypeName(v.Inner)
+		return namedTypeAt(v.Inner)
 	default:
+		return nil
+	}
+}
+
+// namedTypeName extracts the type name from a GoType if it's a NamedType
+// (possibly wrapped in a PointerType). Returns "" otherwise.
+//
+// This is the name as a *key into this package's own tables* -- g.generated,
+// the validatable/enum/alias maps, uniqueTypeName. It is deliberately
+// unqualified, and for that reason it must never be the name written into
+// generated source: see emittedTypeName, and the class of defect that follows
+// from confusing the two.
+func namedTypeName(t GoType) string {
+	if nt := namedTypeAt(t); nt != nil {
+		return nt.Name
+	}
+	return ""
+}
+
+// emittedTypeName is namedTypeName for a name that is *written into generated
+// source* rather than looked up in this package's tables: the import alias is
+// part of the name there.
+//
+// The two are not interchangeable, and the failure mode of using the table key
+// where source was meant is silent in the worst case. `{"anyOf":[{"$ref":"<other
+// package>"},{"type":"integer"}]}` in a property emitted `var _bv T` for a type
+// called tpkg.T here, and no import: with no local T the package did not
+// compile -- behind a zero exit code -- and *with* one, because the referring
+// document happened to declare a namesake, it compiled and judged the branch
+// against the local schema. That is a false rejection and a false acceptance
+// from the same line. Issue #306, and the same shape as the map value #295
+// reported one level down.
+//
+// Every position that delegates to a generated type by name asks this rather
+// than namedTypeName; TestEveryEmittedTypeNameIsAccountedFor holds that no new
+// emission site can be added to a template without an answer to the question.
+func emittedTypeName(t GoType) string {
+	nt := namedTypeAt(t)
+	if nt == nil {
 		return ""
 	}
+	if nt.PkgAlias != "" {
+		return nt.PkgAlias + "." + nt.Name
+	}
+	return nt.Name
 }
 
 // crossPackageNamed returns the qualified NamedType inside t, if any: the type
@@ -17586,7 +17656,10 @@ func (g *Generator) delegatedBranchType(sub *schema.Schema, contextName string) 
 	if sub == nil || sub.IsBooleanSchema() {
 		return "", false
 	}
-	if name := namedTypeName(g.resolveType(sub, contextName)); name != "" {
+	// emittedTypeName, not namedTypeName: the branch becomes `var _bv <name>` in
+	// the wrapper's Validate, so a target another package of the run owns has to
+	// be spelled with its import alias. Issue #306.
+	if name := emittedTypeName(g.resolveType(sub, contextName)); name != "" {
 		return name, true
 	}
 	name, _ := g.materializeNamed(sub, contextName)
@@ -18118,7 +18191,11 @@ func (g *Generator) extractTypeSchemaBranches(typeSchemas []*schema.Schema, cont
 		// path below would otherwise drop the alternative entirely and the
 		// wrapper would reject every value the reference was meant to admit.
 		if typeSchema.EffectiveRef() != "" {
-			if name := namedTypeName(g.resolveType(typeSchema, fmt.Sprintf("%sTypeAlternative%d", contextName, i))); name != "" {
+			// emittedTypeName for the reason delegatedBranchType gives: the name
+			// becomes a type in the wrapper's own source, and another package's
+			// type is not spelled the same way there as in this package's
+			// tables (issue #306).
+			if name := emittedTypeName(g.resolveType(typeSchema, fmt.Sprintf("%sTypeAlternative%d", contextName, i))); name != "" {
 				branches = append(branches, TypeSchemaBranch{TypeName: name})
 				continue
 			}
@@ -18304,6 +18381,18 @@ func (g *Generator) inferredItemTypeName(itemSchema *schema.Schema, elemGoType G
 	if itemSchema == nil || itemSchema.IsBooleanSchema() || !g.validationKeywordsEnabled() {
 		return ""
 	}
+	// A type another package of the run owns is answered by that package's
+	// record of it, in both halves: how source must spell the name, and whether
+	// there is a Validate to call on it. This package's tables hold nothing
+	// about it -- and where a namesake is declared here, what they hold is about
+	// the wrong type. See emittedTypeName (issue #306) and namedTypeValidatable
+	// (issue #296).
+	if foreign := namedTypeAt(elemGoType); foreign != nil && foreign.PkgAlias != "" {
+		if !foreign.foreign.Validatable {
+			return ""
+		}
+		return emittedTypeName(elemGoType)
+	}
 	if name := namedTypeName(elemGoType); name != "" && g.namedTypeIsValidatable(name) {
 		return name
 	}
@@ -18336,6 +18425,17 @@ func (g *Generator) inferredItemTypeName(itemSchema *schema.Schema, elemGoType G
 func (g *Generator) namedTypeIsValidatable(name string) bool {
 	if name == "" {
 		return false
+	}
+	// A qualified name names another package's type. The position that produced
+	// it has already read that package's published record -- it returns "" for a
+	// target carrying no Validate -- and the tables walked below hold nothing
+	// about a foreign type, or, where this package declares a namesake, hold the
+	// answer for the wrong one (issue #296). Answering from them here would
+	// reach a name with a '.' in it that no declaration can match, and fall
+	// through to the recursive-case `true` below by accident rather than on
+	// purpose.
+	if strings.Contains(name, ".") {
+		return true
 	}
 	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() != name {
@@ -18397,6 +18497,12 @@ func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName stri
 	if effRef := sub.EffectiveRef(); effRef != "" {
 		resolved := g.resolveRefInContext(effRef, sub)
 		if resolved != nil {
+			if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
+				if name == "" {
+					return InferredTupleItem{}
+				}
+				return InferredTupleItem{TypeName: name}
+			}
 			if len(resolved.Type) == 1 {
 				return InferredTupleItem{JSONType: resolved.Type[0]}
 			}
@@ -18424,6 +18530,9 @@ func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
 	}
 	goName := refToGoName(effRef)
 	if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+		if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
+			return name
+		}
 		goName = g.goNameForResolvedRef(effRef, resolved, goName)
 		if !g.generated[goName] {
 			_ = g.generateTypeDef(goName, resolved)
@@ -19334,6 +19443,9 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 	}
 	if ref := sub.EffectiveRef(); ref != "" {
 		if r := g.resolveRefInContext(ref, sub); r != nil {
+			if name, foreign := g.foreignDelegateTypeName(r, ref); foreign {
+				return name
+			}
 			refName := g.uniqueTypeName(g.goNameForResolvedRef(ref, r, refToGoName(ref)), r)
 			_ = g.generateTypeDef(refName, r)
 			if g.generated[refName] {
@@ -19385,6 +19497,14 @@ func (g *Generator) resolvePatternPropertyTypes() {
 			validatable[td.TypeName()] = true
 		}
 	}
+	// A qualified name is another package's, and this table describes only what
+	// this package declares: it holds no entry for tpkg.T, so judging one here
+	// would withdraw a delegation whose owner has already been asked (see
+	// foreignDelegateTypeName, which declines a foreign target carrying no
+	// Validate before the name ever reaches this field) and leave the bucket
+	// checking nothing. Where this package happens to declare a namesake the
+	// table would answer about that one instead, which is worse than silence.
+	settledElsewhere := func(name string) bool { return strings.Contains(name, ".") }
 	declined := make(map[string]bool)
 	for _, td := range g.output.TypeDefs {
 		sd, ok := td.(*StructDef)
@@ -19396,7 +19516,7 @@ func (g *Generator) resolvePatternPropertyTypes() {
 			if pp.TypeName == "" {
 				continue
 			}
-			if !validatable[pp.TypeName] {
+			if !settledElsewhere(pp.TypeName) && !validatable[pp.TypeName] {
 				declined[pp.TypeName] = true
 				pp.TypeName = ""
 				continue
@@ -19406,7 +19526,7 @@ func (g *Generator) resolvePatternPropertyTypes() {
 		kept := sd.BranchOverflowChecks[:0]
 		for i := range sd.BranchOverflowChecks {
 			bc := &sd.BranchOverflowChecks[i]
-			if bc.TypeName != "" && !validatable[bc.TypeName] {
+			if bc.TypeName != "" && !settledElsewhere(bc.TypeName) && !validatable[bc.TypeName] {
 				declined[bc.TypeName] = true
 				bc.TypeName = ""
 			}
@@ -21461,6 +21581,12 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 	}
 	if ref := posSch.EffectiveRef(); ref != "" {
 		if r := g.resolveRefInContext(ref, posSch); r != nil {
+			if name, foreign := g.foreignDelegateTypeName(r, ref); foreign {
+				if name == "" {
+					return TupleItemDef{}, false
+				}
+				return TupleItemDef{TypeName: name}, true
+			}
 			resolved = r
 			refName = g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
 		}
@@ -21901,6 +22027,62 @@ func (g *Generator) foreignTypeFor(resolved *schema.Schema, ref string) (*NamedT
 		PkgAlias: alias,
 		foreign:  qt.Shape,
 	}, true
+}
+
+// ownedByAnotherPackage reports whether resolved's document belongs to a
+// different package of this run.
+//
+// It answers the ownership half of foreignTypeFor's question without the other
+// half: no import alias, and no miss recorded. That is for the positions whose
+// answer to "another package owns this" is to *decline* rather than to import --
+// there the reference is not one that has to resolve to a foreign type, so
+// failing the run over it would refuse schemas that generate perfectly well.
+// What must not happen is the third option, which is what these positions used
+// to do: mint a local name for it anyway.
+func (g *Generator) ownedByAnotherPackage(resolved *schema.Schema) bool {
+	reg := g.config.CrossPackage
+	if reg == nil || resolved == nil {
+		return false
+	}
+	pkg := reg.packageFor(resolved)
+	return pkg != "" && pkg != g.config.ImportPath
+}
+
+// foreignDelegateTypeName answers, for a $ref whose target another package of
+// this run owns, the name generated source has to delegate to: qualified with
+// that package's import alias, and with the import recorded.
+//
+// It is what every position that reaches a $ref target *by name* asks before
+// minting one of its own. resolveType has consulted foreignTypeFor since
+// cross-package generation existed, so a property, an element and a map value
+// have always crossed the boundary by importing; the positions that build a
+// name out of the reference string instead -- a tuple slot, a `contains`, a
+// patternProperties bucket, an inferred array's items -- did not ask, and each
+// of them minted a local declaration for a type another package already owns.
+// Two Go types for one JSON shape is issue #299, and it is the benign half:
+// where this package already declares that name, the position bound the
+// *namesake* instead and validated the value against a different schema
+// altogether, accepting what the reference forbids and refusing what it allows.
+// That is issue #306's second failure mode, reached by a different route.
+//
+// The two returns are read together:
+//
+//   - foreign false: the target is this package's own (or cross-package mode is
+//     off). Nothing changes; the caller mints and generates as before.
+//   - foreign true, name non-empty: delegate to name.
+//   - foreign true, name empty: another package's type that carries no Validate
+//     to call. The caller must decline the delegation rather than fall through
+//     to minting a copy -- there is no check to make, and a copy would be the
+//     duplicate declaration above.
+func (g *Generator) foreignDelegateTypeName(resolved *schema.Schema, ref string) (string, bool) {
+	foreign, ok := g.foreignTypeFor(resolved, ref)
+	if !ok {
+		return "", false
+	}
+	if !foreign.foreign.Validatable {
+		return "", true
+	}
+	return foreign.GoTypeName(), true
 }
 
 // importAlias returns (and records) the alias under which importPath is

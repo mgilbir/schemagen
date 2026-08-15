@@ -248,6 +248,109 @@ func crossPackageCases() []crossPackageCase {
 			MustImport:     "ex.test/m/one",
 			MustNotDeclare: []string{"Code"},
 		},
+		{
+			// Issue #306. An anyOf whose branches span more than one Go type,
+			// in a property, becomes a raw-value wrapper that tests each branch
+			// by decoding into the branch's type -- and the $ref branch was
+			// written with the foreign type's bare name and no import for it.
+			// This is the plain half: the package did not compile, behind a
+			// zero exit code from generation.
+			Name: "anyof_branch_in_a_property",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]},
+							"z":{"type":"object","properties":{
+								"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]}}}
+						}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"a":"abc"}`,
+				`{"a":"z"}`,
+				`{"a":"ab"}`,
+				`{"a":1}`,
+				`{"a":true}`,
+				`{"z":{"a":"abc"}}`,
+				`{"z":{"a":"z"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// Issue #306's second failure mode, and the reason it is urgent: the
+			// referring document declares a definition that mints the same Go
+			// name, so the unqualified `var _bv T` *compiles* and binds to the
+			// local type. The branch is then judged against a schema that is not
+			// the one referenced -- a valid document refused and an invalid one
+			// accepted, in silence.
+			//
+			// Every position that delegates to a generated type by name is here,
+			// not only the anyOf: a namesake is what turns each of them from a
+			// duplicate declaration into a wrong verdict, and `contains`,
+			// `prefixItems` and the tail past a prefix were all binding it too.
+			//
+			// The --shared-types spelling of this set is the control. One package
+			// cannot hold two types called T either, so it renames the referring
+			// document's definition and says so; both names then mean what their
+			// own schema says, which is the answer the multi-package spelling
+			// has to reach as well.
+			Name: "a_local_namesake_of_the_foreign_type",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					// $defs/T is the namesake: the opposite constraint, so
+					// binding it rather than tpkg.T shows in the verdict rather
+					// than only in the source.
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]},
+							"c":{"type":"array","contains":{"$ref":"https://ex.test/t.json"}},
+							"p":{"type":"array","prefixItems":[{"$ref":"https://ex.test/t.json"}]},
+							"r":{"type":"array","prefixItems":[{"type":"integer"}],
+							     "items":{"$ref":"https://ex.test/t.json"}},
+							"k":{"type":"object","patternProperties":{"^k":{"$ref":"https://ex.test/t.json"}}},
+							"b":{"$ref":"#/$defs/T"}
+						},
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"a":"abc"}`,
+				`{"a":"z"}`,
+				`{"a":"ab"}`,
+				`{"a":1}`,
+				`{"b":"z"}`,
+				`{"b":"abc"}`,
+				`{"c":["abc"]}`,
+				`{"c":["z"]}`,
+				`{"c":[]}`,
+				`{"p":["abc"]}`,
+				`{"p":["z"]}`,
+				`{"r":[1,"abc"]}`,
+				`{"r":[1,"z"]}`,
+				`{"k":{"k1":"abc"}}`,
+				`{"k":{"k1":"z"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
 	}
 }
 
