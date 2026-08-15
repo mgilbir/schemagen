@@ -4511,8 +4511,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			continue
 		}
 		// In draft3-7, $ref overrides all sibling keywords — skip validation
-		// rules from the property schema when it has a $ref.
-		if propSchema.EffectiveRef() != "" && g.refOverridesSiblings() {
+		// rules from the property schema when it has a $ref. Asked of the
+		// property's own schema, because the dialect is the resource's and not
+		// the run's: a draft-07 resource embedded in a 2020-12 document was
+		// enforcing the minLength written beside a $ref that draft 7 says is not
+		// there to be read (issue #309).
+		if propSchema.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(propSchema) {
 			continue
 		}
 		var rules []ValidationRule
@@ -13072,10 +13076,12 @@ func (g *Generator) schemaForbidsKindAt(s *schema.Schema, kind string, depth int
 		return false
 	}
 	ref := s.EffectiveRef()
-	if ref != "" && g.refOverridesSiblings() {
+	if ref != "" && g.refOverridesSiblingsForSchema(s) {
 		// Before 2019-09 a $ref replaces everything beside it, so the siblings
 		// have no say at all. Reading them anyway would refuse a value the
-		// target admits.
+		// target admits. Of this node's dialect, not the run's -- this walk
+		// follows $refs and so crosses between resources that may declare
+		// different ones.
 		target := g.resolveRefInContext(ref, s)
 		return target != nil && g.schemaForbidsKindAt(target, kind, depth+1)
 	}
@@ -13384,9 +13390,10 @@ func (g *Generator) schemaForbidsZeroAt(s *schema.Schema, kind string, depth int
 		return false
 	}
 	ref := s.EffectiveRef()
-	if ref != "" && g.refOverridesSiblings() {
+	if ref != "" && g.refOverridesSiblingsForSchema(s) {
 		// Before 2019-09 a $ref replaces its siblings outright, so only the
-		// target has a say.
+		// target has a say. Of this node's dialect, not the run's, for the
+		// reason schemaForbidsKindAt gives.
 		target := g.resolveRefInContext(ref, s)
 		return target != nil && g.schemaForbidsZeroAt(target, kind, depth+1)
 	}
@@ -16548,14 +16555,33 @@ func zeroForPrimitive(name string) string {
 	}
 }
 
-// refOverridesSiblings returns true if the current draft treats $ref as
-// overriding all sibling keywords. In draft3 through draft7, $ref causes
-// all sibling keywords to be ignored. Starting with draft 2019-09,
-// $ref is just another applicator and sibling keywords apply normally.
-func (g *Generator) refOverridesSiblings() bool {
-	return refOverridesSiblingsForDraft(g.draft)
-}
-
+// refOverridesSiblingsForSchema reports whether the dialect *this schema node is
+// read under* treats $ref as replacing everything written beside it. In draft 3
+// through draft 7 it does, and the siblings are not there to be read; from
+// 2019-09 $ref is an ordinary applicator and they apply normally.
+//
+// The question is asked of the node and never of the run, and there is
+// deliberately no second spelling that reads Config.Draft. $schema is a
+// *resource*-level declaration: 2020-12 §8.1.1 permits it on any subschema that
+// carries an $id, so a draft-07 resource embedded in a 2020-12 document keeps
+// draft 7's reading of $ref, and a $ref that crosses into another document
+// reaches whatever that document declares. draftForSchema is the one function
+// that answers "under which dialect", reading the node's own $schema and then
+// its resource root's.
+//
+// There used to be a run-level `refOverridesSiblings()` beside this, reading
+// Config.Draft/the *root* document's $schema, with three call sites against this
+// one's seventeen. One of the three decided whether a property's sibling
+// assertions bind, so a draft-07 resource embedded in a 2020-12 document
+// enforced the minLength/maxLength/pattern written beside a $ref -- keywords
+// draft 7 says to ignore -- while enum and const, which come through
+// refDisplacesSiblingValues and so through this function, were correctly
+// dropped. Two code paths answering one question, disagreeing on the case only
+// one of them could see: issue #309. The spelling that could not see it is gone
+// rather than corrected, so a new call site has only one to reach for. The other
+// two of its three sites were wrong too, and each in a way a document reaches:
+// see TestEmbeddedResourceDialectDecidesWhetherARefSiblingForbidsNull and
+// ...ForbidsTheZero.
 func (g *Generator) refOverridesSiblingsForSchema(s *schema.Schema) bool {
 	return refOverridesSiblingsForDraft(g.draftForSchema(s))
 }
@@ -16588,9 +16614,11 @@ func refOverridesSiblingsForDraft(draft schema.Draft) bool {
 // apply, only about the drafts where one of them is not written at all.
 //
 // It is asked of the schema rather than of the run because $schema is a
-// per-document declaration and a $ref may cross into a document that makes a
-// different one -- the same reason refOverridesSiblingsForSchema exists beside
-// refOverridesSiblings.
+// per-resource declaration -- an embedded resource may make its own, and a $ref
+// may cross into a document that makes a different one. That this predicate
+// asked it that way and the assertion keywords did not is what issue #309 was:
+// enum and const were correctly dropped inside a draft-07 resource while
+// minLength beside the same $ref was enforced.
 func (g *Generator) refDisplacesSiblingValues(s *schema.Schema) bool {
 	return s != nil && s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s)
 }
