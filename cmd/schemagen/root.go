@@ -416,12 +416,16 @@ func newGenerateCmd() *cobra.Command {
 					return err
 				}
 				absPath, _ := filepath.Abs(args[0])
+				// The same --draft the inputs above were normalized under. A
+				// document a $ref pulls in is a document of this run too, and
+				// reading it under a dialect nobody asked for is how one command
+				// line came to enforce two (issue #314).
 				resolvers := []schema.SchemaResolver{
 					schema.NewMappingResolver(inputByID),
-					schema.NewFileResolver(filepath.Dir(absPath)),
+					schema.NewFileResolver(filepath.Dir(absPath), schema.WithFileResolverDraft(draft)),
 				}
 				if allowRemoteRefs {
-					resolvers = append(resolvers, schema.NewHTTPResolver())
+					resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(draft)))
 				}
 				// Resolved before the names are, and through the very resolver
 				// the generator is handed: a document reached by $ref declares
@@ -478,9 +482,9 @@ func newGenerateCmd() *cobra.Command {
 					if len(inputByID) > 0 {
 						resolvers = append(resolvers, schema.NewMappingResolver(inputByID))
 					}
-					resolvers = append(resolvers, schema.NewFileResolver(filepath.Dir(absPath)))
+					resolvers = append(resolvers, schema.NewFileResolver(filepath.Dir(absPath), schema.WithFileResolverDraft(draft)))
 					if allowRemoteRefs {
-						resolvers = append(resolvers, schema.NewHTTPResolver())
+						resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(draft)))
 					}
 					var resolver schema.SchemaResolver = resolvers[0]
 					if len(resolvers) > 1 {
@@ -535,15 +539,7 @@ func newGenerateCmd() *cobra.Command {
 				if err != nil {
 					var unresolved *generator.UnresolvedRefsError
 					if errors.As(err, &unresolved) {
-						// Two resolution routes exist and the advice has to name
-						// both, or it is wrong for whichever one the caller
-						// used: the old text said "place the referenced
-						// documents alongside the schema", which is no help at
-						// all for a $ref by absolute URI -- the document can be
-						// sitting right next to the schema and still not be
-						// found, because nothing derives a file name from a URI
-						// (issue #223).
-						return fmt.Errorf("generating IR for %s: %w\n(a $ref by absolute URI is matched against the $id of the documents given to this run, so pass the referenced document as an input too; a $ref by relative path is read from that path next to the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead, and --lenient-refs generates anyway, degrading the unresolved ref to any)", schemaPath, err)
+						return fmt.Errorf("generating IR for %s: %w\n%s", schemaPath, err, unresolvedRefAdvice(unresolved))
 					}
 					// A root type name that is already taken has two causes
 					// needing opposite advice, and only this loop knows which
@@ -691,6 +687,39 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 		fmt.Fprintf(w, "warning: %s: type %s is `any` and validates nothing, but the schema states %s\n",
 			schemaPath, u.TypeName, strings.Join(u.Keywords, ", "))
 	}
+}
+
+// unresolvedRefAdvice is the parenthetical that follows an unresolved-$ref
+// failure, held to what is true of the failure that produced it.
+//
+// Two resolution routes exist and the advice has to name both, or it is wrong
+// for whichever one the caller used: the old text said "place the referenced
+// documents alongside the schema", which is no help at all for a $ref by
+// absolute URI -- the document can be sitting right next to the schema and still
+// not be found, because nothing derives a file name from a URI (issue #223).
+//
+// A third route is the network, and naming it unconditionally was the same
+// mistake in the other direction. A run that passed --allow-remote-refs and got
+// a 404, a refused connection or an HTML page was told, as the first thing the
+// message said, to pass --allow-remote-refs -- which sent the caller looking for
+// a second cause that was not there (issue #317). A fetch that was made says so
+// on the error, and the advice for it is about the URL and the server.
+//
+// Both clauses appear when one run has refs of both kinds, because then both are
+// true. --lenient-refs is the answer to every one of them and is always named.
+func unresolvedRefAdvice(e *generator.UnresolvedRefsError) string {
+	var parts []string
+	if e.AnyFetchNotAttempted() {
+		parts = append(parts, "a $ref by absolute URI is matched against the $id of the documents given to this run, "+
+			"so pass the referenced document as an input too; a $ref by relative path is read from that path next to "+
+			"the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead")
+	}
+	if e.AnyFetchAttempted() {
+		parts = append(parts, "--allow-remote-refs is already in effect and the fetch itself is what failed, as the "+
+			"line above each ref says: check the URL, the status the server returned and the Content-Type it served")
+	}
+	parts = append(parts, "--lenient-refs generates anyway, degrading the unresolved ref to any")
+	return "(" + strings.Join(parts, ". ") + ")"
 }
 
 // warnUnresolvedRefs reports the $refs --lenient-refs degraded to nothing.
@@ -977,10 +1006,10 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	// any input resolves, not just inside the first one.
 	resolvers := []schema.SchemaResolver{schema.NewMappingResolver(byID)}
 	for _, dir := range inputDirs(args) {
-		resolvers = append(resolvers, schema.NewFileResolver(dir))
+		resolvers = append(resolvers, schema.NewFileResolver(dir, schema.WithFileResolverDraft(p.draft)))
 	}
 	if p.allowRemoteRefs {
-		resolvers = append(resolvers, schema.NewHTTPResolver())
+		resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(p.draft)))
 	}
 	// Whatever spelling a ref uses, a document this run owns must come back as
 	// the instance already loaded for it: the cross-package registry keys types
@@ -1159,7 +1188,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			if err != nil {
 				var unresolved *generator.UnresolvedRefsError
 				if errors.As(err, &unresolved) {
-					return fmt.Errorf("generating IR for %s: %w\n(provide the referenced documents as inputs, enable --allow-remote-refs, or pass --lenient-refs to degrade unresolved refs to any)", in.path, err)
+					return fmt.Errorf("generating IR for %s: %w\n%s", in.path, err, unresolvedRefAdvice(unresolved))
 				}
 				var pinnedCollision *generator.PinnedNameCollisionError
 				if errors.As(err, &pinnedCollision) {

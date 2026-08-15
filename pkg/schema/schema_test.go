@@ -1748,6 +1748,7 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 		"DetectedDraft":    "which draft the document was read under, not something it asserts",
 		"BaseURI":          "where a relative $ref resolves from",
 		"DocumentRoot":     "where a JSON Pointer fragment resolves from",
+		"RetrievalURI":     "which URL answered a fetch, which is where a relative $ref resolves from when the document declares no $id",
 	}
 	// emptyIsAbsent are the slice and map fields whose omitempty tag drops an
 	// empty value and for which that is the right reading: written empty they

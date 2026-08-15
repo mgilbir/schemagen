@@ -753,6 +753,8 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 
 `--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
 
+A document that is pulled in by a `$ref` rather than listed on the command line follows the same rule, whether it is read off disk or fetched with `--allow-remote-refs`: it takes the forced draft when it declares no `$schema` of its own, and keeps its own dialect when it declares one. Until #314 the forced draft did not reach it at all, so a keyword the stated dialect does not define went on binding there while it was dropped from every document the caller listed -- one command line, one schema set, two verdicts on the same JSON.
+
 ### Validation Strategy
 
 `schemagen` defaults to `--validation static`, which emits direct Go validation checks and preserves the historical behavior. Use `--validation hybrid` to annotate generated code with validation capability metadata recording which features may need runtime annotation tracking for full spec compliance -- `$dynamicRef`, `$recursiveRef`, `unevaluatedItems`, and `unevaluatedProperties`.

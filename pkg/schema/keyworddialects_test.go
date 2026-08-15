@@ -399,8 +399,18 @@ func TestBooleanRequiredIsPromotedByTheParentsDialect(t *testing.T) {
 	}
 }
 
-// TestNormalizeForDraftOverridesOnlyTheRoot pins what --draft reaches.
-func TestNormalizeForDraftOverridesOnlyTheRoot(t *testing.T) {
+// TestNormalizeForDraftOverridesTheRootAndNotAnEmbeddedResource pins what
+// --draft reaches *within one document*: the root's dialect, and not that of a
+// resource embedded in it under a $schema of its own.
+//
+// The boundary this test draws is the one inside a document, and it is not the
+// boundary between documents. A separate document a $ref pulls in is a root in
+// its own right and takes the run's draft exactly as a listed input does --
+// which it did not, and the two cases were read as one (issue #314).
+// TestResolversReadAReachedDocumentUnderTheRunsDraft holds that half, and holds
+// this one again through the resolver, so neither can be satisfied by breaking
+// the other.
+func TestNormalizeForDraftOverridesTheRootAndNotAnEmbeddedResource(t *testing.T) {
 	doc := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"const": "x",

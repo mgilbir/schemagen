@@ -610,6 +610,42 @@ func (m *MappingResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, 
 	return s, nil
 }
 
+// normalizeLoadedDocument normalizes a whole document a resolver has just
+// loaded, under the dialect the run was told to read its documents in.
+//
+// A document a $ref pulls in is a document of the run exactly as a listed input
+// is, and --draft is the caller's statement about the run: the CLI normalizes
+// every input with NormalizeForDraft(draft), while both resolvers called plain
+// Normalize() and so answered "which dialect" from a second source. Normalize is
+// NormalizeForDraft(DraftUnknown), and DraftUnknown means "read the dialect from
+// the document" -- which for a document stating no $schema is no dialect at all,
+// and the keyword gate answers yes to every keyword there. One command line then
+// read one schema set under two dialects: under --draft 3 the `const` dropped
+// from the document the caller listed survived in the one reached by $ref beside
+// it, so the same JSON was accepted by one generated type and refused by the
+// other (issue #314).
+//
+// It is supplied only where the document states no dialect of its own, which is
+// the same rule the generator's draftForSchema already applies to that document
+// when it decides what a keyword means: a resource reached by $ref that declares
+// its own $schema keeps it, so cross-draft $ref semantics are preserved, and the
+// README states that as the one exception to --draft. Forcing the override here
+// regardless would leave normalization and generation reading one node under two
+// dialects, which is the shape of #203 rather than a fix for #314.
+//
+// What NormalizeForDraft supplies is in any case the *root's* dialect and never
+// an embedded resource's, so a nested $id/$schema resource keeps its own for the
+// subtree below it. That rule is inherited here rather than restated.
+//
+// draft is DraftUnknown for a run that passed no --draft, and this is then the
+// exact Normalize() call it replaces.
+func normalizeLoadedDocument(s *Schema, draft Draft) {
+	if DetectDraft(s) != DraftUnknown {
+		draft = DraftUnknown
+	}
+	s.NormalizeForDraft(draft)
+}
+
 // ---------- FileResolver (local filesystem) ----------
 
 // FileResolver resolves $ref URIs by loading JSON Schema files from the filesystem.
@@ -617,14 +653,28 @@ func (m *MappingResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, 
 type FileResolver struct {
 	baseDir string
 	cache   map[string]*Schema
+	draft   Draft
+}
+
+// FileResolverOption configures a FileResolver.
+type FileResolverOption func(*FileResolver)
+
+// WithFileResolverDraft sets the dialect the root of a document this resolver
+// loads is read under. See normalizeLoadedDocument.
+func WithFileResolverDraft(d Draft) FileResolverOption {
+	return func(r *FileResolver) { r.draft = d }
 }
 
 // NewFileResolver creates a FileResolver that loads schemas relative to baseDir.
-func NewFileResolver(baseDir string) *FileResolver {
-	return &FileResolver{
+func NewFileResolver(baseDir string, opts ...FileResolverOption) *FileResolver {
+	r := &FileResolver{
 		baseDir: baseDir,
 		cache:   make(map[string]*Schema),
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // withinBase reports whether target resolves to a path inside the resolver's
@@ -738,7 +788,7 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("FileResolver: parsing %q: %w", filePath, err)
 	}
-	s.Normalize()
+	normalizeLoadedDocument(&s, f.draft)
 
 	f.cache[filePath] = &s
 
@@ -769,6 +819,7 @@ type HTTPResolver struct {
 	client           *http.Client
 	cache            map[string]*Schema
 	maxResponseBytes int64
+	draft            Draft
 }
 
 // HTTPResolverOption configures an HTTPResolver.
@@ -786,6 +837,14 @@ func WithHTTPClient(client *http.Client) HTTPResolverOption {
 func WithMaxResponseBytes(n int64) HTTPResolverOption {
 	return func(r *HTTPResolver) {
 		r.maxResponseBytes = n
+	}
+}
+
+// WithHTTPResolverDraft sets the dialect the root of a document this resolver
+// fetches is read under. See normalizeLoadedDocument.
+func WithHTTPResolverDraft(d Draft) HTTPResolverOption {
+	return func(r *HTTPResolver) {
+		r.draft = d
 	}
 }
 
@@ -863,19 +922,37 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	// Fetch the schema.
 	resp, err := h.client.Get(docKey)
 	if err != nil {
-		return nil, fmt.Errorf("HTTPResolver: fetching %q: %w", docKey, err)
+		return nil, &RemoteFetchError{URL: docKey, Reason: err}
 	}
 	defer resp.Body.Close()
 
+	// The URI this document was actually retrieved from, which is the requested
+	// one only when nothing redirected. It is what the base URI of a document
+	// that declares no $id is, per RFC 3986 §5.1.3 -- deferred to by 2020-12
+	// §9.1.1 -- so a relative $ref inside the answer is read against the
+	// directory that answered and not the one that was asked. Keyed by the
+	// requested URL alone, /redirect.json's `{"$ref":"sub.json"}` fetched the
+	// /sub.json beside the redirect instead of the one beside the document, and
+	// enforced it in silence (issue #315).
+	//
+	// Also the second cache key. Reaching one document under both URLs otherwise
+	// parsed it twice, and two instances of one document are two Go types.
+	retrievalKey := docKey
+	if resp.Request != nil && resp.Request.URL != nil {
+		final := *resp.Request.URL
+		final.Fragment = ""
+		retrievalKey = final.String()
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTPResolver: fetching %q: HTTP %d", docKey, resp.StatusCode)
+		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("HTTP %d", resp.StatusCode)}
 	}
 
 	// An HTML error page parses as neither schema nor useful error, so reject a
 	// clearly non-JSON body up front. An absent Content-Type is tolerated: some
 	// schema hosts omit it, and json.Unmarshal is the real check either way.
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
-		return nil, fmt.Errorf("HTTPResolver: %q returned Content-Type %q, want JSON", docKey, ct)
+		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("Content-Type %q, want JSON", ct)}
 	}
 
 	body, err := h.readCapped(resp.Body, docKey)
@@ -885,11 +962,17 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 
 	var s Schema
 	if err := json.Unmarshal(body, &s); err != nil {
-		return nil, fmt.Errorf("HTTPResolver: parsing schema from %q: %w", docKey, err)
+		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("parsing schema: %w", err)}
 	}
-	s.Normalize()
+	normalizeLoadedDocument(&s, h.draft)
+	if retrievalURL, err := url.Parse(retrievalKey); err == nil {
+		s.RetrievalURI = retrievalURL
+	}
 
 	h.cache[docKey] = &s
+	if retrievalKey != docKey {
+		h.cache[retrievalKey] = &s
+	}
 
 	if fragment != "" {
 		local := NewLocalResolver(&s)
@@ -899,6 +982,30 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	return &s, nil
 }
 
+// RemoteFetchError reports a remote $ref the HTTP resolver was permitted to
+// fetch and could not turn into a schema.
+//
+// Typed because the ways a remote $ref fails need different advice and only this
+// one says the network was reached: a run that passed --allow-remote-refs and
+// got a 404, a refused connection or an HTML body was told to pass
+// --allow-remote-refs, which sent the caller looking for a second cause that was
+// not there (issue #317). Every failure from the request onwards takes this
+// shape, so "was a fetch attempted" is one errors.As away.
+type RemoteFetchError struct {
+	// URL is the document URI the request was made for.
+	URL string
+	// Reason is what went wrong once the request had been made: the transport
+	// error, a status other than 200, a body that is not JSON, or one over the
+	// response cap.
+	Reason error
+}
+
+func (e *RemoteFetchError) Error() string {
+	return fmt.Sprintf("HTTPResolver: fetching %q: %v", e.URL, e.Reason)
+}
+
+func (e *RemoteFetchError) Unwrap() error { return e.Reason }
+
 // readCapped reads at most maxResponseBytes from body, erroring rather than
 // truncating when the document is larger — a silently truncated schema would
 // surface as a confusing parse error.
@@ -906,7 +1013,7 @@ func (h *HTTPResolver) readCapped(body io.Reader, docKey string) ([]byte, error)
 	if h.maxResponseBytes <= 0 {
 		data, err := io.ReadAll(body)
 		if err != nil {
-			return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+			return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("reading response: %w", err)}
 		}
 		return data, nil
 	}
@@ -914,10 +1021,10 @@ func (h *HTTPResolver) readCapped(body io.Reader, docKey string) ([]byte, error)
 	// exactly reaching it.
 	data, err := io.ReadAll(io.LimitReader(body, h.maxResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("HTTPResolver: reading response from %q: %w", docKey, err)
+		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("reading response: %w", err)}
 	}
 	if int64(len(data)) > h.maxResponseBytes {
-		return nil, fmt.Errorf("HTTPResolver: %q exceeds the %d byte response limit", docKey, h.maxResponseBytes)
+		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("exceeds the %d byte response limit", h.maxResponseBytes)}
 	}
 	return data, nil
 }
@@ -963,7 +1070,29 @@ func (c *CompositeResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("resolving %q: %w", ref, errors.Join(errs...))
+		return nil, &ResolveError{Ref: ref, Errs: errs}
 	}
 	return nil, fmt.Errorf("no resolvers configured")
 }
+
+// ResolveError reports that no resolver of a chain could serve a $ref, and keeps
+// what each of them said about it.
+//
+// Typed so a caller can reach the individual answers rather than a joined
+// string: the four ways a remote $ref fails are told apart by which resolver
+// spoke and how, and the generator that reports the ref needs that to say
+// anything true about it (issue #317). The joined rendering is unchanged, so a
+// caller that only prints the error sees what it saw before.
+type ResolveError struct {
+	// Ref is the reference as the schema wrote it.
+	Ref string
+	// Errs holds one entry per resolver in the chain, in the order they were
+	// tried.
+	Errs []error
+}
+
+func (e *ResolveError) Error() string {
+	return fmt.Sprintf("resolving %q: %v", e.Ref, errors.Join(e.Errs...))
+}
+
+func (e *ResolveError) Unwrap() []error { return e.Errs }
