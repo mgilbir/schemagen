@@ -128,3 +128,46 @@ func TestCrossPackageRefToANamedDefinitionGenerates(t *testing.T) {
 		t.Errorf("rootpkg should import tpkg rather than copy the type:\n%s", body)
 	}
 }
+
+// TestUsageIsPrintedForUsageErrorsAndNotForTheRest is the other half of #310:
+// a message this precise is worth nothing if the flag list scrolls it away.
+//
+// The line between the two is where the run stops answering questions about the
+// command line and starts reading schemas. Both directions are held, because
+// silencing usage everywhere is the easy over-correction and it takes the flag
+// list away from the errors it is the answer to.
+func TestUsageIsPrintedForUsageErrorsAndNotForTheRest(t *testing.T) {
+	_, _, missArgs := missReproduction(t)
+
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		wantUsage bool
+	}{
+		{"an unknown flag", []string{"--no-such-flag"}, true},
+		{"no input schemas", nil, true},
+		{"two opposite flags", []string{"x.json", "--format-assertion", "--format-annotation"}, true},
+		{"a $ref that cannot be imported", missArgs, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := NewRootCmd()
+			buf := new(strings.Builder)
+			cmd.SetOut(buf)
+			cmd.SetErr(buf)
+			cmd.SetArgs(append([]string{"generate"}, tc.args...))
+			if err := cmd.Execute(); err == nil {
+				t.Fatal("expected this invocation to fail")
+			}
+			printed := strings.Contains(buf.String(), "Usage:\n  schemagen generate")
+			if printed != tc.wantUsage {
+				verb := "printed"
+				if !printed {
+					verb = "did not print"
+				}
+				t.Errorf("the command %s the flag list, and should have done the opposite.\n"+
+					"Usage answers a question about the command line and nothing else; after that point it only "+
+					"buries the message that says what happened (issue #310).\ngot:\n%s", verb, buf.String())
+			}
+		})
+	}
+}
