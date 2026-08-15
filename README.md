@@ -559,7 +559,16 @@ schemagen generate one/common.json two/common.json -o out \
 
 Keys are split on the last `=`, so `$ids` and file names containing one work. A
 key repeated with a different name is an error, and a key that matches no input
-is reported as a warning.
+is reported as a warning. `--schema-package` and `--schema-output` report an
+unmatched `$id` the same way — the second matters most, since that flag falls
+back to the default output path, so a mistyped key used to leave the run reading
+as though it had been honoured. An unmatched key is reported before the refusal
+it usually causes (`no --schema-package mapping for ...`, which can only name the
+document that is fine), so the two read together.
+
+A key naming a document the run reached by `$ref` rather than one it was given
+counts as matched: such a document takes part in the name resolution below, and
+`--root-name` is how you choose what its definitions are qualified with.
 
 ### Several Schemas, One Package
 
@@ -598,6 +607,21 @@ moves.
 `--schema-package` shares a name space per package and answers the same
 collision the same way, between the documents assigned to one package.
 
+The documents that share a name space are not only the ones you list. A `$ref`
+into a document the run was never given still declares that document's types in
+the referring file — that is the documented relative-path route — so two such
+documents each declaring `$defs/Inner`, or two of them simply titled the same and
+referenced whole, ask for one Go type between them just as two inputs do. They
+are judged with the inputs and answered the same way, and the warning marks them
+`reached by $ref` so it is clear where a file you did not name came from. A
+referenced document contributes only what a reference actually reaches, since
+that is all the generator declares of it. Its qualifier is its `--root-name` if a
+key names it, then its title, then its file name (`element` in `alpha.json`
+becomes `AlphaElement`); a listed document's root type keeps its name against a
+referenced one, because that name is the one you asked for. This applies under
+the default configuration too, which is the only place a run has a single input
+and still needs the answer.
+
 One document can also contest a name with itself, and that needs no second input
 to see, so it is answered in every mode. `$defs/X` and `definitions/X` are two
 schema locations and may hold different schemas; each is named after the keyword
@@ -635,6 +659,13 @@ Notes:
 - Each output directory holds exactly one package. By default a document is
   written to `<output-dir>/<last segment of its import path>/`; override with
   `--schema-output`.
+- The rule holds at every position a `$ref` can be written, the document root
+  included: `{"$ref": "https://example.com/common.json"}` as a whole document
+  becomes `type Person common.Common`, not a second copy of the shape. A `$ref`
+  into a node the owning package gives no Go type of its own — a subschema such
+  as `common.json#/properties/postal_code`, which that package emits as a field
+  and never as a declaration — is an error rather than a copy, in that position
+  as in every other. Reference a `$defs` entry instead, which is named.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
 

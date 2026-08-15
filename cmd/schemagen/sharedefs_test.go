@@ -590,12 +590,12 @@ func TestSharedTypesReportsTheDefinitionsItSplit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
-	want := "warning: 2 input documents claim the Go type name Thing, and those claims do not describe the same type, so they cannot be one:\n" +
+	want := "warning: 2 documents claim the Go type name Thing, and those claims do not describe the same type, so they cannot be one:\n" +
 		"  " + paths[0] + " $defs/Thing becomes AlphaThing\n" +
 		"  " + paths[1] + " $defs/Thing becomes BetaThing\n" +
 		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. " +
 		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. " +
-		"A document's own root type keeps the name it was given; --root-name sets both. " +
+		"A listed document's own root type keeps the name it was given; --root-name sets both. " +
 		"Make the definitions identical if they were meant to be one type, or rename one of them in the schema to choose the Go names yourself.\n"
 	if stderr != want {
 		t.Errorf("stderr =\n%q\nwant\n%q", stderr, want)

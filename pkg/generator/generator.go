@@ -61,6 +61,18 @@ type Generator struct {
 	// local document scope. The root schema's document root is always at index 0.
 	dynamicScope []*schema.Schema
 
+	// typeScopeBase is the depth dynamicScope stood at when the generateTypeDefBody
+	// currently in flight began, and the two counters beside it are what
+	// TestDynamicScopeStaysAtTheTypeItStartedIn reads. Together they hold the
+	// invariant resolveRecursiveRef's comment rests on: no frame pushed while a
+	// type is being generated is still on the scope when that type's bookended
+	// references are resolved, so the walk never sees more than the one frame the
+	// type started with. See noteDynamicScopeConsulted for why it is measured
+	// rather than asserted, and for what it costs.
+	typeScopeBase             int
+	framesAboveTypeScope      int
+	dynamicScopeConsultations int
+
 	// structsInProgress tracks Go type names for structs currently having their
 	// fields resolved (on the call stack). Used to detect recursive value-type
 	// cycles: if a resolved ref points to a type that references a type in this
@@ -402,6 +414,13 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Initialize dynamic scope with the root document root.
 	g.dynamicScope = []*schema.Schema{s}
+	// Nothing is being generated yet, so the depth this run starts at is the
+	// baseline every type is measured against until one of them sets its own.
+	// Reset with it: a Generator reused for a second document must not report the
+	// first one's tallies.
+	g.typeScopeBase = len(g.dynamicScope)
+	g.framesAboveTypeScope = 0
+	g.dynamicScopeConsultations = 0
 	// The anchor index is about this document, so a Generator reused for another
 	// one must not answer from the last one's.
 	g.dynamicAnchorDecls = nil
@@ -501,19 +520,38 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		return nil, err
 	}
 
-	// Publish validation info about this call's types so packages generated
-	// later in a cross-package run can emit correct guards for them.
+	// Publish what this call's types are shaped like, so packages generated
+	// later in a cross-package run answer their own questions about them from
+	// this record rather than from a type table that has never seen them.
+	//
+	// Every field is filled by running the predicate the referencing package
+	// will ask, over the declaration only this generator can see. Reading one
+	// answer off another is what made the pointer rule for a foreign field
+	// depend on a zero literal that is empty for exactly the types that need
+	// the pointer most; see typeShape.ZeroLossy.
 	if g.config.CrossPackage != nil {
+		// Read after populateAliasDelegates, so that an alias which gained a
+		// delegate in that pass is published as carrying the method it gained.
+		_, unmarshalers, marshalers := g.jsonMethodTables()
 		for _, td := range g.output.TypeDefs {
 			name := td.TypeName()
 			s := g.typeSchemas[name]
 			if s == nil {
 				continue
 			}
-			g.config.CrossPackage.noteTypeInfo(s,
-				g.zeroLiteralForType(&NamedType{Name: name}),
-				localTypeIsValidatable(td),
-				g.isZeroLossyNamedType(&NamedType{Name: name}))
+			nt := &NamedType{Name: name}
+			g.config.CrossPackage.noteTypeInfo(s, typeShape{
+				ZeroLiteral:       g.zeroLiteralForType(nt),
+				Validatable:       localTypeIsValidatable(td),
+				ZeroLossy:         g.isZeroLossyNamedType(nt),
+				Struct:            g.isStructTypeNamed(nt),
+				Collection:        g.isCollectionType(nt),
+				Interface:         g.isInterfaceType(nt),
+				RawWrapper:        g.isRawValueWrapperType(nt),
+				AliasDropsMethods: g.aliasDropsMethods(nt),
+				Unmarshaler:       unmarshalers[name],
+				Marshaler:         marshalers[name],
+			})
 		}
 	}
 
@@ -1725,39 +1763,6 @@ func (g *Generator) isInferredAliasType(t GoType) bool {
 	return name != "" && g.isInferredAlias(name)
 }
 
-// isNotSchema returns true if a type name was generated as a NotSchemaDef.
-func (g *Generator) isNotSchema(name string) bool {
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() == name {
-			_, ok := td.(*NotSchemaDef)
-			return ok
-		}
-	}
-	return false
-}
-
-// isTypeOnlySchema returns true if a type name was generated as a TypeOnlySchemaDef.
-func (g *Generator) isTypeOnlySchema(name string) bool {
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() == name {
-			_, ok := td.(*TypeOnlySchemaDef)
-			return ok
-		}
-	}
-	return false
-}
-
-// isDynamicSchema returns true if a type name was generated as a DynamicSchemaDef.
-func (g *Generator) isDynamicSchema(name string) bool {
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() == name {
-			_, ok := td.(*DynamicSchemaDef)
-			return ok
-		}
-	}
-	return false
-}
-
 // resolveAliasMethodability walks all AliasDefs and sets NoMethods=true
 // for any whose underlying type chain resolves to a pointer or interface.
 // This handles cases like `type Root Bool` where Bool is `type Bool any` —
@@ -1808,6 +1813,14 @@ func canHaveMethodsResolvedImpl(t GoType, aliases map[string]*AliasDef, visited 
 		return false
 	}
 	if nt, ok := t.(*NamedType); ok {
+		if nt.PkgAlias != "" {
+			// Another package's type. Its declaration is not in this map, and a
+			// local alias of the same name is a different type -- following that
+			// one would decide whether `type X other.T` may carry methods from a
+			// namesake. The owning generator ran this same walk and published
+			// the one thing it can turn on: an underlying that resolves to `any`.
+			return !nt.foreign.Interface
+		}
 		if visited[nt.Name] {
 			return true // cycle detected — assume safe
 		}
@@ -2846,6 +2859,12 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// that derives it. See typeOwner.
 	defer g.noteTypeOwner(name, s)
 
+	// The depth this type starts at, restored on the way out so the frame above
+	// goes back to measuring against its own. See noteDynamicScopeConsulted.
+	outerScopeBase := g.typeScopeBase
+	g.typeScopeBase = len(g.dynamicScope)
+	defer func() { g.typeScopeBase = outerScopeBase }()
+
 	// unevaluatedItems next to in-place applicators cannot be decided
 	// statically: which items count as evaluated depends on which branches
 	// match the value. Route those to the runtime evaluator before any other
@@ -3227,6 +3246,35 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				g.output.TypeDefs = append(g.output.TypeDefs, def)
 				return nil
 			}
+			// A reference into a document another package of this run owns is
+			// the same reference it is one level down, and gets the same answer:
+			// the foreign type by name, with an import, rather than a second
+			// declaration of the same JSON shape.
+			//
+			// This position had no such arm at all, so a $ref occupying the
+			// whole of a document copied its target into the referring package
+			// -- `type OneC struct` beside `type V1 OneC`, in a package that
+			// imported nothing -- and the two packages ended up with two Go types
+			// for one JSON shape, which is the exact thing --schema-package is
+			// documented to prevent. Issue #299. Every other position (a
+			// property, an array element, a map value, a oneOf variant) had
+			// asked since cross-package generation existed; the document root
+			// was reached by no sweep because every sweep generated one document.
+			//
+			// Except where a defined type over the target would not carry the
+			// target's methods -- the same exception the local arm below makes,
+			// asked of the record the owning package published. There the copy
+			// is what the reference means, and it is what --shared-types
+			// materializes for the identical schema.
+			if foreign, ok := g.foreignTypeFor(resolved); ok && !g.aliasDropsMethods(foreign) {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+					Name:       name,
+					Underlying: foreign,
+					Doc:        g.docFor(name, s),
+				})
+				return nil
+			}
 			pushed := g.pushDynamicScope(resolved)
 			refName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
 			// Generate the referenced type definition (e.g., for remote $ref targets).
@@ -3242,7 +3290,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// carry neither the UnmarshalJSON that fills the raw value nor the
 			// Validate that checks it, so the constraint would be silently dropped.
 			// Instead, generate Root directly from the resolved schema.
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) || g.isDynamicSchema(refName) {
+			if g.aliasDropsMethods(&NamedType{Name: refName}) {
 				err := g.generateTypeDef(name, resolved)
 				if pushed {
 					g.popDynamicScope()
@@ -3279,7 +3327,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
 			}
-			if g.isInferredAlias(refName) || g.isBigIntAlias(refName) || g.isNotSchema(refName) || g.isTypeOnlySchema(refName) || g.isDynamicSchema(refName) {
+			if g.aliasDropsMethods(&NamedType{Name: refName}) {
 				return g.generateTypeDef(name, resolved)
 			}
 			g.generated[name] = true
@@ -10905,6 +10953,34 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // valid and invalid lists inside out. python-jsonschema, go-jsonschema and
 // js-ajv were asked through Bowtie and answer outermost, unanimously.
 //
+// That unanimity is about a scope whose frames are *all* anchored, and it does
+// not extend to one where they are not. Put an unanchored resource between two
+// anchored ones -- a $defs entry carrying an $id and no $recursiveAnchor, whose
+// $ref leads on to an anchored resource -- and the scope is [anchored,
+// unanchored, anchored]. js-ajv 8.20.0 and go-jsonschema (santhosh-tekuri)
+// v6.0.2 take the outermost anchored frame wherever it sits, which is what the
+// loop below does. python-jsonschema 4.26.0 walks outward from the reference and
+// stops at the first frame that is not anchored, so it takes the innermost one:
+// see lookup_recursive_ref, which breaks out of the dynamic-scope loop rather
+// than skipping the frame. The two readings disagree about a whole document, not
+// only about a fragment type. The suite has no case for it -- its recursiveRef
+// group never nests three resources -- so this records the split rather than
+// choosing one (#300), and
+// testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json pins
+// what schemagen does so it cannot drift to either reading unnoticed.
+//
+// The split is $recursiveAnchor's and not the shape's. The identical three-frame
+// document under 2020-12, with $dynamicAnchor and $dynamicRef in place of the
+// two 2019-09 keywords, is answered alike by all three on all eight documents --
+// dynamic_anchor_undeclaring_middle_frame.json, beside it. resolveDynamicRef
+// searches the scope for a resource that *declares* the anchor, so a frame
+// declaring nothing is passed over by everyone; $recursiveRef asks each frame in
+// turn whether it is anchored, which is where "pass over" and "stop" part
+// company. Nothing below needs to distinguish the two, because the generator
+// never has such a frame on its scope when it resolves anything -- see the
+// invariant further down -- so this is a difference the emitted evaluator can
+// show and the static path cannot.
+//
 // Two things kept that shape hard to find, and both are worth knowing before
 // moving anything near it. A root-level $defs entry is generated before the
 // root, at scope depth 1, so an anchored resource written directly under $defs
@@ -10936,6 +11012,48 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // with two anchored resources in reach is compiled to the evaluator anyway; it
 // is visible to a caller holding Deep. Aligning the two is a change to the scope
 // construction rather than to this walk, and it wants deciding on its own.
+//
+// What that leaves is a question about the *seed*, and not about the direction
+// this loop takes -- which is #293's practical half, and it is settled here
+// because the answer is a property of where frames live rather than of what they
+// hold. Seed the scope at the type being generated, as the evaluator does, and
+// this function is never asked with more than one frame on it, so outermost and
+// innermost are the same walk and the choice below cannot decide anything.
+//
+// A frame is live inside one generateTypeDefBody in two places, and only one of
+// them lasts. The three sites that push around a $ref -- the alias arm in
+// generateTypeDef, resolvePropertyType and typeForSchema -- push and then call
+// generateTypeDef, so the frame belongs to the type that call starts and not to
+// the one that pushed it; the only code between the push and the pop is naming
+// and predicate helpers, and a call graph over the package from those helpers
+// reaches 50 functions without meeting this one, resolveDynamicRef or
+// resolveEffectiveRefSchema. The other two are mergeAllOfBranches and
+// mergeApplicatorVariantPropertiesInto, which follow a $ref chain and hold every
+// frame of it across the whole merge. Those windows are real rather than
+// hypothetical -- an allOf branch spelled {"$id":"a","$ref":"b"} puts two frames
+// on at once, inside one type -- but the same call graph from either window
+// reaches 209 and 174 functions and meets none of the three resolvers, and
+// neither window enters a type body. A $recursiveRef carried in on merged
+// properties is therefore resolved after the pops, at the depth its enclosing
+// type started with.
+//
+// Measured and kept measured, because a claim of this shape is exactly the one
+// #167 got wrong by reasoning -- and because a measurement recorded in a comment
+// and then thrown away is how that one survived. noteDynamicScopeConsulted
+// counts both halves on the Generator and
+// TestDynamicScopeStaysAtTheTypeItStartedIn reads them: across the corpus the
+// scope is consulted 25 times, every one of them at the depth its type started
+// at. That zero is not a counter nobody has watched move. Planting a resolution
+// into mergeAllOfBranches' pushed window makes it read 2 and names the schema;
+// removing the consultations makes the second counter read 0 and fails for
+// saying nothing at all.
+//
+// So the residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
+// runtimeSchemaDef then declines, which drops back here instead of compiling --
+// does not bear on the direction. Those schemas exist and are easy to build: an
+// unknown keyword beside the reference, the node-depth bound, the hoist budget
+// and dynamicRefCanLoop each produce one. Every one of them lands here at a
+// scope one frame deep, like everything else.
 func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
 	resolved := g.resolveRefInContext(ref, ctx)
 	if resolved == nil {
@@ -10954,6 +11072,7 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	// whenever a frame was pushed for it -- but a resource generated as its own
 	// root pushes nothing, and then the plain $ref answer is both the only one
 	// available and the right one, because it names that same resource.
+	g.noteDynamicScopeConsulted()
 	for _, scope := range g.dynamicScope {
 		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
 			return scope
@@ -11032,6 +11151,7 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
 	// innermost, looking for the first resource that declares a $dynamicAnchor
 	// with the same name.
+	g.noteDynamicScopeConsulted()
 	for _, resource := range g.dynamicScope {
 		if found := resourceDynamicAnchor(resource, anchorName); found != nil {
 			return found
@@ -11622,7 +11742,7 @@ func tagNameIsRepresentable(jsonName string) bool {
 // struct fields in pointers for correct omitempty behavior.
 func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) bool {
 	// A named type already emitted as a struct is an object property.
-	if nt, ok := goType.(*NamedType); ok && g.isStructType(nt.Name) {
+	if nt, ok := goType.(*NamedType); ok && g.isStructTypeNamed(nt) {
 		return true
 	}
 	// Otherwise fall through to the property schema. The named type may be a
@@ -11661,6 +11781,9 @@ func (g *Generator) isRawValueWrapperType(t GoType) bool {
 	nt, ok := t.(*NamedType)
 	if !ok {
 		return false
+	}
+	if nt.PkgAlias != "" {
+		return nt.foreign.RawWrapper
 	}
 	for _, td := range g.typeDefsInScope() {
 		if td.TypeName() == nt.Name {
@@ -11824,9 +11947,65 @@ func (g *Generator) isZeroLossyNamedType(t GoType) bool {
 		// silently change which foreign fields got a pointer: an alias over
 		// time.Time has no zero literal at all -- it is a struct -- yet it is
 		// exactly the kind of type that needs one.
-		return nt.foreignZeroLossy
+		return nt.foreign.ZeroLossy
 	}
 	return g.zeroLossyTypeName(nt.Name, 0)
+}
+
+// isStructTypeNamed is isStructType for a named type as the IR carries it,
+// rather than for a bare name.
+//
+// A qualified name is answered from the owning package's record, on the terms
+// isZeroLossyNamedType states: this package's type table has never seen the
+// foreign declaration, and where it holds a type of the same name it answers
+// about that one. The answer decides whether an optional property is
+// pointer-wrapped, so getting it from a namesake -- or from nothing at all --
+// wrote a foreign struct out as an always-present value that omitempty could
+// not drop. See isObjectProperty and issue #296.
+func (g *Generator) isStructTypeNamed(nt *NamedType) bool {
+	if nt == nil {
+		return false
+	}
+	if nt.PkgAlias != "" {
+		return nt.foreign.Struct
+	}
+	return g.isStructType(nt.Name)
+}
+
+// aliasDropsMethods reports whether `type X T` would leave X without the methods
+// T carries, so that a schema whose whole content is a $ref to T has to be
+// generated from the schema again rather than aliased to it.
+//
+// The wrapper definitions are the ones this is true of: they hold the value as
+// raw JSON (or as a big.Int) in an unexported field and read it back through an
+// UnmarshalJSON and a Validate of their own, neither of which a defined type
+// over them inherits -- so the alias would decode into a wrapper that stays
+// empty and validate nothing. A struct, an enum and an ordinary alias are not
+// among them: the alias template emits methods that convert to the target and
+// delegate, which is exactly what a $ref means.
+//
+// One list, asked in two places: generateTypeDefBody's ref-only arm asks it of a
+// target this package declared, and the same arm asks it of a target another
+// package declared through the record that package published. The two used to
+// be one hand-written chain of five predicates and no answer at all.
+func (g *Generator) aliasDropsMethods(nt *NamedType) bool {
+	if nt == nil {
+		return false
+	}
+	if nt.PkgAlias != "" {
+		return nt.foreign.AliasDropsMethods
+	}
+	for _, td := range g.typeDefsInScope() {
+		if td.TypeName() != nt.Name {
+			continue
+		}
+		switch td.(type) {
+		case *InferredAliasDef, *BigIntAliasDef, *NotSchemaDef, *TypeOnlySchemaDef, *DynamicSchemaDef:
+			return true
+		}
+		return false
+	}
+	return false
 }
 
 func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
@@ -14184,7 +14363,7 @@ func (g *Generator) populateValidatableFields() {
 			}
 			// Direct named type (or pointer to named type).
 			typeName := namedTypeName(f.Type)
-			if typeName != "" && (validatableTypes[typeName] || crossPackageValidatable(f.Type)) {
+			if typeName != "" && namedTypeValidatable(f.Type, typeName, validatableTypes) {
 				zeroLit := g.zeroLiteralForType(f.Type)
 				if foreignZero, ok := crossPackageZeroLiteral(f.Type); ok {
 					zeroLit = foreignZero
@@ -14212,7 +14391,7 @@ func (g *Generator) populateValidatableFields() {
 			}
 			// Slice of named type (or pointer to slice of named type).
 			elemName := sliceElementTypeName(f.Type)
-			if elemName != "" && (validatableTypes[elemName] || crossPackageValidatable(f.Type)) {
+			if elemName != "" && namedTypeValidatable(f.Type, elemName, validatableTypes) {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName:       f.Name,
 					JSONName:        f.JSONName,
@@ -14228,7 +14407,7 @@ func (g *Generator) populateValidatableFields() {
 			// Map of named type: an object whose shape is additionalProperties,
 			// so every value carries the same schema and validates against it.
 			valueName := mapValueTypeName(f.Type)
-			if valueName != "" && (validatableTypes[valueName] || crossPackageValidatable(f.Type)) {
+			if valueName != "" && namedTypeValidatable(f.Type, valueName, validatableTypes) {
 				sd.ValidatableFields = append(sd.ValidatableFields, ValidatableFieldDef{
 					FieldName:       f.Name,
 					JSONName:        f.JSONName,
@@ -14253,7 +14432,7 @@ func (g *Generator) populateValidatableFields() {
 				if typeName == "" {
 					continue
 				}
-				if validatableTypes[typeName] || crossPackageValidatable(v.Type) {
+				if namedTypeValidatable(v.Type, typeName, validatableTypes) {
 					v.Validatable = true
 				}
 			}
@@ -15570,7 +15749,7 @@ func (g *Generator) resolveItemValidations() {
 				// package's record of it; the local table happening to hold
 				// the same name says nothing about the foreign type.
 				if foreign := crossPackageNamed(level.ElemType); foreign != nil {
-					level.CallValidate = foreign.foreignValidatable
+					level.CallValidate = foreign.foreign.Validatable
 					continue
 				}
 				level.CallValidate = validatableTypes[level.ElemTypeName]
@@ -15647,13 +15826,125 @@ func (g *Generator) populateAliasDelegates() {
 		}
 	}
 
-	// The tables answer questions about a *declaration*, so they are built over
-	// the whole package: an alias whose underlying type an earlier schema of a
-	// shared-types run materialized borrows that type's methods on exactly the
-	// same terms as one declared in this file.
-	validatableTypes := make(map[string]bool)
-	unmarshalTypes := make(map[string]bool)
-	marshalTypes := make(map[string]bool)
+	validatableTypes, unmarshalTypes, marshalTypes := g.jsonMethodTables()
+
+	// An alias that gains a delegate becomes worth delegating to in turn, and
+	// the tables above were built before any of that was assigned. `type C2 C1;
+	// type C1 D; type D netip.Addr` is two $refs in a schema and was the case
+	// that failed: C1 was recorded as having no marshalling of its own -- true
+	// when the table was built, false by the end of this loop -- so C2 got no
+	// UnmarshalJSON at all. A defined type inherits none of netip.Addr's
+	// methods, so C2 fell through to the underlying representation and refused
+	// the ordinary address string that both C1 and D accept. A document the
+	// schema permits, rejected in the decoder, because two loops ran in that
+	// order.
+	//
+	// Recording each assignment as it is made is what closes it, and one pass is
+	// enough because a chain is always generated innermost first: reaching C2
+	// resolves its $ref to C1, which resolves to D, and each is appended when it
+	// completes. The loop below therefore meets a delegate before whatever
+	// borrows from it.
+	//
+	// That is an assumption about g.output.TypeDefs being in generation order,
+	// and it is the thing to check first if a long alias chain ever loses its
+	// UnmarshalJSON again. Anything that appends a definition before the one it
+	// is defined over -- a reordering pass, a definition materialized eagerly
+	// from a table rather than on the way down a $ref -- breaks it silently, and
+	// the symptom is the decode failure described above rather than anything
+	// this loop reports. A fixed-point loop was written for it and removed: no
+	// schema produces that ordering today, so nothing could make the loop fail,
+	// and unguarded machinery is worse than none.
+	for _, td := range g.output.TypeDefs {
+		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
+			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
+				ia.ValidateAs = name
+			}
+		}
+
+		ad, ok := td.(*AliasDef)
+		if !ok || !ad.CanHaveMethods() {
+			continue
+		}
+		// An alias over another package's type. The tables above describe this
+		// package's declarations and hold nothing about it -- and where this
+		// package declares a namesake, what they hold is about the wrong type.
+		// The owning generator ran the same three questions over the real
+		// declaration and published the answers, and the delegation is spelled
+		// with the qualified name, which is what a conversion to a foreign type
+		// has to be written as.
+		//
+		// Without this a `$ref` occupying the whole of a document came out as
+		// `type V1 one.OneC` carrying none of OneC's methods: no MarshalJSON at
+		// all, an UnmarshalJSON that decoded straight into the shadow rather
+		// than through the target's own, and a Validate that returned nil. The
+		// duplicate declaration issue #299 reports would have been traded for a
+		// type that accepts what the schema forbids.
+		if foreign, isForeign := ad.Underlying.(*NamedType); isForeign && foreign.PkgAlias != "" {
+			qualified := foreign.GoTypeName()
+			if foreign.foreign.Validatable {
+				ad.ValidateAs = qualified
+			}
+			if foreign.foreign.Unmarshaler {
+				ad.UnmarshalAs = qualified
+			}
+			if foreign.foreign.Marshaler {
+				ad.MarshalAs = qualified
+			}
+			if ad.UnmarshalAs != "" {
+				unmarshalTypes[ad.Name] = true
+			}
+			if ad.MarshalAs != "" {
+				marshalTypes[ad.Name] = true
+			}
+			validatableTypes[ad.Name] = true
+			continue
+		}
+		name := namedTypeName(ad.Underlying)
+		if name == "" || name == ad.Name {
+			continue
+		}
+		if validatableTypes[name] {
+			ad.ValidateAs = name
+		}
+		if unmarshalTypes[name] {
+			ad.UnmarshalAs = name
+		}
+		if marshalTypes[name] {
+			ad.MarshalAs = name
+		}
+		// What this alias just gained, the next one along may borrow.
+		if ad.UnmarshalAs != "" {
+			unmarshalTypes[ad.Name] = true
+		}
+		if ad.MarshalAs != "" {
+			marshalTypes[ad.Name] = true
+		}
+		if ad.ValidateAs != "" || ad.CanHaveMethods() {
+			validatableTypes[ad.Name] = true
+		}
+	}
+}
+
+// jsonMethodTables classifies every type in scope by which of the three
+// methods it declares itself: a Validate, an UnmarshalJSON and a MarshalJSON.
+// A defined type over one of them inherits none of the three, so an alias has
+// to convert and delegate, and these are the tables that say to what.
+//
+// The tables answer questions about a *declaration*, so they are built over
+// the whole package: an alias whose underlying type an earlier schema of a
+// shared-types run materialized borrows that type's methods on exactly the
+// same terms as one declared in this file.
+//
+// Split out of populateAliasDelegates so that the cross-package publication can
+// ask the same three questions about the same declarations. A package that
+// references this one holds nothing but a name, and answering "does it declare
+// an UnmarshalJSON" from its own table answers about a namesake or about
+// nothing at all -- either way the alias is emitted without a delegate and
+// reaches JSON through the underlying representation. See typeShape.
+func (g *Generator) jsonMethodTables() (validatableTypes, unmarshalTypes, marshalTypes map[string]bool) {
+	validatableTypes = make(map[string]bool)
+	unmarshalTypes = make(map[string]bool)
+	marshalTypes = make(map[string]bool)
 	for _, td := range g.typeDefsInScope() {
 		switch d := td.(type) {
 		case *StructDef:
@@ -15723,68 +16014,7 @@ func (g *Generator) populateAliasDelegates() {
 			}
 		}
 	}
-
-	// An alias that gains a delegate becomes worth delegating to in turn, and
-	// the tables above were built before any of that was assigned. `type C2 C1;
-	// type C1 D; type D netip.Addr` is two $refs in a schema and was the case
-	// that failed: C1 was recorded as having no marshalling of its own -- true
-	// when the table was built, false by the end of this loop -- so C2 got no
-	// UnmarshalJSON at all. A defined type inherits none of netip.Addr's
-	// methods, so C2 fell through to the underlying representation and refused
-	// the ordinary address string that both C1 and D accept. A document the
-	// schema permits, rejected in the decoder, because two loops ran in that
-	// order.
-	//
-	// Recording each assignment as it is made is what closes it, and one pass is
-	// enough because a chain is always generated innermost first: reaching C2
-	// resolves its $ref to C1, which resolves to D, and each is appended when it
-	// completes. The loop below therefore meets a delegate before whatever
-	// borrows from it.
-	//
-	// That is an assumption about g.output.TypeDefs being in generation order,
-	// and it is the thing to check first if a long alias chain ever loses its
-	// UnmarshalJSON again. Anything that appends a definition before the one it
-	// is defined over -- a reordering pass, a definition materialized eagerly
-	// from a table rather than on the way down a $ref -- breaks it silently, and
-	// the symptom is the decode failure described above rather than anything
-	// this loop reports. A fixed-point loop was written for it and removed: no
-	// schema produces that ordering today, so nothing could make the loop fail,
-	// and unguarded machinery is worse than none.
-	for _, td := range g.output.TypeDefs {
-		if ia, ok := td.(*InferredAliasDef); ok && ia.ValidateAs == "" {
-			if name := namedTypeName(ia.InferredGoType); name != "" && name != ia.Name && validatableTypes[name] {
-				ia.ValidateAs = name
-			}
-		}
-
-		ad, ok := td.(*AliasDef)
-		if !ok || !ad.CanHaveMethods() {
-			continue
-		}
-		name := namedTypeName(ad.Underlying)
-		if name == "" || name == ad.Name {
-			continue
-		}
-		if validatableTypes[name] {
-			ad.ValidateAs = name
-		}
-		if unmarshalTypes[name] {
-			ad.UnmarshalAs = name
-		}
-		if marshalTypes[name] {
-			ad.MarshalAs = name
-		}
-		// What this alias just gained, the next one along may borrow.
-		if ad.UnmarshalAs != "" {
-			unmarshalTypes[ad.Name] = true
-		}
-		if ad.MarshalAs != "" {
-			marshalTypes[ad.Name] = true
-		}
-		if ad.ValidateAs != "" || ad.CanHaveMethods() {
-			validatableTypes[ad.Name] = true
-		}
-	}
+	return validatableTypes, unmarshalTypes, marshalTypes
 }
 
 // firstAllOfArrayAliasValidateAs names the array alias among the branches of an
@@ -15903,6 +16133,9 @@ func (g *Generator) isCollectionType(t GoType) bool {
 	case *ArrayType, *MapType:
 		return true
 	case *NamedType:
+		if v.PkgAlias != "" {
+			return v.foreign.Collection
+		}
 		return g.isArrayAlias(v.Name) || g.isMapAlias(v.Name)
 	}
 	return false
@@ -15916,6 +16149,9 @@ func (g *Generator) isInterfaceType(t GoType) bool {
 	case *PrimitiveType:
 		return v.Name == "any"
 	case *NamedType:
+		if v.PkgAlias != "" {
+			return v.foreign.Interface
+		}
 		for _, td := range g.typeDefsInScope() {
 			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
 				pt, isPrim := d.Underlying.(*PrimitiveType)
@@ -15939,28 +16175,86 @@ func namedTypeName(t GoType) string {
 	}
 }
 
-// crossPackageNamed returns the qualified NamedType inside t (through
-// pointers and slice elements), if any.
+// crossPackageNamed returns the qualified NamedType inside t, if any: the type
+// from another generated package that the value at this position ultimately
+// consists of.
+//
+// The switch answers every GoType constructor there is, and every position
+// inside each of them that can hold a GoType is either descended into here or
+// named in crossPackageDescentDeclined with the reason it is not. That is not
+// tidiness. A traversal that walks some constructors and not the one beside them
+// answers "no foreign type here" for a position that has one, and the callers
+// read that as "nothing to validate" -- so the keywords the foreign type carries
+// are enforced nowhere and the generated Validate accepts what the schema
+// forbids, in silence, in exactly the positions nobody wrote a fixture for.
+//
+// MapType is how that was found. It was the only constructor missing, and
+// {"type":"object","additionalProperties":{"$ref":"<other package>"}} came out
+// `map[string]tpkg.T` with `func (r Root) Validate() error { return nil }` --
+// while the identical schema under --shared-types iterated the map and called
+// each value's Validate. Every neighbouring spelling worked: []tpkg.T,
+// map[string][]tpkg.T, []map[string]tpkg.T, *tpkg.T. Issue #295, and the
+// twentieth time this project has met a keyword handled in one position and
+// dropped in the one beside it.
+//
+// TestCrossPackageNamedDescendsEveryGoTypePosition reads this function's own
+// source against the GoType implementations the package declares, so a new
+// constructor -- or a new GoType-typed field on an existing one -- fails there
+// rather than going quiet here.
 func crossPackageNamed(t GoType) *NamedType {
 	switch v := t.(type) {
 	case *NamedType:
+		// The answer itself, when it names another package's type. A NamedType
+		// holds no GoType of its own: an alias's underlying lives on the
+		// declaration, not on the reference, and the declaration belongs to
+		// whichever package emitted it.
 		if v.PkgAlias != "" {
 			return v
 		}
+		return nil
 	case *PointerType:
 		return crossPackageNamed(v.Inner)
 	case *ArrayType:
 		return crossPackageNamed(v.ItemType)
+	case *MapType:
+		return crossPackageNamed(v.ValueType)
+	case *PrimitiveType:
+		// A built-in Go type. It holds nothing and names no generated type, in
+		// this package or any other.
+		return nil
 	}
 	return nil
 }
 
-// crossPackageValidatable reports whether t references a type from another
-// generated package that carries a Validate() method (per the owning
-// package's registry entry).
-func crossPackageValidatable(t GoType) bool {
-	nt := crossPackageNamed(t)
-	return nt != nil && nt.foreignValidatable
+// crossPackageDescentDeclined names the GoType positions crossPackageNamed
+// deliberately does not walk into, and says why. An entry here is a decision on
+// the record; the absence of one is the defect the gate test exists to surface.
+var crossPackageDescentDeclined = map[string]string{
+	"MapType.KeyType": "the key of every map this generator builds is a Go string, " +
+		"because the keys of a JSON object are strings and nothing in a schema types " +
+		"them otherwise -- see resolveType's map arm and mapValueSchema. A generated " +
+		"named type never lands there, and dispatching a foreign Validate on a key " +
+		"would judge a value the schema says nothing about.",
+}
+
+// namedTypeValidatable reports whether the named type the value at position t
+// consists of carries a Validate() to dispatch to. name is that type's name as
+// the position's own extractor read it, and local is the table of this package's
+// validatable type names.
+//
+// The two sources are asked in order, not or-ed together. A name from another
+// package is answered only by that package's record of it: the local table
+// happening to hold the same name says nothing about the foreign type, and
+// or-ing let a local `T` that carries a Validate put a dispatch on a foreign
+// `tpkg.T` that carries none -- which does not compile -- or, the other way
+// round, leave the answer to whichever of the two the expression reached first.
+// resolveItemValidations has asked it in this order since it was written; the
+// field position had not.
+func namedTypeValidatable(t GoType, name string, local map[string]bool) bool {
+	if foreign := crossPackageNamed(t); foreign != nil {
+		return foreign.foreign.Validatable
+	}
+	return name != "" && local[name]
 }
 
 // crossPackageZeroLiteral returns the zero literal recorded by the owning
@@ -15971,7 +16265,7 @@ func crossPackageZeroLiteral(t GoType) (string, bool) {
 	if nt == nil {
 		return "", false
 	}
-	zero := nt.foreignZeroLiteral
+	zero := nt.foreign.ZeroLiteral
 	if zero == nt.Name+"{}" {
 		zero = nt.PkgAlias + "." + zero
 	}
@@ -21542,12 +21836,13 @@ func (g *Generator) foreignTypeFor(resolved *schema.Schema) (*NamedType, bool) {
 		return nil, false
 	}
 	alias := g.importAlias(qt.ImportPath)
+	// The whole record, by value: a field-by-field copy is a list to be kept in
+	// step with typeShape, and the failure mode of forgetting one is a question
+	// silently answered from this package's own table. See typeShape.
 	return &NamedType{
-		Name:               qt.Name,
-		PkgAlias:           alias,
-		foreignZeroLiteral: qt.ZeroLiteral,
-		foreignValidatable: qt.Validatable,
-		foreignZeroLossy:   qt.ZeroLossy,
+		Name:     qt.Name,
+		PkgAlias: alias,
+		foreign:  qt.Shape,
 	}, true
 }
 

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/outer",
+  "$dynamicAnchor": "node",
+  "$comment": "recursive_anchor_unanchored_middle_frame.json under 2020-12: three resources on the dynamic scope, the middle one declaring nothing. The three implementations split on the 2019-09 spelling (#300) and agree on this one, because $dynamicRef searches the whole scope for a declaration where $recursiveAnchor asks each frame in turn whether it is anchored.",
+  "type": "object",
+  "required": ["o"],
+  "properties": {
+    "o": { "type": "integer" },
+    "t": { "$ref": "#/$defs/T" }
+  },
+  "$defs": {
+    "T": {
+      "$comment": "No $id, so no frame of its own; the allOf is what holds the chain inside one generated type.",
+      "type": "object",
+      "properties": { "t": { "type": "integer" } },
+      "allOf": [ { "$ref": "#/$defs/A" } ]
+    },
+    "A": {
+      "$comment": "A resource declaring no $dynamicAnchor at all: the frame the walk passes over.",
+      "$id": "https://example.com/a",
+      "$ref": "https://example.com/b"
+    },
+    "B": {
+      "$id": "https://example.com/b",
+      "$dynamicAnchor": "node",
+      "type": "object",
+      "required": ["b"],
+      "properties": {
+        "b": { "type": "integer" },
+        "v": { "$dynamicRef": "#node" }
+      }
+    }
+  }
+}

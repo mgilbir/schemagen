@@ -84,14 +84,42 @@ type nameClaim struct {
 	// final is the name the claim ends up with: the name it asked for, or the
 	// qualified one when the claims on that name could not be merged.
 	final string
+	// prefix is the Go name this claim is qualified with when the name is
+	// contested, for a claim whose document rootNameOf cannot answer for.
+	// Empty for a listed document, whose prefix is its root type name.
+	prefix string
+	// external marks a claim from a document nobody listed as an input, reached
+	// by $ref and materialized into this package all the same. See
+	// collectExternalClaims. Two things follow from it: such a document's root
+	// type is not a name any caller asked for, so it moves like a definition
+	// rather than holding the name against them; and the diagnostic has to say
+	// how a document the caller never named got into the run.
+	external bool
 }
 
 // what describes the claim in the schema author's own terms.
 func (c nameClaim) what() string {
-	if c.defKey == "" {
+	switch {
+	case c.defKey == "":
 		return "root type"
+	case c.keyword == "":
+		return c.defKey
+	default:
+		return c.keyword + "/" + c.defKey
 	}
-	return c.keyword + "/" + c.defKey
+}
+
+// ownRoot reports whether the claim is the root type of a document the caller
+// listed -- the one claim that never moves, because it is the name they asked
+// for and every other name here is qualified with it.
+func (c nameClaim) ownRoot() bool {
+	return c.defKey == "" && !c.external
+}
+
+// isDefinitionKeyword reports whether a claim was declared in one of the two
+// containers a definition lives in, as against a position some $ref reached.
+func isDefinitionKeyword(keyword string) bool {
+	return keyword == "$defs" || keyword == "definitions"
 }
 
 // keywordPrefix is the Go name part that says which container declared a
@@ -111,8 +139,12 @@ func keywordPrefix(keyword string) string {
 // the order given, but the answer does not depend on that order -- every claim
 // on a contested name is qualified, so the same set of inputs produces the same
 // set of type names however it is listed.
-func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, rootNameOf func(path string, s *schema.Schema) string, warnings io.Writer) map[*schema.Schema]string {
-	claims := collectNameClaims(paths, byPath, rootNameOf)
+// external carries the claims of documents reached by $ref rather than listed,
+// whose definitions this unit materializes all the same. They are claims like
+// any other from here on; see collectExternalClaims for why they have to be
+// collected separately.
+func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(path string, s *schema.Schema) string, warnings io.Writer) map[*schema.Schema]string {
+	claims := collectNameClaims(paths, byPath, external, rootNameOf)
 	if len(claims) == 0 {
 		return nil
 	}
@@ -142,11 +174,13 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 		var split splitMechanisms
 		moved := false
 		for i := range group {
-			if group[i].defKey == "" {
+			if group[i].ownRoot() {
 				// A root type name is the caller's, set by --root-name or by the
 				// document's title, and it is what every other name here is
 				// qualified with. Moving it would rename the API the caller
-				// asked for in order to make room for a definition.
+				// asked for in order to make room for a definition. A document
+				// nobody listed has no such standing: nothing in this package is
+				// named after it, and its root type moves like any other claim.
 				continue
 			}
 			qualified := name
@@ -162,8 +196,12 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			// and means it both times ("Thing" under $defs and again under
 			// definitions, identical) pins both nodes to one name rather than to
 			// two it would have to tell apart again.
-			if len(documents) > 1 {
-				qualified = rootNameOf(group[i].path, byPath[group[i].path]) + qualified
+			//
+			// Not for a root type, which is the name being qualified with:
+			// prefixing an unlisted document's root type with its own root name
+			// spells it twice and separates nothing. Those are numbered below.
+			if len(documents) > 1 && group[i].defKey != "" {
+				qualified = claimQualifier(group[i], byPath, rootNameOf) + qualified
 			}
 			if qualified == name {
 				// Nothing here tells this claim from the others -- it is a
@@ -202,6 +240,18 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 		}
 	}
 	return pinned
+}
+
+// claimQualifier is the Go name part that says which document a claim came
+// from: the root type name for a document the caller listed, and the name
+// collectExternalClaims settled on for one that arrived by $ref -- a document
+// with no title has no root type name worth the word, and "Root" in front of
+// every one of them would separate nothing.
+func claimQualifier(c nameClaim, byPath map[string]*schema.Schema, rootNameOf func(string, *schema.Schema) string) string {
+	if c.prefix != "" {
+		return c.prefix
+	}
+	return rootNameOf(c.path, byPath[c.path])
 }
 
 // splitFoldedClaims separates the claims of one group that still hold a single
@@ -295,10 +345,10 @@ func splitFoldedClaims(group []nameClaim, taken map[string]bool, pinned map[*sch
 			switch {
 			case target != "":
 				// Agrees with a claim already placed; share its name.
-			case len(seen) == 0 || group[i].defKey == "":
-				// The first claim keeps the name, and a document's root type
-				// keeps it wherever it sorts: it is the caller's name, and the
-				// definitions are what move to make room for it.
+			case len(seen) == 0 || group[i].ownRoot():
+				// The first claim keeps the name, and a listed document's root
+				// type keeps it wherever it sorts: it is the caller's name, and
+				// the definitions are what move to make room for it.
 				target = name
 			default:
 				target = numberedTypeName(name, taken)
@@ -330,11 +380,15 @@ func claimSplitOrderLess(a, b nameClaim) bool {
 	return a.defKey < b.defKey
 }
 
-// claimSplitRank ranks a claim's title to the name it asked for: a document's
-// root type first, then a definition whose key is already spelled as the Go name
-// it derives, then everything else.
+// claimSplitRank ranks a claim's title to the name it asked for: a listed
+// document's root type first, then a definition whose key is already spelled as
+// the Go name it derives, then everything else, and last of all a claim from a
+// document nobody listed -- the names of the documents the caller named are the
+// package's API, and a document that arrived by $ref is what moves to keep them.
 func claimSplitRank(c nameClaim) int {
 	switch {
+	case c.external:
+		return 3
 	case c.defKey == "":
 		return 0
 	case generator.SchemaNameToGoName(c.defKey) == c.defKey:
@@ -358,8 +412,14 @@ func numberedTypeName(base string, taken map[string]bool) string {
 }
 
 // collectNameClaims lists, per Go type name, every claim the documents make on
-// it: each document's root type, and each of its $defs and definitions entries.
-func collectNameClaims(paths []string, byPath map[string]*schema.Schema, rootNameOf func(string, *schema.Schema) string) map[string][]nameClaim {
+// it: each listed document's root type and each of its $defs and definitions
+// entries, and then whatever the documents reached by $ref declare here too.
+//
+// A listed document contributes all of its definitions, because the generator
+// declares all of them. A referenced document contributes only what a reference
+// actually reaches, which is all the generator declares of it -- that difference
+// is collectExternalClaims', and the claims arrive here already formed.
+func collectNameClaims(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(string, *schema.Schema) string) map[string][]nameClaim {
 	claims := make(map[string][]nameClaim)
 	seenPath := make(map[string]bool, len(paths))
 
@@ -397,6 +457,22 @@ func collectNameClaims(paths []string, byPath map[string]*schema.Schema, rootNam
 			}
 		}
 	}
+
+	for _, c := range external {
+		// A node a listed document already claimed is not claimed again: a
+		// referenced document can be reached through a chain that comes back
+		// into one of these, and one node cannot contest a name with itself.
+		duplicate := false
+		for _, existing := range claims[c.final] {
+			if existing.node == c.node {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			claims[c.final] = append(claims[c.final], c)
+		}
+	}
 	return claims
 }
 
@@ -421,7 +497,7 @@ func claimsBothDefinitionKeywords(group []nameClaim) bool {
 // not about the definitions, since the root is the claim that never moves.
 func claimsDocumentRoot(group []nameClaim) bool {
 	for _, c := range group {
-		if c.defKey == "" {
+		if c.ownRoot() {
 			return true
 		}
 	}
@@ -459,7 +535,17 @@ func distinctClaimPaths(group []nameClaim) []string {
 // "may these definitions be one type", which a *reference* the two make into a
 // name split elsewhere can turn to no; here the two claims make the same
 // reference, so whatever it resolves to they resolve to together.
+//
+// Only a claim declared under one of the two definition keywords can take one:
+// a claim reached by a $ref into some other position of a document carries the
+// JSON Pointer that found it in this field, and "Defs" or "Definitions" would be
+// a lie in front of it. What separates those is splitFoldedClaims' numbering.
+// The *other* claims are not filtered that way -- any other location in the same
+// document, the root type included, is something this one has to be told from.
 func keywordSeparatesClaim(group []nameClaim, i int) bool {
+	if !isDefinitionKeyword(group[i].keyword) {
+		return false
+	}
 	form, _, ok := definitionCanonicalForm(group[i].node)
 	for j := range group {
 		if j == i || group[j].path != group[i].path || group[j].keyword == group[i].keyword {
@@ -682,9 +768,15 @@ func describeNameSplit(name string, group []nameClaim, documents int, split spli
 	seen := make(map[string]bool, len(group))
 	lines := make([]string, 0, len(group))
 	for _, c := range group {
-		line := fmt.Sprintf("  %s %s becomes %s", c.path, c.what(), c.final)
+		where := c.path
+		if c.external {
+			// The caller never listed this document, so the line has to say how
+			// it got here or it reads as a file they forgot they passed.
+			where += " (reached by $ref)"
+		}
+		line := fmt.Sprintf("  %s %s becomes %s", where, c.what(), c.final)
 		if c.final == name {
-			line = fmt.Sprintf("  %s %s keeps %s", c.path, c.what(), name)
+			line = fmt.Sprintf("  %s %s keeps %s", where, c.what(), name)
 		}
 		if seen[line] {
 			continue
@@ -716,21 +808,43 @@ func describeNameSplit(name string, group []nameClaim, documents int, split spli
 		default:
 			tail.WriteString("Make the definitions identical if they were meant to be one type, or rename one of the keys in the schema -- to something that differs by more than punctuation or case -- to choose the Go names yourself.")
 		}
+		where := group[0].path
+		if claimsExternalDocument(group) {
+			where += " (reached by $ref, not listed as an input)"
+		}
 		return fmt.Sprintf("warning: %s declares the Go type name %s in %d places, and those declarations do not describe the same type, so they cannot be one:\n%s\n"+
 			"one Go package holds one type per name, so declaring them all as %s would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. %s\n",
-			group[0].path, name, len(lines), strings.Join(lines, "\n"), name, tail.String())
+			where, name, len(lines), strings.Join(lines, "\n"), name, tail.String())
 	}
 	folded := ""
 	if split.numbered {
-		folded = "Where two keys of one document derive one Go name even so -- the derivation drops what separates them -- the ones after the first are numbered. "
+		folded = "Where two claims derive one Go name even so -- nothing left in the documents separates them -- the ones after the first are numbered. "
 	}
-	return fmt.Sprintf("warning: %d input documents claim the Go type name %s, and those claims do not describe the same type, so they cannot be one:\n%s\n"+
+	referenced := ""
+	if claimsExternalDocument(group) {
+		referenced = "A document marked \"reached by $ref\" was not listed as an input: it was resolved from the reference, and what this package declares of it is declared here all the same, which is why it is judged here. " +
+			"--root-name reaches such a document by an \"id:\" or \"file:\" key and sets the name its definitions are qualified with. " +
+			"Its own root type has nothing but its title to be told apart by, so where two of those claim one name the later ones are numbered; give them distinct titles to choose. "
+	}
+	return fmt.Sprintf("warning: %d documents claim the Go type name %s, and those claims do not describe the same type, so they cannot be one:\n%s\n"+
 		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. "+
 		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. "+
 		"%s"+
-		"A document's own root type keeps the name it was given; --root-name sets both. "+
+		"A listed document's own root type keeps the name it was given; --root-name sets both. "+
+		"%s"+
 		"Make the definitions identical if they were meant to be one type, or rename one of them in the schema to choose the Go names yourself.\n",
-		documents, name, strings.Join(lines, "\n"), folded)
+		documents, name, strings.Join(lines, "\n"), folded, referenced)
+}
+
+// claimsExternalDocument reports whether any claim on the name came from a
+// document nobody listed.
+func claimsExternalDocument(group []nameClaim) bool {
+	for _, c := range group {
+		if c.external {
+			return true
+		}
+	}
+	return false
 }
 
 // explainPinnedNameCollision turns the generator's refusal of a qualified name
