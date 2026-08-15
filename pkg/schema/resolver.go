@@ -96,14 +96,8 @@ func (r *LocalResolver) resolve(ref string) (*Schema, error) {
 	// JSON Pointer: "#/path/to/thing"
 	path := strings.TrimPrefix(ref, "#/")
 	parts := strings.Split(path, "/")
-	// Per RFC 6901 §6: when JSON Pointer is used as a URI fragment,
-	// first percent-decode each segment (RFC 3986 §3.5), then apply
-	// JSON Pointer unescaping (~1 → /, ~0 → ~).
 	for i, p := range parts {
-		if decoded, err := url.PathUnescape(p); err == nil {
-			p = decoded
-		}
-		parts[i] = unescapeJSONPointer(p)
+		parts[i] = UnescapePointerToken(p)
 	}
 
 	return r.walkPath(r.root, parts, ref)
@@ -521,6 +515,33 @@ func parseIndex(s string) (int, error) {
 
 // maxInt is the largest value an int can hold on this platform.
 const maxInt = int(^uint(0) >> 1)
+
+// UnescapePointerToken decodes one reference token of a JSON Pointer that
+// arrived as a URI fragment, which is the only way a $ref ever carries one.
+//
+// Per RFC 6901 §6 the two decodings happen in one order and not the other:
+// percent-decoding first (RFC 3986 §3.5), then the JSON Pointer escapes. The
+// fragment is a URI component, so its percent-escapes belong to the outer
+// encoding layer and have to come off before anything reads the pointer syntax
+// underneath. The orders are not interchangeable -- "%7E1" percent-decodes to
+// "~1" and then unescapes to "/", while unescaping first finds no literal "~1"
+// and leaves the token naming "~1" -- so a caller that picks the wrong one
+// names a different member of the document than the pointer does.
+//
+// It is exported because that answer has three consumers and must be one
+// function: the resolver below, which decides what a $ref reaches; the
+// generator's ref-to-name derivation, which names what it reached; and
+// cmd/schemagen's shared-definition bookkeeping, which has to agree with both
+// about which definition a pointer names. Two of the three had their own copy
+// and one of those copies was wrong -- it never percent-decoded at all, though
+// its comment said it did (issue #305). The same collapse as #178 and #203/#211:
+// one rule, one implementation.
+func UnescapePointerToken(token string) string {
+	if decoded, err := url.PathUnescape(token); err == nil {
+		token = decoded
+	}
+	return unescapeJSONPointer(token)
+}
 
 // unescapeJSONPointer decodes JSON Pointer escaping (RFC 6901):
 // ~1 → / and ~0 → ~
