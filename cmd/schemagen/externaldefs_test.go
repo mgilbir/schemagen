@@ -220,33 +220,70 @@ func TestReferencedDocumentSplitIsDeterministic(t *testing.T) {
 	}
 }
 
-// refDerivedTypeName has to give the same answer as the generator's own
-// refToGoName, which is what actually names a type materialized from a $ref: a
-// claim recorded under a name the generator does not use separates nothing and
-// pins a node the generator never asks about. The cases are the generator's own
-// table (TestRefToGoName), kept here because the function it tests is not
-// exported.
-func TestRefDerivedTypeNameMatchesTheGeneratorsRefNaming(t *testing.T) {
-	for _, tt := range []struct{ input, want string }{
-		{"#/$defs/my-type", "MyType"},
-		{"#/definitions/Address", "Address"},
-		{"#/definitions/is-string", "IsString"},
-		{"#", "Root"},
-		{"#/definitions/tilde~0field", "TildeField"},
-		{"#/definitions/slash~1field", "SlashField"},
-		{"#/definitions/foo%22bar", "FooBar"},
-		{"#/definitions/percent%25field", "PercentField"},
-		{"#/definitions//definitions/", "Definitions"},
-		{"urn:uuid:deadbeef-1234-ffff-ffff-4321feebdaed", "Deadbeef1234FfffFfff4321feebdaed"},
-		{"urn:uuid:deadbeef-1234-ff00-00ff-4321feebdaed#something", "Something"},
-		// The shape this file is about: a ref that crosses into another file.
-		{"a.json#/$defs/Inner", "Inner"},
-		{"one/common.json#/properties/x", "X"},
+// A reference into a referenced document's interior -- not its root, not one of
+// its $defs -- is the one shape whose claimed name is derived from the reference
+// text rather than read off the document, and it is the arm that calls
+// generator.TypeNameForRef. Both documents' "properties/x" derive X, so the two
+// contest it and are qualified, and the type the caller ends up holding has to
+// be the one its own document described.
+//
+// This file used to carry TestRefDerivedTypeNameMatchesTheGeneratorsRefNaming,
+// a copy of the generator's own TestRefToGoName table run against a copy of the
+// generator's derivation, because that derivation was unexported and this
+// package could not reach it. Both copies are gone -- the derivation is
+// generator.TypeNameForRef and the table is TestRefToGoName, which the two
+// cross-document cases moved to -- so nothing here compares two implementations
+// any more. What that test never covered, and this one does, is that the name
+// so derived is the name generation actually declares.
+func TestReferencedDocumentInteriorNodesClaimingOneNameKeepTheirOwnSchema(t *testing.T) {
+	dir, paths := writeSchemas(t,
+		"a.json", `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://ex.test/a.json", "title": "A", "type": "object",
+			"properties": {"x": {"type": "string", "minLength": 5}}}`,
+		"b.json", `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://ex.test/b.json", "title": "B", "type": "object",
+			"properties": {"x": {"type": "integer", "minimum": 100}}}`,
+		"root.json", `{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "https://ex.test/root.json", "title": "Root", "type": "object",
+			"properties": {
+				"pa": {"$ref": "a.json#/properties/x"},
+				"pb": {"$ref": "b.json#/properties/x"}}}`)
+	rootPath := paths[2]
+
+	out := filepath.Join(dir, "gen")
+	stderr, err := runGenerateCapturing(t, rootPath, "-o", out, "-p", "gen")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	for _, want := range []string{
+		"2 documents claim the Go type name X",
+		"a.json (reached by $ref) properties/x becomes AX",
+		"b.json (reached by $ref) properties/x becomes BX",
 	} {
-		if got := refDerivedTypeName(tt.input); got != tt.want {
-			t.Errorf("refDerivedTypeName(%q) = %q, want %q", tt.input, got, tt.want)
+		if !strings.Contains(stderr, want) {
+			t.Errorf("missing %q in:\n%s", want, stderr)
 		}
 	}
+	// The claim is only worth reporting if it names a type generation declares.
+	if got := strings.Join(declaredTypeNames(t, out), ","); !strings.Contains(got, "AX") || !strings.Contains(got, "BX") {
+		t.Errorf("declared types = %s, want AX and BX", got)
+	}
+
+	generateCompileRunRoots(t,
+		func(modRoot string) []string {
+			return []string{rootPath, "-o", filepath.Join(modRoot, "gen"), "-p", "gen"}
+		},
+		"example.com/m/gen",
+		[]rootInstance{
+			{"Root", `{"pa":"hello","pb":150}`, true, `{"pa":"hello","pb":150}`},
+			{"Root", `{"pa":150}`, false, ""},
+			{"Root", `{"pb":"hello"}`, false, ""},
+			{"Root", `{"pb":3}`, false, ""},
+			{"Root", `{"pa":"hi"}`, false, ""},
+		})
 }
 
 // --root-name reaches a document nobody listed, by its $id or its path, and sets

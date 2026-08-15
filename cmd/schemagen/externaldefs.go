@@ -366,10 +366,14 @@ func (w *externalWalker) labelFor(doc *schema.Schema, file, docPart string) stri
 // externalClaimName reports the Go type name a referenced node is materialized
 // under, and how to describe where it came from.
 //
-// It has to give the same answer as the generator's goNameForResolvedRef, which
-// this mirrors: a node that is a document root in its own right is named after
-// its title or the last segment of its $id, and anything else after the
-// reference that reached it. Where the node is one of its document's own
+// It has to give the same answer as the generator's goNameForResolvedRef, and
+// what is restated here is only which of that function's arms applies: a node
+// that is a document root in its own right is named after its title or its $id,
+// and anything else after the reference that reached it. The names themselves
+// are the generator's own -- TypeNameForDocumentID and TypeNameForRef -- so
+// there is no second derivation here to drift from the first. Issue #303 left
+// one behind for a turn, because the work could not touch pkg/generator at the
+// time; it is gone. Where the node is one of its document's own
 // definitions those two agree -- the last pointer segment is the $defs key --
 // and the keyword is read off the document so the diagnostic can name the
 // definition the way its author wrote it.
@@ -388,7 +392,7 @@ func externalClaimName(doc, node *schema.Schema, ref, fragment string) (name, ke
 		}
 	}
 	keyword, defKey = pointerClaimParts(fragment)
-	return refDerivedTypeName(ref), keyword, defKey
+	return generator.TypeNameForRef(ref), keyword, defKey
 }
 
 // documentRootRefName is the Go type name a reference to a whole document
@@ -403,9 +407,9 @@ func documentRootRefName(doc *schema.Schema, ref string) string {
 		id = doc.LegacyID
 	}
 	if id != "" {
-		return generator.SchemaNameToGoName(lastURIPathSegment(id))
+		return generator.TypeNameForDocumentID(id)
 	}
-	return refDerivedTypeName(ref)
+	return generator.TypeNameForRef(ref)
 }
 
 // pointerClaimParts splits a ref's fragment into the container the diagnostic
@@ -427,68 +431,11 @@ func pointerClaimParts(fragment string) (keyword, defKey string) {
 	return strings.Join(parts[:last], "/"), parts[last]
 }
 
-// refDerivedTypeName is the Go type name a $ref produces when what it reaches is
-// not a document root: the last non-empty segment of its fragment, or of the ref
-// itself when it has none.
-//
-// This must agree with the generator's refToGoName, which is what actually names
-// the type; the two are compared against a shared table in the tests. Every step
-// below is one of that function's: fragment first, then the last pointer
-// segment, then the last colon-separated segment of a URN, then JSON Pointer
-// unescaping and percent-decoding, then the shared identifier derivation.
-func refDerivedTypeName(ref string) string {
-	name := ref
-	if idx := strings.LastIndex(ref, "#"); idx >= 0 {
-		fragment := ref[idx+1:]
-		if fragment == "" {
-			return "Root"
-		}
-		name = fragment
-	}
-	if strings.Contains(name, "/") {
-		parts := strings.Split(name, "/")
-		for i := len(parts) - 1; i >= 0; i-- {
-			if parts[i] != "" {
-				name = parts[i]
-				break
-			}
-		}
-		if name == "" || name == ref {
-			return "X"
-		}
-	}
-	if strings.Contains(name, ":") {
-		parts := strings.Split(name, ":")
-		name = parts[len(parts)-1]
-	}
-	name = unescapeRefToken(name)
-	if decoded, err := url.PathUnescape(name); err == nil {
-		name = decoded
-	}
-	return generator.SchemaNameToGoName(name)
-}
-
 // unescapeRefToken applies RFC 6901 unescaping, the same order the generator and
 // the resolver use.
 func unescapeRefToken(token string) string {
 	token = strings.ReplaceAll(token, "~1", "/")
 	return strings.ReplaceAll(token, "~0", "~")
-}
-
-// lastURIPathSegment mirrors the generator's lastPathSegment: the part of a
-// document $id a type name is derived from.
-func lastURIPathSegment(uri string) string {
-	if idx := strings.LastIndex(uri, "#"); idx >= 0 {
-		uri = uri[:idx]
-	}
-	if idx := strings.LastIndex(uri, "?"); idx >= 0 {
-		uri = uri[:idx]
-	}
-	uri = strings.TrimSuffix(uri, "/")
-	if idx := strings.LastIndex(uri, "/"); idx >= 0 {
-		return uri[idx+1:]
-	}
-	return strings.TrimPrefix(uri, "./")
 }
 
 // externalFilePath reports the file a referenced document was read from, as a

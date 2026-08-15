@@ -221,6 +221,50 @@ func SchemaNameToGoName(name string) string {
 	return JSONPropertyToGoName(name)
 }
 
+// TypeNameForRef reports the Go type name generation gives a node that a $ref
+// reached, when nothing else has already named it.
+//
+// It is what a caller needs to talk about generated code before it exists --
+// to say which type a reference will produce, or to detect two references that
+// will produce the same one -- and it is the generator's own derivation rather
+// than a description of it, so the two cannot disagree.
+//
+// The name is read off the reference text: its fragment, then the last segment
+// of that fragment as a JSON Pointer, then the last colon-separated segment of
+// a URN, unescaped and percent-decoded, and finally converted the way
+// SchemaNameToGoName converts a definition name.
+//
+//	"#/$defs/my-type"            → "MyType"
+//	"#"                          → "Root"
+//	"a.json#/$defs/Inner"        → "Inner"
+//	"urn:uuid:dead-beef"         → "DeadBeef"
+//	"#/definitions/tilde~0field" → "TildeField"
+//
+// It answers for the reference alone. Generation may still name the node
+// something else -- a node already materialized keeps the name it has, a
+// reference landing on the document root takes the root's name, and a reference
+// to a document root with a $id or a title is named from those (see
+// TypeNameForDocumentID) -- so this is the answer for a reference into a
+// document's interior, and the fallback everywhere else.
+func TypeNameForRef(ref string) string {
+	return refToGoName(ref)
+}
+
+// TypeNameForDocumentID reports the Go type name generation gives a document
+// root that carries the $id (or the draft-4 "id") passed here and no title:
+// the last meaningful segment of the URI, converted the way SchemaNameToGoName
+// converts a definition name.
+//
+//	"https://ex.test/one/common.json" → "CommonJSON"
+//	"https://ex.test/x.json?q=1#frag" → "XJSON"
+//	"baseUriChangeFolder/"            → "BaseURIChangeFolder"
+//	"./tree"                          → "Tree"
+//
+// A document that declares a title is named from the title instead.
+func TypeNameForDocumentID(id string) string {
+	return SchemaNameToGoName(lastPathSegment(id))
+}
+
 // ToOneOfInterfaceName creates an unexported interface name for a oneOf group.
 //
 // Example: ("Parent", "Field") → "isParent_Field"
