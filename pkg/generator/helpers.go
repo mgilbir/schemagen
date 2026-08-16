@@ -504,3 +504,35 @@ func FormatHelperName(format string) string {
 		return ""
 	}
 }
+
+// wrapProse breaks generator-written comment text into lines no wider than
+// width, at spaces, and joins them with newlines.
+//
+// The emitter's `comment` function continues an embedded newline with the "//"
+// of the line it is on, so a paragraph wrapped here arrives in the generated
+// source as a Go comment block. Doing the wrapping here rather than in the
+// template is what lets the text be assembled from a type name and an anchor
+// whose lengths are not known until generation.
+//
+// Nothing is broken mid-word: a single word longer than width takes a line of
+// its own and overruns it, which is right for the things that produce one --
+// a Go identifier, a URI, a quoted anchor -- since splitting any of those makes
+// the comment say something that is not there.
+func wrapProse(text string, width int) string {
+	var b strings.Builder
+	col := 0
+	for i, word := range strings.Fields(text) {
+		switch {
+		case i == 0:
+			col = len(word)
+		case col+1+len(word) > width:
+			b.WriteString("\n")
+			col = len(word)
+		default:
+			b.WriteString(" ")
+			col += 1 + len(word)
+		}
+		b.WriteString(word)
+	}
+	return b.String()
+}

@@ -9744,50 +9744,99 @@ func TestRecursiveAnchorNestedResources(t *testing.T) {
 // The verdicts are not this project's reasoning. python-jsonschema 4.26.0,
 // go-jsonschema (santhosh-tekuri v6.0.2) and js-ajv (ajv 8.20.0) were asked
 // through Bowtie for the whole document on this exact schema and agree
-// unanimously: with "v" set to {"o":9} the document is valid, with {"d":9} it is
-// not, and {} is not. No implementation dissented, so there is no split to
-// record. The cases below are those documents with the outer levels stripped to
-// the type being validated, so a Deep that accepts {"d":1,"v":{"d":9}} is
-// accepting a value that the document it was cut from is rejected for.
+// unanimously: with "v" set to {"o":9} the *document* is valid, with {"d":9} it
+// is not, and {} is not. That is what TestScopeWalk... and Root pin, and it is
+// not what the cases below say, for the reason that follows.
+//
+// WHAT MOVED, AND WHY (#293)
+//
+// The lists here used to be those documents with the outer levels stripped off:
+// Deep accepted {"d":1,"v":{"o":9}} because the *document* resolves the
+// reference to the outer resource. That was the document's answer written on a
+// fragment type, and it is exactly the disagreement #293 records -- the
+// generator seeded its scope at the document root while the emitted evaluator
+// seeds at whatever type Validate was called on, so the two answered differently
+// about the same node.
+//
+// #293 settled it on the evaluator's side: a generated type is validated as the
+// root of its own evaluation. A caller holding a Deep and calling Validate has
+// entered https://example.com/deep and nothing else, so the outermost -- and
+// only -- anchored frame in scope is deep itself, and "v" is a Deep. That is
+// what a validator handed https://example.com/deep alone answers, which is the
+// question this type is being asked. The lists below are that answer, and they
+// are the old ones swapped.
+//
+// The direction the walk takes is still what it was and is still guarded: the
+// walk runs outermost-first, and on a scope with one frame there is nothing for
+// it to decide here. Root, beside these, is where the direction is watched, and
+// TestFragmentTypeAndEvaluatorAgreeAtTheSameNode is what fails if the seed goes
+// back to the document.
 func TestRecursiveAnchorResolvesOutermost(t *testing.T) {
 	const fixture = "testdata/schemas/regression/recursive_anchor_outermost_scope.json"
 
-	// The resource the reference is written in. "v" is typed by the walk, so
-	// this is the narrowest place the direction is visible.
+	// The document's own answer, which is the one Bowtie was asked for and the
+	// one that must not move. Root is compiled to the runtime evaluator, whose
+	// scope is built from the resources a *value* enters: outer, then deep, both
+	// anchored, and outermost-first makes "v" an outer object. These cases were
+	// not here before -- the Deep list below carried the document's answer
+	// instead -- and they are what keeps that answer pinned now that Deep states
+	// its own.
+	runValidationCasesForType(t, fixture, "Root",
+		[]string{
+			`{"o":1,"mid":{"m":1,"deep":{"d":1,"v":{"o":9}}}}`,
+			`{"o":1,"mid":{"m":1,"deep":{"d":1,"v":{"o":9,"d":9}}}}`,
+			`{"o":1,"mid":{"m":1,"deep":{"d":1}}}`,
+			`{"o":1}`,
+		},
+		[]string{
+			// The innermost-first reading, which all three implementations reject.
+			`{"o":1,"mid":{"m":1,"deep":{"d":1,"v":{"d":9}}}}`,
+			`{"o":1,"mid":{"m":1,"deep":{"d":1,"v":{}}}}`,
+			// Each level's own requirement still binds.
+			`{"mid":{"m":1,"deep":{"d":1}}}`,
+			`{"o":1,"mid":{"deep":{"d":1}}}`,
+			`{"o":1,"mid":{"m":1,"deep":{}}}`,
+		},
+	)
+
+	// The resource the reference is written in, and the type a caller would hold
+	// to validate one of those resources on its own.
 	runValidationCasesForType(t, fixture, "Deep",
 		[]string{
-			// "v" satisfies the outer resource -- the outermost anchored frame,
-			// and so the one the reference resolves to.
-			`{"d":1,"v":{"o":9}}`,
-			// Satisfying both is still satisfying the outer one.
+			// "v" satisfies deep, which is the only anchored resource a value
+			// validated as a Deep has entered.
+			`{"d":1,"v":{"d":9}}`,
+			// Satisfying both is still satisfying deep.
 			`{"d":1,"v":{"o":9,"d":9}}`,
 			// "v" absent: the reference is never applied.
 			`{"d":1}`,
 		},
 		[]string{
-			// Satisfies the *inner* resource and not the outer one: what
-			// innermost-first accepts, and what all three implementations reject.
-			`{"d":1,"v":{"d":9}}`,
+			// Satisfies the *outer* resource only. That is the whole document's
+			// answer -- see Root -- and not this type's, because nothing
+			// validating a Deep ever entered the outer resource.
+			`{"d":1,"v":{"o":9}}`,
 			// Neither.
 			`{"d":1,"v":{}}`,
-			// The inner resource's own requirement still binds.
-			`{"v":{"o":9}}`,
+			// deep's own requirement still binds.
+			`{"v":{"d":9}}`,
 		},
 	)
 
-	// And through the $ref that pushes the second frame, which is what made the
-	// scope two deep in the first place.
+	// And through the $ref that used to push the second frame. Mid is not a
+	// resource -- no $id, no $recursiveAnchor -- so a value validated as a Mid
+	// has entered nothing either, and the Deep under it answers as above.
 	runValidationCasesForType(t, fixture, "Mid",
 		[]string{
-			`{"m":1,"deep":{"d":1,"v":{"o":9}}}`,
+			`{"m":1,"deep":{"d":1,"v":{"d":9}}}`,
 			`{"m":1,"deep":{"d":1}}`,
 			`{"m":1}`,
 		},
 		[]string{
-			`{"m":1,"deep":{"d":1,"v":{"d":9}}}`,
+			`{"m":1,"deep":{"d":1,"v":{"o":9}}}`,
 			`{"m":1,"deep":{"d":1,"v":{}}}`,
-			`{"deep":{"d":1,"v":{"o":9}}}`,
-			`{"m":1,"deep":{"v":{"o":9}}}`,
+			`{"deep":{"d":1,"v":{"d":9}}}`,
+			`{"m":1,"deep":{"v":{"d":9}}}`,
 		},
 	)
 }
@@ -9866,35 +9915,47 @@ func TestScopeWalkPassesOverAFrameThatAnchorsNothing(t *testing.T) {
 	// unanchored frame on its scope when it resolves anything. That frame is
 	// pushed only by the $ref chain inside T's allOf, and the merge that follows
 	// that chain consults nothing -- the invariant
-	// TestDynamicScopeStaysAtTheTypeItStartedIn holds. Generated in its own
-	// right, B is reached at [outer, b], two anchored frames with nothing between
-	// them, where the two readings agree. So this split is visible to the
-	// evaluator and not to the static path, and only a document routed to the
-	// evaluator can show it.
+	// TestDynamicScopeStaysAtTheTypeItStartedIn holds. So this split is visible
+	// to the evaluator and not to the static path, and only a document routed to
+	// the evaluator can show it.
 	//
-	// What B and T do pin is the *seed*, which is #293's open half: their "v" is
-	// typed by the frame the generator starts a type at, and seeding that at the
-	// type rather than at the document -- candidate 1 -- swaps both lists. That is
-	// a change someone should make deliberately, and this is where they will see
-	// it. Planted and watched: the two lists below swap, and the Root cases above
-	// do not move, because the emitted evaluator has a seed of its own.
+	// WHAT MOVED, AND WHY (#293)
 	//
-	// What a fragment type ought to answer for is not settled here. These are the
-	// document's resolution cut down to the type, the same way
-	// TestRecursiveAnchorResolvesOutermost states its Deep cases.
+	// These two lists were the document's resolution cut down to the type: "v"
+	// was an outer object, because the generator seeded its scope at the document
+	// root and the outermost anchored frame there is outer. The comment sitting
+	// here said in as many words that candidate 1 -- seeding at the type being
+	// generated -- would swap them, and that whoever made that change would see
+	// it here. It has been made, and they are swapped.
+	//
+	// B carries an $id and a $recursiveAnchor, so a value validated as a B has
+	// entered b and nothing else and "v" is a B. T carries neither, so a value
+	// validated as a T has entered nothing at all; its "v" arrives through the
+	// allOf chain and resolves to the resource the reference is written in, which
+	// is b again. Both are the answer a validator handed that schema alone would
+	// give.
+	//
+	// The three implementations do not split about *these*, which is the second
+	// thing that changed. Their disagreement is over whether to walk past the
+	// unanchored frame a.json puts between outer and b -- and neither B nor T has
+	// outer on its scope at all, so there is no frame beyond the unanchored one
+	// to disagree about and every reading lands on b. The split stays where it
+	// was: the Root cases above, where the document is the question.
 	t.Run("$recursiveRef, the types the static walk decides", func(t *testing.T) {
 		const fixture = "testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json"
 		for _, typeName := range []string{"B", "T"} {
 			runValidationCasesForType(t, fixture, typeName,
 				[]string{
-					`{"b":1,"v":{"o":9}}`,
+					`{"b":1,"v":{"b":9}}`,
 					`{"b":1,"v":{"o":9,"b":9}}`,
 					`{"b":1}`,
 				},
 				[]string{
-					`{"b":1,"v":{"b":9}}`,
+					// The outer resource's shape, which is the *document's*
+					// answer for this position and not this type's.
+					`{"b":1,"v":{"o":9}}`,
 					`{"b":1,"v":{}}`,
-					`{"v":{"o":9}}`,
+					`{"v":{"b":9}}`,
 				},
 			)
 		}
@@ -9921,24 +9982,238 @@ func TestScopeWalkPassesOverAFrameThatAnchorsNothing(t *testing.T) {
 
 	// The same static-path types under 2020-12. resolveDynamicRef is a different
 	// loop from resolveRecursiveRef and reads a different keyword, so it can move
-	// on its own, and the seed it starts from is the same one.
+	// on its own, and the seed it starts from is the same one -- which is why
+	// these lists moved with the ones above and for the same reason. B declares
+	// $dynamicAnchor "node" and is entered by a value validated as a B, so its
+	// "v" is a B; T declares nothing and is entered by nothing, so its "v"
+	// resolves to the bookend the reference names, which is b again.
 	t.Run("$dynamicRef, the types the static walk decides", func(t *testing.T) {
 		const fixture = "testdata/schemas/regression/dynamic_anchor_undeclaring_middle_frame.json"
 		for _, typeName := range []string{"B", "T"} {
 			runValidationCasesForType(t, fixture, typeName,
 				[]string{
-					`{"b":1,"v":{"o":9}}`,
+					`{"b":1,"v":{"b":9}}`,
 					`{"b":1,"v":{"o":9,"b":9}}`,
 					`{"b":1}`,
 				},
 				[]string{
-					`{"b":1,"v":{"b":9}}`,
+					`{"b":1,"v":{"o":9}}`,
 					`{"b":1,"v":{}}`,
-					`{"v":{"o":9}}`,
+					`{"v":{"b":9}}`,
 				},
 			)
 		}
 	})
+}
+
+// TestVacuousBookendSaysSoInTheGeneratedSource is the other half of #293: what
+// seeding the scope at the type *costs*, and the requirement that it not be paid
+// in silence.
+//
+// The shape is the suite's generic container. genericList's elements are a
+// $dynamicRef to "itemType", and genericList declares "itemType" itself as an
+// empty schema, present only to satisfy the bookending requirement; numberList
+// and stringList each declare it again, with a type, and each $ref genericList.
+// A value validated as a GenericListList has entered genericList and nothing
+// else, so the reference resolves to the empty declaration and the element check
+// disappears -- correct for that resource judged alone, and weaker than the same
+// schema is inside the document, where numberList or stringList is on the scope.
+//
+// Nothing about the declaration betrays that. The type has a Validate, the
+// Validate is not missing, and it accepts everything. AliasDef.Unenforced
+// already says so for the one position where even a missing Validate is
+// invisible; Doc.Caveats is the same statement for this one, and this is what
+// holds it there.
+//
+// The negative case is the point of the test as much as the positive one.
+// boundary_anchor declares "itemType" with a type as well -- on $defs/stray,
+// which has an $id of its own and which nothing refers to, so no evaluation can
+// put it on any scope and genericBox's reference resolves to the empty
+// declaration for every document there is, including the whole one. There is no
+// loss there, and a note claiming one would be false. Written without that half,
+// the check passes on a mechanism that comments every generic container in the
+// corpus.
+func TestVacuousBookendSaysSoInTheGeneratedSource(t *testing.T) {
+	const marker = "checks less than its schema states"
+
+	t.Run("said where the document has a better answer", func(t *testing.T) {
+		generated := string(generateFromSchemaWithConfig(t,
+			"testdata/schemas/regression/dynamic_ref_scope_chain.json",
+			generator.Config{PackageName: "testpkg", OmitEmpty: true}))
+
+		doc := docCommentAboveLine(t, generated, "type GenericListList ")
+		if !strings.Contains(doc, marker) {
+			t.Errorf("GenericListList's elements are unchecked and its doc comment does not say so:\n%s", doc)
+		}
+		for _, phrase := range []string{"$dynamicRef", `$dynamicAnchor "itemType"`, "constrains nothing"} {
+			if !strings.Contains(doc, phrase) {
+				t.Errorf("the caveat above GenericListList does not name %q, so a reader cannot tell which keyword lost the check:\n%s", phrase, doc)
+			}
+		}
+	})
+
+	t.Run("not said where it would be false", func(t *testing.T) {
+		generated := string(generateFromSchemaWithConfig(t,
+			"testdata/schemas/regression/dynamic_ref_boundary_anchor.json",
+			generator.Config{PackageName: "testpkg", OmitEmpty: true}))
+
+		if strings.Contains(generated, marker) {
+			t.Errorf("boundary_anchor's other declaration of \"itemType\" sits on a resource nothing refers to, "+
+				"so no evaluation resolves the reference to it and nothing is lost -- but the generated source claims otherwise:\n%s",
+				generated)
+		}
+	})
+}
+
+// TestFragmentTypeAndEvaluatorAgreeAtTheSameNode is the guard #293 needed and
+// did not have: it asks the two paths through this generator the same question
+// about the same schema node, in the same generated package, and requires one
+// answer.
+//
+// The disagreement it watches is what #293 was. A bookended $recursiveRef or
+// $dynamicRef is resolved twice in a package like these -- once by the generator
+// while it builds a static type for the resource, and once at run time by
+// _evalNode, which the document root is compiled to because two anchored
+// resources are in its reach. Those two used to start from different scopes: the
+// generator seeded at the document root and the evaluator at whatever node
+// Validate was called on. So `Deep` and `_rtRootNode1` are the *same node* of
+// the same schema, and they judged the same value differently.
+//
+// Every fixture below is a package where both exist, and the assertion is
+// literally that: decode the document into the static fragment type and call
+// Validate, evaluate the same document at the hoisted node, and fail on any
+// disagreement. Nothing here says which answer is right -- the tests above do
+// that -- so the guard cannot be satisfied by moving both to the same wrong
+// place, only by them agreeing about whatever the answer is.
+//
+// The node names are what the generator hoists a recursive resource under and
+// are asserted before use, so a rename shows up as a missing declaration rather
+// than as a test that quietly stops testing. The documents are chosen to
+// straddle the answer: at least one that both must accept and at least one that
+// both must reject, so a harness that always said "invalid" would not pass.
+//
+// Watched failing: seeding the generator's scope at the document root again --
+// the state before #293 -- makes _rtRootNode1 accept {"d":1,"v":{"d":9}} while
+// Deep rejects it, in every one of the three fixtures.
+func TestFragmentTypeAndEvaluatorAgreeAtTheSameNode(t *testing.T) {
+	cases := []struct {
+		name     string
+		fixture  string
+		typeName string
+		node     string
+		docs     []string
+	}{
+		{
+			// 2019-09, two anchored resources: outer (the document) and deep.
+			name:     "$recursiveRef, two anchored frames",
+			fixture:  "testdata/schemas/regression/recursive_anchor_outermost_scope.json",
+			typeName: "Deep",
+			node:     "_rtRootNode1",
+			docs: []string{
+				`{"d":1,"v":{"d":9}}`,
+				`{"d":1,"v":{"o":9}}`,
+				`{"d":1,"v":{"o":9,"d":9}}`,
+				`{"d":1,"v":{}}`,
+				`{"d":1}`,
+				`{"v":{"d":9}}`,
+			},
+		},
+		{
+			// 2019-09, with an unanchored resource between the two anchored ones.
+			name:     "$recursiveRef, unanchored frame between",
+			fixture:  "testdata/schemas/regression/recursive_anchor_unanchored_middle_frame.json",
+			typeName: "B",
+			node:     "_rtRootNode1",
+			docs: []string{
+				`{"b":1,"v":{"b":9}}`,
+				`{"b":1,"v":{"o":9}}`,
+				`{"b":1,"v":{"o":9,"b":9}}`,
+				`{"b":1,"v":{}}`,
+				`{"b":1}`,
+				`{"v":{"b":9}}`,
+			},
+		},
+		{
+			// 2020-12's spelling of the same shape. resolveDynamicRef is a
+			// separate loop reading a separate keyword and can move on its own.
+			name:     "$dynamicRef, undeclaring frame between",
+			fixture:  "testdata/schemas/regression/dynamic_anchor_undeclaring_middle_frame.json",
+			typeName: "B",
+			node:     "_rtRootNode1",
+			docs: []string{
+				`{"b":1,"v":{"b":9}}`,
+				`{"b":1,"v":{"o":9}}`,
+				`{"b":1,"v":{"o":9,"b":9}}`,
+				`{"b":1,"v":{}}`,
+				`{"b":1}`,
+				`{"v":{"b":9}}`,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mainGo := fmt.Sprintf(`package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+func main() {
+	docs := []string{%s}
+	agreed := 0
+	accepted := 0
+	for _, doc := range docs {
+		var raw any
+		if err := json.Unmarshal([]byte(doc), &raw); err != nil {
+			fmt.Fprintf(os.Stderr, "%%s is not JSON: %%v\n", doc, err)
+			os.Exit(1)
+		}
+		byEvaluator := _evalNode(&%s, raw).ok
+
+		byType := true
+		var typed %s
+		if err := json.Unmarshal([]byte(doc), &typed); err != nil {
+			byType = false
+		} else if err := typed.Validate(); err != nil {
+			byType = false
+		}
+
+		if byEvaluator != byType {
+			fmt.Fprintf(os.Stderr, "%%s: %s says %%v, %s says %%v -- the same node of the same schema, judged two ways\n",
+				doc, byEvaluator, byType)
+			os.Exit(1)
+		}
+		agreed++
+		if byType {
+			accepted++
+		}
+	}
+	// A run in which everything was rejected, or everything accepted, agrees
+	// for a reason that is not the one under test.
+	if accepted == 0 || accepted == agreed {
+		fmt.Fprintf(os.Stderr, "%%d of %%d documents accepted: the cases no longer straddle the answer, so agreement says nothing\n", accepted, agreed)
+		os.Exit(1)
+	}
+	fmt.Println("PASS")
+}
+`, goStringSliceElems(tc.docs), tc.node, tc.typeName, tc.node, tc.typeName)
+
+			generated := generateFromSchemaWithConfig(t, tc.fixture, generator.Config{
+				PackageName: "testpkg",
+				OmitEmpty:   true,
+			})
+			for _, decl := range []string{"type " + tc.typeName + " ", tc.node + " _schemaNode"} {
+				if !strings.Contains(string(generated), decl) {
+					t.Fatalf("generated code for %s declares no %q, so this test would be measuring something else:\n%s",
+						tc.fixture, decl, generated)
+				}
+			}
+			runGeneratedMainProgram(t, tc.fixture, "fragment_evaluator_agreement", mainGo)
+		})
+	}
 }
 
 // TestArrayKeywordsSurviveEveryContainerPosition covers one array sub-schema --

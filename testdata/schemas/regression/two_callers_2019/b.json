@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/b.json",
+  "x-unmodelled": true,
+  "$recursiveAnchor": true,
+  "type": "object",
+  "required": ["y"],
+  "properties": {
+    "y": { "type": "integer" },
+    "r": { "$ref": "r.json" }
+  }
+}

@@ -35,6 +35,21 @@ written.
 {{- else if .Description}}
 // {{.Name}} - {{comment "" .Description}}
 {{- end}}
+{{- /*
+Caveats are the generator's own statements about what this declaration does not
+check, and they go below whatever the schema said about it: the author's prose is
+what the reader came for, and a paragraph about a missing check is a footnote to
+it rather than its summary line. Each is one paragraph, separated by the blank
+comment line, and the first is separated from the prose the same way when there
+is any.
+*/}}
+{{- $hasProse := or .Title .Description}}
+{{- range $i, $caveat := .Caveats}}
+{{- if or $hasProse $i}}
+//
+{{- end}}
+// {{comment "" $caveat}}
+{{- end}}
 {{- end}}
 
 {{define "member_doc"}}

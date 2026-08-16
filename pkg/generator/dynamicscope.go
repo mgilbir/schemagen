@@ -1,6 +1,8 @@
 package generator
 
 import (
+	"strconv"
+
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
@@ -68,6 +70,185 @@ func (g *Generator) dynamicRefTarget(s *schema.Schema) (target *schema.Schema, a
 	return nil, "", false, false
 }
 
+// typeRootedScope is the dynamic scope a generated type starts from: what an
+// evaluation that begins at s has entered before it has done anything.
+//
+// It has entered s itself when s is a schema resource, and nothing at all when
+// it is not. That is the emitted evaluator's rule read back into the generator:
+// _evalNode is handed a nil scope and the node it starts on contributes a frame
+// only where it publishes anchors of its own, which a resource root is the only
+// kind of node to do.
+//
+// Anchoredness is not the question here. A frame goes on for every resource
+// entered, anchored or not, because "is this frame the one the reference wants"
+// is asked at the walk -- by resolveRecursiveRef of $recursiveAnchor and by
+// resolveDynamicRef of the anchor the reference names -- and a scope that
+// filtered here would answer a different question for each of them.
+//
+// See generateTypeDefBody, which is the only caller and where the seed is
+// argued; and #293, which is the decision.
+func typeRootedScope(s *schema.Schema) []*schema.Schema {
+	if s == nil || s.DocumentRoot != s {
+		return nil
+	}
+	return []*schema.Schema{s}
+}
+
+// vacuousBookend is one bookended dynamic reference that came back with nothing
+// to enforce, named by the keyword that wrote it and the anchor it searched for.
+//
+// The anchor is empty for a $recursiveRef, which names none: it always means
+// "the outermost resource in scope that says $recursiveAnchor: true", and that
+// is the spelling pkg/schema files a $recursiveAnchor under.
+type vacuousBookend struct {
+	keyword string
+	anchor  string
+}
+
+// noteVacuousBookend records that a bookended reference, resolved against the
+// scope the type being generated starts at, landed on a schema that enforces
+// nothing -- while the document declares the same anchor somewhere that does.
+//
+// This is the price of seeding the scope at the type (#293, candidate 1), and it
+// is a real one. The suite's typical-dynamic-resolution shape is a list resource
+// whose element is a $dynamicRef to "items" and which declares "items" itself,
+// as an empty schema, only to satisfy the bookending requirement; the document
+// around it declares "items" again with a type. Resolved for the list judged
+// alone the reference finds the list's own declaration, which is the right answer
+// for that resource and constrains nothing -- so `type List []Foo` becomes `type
+// List []Items` with Items an unconstrained any, and a caller holding List gets a
+// Validate that accepts every element. The document's own type is unaffected,
+// because a document with two declarations in reach is compiled to the runtime
+// evaluator, which resolves the reference per value.
+//
+// So the type is right about the schema it is being asked to judge and weaker
+// than the same schema is inside its document, and nothing about the declaration
+// says so: it has a Validate, the Validate is not missing, and it passes. That is
+// the shape AliasDef.Unenforced already exists for at the one position where even
+// a missing Validate is invisible, and this is the same statement one step over.
+// See Doc.Caveats, which is where it is said.
+//
+// All three parts of the condition are needed, and each was put there by a
+// document the other two got wrong.
+//
+// The target enforcing nothing is the loss itself. Where it constrains something
+// the type enforces *a* reading of the schema, which is a different question
+// (#332) and not a silent weakening.
+//
+// Another resource answering the same anchor with constraints is what makes the
+// loss a loss. Without one the reference means the same thing down every path and
+// the empty schema is simply what the author wrote -- which is most of the
+// recursive schemas in the corpus, and every one of them would otherwise carry
+// this note.
+//
+// And that resource has to be one an evaluation could enter *before* reaching
+// this reference, or the alternative is not an alternative.
+// regression/dynamic_ref_boundary_anchor.json is why: its "stray" definition
+// declares itemType with a type and sits under $defs with an $id of its own, so
+// nothing refers to it and no evaluation ever puts it on a scope. The reference
+// in genericBox resolves to genericBox's own empty bookend for every document
+// there is, including the whole one, so a note saying the document has a better
+// answer would be false. Reachability is asked of the *resource*, since entering
+// it is what puts the declaration in scope.
+func (g *Generator) noteVacuousBookend(keyword, anchor string, resolved, ctx *schema.Schema) {
+	if resolved == nil || ctx == nil || !g.acceptsEveryValue(resolved, 0, map[*schema.Schema]bool{}) {
+		return
+	}
+	// dynamicAnchorDeclarations walks the whole document rather than this type's
+	// reach, which is the point: what is lost is exactly what this type cannot
+	// see. What each declaration is worth, though, is asked of the resource that
+	// owns it -- resourceDynamicAnchor is the rule the scope walk itself applies,
+	// and an anchor written on a nested $id belongs to that nested resource
+	// rather than to the one containing it (#163, #164).
+	other := false
+	for _, decl := range g.dynamicAnchorDeclarations(anchor) {
+		owner := decl.DocumentRoot
+		if owner == nil {
+			owner = decl
+		}
+		contributed := resourceDynamicAnchor(owner, anchor)
+		if contributed == nil || contributed == resolved {
+			continue
+		}
+		if g.acceptsEveryValue(contributed, 0, map[*schema.Schema]bool{}) {
+			continue
+		}
+		if g.dynamicallyReachable(owner)[ctx] {
+			other = true
+			break
+		}
+	}
+	if !other {
+		return
+	}
+	note := vacuousBookend{keyword: keyword, anchor: anchor}
+	for _, have := range g.vacuousBookends {
+		if have == note {
+			return
+		}
+	}
+	g.vacuousBookends = append(g.vacuousBookends, note)
+}
+
+// caveat renders one recorded reference as the paragraph that goes above the
+// declaration, which is where a caller will meet it.
+//
+// It says three things, and each is there because a reader who knows only the
+// generated file cannot get it anywhere else: that this type checks less than
+// its schema states, why -- the reference is answered by the resources an
+// evaluation entered, and validating a value as this type enters only this one
+// -- and what to reach for instead, which is the type generated for the whole
+// document.
+func (v vacuousBookend) caveat(name string) string {
+	anchor := "the $recursiveAnchor of the outermost resource in scope"
+	if v.anchor != "" {
+		anchor = "$dynamicAnchor " + strconv.Quote(v.anchor)
+	}
+	return wrapProse(name+" checks less than its schema states. A "+v.keyword+
+		" under it is answered by "+anchor+
+		", which is a question about the resources an evaluation has entered -- and a value validated as a "+name+
+		" has entered nothing beyond the resource this schema is written in. So the reference resolves to the declaration there, which constrains nothing, and the position it governs goes unchecked. "+
+		"Another resource in this document declares the same anchor with constraints and can be entered on the way here, and a value arriving through it is judged by them. "+
+		"Validate through the type generated for the document as a whole to get that reading.", caveatWidth)
+}
+
+// caveatWidth is the column a caveat paragraph wraps at, chosen so that the
+// "// " the emitter puts in front of every line leaves the result inside the
+// 80 columns the rest of this repository's generated comments keep to.
+const caveatWidth = 77
+
+// attachVacuityCaveats hangs the caveats a body collected on the declaration
+// that body produced.
+//
+// The last definition under the name is the one, and "last" rather than "first"
+// is what makes it the right one: a body resolves the references in its members
+// before it appends itself, so any definition another type appended in the
+// meantime is already behind it.
+//
+// A name nothing declared gets nothing. Several arms mint a name, find they can
+// carry nothing under it and decline, and a caveat has nowhere to go then -- the
+// same reason UnenforcedSchemas drops a name that did not survive into the file.
+func (g *Generator) attachVacuityCaveats(name string) {
+	if len(g.vacuousBookends) == 0 {
+		return
+	}
+	for i := len(g.output.TypeDefs) - 1; i >= 0; i-- {
+		td := g.output.TypeDefs[i]
+		if td.TypeName() != name {
+			continue
+		}
+		// Every kind of named type embeds Doc, so the pointer method below is
+		// promoted onto all of them; a kind that ever stops embedding it stops
+		// matching here rather than silently dropping the note.
+		if doc, ok := td.(interface{ addCaveat(string) }); ok {
+			for _, v := range g.vacuousBookends {
+				doc.addCaveat(v.caveat(name))
+			}
+		}
+		return
+	}
+}
+
 // noteDynamicScopeConsulted records one consultation of the dynamic scope by a
 // bookended $recursiveRef or $dynamicRef: that it happened, and how many frames
 // stood above the depth the type being generated started at.
@@ -90,7 +271,7 @@ func (g *Generator) dynamicRefTarget(s *schema.Schema) (target *schema.Schema, a
 // It is unconditional rather than behind a build tag because there is nothing to
 // buy by making it conditional, and a guard that only exists under a tag is one
 // nobody runs. The cost is an increment, a subtraction and a compare, on a path
-// reached 25 times across the whole 600-schema corpus. Measured rather than
+// reached 36 times across the whole 608-schema corpus. Measured rather than
 // assumed: generating that corpus takes 164-167 ms with these three lines and
 // 166-168 ms with them and the base bookkeeping removed (8 iterations, 5 runs
 // each), so the difference is smaller than the spread between runs of the same
@@ -235,12 +416,13 @@ func resourceDynamicAnchor(root *schema.Schema, name string) *schema.Schema {
 // under-counting leaves the reference resolved to a guess, so the reach is
 // deliberately the generous one.
 //
-// Nothing here reads g.dynamicScope, and that is worth saying where #293 will be
-// read. The routing question is answered from what s reaches, so which scope the
-// generator maintains -- document-rooted as today, or seeded at the type being
-// generated -- cannot change which schemas arrive at the evaluator. It changes
-// only what the static path resolves for the ones that stay, and
-// resolveRecursiveRef records what is settled and what is not about that.
+// Nothing here reads g.dynamicScope, and that is what made #293 answerable
+// without moving anything else. The routing question is answered from what s
+// reaches, so the seed -- document-rooted, as it was, or at the type being
+// generated, as typeRootedScope now makes it -- cannot change which schemas
+// arrive at the evaluator. It changed only what the static path resolves for the
+// ones that stay: four documents in this repository's corpus and seven groups of
+// the external suite, none of whose document-level verdicts moved.
 func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
 	if s == nil {
 		return false

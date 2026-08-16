@@ -56,10 +56,20 @@ type Generator struct {
 	// dynamicAnchorDeclarations.
 	dynamicAnchorDecls map[string][]*schema.Schema
 
-	// dynamicScope tracks the stack of document roots entered via $ref during
-	// code generation. This enables $dynamicRef to resolve against the dynamic
-	// scope chain (walking from outermost to innermost) rather than only the
-	// local document scope. The root schema's document root is always at index 0.
+	// dynamicScope tracks the schema resources entered via $ref during code
+	// generation. This enables $dynamicRef and $recursiveRef to resolve against
+	// the dynamic scope chain (walking from outermost to innermost) rather than
+	// only the local document scope.
+	//
+	// Index 0 is the type being generated, not the document: generateTypeDefBody
+	// reseeds this at the schema it is declaring a type for, so a resource root
+	// is its own frame 0 and anything smaller starts from nothing. That is what
+	// the emitted evaluator does -- _evalNode starts its scope nil and the node
+	// it is handed pushes a frame only if it publishes anchors -- and it is
+	// #293's answer: a generated type is validated as the root of its own
+	// evaluation, so it must be resolved as one. Before that it was seeded at
+	// the document root, and a $defs type was resolved against frames its
+	// callers pushed. See typeRootedScope.
 	dynamicScope []*schema.Schema
 
 	// typeScopeBase is the depth dynamicScope stood at when the generateTypeDefBody
@@ -100,6 +110,17 @@ type Generator struct {
 	// Validate method and cannot fail to unmarshal, which makes this the one
 	// kind of dropped check a caller has no way to notice.
 	unenforced []UnenforcedSchema
+
+	// vacuousBookends holds the caveats owed by the type currently being
+	// generated: bookended dynamic references that, resolved against the scope
+	// that type starts at, landed on a schema enforcing nothing while the
+	// document declares the same anchor somewhere that enforces something.
+	//
+	// It is scoped to one generateTypeDefBody -- saved, cleared and restored
+	// there -- because the note belongs to the declaration whose body resolved
+	// the reference, and that body is the only thing that knows the name it is
+	// declaring under. See noteVacuousBookend and attachVacuityCaveats.
+	vacuousBookends []vacuousBookend
 
 	// unsatisfiableRequired records the properties that --strict-read-write
 	// made impossible to supply: required at their location and readOnly there
@@ -436,7 +457,11 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.documentRoots = make(map[string]*schema.Schema)
 	g.buildDocumentRoots(s)
 
-	// Initialize dynamic scope with the root document root.
+	// Initialize dynamic scope with the root document root. Every type body
+	// reseeds it at the schema it is declaring for (see generateTypeDefBody), so
+	// this is what stands between Generate's own arms and the first of those --
+	// and it is the same value the root's body would choose, since the root
+	// schema is its own document root.
 	g.dynamicScope = []*schema.Schema{s}
 	// Nothing is being generated yet, so the depth this run starts at is the
 	// baseline every type is measured against until one of them sets its own.
@@ -3147,11 +3172,54 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// that derives it. See typeOwner.
 	defer g.noteTypeOwner(name, s)
 
-	// The depth this type starts at, restored on the way out so the frame above
-	// goes back to measuring against its own. See noteDynamicScopeConsulted.
-	outerScopeBase := g.typeScopeBase
+	// The dynamic scope this type is resolved against, seeded at the type itself
+	// and restored on the way out. This is #293's answer, candidate 1.
+	//
+	// A generated type is validated as the root of its own evaluation -- a caller
+	// holding a NumberList and calling Validate on it has entered nothing else --
+	// and the emitted evaluator says so in code: _evalNode starts _scope nil and
+	// the node it is handed pushes a frame only if it publishes anchors. Seeding
+	// the generator here the same way is what makes the two paths answer one
+	// question. Before this the seed was the *document* root, so a $defs type was
+	// resolved against frames its callers pushed and a fragment type handed to a
+	// caller judged values by a scope that caller had never entered.
+	//
+	// A resource root is a frame, exactly as it is at runtime; anything else --
+	// a $defs entry with no $id, a property subschema -- is not a resource and
+	// puts nothing on any validator's scope, so it seeds empty. Whether the frame
+	// is *anchored* is not asked here: that is the walk's question, and
+	// resolveRecursiveRef and resolveDynamicRef each ask it their own way.
+	//
+	// It is the field that moves rather than an accessor the two resolvers read,
+	// so that g.dynamicScope has one meaning everywhere. isScopedSelfRef reads it
+	// too, for a different purpose -- whether a value type would close a Go type
+	// cycle -- and a seed that lived only inside the resolvers would leave that
+	// one reading a scope nothing else sees.
+	//
+	// The pushes are unaffected and still needed: pushDynamicScope appends to the
+	// scope of the type that is *pushing*, and the type the following
+	// generateTypeDef call starts reseeds from itself, so the frame is visible to
+	// the pusher's own body -- which is where isScopedSelfRef reads it -- and not
+	// inherited by the callee.
+	outerScopeBase, outerScope := g.typeScopeBase, g.dynamicScope
+	g.dynamicScope = typeRootedScope(s)
 	g.typeScopeBase = len(g.dynamicScope)
-	defer func() { g.typeScopeBase = outerScopeBase }()
+	defer func() {
+		g.typeScopeBase, g.dynamicScope = outerScopeBase, outerScope
+	}()
+
+	// And what that seed costs, collected while the arms below resolve this
+	// type's references and hung on the declaration they produce. The scope above
+	// is why a bookended reference can land on a schema enforcing nothing;
+	// noteVacuousBookend is where the case is argued and Doc.Caveats is where it
+	// is said. Saved and restored like the scope, because the note belongs to the
+	// body that resolved the reference and not to the one it returns into.
+	outerVacuous := g.vacuousBookends
+	g.vacuousBookends = nil
+	defer func() {
+		g.attachVacuityCaveats(name)
+		g.vacuousBookends = outerVacuous
+	}()
 
 	// unevaluatedItems next to in-place applicators cannot be decided
 	// statically: which items count as evaluated depends on which branches
@@ -11333,16 +11401,26 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // generated _dynResolveRef takes at runtime, and all three now say so for the
 // same reason rather than by coincidence.
 //
-// The order is load-bearing and has been watched deciding a verdict.
+// The order is the spec's and has been watched deciding a verdict, though no
+// longer here: see the seed, below.
 // testdata/schemas/regression/recursive_anchor_outermost_scope.json puts two
-// anchored resources on the scope at once -- the document root, and a resource
-// under a $defs entry that carries no $id of its own, so the reference reaching
-// it pushes a second frame -- and the $recursiveRef inside the inner one is
-// bookended by both. Innermost-first types its "v" as the inner resource and
-// outermost-first as the outer, and the two disagree about every document:
-// planting the old direction back turns TestRecursiveAnchorResolvesOutermost's
-// valid and invalid lists inside out. python-jsonschema, go-jsonschema and
-// js-ajv were asked through Bowtie and answer outermost, unanimously.
+// anchored resources in reach of one document -- the document root, and a
+// resource under a $defs entry that carries no $id of its own -- and the
+// $recursiveRef inside the inner one is bookended by both. Innermost-first
+// judges its "v" by the inner resource and outermost-first by the outer, and the
+// two disagree about every document: reversing the emitted _dynResolveRef's loop
+// turns TestRecursiveAnchorResolvesOutermost's Root lists inside out.
+// python-jsonschema, go-jsonschema and js-ajv were asked through Bowtie and
+// answer outermost, unanimously.
+//
+// Those Root documents are decided by the evaluator rather than by this loop,
+// and that is not a weakening of the evidence but a consequence of the seed:
+// the scope here now holds one frame, so the walk below cannot pick between two
+// of anything. Which makes the direction unfalsifiable *from this function*, and
+// the reason it is still written outermost-first is that the invariant keeping it
+// to one frame is a measurement rather than a theorem -- see
+// noteDynamicScopeConsulted, and #167, which is what a claim of this shape cost
+// the last time it was reasoned instead of counted.
 //
 // That unanimity is about a scope whose frames are *all* anchored, and it does
 // not extend to one where they are not. Put an unanchored resource between two
@@ -11374,42 +11452,55 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 //
 // Two things kept that shape hard to find, and both are worth knowing before
 // moving anything near it. A root-level $defs entry is generated before the
-// root, at scope depth 1, so an anchored resource written directly under $defs
-// -- the obvious shape, and the one in recursive_anchor_nested_resources.json --
-// resolves its reference before any frame is pushed and the two directions
-// agree. And a schema whose reference could land on two anchored resources
-// *within one generated type's reach* goes to the runtime evaluator instead
-// (#160, dynamicScopeDecidesTheTarget), which is why the case here keeps the
+// root, so an anchored resource written directly under $defs -- the obvious
+// shape, and the one in recursive_anchor_nested_resources.json -- resolves its
+// reference with nothing but its own frame in scope. And a schema whose
+// reference could land on two anchored resources *within one generated type's
+// reach* goes to the runtime evaluator instead (#160,
+// dynamicScopeDecidesTheTarget), which is why the case here keeps the
 // intermediate $defs entry unanchored and un-$id'd: it is a resource to neither
-// the routing nor a validator, so the scope is exactly two frames deep and the
-// static path keeps the schema.
+// the routing nor a validator, so the static path keeps the schema.
 //
-// How rare that is, measured rather than asserted. Over the corpus under
-// testdata/schemas and 2805 schemas lifted out of the JSON Schema Test Suite's
-// test files and remotes, this walk is reached 9 times. Eight are one frame
-// deep, where the two directions are the same walk; the ninth is the fixture
-// above. The suite reaches two frames zero times, which is why adopting a case
-// from it was never going to close this. Generating the 651 corpus schemas that
-// predate this change, plus those 2805, under a binary from before it and one
-// from after produces byte-identical output for every one of them.
+// How rare all of this is, measured rather than asserted. Over the 608 documents
+// under testdata/schemas and 2344 schemas lifted out of the JSON Schema Test
+// Suite's test files and remotes, this walk is reached 14 times and never with
+// more than one frame in scope: 11 at one frame, 3 at none, the latter being a
+// type that is not a schema resource and so seeds empty. The same measurement
+// before #293, over the 600 of those documents that predate the two_callers
+// fixtures plus the same suite, reached it 11 times with two of them two frames
+// deep -- both in recursive_anchor_outermost_scope.json, through the $ref that
+// pushed the document's frame in under the type's own. That frame is the one the
+// seed took away.
 //
-// One thing this does not settle, and it is the second half of #167. Frame 0 is
-// the *document* root, not the type being generated, so a type under a $defs
-// entry is resolved against frames its callers pushed -- while the runtime
-// evaluator seeds its scope empty at whatever type Validate was called on, which
-// is the contract dynamicScopeDecidesTheTarget states and reasons from. The two
-// disagree about a fragment type asked to judge a value on its own. For the
-// fixture above the disagreement is invisible from the document, because a root
-// with two anchored resources in reach is compiled to the evaluator anyway; it
-// is visible to a caller holding Deep. Aligning the two is a change to the scope
-// construction rather than to this walk, and it wants deciding on its own.
+// The seed is settled, and it is #293. Frame 0 was the *document* root, so a
+// type under a $defs entry was resolved against frames its callers pushed --
+// while the runtime evaluator seeds its scope empty at whatever type Validate
+// was called on, which is the contract dynamicScopeDecidesTheTarget states and
+// reasons from. The two disagreed about a fragment type asked to judge a value
+// on its own: for the fixture above the disagreement is invisible from the
+// document, because a root with two anchored resources in reach is compiled to
+// the evaluator anyway, and it was visible to a caller holding Deep.
 //
-// What that leaves is a question about the *seed*, and not about the direction
-// this loop takes -- which is #293's practical half, and it is settled here
-// because the answer is a property of where frames live rather than of what they
-// hold. Seed the scope at the type being generated, as the evaluator does, and
-// this function is never asked with more than one frame on it, so outermost and
-// innermost are the same walk and the choice below cannot decide anything.
+// It is decided the evaluator's way. generateTypeDefBody reseeds the scope at
+// the schema it is declaring for -- the schema itself when it is a resource
+// root, nothing when it is not -- so both paths now answer the same question
+// about the same node, and TestFragmentTypeAndEvaluatorAgreeAtTheSameNode fails
+// if they stop. Two things follow, and the second is the price.
+//
+// The direction below can no longer decide anything, which is #293's practical
+// half. Seeded at the type, this function is never asked with more than one
+// frame on it, so outermost and innermost are the same walk. It stays written
+// outermost-first because that is what 2019-09 says and what the evaluator
+// beside it does, and because the invariant that keeps it one frame deep is a
+// measurement rather than a theorem -- see noteDynamicScopeConsulted, and #167,
+// which is what a claim of this shape cost the last time it was reasoned.
+//
+// And a fragment type can now be weaker than the same schema is inside its
+// document: where the reference lands on a declaration its own resource carries
+// and that declaration constrains nothing, the position it governs goes
+// unchecked. That is a correct answer for the resource judged alone and a check
+// a caller would otherwise have had, so it is said in the generated doc comment
+// rather than left silent. See noteVacuousBookend.
 //
 // A frame is live inside one generateTypeDefBody in two places, and only one of
 // them lasts. The three sites that push around a $ref -- the alias arm in
@@ -11433,11 +11524,20 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // and then thrown away is how that one survived. noteDynamicScopeConsulted
 // counts both halves on the Generator and
 // TestDynamicScopeStaysAtTheTypeItStartedIn reads them: across the corpus the
-// scope is consulted 25 times, every one of them at the depth its type started
-// at. That zero is not a counter nobody has watched move. Planting a resolution
+// scope is consulted 36 times, every one of them at the depth its type started
+// at. Reseeding did not move that number -- on the 600 documents that predate
+// the two_callers fixtures it reads 25 either way, which is the same figure this
+// comment carried before #293 -- because what the counter measures is where the
+// scope stands, not what is on it. That zero is not a counter nobody has watched
+// move. Planting a resolution
 // into mergeAllOfBranches' pushed window makes it read 2 and names the schema;
 // removing the consultations makes the second counter read 0 and fails for
 // saying nothing at all.
+//
+// The reseeding does not make that measurement vacuous, and it is worth saying
+// why. typeScopeBase is taken *after* the reseed, so the counter still measures
+// frames pushed while this type's body is in flight -- the two windows named
+// above are exactly those, and the plant that made it read 2 still does.
 //
 // So the residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
 // runtimeSchemaDef then declines, which drops back here instead of compiling --
@@ -11466,12 +11566,16 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	// root pushes nothing, and then the plain $ref answer is both the only one
 	// available and the right one, because it names that same resource.
 	g.noteDynamicScopeConsulted()
+	target := resolved
 	for _, scope := range g.dynamicScope {
 		if scope != nil && scope.RecursiveAnchor != nil && *scope.RecursiveAnchor {
-			return scope
+			target = scope
+			break
 		}
 	}
-	return resolved
+	// What the seed cost, where it cost anything: see noteVacuousBookend.
+	g.noteVacuousBookend(recursiveRefKeyword, "", target, ctx)
+	return target
 }
 
 // registerRemoteSchema computes base URIs for a remotely-resolved schema and
@@ -11540,6 +11644,17 @@ func (g *Generator) popDynamicScope() {
 // answers for every evaluation that passes overhead. That is issues #163 and
 // #164: the two paths through this generator disagreed about the same rule, and
 // the disagreement was a false rejection down the static one.
+//
+// The scope walked in step 3 is seeded at the type being generated, which is
+// #293's answer and is argued at resolveRecursiveRef and typeRootedScope. One
+// thing was waiting on that and is deliberately not done here: #325, where a
+// cross-package $dynamicRef materializes a local copy of the foreign type
+// instead of importing it as the same $ref would. It was never a ten-line fix,
+// because aliasing a $dynamicRef to a fixed foreign type freezes the
+// dynamic-scope choice at the package boundary -- and what it would be frozen to
+// is exactly the question this seed answers. It is answered now, so that gap can
+// be closed on its own terms rather than settling this one by implication in the
+// narrowest possible place.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
 	// Steps 1 and 2, which the runtime evaluator needs too: see
 	// dynamicRefInitialTarget.
@@ -11561,14 +11676,17 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	// innermost, looking for the first resource that declares a $dynamicAnchor
 	// with the same name.
 	g.noteDynamicScopeConsulted()
+	// Fallback, when no resource in scope declares the anchor: the bookend.
+	target := initialTarget
 	for _, resource := range g.dynamicScope {
 		if found := resourceDynamicAnchor(resource, anchorName); found != nil {
-			return found
+			target = found
+			break
 		}
 	}
-
-	// Fallback: no resource in scope declares the anchor — use the bookend.
-	return initialTarget
+	// What the seed cost, where it cost anything: see noteVacuousBookend.
+	g.noteVacuousBookend(dynamicRefKeyword, anchorName, target, ctx)
+	return target
 }
 
 // dynamicRefInitialTarget performs the static half of a $dynamicRef: the schema
@@ -11818,6 +11936,18 @@ func (g *Generator) isScopedSelfRef(ref string, ctx *schema.Schema, resolved *sc
 	// would create a recursive type cycle. Use a pointer to break the cycle.
 	// Only applies to schemas that define their own scope ($id) — not schemas
 	// merely defined within the root document.
+	//
+	// The scope this reads is the one #293 seeded at the type being generated,
+	// which is narrower than the document-rooted chain it used to be: it holds
+	// the enclosing resource and whatever this body has pushed and not yet
+	// popped, rather than every resource on the way in from the document. That
+	// is deliberate -- one meaning for g.dynamicScope, so this cannot answer from
+	// a scope the resolvers never see -- and what it gives up is caught by the
+	// two checks around it: the DocumentRoot test above for a reference back into
+	// the resource being generated, and structsInProgress below for a cycle that
+	// closes through a type still being built. Both corpora were compiled to say
+	// so rather than reasoned about: the 655 documents under testdata/schemas and
+	// the 2344 lifted out of the JSON Schema Test Suite all still build.
 	if resolved.DocumentRoot == resolved && resolved.ID != "" {
 		for _, scope := range g.dynamicScope {
 			if scope == resolved {
