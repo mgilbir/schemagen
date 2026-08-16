@@ -11500,68 +11500,65 @@ func allSubSchemas(s *schema.Schema) []*schema.Schema {
 	return subs
 }
 
-// indexAnchors records the $id and $anchor of a definition for anchor-based resolution.
-// It stores both the raw $id value and the canonicalized (resolved against base URI)
-// form so that both relative and absolute lookups succeed.
+// indexAnchors records the $id and the plain-name fragments of a definition for
+// anchor-based resolution. It stores both the raw $id value and the
+// canonicalized (resolved against base URI) form so that both relative and
+// absolute lookups succeed.
 //
 // When a definition declares its own $id, it creates a new document scope.
-// Its $anchor belongs to that scope, not the parent's, so a plain "#anchor"
-// lookup from the parent scope must NOT match it. Instead, the anchor is
-// registered under the $id-qualified form (e.g., "https://example.com/foo#anchor").
+// Its anchors belong to that scope, not the parent's, so a plain "#anchor"
+// lookup from the parent scope must NOT match them. Instead, each is registered
+// under the $id-qualified form (e.g., "https://example.com/foo#anchor").
+//
+// Which keywords declare a plain-name fragment is not decided here: it is
+// schema.AnchorNames, the one statement of that rule, shared with the resolver
+// that searches documents this one $refs into and with the resource graph. This
+// function used to answer it for itself, keyword by keyword, which is how a
+// "$dynamicAnchor" came to be indexed here -- and so reachable inside one
+// document -- while being invisible across documents (issue #307). It also
+// registered a "$anchor" under both spellings of the enclosing id but a
+// "$dynamicAnchor" under only one, an inconsistency the loop retires.
 func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
-	hasOwnScope := def.ID != "" || def.LegacyID != ""
+	ids := make([]string, 0, 2)
+	for _, id := range []string{def.ID, def.LegacyID} {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	hasOwnScope := len(ids) > 0
 
-	if def.ID != "" {
-		g.anchors[def.ID] = refPath
+	for _, id := range ids {
+		g.anchors[id] = refPath
 		// Also store the canonicalized URI (resolved against base URI).
-		if resolved := g.resolveRelativeURI(def.ID); resolved != "" && resolved != def.ID {
+		if resolved := g.resolveRelativeURI(id); resolved != "" && resolved != id {
 			g.anchors[resolved] = refPath
 		}
 	}
-	if def.LegacyID != "" {
-		g.anchors[def.LegacyID] = refPath
-		if resolved := g.resolveRelativeURI(def.LegacyID); resolved != "" && resolved != def.LegacyID {
-			g.anchors[resolved] = refPath
+
+	for _, name := range schema.AnchorNames(def) {
+		if !hasOwnScope {
+			g.anchors["#"+name] = refPath
+			continue
+		}
+		for _, id := range ids {
+			// A name the id itself spells ({"$id": "#name"}) is already
+			// indexed above under the id; qualifying it again would only
+			// mint "#name#name".
+			if id == "#"+name {
+				continue
+			}
+			g.anchors[id+"#"+name] = refPath
+			if resolved := g.resolveRelativeURI(id); resolved != "" {
+				g.anchors[resolved+"#"+name] = refPath
+			}
 		}
 	}
-	if def.Anchor != "" {
-		if hasOwnScope {
-			// The anchor belongs to the $id's scope. Register it under the
-			// $id-qualified URI so it can be found via "$id#anchor" but NOT
-			// via a plain "#anchor" from the parent scope.
-			if def.ID != "" {
-				g.anchors[def.ID+"#"+def.Anchor] = refPath
-				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
-					g.anchors[resolved+"#"+def.Anchor] = refPath
-				}
-			}
-			if def.LegacyID != "" {
-				g.anchors[def.LegacyID+"#"+def.Anchor] = refPath
-				if resolved := g.resolveRelativeURI(def.LegacyID); resolved != "" {
-					g.anchors[resolved+"#"+def.Anchor] = refPath
-				}
-			}
-		} else {
-			g.anchors["#"+def.Anchor] = refPath
-		}
-	}
-	// $dynamicAnchor is resolvable by both $ref and $dynamicRef.
-	// For $ref resolution, treat it like $anchor.
-	// Also track separately for $dynamicRef-specific resolution.
-	if def.DynamicAnchor != "" {
-		if hasOwnScope {
-			if def.ID != "" {
-				g.anchors[def.ID+"#"+def.DynamicAnchor] = refPath
-				if resolved := g.resolveRelativeURI(def.ID); resolved != "" {
-					g.anchors[resolved+"#"+def.DynamicAnchor] = refPath
-				}
-			}
-		} else {
-			g.anchors["#"+def.DynamicAnchor] = refPath
-		}
-		if g.dynamicAnchors != nil {
-			g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
-		}
+
+	// $dynamicAnchor is additionally tracked on its own for the dynamic-scope
+	// walk $dynamicRef performs, which is a different lookup from the plain
+	// "#name" one above.
+	if def.DynamicAnchor != "" && g.dynamicAnchors != nil {
+		g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
 	}
 }
 

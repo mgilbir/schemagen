@@ -874,10 +874,24 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	currentBase := parentBaseURI
 	currentDocRoot := documentRoot
 
-	// If this schema declares $id, it establishes a new base URI and document root.
+	// If this schema declares a scope-changing $id, it establishes a new base URI
+	// and document root.
+	//
+	// A plain-name fragment id -- the pre-2019-09 {"id": "#name"} spelling of
+	// what became $anchor -- is not one of those: it names the subschema inside
+	// the *current* scope and leaves the base URI alone. Treating it as a scope
+	// change gave the node a BaseURI carrying a fragment, made it its own
+	// document root, and so hid it from the resource graph's anchor walk, which
+	// stops at a nested resource -- while the resolver's own walk, which asks
+	// changesScope, descended into it and found the anchor. Two walks, two
+	// answers, for the identical document; see AnchorNames on why that shape is
+	// not allowed to stand (issue #307).
 	schemaID := s.ID
 	if schemaID == "" {
 		schemaID = s.LegacyID
+	}
+	if plainNameFragment(schemaID) != "" {
+		schemaID = ""
 	}
 	if schemaID != "" {
 		if idURL, err := url.Parse(schemaID); err == nil {
