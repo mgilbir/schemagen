@@ -1172,12 +1172,173 @@ func TestEmptyRefResolvesWhileAnUnservableRefStillFails(t *testing.T) {
 	}
 	for _, want := range []string{
 		`cannot resolve $ref "#/$defs/nope"`,
-		"pass the referenced document as an input too",
-		"--allow-remote-refs",
+		"names a location inside the document that already holds it",
 		"--lenient-refs",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the strict-ref refusal no longer says %q:\n%v", want, err)
 		}
+	}
+	// This ref is a bare fragment: it names a position in the very document
+	// being generated from. Both of the clauses about *another* document are
+	// false for it, and this test used to assert them -- it was written when
+	// they were unconditional, and asserting a message is not the same as
+	// asserting a true one. There is no document to pass and no URL to fetch.
+	for _, gone := range []string{
+		"pass the referenced document as an input too",
+		"--allow-remote-refs",
+	} {
+		if strings.Contains(err.Error(), gone) {
+			t.Errorf("the advice %q is false for a bare-fragment ref:\n%v", gone, err)
+		}
+	}
+}
+
+// ---------- issue #307: the refusal names the keyword the author wrote ----------
+
+// A $dynamicRef and a $recursiveRef are references like any other and fail like
+// any other, and until now the refusal called both of them "$ref" -- and then
+// advised passing the referenced document as an input, which for a bare fragment
+// is advice to supply a document that is already the input. Both halves are
+// fixed here, and this is the layer that assembles the parenthetical, so this is
+// where the clause-by-clause statement is held.
+func TestUnresolvedDynamicRefNamesItsOwnKeywordAndDropsTheFalseAdvice(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		keyword string
+	}{
+		{
+			name: "dynamicRef",
+			body: `{
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"$id": "https://ex.test/dyn.json",
+				"title": "DynDoc", "type": "object",
+				"properties": {"p": {"$dynamicRef": "#nowhere"}}
+			}`,
+			keyword: "$dynamicRef",
+		},
+		{
+			name: "recursiveRef",
+			body: `{
+				"$schema": "https://json-schema.org/draft/2019-09/schema",
+				"$id": "https://ex.test/rec.json",
+				"$recursiveAnchor": true,
+				"title": "RecDoc", "type": "object",
+				"properties": {"p": {"$recursiveRef": "#/$defs/nowhere"}}
+			}`,
+			keyword: "$recursiveRef",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := t.TempDir()
+			mainPath := filepath.Join(src, "main.json")
+			writeFile(t, mainPath, tc.body)
+
+			_, err := runGenerateCapturing(t, mainPath, "-o", t.TempDir(), "-p", "m")
+			if err == nil {
+				t.Fatalf("expected generation to fail on an unresolvable %s", tc.keyword)
+			}
+			msg := err.Error()
+
+			if !strings.Contains(msg, "cannot resolve "+tc.keyword+" ") {
+				t.Errorf("the refusal should name %s, got:\n%s", tc.keyword, msg)
+			}
+			// Naming the right keyword is worth nothing while the wrong one is
+			// still in the same sentence.
+			if strings.Contains(msg, "cannot resolve $ref ") {
+				t.Errorf("the refusal still says $ref for a %s, got:\n%s", tc.keyword, msg)
+			}
+			// The advice that is true here: the reference names a position in a
+			// document that is already an input.
+			if !strings.Contains(msg, "names a location inside the document that already holds it") {
+				t.Errorf("the same-document advice should appear, got:\n%s", msg)
+			}
+			// And the two clauses that are false here, both about a document the
+			// caller would have to add to the run. #317 made the remote one
+			// conditional; this is the other one.
+			for _, gone := range []string{
+				"pass the referenced document as an input too",
+				"--allow-remote-refs",
+			} {
+				if strings.Contains(msg, gone) {
+					t.Errorf("the advice %q is false for a bare-fragment %s, got:\n%s", gone, tc.keyword, msg)
+				}
+			}
+			if !strings.Contains(msg, "--lenient-refs") {
+				t.Errorf("--lenient-refs answers every one of these and should always be named, got:\n%s", msg)
+			}
+		})
+	}
+}
+
+// The other-document clause must still appear where it is true, or the fix above
+// has traded one false message for another. Same run, both kinds of ref.
+func TestUnresolvedRefAdviceKeepsBothClausesWhenBothApply(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "main.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/mixed.json",
+		"title": "MixedDoc", "type": "object",
+		"properties": {
+			"far":  {"$ref": "https://ex.test/nowhere.json"},
+			"near": {"$dynamicRef": "#nowhere"}
+		}
+	}`)
+
+	_, err := runGenerateCapturing(t, mainPath, "-o", t.TempDir(), "-p", "m")
+	if err == nil {
+		t.Fatal("expected generation to fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		`cannot resolve $ref "https://ex.test/nowhere.json"`,
+		`cannot resolve $dynamicRef "#nowhere"`,
+		"pass the referenced document as an input too",
+		"names a location inside the document that already holds it",
+		"--lenient-refs",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the message should contain %q, got:\n%s", want, msg)
+		}
+	}
+}
+
+// --lenient-refs takes the other path out of the generator, and it carried the
+// identical defect: one warning line per ref, quoting "$ref" whatever was
+// written. The line goes to stderr rather than into the returned error, so a
+// test reading only the error would pass on a command that printed the wrong
+// keyword.
+func TestLenientRefsWarningNamesTheKeywordThatWasWritten(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "main.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/lenient.json",
+		"title": "LenientDynDoc", "type": "object",
+		"properties": {"p": {"$dynamicRef": "#nowhere"}}
+	}`)
+
+	stderr, err := runGenerateCapturing(t, mainPath, "-o", t.TempDir(), "-p", "m", "--lenient-refs")
+	if err != nil {
+		t.Fatalf("generate --lenient-refs: %v\nstderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, `$dynamicRef "#nowhere" could not be resolved`) {
+		t.Errorf("the warning should name $dynamicRef, got:\n%s", stderr)
+	}
+	if strings.Contains(stderr, `$ref "#nowhere" could not be resolved`) {
+		t.Errorf("the warning still says $ref, got:\n%s", stderr)
+	}
+	// This ref left an undeclared type name behind, so the line offers three
+	// ways out -- and the first of them was to supply a document, which for a
+	// bare fragment is not a thing that can be done.
+	if strings.Contains(stderr, "Supply the referenced document") {
+		t.Errorf("the warning advises supplying a document for a bare fragment:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "Declare the anchor or the pointer it names in the document that holds it") {
+		t.Errorf("the warning does not offer the way out that exists here:\n%s", stderr)
 	}
 }
