@@ -160,6 +160,9 @@ func TestConfigValidation(t *testing.T) {
 		{"output without id", `{"documents":[{"path":"a.json","output":"a.go"}]}`, `"output" requires "id"`},
 		{"bad rootName", `{"documents":[{"id":"x","rootName":"lowercase"}]}`, "not an exported Go identifier"},
 		{"duplicate id", `{"documents":[{"id":"x","rootName":"A"},{"id":"x","rootName":"B"}]}`, "already configured"},
+		// An id with no path and no setting is read by nothing: the last way a
+		// config entry could select a document and silently do nothing.
+		{"selector with no settings", `{"documents":[{"id":"https://ex.test/a.json"}]}`, "sets nothing"},
 		{"bad validation", `{"validation":"nonsense"}`, "validation"},
 		{"bad draft", `{"draft":"99"}`, "draft"},
 	}

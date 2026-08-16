@@ -656,9 +656,17 @@ Notes:
 - Generation order is derived from the `$refs` between documents, so inputs can
   be listed in any order. Documents that reference each other across packages
   cannot be ordered — Go has no import cycles — and are reported as an error.
-- Each output directory holds exactly one package. By default a document is
-  written to `<output-dir>/<last segment of its import path>/`; override with
-  `--schema-output`.
+- Each output directory holds exactly one package, and each package writes into
+  exactly one directory. By default a document is written to
+  `<output-dir>/<last segment of its import path>/`; override with
+  `--schema-output`. Both directions are refused before anything is generated:
+  a directory holding two packages is a directory Go cannot compile, and a
+  package split across two directories is two Go packages under two import
+  paths, neither of them the one `--schema-package` named — the helper file
+  would land in only one of them, and a `$ref` between the two documents would
+  name a type the other directory declares with no import for it. Give every
+  document of a package the same output directory (the config's `output` says
+  the same thing and is held to the same rule).
 - The rule holds at every position a `$ref` can be written, the document root
   included: `{"$ref": "https://example.com/common.json"}` as a whole document
   becomes `type Person common.Common`, not a second copy of the shape. A `$ref`
@@ -709,9 +717,15 @@ schemagen generate --config schemagen.json
   that has a `path` becomes an input, in file order.
 - **Selectors**: an entry needs an `id`, a `path`, or both. `package` and
   `output` are assigned per document `$id`, so entries setting either must
-  declare `id`.
+  declare `id`. An entry with an `id`, no `path` and no setting at all is
+  refused: nothing reads it, so it selects a document and then does nothing
+  with it.
 - **Unknown fields are rejected**, so a mistyped key fails the run instead of
-  silently doing nothing. An entry matching no input is reported as a warning.
+  silently doing nothing. An entry matching no input is reported as a warning,
+  and so is a mistake one level down, inside a key the loader accepts: a
+  `fieldNames` override naming a type or property the document does not have
+  says so per override (`config fieldNames for "<id>": entry "T.nosuchprop"
+  matched no property`), the same way the equivalent `--field-map` entry does.
 - The config is used only when `--config` names it: there is no auto-discovery,
   so a build never changes behaviour because of a stray file in the working
   directory.

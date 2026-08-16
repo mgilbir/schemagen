@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -113,6 +116,17 @@ func (c *ConfigFile) validate(path string) error {
 		if d.RootName != "" && !isExportedIdent(d.RootName) {
 			return fmt.Errorf("%s: rootName %q is not an exported Go identifier", where, d.RootName)
 		}
+		// An entry with an "id", no "path" and no setting is read by nothing:
+		// "path" is what supplies an input, and the four settings are what an
+		// entry can carry. Selecting a document and then saying nothing about it
+		// is the same mistake as a mistyped key -- silently doing nothing in a
+		// file that exists to be reviewed -- and unlike the settings, which are
+		// answered by a warning once the run knows what matched, this one is
+		// decidable from the file alone. Found alongside issue #318, which
+		// closed the last of the settings that could match nothing in silence.
+		if d.Path == "" && d.Package == "" && d.Output == "" && d.RootName == "" && len(d.FieldNames) == 0 {
+			return fmt.Errorf("%s: selects $id %q and sets nothing; give it a \"package\", \"output\", \"rootName\" or \"fieldNames\", or a \"path\" to make it an input", where, d.ID)
+		}
 		if d.ID != "" {
 			id := strings.TrimSuffix(d.ID, "#")
 			if prev, ok := byID[id]; ok {
@@ -189,15 +203,59 @@ func absOrSelf(path string) string {
 // keys by document identity; --field-map keeps its historical keying and wins on
 // conflict, since an explicit flag outranks the file.
 type fieldNameSpec struct {
-	byID   map[string]generator.FieldNameMap
-	byPath map[string]generator.FieldNameMap
+	byID   map[string]*configFieldNames
+	byPath map[string]*configFieldNames
 	byBase generator.FieldMapFile
+
+	// The config's entries in file order, so one that took no effect can be
+	// reported. Every keyed input in this tool reports a key that matched
+	// nothing and this one did not: the report was handed the --field-map file
+	// alone, so the identical override written in the config said nothing at
+	// all -- while the rootName on the same config entry did. Issue #318.
+	configEntries []*configFieldNames
+
+	// The overrides the generator reported as applied, keyed by the input path
+	// they were looked up for. warnUnusedFieldMap reads the same facts keyed by
+	// file base name, which is all a --field-map key can name; a config entry
+	// names one document, and two inputs can share a base name (one/common.json
+	// and two/common.json), so answering for it out of a base-name index would
+	// let one document's applied override excuse another document's typo.
+	applied map[string]map[string]map[string]bool
+}
+
+// configFieldNames is one config document entry's fieldNames, kept for
+// reporting. Mirrors configRootName, which the rootName on the same entry is
+// reported through.
+type configFieldNames struct {
+	// label names the entry the way its own source would: its $id, or its path
+	// where the entry has none.
+	label string
+	names generator.FieldNameMap
+
+	// matched records that some input selected this entry, and paths the inputs
+	// it was applied to -- the two questions the report asks, in that order. An
+	// entry nothing selected is one warning; an entry that was selected is
+	// judged override by override against what those inputs applied.
+	matched bool
+	paths   []string
+}
+
+// selected records that one input took this entry's overrides.
+func (e *configFieldNames) selected(argPath string) {
+	if e == nil {
+		return
+	}
+	e.matched = true
+	if argPath == "" || slices.Contains(e.paths, argPath) {
+		return
+	}
+	e.paths = append(e.paths, argPath)
 }
 
 func newFieldNameSpec(cfg *ConfigFile, fieldMap generator.FieldMapFile) *fieldNameSpec {
 	spec := &fieldNameSpec{
-		byID:   map[string]generator.FieldNameMap{},
-		byPath: map[string]generator.FieldNameMap{},
+		byID:   map[string]*configFieldNames{},
+		byPath: map[string]*configFieldNames{},
 		byBase: fieldMap,
 	}
 	if cfg == nil {
@@ -207,12 +265,22 @@ func newFieldNameSpec(cfg *ConfigFile, fieldMap generator.FieldMapFile) *fieldNa
 		if len(d.FieldNames) == 0 {
 			continue
 		}
+		// One entry, registered under both selectors: an entry is what matched
+		// or did not, and reporting its $id key and its path key separately
+		// would report one mistake twice and one non-mistake besides, since only
+		// one of the two can be the key a lookup hits. Same reason
+		// rootNameSpec.seedFromConfig groups its keys by entry.
+		entry := &configFieldNames{label: d.ID, names: d.FieldNames}
+		if entry.label == "" {
+			entry.label = d.Path
+		}
 		if d.ID != "" {
-			spec.byID[strings.TrimSuffix(d.ID, "#")] = d.FieldNames
+			spec.byID[strings.TrimSuffix(d.ID, "#")] = entry
 		}
 		if d.Path != "" {
-			spec.byPath[absOrSelf(d.Path)] = d.FieldNames
+			spec.byPath[absOrSelf(d.Path)] = entry
 		}
+		spec.configEntries = append(spec.configEntries, entry)
 	}
 	return spec
 }
@@ -225,10 +293,16 @@ func (s *fieldNameSpec) lookup(argPath, docID string) generator.FieldNameMap {
 	}
 	var sources []generator.FieldNameMap
 	if docID != "" {
-		sources = append(sources, s.byID[strings.TrimSuffix(docID, "#")])
+		if e := s.byID[strings.TrimSuffix(docID, "#")]; e != nil {
+			e.selected(argPath)
+			sources = append(sources, e.names)
+		}
 	}
 	if argPath != "" {
-		sources = append(sources, s.byPath[absOrSelf(argPath)])
+		if e := s.byPath[absOrSelf(argPath)]; e != nil {
+			e.selected(argPath)
+			sources = append(sources, e.names)
+		}
 		// Last, so it overrides the config on conflict.
 		sources = append(sources, s.byBase[filepath.Base(argPath)])
 	}
@@ -248,6 +322,84 @@ func (s *fieldNameSpec) lookup(argPath, docID string) generator.FieldNameMap {
 		}
 	}
 	return merged
+}
+
+// noteApplied records the overrides the generator reported as applied for one
+// input. Called from both generation paths, beside where the same facts are
+// folded into the base-name index --field-map is reported from.
+func (s *fieldNameSpec) noteApplied(argPath string, applied map[string]map[string]bool) {
+	if s == nil || argPath == "" || len(applied) == 0 {
+		return
+	}
+	if s.applied == nil {
+		s.applied = map[string]map[string]map[string]bool{}
+	}
+	dst := s.applied[argPath]
+	if dst == nil {
+		dst = map[string]map[string]bool{}
+		s.applied[argPath] = dst
+	}
+	for typeName, props := range applied {
+		if dst[typeName] == nil {
+			dst[typeName] = map[string]bool{}
+		}
+		for prop := range props {
+			dst[typeName][prop] = true
+		}
+	}
+}
+
+// warnUnusedConfigFieldNames reports config fieldNames that took no effect: an
+// entry whose id/path selected no input at all, and, for an entry that did
+// select one, each override that matched no property there.
+//
+// Same shape as warnUnusedFieldMap and rootNameSpec.warnUnused, and deliberately
+// so: a key that matched nothing is one thing, and a caller should not have to
+// learn a different sentence for each place one can be written. The entry is
+// named as the config's, since "--field-map" would send the reader to a flag the
+// run may not have been given at all.
+//
+// An entry nothing selected warns once for the entry rather than once per
+// override, the way warnUnusedFieldMap warns once for a file key naming no
+// generated file: the overrides under a dead selector were never asked, and a
+// line each would bury the one fact that explains them.
+//
+// An override is judged matched when the property was renamed for one of the
+// inputs the entry reached, whichever source's name won: a --field-map entry
+// overriding the same property is precedence working as documented, not a typo.
+// Unlike rootName, an entry naming a document the run only reached by $ref
+// counts as unmatched -- overrides apply through the generator of a listed
+// input, so there is nothing for such an entry to do.
+func (s *fieldNameSpec) warnUnusedConfigFieldNames(w io.Writer) {
+	if s == nil || w == nil {
+		return
+	}
+	var warnings []string
+	for _, e := range s.configEntries {
+		if !e.matched {
+			warnings = append(warnings, fmt.Sprintf("config fieldNames for %q matched no input schema", e.label))
+			continue
+		}
+		for typeName, props := range e.names {
+			for prop := range props {
+				applied := false
+				for _, path := range e.paths {
+					if s.applied[path][typeName][prop] {
+						applied = true
+						break
+					}
+				}
+				if !applied {
+					warnings = append(warnings, fmt.Sprintf(
+						"config fieldNames for %q: entry %q matched no property", e.label, typeName+"."+prop))
+				}
+			}
+		}
+	}
+	sort.Strings(warnings)
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "warning: %s\n", msg)
+	}
 }
 
 // applyString sets *dst from a config value unless the flag was given.

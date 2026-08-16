@@ -223,8 +223,11 @@ func newGenerateCmd() *cobra.Command {
 				if len(processedFiles) == 0 {
 					return
 				}
-				// Order kept as the two separate defers had it.
+				// Order kept as the two separate defers had it, with the
+				// config's field names beside the flag's: the two hold the
+				// same kind of entry and are read together.
 				warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
+				fieldNames.warnUnusedConfigFieldNames(cmd.ErrOrStderr())
 				rootNames.warnUnused(cmd.ErrOrStderr())
 			}()
 
@@ -579,8 +582,12 @@ func newGenerateCmd() *cobra.Command {
 				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 
-				// Record applied overrides for unused-entry reporting.
+				// Record applied overrides for unused-entry reporting. Twice
+				// over: by file base name, which is all a --field-map key can
+				// name, and by input path, which is what a config entry names.
+				// See fieldNameSpec.noteApplied.
 				if applied := gen.AppliedOverrides(); len(applied) > 0 {
+					fieldNames.noteApplied(schemaPath, applied)
 					if appliedByFile[fileKey] == nil {
 						appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
@@ -939,6 +946,21 @@ type multiPackageParams struct {
 	warnings io.Writer
 }
 
+// outputSource names where a document's output path came from, so a refusal
+// about two directories points at the setting to change. The same reason
+// warnUnmatchedDocumentKeys names the config rather than the flag: "--schema-output"
+// sends the reader to a command line that may not contain it, and the path may
+// have come from neither, in which case the default layout is what put it there.
+func (p multiPackageParams) outputSource(id string) string {
+	if _, ok := p.schemaOutputs[id]; !ok {
+		return "the default layout"
+	}
+	if p.outKeyFromConfig[id] {
+		return "config output"
+	}
+	return "--schema-output"
+}
+
 // runMultiPackage generates several Go packages in one run. Every input schema
 // is pre-loaded once and indexed by $id, so cross-package $refs resolve to the
 // instances being generated and emit qualified references with imports instead
@@ -1102,13 +1124,25 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	}
 
 	// Reject resolved output-path collisions before generating anything, and
-	// require each output directory to hold exactly one package: files in one
-	// directory share a package clause, so two import paths writing there
-	// produce a directory Go cannot compile. Default paths use the import
-	// path's last segment, so distinct import paths ending in the same segment
-	// land in the same directory — comparing whole file paths does not catch it.
+	// hold the directory-to-package relation to a bijection in both directions.
+	//
+	// One directory, one package: files in one directory share a package clause,
+	// so two import paths writing there produce a directory Go cannot compile.
+	// Default paths use the import path's last segment, so distinct import paths
+	// ending in the same segment land in the same directory — comparing whole
+	// file paths does not catch it.
+	//
+	// One package, one directory: the other direction is the same rule read
+	// backwards, and it went unchecked. A package split across two directories is
+	// two Go packages under two import paths, neither of them the one
+	// --schema-package asked for; helpers are emitted once per package, so only
+	// one of the directories gets them; and a $ref between two documents of the
+	// package resolves to a type the other directory declares, with no import for
+	// it. The tree does not compile and nothing said so. Issue #316.
 	outPaths := make(map[string]string)
 	dirPackages := make(map[string]string)
+	pkgDirs := make(map[string]string)
+	pkgDirInput := make(map[string]*input)
 	for _, in := range inputs {
 		outPath := p.schemaOutputs[in.id]
 		if outPath == "" {
@@ -1124,6 +1158,16 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			return fmt.Errorf("packages %q and %q both write into %q; a directory holds one Go package, so give them distinct --schema-output directories", other, in.pkg, dir)
 		}
 		dirPackages[dir] = in.pkg
+
+		if otherDir, ok := pkgDirs[in.pkg]; ok && otherDir != dir {
+			first := pkgDirInput[in.pkg]
+			return fmt.Errorf("package %q writes into two directories: %q (%s, for %s) and %q (%s, for %s); a Go package is one directory, so files in two are two packages under two import paths and neither is %[1]q -- give every document of a package one output directory",
+				in.pkg,
+				otherDir, p.outputSource(first.id), first.path,
+				dir, p.outputSource(in.id), in.path)
+		}
+		pkgDirs[in.pkg] = dir
+		pkgDirInput[in.pkg] = in
 	}
 
 	em, err := emitter.New()
@@ -1159,9 +1203,12 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 
 		// Helpers are package-level functions, so each generated package gets
 		// its own helper file. Every input of a package writes into the same
-		// directory (enforced above), so one file per package is enough.
+		// directory, which the loop above now enforces rather than assumes, so
+		// one file per package is enough -- and the directory is read from what
+		// that loop resolved instead of from whichever input happened to be
+		// written last.
 		var helpers generator.HelperSet
-		var pkgDir string
+		pkgDir := pkgDirs[pkg]
 		// No packageDecls check here, unlike the single-package run: every
 		// document of a package goes through one generator with SharedTypes
 		// set, so a name is materialized at most once per package and the
@@ -1201,16 +1248,22 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 
-			if applied := gen.AppliedOverrides(); len(applied) > 0 && p.appliedByFile != nil {
-				if p.appliedByFile[fileKey] == nil {
-					p.appliedByFile[fileKey] = make(map[string]map[string]bool)
-				}
-				for typeName, props := range applied {
-					if p.appliedByFile[fileKey][typeName] == nil {
-						p.appliedByFile[fileKey][typeName] = make(map[string]bool)
+			// Recorded twice over: by file base name, which is all a --field-map
+			// key can name, and by input path, which is what a config entry
+			// names. See fieldNameSpec.noteApplied.
+			if applied := gen.AppliedOverrides(); len(applied) > 0 {
+				p.fieldNames.noteApplied(in.path, applied)
+				if p.appliedByFile != nil {
+					if p.appliedByFile[fileKey] == nil {
+						p.appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
-					for prop := range props {
-						p.appliedByFile[fileKey][typeName][prop] = true
+					for typeName, props := range applied {
+						if p.appliedByFile[fileKey][typeName] == nil {
+							p.appliedByFile[fileKey][typeName] = make(map[string]bool)
+						}
+						for prop := range props {
+							p.appliedByFile[fileKey][typeName][prop] = true
+						}
 					}
 				}
 			}
@@ -1232,7 +1285,6 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			if err := os.WriteFile(outPath, src, 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", outPath, err)
 			}
-			pkgDir = filepath.Dir(outPath)
 			if p.verbose {
 				fmt.Fprintf(out, "  -> %s\n", outPath)
 			}
