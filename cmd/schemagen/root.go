@@ -206,21 +206,48 @@ func newGenerateCmd() *cobra.Command {
 
 			// Track which (file, type, property) overrides were applied, and which
 			// schema files were actually generated, so we can warn about entries
-			// that never matched. Reported via defer so warnings still surface even
-			// if generation fails partway through.
+			// that never matched. Reported from a defer so that the four reports
+			// stay in one place with one condition on them, whichever of the two
+			// generation paths below the run takes.
 			appliedByFile := make(map[string]map[string]map[string]bool)
 			processedFiles := make(map[string]bool)
+			// Whether the run read every input it was given and generated from
+			// all of them. Read by the deferred report below, which is the only
+			// thing that needs it.
+			runFinished := false
 			defer func() {
-				// Nothing is unmatched on a run that never reached its inputs.
-				// A refusal above -- an unsupported flag combination, a config
-				// that will not load -- used to be printed underneath a warning
-				// per --root-name and per --field-map key, every one of which
-				// named a document that was about to match and none of which the
-				// reader could act on. Issue #298. processedFiles is the same
-				// signal both reports already read to decide what matched, so
-				// this asks it once more rather than tracking the run's progress
-				// a second way.
-				if len(processedFiles) == 0 {
+				// Every report below says that some key matched nothing, and
+				// that is a claim about the run as a whole: it holds once every
+				// input has been read and every override the generator would
+				// apply has been applied, and not before. A run that stopped
+				// partway knows a prefix of the answer, and these reports were
+				// being made out of that prefix regardless.
+				//
+				// Two shapes came of it, both issue #329. A key naming an input
+				// past the failure was announced as matching nothing, which made
+				// the warning set a function of the order the inputs were
+				// listed -- the same command line with its two inputs swapped
+				// grew two false warnings. And an override that failed *inside*
+				// generation was reported as having matched no property directly
+				// above the error that its match had raised, which named the
+				// same override and told the reader to go and check it: applied
+				// overrides are recorded only after gen.Generate returns.
+				//
+				// The rule was already stated here for issue #298 -- nothing is
+				// unmatched on a run that never reached its inputs -- and was
+				// implemented as len(processedFiles) == 0, which recognizes only
+				// the run that reached none of them. A run that reached some is
+				// the same situation for every key naming an input past the
+				// failure, so the condition is now the one the rule always
+				// meant, rather than a third arm beside it. One condition covers
+				// all four reports because all four are emitted from this one
+				// place; see warnUnusedFieldMap.
+				//
+				// The cost is a genuine typo going unreported on a run that also
+				// failed for another reason. It is reported on the next run --
+				// the one that gets far enough to know -- and the alternative is
+				// a report the reader cannot tell the true lines from.
+				if !runFinished {
 					return
 				}
 				// Order kept as the two separate defers had it, with the
@@ -251,7 +278,7 @@ func newGenerateCmd() *cobra.Command {
 			}
 
 			if len(schemaPackages) > 0 {
-				return runMultiPackage(cmd.OutOrStdout(), args, multiPackageParams{
+				err := runMultiPackage(cmd.OutOrStdout(), args, multiPackageParams{
 					schemaPackages:   schemaPackages,
 					schemaOutputs:    schemaOutputs,
 					pkgKeyFromConfig: pkgKeyFromConfig,
@@ -276,6 +303,8 @@ func newGenerateCmd() *cobra.Command {
 					appliedByFile:    appliedByFile,
 					warnings:         cmd.ErrOrStderr(),
 				})
+				runFinished = err == nil
+				return err
 			}
 
 			// One emitter for the whole run: constructing it parses the full
@@ -372,6 +401,21 @@ func newGenerateCmd() *cobra.Command {
 				}
 				return ""
 			}
+			// The same answer for a document nobody listed -- one a $ref
+			// reached, whose definitions this package materializes -- recorded
+			// as having been given for that rather than for an input. A key that
+			// only ever answers here does not name a root type, and where no
+			// name was contested it names nothing at all; see
+			// rootNameSpec.warnInertExternalKeys and issue #331.
+			externalRootNameOf := func(label string, s *schema.Schema) string {
+				if name := rootNames.lookupExternal(label, docIDOf(s)); name != "" {
+					return name
+				}
+				if rootNameFromFile {
+					return generator.SchemaNameToGoName(filepath.Base(label))
+				}
+				return ""
+			}
 
 			var sharedGen *generator.Generator
 			// The $refs between the inputs, in shared-types mode only, where
@@ -435,10 +479,10 @@ func newGenerateCmd() *cobra.Command {
 				// types in this package too, and the pins that separate them are
 				// keyed by the node instance the generator will see.
 				sharedResolver := schema.NewCompositeResolver(resolvers...)
-				external := collectExternalClaims(args, inputByPath, sharedResolver, ownDocs, rootNameOf)
+				external := collectExternalClaims(args, inputByPath, sharedResolver, ownDocs, externalRootNameOf)
 				pinDocsByPath = external.merge(inputByPath)
 				pinDocPaths = external.documentPaths(args)
-				pinnedDefNames = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr())
+				pinnedDefNames = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr(), rootNames.notePrefixApplied)
 				sharedGen = generator.New(generator.Config{
 					PackageName:         pkgName,
 					OutputDir:           outputDir,
@@ -504,13 +548,13 @@ func newGenerateCmd() *cobra.Command {
 					// own, so neither guard could see it, and two of them
 					// declaring one definition name silently became one type.
 					// Issue #297; see collectExternalClaims.
-					external := collectExternalClaims([]string{schemaPath}, inputByPath, resolver, ownDocs, rootNameOf)
+					external := collectExternalClaims([]string{schemaPath}, inputByPath, resolver, ownDocs, externalRootNameOf)
 					pinDocsByPath = external.merge(inputByPath)
 					pinDocPaths = external.documentPaths([]string{schemaPath})
 					// Kept for the collision diagnostic below, which has to say
 					// which definition the name it could not use was chosen for.
 					pinnedDefNames = resolveSharedDefinitionNames(
-						[]string{schemaPath}, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr())
+						[]string{schemaPath}, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr(), rootNames.notePrefixApplied)
 					gen = generator.New(generator.Config{
 						PackageName:         pkgName,
 						OutputDir:           outputDir,
@@ -648,6 +692,7 @@ func newGenerateCmd() *cobra.Command {
 				}
 			}
 
+			runFinished = true
 			return nil
 		},
 	}
@@ -666,7 +711,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&draftStr, "draft", "", "Override JSON Schema draft version (auto-detected from $schema if omitted). Values: 3, 4, 6, 7, 2019-09, 2020-12, v1")
 	cmd.Flags().StringVar(&validationStr, "validation", string(generator.ValidationModeStatic), "Validation strategy: static, hybrid, or runtime")
 	cmd.Flags().StringVar(&fieldMapPath, "field-map", "", "Path to a JSON file mapping schema properties to specific Go field names (keyed by schema file base name → Go type name → JSON property)")
-	cmd.Flags().StringArrayVar(&rootNameFlags, "root-name", nil, "Exact Go type name for a root schema, used verbatim. A bare name (single input only), or a repeatable \"<key>=<Name>\" pair where <key> is the schema file base name, \"id:<document $id>\" or \"file:<schema path>\" — most specific wins (default: schema title, or Root)")
+	cmd.Flags().StringArrayVar(&rootNameFlags, "root-name", nil, "Exact Go type name for a root schema, used verbatim. A bare name (single input only), or a repeatable \"<key>=<Name>\" pair where <key> is the schema file base name, \"id:<document $id>\" or \"file:<schema path>\" — most specific wins (default: schema title, or Root). A key naming a document the run reached by $ref instead of one it was given sets the name that document's definitions are qualified with, not its root type")
 	cmd.Flags().BoolVar(&rootNameFromFile, "root-name-from-filename", false, "Derive each root type name from the schema filename (Go initialism rules apply), e.g. person.json → PersonJSON, http_api_url.json → HTTPAPIURLJSON")
 	cmd.Flags().BoolVar(&sharedTypes, "shared-types", false, "Generate all schemas into one Go package sharing materialized types and helpers (each schema needs a distinct root type name; requires --validation static)")
 	cmd.Flags().StringArrayVar(&schemaPkgFlags, "schema-package", nil, "Assign a schema document to a Go package: \"<document $id>=<Go import path>\". Repeatable; activates multi-package generation where cross-package $refs emit imports instead of copies. Generation order is derived from the $refs between documents")
@@ -720,12 +765,25 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 // exactly this way, and the run was told to supply a document that was its own
 // input (issue #307). What is missing there is the anchor or the pointer.
 //
+// A fifth route is a document that is there, is named correctly, and is in a
+// format this tool does not read. A $ref to a .yaml file names another document,
+// so the first clause fired for it and advised passing that document as an
+// input -- which produces the same refusal from the other entry point, and was
+// the advice a caller got instead of the one sentence that explains it (issue
+// #330). Such a ref is not a suppliable one, which is what AnySuppliableDocument
+// answers, and what it needs saying about it is said here.
+//
 // Every clause appears when one run has refs of several kinds, because then
 // every one of them is true. --lenient-refs is the answer to all of them and is
 // always named.
 func unresolvedRefAdvice(e *generator.UnresolvedRefsError) string {
 	var parts []string
-	if e.AnyOtherDocument() && e.AnyFetchNotAttempted() {
+	if e.AnyUnsupportedFormat() {
+		parts = append(parts, "a reference naming a .yaml or .yml file is refused for its extension rather than parsed: schemagen reads JSON only, "+
+			"and by the same rule whether the document is listed as an input or reached by a reference, so passing it as an input gives the same "+
+			"answer -- convert the document to JSON")
+	}
+	if e.AnySuppliableDocument() && e.AnyFetchNotAttempted() {
 		parts = append(parts, "a reference by absolute URI is matched against the $id of the documents given to this run, "+
 			"so pass the referenced document as an input too; a reference by relative path is read from that path next to "+
 			"the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead")
@@ -1124,6 +1182,17 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		}
 		return ""
 	}
+	// chosenRootName for a document nobody listed, recorded as such. See
+	// rootNameSpec.lookupExternal and issue #331.
+	externalChosenRootName := func(label string, s *schema.Schema) string {
+		if name := p.rootNames.lookupExternal(label, docIDOf(s)); name != "" {
+			return name
+		}
+		if p.rootNameFromFile {
+			return generator.SchemaNameToGoName(filepath.Base(label))
+		}
+		return ""
+	}
 	rootNameOf := func(schemaPath string, s *schema.Schema) string {
 		if name := chosenRootName(schemaPath, s); name != "" {
 			return name
@@ -1149,10 +1218,10 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		for _, in := range pkgInputs[pkg] {
 			paths = append(paths, in.path)
 		}
-		external := collectExternalClaims(paths, byPath, resolver, ownDocs, chosenRootName)
+		external := collectExternalClaims(paths, byPath, resolver, ownDocs, externalChosenRootName)
 		pkgDocsByPath[pkg] = external.merge(byPath)
 		pkgDocPaths[pkg] = external.documentPaths(paths)
-		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, pkgDocsByPath[pkg], external.claims, rootNameOf, p.warnings)
+		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, pkgDocsByPath[pkg], external.claims, rootNameOf, p.warnings, p.rootNames.notePrefixApplied)
 	}
 
 	// Reject resolved output-path collisions before generating anything, and

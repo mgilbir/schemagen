@@ -772,6 +772,50 @@ func (e *UnresolvedRefsError) AnyOtherDocument() bool {
 	return false
 }
 
+// AnySuppliableDocument reports whether at least one of these refs is one that
+// adding a document to the run could serve: it names a document other than the
+// one it is written in, and it did not fail because the file it names is in a
+// format this tool does not read.
+//
+// AnyOtherDocument answers only the first half, and answering only that half is
+// what made the advice wrong for issue #330. A $ref to a .yaml file names
+// another document, so "pass the referenced document as an input too" was
+// printed for it -- and passing it produces the very same refusal from the input
+// path, which is where the refusal was written in the first place. There is no
+// document to supply; there is a format to convert.
+func (e *UnresolvedRefsError) AnySuppliableDocument() bool {
+	for _, ref := range e.Refs {
+		if strings.HasPrefix(ref, "#") {
+			continue
+		}
+		if cause, ok := e.Causes[ref]; ok && cause != nil {
+			var unsupported *schema.UnsupportedFormatError
+			if errors.As(cause, &unsupported) {
+				continue
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// AnyUnsupportedFormat reports whether at least one of these refs named a file
+// this tool will not read for its extension -- a .yaml or .yml document, per
+// schema.UnsupportedFormatError. It is the case for which converting the
+// document, rather than supplying it or fetching it, is the answer.
+func (e *UnresolvedRefsError) AnyUnsupportedFormat() bool {
+	for _, cause := range e.Causes {
+		if cause == nil {
+			continue
+		}
+		var unsupported *schema.UnsupportedFormatError
+		if errors.As(cause, &unsupported) {
+			return true
+		}
+	}
+	return false
+}
+
 // AnySameDocument reports whether at least one of these refs names a location
 // *inside* the document that holds it: a bare fragment, "#name" or "#/pointer".
 //

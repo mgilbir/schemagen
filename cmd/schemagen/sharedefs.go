@@ -153,7 +153,16 @@ func keywordPrefix(keyword string) string {
 // whose definitions this unit materializes all the same. They are claims like
 // any other from here on; see collectExternalClaims for why they have to be
 // collected separately.
-func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(path string, s *schema.Schema) string, warnings io.Writer) map[*schema.Schema]string {
+//
+// noteQualified, where the caller supplies one, is told the path of every claim
+// whose final name took its document's prefix. It exists because that is the
+// only observable effect a --root-name key naming a $ref-reached document has,
+// and a key that never had it was accepted in silence -- issue #331. Reported
+// from here rather than derived afterwards because here is where the qualifier
+// is decided; reading it back off the pinned names would be a second derivation
+// of the same rule, which is how the four spellings in externaldefs.go's header
+// came apart.
+func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(path string, s *schema.Schema) string, warnings io.Writer, noteQualified func(path string)) map[*schema.Schema]string {
 	claims := collectNameClaims(paths, byPath, external, rootNameOf)
 	if len(claims) == 0 {
 		return nil
@@ -210,8 +219,10 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			// Not for a root type, which is the name being qualified with:
 			// prefixing an unlisted document's root type with its own root name
 			// spells it twice and separates nothing. Those are numbered below.
+			tookDocumentPrefix := false
 			if len(documents) > 1 && group[i].defKey != "" {
 				qualified = claimQualifier(group[i], byPath, rootNameOf) + qualified
+				tookDocumentPrefix = true
 			}
 			if qualified == name {
 				// Nothing here tells this claim from the others -- it is a
@@ -226,6 +237,9 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			pinned[group[i].node] = qualified
 			taken[qualified] = true
 			moved = true
+			if tookDocumentPrefix && noteQualified != nil {
+				noteQualified(group[i].path)
+			}
 		}
 		// The claims the two qualifiers above could not separate, which is every
 		// pair whose $defs keys differ only in what the Go name derivation drops.
@@ -853,7 +867,7 @@ func describeNameSplit(name string, group []nameClaim, documents int, split spli
 	referenced := ""
 	if claimsExternalDocument(group) {
 		referenced = "A document marked \"reached by $ref\" was not listed as an input: it was resolved from the reference, and what this package declares of it is declared here all the same, which is why it is judged here. " +
-			"--root-name reaches such a document by an \"id:\" or \"file:\" key and sets the name its definitions are qualified with. " +
+			"--root-name reaches such a document by an \"id:\" key, by a \"file:\" key, or by the bare base name of the file it was read from, and sets the name its definitions are qualified with. " +
 			"Its own root type has nothing but its title to be told apart by, so where two of those claim one name the later ones are numbered; give them distinct titles to choose. "
 	}
 	return fmt.Sprintf("warning: %d documents claim the Go type name %s, and those claims do not describe the same type, so they cannot be one:\n%s\n"+

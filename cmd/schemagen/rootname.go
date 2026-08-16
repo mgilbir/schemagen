@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -33,6 +34,21 @@ type rootNameSpec struct {
 	bare string
 
 	used map[string]bool
+	// usedForInput is the subset of used that answered for a document the
+	// caller listed, as against one a $ref reached. See warnUnused.
+	usedForInput map[string]bool
+	// externalKey maps the label of each $ref-reached document a key answered
+	// for to that key, first answer kept, and prefixApplied marks the labels
+	// whose answer was actually used to qualify a contested name.
+	//
+	// A key naming such a document sets the name its definitions are qualified
+	// with and does not name its root type, which is the documented split. What
+	// it must not do is claim to have done something and be silent about it:
+	// with nothing to qualify, the key had no effect a caller could observe,
+	// and it was still counted as used and so reported as nothing at all. Issue
+	// #331.
+	externalKey   map[string]string
+	prefixApplied map[string]bool
 
 	// Keys seeded from a config file, grouped by the entry that supplied them.
 	// One entry contributes several keys ($id and path) but only the
@@ -50,11 +66,14 @@ type configRootName struct {
 
 func newRootNameSpec() *rootNameSpec {
 	return &rootNameSpec{
-		byID:       map[string]string{},
-		byFile:     map[string]string{},
-		byBase:     map[string]string{},
-		used:       map[string]bool{},
-		configKeys: map[string]bool{},
+		byID:          map[string]string{},
+		byFile:        map[string]string{},
+		byBase:        map[string]string{},
+		used:          map[string]bool{},
+		usedForInput:  map[string]bool{},
+		externalKey:   map[string]string{},
+		prefixApplied: map[string]bool{},
+		configKeys:    map[string]bool{},
 	}
 }
 
@@ -105,12 +124,58 @@ func (r *rootNameSpec) validate(inputCount int) error {
 	return nil
 }
 
-// lookup returns the configured root type name for one input, matching the most
-// specific key first: the path as given, its absolute form, the document $id,
-// then the file's base name.
+// lookup returns the configured root type name for one input, and records the
+// key that answered as having named a listed document.
 func (r *rootNameSpec) lookup(argPath, docID string) string {
-	if r == nil {
+	key, name := r.match(argPath, docID)
+	if key == "" {
 		return ""
+	}
+	r.used[key] = true
+	r.usedForInput[key] = true
+	return name
+}
+
+// lookupExternal is lookup for a document nobody listed -- one a $ref reached,
+// whose definitions this package materializes all the same. label is what
+// collectExternalClaims settled on for it, which is a file path where the
+// document is one and its $id where it is a resource embedded in another.
+//
+// The answer is the same; only the bookkeeping differs. Such a key does not name
+// the document's root type -- that is named from the document's own title -- so
+// a key that only ever answered here has done less than the flag's help says,
+// and where nothing needed qualifying it has done nothing at all. warnUnused is
+// what says so, and this is what lets it tell the two uses apart.
+func (r *rootNameSpec) lookupExternal(label, docID string) string {
+	key, name := r.match(label, docID)
+	if key == "" {
+		return ""
+	}
+	r.used[key] = true
+	if _, seen := r.externalKey[label]; !seen {
+		r.externalKey[label] = key
+	}
+	return name
+}
+
+// notePrefixApplied records that the name this spec gave the document labelled
+// label was used to qualify a contested Go type name -- the one effect a key
+// naming a $ref-reached document has. See resolveSharedDefinitionNames, which
+// calls it, and warnUnused, which reads it.
+func (r *rootNameSpec) notePrefixApplied(label string) {
+	if r == nil || label == "" {
+		return
+	}
+	r.prefixApplied[label] = true
+}
+
+// match reports the key that answers for one document and the name it carries,
+// trying the most specific namespace first: the path as given, its absolute
+// form, the document $id, then the file's base name. The empty key means no key
+// answered.
+func (r *rootNameSpec) match(argPath, docID string) (key, name string) {
+	if r == nil {
+		return "", ""
 	}
 	type candidate struct {
 		m   map[string]string
@@ -133,15 +198,13 @@ func (r *rootNameSpec) lookup(argPath, docID string) string {
 	}
 	for _, c := range candidates {
 		if name, ok := c.m[c.key]; ok {
-			r.used[c.key] = true
-			return name
+			return c.key, name
 		}
 	}
 	if r.bare != "" {
-		r.used[r.bare] = true
-		return r.bare
+		return r.bare, r.bare
 	}
-	return ""
+	return "", ""
 }
 
 // flagTargets reports whether a --root-name flag already names the document a
@@ -208,6 +271,61 @@ func (r *rootNameSpec) warnUnused(w io.Writer) {
 			fmt.Fprintf(w, "warning: config rootName for %q matched no input schema\n", entry.label)
 		}
 	}
+
+	r.warnInertExternalKeys(w)
+}
+
+// warnInertExternalKeys reports the keys whose only answer was for a document
+// this run reached by $ref, where that answer changed nothing.
+//
+// Such a key is honoured, and for exactly one thing: it names the prefix that
+// document's definitions are qualified with where two documents claim one Go
+// type name. It does not name the document's root type, which is derived from
+// the document's own title -- the split the name-contest diagnostic states in as
+// many words. So a key that reached a contest did something the caller can see,
+// in that diagnostic, and says nothing more here.
+//
+// A key that reached no contest did nothing whatsoever, and was silent: it had
+// been consulted, which is all warnUnused above asks, so it counted as used. The
+// caller asked for PinnedLeaf, got Leaf, and was told nothing -- while a key
+// naming no document at all is reported. Issue #331. This is the line that was
+// missing, and it changes no behaviour: what the key does and does not do is
+// what it always did.
+func (r *rootNameSpec) warnInertExternalKeys(w io.Writer) {
+	labels := make([]string, 0, len(r.externalKey))
+	for label := range r.externalKey {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	for _, label := range labels {
+		key := r.externalKey[label]
+		// A key that also named a listed input is doing the job the flag
+		// advertises, whatever else it reached.
+		if r.usedForInput[key] || r.prefixApplied[label] {
+			continue
+		}
+		source := fmt.Sprintf("--root-name %q", key)
+		if r.configKeys[key] {
+			source = fmt.Sprintf("config rootName for %q", r.configEntryLabel(key))
+		}
+		fmt.Fprintf(w, "warning: %s names %s, which this run reached by $ref rather than being given as an input. "+
+			"For such a document the name sets the prefix its definitions are qualified with where another document claims one of their Go type names, "+
+			"and nothing here was contested, so it had no effect. The document's own root type is named from its title; "+
+			"list the document as an input of the run to name that.\n", source, label)
+	}
+}
+
+// configEntryLabel names the config entry a seeded key came from, so a warning
+// about it points at the file that holds it rather than at a flag the command
+// line may not carry. Falls back to the key, which is one of the entry's own
+// selectors.
+func (r *rootNameSpec) configEntryLabel(key string) string {
+	for _, entry := range r.configEntries {
+		if slices.Contains(entry.keys, key) {
+			return entry.label
+		}
+	}
+	return key
 }
 
 // docIDOf returns a schema's declared identity, preferring $id over the draft-3/4

@@ -568,7 +568,12 @@ document that is fine), so the two read together.
 
 A key naming a document the run reached by `$ref` rather than one it was given
 counts as matched: such a document takes part in the name resolution below, and
-`--root-name` is how you choose what its definitions are qualified with.
+`--root-name` is how you choose what its definitions are qualified with. That is
+all it does there — the document's own root type is still named from its title,
+because it is not a root the run was asked to produce. So when nothing in the run
+contests one of that document's names, the key has nothing to qualify and no
+effect at all; that case is reported as a warning rather than passing in silence.
+List the document as an input if you want to name its root type.
 
 ### Several Schemas, One Package
 
@@ -827,7 +832,7 @@ Notes:
 - The JSON tag always keeps the original property name, so round-trip serialization is unaffected.
 - Override values must be valid **exported** Go identifiers (struct fields must be exported to (un)marshal).
 - Generation **fails with an actionable error** when an override would produce uncompilable code — i.e. when it collides with another field, with a generated method (`Validate`, `MarshalJSON`, `UnmarshalJSON`, `SetDefaults`), or with the synthesized `AdditionalProperties` or `PatternProperties` overflow fields.
-- Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. These warnings are shown even if generation later fails.
+- Config that never takes effect emits a `warning:` on stderr (but does not fail the run): a top-level key that doesn't name a generated schema file, or an individual entry that matched no property. "Matched nothing" is a statement about the whole run, so these warnings are emitted only by a run that got through all of its inputs — a run that failed partway has not read the documents the remaining keys name, and reporting them would make the warning set depend on the order the inputs were listed. Fix the failure and re-run to see them.
 
 Limitations:
 
@@ -840,7 +845,7 @@ JSON Schema `pattern`, `patternProperties`, and `propertyNames.pattern` use ECMA
 
 ## How It Works
 
-Input is JSON only. `.yaml`/`.yml` files are rejected (YAML is not yet supported); files with any other extension are parsed as JSON.
+Input is JSON only. `.yaml`/`.yml` files are rejected (YAML is not yet supported); files with any other extension are parsed as JSON. The rule is on the extension, not on the body, and it applies wherever a schema document enters a run: a `.yaml` file is refused whether it is listed as an input or reached by a `$ref`, and holding a JSON body does not change that.
 
 The generation pipeline has these stages:
 
