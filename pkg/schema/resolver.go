@@ -122,16 +122,70 @@ func plainNameFragment(id string) string {
 	return name
 }
 
-// anchorNameOf returns the name under which s can be reached as a plain "#name"
-// anchor. Normalize copies a legacy "id" into ID, so both are consulted.
-func anchorNameOf(s *Schema) string {
-	if s.Anchor != "" {
-		return s.Anchor
+// AnchorNames returns every plain-name fragment under which s can be reached as
+// "#name" from within its own resource, most specific spelling first.
+//
+// This is the single statement of which keywords declare such a name, and every
+// index of anchors in this repository is required to consult it rather than
+// keep a list of its own. Three separate indexes had grown three lists: the
+// resolver's (here, for a document another document $refs into), the resource
+// graph's in resources.go, and the generator's indexAnchors. They disagreed
+// about "$dynamicAnchor", so one and the same schema set resolved when spelled
+// as an embedded resource and was refused when spelled as a second input
+// document (issue #307).
+//
+// The spellings:
+//
+//   - "$anchor", 2019-09 and later.
+//   - "$dynamicAnchor", 2020-12 and later. §8.2.2 says it "behaves like $anchor
+//     ... in that it creates a plain name fragment", so a *plain* $ref naming
+//     one resolves by ordinary lookup. That is a separate question from what
+//     $dynamicRef does with it, which is a dynamic-scope walk over the same
+//     name and stays in pkg/generator.
+//   - The pre-2019-09 spelling {"id": "#name"}, which names a subschema without
+//     changing the base URI. Normalize copies a legacy "id" into ID, so both
+//     fields are consulted.
+//
+// "$recursiveAnchor" is deliberately not here. 2019-09 gives it a boolean, not
+// a name -- {"$recursiveAnchor": true} -- so it declares no plain-name fragment
+// that any "#name" could spell, and there is nothing for a plain $ref to name.
+// What it declares is the *unnamed* dynamic anchor "$recursiveRef": "#" walks
+// to, which resources.go records under the empty key and which never reaches
+// this function.
+//
+// Multiple names on one node are possible and all of them count: a node may
+// carry "$anchor": "a" and "$dynamicAnchor": "b" and answer to both.
+func AnchorNames(s *Schema) []string {
+	if s == nil {
+		return nil
 	}
-	if name := plainNameFragment(s.ID); name != "" {
-		return name
+	var names []string
+	add := func(name string) {
+		if name == "" {
+			return
+		}
+		for _, have := range names {
+			if have == name {
+				return
+			}
+		}
+		names = append(names, name)
 	}
-	return plainNameFragment(s.LegacyID)
+	add(s.Anchor)
+	add(s.DynamicAnchor)
+	add(plainNameFragment(s.ID))
+	add(plainNameFragment(s.LegacyID))
+	return names
+}
+
+// hasAnchorName reports whether s answers to the plain-name fragment anchor.
+func hasAnchorName(s *Schema, anchor string) bool {
+	for _, name := range AnchorNames(s) {
+		if name == anchor {
+			return true
+		}
+	}
+	return false
 }
 
 // changesScope reports whether a subschema's id starts a new document scope.
@@ -142,18 +196,19 @@ func changesScope(s *Schema) bool {
 	return s.ID != "" && plainNameFragment(s.ID) == ""
 }
 
-// findAnchor searches the schema tree for a $anchor matching the given name,
-// or for the pre-2019-09 spelling of the same thing ({"id": "#name"}).
+// findAnchor searches the schema tree for a node answering to the given
+// plain-name fragment, under every spelling AnchorNames recognises.
 //
-// The legacy form matters most for documents reached through a SchemaResolver:
-// the generator's own anchor index covers the root document and does understand
-// "id", but a resolver-fetched document is not in that index and is searched
-// here instead.
+// Which spellings those are matters most for documents reached through a
+// SchemaResolver: the generator's own anchor index covers the root document,
+// but a resolver-fetched document is not in that index and is searched here
+// instead, so anything this search does not know about is unreachable across
+// documents while remaining reachable within one (issue #307).
 func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 	if s == nil {
 		return nil, fmt.Errorf("anchor %q not found", anchor)
 	}
-	if anchorNameOf(s) == anchor {
+	if hasAnchorName(s, anchor) {
 		return s, nil
 	}
 	// Search in all sub-schema locations, but skip sub-schemas that start their

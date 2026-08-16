@@ -103,13 +103,17 @@ func collectResourceAnchors(s *Schema, res *Resource, isRoot bool) {
 	if !isRoot && s.DocumentRoot == s {
 		return
 	}
-	if s.Anchor != "" {
-		res.Anchors[s.Anchor] = s
+	// AnchorNames is the one statement of which keywords declare a plain-name
+	// fragment; see its doc comment for why this must not be a list kept here.
+	for _, name := range AnchorNames(s) {
+		res.Anchors[name] = s
 	}
 	if s.DynamicAnchor != "" {
 		res.DynamicAnchors[s.DynamicAnchor] = s
-		res.Anchors[s.DynamicAnchor] = s
 	}
+	// "$recursiveAnchor" names nothing, so it is not in Anchors. It declares the
+	// resource's unnamed dynamic anchor, which is what "$recursiveRef": "#"
+	// walks to.
 	if s.RecursiveAnchor != nil && *s.RecursiveAnchor {
 		res.DynamicAnchors[""] = s
 	}
