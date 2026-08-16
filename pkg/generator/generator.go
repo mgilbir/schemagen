@@ -11522,7 +11522,7 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 			schemaID = resolved.LegacyID
 		}
 		if schemaID != "" {
-			return SchemaNameToGoName(lastPathSegment(schemaID))
+			return TypeNameForDocumentID(schemaID)
 		}
 	}
 	return fallback

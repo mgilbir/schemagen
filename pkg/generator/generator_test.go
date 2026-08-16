@@ -1504,6 +1504,12 @@ func TestSchemaNameToGoName(t *testing.T) {
 	}
 }
 
+// The table is exercised through TypeNameForRef, the exported entry point,
+// rather than refToGoName directly. That is the whole of the function callers
+// outside this package see, and going through it means the derivation and the
+// name this package publishes for it are held to one set of answers -- which is
+// what let cmd/schemagen stop carrying its own copy of this derivation, and its
+// own copy of this table to watch the copy for drift.
 func TestRefToGoName(t *testing.T) {
 	tests := []struct {
 		input string
@@ -1527,14 +1533,42 @@ func TestRefToGoName(t *testing.T) {
 		{"urn:uuid:deadbeef-1234-ffff-ffff-4321feebdaed", "Deadbeef1234FfffFfff4321feebdaed"},
 		// URN with fragment
 		{"urn:uuid:deadbeef-1234-ff00-00ff-4321feebdaed#something", "Something"},
+		// A ref that crosses into another document: the document part names no
+		// type, the fragment does. This is the shape cmd/schemagen reports a
+		// contested name for, and the reason issue #297's AInner/BInner are
+		// derived from "Inner" rather than from "a.json".
+		{"a.json#/$defs/Inner", "Inner"},
+		{"one/common.json#/properties/x", "X"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := refToGoName(tt.input)
+			got := TypeNameForRef(tt.input)
 			if got != tt.want {
-				t.Errorf("refToGoName(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("TypeNameForRef(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// TypeNameForDocumentID is the other half of what a caller needs to predict a
+// generated name, and the arm of goNameForResolvedRef that reads a document
+// root's $id is the only thing that derives one. Holding both to this table is
+// what lets cmd/schemagen name a referenced document without reimplementing the
+// URI handling: query and fragment dropped, one trailing slash tolerated, and a
+// scheme-less relative id reduced to its own last segment.
+func TestTypeNameForDocumentID(t *testing.T) {
+	for _, tt := range []struct{ id, want string }{
+		{"https://ex.test/a.json", "AJSON"},
+		{"https://ex.test/one/common.json", "CommonJSON"},
+		{"./tree", "Tree"},
+		{"tree", "Tree"},
+		{"baseUriChangeFolder/", "BaseURIChangeFolder"},
+		{"https://ex.test/x.json?q=1#frag", "XJSON"},
+		{"urn:uuid:abc", "UrnUUIDAbc"},
+	} {
+		if got := TypeNameForDocumentID(tt.id); got != tt.want {
+			t.Errorf("TypeNameForDocumentID(%q) = %q, want %q", tt.id, got, tt.want)
+		}
 	}
 }
 
