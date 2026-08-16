@@ -153,6 +153,59 @@ func TestOneDocumentAndTwoDocumentSpellingsOfAnAnchorAgree(t *testing.T) {
 	}
 }
 
+// The generator keeps an anchor index of its own for the document it is
+// generating, consulted before any base URI is resolved and before any resolver
+// is asked. Once the resolver learned the same rule, almost everything that
+// index serves became reachable a second way -- through the document-root
+// lookup and a LocalResolver over the resource -- and disabling the index
+// outright left the whole suite green. That made it a branch no fixture could
+// falsify, which is either dead code or an unguarded behaviour.
+//
+// It is the second. Both later routes need a base URI to resolve the reference
+// against: resolveRelativeURIAgainst returns nothing for a *relative* ref with
+// no base, and the document-root-plus-resolver step is skipped outright when
+// the context base URI is nil. So a document that declares no $id of its own,
+// holding a resource whose $id is relative, reaches its anchors only through
+// the generator's index. Nothing in the corpus had that shape; these are it.
+//
+// The urn row is here because a URN has no hierarchy to resolve a fragment
+// against either, and reaches the index by a different key.
+func TestAnchorInAnIDLessDocumentResolvesThroughTheGeneratorIndex(t *testing.T) {
+	cases := []struct {
+		name string
+		ref  string
+		id   string
+		kw   string
+	}{
+		{"relativeID/anchor", "foo.json#bar", "foo.json", "$anchor"},
+		{"relativeID/dynamicAnchor", "foo.json#bar", "foo.json", "$dynamicAnchor"},
+		{"urnID/anchor", "urn:example:foo#bar", "urn:example:foo", "$anchor"},
+		{"urnID/dynamicAnchor", "urn:example:foo#bar", "urn:example:foo", "$dynamicAnchor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			// No "$id" on the root: that is what leaves the base URI nil.
+			doc := fmt.Sprintf(`{
+				"$schema": "https://json-schema.org/draft/2020-12/schema",
+				"title": "MDoc",
+				"type": "object",
+				"properties": {"a": {"$ref": %q}},
+				"$defs": {"X": {"$id": %q, "title": "XDoc",
+				                %q: "bar", "type": "string", "minLength": 3}}
+			}`, tc.ref, tc.id, tc.kw)
+			path := filepath.Join(dir, "m.json")
+			writeFile(t, path, doc)
+
+			generateCompileRun(t,
+				func(modRoot string) []string {
+					return []string{path, "-o", filepath.Join(modRoot, "gen"), "-p", "gen"}
+				},
+				"example.com/m/gen", "MDoc", anchorVerdicts)
+		})
+	}
+}
+
 // A $dynamicRef naming the fragment across documents was refused by the same
 // lookup and with the same message, because it too ends at the anchor index of
 // the document it points into. Both the absolute and the relative spelling of
