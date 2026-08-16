@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/a.json",
+  "x-unmodelled": true,
+  "$comment": "x-unmodelled is load-bearing: it is a keyword the runtime evaluator cannot compile, which keeps this resource on the static path where #332 is visible.",
+  "$dynamicAnchor": "node",
+  "type": "object",
+  "required": ["x"],
+  "properties": {
+    "x": { "type": "integer" },
+    "r": { "$ref": "r.json" }
+  }
+}

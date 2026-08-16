@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/r.json",
+  "$comment": "The shared resource. See main.json beside this, and issue #332.",
+  "$dynamicAnchor": "node",
+  "type": "object",
+  "required": ["c"],
+  "properties": {
+    "c": { "type": "integer" },
+    "v": { "$dynamicRef": "#node" }
+  }
+}

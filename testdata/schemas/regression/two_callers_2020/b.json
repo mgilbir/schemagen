@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/b.json",
+  "x-unmodelled": true,
+  "$dynamicAnchor": "node",
+  "type": "object",
+  "required": ["y"],
+  "properties": {
+    "y": { "type": "integer" },
+    "r": { "$ref": "r.json" }
+  }
+}

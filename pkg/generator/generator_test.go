@@ -653,6 +653,38 @@ func TestUnevaluatedItemsIgnoresAdditionalItemsWithoutTupleItems(t *testing.T) {
 	}
 }
 
+// TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount pins how many
+// array positions BaseSchema counts as already evaluated, and the point of it is
+// that BaseSchema is a *fragment* type: the number is the one it gets validated
+// as the root of its own evaluation, not the one the document around it gets.
+//
+// The shape is the suite's dynamic-dereferencing idiom. baseSchema carries an
+// $id, so it is a resource; it declares "addons" itself, as the empty
+// $defs/defaultAddons that exists only to satisfy the bookending requirement;
+// and the document around it declares "addons" a second time, with two
+// prefixItems, under $defs/derived.
+//
+// Two declarations means two answers, and which one applies is a property of the
+// path rather than of the text. A caller holding a BaseSchema and calling
+// Validate has entered baseSchema and nothing else, so the $dynamicRef resolves
+// to baseSchema's own declaration -- the empty one, which evaluates no positions
+// -- and the count is 1, from baseSchema's single prefixItems entry. A document
+// validated through Root enters derived on the way in and the reference resolves
+// there instead, for 2.
+//
+// It asserted 2 before #293 settled the seed, and 2 is the *document's* answer
+// written on a fragment type. That was the disagreement the issue is about: the
+// generator resolved this reference against the frame Root's generation had
+// pushed, while the generated evaluator states the opposite contract for itself
+// -- "a generated type is validated as the root of its own evaluation" -- and
+// would have answered 1 at the same node.
+//
+// Root's own answer does not move with this, which is what keeps it a change to
+// a type and not to a verdict. Two declarations of "addons" are in Root's reach,
+// so dynamicScopeDecidesTheTarget routes it to the runtime evaluator, which
+// resolves the reference per value and is seeded where it always was. Both suite
+// documents for this shape (draft2020-12/unevaluatedItems, "unevaluatedItems
+// with $dynamicRef") are judged identically before and after.
 func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T) {
 	input := `{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -701,8 +733,14 @@ func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T
 	if base.UnevaluatedItems == nil || !base.UnevaluatedItems.IsForbidden {
 		t.Fatalf("expected forbidden unevaluatedItems on BaseSchema, got %#v", base.UnevaluatedItems)
 	}
-	if base.UnevaluatedItems.EvaluatedCount != 2 {
-		t.Fatalf("evaluated count = %d, want 2", base.UnevaluatedItems.EvaluatedCount)
+	// 1, not 2: baseSchema's own prefixItems, and nothing from the $dynamicRef,
+	// which resolves to the empty declaration this resource carries. See above --
+	// 2 is the document's answer and Root is where it is given.
+	if base.UnevaluatedItems.EvaluatedCount != 1 {
+		t.Fatalf("evaluated count = %d, want 1: a BaseSchema validated on its own has entered no resource that declares \"addons\" but itself, "+
+			"so the $dynamicRef resolves to its own empty $defs/defaultAddons and contributes no evaluated position. "+
+			"2 is the count for a document that entered $defs/derived first, and Root -- which is compiled to the runtime evaluator -- is what answers for that",
+			base.UnevaluatedItems.EvaluatedCount)
 	}
 	// The evaluated count above stays right even when the schema is *also*
 	// given a length bound, so asserting it alone let a real over-enforcement
@@ -718,6 +756,27 @@ func TestArrayAliasUnevaluatedItemsCollectsDynamicRefEvaluatedCount(t *testing.T
 	}
 }
 
+// TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount is the same
+// question for 2019-09's spelling, and the fragment type here is not even a
+// resource: TreeItem1 is the second entry of tree's `items` tuple, written
+// inside the tree resource and carrying the $recursiveRef.
+//
+// A value validated as a TreeItem1 has entered nothing at all -- the type is a
+// subschema, not a resource root, so it puts no frame on any scope. A
+// $recursiveRef bookended by an anchored resource and resolved against an empty
+// scope is the case 2019-09 answers with the reference's static target, which is
+// the resource the keyword is written in: tree, whose `items` tuple is two long.
+//
+// So 2. It asserted 3, which is extended-tree's tuple length -- the document's
+// answer, reached because the generator was still resolving against the frame
+// Root's generation had pushed. The emitted evaluator would say 2 at this node
+// and always would have: _evalNode starts its scope nil and only a node
+// publishing anchors of its own puts a frame on it, which this node does not.
+//
+// The document is unaffected for the reason given on the $dynamicRef test above:
+// Root has two anchored resources in reach and is compiled to the evaluator.
+// draft2019-09/unevaluatedItems' "unevaluatedItems with $recursiveRef" gives the
+// same two verdicts before and after.
 func TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount(t *testing.T) {
 	input := `{
 		"$schema": "https://json-schema.org/draft/2019-09/schema",
@@ -763,11 +822,33 @@ func TestArrayAliasUnevaluatedItemsCollectsRecursiveRefEvaluatedCount(t *testing
 	if item.UnevaluatedItems == nil || !item.UnevaluatedItems.IsForbidden {
 		t.Fatalf("expected forbidden unevaluatedItems on TreeItem1, got %#v", item.UnevaluatedItems)
 	}
-	if item.UnevaluatedItems.EvaluatedCount != 3 {
-		t.Fatalf("evaluated count = %d, want 3", item.UnevaluatedItems.EvaluatedCount)
+	// 2, not 3: tree's own tuple. 3 is extended-tree's, which applies to a
+	// document that entered extended-tree -- and TreeItem1, judged on its own,
+	// has entered nothing.
+	if item.UnevaluatedItems.EvaluatedCount != 2 {
+		t.Fatalf("evaluated count = %d, want 2: TreeItem1 is a subschema and not a resource, so a value validated as one has entered nothing, "+
+			"and the bookended $recursiveRef resolves to the resource it is written in -- tree, whose items tuple is 2 long. "+
+			"3 is extended-tree's tuple length, which is the answer for a document that entered extended-tree first",
+			item.UnevaluatedItems.EvaluatedCount)
 	}
 }
 
+// TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames is the object half
+// of the $dynamicRef count test above, and the same fragment/document split: the
+// names BaseSchema counts as evaluated are the ones a value validated *as a
+// BaseSchema* evaluates.
+//
+// That is "foo" and only "foo". The $dynamicRef resolves to baseSchema's own
+// empty $defs/defaultAddons, which has no properties, so nothing joins the one
+// baseSchema states itself. "bar" comes from $defs/derived, which a value
+// reaches only by entering the document root first -- and Root, with two
+// declarations of "addons" in reach, is compiled to the runtime evaluator and
+// still answers with both.
+//
+// It asserted foo *and* bar before #293. The absence of "bar" is asserted here
+// rather than left implied, because that is the half that fails if the seed goes
+// back to the document root: an assertion that only names what must be present
+// passes under either answer.
 func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
 	input := `{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -815,11 +896,32 @@ func TestUnevaluatedPropertiesCollectsDynamicRefEvaluatedNames(t *testing.T) {
 	if base.UnevaluatedProperties == nil {
 		t.Fatalf("expected unevaluatedProperties definition")
 	}
-	if !containsString(base.UnevaluatedProperties.EvaluatedNames, "foo") || !containsString(base.UnevaluatedProperties.EvaluatedNames, "bar") {
-		t.Fatalf("evaluated names = %#v, want foo and bar", base.UnevaluatedProperties.EvaluatedNames)
+	if !containsString(base.UnevaluatedProperties.EvaluatedNames, "foo") {
+		t.Fatalf("evaluated names = %#v, want foo: baseSchema states it itself", base.UnevaluatedProperties.EvaluatedNames)
+	}
+	if containsString(base.UnevaluatedProperties.EvaluatedNames, "bar") {
+		t.Fatalf("evaluated names = %#v, want no bar: a value validated as a BaseSchema has entered no resource declaring \"addons\" but baseSchema itself, "+
+			"so the $dynamicRef resolves to its own empty $defs/defaultAddons and brings no property with it. "+
+			"bar comes from $defs/derived, which only a document entering the root reaches -- and Root is compiled to the runtime evaluator, which still counts both",
+			base.UnevaluatedProperties.EvaluatedNames)
 	}
 }
 
+// TestPropertyRecursiveRefWithUnevaluatedPropertiesGeneratesWrapper is the
+// object half of the $recursiveRef count test, and the wrapper it names is the
+// fragment: TreeBranches is tree's "branches" property, a subschema and not a
+// resource.
+//
+// A value validated as a TreeBranches has entered nothing, so its bookended
+// $recursiveRef resolves to the resource the keyword is written in -- tree --
+// and the properties that evaluates are tree's own: "node" and "branches".
+//
+// It asserted "node" and "name" before #293. "name" is extended-tree's property,
+// which applies to a document that entered extended-tree, and putting it on this
+// type was the document's answer written on a fragment. Its absence is asserted
+// here for the same reason the $dynamicRef test asserts bar's: a list of names
+// that must be present cannot tell the two answers apart, since "node" is in
+// both.
 func TestPropertyRecursiveRefWithUnevaluatedPropertiesGeneratesWrapper(t *testing.T) {
 	input := `{
 		"$schema": "https://json-schema.org/draft/2019-09/schema",
@@ -869,8 +971,14 @@ func TestPropertyRecursiveRefWithUnevaluatedPropertiesGeneratesWrapper(t *testin
 	if wrapper.UnevaluatedProperties == nil || !wrapper.UnevaluatedProperties.IsForbidden {
 		t.Fatalf("expected forbidden unevaluatedProperties on wrapper, got %#v", wrapper.UnevaluatedProperties)
 	}
-	if !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "node") || !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "name") {
-		t.Fatalf("evaluated names = %#v, want node and name", wrapper.UnevaluatedProperties.EvaluatedNames)
+	if !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "node") || !containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "branches") {
+		t.Fatalf("evaluated names = %#v, want node and branches: those are tree's properties, and tree is what a bookended $recursiveRef resolves to "+
+			"when the value has entered nothing", wrapper.UnevaluatedProperties.EvaluatedNames)
+	}
+	if containsString(wrapper.UnevaluatedProperties.EvaluatedNames, "name") {
+		t.Fatalf("evaluated names = %#v, want no name: it is extended-tree's property, which applies to a document that entered extended-tree. "+
+			"TreeBranches is a subschema of tree and puts no frame on any scope, so nothing it is validated as has entered extended-tree",
+			wrapper.UnevaluatedProperties.EvaluatedNames)
 	}
 }
 

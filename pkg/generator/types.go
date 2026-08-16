@@ -1352,13 +1352,50 @@ type Doc struct {
 	Description string
 	// Annotations is the vocabulary rendered below the prose. See its own type.
 	Annotations Annotations
+
+	// Caveats are paragraphs stating what this declaration does *not* check and
+	// why, written by the generator rather than taken from the schema.
+	//
+	// They exist for the one kind of weakness a caller cannot see from the
+	// generated API. A missing check is normally visible -- a type with no
+	// Validate method, a field typed `any` -- and AliasDef.Unenforced already
+	// says so at the one position where even that is invisible. This is the same
+	// statement for a type that *has* a Validate and whose Validate is right for
+	// the schema as this type is asked to judge it, and yet enforces less than
+	// the same schema enforces inside the document it was cut from. Nothing about
+	// the declaration betrays that; the comment is the only place it can be said.
+	//
+	// On Doc rather than on one def kind because the position that loses the
+	// check is not one shape: it has been an array element, and a property or a
+	// whole type would do as well. Every kind of named type embeds Doc, so one
+	// field and one template block reach all of them -- which is the argument
+	// Doc's own comment above makes for the other three.
+	//
+	// See noteVacuousBookend, which is the only writer today, and #293, which is
+	// the decision that made the loss possible.
+	Caveats []string
 }
 
 // HasProse reports whether a comment line has already been written above the
 // point the annotation vocabulary starts, which is what decides whether that
 // vocabulary needs a blank comment line in front of it. See mkAnnotationCtxFunc.
+//
+// Caveats count. They are rendered by the same template as the prose and above
+// the same vocabulary, so a comment that has one has been opened just as surely
+// as one carrying a description, and the vocabulary below it needs its blank
+// line either way.
 func (d Doc) HasProse() bool {
-	return d.Title != "" || d.Description != ""
+	return d.Title != "" || d.Description != "" || len(d.Caveats) > 0
+}
+
+// addCaveat records one statement about what this declaration does not check.
+//
+// It is a pointer method on the embedded field, which is what lets a caller
+// holding a *StructDef, a *AliasDef or any of the other nine reach it through
+// one interface assertion without a type switch that a new kind could fall out
+// of. See attachVacuityCaveats, which is that caller.
+func (d *Doc) addCaveat(caveat string) {
+	d.Caveats = append(d.Caveats, caveat)
 }
 
 // Annotations carries the annotation-vocabulary keywords that describe a schema
