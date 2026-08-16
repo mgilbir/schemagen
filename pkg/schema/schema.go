@@ -575,6 +575,18 @@ type Schema struct {
 	// A new document root is established whenever a subschema declares its own $id.
 	// If nil, the top-level schema is the document root.
 	DocumentRoot *Schema `json:"-"`
+
+	// RetrievalURI is the URI this document was actually retrieved from, set on
+	// the root of a document a resolver fetched. It is the base URI of a document
+	// that declares no $id of its own (RFC 3986 §5.1.3, which draft 2020-12
+	// §9.1.1 defers to), and for HTTP that is the effective request URI *after*
+	// redirects -- not the URI the reference asked for. Carried here because the
+	// two are established in different packages: only the HTTP layer knows which
+	// URL answered, and only the generator computes base URIs for what it was
+	// handed. A document declaring $id is unaffected, since ComputeBaseURIs lets
+	// the $id override whatever base it is given. Nil for a document nothing
+	// fetched. Issue #315.
+	RetrievalURI *url.URL `json:"-"`
 }
 
 // knownSchemaKeys is the set of JSON property names that correspond to struct

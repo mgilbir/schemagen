@@ -2,6 +2,7 @@ package generator
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -117,6 +118,19 @@ type Generator struct {
 	// one context, so a ref that failed against one context but succeeded
 	// against another is not reported as unresolvable.
 	resolvedRefs map[string]bool
+
+	// unresolvedRefCauses records what the configured resolver said about each
+	// ref it was asked for and could not serve. The resolvers already produce a
+	// precise answer for every way a fetch can fail -- a 404, a refused
+	// connection, an HTML body -- and every call site here threw it away, so all
+	// four reached the caller as one message advising a flag three of them had
+	// already passed (issue #317).
+	unresolvedRefCauses map[string]error
+
+	// refAttemptErrs collects the errors of one resolveRefInContext call, so the
+	// verdict on the ref and the reasons behind it are recorded together. Reset
+	// at the start of each call; only read when the ref did not resolve.
+	refAttemptErrs []error
 
 	// crossPackageMisses records $ref targets owned by another package of a
 	// cross-package run that were not registered by that package. Generate
@@ -288,6 +302,7 @@ func New(cfg Config) *Generator {
 		nodesInProgress:    make(map[*schema.Schema]bool),
 		nullChecked:        make(map[*schema.Schema]bool),
 
+		unresolvedRefCauses:         make(map[string]error),
 		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
 		mergedPropertyOrigins:       make(map[*schema.Schema]map[string]*mergedPropertyOrigin),
 		mergeDocSources:             make(map[*schema.Schema]*schema.Schema),
@@ -352,6 +367,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// earlier schema's unresolved refs against a later one.
 	g.unresolvedRefs = make(map[string]bool)
 	g.resolvedRefs = make(map[string]bool)
+	g.unresolvedRefCauses = make(map[string]error)
 	g.crossPackageMisses = make(map[crossPackageMiss]bool)
 	// Per schema for the same reason: in shared-types mode one generator runs
 	// several documents, and a warning left over from an earlier one would be
@@ -572,7 +588,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
 	if refs := g.neverResolvedRefs(); len(refs) > 0 {
 		if !g.config.LenientRefs {
-			return nil, &UnresolvedRefsError{Refs: refs}
+			return nil, &UnresolvedRefsError{Refs: refs, Causes: g.causesFor(refs)}
 		}
 		// Lenient: the degradation is accepted, but not hidden. Carrying the
 		// list on the File is what puts it in the emitted source, and
@@ -665,10 +681,79 @@ func (g *Generator) typeDefsInScope() []TypeDef {
 // output instead.
 type UnresolvedRefsError struct {
 	Refs []string
+
+	// Causes holds what the resolver chain said about a ref, keyed by the ref.
+	// A ref no resolver was ever asked about -- one that failed a local defs,
+	// anchor or document-root lookup and never reached step 5 -- has no entry,
+	// and neither does a run configured with no resolver at all.
+	//
+	// The resolvers already distinguished a 404 from a refused connection from
+	// an HTML body from a fetch never attempted, and every call site dropped it:
+	// all four arrived here as one message whose advice was to pass
+	// --allow-remote-refs, which three of them had passed (issue #317).
+	Causes map[string]error
 }
 
 func (e *UnresolvedRefsError) Error() string {
-	return fmt.Sprintf("cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+	var b strings.Builder
+	fmt.Fprintf(&b, "cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+	for _, ref := range e.Refs {
+		cause, ok := e.Causes[ref]
+		if !ok || cause == nil {
+			continue
+		}
+		fmt.Fprintf(&b, "\n  %q: %s", ref, flattenResolverError(cause))
+	}
+	return b.String()
+}
+
+// AnyFetchAttempted reports whether at least one of these refs failed with the
+// network already reached: --allow-remote-refs was passed, a request was made,
+// and the request is what did not produce a schema.
+func (e *UnresolvedRefsError) AnyFetchAttempted() bool {
+	for _, cause := range e.Causes {
+		var fetch *schema.RemoteFetchError
+		if errors.As(cause, &fetch) {
+			return true
+		}
+	}
+	return false
+}
+
+// AnyFetchNotAttempted reports whether at least one of these refs failed without
+// any fetch being made -- because it names no http(s) document, or because
+// --allow-remote-refs put no HTTP resolver in the chain. It is the case the
+// flag is the answer to, and the only one for which advising it is true.
+func (e *UnresolvedRefsError) AnyFetchNotAttempted() bool {
+	for _, ref := range e.Refs {
+		cause, ok := e.Causes[ref]
+		if !ok || cause == nil {
+			return true
+		}
+		var fetch *schema.RemoteFetchError
+		if !errors.As(cause, &fetch) {
+			return true
+		}
+	}
+	return len(e.Refs) == 0
+}
+
+// flattenResolverError renders one ref's resolver answers on a single line.
+//
+// A chain's answers are joined with newlines by errors.Join, which reads as
+// several unrelated failures once it is nested under a ref and an "Error:"
+// prefix. They are one failure with one line per resolver, so they are written
+// that way.
+func flattenResolverError(err error) string {
+	var chain *schema.ResolveError
+	if errors.As(err, &chain) {
+		parts := make([]string, 0, len(chain.Errs))
+		for _, e := range chain.Errs {
+			parts = append(parts, e.Error())
+		}
+		return strings.Join(parts, "; ")
+	}
+	return strings.ReplaceAll(err.Error(), "\n", "; ")
 }
 
 // DefaultRootTypeName is the root type name a schema is given when nothing
@@ -936,6 +1021,24 @@ func documentIdentityOf(s *schema.Schema) string {
 		}
 	}
 	return "<unidentified schema node>"
+}
+
+// causesFor collects the recorded resolver answers for the given refs. Only the
+// refs being reported are carried, so an entry left behind by a ref that
+// resolved from another context cannot reach the message.
+func (g *Generator) causesFor(refs []string) map[string]error {
+	var out map[string]error
+	for _, ref := range refs {
+		cause, ok := g.unresolvedRefCauses[ref]
+		if !ok || cause == nil {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]error, len(refs))
+		}
+		out[ref] = cause
+	}
+	return out
 }
 
 func (g *Generator) neverResolvedRefs() []string {
@@ -10078,6 +10181,7 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 // most callers probe optimistically and handle a nil result, so a failure
 // against one context is not evidence that the ref is unresolvable.
 func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
+	g.refAttemptErrs = g.refAttemptErrs[:0]
 	resolved := g.resolveRefInContextUncounted(ref, ctx)
 	// A ref can be the first thing to materialize a schema: into a vendor
 	// keyword's raw JSON, or into a document the resolver fetched. Neither was
@@ -10096,8 +10200,35 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 		g.resolvedRefs[ref] = true
 	} else {
 		g.unresolvedRefs[ref] = true
+		// The reasons this attempt failed, kept against the ref. A later attempt
+		// from another context may still resolve it, in which case
+		// neverResolvedRefs drops the ref and nothing reads this; but the first
+		// context to fail is the one that reached the resolver with the most
+		// complete base URI, so its answer is the one kept.
+		if _, seen := g.unresolvedRefCauses[ref]; !seen {
+			if cause := errors.Join(g.refAttemptErrs...); cause != nil {
+				g.unresolvedRefCauses[ref] = cause
+			}
+		}
 	}
 	return resolved
+}
+
+// noteRefAttempt records what a resolver said about a ref this call could not
+// serve. Deduplicated by message: the same reference is offered to the resolver
+// under several spellings (with the fragment and without, against the context
+// base and raw), and the identical chain of answers each time is noise rather
+// than evidence.
+func (g *Generator) noteRefAttempt(err error) {
+	if err == nil {
+		return
+	}
+	for _, prev := range g.refAttemptErrs {
+		if prev.Error() == err.Error() {
+			return
+		}
+	}
+	g.refAttemptErrs = append(g.refAttemptErrs, err)
 }
 
 func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema) *schema.Schema {
@@ -10183,7 +10314,10 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 			if g.resolver != nil {
 				if fragment != "" {
 					// Load the document root first.
-					if docSchema, err := g.resolver.ResolveSchema(docKey, ctxBase); err == nil {
+					docSchema, err := g.resolver.ResolveSchema(docKey, ctxBase)
+					if err != nil {
+						g.noteRefAttempt(err)
+					} else {
 						g.registerRemoteSchema(docSchema, &docURL)
 						local := schema.NewLocalResolver(docSchema)
 						if resolved, err := local.Resolve("#" + fragment); err == nil {
@@ -10192,7 +10326,10 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 					}
 				}
 				// Fallback: try with the full URI (no fragment, or fragment resolution failed above).
-				if s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase); err == nil {
+				s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase)
+				if err != nil {
+					g.noteRefAttempt(err)
+				} else {
 					g.registerRemoteSchema(s, &docURL)
 					return s
 				}
@@ -10210,7 +10347,10 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 			frag := refURL.Fragment
 			docURL := *refURL
 			docURL.Fragment = ""
-			if docSchema, err := g.resolver.ResolveSchema(docURL.String(), ctxBase); err == nil {
+			docSchema, err := g.resolver.ResolveSchema(docURL.String(), ctxBase)
+			if err != nil {
+				g.noteRefAttempt(err)
+			} else {
 				g.registerRemoteSchema(docSchema, &docURL)
 				local := schema.NewLocalResolver(docSchema)
 				if resolved, err := local.Resolve("#" + frag); err == nil {
@@ -10218,7 +10358,10 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 				}
 			}
 		}
-		if s, err := g.resolver.ResolveSchema(ref, ctxBase); err == nil {
+		s, err := g.resolver.ResolveSchema(ref, ctxBase)
+		if err != nil {
+			g.noteRefAttempt(err)
+		} else {
 			// Register the remote schema so its internal $ref chains resolve.
 			if refURL, parseErr := url.Parse(ref); parseErr == nil {
 				frag := refURL.Fragment
@@ -11126,6 +11269,16 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
 	if s == nil {
 		return
+	}
+	// A fetched document is based on the URI it was retrieved from, which is the
+	// one the $ref asked for only when nothing redirected. docURI is the asked-for
+	// one -- it is derived from the reference here, before anything is fetched --
+	// so a document that came back from somewhere else says so on itself and that
+	// answer wins. A document declaring its own $id is unaffected either way,
+	// because ComputeBaseURIs lets the $id override the base it is handed. Issue
+	// #315; see Schema.RetrievalURI.
+	if s.RetrievalURI != nil {
+		docURI = s.RetrievalURI
 	}
 	s.ComputeBaseURIs(docURI, s)
 	g.buildDocumentRoots(s)

@@ -433,6 +433,7 @@ var nonKeywordFields = map[string]bool{
 	"DetectedDraft": true,
 	"BaseURI":       true,
 	"DocumentRoot":  true,
+	"RetrievalURI":  true, // which URL answered the fetch, not something the document states
 }
 
 // statedForm reports the shape a schema states a keyword in, for the keywords
