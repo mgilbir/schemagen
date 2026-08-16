@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -807,10 +808,34 @@ func TestLoadFromFileNotFound(t *testing.T) {
 	}
 }
 
-func TestLoadFromFileYAMLUnsupported(t *testing.T) {
-	_, err := LoadFromFile("test.yaml")
-	if err == nil {
-		t.Fatal("expected error for YAML file")
+// The file has to exist, and this one did not: "test.yaml" is not in the test's
+// working directory, so os.ReadFile answered first and the assertion was on
+// "no such file or directory". The extension gate the test names was never
+// reached, in a package where it is one switch statement away. Found while
+// closing issue #330, which is about that gate being consulted from one entry
+// point and not the other.
+//
+// A JSON body under the YAML extension, deliberately: the refusal is on the
+// extension, so a file that would parse must be refused too. That is what makes
+// the same file's treatment as an input and as a $ref target comparable at all.
+func TestLoadFromFileRefusesYAMLByExtension(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"leaf.yaml", "leaf.yml", "LEAF.YAML"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(`{"type": "string"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := LoadFromFile(path)
+		if err == nil {
+			t.Fatalf("%s: expected the YAML extension to be refused", name)
+		}
+		var unsupported *UnsupportedFormatError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("%s: error is %v, want an *UnsupportedFormatError -- the CLI's advice for an unresolved ref reads this type", name, err)
+		}
+		if got := err.Error(); got != "YAML schema files are not yet supported" {
+			t.Errorf("%s: message is %q, want the sentence README states", name, got)
+		}
 	}
 }
 
@@ -1250,6 +1275,44 @@ func TestCompositeResolverJoinsErrors(t *testing.T) {
 // check misses: a symlink that lives inside the base directory but points
 // outside it. The lexical form of the path is confined; the file it names is
 // not, so confinement has to resolve symlinks.
+// The other half of issue #330. LoadFromFile gated .yaml by extension and this
+// resolver did not, so one file was refused as an input and read as a $ref
+// target -- and a document that really was YAML came back from here as a JSON
+// parse error at a character offset, with the sentence that explains it written
+// a few lines away in a function this path never calls.
+//
+// The typed error is asserted rather than the text: the CLI assembles its advice
+// for an unresolved reference by asking what the causes are, and a refusal that
+// arrives as a plain string is one the advice cannot tell from a missing file.
+func TestFileResolverRefusesYAMLByExtension(t *testing.T) {
+	dir := t.TempDir()
+	// A JSON body, so that a resolver reading the bytes would succeed. The
+	// extension is what is being tested.
+	if err := os.WriteFile(filepath.Join(dir, "leaf.yaml"), []byte(`{"type": "string"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "leaf.json"), []byte(`{"type": "string"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewFileResolver(dir)
+	_, err := r.ResolveSchema("leaf.yaml", nil)
+	if err == nil {
+		t.Fatal("a $ref to a .yaml file was resolved; the input path refuses the same file")
+	}
+	var unsupported *UnsupportedFormatError
+	if !errors.As(err, &unsupported) {
+		t.Fatalf("error is %v, want an *UnsupportedFormatError", err)
+	}
+	if !strings.Contains(err.Error(), "YAML schema files are not yet supported") {
+		t.Errorf("error is %q, want the sentence the input path gives", err)
+	}
+	// The control: nothing else was made unreadable.
+	if _, err := r.ResolveSchema("leaf.json", nil); err != nil {
+		t.Errorf("a .json sibling stopped resolving: %v", err)
+	}
+}
+
 func TestFileResolverRefusesSymlinkEscape(t *testing.T) {
 	base := t.TempDir()
 	outsideDir := t.TempDir()

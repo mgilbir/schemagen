@@ -857,6 +857,15 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return cached, nil
 	}
 
+	// The same extension gate LoadFromFile applies to a document the caller
+	// listed. A document a $ref reaches is a document of this run too, and the
+	// two entry points answering differently about one file is issue #330: the
+	// file the input path refuses was read here, and a real YAML document was
+	// reported as a JSON parse failure at a character offset.
+	if err := unsupportedFormat(filePath); err != nil {
+		return nil, fmt.Errorf("FileResolver: %q: %w", filePath, err)
+	}
+
 	// Load the file.
 	data, err := os.ReadFile(filePath)
 	if err != nil {
