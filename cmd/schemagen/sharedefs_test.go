@@ -383,8 +383,19 @@ func TestSharedTypesFollowsWhatADefinitionReferences(t *testing.T) {
 
 // Definitions that say the same thing about themselves and reach outside their
 // own $defs are not known to describe the same type: what a "#/properties/k"
-// pointer reaches is not a claim this resolver tracks, so nothing establishes
-// that the two documents' versions of it agree -- and here they do not.
+// pointer reaches is not a claim shareableNames can compare, so nothing
+// establishes that the two documents' versions of it agree -- and here they do
+// not.
+//
+// The position the pointer reaches is claimed too, and this test used to say it
+// was not: it expected a single K beside the split CDocThing and DDocThing.
+// That single K was the string, so DDocThing was `type DDocThing K` over it and
+// d.json's "t" -- an integer with a minimum of 9 by its own schema -- refused
+// every integer and accepted a string. The two definitions were held apart and
+// what they both pointed at was merged underneath them, which is issue #319 in
+// its two-document spelling. Both positions are named after their own document
+// now, and the assertion below is on the underlying types rather than on the
+// names alone, because the names were never the part that was wrong.
 func TestSharedTypesSplitsDefinitionsThatReachOutsideTheirOwnDefs(t *testing.T) {
 	body := func(title, k string) string {
 		return fmt.Sprintf(`{
@@ -402,9 +413,28 @@ func TestSharedTypesSplitsDefinitionsThatReachOutsideTheirOwnDefs(t *testing.T) 
 		t.Fatalf("generate: %v", err)
 	}
 	got := strings.Join(declaredTypeNames(t, out), ",")
-	if want := "CDoc,CDocThing,DDoc,DDocThing,K"; got != want {
+	if want := "CDoc,CDocK,CDocThing,DDoc,DDocK,DDocThing"; got != want {
 		t.Errorf("declared types = %s, want %s", got, want)
 	}
+
+	// The names are not the part that was wrong, so the verdict is taken from
+	// the generated code: d.json's "t" is an integer of at least 9 and c.json's
+	// is a string of at least 3, and before the split both were the string.
+	generateCompileRunRoots(t,
+		func(modRoot string) []string {
+			return append(append([]string{}, paths...),
+				"-o", filepath.Join(modRoot, "gen"), "-p", "gen", "--shared-types")
+		},
+		"example.com/m/gen",
+		[]rootInstance{
+			{"CDoc", `{"t":"abc"}`, true, `{"t":"abc"}`},
+			{"CDoc", `{"t":"ab"}`, false, ""},
+			{"CDoc", `{"t":9}`, false, ""},
+			// Refused before the fix: DDocThing stood over c.json's string.
+			{"DDoc", `{"t":9}`, true, `{"t":9}`},
+			{"DDoc", `{"t":8}`, false, ""},
+			{"DDoc", `{"t":"abc"}`, false, ""},
+		})
 }
 
 // Three keywords a definition can differ by that Schema.MarshalJSON does not
