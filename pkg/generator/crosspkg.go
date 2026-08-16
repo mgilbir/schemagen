@@ -27,6 +27,15 @@ type CrossPackageRegistry struct {
 	// document, so ownership does not depend on a node declaring an $id or on
 	// DocumentRoot having been populated by this generator.
 	nodePackages map[*schema.Schema]string
+
+	// documentsWithTypes records the documents at least one Go type was
+	// registered from. It is what tells apart the two causes of a cross-package
+	// miss: a document its owning package never generated in this run, and a
+	// document it did generate that gives *this node* no declaration of its own.
+	// The two need opposite advice, and reporting the first for both is issue
+	// #310 -- a run whose own output held out/tpkg/t.go on disk was told t.json
+	// had not been generated.
+	documentsWithTypes map[string]bool
 }
 
 type qualifiedType struct {
@@ -120,9 +129,10 @@ func (r *CrossPackageRegistry) noteTypeInfo(s *schema.Schema, shape typeShape) {
 // import-path assignment.
 func NewCrossPackageRegistry(docPackages map[string]string) *CrossPackageRegistry {
 	return &CrossPackageRegistry{
-		DocPackages:  docPackages,
-		types:        make(map[*schema.Schema]qualifiedType),
-		nodePackages: make(map[*schema.Schema]string),
+		DocPackages:        docPackages,
+		types:              make(map[*schema.Schema]qualifiedType),
+		nodePackages:       make(map[*schema.Schema]string),
+		documentsWithTypes: make(map[string]bool),
 	}
 }
 
@@ -146,6 +156,17 @@ func (r *CrossPackageRegistry) RecordType(s *schema.Schema, importPath, typeName
 	if _, ok := r.types[s]; !ok {
 		r.types[s] = qualifiedType{ImportPath: importPath, Name: typeName}
 	}
+	if r.documentsWithTypes == nil {
+		r.documentsWithTypes = make(map[string]bool)
+	}
+	r.documentsWithTypes[documentIdentityOf(s)] = true
+}
+
+// documentWasGenerated reports whether any Go type was registered from the
+// document a miss landed in, which is what says whether the document or only
+// the node is missing. See crossPackageMiss.DocumentGenerated.
+func (r *CrossPackageRegistry) documentWasGenerated(document string) bool {
+	return r != nil && r.documentsWithTypes[document]
 }
 
 // forgetType removes s's registration, for a type that was materialized and

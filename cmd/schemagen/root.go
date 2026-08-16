@@ -183,6 +183,17 @@ func newGenerateCmd() *cobra.Command {
 				return fmt.Errorf("--schema-output requires --schema-package mappings")
 			}
 
+			// Everything above answers a question about the command line, and
+			// for those the flag list is the answer. Past this point the run is
+			// reading schemas, and a failure is about a document rather than
+			// about how the command was invoked -- so printing all twenty-five
+			// lines of usage after it only scrolls the message that says what
+			// actually happened off the top of the terminal. The diagnostics
+			// this command emits are long and specific on purpose (which
+			// fragment of which document, and what to write instead), and all of
+			// it was being buried. Issue #310's aside.
+			cmd.SilenceUsage = true
+
 			// Load optional field-name overrides. Keyed by schema-file base name.
 			var fieldMap generator.FieldMapFile
 			if fieldMapPath != "" {
