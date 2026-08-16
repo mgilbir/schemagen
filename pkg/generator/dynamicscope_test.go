@@ -485,7 +485,7 @@ func TestReferenceKeywordsFollowTheirDialect(t *testing.T) {
 // document is read under 2019-09 and keeps its $recursiveRef, while the draft-7
 // nodes around it lose theirs. The same rule normalizeDialectFormats applies to
 // draft 3's format spellings, and the same reason refOverridesSiblingsForSchema
-// exists beside refOverridesSiblings.
+// is asked of the node rather than of the run.
 func TestReferenceKeywordsFollowTheNodesOwnDialect(t *testing.T) {
 	_, root := dynamicScopeFixture(t, `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
