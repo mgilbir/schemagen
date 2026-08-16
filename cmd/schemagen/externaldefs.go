@@ -17,7 +17,7 @@ import (
 //
 // The rule being enforced is #249's: two declarations of one Go type name that
 // do not describe the same type must not silently become one type. It has now
-// been broken three times, once per *spelling* of "two declarations", because
+// been broken four times, once per *spelling* of "two declarations", because
 // the claim set was keyed on the wrong thing each time.
 //
 //   - #249 keyed it on the inputs of the run. resolveSharedDefinitionNames is
@@ -33,15 +33,26 @@ import (
 //     walk #297 added, which followed refs *out of* a document, never looked.
 //     A string definition and an integer one became one `type X string`, and
 //     every instance setting the integer property was refused at decode.
+//   - #319 found that the resource is the right key for *which* declarations
+//     this unit holds and the wrong one for *whose* they are. A resource the run
+//     generates as an input was exempted whole, because collectNameClaims claims
+//     its definitions -- and it claims only those, so a $ref into any other
+//     position of the document reached a node nobody had claimed a name for.
+//     "#/$defs/A/properties/x" and "#/$defs/B/properties/x" both derive X and
+//     became one `type X string`, discarding the integer. The exemption is per
+//     node now rather than per resource; see cross.
 //
-// A third parallel walk would have made it four keys that must agree, which is
-// the shape #178 and #203/#211 came out of. So the key is the thing JSON Schema
-// itself names: the **schema resource**. A resource is a node that establishes
-// its own base URI -- an input document root, a document the resolver fetched,
-// or a subschema carrying $id -- and each owns a definition namespace. All three
-// spellings above are then one case: a reference that leaves the resource it is
-// written in reaches a resource whose declarations this package holds too, and
-// what that resource declares is a claim like any other.
+// A parallel walk per spelling would have made a key per spelling that must
+// agree with all the others, which is the shape #178 and #203/#211 came out of.
+// So the key is the thing JSON Schema itself names: the **schema resource**. A
+// resource is a node that establishes its own base URI -- an input document
+// root, a document the resolver fetched, or a subschema carrying $id -- and each
+// owns a definition namespace. The first three spellings above are then one
+// case: a reference that leaves the resource it is written in reaches a resource
+// whose declarations this package holds too, and what that resource declares is
+// a claim like any other. The fourth adds that a reference which *stays* in a
+// resource can reach a declaration nobody has claimed either, so what a claim is
+// judged against is a node rather than the resource around it. See cross.
 //
 // A resource the run does not generate as an input contributes only the nodes a
 // $ref actually reaches, and that restriction is not an optimization. The
@@ -127,24 +138,37 @@ func (e externalClaims) documentPaths(paths []string) []string {
 // qualified with, reached by the flag's "id:" and "file:" keys.
 func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, resolver schema.SchemaResolver, owned map[*schema.Schema]bool, chosenRootName func(path string, s *schema.Schema) string) externalClaims {
 	w := &externalWalker{
-		resolver:   resolver,
-		owned:      owned,
-		chosenName: chosenRootName,
-		labelOf:    map[*schema.Schema]string{},
-		takenLabel: map[string]bool{},
-		byLabel:    map[string]*schema.Schema{},
-		resources:  map[string]*schema.Schema{},
-		indexed:    map[*schema.Schema]bool{},
-		fileRoot:   map[*schema.Schema]bool{},
-		scanned:    map[*schema.Schema]bool{},
-		claimed:    map[*schema.Schema]bool{},
+		resolver:          resolver,
+		owned:             owned,
+		chosenName:        chosenRootName,
+		labelOf:           map[*schema.Schema]string{},
+		takenLabel:        map[string]bool{},
+		byLabel:           map[string]*schema.Schema{},
+		inputPath:         map[*schema.Schema]string{},
+		definitionEntries: map[*schema.Schema]map[*schema.Schema]bool{},
+		resources:         map[string]*schema.Schema{},
+		indexed:           map[*schema.Schema]bool{},
+		fileRoot:          map[*schema.Schema]bool{},
+		scanned:           map[*schema.Schema]bool{},
+		claimed:           map[*schema.Schema]bool{},
 	}
 	// An input's path is its own label, and a referenced resource must not take
 	// one: collectNameClaims counts one path as one document, so two of them
 	// sharing a label would have the second's claims read as repeats of the
 	// first's and dropped.
+	//
+	// It is also the path a claim on a position *inside* that input carries, so
+	// that such a claim reads as the document the caller listed rather than as a
+	// document reached by $ref. First writer wins, for the reason
+	// collectNameClaims skips a repeated path: one input listed twice is one
+	// document.
 	for _, path := range paths {
 		w.takenLabel[path] = true
+		if s := byPath[path]; s != nil {
+			if _, ok := w.inputPath[s]; !ok {
+				w.inputPath[s] = path
+			}
+		}
 	}
 
 	var queue []scanTarget
@@ -180,6 +204,12 @@ type externalWalker struct {
 	takenLabel map[string]bool
 	byLabel    map[string]*schema.Schema
 	labels     []string
+	// inputPath maps each listed input's root node to the path the caller wrote,
+	// which is what a claim on a position inside that document is filed under.
+	inputPath map[*schema.Schema]string
+	// definitionEntries memoizes, per resource, the nodes its own $defs and
+	// definitions hold. See isDefinitionEntry.
+	definitionEntries map[*schema.Schema]map[*schema.Schema]bool
 
 	// resources maps the canonical URI of every schema resource the walk has
 	// seen -- the run's inputs, the resources they embed, and the same for every
@@ -374,21 +404,84 @@ func (w *externalWalker) resourceNamed(docPart string, base *url.URL) *schema.Sc
 	return w.resources[strings.TrimSuffix(docPart, "#")]
 }
 
-// cross reports whether a resolved reference left the resource it was written in
-// and reached one whose declarations are this walk's to judge, and records the
-// claim when it did.
+// cross reports whether a resolved reference reached a node whose Go type name
+// is this walk's to judge, and records the claim when it did.
 //
-// Two resources are exempt. The one the reference is written in declares nothing
-// new to the package by being referred to from inside itself. And an input
-// document root already speaks for itself: collectNameClaims claims all of its
-// definitions because the generator declares all of them, and two inputs
-// claiming one name is issue #217's collision and packageDecls' refusal.
+// What is exempt is a *node* another claim already speaks for, and reading it as
+// a whole resource is what issue #319 was:
+//
+//   - An input document root speaks for its root type and for every one of its
+//     definitions, because collectNameClaims claims all of them and the
+//     generator declares all of them. It speaks for nothing else. A $ref into
+//     any other position of that document -- "#/$defs/A/properties/x", a
+//     property of a property, a tuple slot -- reaches a node the generator
+//     declares a type for all the same, named from the last segment of the
+//     pointer, and nobody claimed that name. Two such refs into one document
+//     collapsed onto one type with no warning and exit 0: a string at
+//     $defs/A/properties/x and an integer at $defs/B/properties/x both derive
+//     X, and every instance setting the integer property was judged against the
+//     string. Issue #319. Those positions are claimed here, under the input's
+//     own path so that the diagnostic names the file the caller listed.
+//
+//   - An input of the run that this generation unit does not generate: it
+//     writes its own file, and two files declaring one name is issue #217's
+//     collision and packageDecls' refusal rather than a name to rewrite.
+//
+//   - A reference that stays inside a resource no reference from outside ever
+//     entered. The walk visits every $ref site of its seeds, which includes the
+//     ones written inside an embedded resource nothing refers to -- and the
+//     generator declares nothing of such a resource, so a claim from there
+//     would move a name to make room for a type that is never emitted. Having
+//     been given a label is exactly the record of having been entered.
+//
+// A reference that stays inside a resource the walk *did* enter is not exempt,
+// and reading it as one was issue #319 one level out. What a resource declares
+// of itself was said to be "counted once when the walk crossed into it", but
+// crossing into it counts the single node the reference landed on: a fetched
+// a.json whose own $defs/Outer points at "#/$defs/A/properties/x" and
+// "#/$defs/B/properties/x" had both materialized into the referring package as
+// one X, the string, with the integer discarded and no warning.
 func (w *externalWalker) cross(scope, res, node *schema.Schema, ref, fragment, file, docPart string) bool {
-	if res == nil || node == nil || res == scope || w.owned[res] {
+	if res == nil || node == nil {
 		return false
 	}
-	w.record(w.labelFor(res, file, docPart), res, node, ref, fragment)
+	if path, listed := w.inputPath[res]; listed {
+		if node == res || w.isDefinitionEntry(res, node) {
+			return false
+		}
+		w.record(nameClaim{path: path}, res, node, ref, fragment)
+		return true
+	}
+	if w.owned[res] {
+		return false
+	}
+	if _, entered := w.labelOf[res]; !entered && res == scope {
+		return false
+	}
+	label := w.labelFor(res, file, docPart)
+	w.record(nameClaim{path: label, prefix: w.documentPrefix(label, res), external: true}, res, node, ref, fragment)
 	return true
+}
+
+// isDefinitionEntry reports whether node is one of res's own $defs or
+// definitions entries -- the nodes collectNameClaims claims for a listed input,
+// as against a position some $ref reached inside one of them.
+//
+// The set is built once per resource rather than scanned per reference: this is
+// asked for every $ref a document holds, and a meta-schema-sized document has
+// hundreds of each.
+func (w *externalWalker) isDefinitionEntry(res, node *schema.Schema) bool {
+	entries, ok := w.definitionEntries[res]
+	if !ok {
+		entries = make(map[*schema.Schema]bool, len(res.Defs)+len(res.Definitions))
+		for _, m := range []map[string]*schema.Schema{res.Defs, res.Definitions} {
+			for _, def := range m {
+				entries[def] = true
+			}
+		}
+		w.definitionEntries[res] = entries
+	}
+	return entries[node]
 }
 
 // resolveDocument asks the run's own resolver for the document a ref names, in
@@ -427,8 +520,10 @@ func (w *externalWalker) resolveDocument(docPart string, base *url.URL) (*schema
 }
 
 // record adds the claim a referenced node makes on a Go type name, once per
-// node however many references reach it.
-func (w *externalWalker) record(label string, doc, node *schema.Schema, ref, fragment string) {
+// node however many references reach it. into carries the identity the caller
+// settled on -- the path the claim is filed under, and, for a document nobody
+// listed, the prefix a contested name is qualified with.
+func (w *externalWalker) record(into nameClaim, doc, node *schema.Schema, ref, fragment string) {
 	if node == nil || w.claimed[node] {
 		return
 	}
@@ -437,15 +532,11 @@ func (w *externalWalker) record(label string, doc, node *schema.Schema, ref, fra
 	if name == "" {
 		return
 	}
-	w.claims = append(w.claims, nameClaim{
-		path:     label,
-		keyword:  keyword,
-		defKey:   defKey,
-		node:     node,
-		final:    name,
-		prefix:   w.documentPrefix(label, doc),
-		external: true,
-	})
+	into.keyword = keyword
+	into.defKey = defKey
+	into.node = node
+	into.final = name
+	w.claims = append(w.claims, into)
 }
 
 // documentPrefix is the Go name a referenced document's contested claims are

@@ -122,6 +122,16 @@ func isDefinitionKeyword(keyword string) bool {
 	return keyword == "$defs" || keyword == "definitions"
 }
 
+// isPositionClaim reports whether a claim is on a node a $ref reached somewhere
+// other than a document's root or its definition containers -- "$defs/A/properties/x",
+// "properties/outer/properties/x", an anchor part-way down. Such a claim carries
+// the JSON Pointer that found it where a definition carries its key, and the
+// keyword qualifier has nothing to say about it in either direction. See
+// keywordSeparatesClaim.
+func (c nameClaim) isPositionClaim() bool {
+	return c.defKey != "" && !isDefinitionKeyword(c.keyword)
+}
+
 // keywordPrefix is the Go name part that says which container declared a
 // definition, for the one case where that is what tells two claims apart.
 func keywordPrefix(keyword string) string {
@@ -540,8 +550,16 @@ func distinctClaimPaths(group []nameClaim) []string {
 // a claim reached by a $ref into some other position of a document carries the
 // JSON Pointer that found it in this field, and "Defs" or "Definitions" would be
 // a lie in front of it. What separates those is splitFoldedClaims' numbering.
-// The *other* claims are not filtered that way -- any other location in the same
-// document, the root type included, is something this one has to be told from.
+//
+// A position claim is not something a definition takes the qualifier *from*
+// either, and that is the same sentence read the other way. Prefixing $defs/X
+// with "Defs" to hold it apart from a $ref-reached "$defs/A/properties/x" says
+// that the pointer's claim is the "definitions" spelling of the name, which the
+// document never wrote -- and it moves the one name in the pair the schema's
+// author chose, to make room for one that appears nowhere. Those are numbered
+// below, where the definition's key outranks the position (claimSplitRank) and
+// so keeps the name it asked for. The root type is still counted: it is a name
+// the caller chose too, and being told from it is what "Defs" means.
 func keywordSeparatesClaim(group []nameClaim, i int) bool {
 	if !isDefinitionKeyword(group[i].keyword) {
 		return false
@@ -549,6 +567,9 @@ func keywordSeparatesClaim(group []nameClaim, i int) bool {
 	form, _, ok := definitionCanonicalForm(group[i].node)
 	for j := range group {
 		if j == i || group[j].path != group[i].path || group[j].keyword == group[i].keyword {
+			continue
+		}
+		if group[j].isPositionClaim() {
 			continue
 		}
 		otherForm, _, otherOK := definitionCanonicalForm(group[j].node)
