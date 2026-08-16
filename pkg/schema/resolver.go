@@ -213,7 +213,7 @@ func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 	}
 	// Search in all sub-schema locations, but skip sub-schemas that start their
 	// own document scope — their anchors belong to that scope, not the parent's.
-	for _, sub := range r.allSubSchemas(s) {
+	for _, sub := range subSchemas(s) {
 		if changesScope(sub) {
 			continue
 		}
@@ -224,10 +224,34 @@ func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
 	return nil, fmt.Errorf("anchor %q not found", anchor)
 }
 
-// allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
-// Map-valued fields (Properties, Defs, etc.) are iterated in sorted key order
-// to ensure deterministic anchor resolution regardless of Go map iteration order.
-func (r *LocalResolver) allSubSchemas(s *Schema) []*Schema {
+// subSchemas returns every immediate subschema of s: every position in which
+// this package will look for an anchor, a nested resource, or anything else
+// that is a schema in its own right.
+//
+// This is the single statement of that list, for the same reason AnchorNames is
+// the single statement of which keywords declare a plain-name fragment, and it
+// is the other half of the same defect. Which *keywords* name a node was
+// answered in three places and the three disagreed (issue #307, settled in
+// #326); which *positions* hold a node was answered in two -- here, for the
+// resolver that searches a document another document $refs into, and again in
+// resources.go for the resource graph -- and nothing checked that those two
+// agreed either. They enumerated the same twenty-three positions in a different
+// order, which is a coincidence rather than a guarantee: a keyword added to one
+// copy would have left the other blind to every anchor written under it, and the
+// resource graph would have gone on reporting a complete index that quietly was
+// not one. TestResourceIndexReachesEveryAnchorPosition names every position and
+// fails when one leaves this function.
+//
+// Map-valued fields (Properties, Defs, etc.) are iterated in sorted key order so
+// that anchor resolution is deterministic regardless of Go map iteration order.
+//
+// Deliberately *not* unified with pkg/generator's allSubSchemas, which answers a
+// different question -- which subschemas produce a Go type -- and leaves out
+// propertyNames and contentSchema on purpose.
+func subSchemas(s *Schema) []*Schema {
+	if s == nil {
+		return nil
+	}
 	var subs []*Schema
 	for _, k := range sortedKeys(s.Properties) {
 		subs = append(subs, s.Properties[k])

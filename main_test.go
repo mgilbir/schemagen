@@ -144,3 +144,62 @@ func TestAnUnknownSubcommandPrintsItsDiagnosticOnce(t *testing.T) {
 		t.Errorf("the diagnostic appears on %d lines, want 1:\n%s", got, stderr)
 	}
 }
+
+// runFailingIn is runFailing with the working directory chosen by the caller, so
+// a fixture can be written next to the command's own cwd and named relatively.
+func runFailingIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(schemagenBinary(t), args...)
+	cmd.Dir = dir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	cmd.Stdout = new(strings.Builder)
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("schemagen %s exited 0, want a failure\nstderr:\n%s",
+			strings.Join(args, " "), stderr.String())
+	}
+	return stderr.String()
+}
+
+// Issue #307, from the outside. A $dynamicRef naming an anchor no document
+// declares was refused with a message that said "$ref" -- a keyword the schema
+// does not contain -- and then advised passing the referenced document as an
+// input, which for a bare fragment is the document already being read.
+//
+// Asserted from the built binary and not from NewRootCmd().Execute(), for the
+// reason the guards above exist: this message crosses a stream boundary. It is
+// cobra that writes it, to a stream cmd.SetErr can redirect, and main.go once
+// wrote a second copy to an os.Stderr that it cannot -- so an in-process reading
+// of this text is a reading of one of the two copies, and says nothing about
+// what a terminal shows. The count is asserted for the same reason.
+func TestAnUnresolvedDynamicRefNamesItsKeywordOnStderr(t *testing.T) {
+	dir := t.TempDir()
+	fixture := filepath.Join(dir, "dyn.json")
+	if err := os.WriteFile(fixture, []byte(`{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/dyn.json",
+		"title": "DynDoc",
+		"type": "object",
+		"properties": {"p": {"$dynamicRef": "#nowhere"}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stderr := runFailingIn(t, dir, "generate", "dyn.json", "-o", "out", "-p", "m")
+
+	const msg = `cannot resolve $dynamicRef "#nowhere"`
+	if got := countLinesContaining(stderr, msg); got != 1 {
+		t.Errorf("the diagnostic appears on %d lines, want 1:\n%s", got, stderr)
+	}
+	// The keyword the document does not write must not be in the sentence.
+	if strings.Contains(stderr, "cannot resolve $ref ") {
+		t.Errorf("stderr calls a $dynamicRef a $ref:\n%s", stderr)
+	}
+	// The advice that is false here: there is no further document to pass.
+	if strings.Contains(stderr, "pass the referenced document as an input too") {
+		t.Errorf("stderr advises supplying a document that is already the input:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "names a location inside the document that already holds it") {
+		t.Errorf("stderr does not carry the advice that is true here:\n%s", stderr)
+	}
+}

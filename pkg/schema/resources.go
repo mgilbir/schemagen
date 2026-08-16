@@ -9,9 +9,42 @@ import (
 // Resource describes one JSON Schema resource in a schema graph. A resource is
 // rooted at a schema node that establishes its own base URI/document scope.
 type Resource struct {
-	CanonicalURI   string
-	Draft          Draft
-	Root           *Schema
+	CanonicalURI string
+	Draft        Draft
+	Root         *Schema
+
+	// Anchors indexes every node this resource declares a plain-name fragment
+	// on -- every name under which "#name" reaches it from inside the resource
+	// -- by that name. Which keywords declare one is AnchorNames and nothing
+	// else; a node carrying two names appears under both.
+	//
+	// DynamicAnchors indexes the same resource's "$dynamicAnchor" declarations,
+	// which is a different question: $dynamicAnchor also names a plain-name
+	// fragment, so it appears in Anchors too, but what a $dynamicRef does with
+	// it is a walk of the dynamic scope rather than a lookup. The empty key is
+	// the resource's *unnamed* dynamic anchor -- "$recursiveAnchor": true, which
+	// takes a boolean and so names nothing that could be in Anchors, and which
+	// is what "$recursiveRef": "#" walks to.
+	//
+	// Both are scoped to this resource: a nested "$id" starts a resource of its
+	// own, and an anchor written inside that one belongs to it and not here.
+	// That subtree gets its own Resource in the graph.
+	//
+	// These two are part of this package's API rather than of anything in this
+	// repository: the generator maintains anchor indexes of its own, keyed by
+	// the ref path it needs for naming a Go type, and pkg/generator's
+	// resourceDynamicAnchor answers the DynamicAnchors question by walking the
+	// resource on each call because it must also answer it for documents a
+	// resolver fetched, which are not in this graph. Wiring that call site to
+	// this index would change which node wins where a resource declares one name
+	// twice -- undefined by the spec, but a change all the same -- and would go
+	// silently blind on those fetched documents, so it is left alone
+	// deliberately.
+	//
+	// An index nothing in the tree reads is an index that can rot, so the
+	// contract is pinned from outside the traversal that builds it:
+	// TestResourceIndexReachesEveryAnchorPosition finds the anchors in a fixture
+	// by walking its raw JSON and requires these maps to hold exactly those.
 	Anchors        map[string]*Schema
 	DynamicAnchors map[string]*Schema
 }
@@ -74,7 +107,7 @@ func (g *ResourceGraph) collectResources(s *Schema, defaultDraft Draft) {
 		}
 	}
 
-	for _, sub := range schemaChildren(s) {
+	for _, sub := range subSchemas(s) {
 		g.collectResources(sub, defaultDraft)
 	}
 }
@@ -117,86 +150,7 @@ func collectResourceAnchors(s *Schema, res *Resource, isRoot bool) {
 	if s.RecursiveAnchor != nil && *s.RecursiveAnchor {
 		res.DynamicAnchors[""] = s
 	}
-	for _, sub := range schemaChildren(s) {
+	for _, sub := range subSchemas(s) {
 		collectResourceAnchors(sub, res, false)
 	}
-}
-
-func schemaChildren(s *Schema) []*Schema {
-	if s == nil {
-		return nil
-	}
-	var out []*Schema
-	for _, key := range sortedSchemaKeys(s.Properties) {
-		out = append(out, s.Properties[key])
-	}
-	out = append(out, s.TypeSchemas...)
-	for _, key := range sortedSchemaKeys(s.PatternProperties) {
-		out = append(out, s.PatternProperties[key])
-	}
-	for _, key := range sortedSchemaKeys(s.Defs) {
-		out = append(out, s.Defs[key])
-	}
-	for _, key := range sortedSchemaKeys(s.Definitions) {
-		out = append(out, s.Definitions[key])
-	}
-	out = append(out, s.AllOf...)
-	out = append(out, s.AnyOf...)
-	out = append(out, s.OneOf...)
-	if s.Not != nil {
-		out = append(out, s.Not)
-	}
-	if s.If != nil {
-		out = append(out, s.If)
-	}
-	if s.Then != nil {
-		out = append(out, s.Then)
-	}
-	if s.Else != nil {
-		out = append(out, s.Else)
-	}
-	if s.Items != nil {
-		if s.Items.Schema != nil {
-			out = append(out, s.Items.Schema)
-		}
-		out = append(out, s.Items.Schemas...)
-	}
-	out = append(out, s.PrefixItems...)
-	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		out = append(out, s.AdditionalProperties.Schema)
-	}
-	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
-		out = append(out, s.AdditionalItems.Schema)
-	}
-	if s.Contains != nil {
-		out = append(out, s.Contains)
-	}
-	for _, key := range sortedSchemaKeys(s.DependentSchemas) {
-		out = append(out, s.DependentSchemas[key])
-	}
-	if s.PropertyNames != nil {
-		out = append(out, s.PropertyNames)
-	}
-	if s.UnevaluatedItems != nil {
-		out = append(out, s.UnevaluatedItems)
-	}
-	if s.UnevaluatedProperties != nil {
-		out = append(out, s.UnevaluatedProperties)
-	}
-	if s.ContentSchema != nil {
-		out = append(out, s.ContentSchema)
-	}
-	return out
-}
-
-func sortedSchemaKeys(m map[string]*Schema) []string {
-	if len(m) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

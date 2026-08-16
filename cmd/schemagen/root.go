@@ -579,7 +579,7 @@ func newGenerateCmd() *cobra.Command {
 				}
 
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
-				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
+				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 
 				// Record applied overrides for unused-entry reporting. Twice
@@ -712,14 +712,28 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 // a second cause that was not there (issue #317). A fetch that was made says so
 // on the error, and the advice for it is about the URL and the server.
 //
-// Both clauses appear when one run has refs of both kinds, because then both are
-// true. --lenient-refs is the answer to every one of them and is always named.
+// A fourth route is no route at all: a reference to a bare fragment names a
+// location inside the document that holds it, so no document a caller could add
+// to the run is the missing one. Advising them to pass it was the same mistake a
+// third time, and the loudest, because it is advice to do something already
+// done: a $dynamicRef or $recursiveRef naming an anchor nothing declares fails
+// exactly this way, and the run was told to supply a document that was its own
+// input (issue #307). What is missing there is the anchor or the pointer.
+//
+// Every clause appears when one run has refs of several kinds, because then
+// every one of them is true. --lenient-refs is the answer to all of them and is
+// always named.
 func unresolvedRefAdvice(e *generator.UnresolvedRefsError) string {
 	var parts []string
-	if e.AnyFetchNotAttempted() {
-		parts = append(parts, "a $ref by absolute URI is matched against the $id of the documents given to this run, "+
-			"so pass the referenced document as an input too; a $ref by relative path is read from that path next to "+
+	if e.AnyOtherDocument() && e.AnyFetchNotAttempted() {
+		parts = append(parts, "a reference by absolute URI is matched against the $id of the documents given to this run, "+
+			"so pass the referenced document as an input too; a reference by relative path is read from that path next to "+
 			"the referring schema file. --allow-remote-refs fetches http(s) refs over the network instead")
+	}
+	if e.AnySameDocument() {
+		parts = append(parts, "a reference to a bare fragment names a location inside the document that already holds "+
+			"it, so no further input can supply one: check that the document declares the $anchor or $dynamicAnchor "+
+			"the reference names, or holds the JSON pointer it spells")
 	}
 	if e.AnyFetchAttempted() {
 		parts = append(parts, "--allow-remote-refs is already in effect and the fetch itself is what failed, as the "+
@@ -748,7 +762,17 @@ func unresolvedRefAdvice(e *generator.UnresolvedRefsError) string {
 // build`, in their project, long after the run that caused it said it had
 // succeeded. undeclared is the generator's list of the second kind, keyed by
 // ref. Issue #240.
-func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string, undeclared []generator.UndeclaredRefType) {
+//
+// keywords names the reference keyword each ref was written under; see
+// generator.File.UnresolvedRefKeywords. The line quotes one, and a line that
+// quotes "$ref" for a reference the author wrote as "$dynamicRef" sends them
+// looking for a keyword their document does not contain -- the same defect the
+// failure message carried in issue #307, on the path the flag takes instead. So
+// is the first of the three ways out this line offers: "supply the referenced
+// document" is not a thing that can be done about a bare fragment, which names a
+// position in a document already being read, and a $dynamicRef or $recursiveRef
+// that fails is almost always exactly that.
+func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string, keywords map[string][]string, undeclared []generator.UndeclaredRefType) {
 	if w == nil {
 		return
 	}
@@ -757,15 +781,23 @@ func warnUnresolvedRefs(w io.Writer, schemaPath string, refs []string, undeclare
 		byRef[u.Ref] = u.TypeName
 	}
 	for _, ref := range refs {
-		const opening = "warning: %s: $ref %q could not be resolved; --lenient-refs generated the file anyway, so nothing that reference stated is checked -- "
+		const opening = "warning: %s: %s %q could not be resolved; --lenient-refs generated the file anyway, so nothing that reference stated is checked -- "
+		keyword := "$ref"
+		if spellings := keywords[ref]; len(spellings) > 0 {
+			keyword = strings.Join(spellings, "/")
+		}
+		supply := "Supply the referenced document"
+		if strings.HasPrefix(ref, "#") {
+			supply = "Declare the anchor or the pointer it names in the document that holds it"
+		}
 		name, hazard := byRef[ref]
 		if !hazard {
 			fmt.Fprintf(w, opening+"the position it held is `any`, which has no Validate to call and no decode that can fail\n",
-				schemaPath, ref)
+				schemaPath, keyword, ref)
 			continue
 		}
-		fmt.Fprintf(w, opening+"and `any` did not fit the position it held (an array element, a map value and a oneOf variant each need a name), so the file spells type %s and this package declares no such type. The generated package does not compile; without this line that would first surface in your own `go build`. Supply the referenced document, drop --lenient-refs to have generation refuse here instead, or declare %s in this package by hand (`type %s any` makes it build without making it check anything)\n",
-			schemaPath, ref, name, name, name)
+		fmt.Fprintf(w, opening+"and `any` did not fit the position it held (an array element, a map value and a oneOf variant each need a name), so the file spells type %s and this package declares no such type. The generated package does not compile; without this line that would first surface in your own `go build`. %s, drop --lenient-refs to have generation refuse here instead, or declare %s in this package by hand (`type %s any` makes it build without making it check anything)\n",
+			schemaPath, keyword, ref, name, supply, name, name)
 	}
 }
 
@@ -1245,7 +1277,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			}
 
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
-			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UndeclaredRefTypes())
+			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 
 			// Recorded twice over: by file base name, which is all a --field-map

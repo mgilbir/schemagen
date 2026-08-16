@@ -2477,6 +2477,16 @@ type File struct {
 	// the smallest unit that certainly contains it. See issue #224.
 	UnresolvedRefs []string
 
+	// UnresolvedRefKeywords names the reference keyword each entry of
+	// UnresolvedRefs was written under, sorted, keyed by the ref. See
+	// UnresolvedRefsError.Keywords, which says the same thing for the failure
+	// this becomes when LenientRefs is not set. A ref with no entry is a "$ref".
+	//
+	// It does not reach the emitted source: the file-level banner names the refs
+	// and speaks of them collectively, and it is the per-ref stderr warning that
+	// quotes one keyword and so has to quote the right one.
+	UnresolvedRefKeywords map[string][]string
+
 	// UndeclaredRefTypes is the subset of UnresolvedRefs whose position could
 	// not degrade to `any`, so the file spells a type name nothing declares and
 	// the package does not build. Empty when every degraded ref landed

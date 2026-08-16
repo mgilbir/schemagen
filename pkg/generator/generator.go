@@ -107,12 +107,20 @@ type Generator struct {
 	// a document that does not. See noteUnsatisfiableRequired.
 	unsatisfiableRequired []UnsatisfiableRequired
 
-	// unresolvedRefs records $ref values that resolveRefInContext could not
+	// unresolvedRefs records reference values that resolveRefInContext could not
 	// resolve anywhere (local defs, anchors, document roots, or the external
 	// resolver). Unless Config.LenientRefs is set, Generate fails when this
 	// is non-empty: an unresolvable ref means the generated code silently
 	// degrades (any-typed fields, incomplete validation).
-	unresolvedRefs map[string]bool
+	//
+	// The value is the set of keywords the value was written under, because the
+	// diagnostic has to name the keyword the author wrote and three of them
+	// arrive here: "$ref", "$dynamicRef" and "$recursiveRef". It is a set rather
+	// than one spelling because the same value can be written twice over -- "#"
+	// is what a $recursiveRef always says and what a plain $ref may say -- and
+	// naming only the first one seen would be a message that is right about one
+	// occurrence and wrong about the other. Issue #307.
+	unresolvedRefs map[string]map[string]bool
 
 	// resolvedRefs records $ref values that resolved successfully in at least
 	// one context, so a ref that failed against one context but succeeded
@@ -292,7 +300,7 @@ func New(cfg Config) *Generator {
 		generated:          make(map[string]bool),
 		generating:         make(map[string]bool),
 		structsInProgress:  make(map[string]bool),
-		unresolvedRefs:     make(map[string]bool),
+		unresolvedRefs:     make(map[string]map[string]bool),
 		resolvedRefs:       make(map[string]bool),
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
@@ -365,7 +373,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Ref-resolution bookkeeping is per schema: in shared-types mode the same
 	// generator runs several schemas, and carrying entries over would report an
 	// earlier schema's unresolved refs against a later one.
-	g.unresolvedRefs = make(map[string]bool)
+	g.unresolvedRefs = make(map[string]map[string]bool)
 	g.resolvedRefs = make(map[string]bool)
 	g.unresolvedRefCauses = make(map[string]error)
 	g.crossPackageMisses = make(map[crossPackageMiss]bool)
@@ -588,7 +596,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// unresolvable $refs (any-typed fields, dangling names, weaker validation).
 	if refs := g.neverResolvedRefs(); len(refs) > 0 {
 		if !g.config.LenientRefs {
-			return nil, &UnresolvedRefsError{Refs: refs, Causes: g.causesFor(refs)}
+			return nil, &UnresolvedRefsError{Refs: refs, Causes: g.causesFor(refs), Keywords: g.keywordsFor(refs)}
 		}
 		// Lenient: the degradation is accepted, but not hidden. Carrying the
 		// list on the File is what puts it in the emitted source, and
@@ -597,6 +605,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		// the silent degradation the NOT VALIDATED banner exists to prevent
 		// elsewhere (issue #224).
 		g.output.UnresolvedRefs = refs
+		g.output.UnresolvedRefKeywords = g.keywordsFor(refs)
 		// Which of them left a name behind is decided here, after every
 		// definition exists: the question is whether the finished IR spells a
 		// name the finished IR does not declare, and neither half of that is
@@ -692,11 +701,40 @@ type UnresolvedRefsError struct {
 	// all four arrived here as one message whose advice was to pass
 	// --allow-remote-refs, which three of them had passed (issue #317).
 	Causes map[string]error
+
+	// Keywords names the reference keyword each ref was written under, sorted,
+	// keyed by the ref. Three keywords reach this error -- "$ref", "$dynamicRef"
+	// and "$recursiveRef" -- and the message said "$ref" for all of them, which
+	// sent a reader looking for a keyword their document does not contain
+	// (issue #307). A value written twice over, as "#" can be, carries both.
+	//
+	// A ref with no entry is rendered as "$ref": every recording site in this
+	// package supplies one, so an empty map means a caller built this error by
+	// hand rather than that the keyword is unknown.
+	Keywords map[string][]string
 }
 
 func (e *UnresolvedRefsError) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "cannot resolve $ref %s", strings.Join(quoteAll(e.Refs), ", "))
+	// Grouped by keyword rather than listed under one heading, so that each ref
+	// appears under the keyword it was actually written as. Fixed keyword order
+	// -- and the refs are already sorted -- because a failure message that
+	// changes between identical runs is one nobody can diff.
+	for i, keyword := range []string{refKeyword, recursiveRefKeyword, dynamicRefKeyword} {
+		var refs []string
+		for _, ref := range e.Refs {
+			if e.spelledAs(ref, keyword) {
+				refs = append(refs, ref)
+			}
+		}
+		if len(refs) == 0 {
+			continue
+		}
+		if i > 0 && b.Len() > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "cannot resolve %s %s", keyword, strings.Join(quoteAll(refs), ", "))
+	}
 	for _, ref := range e.Refs {
 		cause, ok := e.Causes[ref]
 		if !ok || cause == nil {
@@ -705,6 +743,51 @@ func (e *UnresolvedRefsError) Error() string {
 		fmt.Fprintf(&b, "\n  %q: %s", ref, flattenResolverError(cause))
 	}
 	return b.String()
+}
+
+// spelledAs reports whether ref was written under the given keyword. A ref this
+// error carries no keywords for is a "$ref"; see Keywords.
+func (e *UnresolvedRefsError) spelledAs(ref, keyword string) bool {
+	keywords := e.Keywords[ref]
+	if len(keywords) == 0 {
+		return keyword == refKeyword
+	}
+	for _, have := range keywords {
+		if have == keyword {
+			return true
+		}
+	}
+	return false
+}
+
+// AnyOtherDocument reports whether at least one of these refs names a document
+// other than the one it is written in -- anything that is not a bare fragment.
+// It is the case for which "supply the referenced document" can be the answer.
+func (e *UnresolvedRefsError) AnyOtherDocument() bool {
+	for _, ref := range e.Refs {
+		if !strings.HasPrefix(ref, "#") {
+			return true
+		}
+	}
+	return false
+}
+
+// AnySameDocument reports whether at least one of these refs names a location
+// *inside* the document that holds it: a bare fragment, "#name" or "#/pointer".
+//
+// Nothing a caller adds to the run can serve one. The document is already an
+// input -- it is the one being generated from, or one a $ref already reached --
+// and what is missing is the anchor or the pointer inside it. This is the shape
+// a $dynamicRef and a $recursiveRef almost always have, and the reason the old
+// advice was not merely imprecise but false: it told the caller to pass a
+// document they had already passed (issue #307).
+func (e *UnresolvedRefsError) AnySameDocument() bool {
+	for _, ref := range e.Refs {
+		if strings.HasPrefix(ref, "#") {
+			return true
+		}
+	}
+	return false
 }
 
 // AnyFetchAttempted reports whether at least one of these refs failed with the
@@ -1051,6 +1134,29 @@ func (g *Generator) neverResolvedRefs() []string {
 	}
 	sort.Strings(refs)
 	return refs
+}
+
+// keywordsFor names, for each of refs, the reference keywords it was written
+// under, sorted. Nothing that failed to resolve can be missing from it -- every
+// recording site writes a keyword -- but a caller that builds an
+// UnresolvedRefsError by hand may leave it empty, and the message treats that as
+// "$ref" rather than as a keyword it cannot name.
+func (g *Generator) keywordsFor(refs []string) map[string][]string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(refs))
+	for _, ref := range refs {
+		keywords := make([]string, 0, len(g.unresolvedRefs[ref]))
+		for keyword := range g.unresolvedRefs[ref] {
+			keywords = append(keywords, keyword)
+		}
+		sort.Strings(keywords)
+		if len(keywords) > 0 {
+			out[ref] = keywords
+		}
+	}
+	return out
 }
 
 func quoteAll(ss []string) []string {
@@ -4029,6 +4135,16 @@ func (g *Generator) UnresolvedRefs() []string {
 		return nil
 	}
 	return g.output.UnresolvedRefs
+}
+
+// UnresolvedRefKeywords names the reference keyword each entry of
+// UnresolvedRefs was written under, so that a warning quoting one quotes the
+// keyword the author wrote. See File.UnresolvedRefKeywords.
+func (g *Generator) UnresolvedRefKeywords() map[string][]string {
+	if g.output == nil {
+		return nil
+	}
+	return g.output.UnresolvedRefKeywords
 }
 
 // UndeclaredRefTypes returns the never-resolved $refs of the last Generate call
@@ -10171,6 +10287,46 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 	}
 }
 
+// The three keywords whose value this generator resolves as a reference. They
+// are named rather than spelled inline because the failure diagnostic quotes
+// one, and quoting the wrong one sends the reader to the wrong keyword in their
+// own document: a run whose $dynamicRef named an anchor no document declares was
+// told "cannot resolve $ref", and then advised to supply a document that was
+// already an input (issue #307).
+const (
+	refKeyword          = "$ref"
+	dynamicRefKeyword   = "$dynamicRef"
+	recursiveRefKeyword = "$recursiveRef"
+)
+
+// refKeywordOf names the keyword on ctx that spells ref.
+//
+// It is the default for the several dozen call sites that resolve
+// ctx.EffectiveRef() -- a value that is ctx.Ref when there is one and
+// ctx.RecursiveRef otherwise, so the keyword is a property of the node and
+// reading it back off the node is exact rather than a guess. The two paths where
+// it would *not* be exact do not use it: resolveRecursiveRef and
+// resolveDynamicRef state their keyword, because a node may carry two reference
+// keywords with the same value and only the caller knows which one it is
+// following.
+//
+// The fallback is "$ref", which is what a caller resolving a value that is on no
+// keyword of ctx is doing -- resolveRef passes the root schema as context, and
+// checkNullSubschemas quotes the same value back.
+func refKeywordOf(ctx *schema.Schema, ref string) string {
+	switch {
+	case ctx == nil:
+		return refKeyword
+	case ctx.Ref == ref:
+		return refKeyword
+	case ctx.DynamicRef == ref:
+		return dynamicRefKeyword
+	case ctx.RecursiveRef == ref:
+		return recursiveRefKeyword
+	}
+	return refKeyword
+}
+
 // resolveRefInContext resolves a $ref string using the given context schema's
 // BaseURI and DocumentRoot for scoped resolution. This handles the case where
 // a subschema with $id changes the base URI and document root for fragment
@@ -10181,6 +10337,12 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 // most callers probe optimistically and handle a nil result, so a failure
 // against one context is not evidence that the ref is unresolvable.
 func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.Schema {
+	return g.resolveRefInContextAs(refKeywordOf(ctx, ref), ref, ctx)
+}
+
+// resolveRefInContextAs is resolveRefInContext for a caller that knows which
+// reference keyword it is following. See refKeywordOf for when that matters.
+func (g *Generator) resolveRefInContextAs(keyword, ref string, ctx *schema.Schema) *schema.Schema {
 	g.refAttemptErrs = g.refAttemptErrs[:0]
 	resolved := g.resolveRefInContextUncounted(ref, ctx)
 	// A ref can be the first thing to materialize a schema: into a vendor
@@ -10199,7 +10361,10 @@ func (g *Generator) resolveRefInContext(ref string, ctx *schema.Schema) *schema.
 	if resolved != nil {
 		g.resolvedRefs[ref] = true
 	} else {
-		g.unresolvedRefs[ref] = true
+		if g.unresolvedRefs[ref] == nil {
+			g.unresolvedRefs[ref] = map[string]bool{}
+		}
+		g.unresolvedRefs[ref][keyword] = true
 		// The reasons this attempt failed, kept against the ref. A later attempt
 		// from another context may still resolve it, in which case
 		// neverResolvedRefs drops the ref and nothing reads this; but the first
@@ -11237,7 +11402,9 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // and dynamicRefCanLoop each produce one. Every one of them lands here at a
 // scope one frame deep, like everything else.
 func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
-	resolved := g.resolveRefInContext(ref, ctx)
+	// Named rather than inferred: the node may carry a $ref with the same value,
+	// and this walk is following the $recursiveRef whatever the node also says.
+	resolved := g.resolveRefInContextAs(recursiveRefKeyword, ref, ctx)
 	if resolved == nil {
 		return nil
 	}
@@ -11332,7 +11499,13 @@ func (g *Generator) popDynamicScope() {
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
 	// Steps 1 and 2, which the runtime evaluator needs too: see
 	// dynamicRefInitialTarget.
-	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, g.resolveRefInContext)
+	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, func(r string, c *schema.Schema) *schema.Schema {
+		// The keyword is stated here because it is knowable only here: the
+		// callback is what dynamicRefInitialTarget resolves with, and the node it
+		// is handed may carry a plain $ref of the same value. Before this the
+		// miss was recorded as a "$ref" whatever the author wrote (issue #307).
+		return g.resolveRefInContextAs(dynamicRefKeyword, r, c)
+	})
 	if initialTarget == nil {
 		return nil
 	}
