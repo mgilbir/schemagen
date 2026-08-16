@@ -528,6 +528,50 @@ generation time, where it can be read; and declaring the named type by hand in
 the same package (`type GoneJSON any`) makes the package build without making it
 check anything.
 
+### A `$recursiveRef` or `$dynamicRef` the document decides
+
+These two keywords are the one place a schema can say something a Go type cannot.
+Which schema they resolve to is a property of the *resources an evaluation
+entered*, so one resource reached from two different anchored callers means two
+different things, and a Go type has one definition.
+
+Where the anchor the reference names is declared just once among the schemas the
+type can reach, there is nothing to decide: the reference means the same thing
+down every path, and the generated type is the ordinary one. That is every
+recursive schema of the usual shape.
+
+Where it is declared more than once, the answer is the document's, and the
+schema is compiled to the runtime evaluator, which carries the scope and resolves
+the reference per value. That is the normal outcome and needs nothing from you.
+
+Where it is declared more than once **and the evaluator cannot compile the
+schema**, generation is refused, naming the reference, the anchor, how many
+declarations are in reach and what stopped the evaluator:
+
+```
+type Root: a $recursiveRef under this schema is answered by the $recursiveAnchor
+of the outermost resource in scope, and 3 of the resources it reaches declare
+that anchor -- so which one the reference means is decided by the document being
+validated, not by the schema. Only the runtime evaluator can express that, and
+the runtime evaluator declined to compile it: a schema under it states
+"x-unmodelled", a keyword the evaluator does not model. A Go type generated here
+would bind the reference to one of the 3 and give false verdicts, in both
+directions, for every document that takes another path
+```
+
+The refusal is deliberate, and it is not the usual trade. Elsewhere a keyword the
+generator cannot carry costs a check and leaves every verdict it still gives
+standing — under-enforcement you can reason about. A reference bound to the wrong
+resource is not that: it rejects documents the schema accepts *and* accepts
+documents it forbids, and nothing in the generated source says which of its
+answers to distrust. No code is the better answer.
+
+The usual cause is the one above — a vendor extension or another unmodelled
+keyword somewhere in the reference's reach — and removing it lets the evaluator
+take the schema. The others are the evaluator's own bounds: a schema past its
+node or nesting limits, more hoisted nodes than it will spend, or a dynamic
+reference that could resolve back to itself with the same value in hand.
+
 ### Root Type Names
 
 By default the root type is named after the schema `title`, falling back to

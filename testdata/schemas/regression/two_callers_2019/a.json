@@ -2,12 +2,18 @@
   "$schema": "https://json-schema.org/draft/2019-09/schema",
   "$id": "https://example.com/a.json",
   "x-unmodelled": true,
-  "$comment": "x-unmodelled is load-bearing: it is a keyword the runtime evaluator cannot compile, which keeps this resource on the static path where #332 is visible.",
+  "$comment": "x-unmodelled is load-bearing: it is a keyword the runtime evaluator cannot compile, and it is the whole reason this shape is refused rather than resolved per value. Remove it from all three resources and the schema is two_callers_2019_modelled, which generates and answers correctly.",
   "$recursiveAnchor": true,
   "type": "object",
-  "required": ["x"],
+  "required": [
+    "x"
+  ],
   "properties": {
-    "x": { "type": "integer" },
-    "r": { "$ref": "r.json" }
+    "x": {
+      "type": "integer"
+    },
+    "r": {
+      "$ref": "r.json"
+    }
   }
 }
