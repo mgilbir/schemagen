@@ -14183,6 +14183,22 @@ func (g *Generator) isNullableComposition(s *schema.Schema) bool {
 //	"urn:uuid:dead-beef"    → "DeadBeef" (uses last segment after last colon)
 //	"#/definitions/tilde~0field" → "TildeField" (JSON Pointer unescaping)
 //	"foo%22bar"             → "FooBar" (URL decoding)
+//
+// The last pointer token is decoded by schema.UnescapePointerToken, so this
+// reads the same pointer the resolver does: percent-decoding first, RFC 6901
+// second. It used to do the two the other way round, which is a different
+// function on any token whose percent-escapes decode into a tilde escape --
+// "%7E0" names the key "~" and was read as naming "~0".
+//
+// Nearly everywhere that is invisible, because the name is only a label for a
+// node the resolver has already chosen: a $defs entry is named from its key, a
+// node already materialized keeps the name it has, and two nodes that land on
+// one name are numbered apart. The exception is applyDiscriminator, where a
+// mapping value and a variant's $ref are compared *by the names they derive*
+// and never resolved at all. There the old order matched a mapping value
+// against the definition a different pointer names, and the generated switch
+// decoded the document into the wrong variant -- accepting what its schema
+// forbids and refusing what it requires, in both directions at once. Issue #305.
 func refToGoName(ref string) string {
 	// Strip fragment from URIs/URNs: "urn:...#something" → use "something"
 	name := ref
@@ -14218,16 +14234,11 @@ func refToGoName(ref string) string {
 		name = parts[len(parts)-1]
 	}
 
-	// Apply JSON Pointer unescaping: ~1 → /, ~0 → ~
-	name = strings.ReplaceAll(name, "~1", "/")
-	name = strings.ReplaceAll(name, "~0", "~")
-
-	// Apply URL percent-decoding.
-	if decoded, err := url.PathUnescape(name); err == nil {
-		name = decoded
-	}
-
-	return SchemaNameToGoName(name)
+	// Decode the token the same way the resolver does, which is the whole point:
+	// this names what that ref reached, so it has to be reading the same pointer.
+	// See schema.UnescapePointerToken for the order and why it is not the other
+	// one.
+	return SchemaNameToGoName(schema.UnescapePointerToken(name))
 }
 
 // enumConstNames derives the Go constant name for every value of an enum and

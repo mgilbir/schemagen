@@ -1527,6 +1527,17 @@ func TestRefToGoName(t *testing.T) {
 		// URL-encoded segments
 		{"#/definitions/foo%22bar", "FooBar"},
 		{"#/definitions/percent%25field", "PercentField"},
+		// A percent-escape that decodes into a JSON Pointer escape. The two
+		// decodings only commute when neither produces input for the other, and
+		// these are the tokens where they do not: the fragment is percent-decoded
+		// first, so "%7E1" becomes "~1" and then names the key "/", and "%7E0"
+		// becomes "~0" and then names the key "~". Reading them the other way
+		// round leaves the escape intact and names "~1" and "~0" instead --
+		// different keys of the same document. See schema.UnescapePointerToken.
+		{"#/$defs/%7E1", "X"},
+		{"#/$defs/%7E0", "X"},
+		{"#/$defs/~01", "X1"},
+		{"#/$defs/~00", "X0"},
 		// Empty path segments
 		{"#/definitions//definitions/", "Definitions"},
 		// URN refs

@@ -416,26 +416,24 @@ func documentRootRefName(doc *schema.Schema, ref string) string {
 // names and the entry within it, so a claim reads as the location its document
 // wrote it at: "/$defs/Inner" is "$defs/Inner" and "/properties/a/properties/b"
 // is "properties/a/properties/b". A plain-name anchor has no container.
+//
+// Each token is decoded the resolver's way, so the message names the key the
+// document actually holds rather than the spelling the ref reached it by: a
+// claim from "#/properties/%7E1" reads as properties// -- the property really
+// is called "/" -- where it used to echo the escape back untouched.
 func pointerClaimParts(fragment string) (keyword, defKey string) {
 	if fragment == "" {
 		return "", ""
 	}
 	if !strings.HasPrefix(fragment, "/") {
-		return "", unescapeRefToken(fragment)
+		return "", schema.UnescapePointerToken(fragment)
 	}
 	parts := strings.Split(strings.TrimPrefix(fragment, "/"), "/")
 	for i, p := range parts {
-		parts[i] = unescapeRefToken(p)
+		parts[i] = schema.UnescapePointerToken(p)
 	}
 	last := len(parts) - 1
 	return strings.Join(parts[:last], "/"), parts[last]
-}
-
-// unescapeRefToken applies RFC 6901 unescaping, the same order the generator and
-// the resolver use.
-func unescapeRefToken(token string) string {
-	token = strings.ReplaceAll(token, "~1", "/")
-	return strings.ReplaceAll(token, "~0", "~")
 }
 
 // externalFilePath reports the file a referenced document was read from, as a

@@ -703,18 +703,27 @@ func definitionCanonicalForm(s *schema.Schema) (form string, refs []string, ok b
 // anchor and a ref naming another document all answer false: what they reach is
 // not a claim this file tracks, so nothing here can say whether two documents'
 // versions of it agree.
+//
+// The unescaping is the resolver's own -- schema.UnescapePointerToken, which
+// percent-decodes and then applies RFC 6901 -- and the choice is not incidental.
+// The claims this file keys on are named after the *$defs key*, and what that
+// function returns for the last pointer token is exactly that key; so the lookup
+// hits by construction rather than by two derivations happening to agree. The
+// split on "/" above happens first and must: a slash separating tokens is the
+// pointer's own syntax, while one written "~1" or "%2F" is a character inside a
+// single key.
+//
+// This used to claim, in this comment, to percent-decode and then not do it, so
+// "#/$defs/foo%22bar" answered Foo22bar while the definition it names is called
+// FooBar. The lookup missed, the name was demoted out of shareableNames, and two
+// identical documents got a duplicate type each. Issue #305.
 func localDefinitionRef(ref string) (string, bool) {
 	for _, prefix := range []string{"#/$defs/", "#/definitions/"} {
 		rest, found := strings.CutPrefix(ref, prefix)
 		if !found || rest == "" || strings.Contains(rest, "/") {
 			continue
 		}
-		// RFC 6901 escaping, then percent-decoding, exactly as the generator's
-		// own ref-to-name conversion does -- the two must agree on which
-		// definition a pointer names.
-		rest = strings.ReplaceAll(rest, "~1", "/")
-		rest = strings.ReplaceAll(rest, "~0", "~")
-		return generator.SchemaNameToGoName(rest), true
+		return generator.SchemaNameToGoName(schema.UnescapePointerToken(rest)), true
 	}
 	return "", false
 }
