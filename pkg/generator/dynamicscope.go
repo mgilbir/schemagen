@@ -132,8 +132,10 @@ type vacuousBookend struct {
 // document the other two got wrong.
 //
 // The target enforcing nothing is the loss itself. Where it constrains something
-// the type enforces *a* reading of the schema, which is a different question
-// (#332) and not a silent weakening.
+// the type enforces *a* reading of the schema, which is a different question and
+// not a silent weakening -- and it is the question #332 answers, by refusing a
+// schema whose reading the document decides rather than picking one. So what is
+// left for this note is the case where the reading is settled and thin.
 //
 // Another resource answering the same anchor with constraints is what makes the
 // loss a loss. Without one the reference means the same thing down every path and
@@ -271,8 +273,10 @@ func (g *Generator) attachVacuityCaveats(name string) {
 // It is unconditional rather than behind a build tag because there is nothing to
 // buy by making it conditional, and a guard that only exists under a tag is one
 // nobody runs. The cost is an increment, a subtraction and a compare, on a path
-// reached 36 times across the whole 608-schema corpus. Measured rather than
-// assumed: generating that corpus takes 164-167 ms with these three lines and
+// reached 29 times across the whole 610-schema corpus -- 36 times across 608
+// before #332 refused the two_callers documents that reached it and added the
+// _modelled pair beside them, which the evaluator takes instead. Measured rather
+// than assumed: generating that corpus takes 164-167 ms with these three lines and
 // 166-168 ms with them and the base bookkeeping removed (8 iterations, 5 runs
 // each), so the difference is smaller than the spread between runs of the same
 // binary.
@@ -451,13 +455,28 @@ func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
 // the generic-container shape work at all, and a walk of the tree alone would
 // miss every publisher of the anchor it looks for.
 func (g *Generator) dynamicallyReachable(s *schema.Schema) map[*schema.Schema]bool {
+	seen, _ := g.dynamicReach(s)
+	return seen
+}
+
+// dynamicReach is dynamicallyReachable with the order the walk found things in,
+// for the callers that have to name one schema out of several and must name the
+// same one on every run. Ranging over the map would not do: Go randomises that
+// order, and the answer travels into a message a caller may be diffing.
+//
+// One walk rather than two, so the set and the order cannot come to disagree
+// about what is in reach. allSubSchemas sorts every map it reads, so the order
+// is a property of the schema rather than of the run.
+func (g *Generator) dynamicReach(s *schema.Schema) (map[*schema.Schema]bool, []*schema.Schema) {
 	seen := map[*schema.Schema]bool{}
+	var order []*schema.Schema
 	var walk func(*schema.Schema)
 	walk = func(n *schema.Schema) {
 		if n == nil || n.IsBooleanSchema() || seen[n] {
 			return
 		}
 		seen[n] = true
+		order = append(order, n)
 		for _, sub := range allSubSchemas(n) {
 			walk(sub)
 		}
@@ -476,7 +495,7 @@ func (g *Generator) dynamicallyReachable(s *schema.Schema) map[*schema.Schema]bo
 		}
 	}
 	walk(s)
-	return seen
+	return seen, order
 }
 
 // countDynamicAnchorDeclarations counts the schemas in reach that declare the

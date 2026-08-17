@@ -259,6 +259,30 @@ type nodeBuilder struct {
 	// built again with the frames it now needs.
 	dynAnchors map[string]bool
 	restart    bool
+
+	// declined is why the build refused, in the words a caller can act on, and
+	// it is set at the refusal itself rather than inferred afterwards. Only the
+	// causes a schema author can do something about are worded; every other
+	// refusal leaves it empty and the caller says only that the evaluator
+	// declined, which is the honest thing to say when nothing here knows more.
+	//
+	// The first one set wins, because a refusal returns all the way out of build
+	// without another site running -- so the first is the innermost, which is the
+	// one that actually refused.
+	declined string
+}
+
+// refuse records why the build is refusing and returns the refusal.
+//
+// Every caller returns it straight up, so the reason recorded is the one at the
+// point the schema was actually turned down. Sites that merely propagate a
+// refusal from below do not call this: overwriting there would replace the cause
+// with the frame that saw it.
+func (b *nodeBuilder) refuse(reason string) (string, bool) {
+	if b.declined == "" {
+		b.declined = reason
+	}
+	return "", false
 }
 
 // reset clears the per-round rendering state, keeping everything the rounds
@@ -304,6 +328,7 @@ func (b *nodeBuilder) build(s *schema.Schema) (string, []RuntimeNodeVar, bool) {
 		var vars []RuntimeNodeVar
 		for i := 0; i < len(b.hoistOrder); i++ {
 			if b.overBudget() {
+				b.refuse("the references under it need more nodes of their own than the evaluator will spend")
 				return "", nil, false
 			}
 			target := b.hoistOrder[i]
@@ -451,7 +476,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 	b.nodes++
 	if b.nodes > maxRuntimeNodes || b.depth >= maxRuntimeDepth {
-		return "", false
+		return b.refuse("it is larger than the evaluator's bounds on node count and nesting depth")
 	}
 	// A schema already given a variable of its own is referred to, not written
 	// out again -- except in the one place its body is being produced.
@@ -466,7 +491,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		// document ends the recursion and the cycle becomes a node variable
 		// pointing back at itself.
 		if b.hoistPrefix == "" || b.descents <= at {
-			return "", false
+			return b.refuse("a reference under it closes a cycle without the value getting any smaller, so evaluating it would not terminate")
 		}
 		return b.hoistRef(s), true
 	}
@@ -902,7 +927,7 @@ func (b *nodeBuilder) dynamicRefLiteral(s, target *schema.Schema, anchor string,
 		return "", false
 	}
 	if b.g.dynamicRefCanLoop(s, target, anchor) {
-		return "", false
+		return b.refuse("the reference can resolve back to the schema it is written in with the same value still in hand, which is an evaluation that never finishes")
 	}
 	b.needAnchor(anchor)
 	fallback, ok := b.literal(target, indent+1)
@@ -1135,23 +1160,30 @@ func numericBounds(s *schema.Schema) (minimum, maximum, exclusiveMin, exclusiveM
 // {"type":"string"} and reject a number the schema allows.
 func (b *nodeBuilder) keywordsOnly(s *schema.Schema) bool {
 	if len(s.TypeSchemas) > 0 {
+		b.refuse("a schema under it writes `type` as a list holding a schema, which draft 3 allows and the evaluator does not model")
 		return false
 	}
 	// An unknown keyword refuses the schema, because nothing is known about
 	// what it demands -- except for the handful that are known to demand
 	// nothing. Those have no field on Schema, so they arrive as extensions and
 	// would otherwise cost a schema its checks for carrying a comment.
-	for key := range s.Extensions {
+	//
+	// Sorted, so a schema carrying two of them names the same one on every run:
+	// the reason travels into a refusal message the caller may be diffing.
+	for _, key := range sortedKeys(s.Extensions) {
 		if !inertKeywords[key] {
+			b.refuse("a schema under it states " + strconv.Quote(key) + ", a keyword the evaluator does not model")
 			return false
 		}
 	}
 	present, ok := schemaKeywordSet(s)
 	if !ok {
+		b.refuse("a schema under it does not survive being re-read, so what it states cannot be established")
 		return false
 	}
-	for key := range present {
+	for _, key := range sortedKeys(present) {
 		if !b.allowed[key] {
+			b.refuse("a schema under it states " + strconv.Quote(key) + ", a keyword the evaluator does not model")
 			return false
 		}
 	}
@@ -1407,14 +1439,95 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 // it is compiled whole, because the scope a reference resolves against is built
 // by the resources entered on the way to it and no check local to the keyword
 // can see the frames its callers pushed.
-func (g *Generator) dynamicScopeSchemaDef(name string, s *schema.Schema) *AnnotationSchemaDef {
+//
+// And where the evaluator cannot take it, the schema is refused rather than
+// handed on. That case is #332, and it is the one this arm used to lose: the
+// predicate fired, the compile declined -- an unknown keyword anywhere in the
+// reach is enough -- and a nil return dropped the schema onto the static arms
+// below, which resolved the reference once and emitted a type as though the
+// answer were settled. #293 named that residue in resolveRecursiveRef's comment;
+// what it did not say is that it is not a weakening but a wrong answer.
+//
+// Wrong in both directions, which is what makes refusal the only honest arm.
+// testdata/schemas/regression/two_callers_2019 is one resource entered from two
+// anchored callers: bound to its own $recursiveAnchor the generated type rejects
+// {"a":{"x":1,"r":{"c":1,"v":{"x":9}}}}, which every implementation accepts, and
+// accepts {"b":{"y":1,"r":{"c":1,"v":{"c":9}}}}, which every implementation
+// rejects. A caller cannot correct for either: there is no configuration, and no
+// reading of the generated source, that says which of its verdicts to distrust.
+// The sibling arms that decline and fall through -- siblingsWouldDropNot, the
+// unevaluated pair -- are not this case. Each loses a check and keeps every
+// verdict it still gives, which is under-enforcement a caller can reason about.
+// A reference bound to the wrong resource gives verdicts that are simply false.
+//
+// So this is the trade #316 made: no code, and a message naming what could not
+// be decided, in place of code whose answers cannot be trusted in either
+// direction. It costs the six documents in this repository's corpus that have
+// the shape and nothing else -- measured, not assumed.
+func (g *Generator) dynamicScopeSchemaDef(name string, s *schema.Schema) (*AnnotationSchemaDef, error) {
 	if !g.validationKeywordsEnabled() {
-		return nil
+		return nil, nil
 	}
 	if !g.dynamicScopeDecidesTheTarget(s) {
-		return nil
+		return nil, nil
 	}
-	return g.runtimeSchemaDef(name, s)
+	def, refused, declined := g.runtimeSchemaDefBuilding(name, s)
+	if def != nil {
+		return def, nil
+	}
+	if !refused {
+		// The evaluator read the schema and found nothing in it to enforce, so
+		// the type below is not a binding of anything -- there is no reference
+		// in what this schema *states* to bind, only in the definitions under
+		// it, and each of those is asked this same question on its own way past.
+		return nil, nil
+	}
+	return nil, g.dynamicScopeRefusal(name, s, declined)
+}
+
+// dynamicScopeRefusal is what a caller is told when a schema whose dynamic
+// reference the instance decides cannot be compiled to the evaluator that would
+// decide it.
+//
+// It names three things, because a reader who has only the message needs all
+// three to act: which keyword has no settled answer and which anchor it searches
+// for, how many declarations of that anchor are in reach -- the fact that makes
+// the answer the instance's rather than the schema's -- and why the one path
+// that could have expressed it declined, where the builder recorded a reason.
+//
+// The reference named is the first the reach walk meets whose anchor is declared
+// more than once, so a schema carrying two of them names one rather than listing
+// both. That is enough: the count is the part that says what is wrong, and
+// fixing either reference changes what this reports.
+func (g *Generator) dynamicScopeRefusal(name string, s *schema.Schema, declined string) error {
+	keyword, anchor, count := recursiveRefKeyword, "", 0
+	reach, order := g.dynamicReach(s)
+	for _, node := range order {
+		if node.RecursiveRef == "" && node.DynamicRef == "" {
+			continue
+		}
+		_, candidate, dynamic, ok := g.dynamicRefTarget(node)
+		if !ok || !dynamic {
+			continue
+		}
+		if n := countDynamicAnchorDeclarations(reach, candidate); n > 1 {
+			anchor, count = candidate, n
+			if node.DynamicRef != "" {
+				keyword = dynamicRefKeyword
+			}
+			break
+		}
+	}
+	named := "the $recursiveAnchor of the outermost resource in scope"
+	if anchor != "" {
+		named = "$dynamicAnchor " + strconv.Quote(anchor)
+	}
+	why := "the runtime evaluator declined to compile it"
+	if declined != "" {
+		why = "the runtime evaluator declined to compile it: " + declined
+	}
+	return fmt.Errorf("type %s: a %s under this schema is answered by %s, and %d of the resources it reaches declare that anchor -- so which one the reference means is decided by the document being validated, not by the schema. Only the runtime evaluator can express that, and %s. A Go type generated here would bind the reference to one of the %d and give false verdicts, in both directions, for every document that takes another path",
+		name, keyword, named, count, why, count)
 }
 
 // rawWrapperDef is what every arm that was about to emit `type X any` asks
@@ -1704,8 +1817,33 @@ var nonConstrainingKeywords = map[string]bool{
 // is handed back, so it keeps the type it has today rather than acquiring a
 // wrapper for a check it does not need or already gets elsewhere.
 func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationSchemaDef {
+	def, _, _ := g.runtimeSchemaDefBuilding(name, s)
+	return def
+}
+
+// runtimeSchemaDefBuilding is runtimeSchemaDef with the two facts its one
+// refusing caller needs and every other caller can ignore: whether the build
+// *refused* the schema, and why where the builder said.
+//
+// Refusing is not the same as returning no definition, and the difference is the
+// whole reason this exists. A schema that compiles to a node enforcing nothing
+// also gets no definition -- it keeps the type it already has, because there was
+// nothing to wrap -- and that is a compile that succeeded. Read as a refusal it
+// would take down a document over a schema that constrains nothing and can
+// therefore get no verdict wrong: {"$id":"second","$defs":{...}} in the suite's
+// "$dynamicRef avoids the root of each schema" is exactly that, a container
+// whose $defs hold the reference and whose own text says nothing at all.
+//
+// The reason is empty where nothing recorded one, which is most refusal sites.
+// It is never the whole story on its own -- "the evaluator declined" is not a
+// diagnosis a caller can act on until it is paired with what was being asked of
+// it -- so the wording here names only the schema's part and the caller supplies
+// the rest. See dynamicScopeSchemaDef.
+func (g *Generator) runtimeSchemaDefBuilding(name string, s *schema.Schema) (def *AnnotationSchemaDef, refused bool, reason string) {
 	if !g.validationKeywordsEnabled() {
-		return nil
+		// Not a refusal either: no type here has a Validate at all, so no
+		// reference is bound to anything and none can be bound wrongly.
+		return nil, false, ""
 	}
 	b := &nodeBuilder{
 		g:          g,
@@ -1718,8 +1856,11 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 		hoistPrefix: "_rt" + name + "Node",
 	}
 	lit, nodes, ok := b.build(s)
-	if !ok || unownedNodeLiterals[lit] {
-		return nil
+	if !ok {
+		return nil, true, b.declined
+	}
+	if unownedNodeLiterals[lit] {
+		return nil, false, ""
 	}
 	return &AnnotationSchemaDef{
 		Name:         name,
@@ -1731,7 +1872,7 @@ func (g *Generator) runtimeSchemaDef(name string, s *schema.Schema) *AnnotationS
 		// key lists have nowhere to live and the flag did nothing here at all.
 		// minDepth is 1 rather than 2 for exactly that reason.
 		AccessRules: g.accessRulesFor(s, 1),
-	}
+	}, false, ""
 }
 
 // unownedNodeLiterals are the compiled forms this path hands back rather than

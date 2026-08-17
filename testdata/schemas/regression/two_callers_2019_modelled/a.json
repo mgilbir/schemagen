@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/modelled/a.json",
+  "$recursiveAnchor": true,
+  "type": "object",
+  "required": ["x"],
+  "properties": {
+    "x": { "type": "integer" },
+    "r": { "$ref": "r.json" }
+  }
+}

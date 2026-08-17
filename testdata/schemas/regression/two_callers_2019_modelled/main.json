@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://example.com/modelled/main.json",
+  "$comment": "two_callers_2019 with every keyword one the runtime evaluator models, which is the whole difference between the two directories. The shape is issue #332's: one resource entered from two different anchored callers, with the document root deliberately not anchored so the outermost anchored frame is a caller's. Here the evaluator can take the schema, so it does -- dynamicScopeDecidesTheTarget routes it there and the reference is resolved per value -- and the four verdicts are right. Beside it, two_callers_2019 is the same shape carrying a keyword the evaluator cannot compile, and is refused rather than answered wrongly. The verdicts here are pinned by TestTwoCallersResolvesPerCaller.",
+  "type": "object",
+  "properties": {
+    "a": { "$ref": "a.json" },
+    "b": { "$ref": "b.json" }
+  }
+}

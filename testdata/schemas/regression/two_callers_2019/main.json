@@ -1,10 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
   "$id": "https://example.com/main.json",
-  "$comment": "One resource entered from two different anchored callers, which is issue #332 and NOT the seed question #293 settled. r.json's $recursiveRef must resolve to a.json when r is reached through a and to b.json when reached through b; one Go type is emitted for r, so one of the two is wrong whichever it picks. The document root is deliberately not anchored, so the outermost anchored frame is a caller's rather than the document's, and the two anchored resources are not within any one type's dynamicallyReachable -- which is why dynamicScopeDecidesTheTarget does not route r to the runtime evaluator, where the answer could be expressed. Neither seed fixes it: this is about the routing predicate. Here so the shape is in the corpus and compiles; the verdicts are not pinned, because they are still wrong.",
+  "$comment": "One resource entered from two different anchored callers, which is issue #332. r.json's $recursiveRef must resolve to a.json when r is reached through a and to b.json when reached through b, and one Go type is emitted for r, so no static reading of it can be right for both. x-unmodelled is what makes that bite: dynamicScopeDecidesTheTarget does fire here -- the reach holds three anchored resources and the count says so -- and the runtime evaluator, which is the one path that could resolve the reference per value, then declines over the unmodelled keyword. Before #332 that decline dropped the schema onto the static arms and produced a type whose verdicts were false in both directions; now the document is refused, naming the reference and the keyword. TestTwoCallersRefusedWhenTheEvaluatorCannotTakeIt pins that. Beside this, two_callers_2019_modelled is the same four resources with every keyword one the evaluator models, and its four verdicts are pinned instead.",
   "type": "object",
   "properties": {
-    "a": { "$ref": "a.json" },
-    "b": { "$ref": "b.json" }
+    "a": {
+      "$ref": "a.json"
+    },
+    "b": {
+      "$ref": "b.json"
+    }
   }
 }

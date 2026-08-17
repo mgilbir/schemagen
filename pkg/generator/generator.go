@@ -3257,7 +3257,17 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	//
 	// Behind the re-entrancy guard, like annotationSchemaDef above and for the
 	// reason given there.
-	if def := g.dynamicScopeSchemaDef(name, s); def != nil {
+	//
+	// And where the evaluator cannot take such a schema, this returns an error
+	// rather than nil. Falling through was #332: the arms below resolve the
+	// reference once and emit a type whose verdicts are false in both directions
+	// for every document that arrives another way. See dynamicScopeSchemaDef,
+	// where the case against generating anything here is made.
+	def, err := g.dynamicScopeSchemaDef(name, s)
+	if err != nil {
+		return err
+	}
+	if def != nil {
 		g.generated[name] = true
 		g.output.TypeDefs = append(g.output.TypeDefs, def)
 		return nil
@@ -11461,16 +11471,23 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // intermediate $defs entry unanchored and un-$id'd: it is a resource to neither
 // the routing nor a validator, so the static path keeps the schema.
 //
-// How rare all of this is, measured rather than asserted. Over the 608 documents
+// How rare all of this is, measured rather than asserted. Over the 610 documents
 // under testdata/schemas and 2344 schemas lifted out of the JSON Schema Test
-// Suite's test files and remotes, this walk is reached 14 times and never with
-// more than one frame in scope: 11 at one frame, 3 at none, the latter being a
+// Suite's test files and remotes, this walk is reached 11 times and never with
+// more than one frame in scope: 8 at one frame, 3 at none, the latter being a
 // type that is not a schema resource and so seeds empty. The same measurement
 // before #293, over the 600 of those documents that predate the two_callers
 // fixtures plus the same suite, reached it 11 times with two of them two frames
 // deep -- both in recursive_anchor_outermost_scope.json, through the $ref that
 // pushed the document's frame in under the type's own. That frame is the one the
 // seed took away.
+//
+// It read 14 over 608 documents between #293 and #332, and the three that went
+// are the reach's own: two_callers_2019's three documents resolved a
+// $recursiveRef here on the way to a type that is now refused instead (#332),
+// and the two_callers_*_modelled documents added beside them reach the evaluator
+// rather than this function. So the figure fell because the walk stopped being
+// asked a question it could not answer, not because anything stopped asking.
 //
 // The seed is settled, and it is #293. Frame 0 was the *document* root, so a
 // type under a $defs entry was resolved against frames its callers pushed --
@@ -11539,12 +11556,20 @@ func (g *Generator) resolveEffectiveRefSchema(s *schema.Schema) *schema.Schema {
 // frames pushed while this type's body is in flight -- the two windows named
 // above are exactly those, and the plant that made it read 2 still does.
 //
-// So the residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
-// runtimeSchemaDef then declines, which drops back here instead of compiling --
-// does not bear on the direction. Those schemas exist and are easy to build: an
-// unknown keyword beside the reference, the node-depth bound, the hoist budget
-// and dynamicRefCanLoop each produce one. Every one of them lands here at a
-// scope one frame deep, like everything else.
+// The residue #293 named -- a schema dynamicScopeDecidesTheTarget claims and
+// runtimeSchemaDef then declines, which dropped back here instead of compiling
+// -- does not arrive any more. #332 is what it turned out to be: the fall-through
+// resolved the reference here, once, and the type it produced answered for every
+// caller that reached the resource another way, with verdicts false in both
+// directions. dynamicScopeSchemaDef now refuses such a schema rather than
+// handing it on, so nothing that reaches this function has more than one
+// possible target left. The causes are still easy to build -- an unknown keyword
+// beside the reference, the node-depth bound, the hoist budget and
+// dynamicRefCanLoop each produce one -- and each is now a refusal that names
+// itself.
+//
+// What still lands here lands at a scope one frame deep, like everything else,
+// which is what the direction argument above needs and all it needs.
 func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.Schema {
 	// Named rather than inferred: the node may carry a $ref with the same value,
 	// and this walk is following the $recursiveRef whatever the node also says.

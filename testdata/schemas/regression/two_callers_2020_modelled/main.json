@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/modelled/main.json",
+  "$comment": "two_callers_2019_modelled under 2020-12, with $dynamicAnchor and $dynamicRef in place of the 2019-09 pair. Issue #332; the argument is on the 2019-09 main.json beside it.",
+  "type": "object",
+  "properties": {
+    "a": {
+      "$ref": "a.json"
+    },
+    "b": {
+      "$ref": "b.json"
+    }
+  }
+}

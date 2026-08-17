@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/modelled/r.json",
+  "$comment": "The shared resource. Its $dynamicRef must mean a.json when r is reached through a and b.json when it is reached through b. See main.json beside this, and issue #332.",
+  "$dynamicAnchor": "node",
+  "type": "object",
+  "required": [
+    "c"
+  ],
+  "properties": {
+    "c": {
+      "type": "integer"
+    },
+    "v": {
+      "$dynamicRef": "#node"
+    }
+  }
+}

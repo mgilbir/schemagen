@@ -761,3 +761,53 @@ func TestDynamicScopeStaysAtTheTypeItStartedIn(t *testing.T) {
 	}
 	t.Logf("%d schemas generated, dynamic scope consulted %d times", generated, consultations)
 }
+
+// TestSchemaStatingNothingIsNotRefusedForWhatItsDefsHold is the narrowing that
+// keeps #332's refusal from taking documents it has no business taking.
+//
+// dynamicScopeDecidesTheTarget asks what a schema *reaches*, and $defs are
+// reached like anything else -- deliberately, since a definition nothing refers
+// to is cheaper to over-count than to miss. Under #160 that generosity cost at
+// most a schema compiled to the evaluator that need not have been. Under #332 it
+// would cost the document, because the arm that used to fall through now refuses.
+//
+// This is the suite's "$dynamicRef avoids the root of each schema, but scopes are
+// still registered", cut down to the resource the refusal reached for. `second`
+// states an $id and a $defs and nothing else: it constrains no value, so the
+// evaluator compiles it to a node that enforces nothing and hands the schema
+// back -- a compile that succeeded, not a refusal. Read as a refusal it takes
+// down a whole document over a container that can get no verdict wrong, and the
+// two suite groups with this shape stop being validated at all.
+//
+// The reference and the second declaration of "length" really are in reach, so
+// this is not a fixture that passes by having nothing to decide: it passes
+// because what `second` itself says has no reference in it to bind.
+func TestSchemaStatingNothingIsNotRefusedForWhatItsDefsHold(t *testing.T) {
+	g, root := dynamicScopeFixture(t, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://schemagen.test/avoids-root/base",
+		"$ref": "second#/$defs/stuff",
+		"$defs": {
+			"second": {"$id": "second", "$defs": {
+				"stuff": {"$ref": "third#/$defs/stuff"},
+				"length": {"$dynamicAnchor": "length", "maxLength": 2}}},
+			"third": {"$id": "third", "$defs": {
+				"stuff": {"$dynamicRef": "#length"},
+				"length": {"$dynamicAnchor": "length", "maxLength": 3}}}
+		}
+	}`)
+	second := root.Defs["second"]
+	// The premise. Without it the test below would pass for a predicate that had
+	// stopped claiming this schema at all, which is a different repository.
+	if !g.dynamicScopeDecidesTheTarget(second) {
+		t.Fatal("the fixture no longer puts two declarations of \"length\" in second's reach, " +
+			"so it is not the shape the refusal has to be kept off")
+	}
+	def, err := g.dynamicScopeSchemaDef("Second", second)
+	if err != nil {
+		t.Errorf("a schema whose own text constrains nothing was refused for what its $defs hold: %v", err)
+	}
+	if def != nil {
+		t.Errorf("second states no keyword the evaluator would wrap, so it should keep the type it has, got %#v", def)
+	}
+}
