@@ -21361,15 +21361,8 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 	// accounted set are both readable from the schema. An anyOf or oneOf branch
 	// binds only where the instance satisfies it, so neither is knowable here; see
 	// collectRuntimeBranchChecks, which answers those against the document.
-	for _, sub := range s.AllOf {
-		resolved := sub
-		if _, r := g.referenceTarget(sub); r != nil {
-			resolved = r
-		}
-		if resolved.UnevaluatedProperties == nil {
-			continue
-		}
-		if check := g.buildBranchUnevalCheck(resolved, ownerName, len(checks)); check != nil {
+	for _, owner := range g.branchUnevalOwners(s.AllOf) {
+		if check := g.buildBranchUnevalCheck(owner, ownerName, len(checks)); check != nil {
 			checks = append(checks, *check)
 		}
 	}
@@ -21381,6 +21374,60 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 	checks = append(checks, g.collectBranchAdditionalChecks(s.AllOf, s.AdditionalProperties, ownerName, len(checks), make(map[*schema.Schema]bool))...)
 
 	return checks
+}
+
+// branchUnevalOwners returns every schema object reachable through an allOf that
+// states an `unevaluatedProperties` of its own, in document order.
+//
+// One walk, read by two callers, and that is the point of it: the static check
+// (collectBranchOverflowChecks) and the decision to route the schema to the
+// runtime evaluator instead (branchUnevaluatedPropertiesNeedsRuntime) have to
+// agree on which branches carry the keyword, or a shape is routed on account of
+// a branch the check never looks at, or checked without ever being offered.
+//
+// It follows the two routes into a branch that the allOf merge itself follows,
+// exactly as collectBranchAdditionalChecks does for the neighbouring keyword: a
+// $ref chain and a nested allOf. Both were missing here, and both cost the
+// keyword outright.
+//
+//   - The branch's own keyword beside a $ref. The old walk resolved the branch
+//     through referenceTarget *before* asking, so
+//     {"allOf":[{"$ref":"#/$defs/o","unevaluatedProperties":false}]} asked the
+//     target, which states no such keyword, and dropped the branch's. The
+//     spelling with the keyword on the target was the only one enforced. Both
+//     objects are asked now -- they are two scopes, both of which bind -- and
+//     buildBranchUnevalCheck reads the $ref for the accounted set either way, so
+//     the adjacency the keyword actually has is what is collected.
+//   - A nested allOf. The old walk read the direct members of s.AllOf and stopped,
+//     so {"allOf":[{"allOf":[{"properties":{"a":{}},"unevaluatedProperties":false}]}]}
+//     was not checked at all while the same branch written one level up was.
+//
+// onPath makes the walk finite: an allOf that closes on itself, or a $ref chain
+// that does, arrives at a node already stood on and stops. The mark stays on --
+// unlike collectEvaluatedFromNestedOnPath, which takes it off so a schema
+// reached down two branches contributes to the union twice. Here a second
+// arrival would emit a second copy of the same check, which reports one
+// violation twice and is not a union of anything.
+func (g *Generator) branchUnevalOwners(allOf []*schema.Schema) []*schema.Schema {
+	var owners []*schema.Schema
+	onPath := make(map[*schema.Schema]bool)
+	var walk func(subs []*schema.Schema)
+	walk = func(subs []*schema.Schema) {
+		for _, sub := range subs {
+			resolved := sub
+			for resolved != nil && !onPath[resolved] {
+				onPath[resolved] = true
+				if resolved.UnevaluatedProperties != nil {
+					owners = append(owners, resolved)
+				}
+				walk(resolved.AllOf)
+				_, r := g.referenceTarget(resolved)
+				resolved = r
+			}
+		}
+	}
+	walk(allOf)
+	return owners
 }
 
 // collectRuntimeBranchChecks compiles an `anyOf` or `oneOf` whose branches state
@@ -22163,6 +22210,47 @@ func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, i
 			resolved = r
 		}
 		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+	}
+
+	// The branching in-place applicators, over-approximated: the union of what
+	// every branch declares, whether or not that branch is the one the document
+	// satisfies.
+	//
+	// The exact answer needs the document, so a schema reaching here has been
+	// offered to the runtime evaluator by branchUnevaluatedPropertiesNeedsRuntime
+	// and handed back -- past its size bounds, or stating a keyword it does not
+	// model. What runs then is this, and the only choice left is which way to be
+	// wrong. Collecting nothing was the direction that costs a document the
+	// schema permits: with no arm for any of these four keywords the accounted
+	// set came out empty, the emitted loop reduced to `_bAcct := false`, and
+	// {"allOf":[{"anyOf":[{"properties":{"a":{"type":"string"}}}],
+	// "unevaluatedProperties":false}]} refused {"a":"x"} and every other
+	// non-empty object (issue #342). The union admits keys a branch that did not
+	// hold would have evaluated, which under-enforces -- the direction #111
+	// settled on for this keyword, and the one a false rejection is not.
+	//
+	// collectEvaluatedFromNested is the collector rather than a walk written
+	// here: it already unions anyOf, oneOf, if/then/else and dependentSchemas at
+	// every depth below this one, which is why the same applicator one level
+	// further in -- inside a nested allOf of this branch -- has always been
+	// collected while the branch's own was not.
+	for _, group := range [][]*schema.Schema{s.AnyOf, s.OneOf} {
+		for _, sub := range group {
+			resolved := sub
+			if _, r := g.referenceTarget(sub); r != nil {
+				resolved = r
+			}
+			g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
+		}
+	}
+	for _, sub := range []*schema.Schema{s.If, s.Then, s.Else} {
+		if sub == nil {
+			continue
+		}
+		g.collectEvaluatedFromNested(sub, names, patterns, &allEvaluated)
+	}
+	for _, dep := range s.DependentSchemas {
+		g.collectEvaluatedFromNested(dep, names, patterns, &allEvaluated)
 	}
 
 	check := &BranchOverflowCheck{

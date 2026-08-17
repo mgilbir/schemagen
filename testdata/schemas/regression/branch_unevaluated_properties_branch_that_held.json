@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "allOf": [
+    {
+      "anyOf": [
+        {"required": ["t"], "properties": {"t": {"const": "x"}, "a": {"type": "string"}}},
+        {"required": ["u"], "properties": {"u": {"const": "y"}, "b": {"type": "string"}}}
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

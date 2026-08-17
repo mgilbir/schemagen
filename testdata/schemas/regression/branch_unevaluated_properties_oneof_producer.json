@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "allOf": [
+    {
+      "oneOf": [{"properties": {"a": {"type": "string"}}}],
+      "unevaluatedProperties": false
+    }
+  ]
+}

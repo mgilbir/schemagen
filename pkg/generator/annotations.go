@@ -1288,6 +1288,83 @@ func statesCousinUnevaluatedItems(s *schema.Schema) bool {
 	return false
 }
 
+// branchUnevaluatedPropertiesNeedsRuntime reports whether an allOf branch states
+// an `unevaluatedProperties` whose evaluated set the per-branch static check
+// cannot read, because a *branching* in-place applicator written in the same
+// schema object is what produces it.
+//
+// This is the `unevaluatedProperties` half of what hasCousinUnevaluatedItems
+// does for items, and it is narrower on purpose. An allOf branch's keyword is
+// answered by collectBranchOverflowChecks -> buildBranchUnevalCheck, which
+// collects the branch's own `properties`, `patternProperties`,
+// `additionalProperties`, its `$ref`/`$dynamicRef` target and its nested `allOf`.
+// Every one of those binds unconditionally, so what they evaluate is a fact
+// about the schema and the static reading is exact. A nested `anyOf`, `oneOf`,
+// `if`/`then`/`else` or `dependentSchemas` is not: which of its branches
+// contributes annotations is a fact about the *document*, and the collector has
+// no arm for any of them.
+//
+// The cost of that gap was not under-enforcement but a total false rejection.
+// The accounted set came out empty and AllAccounted false, so the emitted loop
+// reduced to `_bAcct := false` and refused every key of every non-empty object:
+// {"type":"object","allOf":[{"anyOf":[{"properties":{"a":{"type":"string"}}}],
+// "unevaluatedProperties":false}]} rejected {"a":"x"}, which every reference
+// implementation accepts and which the identical schema written with the keyword
+// *beside* the allOf has always accepted -- collectEvaluatedProperties reads the
+// same applicators there and compiles them to ConditionalEval. Issue #342.
+//
+// Routing rather than widening the static reading is the fix because the widened
+// reading could only ever be an over-approximation, and over-approximating is
+// observably wrong here. Given
+//
+//	{"allOf":[{"anyOf":[
+//	   {"required":["t"],"properties":{"t":{"const":"x"},"a":{"type":"string"}}},
+//	   {"required":["u"],"properties":{"u":{"const":"y"},"b":{"type":"string"}}}],
+//	  "unevaluatedProperties":false}]}
+//
+// the document {"u":"y","a":"s"} is refused by all four implementations Bowtie
+// was asked: the second branch is the one that holds, it evaluates u and b, and
+// nothing evaluates a. The union of what both branches declare contains a and
+// accepts. Only evaluating the branches against the document in hand tells those
+// apart, which is what the evaluator does. Note the branches have to differ by a
+// required key rather than by the type of the key under test for the difference
+// to be visible at all -- where they differ by type, the merged view refuses the
+// document before either reading is consulted, which is why the obvious
+// two-property example proves nothing.
+//
+// buildBranchUnevalCheck over-approximates anyway, for the schemas the evaluator
+// declines: being offered is not being taken, and the static path is what runs
+// when it is handed back. Over-approximating under-enforces, which is the
+// direction #111 chose deliberately and the direction this issue is not.
+//
+// The branches are the ones branchUnevalOwners names, so the shape routed here
+// and the shape the static check would otherwise emit are the same shape.
+func (g *Generator) branchUnevaluatedPropertiesNeedsRuntime(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	for _, owner := range g.branchUnevalOwners(s.AllOf) {
+		if branchesOnDocument(owner) {
+			return true
+		}
+	}
+	return false
+}
+
+// branchesOnDocument reports whether a schema object carries an in-place
+// applicator whose contribution depends on the document rather than on the
+// schema alone.
+//
+// `allOf` is deliberately absent: every one of its branches binds, so what they
+// evaluate is readable without a document, and buildBranchUnevalCheck does read
+// it. The four listed here are the ones it does not.
+func branchesOnDocument(s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+	return len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.If != nil || len(s.DependentSchemas) > 0
+}
+
 // unevaluatedSubschemaKeywords are the keywords a schema-valued
 // `unevaluatedItems` or `unevaluatedProperties` may state and still be enforced
 // by the check emitted where it is written.
@@ -1351,10 +1428,11 @@ func (g *Generator) unevaluatedNeedsRuntimeEvaluator(s *schema.Schema) bool {
 		return false
 	}
 	if s.UnevaluatedItems == nil && s.UnevaluatedProperties == nil &&
-		!g.hasCousinUnevaluatedItems(s) {
+		!g.hasCousinUnevaluatedItems(s) && !g.branchUnevaluatedPropertiesNeedsRuntime(s) {
 		return false
 	}
-	if needsRuntimeAnnotations(s) || g.hasCousinUnevaluatedItems(s) {
+	if needsRuntimeAnnotations(s) || g.hasCousinUnevaluatedItems(s) ||
+		g.branchUnevaluatedPropertiesNeedsRuntime(s) {
 		return true
 	}
 	return !g.unevaluatedSubschemaIsCheckable(s.UnevaluatedItems) ||

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "allOf": [
+    {
+      "anyOf": [
+        {"properties": {"a": {"type": "string"}}},
+        {"properties": {"b": {"type": "integer"}}}
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}
