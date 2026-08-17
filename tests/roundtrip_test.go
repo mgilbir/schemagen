@@ -2538,11 +2538,22 @@ func main() {
 		// object branches is merged into a struct of its own. That merge is a
 		// different function from the allOf one and had the same hole.
 		` + "`" + `{"condObject":{"b":1,"roCondNested":"x"}}` + "`" + `,
-		// The two positions issue #174 reports as unaffected, asserted rather
-		// than assumed: a dependentSchemas branch and a ` + "`" + `not` + "`" + ` both name a
-		// property that no field is ever built for.
+		// A dependentSchemas branch, which issue #174 reports as unaffected and
+		// which is asserted here rather than assumed: it names a property that
+		// no field is ever built for.
+		//
+		// A ` + "`" + `not` + "`" + ` branch used to stand beside it, saying the same thing for
+		// the other position, and both it and the branch it read are gone. Not
+		// because the position stopped mattering but because it stopped being
+		// expressible here: a schema whose root carries a ` + "`" + `not` + "`" + ` in any
+		// spelling is compiled to the runtime evaluator (#177), and a raw-JSON
+		// wrapper has no key list for strict mode to get wrong -- so the case
+		// would have gone on passing with every rule in this file deleted. It
+		// only read as an assertion while the branch was being dropped unread,
+		// which is the defect issue #341 reports. The negation is asserted as a
+		// verdict instead, in not_regression_test.go's not_in_allof_branch
+		// group.
 		` + "`" + `{"roCondDependent":"x"}` + "`" + `,
-		` + "`" + `{"roCondNot":"x"}` + "`" + `,
 		// And the document the branch *does* select. A static list of property
 		// names cannot say "readOnly when mode is present", so the flag under-
 		// enforces here rather than refusing on a condition it cannot evaluate.

@@ -17875,36 +17875,57 @@ func isAcceptAllSchema(s *schema.Schema) bool {
 		s.Const == nil && !s.ConstIsNull && len(s.PatternProperties) == 0
 }
 
-// siblingsWouldDropNot reports whether a schema states a "not" that no arm
+// siblingsWouldDropNot reports whether a schema carries a "not" that no arm
 // below generateTypeDef's runtime one would enforce, because the schema states
 // something else as well.
 //
 // It answers for the shape alone and not for what the evaluator can do with it;
-// the caller tries the evaluator and falls through when it declines. The three
+// the caller tries the evaluator and falls through when it declines. The
 // refusals here are the cases where taking the schema over would be wrong rather
 // than merely unhelpful.
+//
+// A "not" reaches the schema two ways and both are asked. It may be written on
+// the node -- statedNotWouldBeDropped, which is the shape #177 was reported in --
+// or it may be written in an allOf branch beside it, which is issue #341:
+// allOf is an in-place applicator, so {"type":"string","allOf":[{"not":X}]} and
+// {"type":"string","not":X} assert the very same thing of the very same
+// instance. Only the first was asked, and only the second was enforced: the
+// merge below carries a branch's properties, type, bounds, values, format and
+// content vocabulary onto the merged node and has never carried its "not", so
+// the branch arrived at the typing arms with the negation already gone. The
+// property came out `*string` and its Validate `return nil`, and the four-
+// character string the schema names to forbid was accepted with nothing in the
+// generated source to say a constraint had been dropped.
 //
 // Whether validation keywords are being generated at all is deliberately not
 // asked here: it is runtimeSchemaDef's question, every caller reaches it, and a
 // second copy of the answer is a branch nothing can be made to exercise.
 func (g *Generator) siblingsWouldDropNot(s *schema.Schema) bool {
-	if s == nil || s.Not == nil {
+	if s == nil {
 		return false
 	}
-	// Through draft 7 a reference replaces everything written beside it, so the
-	// "not" does not apply and nothing is being dropped by ignoring it. See
-	// refOverridesSiblingsForSchema.
+	// Through draft 7 a reference replaces everything written beside it, so
+	// neither the "not" nor the allOf is there to be read and nothing is being
+	// dropped by ignoring them. See refOverridesSiblingsForSchema, and the allOf
+	// arm of generateTypeDef, which stands down on the same condition.
+	//
+	// This is the half of #341 that differs by dialect, and getting it wrong
+	// would be a new defect rather than a fix: {"$ref":"#/definitions/anystr",
+	// "allOf":[{"not":{"$ref":"#/definitions/bad"}}]} forbids nothing at all on
+	// draft 7, so claiming it there would refuse a document the schema admits.
 	if s.EffectiveRef() != "" && g.refOverridesSiblingsForSchema(s) {
 		return false
 	}
-	// A negation that forbids nothing. `not: false` is a "not" over the schema no
-	// value satisfies, and a double negation of accept-all says as much as `{}`
-	// does; extractNotSchemaDef declines both for that reason. Claiming them here
-	// would trade a Go type for a raw-JSON wrapper and buy no check at all.
-	if s.Not.IsFalseSchema() {
-		return false
+	if g.statedNotWouldBeDropped(s) {
+		return true
 	}
-	if s.Not.Not != nil && g.acceptsEveryInstance(s.Not.Not) {
+	return g.allOfBranchStatesNot(s.AllOf, make(map[*schema.Schema]bool))
+}
+
+// statedNotWouldBeDropped is siblingsWouldDropNot for a "not" written on the
+// node itself.
+func (g *Generator) statedNotWouldBeDropped(s *schema.Schema) bool {
+	if s.Not == nil || !g.negationForbidsSomething(s.Not) {
 		return false
 	}
 	// With no sibling this is the not-only shape, which extractNotSchemaDef and
@@ -17920,6 +17941,86 @@ func (g *Generator) siblingsWouldDropNot(s *schema.Schema) bool {
 		}
 	}
 	return false
+}
+
+// negationForbidsSomething reports whether a "not" operand rules out any
+// instance at all.
+//
+// `not: false` is a negation of the schema no value satisfies, and a double
+// negation of accept-all says as much as `{}` does; extractNotSchemaDef declines
+// both for that reason. Claiming a schema for one of them would trade a Go type
+// for a raw-JSON wrapper and buy no check at all.
+func (g *Generator) negationForbidsSomething(not *schema.Schema) bool {
+	if not == nil || not.IsFalseSchema() {
+		return false
+	}
+	return !(not.Not != nil && g.acceptsEveryInstance(not.Not))
+}
+
+// allOfBranchStatesNot reports whether any branch of an allOf carries a "not"
+// that binds on the instance the allOf is written beside, and that the merge
+// below would leave behind.
+//
+// There is deliberately no "and the schema states something else as well" test
+// beside this, which is the guard statedNotWouldBeDropped has and the one shape
+// that looks as though it wants the same. A schema whose only keyword is the
+// allOf can still be typed out from under its negation, because the *branches*
+// carry the typing keywords: {"allOf":[{"type":"string"},{"not":{"const":"x"}}]}
+// merges to `type: string`, is typed from that, and accepted "x". So the
+// question is what the branches say and not what is written beside them, and
+// runtimeSchemaDef is left to hand back a schema it finds nothing to wrap in --
+// which is what keeps a branch-only negation on the check it already had.
+//
+// It follows the same routes into a branch that mergeAllOfBranches does -- a
+// reference chain, a nested allOf -- so it sees the branches the merge sees; a
+// branch this missed would be a negation the merge drops and no arm restores.
+// onPath is that function's cycle guard for the same reason:
+// {"allOf":[{"$ref":"#"}]} would otherwise re-enter forever.
+func (g *Generator) allOfBranchStatesNot(allOf []*schema.Schema, onPath map[*schema.Schema]bool) bool {
+	for _, sub := range allOf {
+		if sub == nil || onPath[sub] {
+			continue
+		}
+		onPath[sub] = true
+		stated := g.branchStatesNot(sub, onPath)
+		delete(onPath, sub)
+		if stated {
+			return true
+		}
+	}
+	return false
+}
+
+// branchStatesNot is allOfBranchStatesNot for one branch: what the branch itself
+// says, then what a nested allOf under it says, then what the schema behind its
+// reference says.
+//
+// The reference is followed uncounted. This walk only looks, and
+// resolveRefInContext records a reference it cannot serve so that Generate can
+// report it -- turning an optimistic look into a reported error for a reference
+// the run never needed. See referenceTargetUncounted.
+//
+// Through draft 7 a reference replaces the schema object it sits in, so a branch
+// spelled {"$ref":"#/definitions/anystr","not":{...}} states no "not" that any
+// evaluator should read there, and only what the reference reaches is asked.
+// From 2019-09 both bind and both are asked.
+func (g *Generator) branchStatesNot(branch *schema.Schema, onPath map[*schema.Schema]bool) bool {
+	if branch.EffectiveRef() == "" || !g.refOverridesSiblingsForSchema(branch) {
+		if g.negationForbidsSomething(branch.Not) {
+			return true
+		}
+		if g.allOfBranchStatesNot(branch.AllOf, onPath) {
+			return true
+		}
+	}
+	_, target := g.referenceTargetUncounted(branch)
+	if target == nil || onPath[target] {
+		return false
+	}
+	onPath[target] = true
+	stated := g.branchStatesNot(target, onPath)
+	delete(onPath, target)
+	return stated
 }
 
 // extractNotSchemaDef returns a *NotSchemaDef if the schema is a not-only
