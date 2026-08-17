@@ -46,6 +46,27 @@ schemagen generate person.json -o ./models -p models
 
 This reads `person.json`, generates Go types, and writes the output to `./models/person.go` with package name `models`.
 
+### Version
+
+```bash
+schemagen --version    # or: schemagen -v
+# schemagen version v0.1.0
+```
+
+The version is a property of the build rather than a constant in the source, so
+it cannot go stale between releases. What it reports depends on how the binary
+was produced:
+
+| Build | Reports |
+|-------|---------|
+| `make build` / `make install` | the git tag: `v0.1.0` on the release commit, `v0.1.0-3-gabc1234` three commits past it, `-dirty` appended when the tree has uncommitted changes. Before the first tag exists, the abbreviated commit. Override with `make build VERSION=v0.1.0` |
+| `go install github.com/mgilbir/schemagen@v0.1.0` | `v0.1.0` — the tag the module proxy resolved, which the Go toolchain records in the binary. `@latest` reports the newest tag the same way |
+| `go build` in a checkout | a pseudo-version naming the commit, e.g. `v0.0.0-20260817134839-56a8d020cea8`, with `+dirty` when the tree was not clean |
+| anything else | `dev` — no linker stamp and no module version, which is what a build outside a version control checkout leaves. It says outright that the build is not one anybody can look up |
+
+Note that `-v` is `--version` on `schemagen` itself and `--verbose` on
+`schemagen generate`, which is cobra's default arrangement.
+
 ### Flags
 
 | Flag | Short | Default | Description |

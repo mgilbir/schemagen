@@ -6,11 +6,35 @@ JSTS_DIR := testdata/external/JSON-Schema-Test-Suite
 JSTS_REPO := https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
 METASCHEMA_DIR := testdata/external/metaschemas
 
+# The version `schemagen --version` reports, stamped into the binary at link
+# time instead of being written into the source. See cmd/schemagen/version.go
+# for why a constant in the source would be wrong.
+#
+# `git describe --tags --always --dirty` is the derivation: "v0.1.0" standing on
+# the release tag, "v0.1.0-3-gabc1234" three commits past it, and either with
+# "-dirty" appended when the tree has uncommitted changes -- so a build that is
+# not the release cannot claim to be one. Before the first tag exists, which is
+# the state of this repository today, --always falls back to the abbreviated
+# commit, which still names the build exactly.
+#
+# It can also produce nothing: a source tree that is no longer a git checkout,
+# or a machine with no git on it. The stamp is then dropped rather than passed
+# empty, and the binary answers from what the Go toolchain recorded about
+# itself, which is a real version for `go install ...@v0.1.0` and a
+# commit-naming pseudo-version for a build made inside a checkout. "dev" is what
+# comes out only when neither source knows anything.
+#
+# Override for a build that must claim a particular version:
+#
+#	make build VERSION=v0.1.0
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+GO_LDFLAGS := $(if $(VERSION),-X $(MODULE)/cmd/schemagen.version=$(VERSION))
+
 build:
-	go build -o bin/$(BINARY) .
+	go build -ldflags "$(GO_LDFLAGS)" -o bin/$(BINARY) .
 
 install:
-	go install .
+	go install -ldflags "$(GO_LDFLAGS)" .
 
 test:
 	go test ./... -v -count=1
