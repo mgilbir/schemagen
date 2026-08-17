@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "allOf": [
+    {"$ref": "#/$defs/named", "unevaluatedProperties": false}
+  ],
+  "$defs": {
+    "named": {"properties": {"a": {"type": "string"}}}
+  }
+}
