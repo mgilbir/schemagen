@@ -27,6 +27,19 @@ func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "schemagen",
 		Short: "Generate Go types from JSON Schema files",
+		// Setting this is the whole of --version: cobra adds the flag, prints
+		// "schemagen version <v>" to the command's out stream and returns
+		// before the root command would otherwise ask for help. It also takes
+		// the free -v shorthand, since the root command claims no other -- so
+		// `schemagen -v` prints the version while `schemagen generate -v` is
+		// still --verbose, which is cobra's default arrangement and the one
+		// every other cobra tool has.
+		//
+		// The printing stays cobra's, for the reason main.go gives at length:
+		// this command has one output stream per kind of message, and a second
+		// route to os.Stdout would be one that cmd.SetOut cannot redirect.
+		// See resolveVersion for where the string comes from.
+		Version: resolveVersion(),
 	}
 
 	rootCmd.AddCommand(newGenerateCmd())
