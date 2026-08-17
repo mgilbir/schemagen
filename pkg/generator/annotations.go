@@ -816,9 +816,22 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		if !dynamic {
+		if !dynamic || !b.g.anchorDecidedByTheDocument(anchor) {
 			// Nothing declares the anchor this reference would have searched
-			// for, so it is a $ref by a longer name and is inlined like one.
+			// for, so it is a $ref by a longer name and is inlined like one --
+			// and so is a bookended one whose anchor the document declares
+			// exactly once, because then every scope an instance could build
+			// finds the same target and there is nothing for the frames to
+			// decide. That second reading is what keeps the keyword enforced
+			// where the frame machinery is unavailable: dynamicRefLiteral needs
+			// package-level variables, and the node builders that compile
+			// `propertyNames` and `dependentSchemas` are producing a local
+			// literal inside a Validate method. Declining there dropped the
+			// whole sub-schema -- the static extractors beside them read a
+			// reference not at all -- so {"propertyNames":{"$dynamicRef":"#n"}}
+			// admitted every property name while the same document written with
+			// a $ref refused the wrong ones. Issue #337, one keyword over from
+			// the `contains` it was reported as.
 			allOf = append(append([]*schema.Schema(nil), allOf...), target)
 		} else {
 			lit, ok := b.dynamicRefLiteral(s, target, anchor, indent+1)

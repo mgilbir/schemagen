@@ -447,6 +447,31 @@ func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
 	return false
 }
 
+// anchorDecidedByTheDocument reports whether the document holds more than one
+// answer to the anchor a bookended dynamic reference searches for.
+//
+// It is dynamicScopeDecidesTheTarget's question asked of one anchor rather than
+// of one type, and asked of the whole document rather than of what a type
+// reaches, because the caller is a node inside a type and the scope standing
+// above it is not a property of the node. Reaching for the widest set is the
+// safe direction: over-counting leaves a reference compiled as the dynamic thing
+// it is, while under-counting would resolve it once and call that the answer.
+//
+// A single declaration means the reference has one possible target however the
+// instance arrives, so it is a $ref by a longer name and can be read as one.
+// Zero means nothing in reach declares it, which happens when the target lives
+// in a document this walk cannot follow into; that is not a settled answer
+// either, so it is reported as decided.
+func (g *Generator) anchorDecidedByTheDocument(anchor string) bool {
+	if g.rootSchema == nil {
+		return true
+	}
+	if g.documentReach == nil {
+		g.documentReach = g.dynamicallyReachable(g.rootSchema)
+	}
+	return countDynamicAnchorDeclarations(g.documentReach, anchor) != 1
+}
+
 // dynamicallyReachable collects every schema an evaluation rooted at s could
 // arrive at, following references as well as subschemas.
 //

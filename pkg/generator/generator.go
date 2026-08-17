@@ -56,6 +56,12 @@ type Generator struct {
 	// dynamicAnchorDeclarations.
 	dynamicAnchorDecls map[string][]*schema.Schema
 
+	// documentReach memoises every schema an evaluation of this document could
+	// arrive at, references followed. anchorDecidedByTheDocument reads it to
+	// count the declarations of an anchor that any dynamic scope could reach,
+	// and the answer is a walk of the whole document, so it is computed once.
+	documentReach map[*schema.Schema]bool
+
 	// dynamicScope tracks the schema resources entered via $ref during code
 	// generation. This enables $dynamicRef and $recursiveRef to resolve against
 	// the dynamic scope chain (walking from outermost to innermost) rather than
@@ -471,8 +477,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.framesAboveTypeScope = 0
 	g.dynamicScopeConsultations = 0
 	// The anchor index is about this document, so a Generator reused for another
-	// one must not answer from the last one's.
+	// one must not answer from the last one's. The reach is the same statement
+	// about the same document.
 	g.dynamicAnchorDecls = nil
+	g.documentReach = nil
 
 	// Store the external resolver from config (may be nil).
 	g.resolver = g.config.Resolver
@@ -2382,10 +2390,12 @@ func (g *Generator) normalizeDialectFormats(s *schema.Schema) {
 // could never have caught this and a hand-written fixture is the only way in.
 //
 // A pass rather than a test at each reader, for the reason normalizeDialectFormats
-// gives above it: sixty-nine calls to EffectiveRef and getting on for a hundred
-// direct reads of the two fields stand outside the tests, they do not agree on
-// what they are asking, and a rule applied per reader is a rule the next reader
-// added will not apply. Clearing the field
+// gives above it: dozens of calls to EffectiveRef and over a hundred direct reads
+// of the reference fields stand outside the tests -- refReadingSites in
+// refsites_test.go is the current enumeration, and it is what a count belongs in
+// rather than a comment that goes stale the next time one moves -- they do not
+// agree on what they are asking, and a rule applied per reader is a rule the next
+// reader added will not apply. Clearing the field
 // once, where the dialect is known and before anything has looked, is what makes
 // the answer the same in all of them -- including Schema.EffectiveRef, which
 // returns $recursiveRef unconditionally and is the function the issue names.
@@ -6334,11 +6344,7 @@ func (g *Generator) soleBranchAdditionalProperties(allOf []*schema.Schema, onPat
 				}
 				found = nested
 			}
-			effRef := resolved.EffectiveRef()
-			if effRef == "" {
-				break
-			}
-			r := g.resolveRefInContext(effRef, resolved)
+			_, r := g.referenceTarget(resolved)
 			if r == nil || onPath[r] {
 				break
 			}
@@ -6400,11 +6406,7 @@ func (g *Generator) soleBranchArrayKeywords(allOf []*schema.Schema, onPath map[*
 				}
 				found = nested
 			}
-			effRef := resolved.EffectiveRef()
-			if effRef == "" {
-				break
-			}
-			r := g.resolveRefInContext(effRef, resolved)
+			_, r := g.referenceTarget(resolved)
 			if r == nil || onPath[r] {
 				break
 			}
@@ -6494,11 +6496,7 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		var pushedCount int
 		chain := []*schema.Schema{sub}
 		for {
-			effRef := resolved.EffectiveRef()
-			if effRef == "" {
-				break
-			}
-			r := g.resolveRefInContext(effRef, resolved)
+			_, r := g.referenceTarget(resolved)
 			if r == nil {
 				break
 			}
@@ -6916,11 +6914,11 @@ func (g *Generator) resolveSchemaForApplicator(s *schema.Schema) *schema.Schema 
 	// It is allocated on the first hop, leaving the common ref-free schema free.
 	var visited map[*schema.Schema]bool
 	for {
-		effRef := resolved.EffectiveRef()
+		effRef := referenceOn(resolved)
 		if effRef == "" || g.isSelfRefInContext(effRef, resolved) {
 			return resolved
 		}
-		r := g.resolveRefInContext(effRef, resolved)
+		_, r := g.referenceTarget(resolved)
 		if r == nil {
 			return resolved
 		}
@@ -7010,11 +7008,11 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	resolved := variant
 	var pushedCount int
 	for {
-		effRef := resolved.EffectiveRef()
+		effRef := referenceOn(resolved)
 		if effRef == "" || g.isSelfRefInContext(effRef, resolved) {
 			break
 		}
-		r := g.resolveRefInContext(effRef, resolved)
+		_, r := g.referenceTarget(resolved)
 		if r == nil {
 			break
 		}
@@ -7310,13 +7308,11 @@ func (g *Generator) allOfContainsFalseSchemaOnPath(allOf []*schema.Schema, onPat
 		onPath[sub] = true
 		hit := len(sub.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(sub.AllOf, onPath)
 		if !hit {
-			if effRef := sub.EffectiveRef(); effRef != "" {
-				if r := g.resolveRefInContext(effRef, sub); r != nil && !onPath[r] {
-					onPath[r] = true
-					hit = g.schemaForbidsEveryValue(r) ||
-						(len(r.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(r.AllOf, onPath))
-					delete(onPath, r)
-				}
+			if _, r := g.referenceTarget(sub); r != nil && !onPath[r] {
+				onPath[r] = true
+				hit = g.schemaForbidsEveryValue(r) ||
+					(len(r.AllOf) > 0 && g.allOfContainsFalseSchemaOnPath(r.AllOf, onPath))
+				delete(onPath, r)
 			}
 		}
 		delete(onPath, sub)
@@ -7608,12 +7604,10 @@ func (g *Generator) allOfNarrowedValues(values []any, allOf []*schema.Schema, on
 		}
 		onPath[sub] = true
 		values = g.branchNarrowedValues(values, sub, onPath)
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil && !onPath[r] {
-				onPath[r] = true
-				values = g.branchNarrowedValues(values, r, onPath)
-				delete(onPath, r)
-			}
+		if _, r := g.referenceTarget(sub); r != nil && !onPath[r] {
+			onPath[r] = true
+			values = g.branchNarrowedValues(values, r, onPath)
+			delete(onPath, r)
 		}
 		delete(onPath, sub)
 	}
@@ -8081,10 +8075,8 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// Merge each anyOf sub-schema's properties.
 	for _, sub := range s.AnyOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		// One struct stands in for every branch here, so which branch a document
 		// matched is not a thing this type can know afterwards -- and a branch
@@ -11080,8 +11072,8 @@ func (g *Generator) unconditionalReachAt(s *schema.Schema, followRef bool) []*sc
 		visited[node] = true
 		reach = append(reach, node)
 		if followRef {
-			if ref := node.EffectiveRef(); ref != "" {
-				walk(g.resolveRefInContextUncounted(ref, node))
+			if _, target := g.referenceTargetUncounted(node); target != nil {
+				walk(target)
 			}
 		}
 		for _, branch := range node.AllOf {
@@ -11157,8 +11149,8 @@ func (g *Generator) conditionalReachAt(s *schema.Schema) []*schema.Schema {
 		}
 		visited[node] = true
 		reach = append(reach, node)
-		if ref := node.EffectiveRef(); ref != "" {
-			walk(g.resolveRefInContextUncounted(ref, node))
+		if _, target := g.referenceTargetUncounted(node); target != nil {
+			walk(target)
 		}
 		for _, branch := range node.AllOf {
 			walk(branch)
@@ -11741,15 +11733,38 @@ func (g *Generator) popDynamicScope() {
 // single-package corpus, and TestCrossPackageDynamicScopeStandsAtTheType over a
 // two-package run, which is the one the aliasing depends on.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
+	return g.resolveDynamicRefWith(ref, ctx, true)
+}
+
+// resolveDynamicRefUncounted is resolveDynamicRef for a walk that is only
+// looking.
+//
+// It is the $dynamicRef half of the distinction resolveRefInContextUncounted
+// already draws for a $ref, and it exists because referenceTargetUncounted needs
+// both halves to answer the same way. A walk asking "does anything down this
+// chain state X" must leave no trace: an unresolvable reference it happened to
+// pass would otherwise become an error Generate reports, a bookended one would
+// add a scope consultation to the counters
+// TestDynamicScopeStaysAtTheTypeItStartedIn reads, and a vacuous bookend would
+// hang a caveat on a declaration the walk is not producing.
+func (g *Generator) resolveDynamicRefUncounted(ref string, ctx *schema.Schema) *schema.Schema {
+	return g.resolveDynamicRefWith(ref, ctx, false)
+}
+
+func (g *Generator) resolveDynamicRefWith(ref string, ctx *schema.Schema, counted bool) *schema.Schema {
+	resolve := g.resolveRefInContextUncounted
+	if counted {
+		resolve = func(r string, c *schema.Schema) *schema.Schema {
+			// The keyword is stated here because it is knowable only here: the
+			// callback is what dynamicRefInitialTarget resolves with, and the node it
+			// is handed may carry a plain $ref of the same value. Before this the
+			// miss was recorded as a "$ref" whatever the author wrote (issue #307).
+			return g.resolveRefInContextAs(dynamicRefKeyword, r, c)
+		}
+	}
 	// Steps 1 and 2, which the runtime evaluator needs too: see
 	// dynamicRefInitialTarget.
-	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, func(r string, c *schema.Schema) *schema.Schema {
-		// The keyword is stated here because it is knowable only here: the
-		// callback is what dynamicRefInitialTarget resolves with, and the node it
-		// is handed may carry a plain $ref of the same value. Before this the
-		// miss was recorded as a "$ref" whatever the author wrote (issue #307).
-		return g.resolveRefInContextAs(dynamicRefKeyword, r, c)
-	})
+	initialTarget, anchorName := g.dynamicRefInitialTarget(ref, ctx, resolve)
 	if initialTarget == nil {
 		return nil
 	}
@@ -11760,7 +11775,9 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 	// Step 3: Bookend exists — walk the dynamic scope chain from outermost to
 	// innermost, looking for the first resource that declares a $dynamicAnchor
 	// with the same name.
-	g.noteDynamicScopeConsulted()
+	if counted {
+		g.noteDynamicScopeConsulted()
+	}
 	// Fallback, when no resource in scope declares the anchor: the bookend.
 	target := initialTarget
 	for _, resource := range g.dynamicScope {
@@ -11769,8 +11786,10 @@ func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Sc
 			break
 		}
 	}
-	// What the seed cost, where it cost anything: see noteVacuousBookend.
-	g.noteVacuousBookend(dynamicRefKeyword, anchorName, target, ctx)
+	if counted {
+		// What the seed cost, where it cost anything: see noteVacuousBookend.
+		g.noteVacuousBookend(dynamicRefKeyword, anchorName, target, ctx)
+	}
 	return target
 }
 
@@ -12378,11 +12397,9 @@ func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) b
 		if primarySchemaType(propSchema) == "object" && hasProperties(propSchema) {
 			return true
 		}
-		if effRef := propSchema.EffectiveRef(); effRef != "" {
-			if resolved := g.resolveRefInContext(effRef, propSchema); resolved != nil {
-				if primarySchemaType(resolved) == "object" && hasProperties(resolved) {
-					return true
-				}
+		if _, resolved := g.referenceTarget(propSchema); resolved != nil {
+			if primarySchemaType(resolved) == "object" && hasProperties(resolved) {
+				return true
 			}
 		}
 	}
@@ -12756,11 +12773,7 @@ func (g *Generator) allOfBranchStatesAdditionalProperties(allOf []*schema.Schema
 			if g.allOfBranchStatesAdditionalProperties(resolved.AllOf, onPath) {
 				return true
 			}
-			effRef := resolved.EffectiveRef()
-			if effRef == "" {
-				break
-			}
-			r := g.resolveRefInContext(effRef, resolved)
+			_, r := g.referenceTarget(resolved)
 			if r == nil || onPath[r] {
 				break
 			}
@@ -13009,14 +13022,12 @@ func (g *Generator) allOfStatesValuesOnPath(s *schema.Schema, onPath map[*schema
 		if statesEnumOrConst(sub) {
 			return true
 		}
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if statesEnumOrConst(r) {
-					return true
-				}
-				if g.allOfStatesValuesOnPath(r, onPath) {
-					return true
-				}
+		if _, r := g.referenceTarget(sub); r != nil {
+			if statesEnumOrConst(r) {
+				return true
+			}
+			if g.allOfStatesValuesOnPath(r, onPath) {
+				return true
 			}
 		}
 		if g.allOfStatesValuesOnPath(sub, onPath) {
@@ -13060,14 +13071,12 @@ func (g *Generator) allOfNamesATypeOnPath(s *schema.Schema, onPath map[*schema.S
 		if g.branchNamesAType(sub) {
 			return true
 		}
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if g.branchNamesAType(r) {
-					return true
-				}
-				if g.allOfNamesATypeOnPath(r, onPath) {
-					return true
-				}
+		if _, r := g.referenceTarget(sub); r != nil {
+			if g.branchNamesAType(r) {
+				return true
+			}
+			if g.allOfNamesATypeOnPath(r, onPath) {
+				return true
 			}
 		}
 		if g.allOfNamesATypeOnPath(sub, onPath) {
@@ -13132,15 +13141,13 @@ func (g *Generator) allOfNamesObjectKeysOnPath(s *schema.Schema, onPath map[*sch
 		if namesObjectKeys(sub) {
 			return true
 		}
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				if namesObjectKeys(r) {
-					return true
-				}
-				// Recursively check resolved schema's allOf chain.
-				if g.allOfNamesObjectKeysOnPath(r, onPath) {
-					return true
-				}
+		if _, r := g.referenceTarget(sub); r != nil {
+			if namesObjectKeys(r) {
+				return true
+			}
+			// Recursively check resolved schema's allOf chain.
+			if g.allOfNamesObjectKeysOnPath(r, onPath) {
+				return true
 			}
 		}
 		// Recursively check nested allOf.
@@ -13159,8 +13166,8 @@ func (g *Generator) anyOfHasProperties(s *schema.Schema) bool {
 		}
 		// Resolve $ref, but skip self-references to avoid misattributing
 		// the root schema's properties to this anyOf variant.
-		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
+		if ref := referenceOn(sub); ref != "" && !g.isSelfRefInContext(ref, sub) {
+			if _, r := g.referenceTarget(sub); r != nil {
 				if len(r.Properties) > 0 {
 					return true
 				}
@@ -13182,8 +13189,8 @@ func (g *Generator) oneOfDescribesObject(s *schema.Schema) bool {
 		if g.constrainsObjectShape(sub) {
 			return true
 		}
-		if effRef := sub.EffectiveRef(); effRef != "" && !g.isSelfRefInContext(effRef, sub) {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
+		if ref := referenceOn(sub); ref != "" && !g.isSelfRefInContext(ref, sub) {
+			if _, r := g.referenceTarget(sub); r != nil {
 				if g.constrainsObjectShape(r) {
 					return true
 				}
@@ -13446,7 +13453,7 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	// of its own here (issue #177): every path out of this function that would
 	// type it from the sibling alone ends in resolveType, whose first arm claims
 	// exactly that shape. See inlineSiblingNotWrapper.
-	if items.EffectiveRef() == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
+	if referenceOn(items) == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
 		_ = g.generateTypeDef(itemContext, items)
 		return &NamedType{Name: itemContext}
 	}
@@ -13546,9 +13553,13 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 // as having siblings: "I cannot tell" must not become "there is nothing here".
 //
 // The three reference spellings are what the question is *about*, so they are
-// not siblings of themselves. Only $ref reaches the merge arm -- mergeAllOfBranches
-// resolves neither a $dynamicRef nor a $recursiveRef's dynamic scope -- and the
-// callers pair this with a $ref test of their own for that reason.
+// not siblings of themselves. The merge arm behind this used to reach only a
+// $ref, because mergeAllOfBranches followed EffectiveRef and could not see a
+// $dynamicRef -- so {"allOf":[{"$dynamicRef":"#it"}],"maxLength":10} merged the
+// sibling and dropped the branch, where the same schema written with a $ref
+// merged both. It follows all three now, through referenceTarget (issue #337),
+// and the callers' own reference tests are what decide which arm the node takes
+// rather than which keyword it was written with.
 func hasRefStructuralSiblings(s *schema.Schema) bool {
 	if s == nil {
 		return false
@@ -13657,21 +13668,21 @@ func (g *Generator) schemaForbidsKindAt(s *schema.Schema, kind string, depth int
 		// The `true` schema, which admits everything.
 		return false
 	}
-	ref := s.EffectiveRef()
+	ref := referenceOn(s)
 	if ref != "" && g.refOverridesSiblingsForSchema(s) {
 		// Before 2019-09 a $ref replaces everything beside it, so the siblings
 		// have no say at all. Reading them anyway would refuse a value the
 		// target admits. Of this node's dialect, not the run's -- this walk
 		// follows $refs and so crosses between resources that may declare
 		// different ones.
-		target := g.resolveRefInContext(ref, s)
+		_, target := g.referenceTarget(s)
 		return target != nil && g.schemaForbidsKindAt(target, kind, depth+1)
 	}
 	if len(s.Type) > 0 && !typeListAdmitsKind(s.Type, kind) {
 		return true
 	}
 	if ref != "" {
-		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsKindAt(target, kind, depth+1) {
+		if _, target := g.referenceTarget(s); target != nil && g.schemaForbidsKindAt(target, kind, depth+1) {
 			return true
 		}
 	}
@@ -13971,16 +13982,16 @@ func (g *Generator) schemaForbidsZeroAt(s *schema.Schema, kind string, depth int
 	if s == nil || depth >= maxNullRefDepth || s.IsBooleanSchema() {
 		return false
 	}
-	ref := s.EffectiveRef()
+	ref := referenceOn(s)
 	if ref != "" && g.refOverridesSiblingsForSchema(s) {
 		// Before 2019-09 a $ref replaces its siblings outright, so only the
 		// target has a say. Of this node's dialect, not the run's, for the
 		// reason schemaForbidsKindAt gives.
-		target := g.resolveRefInContext(ref, s)
+		_, target := g.referenceTarget(s)
 		return target != nil && g.schemaForbidsZeroAt(target, kind, depth+1)
 	}
 	if ref != "" {
-		if target := g.resolveRefInContext(ref, s); target != nil && g.schemaForbidsZeroAt(target, kind, depth+1) {
+		if _, target := g.referenceTarget(s); target != nil && g.schemaForbidsZeroAt(target, kind, depth+1) {
 			return true
 		}
 	}
@@ -14785,13 +14796,11 @@ func (g *Generator) isNullableComposition(s *schema.Schema) bool {
 		}
 	}
 	// Follow $ref to check the target.
-	if effRef := s.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
-			for _, variants := range [][]*schema.Schema{resolved.AnyOf, resolved.OneOf} {
-				_, hasNull := g.separateNullFromOneOf(variants)
-				if hasNull {
-					return true
-				}
+	if _, resolved := g.referenceTarget(s); resolved != nil {
+		for _, variants := range [][]*schema.Schema{resolved.AnyOf, resolved.OneOf} {
+			_, hasNull := g.separateNullFromOneOf(variants)
+			if hasNull {
+				return true
 			}
 		}
 	}
@@ -15418,10 +15427,8 @@ func (g *Generator) branchForbidsEveryValue(sub *schema.Schema, depth int, onPat
 	if g.forbidsEveryValueOnPath(sub, depth, onPath) {
 		return true
 	}
-	if effRef := sub.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, sub); resolved != nil {
-			return g.forbidsEveryValueOnPath(resolved, depth+1, onPath)
-		}
+	if _, resolved := g.referenceTarget(sub); resolved != nil {
+		return g.forbidsEveryValueOnPath(resolved, depth+1, onPath)
 	}
 	return false
 }
@@ -18800,7 +18807,7 @@ func (g *Generator) extractTypeSchemaBranches(typeSchemas []*schema.Schema, cont
 		// the referenced type and let the branch delegate to it; the shallow
 		// path below would otherwise drop the alternative entirely and the
 		// wrapper would reject every value the reference was meant to admit.
-		if typeSchema.EffectiveRef() != "" {
+		if referenceOn(typeSchema) != "" {
 			// emittedTypeName for the reason delegatedBranchType gives: the name
 			// becomes a type in the wrapper's own source, and another package's
 			// type is not spelled the same way there as in this package's
@@ -18941,9 +18948,9 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 			// "required":["a"]}} accepted [{}] while the same sub-schema under
 			// an explicit "type":"array" rejected it. Issue #166.
 			itemsTypeName = name
-		} else if effRef := itemSchema.EffectiveRef(); effRef != "" {
-			// $ref — resolve and check for simple type or named type.
-			resolved := g.resolveRefInContext(effRef, itemSchema)
+		} else if referenceOn(itemSchema) != "" {
+			// A reference — resolve and check for a simple type or a named type.
+			_, resolved := g.referenceTarget(itemSchema)
 			if resolved != nil && len(resolved.Type) == 1 {
 				itemsType = resolved.Type[0]
 			} else {
@@ -19074,10 +19081,8 @@ func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
 	if itemSchema == nil || itemSchema.IsBooleanSchema() {
 		return nil
 	}
-	if effRef := itemSchema.EffectiveRef(); effRef != "" {
-		if resolved := g.resolveRefInContext(effRef, itemSchema); resolved != nil && len(resolved.Type) == 1 {
-			return &NestedItemsDef{ItemsType: resolved.Type[0]}
-		}
+	if _, resolved := g.referenceTarget(itemSchema); resolved != nil && len(resolved.Type) == 1 {
+		return &NestedItemsDef{ItemsType: resolved.Type[0]}
 	}
 	if len(itemSchema.Type) == 1 {
 		return &NestedItemsDef{ItemsType: itemSchema.Type[0]}
@@ -19103,9 +19108,8 @@ func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName stri
 	if name := g.inferredItemTypeName(sub, nil, posName); name != "" {
 		return InferredTupleItem{TypeName: name}
 	}
-	// If the sub-schema has a $ref, resolve it and check the resolved type.
-	if effRef := sub.EffectiveRef(); effRef != "" {
-		resolved := g.resolveRefInContext(effRef, sub)
+	// If the sub-schema has a reference, resolve it and check the resolved type.
+	if effRef, resolved := g.referenceTarget(sub); effRef != "" {
 		if resolved != nil {
 			if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
 				if name == "" {
@@ -19134,12 +19138,12 @@ func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName stri
 // resolveRefTypeName resolves a $ref schema to a Go type name, generating the
 // referenced type if needed. Returns empty string if the ref cannot be resolved.
 func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
-	effRef := s.EffectiveRef()
+	effRef, resolved := g.referenceTarget(s)
 	if effRef == "" {
 		return ""
 	}
 	goName := refToGoName(effRef)
-	if resolved := g.resolveRefInContext(effRef, s); resolved != nil {
+	if resolved != nil {
 		if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
 			return name
 		}
@@ -19224,6 +19228,36 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 // - boolean true schema
 // - empty schema (no keywords)
 // - {"if": false, "else": true} pattern (if always fails, else always passes)
+//
+// The emptiness question is put to statedConstraints rather than to a list of
+// struct fields, for the reason hasRefStructuralSiblings and
+// containsChecksCarryTheWholeSchema give: a hand-written list of everything that
+// constrains is a list somebody has to remember to extend, and the cost of
+// forgetting is a schema called always-true because the keyword it states is not
+// on the list. The list here ended `s.EffectiveRef() == ""`, which is two of the
+// three reference keywords, so {"contains":{"$dynamicRef":"#it"}} was an
+// always-true sub-schema and `contains` counted every element of the array,
+// while the same document written {"$ref":"#/$defs/item"} got the real
+// per-element check. That is issue #337, and $dynamicRef was not the only
+// omission: patternProperties, the unevaluated pair, contentSchema,
+// dependencies and every vendor extension were absent too, and a sub-schema can
+// consist entirely of any one of them.
+//
+// The two answers above this are kept, because neither is an emptiness claim:
+// `false` is a schema no value satisfies, and {"if":false,"else":true} states
+// three keywords and still admits everything.
+//
+// A schema statedConstraints cannot read is not always-true. "I cannot tell"
+// must not become "there is nothing here", which is the direction
+// hasRefStructuralSiblings takes for the same reason.
+//
+// The annotation vocabulary is the one thing still passed over, and
+// deliberately: whether {"format":"email"} constrains a value is the generator's
+// question and not the schema's, so it is assertsAnnotationVocabulary's to
+// answer and the callers pair the two. That split is argued at
+// assertsAnnotationVocabulary, and regression/branch_unjudgeable_format_contains_draft7
+// is what pins it -- a format no checker recognises really does admit every
+// value, and a `contains` over it still has to refuse the empty array.
 func isAlwaysTrueSchema(s *schema.Schema) bool {
 	if s.IsTrueSchema() {
 		return true
@@ -19236,24 +19270,17 @@ func isAlwaysTrueSchema(s *schema.Schema) bool {
 	if s.If != nil && s.If.IsFalseSchema() && s.Else != nil && s.Else.IsTrueSchema() {
 		return true
 	}
-	// Empty schema (no constraints) matches everything.
-	// Check for the absence of any constraining keywords.
-	if s.Type == nil && s.Enum == nil && s.Const == nil &&
-		s.Minimum == nil && s.Maximum == nil && s.MultipleOf == nil &&
-		s.ExclusiveMinimum == nil && s.ExclusiveMaximum == nil &&
-		s.MinLength == nil && s.MaxLength == nil && s.Pattern == nil &&
-		s.MinItems == nil && s.MaxItems == nil && s.UniqueItems == nil &&
-		s.MinProperties == nil && s.MaxProperties == nil &&
-		s.Items == nil && len(s.PrefixItems) == 0 && s.AdditionalItems == nil &&
-		s.Contains == nil && s.PropertyNames == nil &&
-		s.AdditionalProperties == nil && len(s.Properties) == 0 &&
-		len(s.Required) == 0 && len(s.AllOf) == 0 && len(s.AnyOf) == 0 &&
-		len(s.OneOf) == 0 && s.Not == nil && s.If == nil &&
-		len(s.DependentRequired) == 0 && len(s.DependentSchemas) == 0 &&
-		s.EffectiveRef() == "" {
-		return true
+	stated, ok := statedConstraints(s)
+	if !ok {
+		return false
 	}
-	return false
+	for _, key := range stated {
+		if annotationVocabularyKeywords[key] {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // extractContainsDef builds a ContainsDef from a contains sub-schema.
@@ -20404,10 +20431,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 				// Fallback: static over-approximation.
 				for _, osub := range resolved.OneOf {
 					oresolved := osub
-					if effRef := osub.EffectiveRef(); effRef != "" {
-						if r := g.resolveRefInContext(effRef, osub); r != nil {
-							oresolved = r
-						}
+					if _, r := g.referenceTarget(osub); r != nil {
+						oresolved = r
 					}
 					g.collectEvaluatedFromNested(oresolved, names, patterns, &allEvaluated)
 				}
@@ -20420,10 +20445,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 			} else {
 				for _, asub := range resolved.AnyOf {
 					aresolved := asub
-					if effRef := asub.EffectiveRef(); effRef != "" {
-						if r := g.resolveRefInContext(effRef, asub); r != nil {
-							aresolved = r
-						}
+					if _, r := g.referenceTarget(asub); r != nil {
+						aresolved = r
 					}
 					g.collectEvaluatedFromNested(aresolved, names, patterns, &allEvaluated)
 				}
@@ -20530,10 +20553,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 			// Fallback: static over-approximation.
 			for _, sub := range s.AnyOf {
 				resolved := sub
-				if effRef := sub.EffectiveRef(); effRef != "" {
-					if r := g.resolveRefInContext(effRef, sub); r != nil {
-						resolved = r
-					}
+				if _, r := g.referenceTarget(sub); r != nil {
+					resolved = r
 				}
 				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 			}
@@ -20551,10 +20572,8 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 			// Fallback: static over-approximation.
 			for _, sub := range s.OneOf {
 				resolved := sub
-				if effRef := sub.EffectiveRef(); effRef != "" {
-					if r := g.resolveRefInContext(effRef, sub); r != nil {
-						resolved = r
-					}
+				if _, r := g.referenceTarget(sub); r != nil {
+					resolved = r
 				}
 				g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 			}
@@ -20633,10 +20652,8 @@ func (g *Generator) collectEvaluatedFromNestedOnPath(s *schema.Schema, names map
 	// Recurse into allOf — all branches always apply.
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		g.collectEvaluatedFromNestedOnPath(resolved, names, patterns, allEvaluated, onPath)
 	}
@@ -20644,19 +20661,15 @@ func (g *Generator) collectEvaluatedFromNestedOnPath(s *schema.Schema, names map
 	// Recurse into anyOf/oneOf — collect from all branches (over-approximation).
 	for _, sub := range s.AnyOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		g.collectEvaluatedFromNestedOnPath(resolved, names, patterns, allEvaluated, onPath)
 	}
 	for _, sub := range s.OneOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		g.collectEvaluatedFromNestedOnPath(resolved, names, patterns, allEvaluated, onPath)
 	}
@@ -20729,10 +20742,8 @@ func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schem
 	// Recurse into allOf — all branches always apply.
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		g.collectEvaluatedFromNestedOnPath(resolved, names, patterns, allEvaluated, onPath)
 	}
@@ -21147,10 +21158,8 @@ func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBran
 	var branches []EvalBranchDef
 	for _, sub := range subs {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 
 		// If the resolved schema is a oneOf-only schema, flatten recursively.
@@ -21253,10 +21262,8 @@ func (g *Generator) collectBranchOverflowChecks(s *schema.Schema, ownerName stri
 	// collectRuntimeBranchChecks, which answers those against the document.
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		if resolved.UnevaluatedProperties == nil {
 			continue
@@ -21913,7 +21920,7 @@ func (g *Generator) branchStatesUnevaluatedProperties(subs []*schema.Schema) boo
 		if sub == nil {
 			continue
 		}
-		effRef := sub.EffectiveRef()
+		effRef := referenceOn(sub)
 		if effRef == "" || !g.refOverridesSiblingsForSchema(sub) {
 			if sub.UnevaluatedProperties != nil {
 				return true
@@ -21922,7 +21929,7 @@ func (g *Generator) branchStatesUnevaluatedProperties(subs []*schema.Schema) boo
 		if effRef == "" {
 			continue
 		}
-		if r := g.resolveRefInContextUncounted(effRef, sub); r != nil && r.UnevaluatedProperties != nil {
+		if _, r := g.referenceTargetUncounted(sub); r != nil && r.UnevaluatedProperties != nil {
 			return true
 		}
 	}
@@ -21960,11 +21967,7 @@ func (g *Generator) collectBranchAdditionalChecks(allOf []*schema.Schema, merged
 				}
 			}
 			checks = append(checks, g.collectBranchAdditionalChecks(resolved.AllOf, merged, ownerName, firstIndex+len(checks), onPath)...)
-			effRef := resolved.EffectiveRef()
-			if effRef == "" {
-				break
-			}
-			r := g.resolveRefInContext(effRef, resolved)
+			_, r := g.referenceTarget(resolved)
 			if r == nil || onPath[r] {
 				break
 			}
@@ -22055,10 +22058,8 @@ func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, i
 	// allOf within this sub-schema.
 	for _, sub := range s.AllOf {
 		resolved := sub
-		if effRef := sub.EffectiveRef(); effRef != "" {
-			if r := g.resolveRefInContext(effRef, sub); r != nil {
-				resolved = r
-			}
+		if _, r := g.referenceTarget(sub); r != nil {
+			resolved = r
 		}
 		g.collectEvaluatedFromNested(resolved, names, patterns, &allEvaluated)
 	}
