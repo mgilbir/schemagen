@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ex.test/not-in-allof-branch-ref-siblings.json",
+  "title": "Root",
+  "type": "object",
+  "$defs": {
+    "Long": {
+      "type": "string",
+      "minLength": 4
+    },
+    "AnyStr": {
+      "type": "string"
+    }
+  },
+  "properties": {
+    "refBesideNot": {
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/AnyStr",
+          "not": {
+            "$ref": "#/$defs/Long"
+          }
+        }
+      ]
+    },
+    "refBesideAllOf": {
+      "$ref": "#/$defs/AnyStr",
+      "allOf": [
+        {
+          "not": {
+            "$ref": "#/$defs/Long"
+          }
+        }
+      ]
+    },
+    "plainBranch": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "$ref": "#/$defs/Long"
+          }
+        }
+      ]
+    }
+  }
+}

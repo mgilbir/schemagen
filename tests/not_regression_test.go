@@ -198,6 +198,155 @@ func notRegressionFixtures() []notFixture {
 					Why: "control: too short for the branch either way"},
 			},
 		},
+		{
+			// Issue #341: the same negation one applicator further out. allOf is
+			// an in-place applicator, so {"type":"string","allOf":[{"not":X}]}
+			// and {"type":"string","not":X} assert the same thing of the same
+			// instance -- and only the second was enforced. The merge carries a
+			// branch's properties, type, bounds, values, format and content
+			// vocabulary onto the merged node and never carried its "not", so
+			// every position below typed the value from the sibling and let the
+			// forbidden document through with nothing in the generated source
+			// saying a constraint had been dropped.
+			//
+			// Every position is written out because each is a different arm --
+			// the property ladder, resolveType for a map value, tupleItemDefFor
+			// for a prefixItems slot, the items path -- and each one drops the
+			// negation on its own. The verdicts are python-jsonschema 4.26.0's
+			// and js-ajv 8.20.0's, which agree on all of them.
+			Name:       "not_in_allof_branch",
+			SchemaPath: "testdata/schemas/regression/not_in_allof_branch.json",
+			Instances: []notInstance{
+				{Name: "typed property rejects", Doc: `{"typedRef":"abcd"}`, Valid: false,
+					Why: "the issue's own shape: a declared type beside an allOf whose branch forbids the value"},
+				{Name: "typed property accepts", Doc: `{"typedRef":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "typed property keeps its type", Doc: `{"typedRef":123}`, Valid: false,
+					Why: "the sibling `type` still binds; a fix that kept only the negation would lose it"},
+
+				{Name: "inline operand rejects", Doc: `{"typedInline":"abcd"}`, Valid: false,
+					Why: "the operand written inline rather than behind a $ref, which is what says the reference is not the cause"},
+				{Name: "inline operand accepts", Doc: `{"typedInline":"ab"}`, Valid: true, Why: "control for the above"},
+
+				{Name: "nested allOf rejects", Doc: `{"nested":"abcd"}`, Valid: false,
+					Why: "a branch's own allOf, which the merge recurses into and this walk has to follow too"},
+				{Name: "nested allOf accepts", Doc: `{"nested":"ab"}`, Valid: true, Why: "control for the above"},
+
+				{Name: "branch behind a ref rejects", Doc: `{"viaRefBranch":"abcd"}`, Valid: false,
+					Why: "the branch states only a $ref and the \"not\" is on what it reaches, which is the merge's other route in"},
+				{Name: "branch behind a ref accepts", Doc: `{"viaRefBranch":"ab"}`, Valid: true, Why: "control for the above"},
+
+				{Name: "first branch rejects", Doc: `{"twoBranches":"x"}`, Valid: false,
+					Why: "two branches each stating a negation; both bind"},
+				{Name: "second branch rejects", Doc: `{"twoBranches":"y"}`, Valid: false,
+					Why: "the sharp one: a walk that stopped at the first branch it found a \"not\" in still passes the case above"},
+				{Name: "neither branch rejects", Doc: `{"twoBranches":"z"}`, Valid: true, Why: "control for the two above"},
+
+				{Name: "branch-borne type rejects", Doc: `{"branchTyped":"x"}`, Valid: false,
+					Why: "nothing but the allOf is written on the property, and a branch still supplies the type the value was typed from -- which is why this walk asks what the branches say and not what is written beside them"},
+				{Name: "branch-borne type accepts", Doc: `{"branchTyped":"z"}`, Valid: true, Why: "control for the above"},
+
+				{Name: "object shape rejects", Doc: `{"objectShape":{"q":"a"}}`, Valid: false,
+					Why: "a branch's `not`:{required} beside the property's own `properties`"},
+				{Name: "object shape accepts", Doc: `{"objectShape":{}}`, Valid: true, Why: "control for the above"},
+
+				{Name: "element rejects", Doc: `{"element":["x"]}`, Valid: false, Why: "an array element written inline"},
+				{Name: "element accepts", Doc: `{"element":["z"]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "map value rejects", Doc: `{"mapValue":{"k":"x"}}`, Valid: false,
+					Why: "a map value, which reaches resolveType by its own route"},
+				{Name: "map value accepts", Doc: `{"mapValue":{"k":"z"}}`, Valid: true, Why: "control for the above"},
+
+				{Name: "tuple slot rejects", Doc: `{"tupleSlot":["x"]}`, Valid: false,
+					Why: "a prefixItems position, whose check is written by tupleItemDefFor"},
+				{Name: "tuple slot accepts", Doc: `{"tupleSlot":["z"]}`, Valid: true, Why: "control for the above"},
+
+				{Name: "branch without a not still binds", Doc: `{"controlNoNot":"a"}`, Valid: false,
+					Why: "control, and the one that tells a fix from an amputation: an allOf branch stating no negation must go on being merged, bound and all"},
+				{Name: "branch without a not accepts", Doc: `{"controlNoNot":"ab"}`, Valid: true, Why: "control for the above"},
+			},
+		},
+		{
+			// The same answer under 2019-09, where $ref became an ordinary
+			// applicator. Nothing about this shape is 2020-12's: the negation is
+			// in an allOf branch and no reference stands beside anything, so a
+			// dialect split here would be a defect rather than a rule.
+			//
+			// prefixItems is the one position left out: it is 2020-12's spelling
+			// and 2019-09 reads it as an unknown keyword, so the slot would
+			// assert nothing and the case would pass whatever the generator did.
+			Name:       "not_in_allof_branch_2019",
+			SchemaPath: "testdata/schemas/regression/not_in_allof_branch_2019.json",
+			Instances: []notInstance{
+				{Name: "typed property rejects", Doc: `{"typedRef":"abcd"}`, Valid: false,
+					Why: "the issue's shape under 2019-09"},
+				{Name: "typed property accepts", Doc: `{"typedRef":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "inline operand rejects", Doc: `{"typedInline":"abcd"}`, Valid: false, Why: "the operand written inline"},
+				{Name: "branch behind a ref rejects", Doc: `{"viaRefBranch":"abcd"}`, Valid: false,
+					Why: "the branch's reference is followed on this dialect as on 2020-12"},
+				{Name: "second branch rejects", Doc: `{"twoBranches":"y"}`, Valid: false, Why: "both branches bind here too"},
+				{Name: "object shape rejects", Doc: `{"objectShape":{"q":"a"}}`, Valid: false, Why: "the object position"},
+				{Name: "branch without a not still binds", Doc: `{"controlNoNot":"a"}`, Valid: false,
+					Why: "control: the ordinary merge is untouched"},
+				{Name: "branch without a not accepts", Doc: `{"controlNoNot":"ab"}`, Valid: true, Why: "control for the above"},
+			},
+		},
+		{
+			// Where the dialect does decide, on 2020-12's side of the split.
+			// From 2019-09 a $ref is an ordinary applicator, so what stands
+			// beside it applies: the branch's "not" binds and so does an allOf
+			// written beside the property's own reference.
+			//
+			// This group and the draft-7 one below are the same three properties
+			// written the same way, and they are here to be read together: one
+			// asserts that the negation is carried, the other that it is not.
+			Name:       "not_in_allof_branch_ref_siblings",
+			SchemaPath: "testdata/schemas/regression/not_in_allof_branch_ref_siblings.json",
+			Instances: []notInstance{
+				{Name: "not beside a branch ref rejects", Doc: `{"refBesideNot":"abcd"}`, Valid: false,
+					Why: "2019-09 onwards the branch's $ref does not replace the \"not\" written beside it"},
+				{Name: "not beside a branch ref accepts", Doc: `{"refBesideNot":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "allOf beside a property ref rejects", Doc: `{"refBesideAllOf":"abcd"}`, Valid: false,
+					Why: "nor does the property's own $ref replace the allOf beside it"},
+				{Name: "allOf beside a property ref accepts", Doc: `{"refBesideAllOf":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "plain branch rejects", Doc: `{"plainBranch":"abcd"}`, Valid: false,
+					Why: "the shape with no reference sibling at all, which must answer the same on every dialect"},
+				{Name: "plain branch accepts", Doc: `{"plainBranch":"ab"}`, Valid: true, Why: "control for the above"},
+			},
+		},
+		{
+			// The other side of that split, and the reason this fix had to be
+			// asked of the dialect at all: through draft 7 a $ref replaces the
+			// schema object it sits in, so neither the "not" written beside a
+			// branch's reference nor the allOf written beside the property's own
+			// is there to be read. A fix that carried the negation here would
+			// refuse two documents the schema admits -- a new defect, not a fix.
+			//
+			// Both refBeside* cases are unchanged by #341 and were already
+			// answered this way; they are asserted rather than assumed because
+			// nothing else would notice the new walk reaching into them.
+			//
+			// Implementations split here, and the split is recorded rather than
+			// resolved: python-jsonschema 4.26.0 applies draft 7's rule and
+			// accepts both, js-ajv 8.20.0 applies the siblings and refuses both.
+			// What is asserted is the rule this repository already implements at
+			// every other site -- refOverridesSiblingsForSchema, draft 3 through
+			// draft 7 -- so this group pins the fix as consistent with it and
+			// takes no new position. plainBranch is the control that says the
+			// dialect answer is about the reference and not about draft 7.
+			Name:       "not_in_allof_branch_draft7",
+			SchemaPath: "testdata/schemas/regression/not_in_allof_branch_draft7.json",
+			Instances: []notInstance{
+				{Name: "not beside a branch ref accepts", Doc: `{"refBesideNot":"abcd"}`, Valid: true,
+					Why: "the branch's $ref replaces the \"not\" written beside it, so nothing forbids this"},
+				{Name: "not beside a branch ref accepts short", Doc: `{"refBesideNot":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "allOf beside a property ref accepts", Doc: `{"refBesideAllOf":"abcd"}`, Valid: true,
+					Why: "the property's $ref replaces the allOf written beside it, so the branch is not read"},
+				{Name: "allOf beside a property ref accepts short", Doc: `{"refBesideAllOf":"ab"}`, Valid: true, Why: "control for the above"},
+				{Name: "plain branch rejects", Doc: `{"plainBranch":"abcd"}`, Valid: false,
+					Why: "control, and the point of the group: with no reference beside it the negation binds on draft 7 exactly as on 2020-12, so the two accepts above are the reference rule and not a dialect this fix forgot"},
+				{Name: "plain branch accepts", Doc: `{"plainBranch":"ab"}`, Valid: true, Why: "control for the above"},
+			},
+		},
 	}
 }
 
@@ -357,4 +506,72 @@ func goQuote(s string) string {
 		return "`" + s + "`"
 	}
 	return fmt.Sprintf("%q", s)
+}
+
+// TestDraft7RefSiblingKeepsItsGoTypeUnderABranchNegation is the half of issue
+// #341's dialect answer that no verdict can see.
+//
+// Through draft 7 a $ref replaces the schema object it sits in, so a "not"
+// written beside a branch's reference -- and an allOf written beside the
+// property's own -- is not there to be read. The walk that finds a branch-borne
+// negation therefore stands down on those two shapes, and the group
+// not_in_allof_branch_draft7 above asserts the documents they admit.
+//
+// That assertion alone is not enough, and this test exists because the plants
+// that removed each of those two stand-downs left it passing. What happens
+// without them is that the property is handed to the runtime evaluator, and the
+// evaluator applies the very same draft-7 rule one level down (see nodeBuilder
+// and refOverridesSiblingsForSchema) -- so the verdict comes out right while the
+// property has quietly stopped being a `*string` and become a raw-JSON wrapper
+// with no Go type of its own. A schema that reads and validates identically, for
+// a negation the dialect says is not written, is exactly the kind of silent
+// degradation this repository has nothing else to catch.
+//
+// plainBranch is the control and is asserted the other way: there the negation
+// does bind on draft 7, the wrapper is correct, and a "fix" that simply stopped
+// walking branches on this dialect would be caught here rather than passing.
+func TestDraft7RefSiblingKeepsItsGoTypeUnderABranchNegation(t *testing.T) {
+	src := string(generateFromSchema(t, "testdata/schemas/regression/not_in_allof_branch_draft7.json"))
+
+	for _, c := range []struct {
+		jsonName string
+		wantType string
+		why      string
+	}{
+		{"refBesideNot", "*string", "the branch's $ref replaces the \"not\" beside it, so nothing has to be carried and the property keeps its Go type"},
+		{"refBesideAllOf", "*AnyStr", "the property's own $ref replaces the allOf beside it, so the branch is not read and the reference's type stands"},
+		{"plainBranch", "RootPlainBranch", "control: with no reference beside it the negation binds, and the wrapper is what carries it"},
+	} {
+		line := structFieldLine(t, src, c.jsonName)
+		if !strings.Contains(line, c.wantType) {
+			t.Errorf("the field for %q is %q and should name %s.\n%s\n\nfull source:\n%s",
+				c.jsonName, strings.TrimSpace(line), c.wantType, c.why, src)
+		}
+	}
+}
+
+// structFieldLine returns the struct field declaration carrying the given JSON
+// property name, whichever omit-empty spelling its tag uses.
+//
+// Both spellings are looked for rather than one, because which of them a field
+// gets is decided by the type it ended up with -- a raw-JSON wrapper is a struct
+// and takes ",omitzero", a pointer takes ",omitempty" -- and that is the very
+// difference the caller is asserting. Matching on one spelling would fail by not
+// finding the line at all, which reads as a broken test rather than as the
+// finding it is.
+func structFieldLine(t *testing.T, src, jsonName string) string {
+	t.Helper()
+	for _, tag := range []string{
+		"`json:\"" + jsonName + ",omitempty\"`",
+		"`json:\"" + jsonName + ",omitzero\"`",
+		"`json:\"" + jsonName + "\"`",
+	} {
+		for _, line := range strings.Split(src, "\n") {
+			if strings.Contains(line, tag) {
+				return line
+			}
+		}
+	}
+	t.Fatalf("generated source declares no field for the property %q:\n%s", jsonName, src)
+	return ""
 }

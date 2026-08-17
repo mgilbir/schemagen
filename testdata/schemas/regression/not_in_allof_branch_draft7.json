@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ex.test/not-in-allof-branch-draft7.json",
+  "title": "Root",
+  "type": "object",
+  "definitions": {
+    "Long": {
+      "type": "string",
+      "minLength": 4
+    },
+    "AnyStr": {
+      "type": "string"
+    }
+  },
+  "properties": {
+    "refBesideNot": {
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AnyStr",
+          "not": {
+            "$ref": "#/definitions/Long"
+          }
+        }
+      ]
+    },
+    "refBesideAllOf": {
+      "$ref": "#/definitions/AnyStr",
+      "allOf": [
+        {
+          "not": {
+            "$ref": "#/definitions/Long"
+          }
+        }
+      ]
+    },
+    "plainBranch": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "$ref": "#/definitions/Long"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://ex.test/not-in-allof-branch-2019.json",
+  "title": "Root",
+  "type": "object",
+  "$defs": {
+    "Long": {
+      "type": "string",
+      "minLength": 4
+    },
+    "NotLong": {
+      "not": {
+        "$ref": "#/$defs/Long"
+      }
+    }
+  },
+  "properties": {
+    "typedRef": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "$ref": "#/$defs/Long"
+          }
+        }
+      ]
+    },
+    "typedInline": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "type": "string",
+            "minLength": 4
+          }
+        }
+      ]
+    },
+    "nested": {
+      "type": "string",
+      "allOf": [
+        {
+          "allOf": [
+            {
+              "not": {
+                "$ref": "#/$defs/Long"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "viaRefBranch": {
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotLong"
+        }
+      ]
+    },
+    "twoBranches": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "const": "x"
+          }
+        },
+        {
+          "not": {
+            "const": "y"
+          }
+        }
+      ]
+    },
+    "branchTyped": {
+      "allOf": [
+        {
+          "type": "string"
+        },
+        {
+          "not": {
+            "const": "x"
+          }
+        }
+      ]
+    },
+    "objectShape": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "q"
+            ]
+          }
+        }
+      ]
+    },
+    "element": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "allOf": [
+          {
+            "not": {
+              "const": "x"
+            }
+          }
+        ]
+      }
+    },
+    "mapValue": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "allOf": [
+          {
+            "not": {
+              "const": "x"
+            }
+          }
+        ]
+      }
+    },
+    "controlNoNot": {
+      "type": "string",
+      "allOf": [
+        {
+          "minLength": 2
+        }
+      ]
+    }
+  }
+}

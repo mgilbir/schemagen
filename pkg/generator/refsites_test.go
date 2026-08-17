@@ -275,7 +275,15 @@ var refReadingSites = map[string]refReadingSite{
 	},
 	"generator/generator.go | (*Generator).siblingsWouldDropNot": {
 		Verdict: refAsksAboutOneKeyword, Reads: "EffectiveRef()",
-		Why: "the same pre-2019-09 sibling rule as refDisplacesSiblingValues",
+		Why: "the same pre-2019-09 sibling rule as refDisplacesSiblingValues, asked once for the two places a " +
+			"negation reaches the node from -- a \"not\" written on it, and an allOf beside it whose branch " +
+			"carries one (issue #341). The draft that replaces the schema object a $ref sits in replaces both",
+	},
+	"generator/generator.go | (*Generator).branchStatesNot": {
+		Verdict: refAsksAboutOneKeyword, Reads: "EffectiveRef()",
+		Why: "the same pre-2019-09 sibling rule one level in: whether an allOf branch's own \"not\" is there to " +
+			"be read beside the reference the branch carries. The schema the reference reaches is asked either " +
+			"way, and through referenceTargetUncounted, which reads whichever keyword is there",
 	},
 	"generator/generator.go | (*Generator).generateStructDef": {
 		Verdict: refAsksAboutOneKeyword, Reads: "EffectiveRef()",
