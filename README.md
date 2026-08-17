@@ -723,6 +723,15 @@ Notes:
   as `common.json#/properties/postal_code`, which that package emits as a field
   and never as a declaration — is an error rather than a copy, in that position
   as in every other. Reference a `$defs` entry instead, which is named.
+- It holds for the other reference keywords too. A `$dynamicRef` and a
+  `$recursiveRef` that leave the document name the owning package's type exactly
+  as a `$ref` does, at the root and everywhere below it. For a `$dynamicRef` that
+  is a statement about the target and not a guess: a generated type is validated
+  as the root of its own evaluation, so the dynamic scope such a reference is
+  answered against holds only the resource the type is generated from — the
+  target is therefore fixed by that document, whichever way an instance arrives.
+  The same rule about unnamed nodes applies: a reference reaching a node the
+  owning package declares nothing for is an error rather than a copy.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
 

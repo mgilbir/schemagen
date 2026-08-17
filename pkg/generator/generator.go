@@ -3689,6 +3689,42 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				g.output.TypeDefs = append(g.output.TypeDefs, def)
 				return nil
 			}
+			// The same answer the $ref arm above gives, and now for the same
+			// reason. A reference into a document another package of this run
+			// owns names that package's type; materializing a second Go type for
+			// the JSON shape it already owns is what --schema-package exists to
+			// prevent, and this arm was the one place a cross-package reference
+			// still did it -- `type T string` declared in the referring package
+			// beside `type Root T`, importing nothing, while the identical
+			// document spelled with $ref emitted `type Root tpkg.T`. Issue #325,
+			// and it is #299's shape surviving in the one arm #302 left.
+			//
+			// It was left because aliasing a $dynamicRef to a *fixed* foreign type
+			// says the reference has one answer, which is the opposite of what the
+			// keyword is for -- and which answer it would be frozen to was #293's
+			// question, so deciding it here would have settled that one by
+			// implication in the narrowest possible place. #293 is decided: the
+			// scope is seeded at the type being generated, so resolveDynamicRef
+			// walks at most this type's own resource. The target is therefore
+			// either the bookend the reference statically lands on or a
+			// declaration inside this very resource -- both fixed by the document
+			// this type is generated from, neither chosen by a caller -- and the
+			// alias is a true statement about the type rather than a frozen guess.
+			// See resolveDynamicRef, and typeRootedScope for the seed.
+			//
+			// The exception is the $ref arm's: where a defined type over the
+			// target would not carry the target's methods, the copy is what the
+			// reference means and what --shared-types materializes for the same
+			// schema.
+			if foreign, ok := g.foreignTypeFor(resolved, s.DynamicRef); ok && !g.aliasDropsMethods(foreign) {
+				g.generated[name] = true
+				g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+					Name:       name,
+					Underlying: foreign,
+					Doc:        g.docFor(name, s),
+				})
+				return nil
+			}
 			refName := g.goNameForResolvedRef(s.DynamicRef, resolved, refToGoName(s.DynamicRef))
 			if err := g.generateTypeDef(refName, resolved); err != nil {
 				return err
@@ -10064,6 +10100,17 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if s.DynamicRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
 		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
+			// As the $ref arm immediately above, and for the reason argued at the
+			// document-root arm of generateTypeDefBody: the target a $dynamicRef
+			// resolves to is fixed by the document the type being generated comes
+			// from, so a target another package owns is named rather than copied.
+			// This is the position issue #325 reports beside the root one: a
+			// property, an array element, a map value and a composition branch
+			// all reach here, and each of them minted a local declaration of the
+			// foreign type instead of naming it.
+			if foreign, ok := g.foreignTypeFor(refSchema, s.DynamicRef); ok {
+				return foreign
+			}
 			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
 			_ = g.generateTypeDef(goName, refSchema)
 			if g.isScopedSelfRef(s.DynamicRef, s, refSchema) {
@@ -11672,14 +11719,27 @@ func (g *Generator) popDynamicScope() {
 //
 // The scope walked in step 3 is seeded at the type being generated, which is
 // #293's answer and is argued at resolveRecursiveRef and typeRootedScope. One
-// thing was waiting on that and is deliberately not done here: #325, where a
-// cross-package $dynamicRef materializes a local copy of the foreign type
-// instead of importing it as the same $ref would. It was never a ten-line fix,
-// because aliasing a $dynamicRef to a fixed foreign type freezes the
-// dynamic-scope choice at the package boundary -- and what it would be frozen to
-// is exactly the question this seed answers. It is answered now, so that gap can
-// be closed on its own terms rather than settling this one by implication in the
-// narrowest possible place.
+// thing was waiting on that, and it is what makes the answer above safe to hand
+// to another package: #325, where a cross-package $dynamicRef materialized a
+// local copy of the foreign type instead of importing it as the same $ref would.
+// It was never a ten-line fix, because aliasing a $dynamicRef to a fixed foreign
+// type freezes the dynamic-scope choice at the package boundary -- and what it
+// would be frozen to is exactly the question this seed answers.
+//
+// With the seed at the type, this function returns a target the type's own
+// document fixes. The loop below runs over the scope generateTypeDefBody seeded,
+// which typeRootedScope fills with the type's own resource or with nothing at
+// all -- so target is either initialTarget, which the reference and the
+// referring document decide between them, or a declaration inside the very
+// resource being generated. Neither is a choice a caller could have made
+// differently, which is what lets generateTypeDefBody and resolveType alias such
+// a target to the owning package's type rather than copying it.
+//
+// That the scope really does stand there when this runs is measured rather than
+// argued, and in both configurations, because the claim is only as good as the
+// run it was made about: TestDynamicScopeStaysAtTheTypeItStartedIn over the
+// single-package corpus, and TestCrossPackageDynamicScopeStandsAtTheType over a
+// two-package run, which is the one the aliasing depends on.
 func (g *Generator) resolveDynamicRef(ref string, ctx *schema.Schema) *schema.Schema {
 	// Steps 1 and 2, which the runtime evaluator needs too: see
 	// dynamicRefInitialTarget.

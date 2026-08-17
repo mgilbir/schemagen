@@ -351,6 +351,173 @@ func crossPackageCases() []crossPackageCase {
 			},
 			MustImport: "ex.test/m/tpkg",
 		},
+		{
+			// Issue #325. The same document as ref_at_the_document_root, with the
+			// reference spelled $dynamicRef and bookended by a $dynamicAnchor the
+			// target declares. Until this was fixed the referring package
+			// declared its own `type T string` and imported nothing, where $ref
+			// at the identical position gave `type Root tpkg.T` with the import
+			// -- #299's shape surviving in the one arm #302 deliberately left.
+			//
+			// It was left because aliasing a $dynamicRef to a fixed foreign type
+			// says the reference has one answer, and #293 was the question of
+			// which. #293 is decided -- the generator's dynamic scope is seeded
+			// at the type being generated -- so the target here is either the
+			// bookend the reference statically lands on or a declaration inside
+			// the referring resource, both fixed by this document. The alias is
+			// then a statement about the type rather than a frozen guess.
+			Name: "dynamic_ref_at_the_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "v4.json", ID: "https://ex.test/v4.json", Pkg: "al", RootType: "V4",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v4.json","title":"V4",
+						"$dynamicRef":"https://ex.test/t.json#node"}`,
+				},
+			},
+			Driven: "v4.json",
+			Instances: []string{
+				`"x"`,
+				`"abc"`,
+				`""`,
+				`"xy"`,
+				`1`,
+				`null`,
+			},
+			MustImport:     "ex.test/m/tpkg",
+			MustNotDeclare: []string{"T"},
+		},
+		{
+			// The half a compile gate cannot see, which is what #313 learned the
+			// hard way: the referring document declares a namesake of the foreign
+			// type, so the copy the defect minted never happens -- the reference
+			// binds to the *local* T instead, the package compiles, and the
+			// branch is judged against a schema that is not the one referenced.
+			// Here the namesake asserts the opposite constraint, so it shows up
+			// as a verdict rather than only in the source, in both directions:
+			// "abc" refused by the multi-package spelling and accepted by shared
+			// types, "z" the reverse.
+			//
+			// No MustNotDeclare, deliberately. The referring document really does
+			// declare a T of its own and must keep it -- property "b" is what
+			// reaches it -- so the source assertion has nothing to say and the
+			// differential is the whole of the check.
+			Name: "a_local_namesake_of_the_foreign_dynamic_target",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"p":{"$dynamicRef":"https://ex.test/t.json#node"},
+							"s":{"type":"array","items":{"$dynamicRef":"https://ex.test/t.json#node"}},
+							"m":{"type":"object","additionalProperties":{"$dynamicRef":"https://ex.test/t.json#node"}},
+							"b":{"$ref":"#/$defs/T"}
+						},
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"p":"abc"}`,
+				`{"p":"z"}`,
+				`{"p":"ab"}`,
+				`{"b":"z"}`,
+				`{"b":"abc"}`,
+				`{"s":["abc"]}`,
+				`{"s":["z"]}`,
+				`{"m":{"k":"abc"}}`,
+				`{"m":{"k":"z"}}`,
+				`{"p":"abc","b":"z","s":["abc"],"m":{"k":"abc"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// The same namesake trap at the document root. The referring document
+			// is nothing but the reference and a $defs entry that mints the same
+			// Go name; root-level definitions are generated before the root, so
+			// under the defect `type V5 T` bound the namesake and V5 enforced
+			// maxLength 1 where the schema says minLength 3.
+			Name: "a_local_namesake_at_the_dynamic_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "v5.json", ID: "https://ex.test/v5.json", Pkg: "al", RootType: "V5",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v5.json","title":"V5",
+						"$dynamicRef":"https://ex.test/t.json#node",
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "v5.json",
+			Instances: []string{
+				`"x"`,
+				`"abc"`,
+				`""`,
+				`"xy"`,
+				`1`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// $recursiveRef at the same position, which #211's table says is
+			// honoured on 2019-09, 2020-12 and v1 -- so the question was whether
+			// it shared the defect. It does not, and this is what says so rather
+			// than a sentence in a commit message.
+			//
+			// The reason is worth knowing before someone "fixes" it too. "#" is
+			// the only value 2019-09 gives $recursiveRef and it names the
+			// resource the keyword is written in, so a bookended one can never
+			// leave the referring document; anything else is read as the plain
+			// reference it is spelled as, which takes the $ref arm and has asked
+			// foreignTypeFor since #299. Both readings are exercised here: the
+			// cross-document one at the root, and the bookended local one under
+			// it.
+			Name: "recursive_ref_at_the_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2019-09/schema",
+						"$id":"https://ex.test/t.json","title":"T","$recursiveAnchor":true,
+						"type":"object","properties":{"n":{"type":"string","minLength":3}},
+						"additionalProperties":{"$recursiveRef":"#"}}`,
+				},
+				{
+					File: "v6.json", ID: "https://ex.test/v6.json", Pkg: "al", RootType: "V6",
+					Body: `{"$schema":"https://json-schema.org/draft/2019-09/schema",
+						"$id":"https://ex.test/v6.json","title":"V6",
+						"$recursiveRef":"https://ex.test/t.json#"}`,
+				},
+			},
+			Driven: "v6.json",
+			Instances: []string{
+				`{}`,
+				`{"n":"abc"}`,
+				`{"n":"z"}`,
+				`{"other":{}}`,
+				`1`,
+			},
+			MustImport:     "ex.test/m/tpkg",
+			MustNotDeclare: []string{"T"},
+		},
 	}
 }
 

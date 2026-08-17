@@ -297,6 +297,15 @@ var (
 
 // ownerDocument declares one named definition per shape a delegating position
 // can reach: a string with a keyword on it, an object, and an array.
+//
+// The two ForeignDyn* entries carry a $dynamicAnchor so that a referring
+// document can reach them with a *bookended* $dynamicRef, which is the only
+// spelling for which the dynamic scope is consulted at all. Their anchor names
+// are chosen so that the Go name a referring package would derive from the
+// reference text is Foreign-prefixed like the rest: that is what lets the walk
+// below tell a copy minted for the foreign shape from a name of this package's
+// own. Separate definitions rather than anchors on the existing ones, so that
+// adding them cannot move what the $ref documents above generate.
 const ownerDocument = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ex.test/own.json",
@@ -308,7 +317,10 @@ const ownerDocument = `{
     "ForeignObj": {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
     "ForeignArr": {"type": "array", "items": {"type": "string"}, "minItems": 1},
     "ForeignUnion": {"oneOf": [{"type": "string", "minLength": 3}, {"type": "integer", "minimum": 5}]},
-    "ForeignAny": {}
+    "ForeignAny": {},
+    "ForeignDynStr": {"$dynamicAnchor": "foreignDynStr", "type": "string", "minLength": 3},
+    "ForeignDynObj": {"$dynamicAnchor": "foreignDynObj", "type": "object",
+                      "properties": {"x": {"type": "string"}}, "required": ["x"]}
   }
 }`
 
@@ -435,6 +447,47 @@ var referringDocuments = map[string]string{
 	  "type":"object",
 	  "properties":{"a":{"$ref":"#/$defs/Bag"}},
 	  "$defs":{"Bag":{"allOf":[{"$ref":"https://ex.test/own.json#/$defs/ForeignArr"}],"uniqueItems":true}}}`,
+
+	// The same positions again, written with a bookended $dynamicRef instead of
+	// a $ref. Until issue #325 the probe set held no dynamic reference at all,
+	// so the qualification question was never put to the arms that answer one --
+	// and those arms answered it wrongly: the referring package declared its own
+	// copy of the foreign shape and imported nothing, which compiles and leaves
+	// two Go types for one JSON shape (issue #299's shape, in the one arm #302
+	// deliberately left). A gate that enumerates positions and not keywords has
+	// exactly this hole, so the keyword is enumerated here too.
+	//
+	// Bookended, deliberately: the target carries the very anchor the reference
+	// names, which is what makes the dynamic scope be consulted rather than the
+	// reference being a $ref with a longer name. Only one resource in reach
+	// declares each anchor, so the target is fixed and the static path keeps the
+	// schema instead of handing it to the runtime evaluator.
+	"document_root_is_the_dynamic_reference": `{
+	  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/r20.json","title":"R20",
+	  "$dynamicRef":"https://ex.test/own.json#foreignDynObj"}`,
+
+	"anyof_branch_in_a_property_by_dynamic_reference": `{
+	  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/r21.json","title":"R21",
+	  "type":"object",
+	  "properties":{"a":{"anyOf":[{"$dynamicRef":"https://ex.test/own.json#foreignDynStr"},{"type":"integer"}]}}}`,
+
+	"pattern_properties_by_dynamic_reference": `{
+	  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/r22.json","title":"R22",
+	  "type":"object",
+	  "patternProperties":{"^k":{"$dynamicRef":"https://ex.test/own.json#foreignDynObj"}}}`,
+
+	"branch_overflow_by_dynamic_reference": `{
+	  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/r23.json","title":"R23",
+	  "type":"object","properties":{"x":{"type":"string"}},
+	  "allOf":[{"additionalProperties":{"$dynamicRef":"https://ex.test/own.json#foreignDynObj"}}]}`,
+
+	"property_element_and_map_value_by_dynamic_reference": `{
+	  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/r24.json","title":"R24",
+	  "type":"object",
+	  "properties":{
+	    "p":{"$dynamicRef":"https://ex.test/own.json#foreignDynStr"},
+	    "s":{"type":"array","items":{"$dynamicRef":"https://ex.test/own.json#foreignDynStr"}},
+	    "m":{"type":"object","additionalProperties":{"$dynamicRef":"https://ex.test/own.json#foreignDynObj"}}}}`,
 }
 
 // sitesNotProbed records foreign-possible sites no schema here reaches, and
