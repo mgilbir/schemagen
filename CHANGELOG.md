@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1
+
+### Fixed
+
+- A `$ref` written beside a keyword that survives it no longer runs the
+  generator out of memory when it is reached through an array element or a
+  tuple position and leads back to the array. `{"items":{"$ref":"#",
+  "minItems":1}}` is thirty-five bytes of legal schema and took the process
+  down with `fatal error: out of memory`, which no `recover` intercepts; the
+  same shape written under a property was already handled. Found by the nightly
+  fuzz job.
+
 ## 0.1.0
 
 First release.

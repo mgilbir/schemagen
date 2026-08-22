@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","prefixItems":[{"type":"string"}],"items":{"$ref":"#","minItems":1}}
