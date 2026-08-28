@@ -300,7 +300,7 @@ one whatever this flag says — a tuple element, an `any` field, a value judged
 only by a runtime rule. `--exact-numbers` acts on the declared type, so a schema
 that declares none gets what it always got.
 
-### Property names are case-sensitive
+### Property names and keywords are case-sensitive
 
 JSON Schema property names are case-sensitive: `NAME` and `name` are two
 different properties, and a schema declaring only `name` says nothing whatever
@@ -313,6 +313,14 @@ Generated code follows the schema. A key that differs from a declared property
 only in case is an **additional property**: it goes to the overflow map (or is
 refused, where the schema forbids extra keys), and the declared property is
 absent unless the document wrote its exact name.
+
+Keywords are read by the same rule. `MinLength` is not `minLength` — it is an
+unrecognised keyword, which every draft says to ignore — so
+`{"type":"string","MinLength":5}` states no length at all and the generated type
+accepts `"ab"`. The same goes for a reference: `{"$rEf":"#/$defs/S"}` refers to
+nothing and leaves the position unconstrained. An unrecognised keyword is still
+preserved and still reachable by JSON Pointer, so `#/MinLength` resolves; what it
+no longer does is constrain anything.
 
 ### Prose: `title` and `description`
 
