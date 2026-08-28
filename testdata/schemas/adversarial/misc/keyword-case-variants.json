@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"a":{"type":"string","MinLength":5},"b":{"$rEf":"#/$defs/S"},"d":{"type":"string","minLength":1,"MinLength":9},"e":{"TYPE":"integer"}},"$defs":{"S":{"type":"string"}}}
