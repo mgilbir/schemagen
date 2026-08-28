@@ -146,9 +146,22 @@ func fuzzSeedCorpus(collect func(origin string, schema []byte)) (local, external
 }
 
 // fuzzOnce is the body of FuzzGenerate, called from the fuzz target and from the
-// test that times the seed corpus. Shared so that neither can drift into
-// exercising something the other does not.
+// tests that hold the seed corpus to the worker's time and memory limits. Shared
+// so that none of them can drift into exercising something the others do not.
+//
+// The pipeline itself is fuzzPipeline; fuzzOnce is it under the memory gate in
+// fuzz_memory_test.go, which panics -- deliberately, and before the runtime can
+// reach the `fatal error: out of memory` that no harness can attribute -- if an
+// input grows the heap past fuzzMemoryBudget.
 func fuzzOnce(em *emitter.Emitter, cfgBits uint8, data []byte) {
+	fuzzMemoryGate(cfgBits, data, func() {
+		fuzzPipeline(em, cfgBits, data)
+	})
+}
+
+// fuzzPipeline is parse -> generate -> emit, with nothing watching it. Call
+// fuzzOnce instead unless the point is to measure what the watching costs.
+func fuzzPipeline(em *emitter.Emitter, cfgBits uint8, data []byte) {
 	var s schema.Schema
 	if err := json.Unmarshal(data, &s); err != nil {
 		return // not a schema document; nothing to exercise
