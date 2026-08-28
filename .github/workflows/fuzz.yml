@@ -76,6 +76,31 @@ jobs:
       # find. Treat it as a starting point rather than the reproducer: when a
       # crash kills the minimizer, go saves the last input *sent*, which is
       # often truncated and does not reproduce on its own.
+      #
+      # It is a close starting point, though, and the way to use it is worth
+      # writing down because reading it as junk costs an investigation.
+      # workerClient.minimize, on an unrecoverable error with the raw value
+      # still in shared memory, writes back the bytes the worker was executing
+      # when it died -- so the file is the crasher with a chunk of it removed by
+      # the minimizer, not something unrelated. For this target that usually
+      # means JSON the minimizer truncated, which json.Unmarshal now refuses
+      # before the generator is reached, which is exactly why replaying it
+      # passes. Repair the JSON first -- close the braces, drop a dangling quote
+      # -- and try the repaired document under each of fuzzSeedCfgBits before
+      # concluding anything. That found the defect behind the 2026-08-22 run on
+      # the first attempt.
+      #
+      # Nothing here can recover the worker's own output: internal/fuzz leaves
+      # cmd.Stdout and cmd.Stderr nil on the worker process (a "TODO: record and
+      # return stderr" that has outlived several releases), so its "fatal error"
+      # line and stack go to /dev/null and no flag or GODEBUG brings them back.
+      # The coordinator's wording is the only signal about *where* it died, and
+      # it does distinguish two cases: "hung or terminated unexpectedly: exit
+      # status 2" is a worker that died holding an input, which is where a seed
+      # too slow for the ten-second deadline lands (issue #233, and what
+      # TestFuzzSeedCorpusFitsTheWorkerDeadline now catches first); "... while
+      # minimizing" is a worker that died after a finding had already been made,
+      # so the artifact is that finding, one minimization step in.
       - name: upload crashers
         if: always()
         uses: actions/upload-artifact@v7

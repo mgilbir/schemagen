@@ -10333,7 +10333,10 @@ func (g *Generator) materializeNamed(s *schema.Schema, contextName string) (stri
 // in "fatal error: stack overflow", which no recover intercepts and which took
 // the process down for 57 bytes of schema. materializeNamed already applies
 // this rule on the object path of resolveType; the callers below apply it to
-// the two routes materializeNamed does not cover.
+// the routes materializeNamed does not cover -- a property whose schema is the
+// node, a $ref resolved to it, and an array element or tuple slot that reaches
+// it, which is the one that ran out of memory rather than out of stack because
+// the name it mints grows at every level too.
 //
 // Answering with the name, rather than with a type, is deliberate: what the
 // caller must do with it differs by position. A struct *field* has to be a
@@ -22374,9 +22377,33 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 	// position states directly, and a target with no Validate had no check to
 	// delegate in the first place.
 	if !g.refOverridesSiblingsForSchema(posSch) && hasRefStructuralSiblings(posSch) && (posSch.EffectiveRef() != "" || posSch.DynamicRef != "") {
-		_ = g.generateTypeDef(posName, posSch)
-		if g.generated[posName] && g.namedTypeIsValidatable(posName) {
-			return TupleItemDef{TypeName: posName}, true
+		// A node whose own generation is still in flight is named, not
+		// generated a second time. posName is minted from the position it was
+		// reached through, so a reference that leads back to an array whose
+		// element is this very node arrives here under a name one "Item0"
+		// longer at every level -- and g.generated[posName], which keys on the
+		// name, never fires. {"items":{"$ref":"#","minItems":1}} is 35 bytes of
+		// legal schema that recursed until the process died of it: not a stack
+		// overflow but "fatal error: out of memory", because each level also
+		// mints a type name five characters longer than the last, so the names
+		// alone cost O(n^2). The $ref-only arms below do not have the problem --
+		// their name comes from the reference and repeats -- so it is the
+		// sibling arm, which has to name the *position*, that needs the node
+		// keyed guard. See cyclicNodeName.
+		//
+		// Naming the in-flight definition is exact rather than a degradation:
+		// it is the type built from this same node, its Validate is the whole
+		// of what the node says, and a slice element already carries the
+		// indirection a Go recursive type needs.
+		if canonical, cyclic := g.cyclicNodeName(posSch); cyclic {
+			if g.namedTypeIsValidatable(canonical) {
+				return TupleItemDef{TypeName: canonical}, true
+			}
+		} else {
+			_ = g.generateTypeDef(posName, posSch)
+			if g.generated[posName] && g.namedTypeIsValidatable(posName) {
+				return TupleItemDef{TypeName: posName}, true
+			}
 		}
 	}
 	if ref := posSch.EffectiveRef(); ref != "" {
