@@ -255,6 +255,12 @@ type Generator struct {
 	// itself by value ("invalid recursive type").
 	nodesInProgress map[*schema.Schema]bool
 
+	// remintedInFlight records every node that reached generateTypeDef while its
+	// own generation was still in flight, under a name other than the one it is
+	// being generated under -- the condition the backstop there answers. It
+	// accumulates across Generate calls on one generator; see RemintedInFlight.
+	remintedInFlight []RemintedNode
+
 	// rootNameOverride is the per-call root type name from WithRootTypeName;
 	// unlike Config.RootTypeName it is reset on every Generate call.
 	rootNameOverride string
@@ -2918,6 +2924,42 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// schema other than the one it was built from.
 	if g.generated[name] {
 		g.notePinnedNameTaken(name, s)
+		return nil
+	}
+
+	// The backstop for the guard above's blind spot: a node whose own generation
+	// is still in flight, arriving here under a *different* name.
+	//
+	// g.generated keys on the name, and it is only set when a definition
+	// completes, so it says nothing about a node that is halfway through being
+	// generated -- and it can say nothing at all when the name is fresh at every
+	// level. An arm that mints its name from the position it was reached through
+	// does exactly that: parentName+segment grows one segment per level, so a
+	// self-referential document re-enters under RootA, RootAA, RootAAA ... and
+	// the run ends in "fatal error: out of memory", which no recover intercepts.
+	// Thirty-nine bytes of legal schema were enough (#349), and thirty-five
+	// before that (#348).
+	//
+	// The arms that mint such a name are enumerated and each of them asks
+	// materializeAtPosition, which answers with the canonical name and never
+	// reaches here. This is what stops the *next* arm -- one written without the
+	// guard, or one that grows a position-derived name where it used to carry a
+	// reference-derived one. It is a backstop and not the mechanism: it costs the
+	// caller the name it asked for, so it is recorded rather than silently
+	// absorbed, and a gate asserts no document in this repository reaches it.
+	//
+	// The reply is a defined type over the name already in flight. That name is
+	// the same node, so the alias is a true statement about the position, and
+	// populateAliasDelegates gives it the target's Validate and UnmarshalJSON --
+	// which is what keeps the sub-schema enforced rather than merely terminating.
+	if canonical, cyclic := g.cyclicNodeName(s); cyclic && canonical != name {
+		g.remintedInFlight = append(g.remintedInFlight, RemintedNode{Name: name, Canonical: canonical})
+		g.generated[name] = true
+		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			Name:       name,
+			Underlying: &NamedType{Name: canonical},
+			Doc:        g.docFor(name, s),
+		})
 		return nil
 	}
 
@@ -8885,6 +8927,25 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 		}, nil
 	}
 
+	// A variant whose schema *is* the node being generated further up the stack.
+	// Ahead of every arm below that mints a name, because each of them names the
+	// position -- parentName+fieldName+"Option"+index -- and parentName grows a
+	// segment per level, so g.generated[variantName] never fires and the arm
+	// re-enters itself until the process runs out of memory. This is the guard
+	// resolvePropertyType keeps at its own entry and the one #348 and #349
+	// added at the element and bucket positions; see cyclicNodeName.
+	//
+	// Naming the definition in flight is exact: it is the type built from this
+	// same node, so the union's dispatch calls that node's own Validate. The
+	// pointer is what every named variant here already carries.
+	if canonical, cyclic := g.cyclicNodeName(variant); cyclic {
+		return oneOfVariantResult{
+			Name:           canonical,
+			Type:           &NamedType{Name: canonical, Pointer: true},
+			RequiredFields: variant.Required,
+		}, nil
+	}
+
 	// Inline object variant → create a named type, disambiguated by index.
 	// The predicate is objectShapeNeedsNamedType rather than hasProperties: a
 	// branch whose whole shape is patternProperties, or a schema-valued
@@ -10351,6 +10412,57 @@ func (g *Generator) cyclicNodeName(s *schema.Schema) (string, bool) {
 	}
 	canonical, ok := g.nodeTypeNames[s]
 	return canonical, ok
+}
+
+// materializeAtPosition generates s under a name minted from the *position* s
+// was reached through, and answers with the name to reference it by and whether
+// that name closes a cycle.
+//
+// This is the funnel for the class of call the guard above exists for, and it is
+// here so the question is asked once rather than once per arm. A name derived
+// from a reference string repeats when the reference does, so g.generated[name]
+// -- generateTypeDef's own re-entrancy guard -- terminates a cycle through it.
+// A name derived from a position does not: parentName+segment grows one segment
+// per level, so the same node arrives under RootA, RootAA, RootAAA ... and no
+// name-keyed guard can ever fire. Three separate arms have shipped without this
+// (a property, an array element and tuple slot, a patternProperties bucket), one
+// found per fuzz run; the enumeration of which arms mint a position-derived name
+// is pinned by TestEveryPositionDerivedTypeNameIsGuarded, and this is what they
+// are pinned to call.
+//
+// Answering with the canonical name is exact, not a degradation: the frame above
+// is generating that very node, so the name will exist and its Validate is the
+// whole of what the node says. What the caller does with the cyclic flag differs
+// by position, which is why it is returned rather than acted on -- see
+// cyclicNodeName.
+func (g *Generator) materializeAtPosition(s *schema.Schema, posName string) (string, bool) {
+	if canonical, cyclic := g.cyclicNodeName(s); cyclic {
+		return canonical, true
+	}
+	_ = g.generateTypeDef(posName, s)
+	return posName, false
+}
+
+// RemintedNode is one node that reached generateTypeDef while its own
+// generation was still in flight, under a name other than the one it is being
+// generated under.
+type RemintedNode struct {
+	// Name is the name the call asked for: a fresh one, minted from a position.
+	Name string
+	// Canonical is the name the node is already being generated under.
+	Canonical string
+}
+
+// RemintedInFlight returns the nodes generateTypeDef's backstop answered, in the
+// order it answered them, across every Generate call on this generator.
+//
+// It is empty for every document this repository generates, and a gate asserts
+// that (TestNoCorpusDocumentReachesTheRemintBackstop). The backstop is a safety
+// net for an arm that mints a position-derived name without the guard, not a
+// path any schema is meant to take, and an entry here names the arm's output: a
+// type that should have been the canonical one.
+func (g *Generator) RemintedInFlight() []RemintedNode {
+	return g.remintedInFlight
 }
 
 // namedOrPointer builds a reference to name, pointer-wrapped when it closes a
@@ -13446,10 +13558,16 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	// would be enforced nowhere. It matters here in particular because the
 	// per-element checks cannot stand in -- they read the element schema's own
 	// prefixItems, and a prefix behind an allOf is not that.
+	//
+	// The three arms below name the *position*: itemContext is the parent's name
+	// with "Item" or "Value" on the end, so it grows a segment per level of a
+	// cycle and g.generated[itemContext] can never fire. They ask
+	// materializeAtPosition for that reason -- the element keeps the name the
+	// node is already being generated under, by value, since a slice or map
+	// element already carries the indirection a recursive Go type needs.
 	if g.inlineAnnotationWrapper(items) || g.inlineUnevaluatedWrapper(items) {
-		_ = g.generateTypeDef(itemContext, items)
-		if g.generated[itemContext] {
-			return &NamedType{Name: itemContext}
+		if name, cyclic := g.materializeAtPosition(items, itemContext); cyclic || g.generated[name] {
+			return &NamedType{Name: name}
 		}
 	}
 	// An element or map value stating a "not" beside another keyword needs no arm
@@ -13457,15 +13575,15 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	// type it from the sibling alone ends in resolveType, whose first arm claims
 	// exactly that shape. See inlineSiblingNotWrapper.
 	if referenceOn(items) == "" && len(items.OneOf) > 0 && !hasProperties(items) && g.oneOfDescribesObject(items) {
-		_ = g.generateTypeDef(itemContext, items)
-		return &NamedType{Name: itemContext}
+		name, _ := g.materializeAtPosition(items, itemContext)
+		return &NamedType{Name: name}
 	}
 	// An inline integer element of an array (or value of a map) is the same gap
 	// as an inline integer property: []int64 cannot hold what BigIntSupport is
 	// for. See bigIntInlineWrapper.
 	if g.bigIntInlineWrapper(items) {
-		_ = g.generateTypeDef(itemContext, items)
-		return &NamedType{Name: itemContext}
+		name, _ := g.materializeAtPosition(items, itemContext)
+		return &NamedType{Name: name}
 	}
 	// An element or map value whose "type" names no single Go type -- a union of
 	// two JSON types, or "null" alone. resolveType answers *any for both, and a
@@ -20170,16 +20288,38 @@ func (g *Generator) branchOverflowValueTypeName(sub *schema.Schema, posName stri
 // rawValueTypeName materializes the type a raw JSON value is decoded into and
 // validated through, and returns its name, or "" when the sub-schema states
 // nothing a type could carry.
+//
+// Both arms that name the *position* go through materializeAtPosition, and that
+// is not an optimisation: posName is minted from the bucket's owner and index,
+// so it grows one segment per level of a cycle and g.generated[posName] -- the
+// only guard these arms had -- can never fire.
+// {"patternProperties":{"^x":{"$ref":"#","minLength":1}}} is a legal schema that
+// re-entered here forever and ended the run in "fatal error: out of memory",
+// which no recover intercepts (#349). Thirty-nine bytes of it were enough, and
+// the shortest spelling needs no sibling written out at all: a case variant of
+// the reference keyword, {"patternProperties":{"^x":{"$rEf":"#"}}}, is an
+// unknown keyword that json's case-insensitive field matching *also* decodes
+// into $ref, so the node is a reference carrying a structural sibling that
+// nobody wrote.
+//
+// Answering with the name the node is already being generated under is exact:
+// that type's Validate is the whole of what the sub-schema says, which is what
+// this function exists to give the bucket. It is not recorded in
+// patternMintedTypes because this position did not mint it -- withdrawing it
+// later would take away a type another position declared.
 func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string {
 	if sub == nil || sub.IsBooleanSchema() || !g.validationKeywordsEnabled() {
 		return ""
 	}
 	if (sub.EffectiveRef() != "" || sub.DynamicRef != "") &&
 		!g.refOverridesSiblingsForSchema(sub) && hasRefStructuralSiblings(sub) {
-		_ = g.generateTypeDef(posName, sub)
-		if g.generated[posName] {
-			g.patternMintedTypes[posName] = sub
-			return posName
+		name, cyclic := g.materializeAtPosition(sub, posName)
+		if cyclic {
+			return name
+		}
+		if g.generated[name] {
+			g.patternMintedTypes[name] = sub
+			return name
 		}
 	}
 	if ref := sub.EffectiveRef(); ref != "" {
@@ -20195,10 +20335,13 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 		}
 		return ""
 	}
-	_ = g.generateTypeDef(posName, sub)
-	if g.generated[posName] {
-		g.patternMintedTypes[posName] = sub
-		return posName
+	name, cyclic := g.materializeAtPosition(sub, posName)
+	if cyclic {
+		return name
+	}
+	if g.generated[name] {
+		g.patternMintedTypes[name] = sub
+		return name
 	}
 	return ""
 }
@@ -22389,20 +22532,20 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 		// alone cost O(n^2). The $ref-only arms below do not have the problem --
 		// their name comes from the reference and repeats -- so it is the
 		// sibling arm, which has to name the *position*, that needs the node
-		// keyed guard. See cyclicNodeName.
+		// keyed guard. See materializeAtPosition, which is where every arm that
+		// mints a position-derived name now puts the question.
 		//
 		// Naming the in-flight definition is exact rather than a degradation:
 		// it is the type built from this same node, its Validate is the whole
 		// of what the node says, and a slice element already carries the
 		// indirection a Go recursive type needs.
-		if canonical, cyclic := g.cyclicNodeName(posSch); cyclic {
-			if g.namedTypeIsValidatable(canonical) {
-				return TupleItemDef{TypeName: canonical}, true
+		if name, cyclic := g.materializeAtPosition(posSch, posName); cyclic {
+			if g.namedTypeIsValidatable(name) {
+				return TupleItemDef{TypeName: name}, true
 			}
 		} else {
-			_ = g.generateTypeDef(posName, posSch)
-			if g.generated[posName] && g.namedTypeIsValidatable(posName) {
-				return TupleItemDef{TypeName: posName}, true
+			if g.generated[name] && g.namedTypeIsValidatable(name) {
+				return TupleItemDef{TypeName: name}, true
 			}
 		}
 	}
@@ -22450,11 +22593,26 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 	// among the keywords that need a named type, and is left alone on that
 	// point: both are annotation vocabularies whose posture is the dialect's,
 	// and that function has no generator to ask.
+	//
+	// The three arms below name the position too, and take the same route as the
+	// sibling arm above for the same reason: posName carries the parent's name
+	// and grows with it, so a node arriving here while its own generation is in
+	// flight has to be answered with the name it already holds. The node here is
+	// `resolved` rather than posSch -- a $ref whose target leads back is the
+	// shape the guard above cannot see.
+	//
+	// The cyclic answer is held to namedTypeIsValidatable, as the sibling arm
+	// above is and for the same reason: a TypeName here becomes `_typed.Validate()`
+	// in the emitted loop, and the name a cycle answers with may be a type Go
+	// permits no methods on. Declining costs only the delegation.
 	if g.nullableFormatUnion(resolved) || g.stringAnnotationOnlySchema(resolved) ||
 		g.declaredFormatStringSchema(resolved) || g.declaredContentStringSchema(resolved) {
-		_ = g.generateTypeDef(posName, resolved)
-		if g.generated[posName] {
-			return TupleItemDef{TypeName: posName}, true
+		if name, cyclic := g.materializeAtPosition(resolved, posName); cyclic {
+			if g.namedTypeIsValidatable(name) {
+				return TupleItemDef{TypeName: name}, true
+			}
+		} else if g.generated[name] {
+			return TupleItemDef{TypeName: name}, true
 		}
 	}
 	// A position stating a "not" beside another keyword. hasStructuralKeywords
@@ -22463,15 +22621,21 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 	// checked that the position held a string and accepted "forbidden" -- the
 	// tuple slot of issue #177. The generated type carries both.
 	if g.inlineSiblingNotWrapper(resolved) {
-		_ = g.generateTypeDef(posName, resolved)
-		if g.generated[posName] {
-			return TupleItemDef{TypeName: posName}, true
+		if name, cyclic := g.materializeAtPosition(resolved, posName); cyclic {
+			if g.namedTypeIsValidatable(name) {
+				return TupleItemDef{TypeName: name}, true
+			}
+		} else if g.generated[name] {
+			return TupleItemDef{TypeName: name}, true
 		}
 	}
 	if hasStructuralKeywords(resolved) || g.objectShapeNeedsNamedType(resolved) {
-		_ = g.generateTypeDef(posName, resolved)
-		if g.generated[posName] {
-			return TupleItemDef{TypeName: posName}, true
+		if name, cyclic := g.materializeAtPosition(resolved, posName); cyclic {
+			if g.namedTypeIsValidatable(name) {
+				return TupleItemDef{TypeName: name}, true
+			}
+		} else if g.generated[name] {
+			return TupleItemDef{TypeName: name}, true
 		}
 	}
 

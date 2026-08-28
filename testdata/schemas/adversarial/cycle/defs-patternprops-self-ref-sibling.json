@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/a","$defs":{"a":{"patternProperties":{"^x":{"$ref":"#/$defs/a","minLength":1}}}}}

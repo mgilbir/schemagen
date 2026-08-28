@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A `$ref` written beside a keyword that survives it no longer runs the
+  generator out of memory when it is reached through a `patternProperties`
+  bucket or a per-branch `additionalProperties`/`unevaluatedProperties` check
+  and leads back to the schema that holds it.
+  `{"patternProperties":{"^x":{"$ref":"#","minLength":1}}}` took the process
+  down with `fatal error: out of memory`, which no `recover` intercepts, and
+  `{"patternProperties":{"^x":{"$rEf":"#"}}}` did it in thirty-nine bytes with
+  no sibling written out at all. This is the same failure #348 fixed at the
+  array element and tuple positions, at a third one; every arm that names a
+  type after the position it was reached through now asks one guard, the
+  enumeration of which arms those are is pinned by a test, and
+  `generateTypeDef` carries a backstop so an arm added without the guard
+  degrades to a recorded alias rather than to a dead process. Found by the fuzz
+  memory gate.
+
 ## 0.1.1
 
 ### Fixed
