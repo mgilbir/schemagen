@@ -42,73 +42,149 @@ import (
 // So the job here is to trip *deliberately, before the runtime does*, in the one
 // form the harness can attribute: a panic that names the input and the config
 // byte that produced it.
-
-// fuzzMemoryMetric is the heap figure the gate watches: bytes in in-use spans
-// occupied by heap objects, live and not-yet-collected garbage alike. It is the
-// runtime/metrics spelling of runtime.MemStats.HeapAlloc.
 //
-// runtime/metrics rather than runtime.ReadMemStats because ReadMemStats stops
-// the world (stopTheWorld(stwReadMemStats) at $GOROOT/src/runtime/mstats.go:358)
-// and metrics.Read does not -- readMetrics takes metricsLock and reads the
-// per-P consistent heap stats, with no STW anywhere in it
-// ($GOROOT/src/runtime/metrics.go:1013). A gate that stops the world at every
-// sample would be paid for out of the fuzzer's search budget.
+// This is not a hypothetical worth of machinery. A 180-second bounded fuzz run
+// during the writing of this file, on an unmodified tree, killed a worker with
+// that exact message; the same input replayed under the gate is named in 0.08
+// seconds as a stack runaway through patternProperties. The gate found a real
+// defect the first time it was pointed at the target.
+
+// An unbounded recursion has two ways to reach that unattributable end, and both
+// of them are `fatal error`, so the gate watches two figures rather than one.
+//
+//	{"items":{"$ref":"#","minItems":1}}          -> fatal error: out of memory
+//	{"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}} -> fatal error: stack overflow
+//
+// The first is #348, and it dies of allocation: each frame mints a type name
+// five characters longer than the last, so the *names* cost O(n^2) and the heap
+// gives out around 18,700 levels deep, while the goroutine stack stays modest.
+// The second closes its loop in a single hop through the draft-3
+// type-alternatives path, allocates comparatively little, and dies of *stack*:
+// measured on a plant, heap objects oscillated between 15 and 270 MiB -- never
+// reaching the heap budget -- while the goroutine stack went 0.6 MiB -> 32 -> 64
+// -> 128 -> 256 -> 512 -> 768 MiB and hit the runtime's 1 GB per-goroutine limit
+// at t=2.0s. A gate on the heap alone watches one of the two doors.
+//
+// Neither `fatal error` is recoverable and neither is attributable, so which one
+// fires matters much less than that both are named.
+const (
+	fuzzMemoryHeap = iota
+	fuzzMemoryStack
+	fuzzMemoryDimensions
+)
+
+// fuzzMemoryDimension is one figure the sampler watches and the budget it holds
+// that figure to.
+type fuzzMemoryDimension struct {
+	what   string // names the dimension in the panic message
+	metric string
+	budget uint64
+}
+
+// fuzzMemoryBudgets are the two figures and their ceilings.
+//
+// runtime/metrics for both, rather than runtime.ReadMemStats, because
+// ReadMemStats stops the world (stopTheWorld(stwReadMemStats) at
+// $GOROOT/src/runtime/mstats.go:358) and metrics.Read does not -- readMetrics
+// takes metricsLock and reads the per-P consistent heap stats, with no STW
+// anywhere in it ($GOROOT/src/runtime/metrics.go:1013). A gate that stopped the
+// world at every sample would be paid for out of the fuzzer's search budget. Both
+// figures come from one metrics.Read, so watching two costs no more samples than
+// watching one.
 //
 // Heap objects rather than a process-footprint figure such as
-// /memory/classes/total:bytes minus /memory/classes/heap/released:bytes: that
-// one is closer to RSS but barely comes back down, because the allocator keeps
-// mapped spans and the scavenger releases them lazily. A gate on it would blame
+// /memory/classes/total:bytes minus /memory/classes/heap/released:bytes: that one
+// is closer to RSS but barely comes back down, because the allocator keeps mapped
+// spans and the scavenger releases them lazily. A gate on it would blame
 // whichever input happened to run after a big one. Heap objects returns to
 // baseline at the next GC, so what it measures is the input in front of it.
-const fuzzMemoryMetric = "/memory/classes/heap/objects:bytes"
+//
+// Goroutine stacks are heap-allocated in Go, so heap/stacks is available through
+// the same call -- but it is *not* included in heap/objects, which is why the
+// heap budget cannot see a stack runaway. Verified rather than assumed: the
+// figures above were read from the same metrics.Read, and heap/objects never
+// crossed its budget on the run that died of stack overflow.
+//
+// Both budgets are measured, not picked. TestFuzzSeedCorpusFitsTheMemoryCeiling
+// samples every seed at fuzzMemoryMeasurePeriod and logs the high-water mark for
+// each. Re-take them by running that test; the numbers it logs are these numbers,
+// taken through the same code path the fuzzer runs, so the two cannot drift. On
+// the corpus as this is written -- 2,306 unique schemas x 5 config bytes = 11,530
+// seeds, 690 local files plus 2,265 external test groups:
+//
+//	heap    123.3 / 118.5 / 116.4 / 126.2 / 103.7 / 111.5 / 126.3 / 114.2 MiB
+//	        over eight runs
+//	stack   12.0 MiB on every one of three runs, to the tenth of a MiB
+//
+// Always the same seed for both -- ../testdata/schemas/adversarial/deep/deep-not-2000.json,
+// the 2000-deep `not`, which is also the slowest under fuzzSeedBudget at 374ms.
+// The heap figure moves with GC timing and the winning config byte varies with
+// it; the stack figure does not move at all, because a stack is as deep as the
+// recursion and nothing collects it early. Call the legitimate worst case 125 MiB
+// of heap and 12 MiB of stack.
+//
+// The margins are deliberately not larger, because the two ways of being wrong
+// here do not cost the same. Tripping on a legitimate mutation writes a
+// reproducing file with the input and the config byte in it, and someone reads it
+// and says "that is just a very large schema" in five minutes. Not tripping is a
+// `fatal error`, which cost hours twice. So the asymmetry is priced in and both
+// ceilings sit low.
+//
+// 512 MiB of heap is four times the measured worst case, and well under what a
+// GitHub runner can give one worker: ~7 GB usable across the GOMAXPROCS workers
+// `make fuzz` starts, so roughly 1.75 GB each on the standard 4-core image.
+// Tripping there leaves about 1.25 GB of headroom -- which matters more than it
+// looks, because a tripped goroutine is abandoned and goes on allocating; see
+// fuzzMemoryGate.
+//
+// 64 MiB of stack is 5.3 times its measured worst case, in the same spirit. The
+// margin has to absorb one thing the heap figure does not have: heap/stacks is
+// jittery, because growing a goroutine stack means allocating the bigger one and
+// copying into it, so both are counted for the duration of the copy and the
+// figure can read up to twice the stack that actually exists. The plant showed it
+// non-monotonic -- 768 MiB, then 256, then 512 -- for exactly that reason. The
+// 12 MiB measurement already includes any such transient, since it is the highest
+// value ever sampled, so 5.3x is 5.3x of the jittery figure and not of a smooth
+// one. Headroom the other way is wider still: 64 MiB is a sixteenth of the
+// runtime's 1 GB per-goroutine limit, so a stack runaway is named four doublings
+// before the runtime would throw -- measured as t=0.2s against t=2.0s.
+var fuzzMemoryBudgets = [fuzzMemoryDimensions]fuzzMemoryDimension{
+	fuzzMemoryHeap: {
+		what:   "heap",
+		metric: "/memory/classes/heap/objects:bytes",
+		budget: 512 << 20,
+	},
+	fuzzMemoryStack: {
+		what:   "goroutine stack",
+		metric: "/memory/classes/heap/stacks:bytes",
+		budget: 64 << 20,
+	},
+}
 
-// fuzzMemoryBudget is how far one call to fuzzOnce may push the heap above where
-// it found it before the gate calls the run away and panics.
-//
-// Measured, not picked. TestFuzzSeedCorpusFitsTheMemoryCeiling samples every
-// seed in the corpus at fuzzMemoryMeasurePeriod and logs the high-water mark.
-// Re-take it by running that test; the number it logs is this number, taken
-// through the same code path the fuzzer runs, so the two cannot drift. On the
-// corpus as this is written -- 2,306 unique schemas x 5 config bytes = 11,530
-// seeds, 690 local files plus 2,265 external test groups -- five runs gave
-//
-//	high-water 123.3 / 118.5 / 116.4 / 126.2 / 103.7 MiB, every time
-//	../testdata/schemas/adversarial/deep/deep-not-2000.json, under cfgBits
-//	0x1F, 0x1F, 0x6A, 0x00, 0x00 in turn
-//
-// Always the same seed -- the 2000-deep `not`, which is also the slowest under
-// fuzzSeedBudget at 374ms -- and near-identical under every config byte, the
-// winning byte varying only because the five are within GC noise of each other.
-// Call the legitimate worst case 125 MiB.
-//
-// 512 MiB is four times that. The margin is deliberately not larger, because the
-// two ways of being wrong here do not cost the same. Tripping on a legitimate
-// mutation writes a reproducing file with the input and the config byte in it,
-// and someone reads it and says "that is just a very large schema" in five
-// minutes. Not tripping is the `fatal error: out of memory` above, which cost
-// hours twice. So the asymmetry is priced in and the ceiling sits low.
-//
-// It is also well under what a GitHub runner can give one worker: ~7 GB usable
-// across the GOMAXPROCS workers `make fuzz` starts, so roughly 1.75 GB each on
-// the standard 4-core image. Tripping at 512 MiB leaves about 1.25 GB of
-// headroom -- which matters more than it looks, because a tripped goroutine is
-// abandoned and goes on allocating; see fuzzMemoryGate.
-//
-// Do not raise it to make a finding go away. A schema that needs half a gigabyte
-// through this pipeline is the finding.
-const fuzzMemoryBudget = 512 << 20
+// fuzzMemorySamples is the buffer shape metrics.Read wants, in the dimension
+// order above so that index d is dimension d.
+func fuzzMemorySamples() []metrics.Sample {
+	buf := make([]metrics.Sample, fuzzMemoryDimensions)
+	for d := range fuzzMemoryBudgets {
+		buf[d].Name = fuzzMemoryBudgets[d].metric
+	}
+	return buf
+}
 
 // fuzzMemorySamplePeriod is how often the sampler looks while the fuzzer is
 // running, and fuzzMemoryMeasurePeriod is the denser period the seed gate uses
 // when it is measuring rather than guarding.
 //
 // 5ms is set by how fast a real runaway climbs, not by how long an execution
-// takes. Reverting #348's cyclicNodeName call and replaying
+// takes. Both plants climb at about the same speed: reverting the cyclicNodeName
+// call in tupleItemCheckFor and replaying
 // testdata/schemas/adversarial/cycle/items-self-ref-sibling.json puts on 514 MiB
-// in 0.69s -- about 750 MiB/s -- so a 5ms sampler gets on the order of 140 looks
-// on the way up and cannot miss it. The cost is one background goroutine doing
-// 200 metrics.Read calls a second, which is not per execution; see the
-// throughput note on fuzzMemoryGate for what is.
+// of heap in 0.69s, and reverting the one in the ref-name arm and replaying
+// testdata/schemas/adversarial/cycle/typeschema-ref-self-def.json puts on 128 MiB
+// of stack in 0.3s and 512 MiB in 1.2s. A 5ms sampler gets on the order of a
+// hundred looks either way and cannot miss either. The cost is one background
+// goroutine doing 200 metrics.Read calls a second, which is not per execution;
+// see the throughput note on fuzzMemoryGate for what is.
 //
 // Sampling can only ever catch what it is looking at, so a spike that opens and
 // closes between two samples is invisible to the gate. That is deliberate rather
@@ -130,10 +206,12 @@ const (
 
 // fuzzMemoryInFlight is the one execution the sampler is currently watching.
 type fuzzMemoryInFlight struct {
-	baseline uint64 // heap objects, read just before the body was started
+	// baseline is each dimension read just before the body was started, and
+	// peak the highest growth above it the sampler saw, for the measuring test.
+	baseline [fuzzMemoryDimensions]uint64
+	peak     [fuzzMemoryDimensions]atomic.Uint64
 	cfgBits  uint8
 	data     []byte
-	peak     atomic.Uint64 // highest growth the sampler saw, for the measuring test
 	trip     chan *fuzzMemoryTripError
 }
 
@@ -223,17 +301,16 @@ type fuzzMemoryPoisonState struct {
 	err     *fuzzMemoryTripError
 }
 
-// fuzzHeapBytes reads fuzzMemoryMetric through the caller's own sample buffer,
-// so the read allocates nothing per call.
-func fuzzHeapBytes(buf []metrics.Sample) uint64 {
+// fuzzMemoryRead fills the caller's own sample buffer, which is why the read
+// allocates nothing per call.
+func fuzzMemoryRead(buf []metrics.Sample) {
 	metrics.Read(buf)
-	return buf[0].Value.Uint64()
 }
 
-// fuzzMemorySampler watches whatever is armed and trips it once it has grown
-// past the budget.
+// fuzzMemorySampler watches whatever is armed and trips it once any dimension
+// has grown past its budget.
 func fuzzMemorySampler() {
-	buf := []metrics.Sample{{Name: fuzzMemoryMetric}}
+	buf := fuzzMemorySamples()
 	for {
 		inFlight := fuzzMemoryInFlightSlot.Load()
 		if inFlight == nil {
@@ -241,26 +318,37 @@ func fuzzMemorySampler() {
 			continue
 		}
 
-		heap := fuzzHeapBytes(buf)
-		if heap > inFlight.baseline {
-			grown := heap - inFlight.baseline
+		fuzzMemoryRead(buf)
+		tripped := false
+		for d := range fuzzMemoryBudgets {
+			now := buf[d].Value.Uint64()
+			if now <= inFlight.baseline[d] {
+				continue
+			}
+			grown := now - inFlight.baseline[d]
 			for {
-				peak := inFlight.peak.Load()
-				if grown <= peak || inFlight.peak.CompareAndSwap(peak, grown) {
+				peak := inFlight.peak[d].Load()
+				if grown <= peak || inFlight.peak[d].CompareAndSwap(peak, grown) {
 					break
 				}
 			}
-			if grown > fuzzMemoryBudget {
+			if grown > fuzzMemoryBudgets[d].budget && !tripped {
+				tripped = true
 				// Disarm first. The body goroutine is about to be abandoned and
-				// will keep the heap above this baseline indefinitely, so a
+				// will hold this dimension above its baseline indefinitely, so a
 				// still-armed slot would trip on every later sample.
 				fuzzMemoryInFlightSlot.CompareAndSwap(inFlight, nil)
 				select {
-				case inFlight.trip <- fuzzMemoryTrip(inFlight, heap, grown):
+				case inFlight.trip <- fuzzMemoryTrip(inFlight, d, now, grown):
 				default:
 				}
-				continue
 			}
+		}
+		if tripped {
+			// The slot is disarmed, so going round again parks the sampler. The
+			// loop above still finished, so the other dimension's peak is
+			// recorded too and the measuring test can report both.
+			continue
 		}
 
 		time.Sleep(time.Duration(fuzzMemoryPeriodNanos.Load()))
@@ -272,18 +360,22 @@ func fuzzMemorySampler() {
 // #348 only reproduced under three of the five seed bytes, and the input itself,
 // because a panic during a `go test ./...` seed replay has no crasher file to
 // point at.
-func fuzzMemoryTrip(inFlight *fuzzMemoryInFlight, heap, grown uint64) *fuzzMemoryTripError {
+func fuzzMemoryTrip(inFlight *fuzzMemoryInFlight, d int, now, grown uint64) *fuzzMemoryTripError {
+	dim := fuzzMemoryBudgets[d]
+	ends := "`fatal error: out of memory`"
+	if d == fuzzMemoryStack {
+		ends = "`fatal error: stack overflow`"
+	}
 	return &fuzzMemoryTripError{msg: fmt.Sprintf(
-		"fuzz memory gate: this input grew the heap by %s (baseline %s, now %s), over the %s budget, "+
+		"fuzz memory gate: this input grew the %s by %s (baseline %s, now %s), over the %s budget for %s, "+
 			"with cfgBits 0x%02X on %d bytes of input:\n%s\n\n"+
-			"The gate panicked deliberately, before the runtime could reach `fatal error: out of memory`, "+
-			"which is unrecoverable and which the fuzz harness reports as an unattributable "+
-			"\"process hung or terminated unexpectedly\" with a truncated, non-reproducing artifact -- "+
-			"see issue #348. Treat this as an unbounded allocation in parse -> generate -> emit and fix the "+
-			"pipeline; do not raise fuzzMemoryBudget.",
-		fuzzHumanBytes(grown), fuzzHumanBytes(inFlight.baseline), fuzzHumanBytes(heap),
-		fuzzHumanBytes(fuzzMemoryBudget), inFlight.cfgBits, len(inFlight.data),
-		fuzzQuoteInput(inFlight.data))}
+			"The gate panicked deliberately, before the runtime could reach %s, which is unrecoverable and "+
+			"which the fuzz harness reports as an unattributable \"process hung or terminated unexpectedly\" "+
+			"with a truncated, non-reproducing artifact -- see issue #348. Treat this as an unbounded "+
+			"recursion in parse -> generate -> emit and fix the pipeline; do not raise the budget.",
+		dim.what, fuzzHumanBytes(grown), fuzzHumanBytes(inFlight.baseline[d]), fuzzHumanBytes(now),
+		fuzzHumanBytes(dim.budget), dim.metric, inFlight.cfgBits, len(inFlight.data),
+		fuzzQuoteInput(inFlight.data), ends)}
 }
 
 func fuzzHumanBytes(n uint64) string {
@@ -334,9 +426,15 @@ func fuzzQuoteInput(data []byte) string {
 // metrics.Read and a few atomics; the sampler is one goroutine for the whole
 // process, not one per execution, so it does not scale with the exec rate.
 // BenchmarkFuzzMemoryGate/overhead measures the fixed part against an empty body
-// at 1.09-1.25 us/op across two runs, call it 1.2us. Against the 2,100-4,200
-// execs/sec the last nightly managed -- 240-480us per execution -- that is 0.3%
-// to 0.5% of the search budget, or on the order of 10-20 execs/sec.
+// at 1.09-1.25 us/op, call it 1.2us. Against the 2,100-4,200 execs/sec the last
+// nightly managed -- 240-480us per execution -- that is 0.3% to 0.5% of the
+// search budget, or on the order of 10-20 execs/sec.
+//
+// Watching the stack as well as the heap added nothing to that: 1.13us with both
+// dimensions against 1.09-1.25us with the heap alone, and 2.98-3.01us on the
+// rejected end against 2.98-3.73us. Both figures come out of the same
+// metrics.Read, so the second dimension costs one more slot in the sample buffer
+// and one more comparison, and neither is measurable.
 //
 // It is worth stating where that 1.2us is not negligible: an input json.Unmarshal
 // rejects at the first byte costs 0.41-0.43us ungated, and the gate takes it to
@@ -357,7 +455,15 @@ func fuzzQuoteInput(data []byte) string {
 // with `go test -c`, so they run without coverage instrumentation and about
 // twice as fast per exec as the nightly's workers do; the cost is a fixed number
 // of microseconds per execution, so at the nightly's 240-480us it is closer to
-// 1%. Neither run produced a spurious trip.
+// 1%. No run of either has produced a spurious trip.
+//
+// A later repeat of that A/B is worth recording for what it says about the gate
+// rather than about the cost: the ungated binary died at 1m52s with "fuzzing
+// process hung or terminated unexpectedly: exit status 2" -- the nightlies'
+// message, verbatim -- while the gated binary completed its 180 seconds and
+// 1,573,502 execs. The input behind it, recovered and replayed under the gated
+// binary, was a stack runaway through patternProperties that the gate names in
+// 0.08s. That is the whole argument for this file in one pair of runs.
 func fuzzMemoryGate(cfgBits uint8, data []byte, body func()) {
 	if poison := fuzzMemoryPoison.Load(); poison != nil {
 		// Already tripped once. Replay it for the input that caused it and run
@@ -373,13 +479,15 @@ func fuzzMemoryGate(cfgBits uint8, data []byte, body func()) {
 		go fuzzMemorySampler()
 	})
 
-	var buf [1]metrics.Sample
-	buf[0].Name = fuzzMemoryMetric
+	buf := fuzzMemorySamples()
+	fuzzMemoryRead(buf)
 	inFlight := &fuzzMemoryInFlight{
-		baseline: fuzzHeapBytes(buf[:]),
-		cfgBits:  cfgBits,
-		data:     data,
-		trip:     make(chan *fuzzMemoryTripError, 1),
+		cfgBits: cfgBits,
+		data:    data,
+		trip:    make(chan *fuzzMemoryTripError, 1),
+	}
+	for d := range fuzzMemoryBudgets {
+		inFlight.baseline[d] = buf[d].Value.Uint64()
 	}
 
 	done := make(chan *fuzzBodyPanicError, 1)
@@ -403,12 +511,12 @@ func fuzzMemoryGate(cfgBits uint8, data []byte, body func()) {
 	select {
 	case raised := <-done:
 		fuzzMemoryInFlightSlot.CompareAndSwap(inFlight, nil)
-		fuzzMemoryLastPeak.Store(inFlight.peak.Load())
+		fuzzMemoryRecordPeaks(inFlight)
 		if raised != nil {
 			panic(raised)
 		}
 	case trip := <-inFlight.trip:
-		fuzzMemoryLastPeak.Store(inFlight.peak.Load())
+		fuzzMemoryRecordPeaks(inFlight)
 		fuzzMemoryPoison.Store(&fuzzMemoryPoisonState{
 			cfgBits: cfgBits,
 			data:    bytes.Clone(data),
@@ -419,8 +527,15 @@ func fuzzMemoryGate(cfgBits uint8, data []byte, body func()) {
 }
 
 // fuzzMemoryLastPeak is the growth the sampler attributed to the execution that
-// just finished. Only the measuring test reads it, and only between executions.
-var fuzzMemoryLastPeak atomic.Uint64
+// just finished, per dimension. Only the measuring test reads it, and only
+// between executions.
+var fuzzMemoryLastPeak [fuzzMemoryDimensions]atomic.Uint64
+
+func fuzzMemoryRecordPeaks(inFlight *fuzzMemoryInFlight) {
+	for d := range fuzzMemoryBudgets {
+		fuzzMemoryLastPeak[d].Store(inFlight.peak[d].Load())
+	}
+}
 
 // TestFuzzSeedCorpusFitsTheMemoryCeiling runs every fuzz seed through the fuzz
 // body with the sampler turned up, and fails on any seed that trips the gate.
@@ -436,14 +551,15 @@ var fuzzMemoryLastPeak atomic.Uint64
 // TestFuzzSeedCorpusFitsTheWorkerDeadline exists for time. Both halves are
 // warranted for the same reason both halves of the time story were.
 //
-// It is not hypothetical for memory either: the six seeds under
-// testdata/schemas/adversarial/cycle/ are #348's reproducers, so a regression of
-// that fix is a *seed* that allocates without bound, and this test is what names
-// it.
+// It is not hypothetical either: the seeds under
+// testdata/schemas/adversarial/cycle/ are the reproducers for both shapes --
+// items-self-ref-sibling.json for the heap one and typeschema-ref-self-def.json
+// for the stack one -- so a regression of either guard is a *seed* that recurses
+// without bound, and this test is what names it.
 //
-// It also publishes the measurement fuzzMemoryBudget is set from. The number it
-// logs is that comment's number, taken through the same code path the fuzzer
-// runs, which is the only way the two cannot drift.
+// It also publishes the measurements fuzzMemoryBudgets is set from, one per
+// dimension. The numbers it logs are that comment's numbers, taken through the
+// same code path the fuzzer runs, which is the only way the two cannot drift.
 func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 	em, err := emitter.New()
 	if err != nil {
@@ -462,7 +578,7 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 		bits   uint8
 		grew   uint64
 	}
-	var worst sample
+	var worst [fuzzMemoryDimensions]sample
 	seeds := 0
 	var tripped *sample
 	var trippedMsg string
@@ -483,13 +599,15 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 					if !ok {
 						panic(r) // a pipeline panic is FuzzGenerate's finding, not this test's
 					}
-					tripped = &sample{origin, bits, fuzzMemoryLastPeak.Load()}
+					tripped = &sample{origin: origin, bits: bits}
 					trippedMsg = trip.Error()
 				}()
 				fuzzOnce(em, bits, schema)
 			}()
-			if grew := fuzzMemoryLastPeak.Load(); grew > worst.grew {
-				worst = sample{origin, bits, grew}
+			for d := range fuzzMemoryBudgets {
+				if grew := fuzzMemoryLastPeak[d].Load(); grew > worst[d].grew {
+					worst[d] = sample{origin, bits, grew}
+				}
 			}
 			if tripped != nil {
 				return
@@ -500,16 +618,20 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("sampled %d seeds at %v (%d local files, %d external test groups); high-water %s, %s with cfgBits 0x%02X; budget %s",
-		seeds, fuzzMemoryMeasurePeriod, local, external,
-		fuzzHumanBytes(worst.grew), worst.origin, worst.bits, fuzzHumanBytes(fuzzMemoryBudget))
+	t.Logf("sampled %d seeds at %v (%d local files, %d external test groups)",
+		seeds, fuzzMemoryMeasurePeriod, local, external)
+	for d := range fuzzMemoryBudgets {
+		t.Logf("  %-16s high-water %9s (budget %s), %s with cfgBits 0x%02X",
+			fuzzMemoryBudgets[d].what, fuzzHumanBytes(worst[d].grew),
+			fuzzHumanBytes(fuzzMemoryBudgets[d].budget), worst[d].origin, worst[d].bits)
+	}
 
 	if tripped != nil {
 		// FailNow, not Errorf-and-continue as the deadline test does. A tripped
-		// execution leaves a goroutine that cannot be stopped still allocating,
-		// so carrying on would measure every later seed against a heap that is
-		// climbing underneath it -- and would eventually take the binary down
-		// with the OOM this gate exists to pre-empt.
+		// execution leaves a goroutine that cannot be stopped still recursing,
+		// so carrying on would measure every later seed against a baseline that
+		// is climbing underneath it -- and would eventually take the binary down
+		// with the `fatal error` this gate exists to pre-empt.
 		t.Fatalf("seed %s with cfgBits 0x%02X tripped the memory gate.\n%s",
 			tripped.origin, tripped.bits, trippedMsg)
 	}

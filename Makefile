@@ -254,10 +254,11 @@ fuzz: download-test-suite fuzz-seeds
 
 # The seed corpus, replayed under both of the limits a fuzz worker imposes and
 # cannot report on: the ten-second per-input deadline (...WorkerDeadline, timed)
-# and memory (...MemoryCeiling, sampled). This is what `go test ./...` runs too --
-# it is here so that a fuzz run reports a bad seed as a bad seed rather than as a
-# dead worker, and the memory half is here for the same reason the time half is:
-# a seed that allocates without bound dies as `fatal error: out of memory`, which
+# and memory (...MemoryCeiling, which samples both the heap and goroutine stacks).
+# This is what `go test ./...` runs too -- it is here so that a fuzz run reports a
+# bad seed as a bad seed rather than as a dead worker, and the memory half is here
+# for the same reason the time half is: a seed that recurses without bound dies as
+# `fatal error: out of memory` or `fatal error: stack overflow`, either of which
 # takes the worker with it and leaves the coordinator with nothing to say.
 fuzz-seeds:
 	go test ./tests/... -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline|TestFuzzSeedCorpusFitsTheMemoryCeiling)$$' -count=1
