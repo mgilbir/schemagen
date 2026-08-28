@@ -429,6 +429,33 @@ type Discriminator struct {
 	Mapping map[string]string `json:"mapping,omitempty"`
 }
 
+// UnmarshalJSON reads the two fixed fields by their exact names.
+//
+// It exists for the reason Schema.UnmarshalJSON cuts its own decode down: fields
+// encoding/json cannot match exactly it matches again case-insensitively, so
+// {"discriminator":{"PropertyName":"kind"}} named a property the document never
+// named, and the generated oneOf dispatched on it. The discriminator is a vendor
+// keyword rather than a JSON Schema one, but a key it does not define is as much
+// nothing to it as an unrecognised keyword is to a schema. See exactKeywordObject
+// and issue #350.
+func (d *Discriminator) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		raw = nil
+	}
+	body := data
+	if exact := exactKeywordObject(raw, knownDiscriminatorKeys, knownDiscriminatorKeyOrder); exact != nil {
+		body = exact
+	}
+	type discriminatorAlias Discriminator
+	var alias discriminatorAlias
+	if err := json.Unmarshal(body, &alias); err != nil {
+		return err
+	}
+	*d = Discriminator(alias)
+	return nil
+}
+
 // Schema represents a JSON Schema document. It is a superset struct that supports
 // keywords from all draft versions. Draft-specific normalization is done by Normalize().
 type Schema struct {
@@ -594,6 +621,21 @@ type Schema struct {
 // via reflection so it stays in sync with the struct definition automatically.
 var knownSchemaKeys map[string]bool
 
+// knownSchemaKeyOrder is knownSchemaKeys as a sorted list, which is what
+// exactKeywordObject folds against and rebuilds in. Sorted so that the object it
+// writes is a function of the document alone -- a map range would put the same
+// keywords in a different order on every run, and the bytes handed to the decoder
+// would differ between two decodes of one document.
+var knownSchemaKeyOrder []string
+
+// knownDiscriminatorKeys and knownDiscriminatorKeyOrder are the same two things
+// for Discriminator, whose fields encoding/json matches by the same rule. See
+// Discriminator.UnmarshalJSON.
+var (
+	knownDiscriminatorKeys     map[string]bool
+	knownDiscriminatorKeyOrder []string
+)
+
 // marshaledKeywordField describes one Schema field in the terms MarshaledKeywords
 // needs: the JSON key the encoder writes for it, where to find it, and the
 // conditions under which the encoder leaves it out.
@@ -628,6 +670,7 @@ func init() {
 			continue
 		}
 		knownSchemaKeys[name] = true
+		knownSchemaKeyOrder = append(knownSchemaKeyOrder, name)
 		marshaledKeywordFields = append(marshaledKeywordFields, marshaledKeywordField{
 			index:     i,
 			key:       name,
@@ -635,6 +678,105 @@ func init() {
 			omitZero:  slices.Contains(strings.Split(opts, ","), "omitzero"),
 		})
 	}
+	slices.Sort(knownSchemaKeyOrder)
+
+	knownDiscriminatorKeys = make(map[string]bool)
+	dt := reflect.TypeOf(Discriminator{})
+	for i := 0; i < dt.NumField(); i++ {
+		name, _, _ := strings.Cut(dt.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		knownDiscriminatorKeys[name] = true
+		knownDiscriminatorKeyOrder = append(knownDiscriminatorKeyOrder, name)
+	}
+	slices.Sort(knownDiscriminatorKeyOrder)
+}
+
+// exactKeywordObject re-encodes raw with only the keys that name one of known
+// exactly, and returns nil when raw holds no key that a struct decode would fill
+// a field from without naming it.
+//
+// JSON Schema keywords are case-sensitive, and a keyword the implementation does
+// not recognise constrains nothing: 2020-12 core §6.5 says it is to be treated as
+// an annotation, and every draft before it says the same in plainer words --
+// draft 7 §4.3.1 "Unknown keywords SHOULD be ignored", draft 4 §5.6 the same.
+// "MinLength" is not "minLength": it is an unrecognised keyword, and a schema
+// carrying it says nothing about length. encoding/json reads keys the
+// other way round -- a key matching no field exactly is matched a second time
+// case-insensitively -- so every keyword on Schema was accepted in every casing
+// and enforced as the keyword it resembles. {"type":"string","MinLength":5}
+// refused "ab", {"$rEf":"#/$defs/S"} took its type from a reference nobody wrote,
+// and {"MinLength":"x"} was refused as a malformed document rather than parsed as
+// the legal one it is. All three are wrong verdicts on documents the spec settles;
+// see issue #350.
+//
+// strings.EqualFold is the predicate rather than an approximation of it, because
+// it is the one encoding/json matches on: the decoder's folded-name lookup is
+// documented as identical to EqualFold. That is also why this is not an ASCII
+// rule -- U+017F LATIN SMALL LETTER LONG S folds to "s", so "$ſchema" reached the
+// $schema field and chose the document's dialect.
+//
+// An exact key settles itself whatever else folds onto it, which is what
+// {"minLength":1,"MinLength":9} needs: the keyword is stated once, and its value
+// is 1. Before this, which of the two won was decided by their order in the
+// document, because both filled the same field and the later one overwrote the
+// earlier.
+//
+// Only the exactly-named keys are written back out. Dropping the rest changes
+// nothing -- the struct decode ignores a key no field answers to -- and every key
+// of the document is still read from raw by the caller, which is how an
+// unrecognised keyword still reaches Extensions and stays reachable by JSON
+// Pointer.
+//
+// Returning nil for the ordinary document is what keeps this off the hot path:
+// the rebuild costs a copy of the node's subtree, and it is paid only by a
+// document that actually carries a folded key.
+func exactKeywordObject(raw map[string]json.RawMessage, known map[string]bool, order []string) []byte {
+	folded := false
+	for key := range raw {
+		if known[key] {
+			continue
+		}
+		for _, name := range order {
+			if strings.EqualFold(key, name) {
+				folded = true
+				break
+			}
+		}
+		if folded {
+			break
+		}
+	}
+	if !folded {
+		return nil
+	}
+	size := 2
+	for _, name := range order {
+		if val, ok := raw[name]; ok {
+			size += len(name) + len(val) + 4
+		}
+	}
+	out := make([]byte, 0, size)
+	out = append(out, '{')
+	for _, name := range order {
+		val, ok := raw[name]
+		if !ok {
+			continue
+		}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		// A Go string has no JSON encoding that can fail, and the values are the
+		// document's own bytes, kept verbatim so that a number keeps whatever it
+		// was written as.
+		quoted, _ := json.Marshal(name)
+		out = append(out, quoted...)
+		out = append(out, ':')
+		out = append(out, val...)
+	}
+	out = append(out, '}')
+	return out
 }
 
 // isEmptyForJSON is encoding/json's isEmptyValue, which is what decides whether
@@ -725,6 +867,18 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	// The document read as keys, which two things then need: the keywords it
+	// states, and which of those the struct decode below is allowed to see.
+	//
+	// A failure here is not reported. It means the data is not a JSON object at
+	// all, which the struct decode is about to say in the words it has always
+	// said it in; raw is left nil and every reading of it below is a reading of
+	// an absent keyword.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		raw = nil
+	}
+
 	// Use an alias to avoid infinite recursion.
 	//
 	// The decode goes through a json.Decoder with UseNumber rather than
@@ -735,9 +889,18 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 	// it as a Go constant; float64 is a reading of the number, not the number.
 	// Numeric keywords with a type of their own (Number, FlexInt) decode from the
 	// raw bytes either way, so UseNumber neither helps nor hinders them.
+	//
+	// What it decodes is the document itself, unless the document carries a key
+	// that encoding/json would fold onto a keyword it is not -- in which case it
+	// is the document cut down to the keys that name a keyword exactly. See
+	// exactKeywordObject and issue #350.
 	type schemaAlias Schema
 	var alias schemaAlias
-	dec := json.NewDecoder(bytes.NewReader(data))
+	body := data
+	if exact := exactKeywordObject(raw, knownSchemaKeys, knownSchemaKeyOrder); exact != nil {
+		body = exact
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&alias); err != nil {
 		return err
@@ -745,10 +908,9 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 	*s = Schema(alias)
 
 	// Capture unknown keywords in Extensions for JSON Pointer $ref resolution.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil // non-object JSON (shouldn't happen here since we handled booleans above)
-	}
+	// A case variant of a keyword is one of those: it is an unrecognised keyword,
+	// so it asserts nothing and stays reachable by pointer, exactly like any
+	// other key the struct has no field for.
 	for key, val := range raw {
 		if !knownSchemaKeys[key] {
 			if s.Extensions == nil {
