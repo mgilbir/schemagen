@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 ### Fixed
 
@@ -18,6 +18,14 @@
   `generateTypeDef` carries a backstop so an arm added without the guard
   degrades to a recorded alias rather than to a dead process. Found by the fuzz
   memory gate.
+
+### Internal
+
+- The fuzz seed corpus and the fuzz body now carry a memory budget and a stack
+  budget. An unbounded allocation is named, with the input that caused it,
+  instead of killing the worker and leaving `fuzzing process hung or terminated
+  unexpectedly` against a truncated artifact that does not reproduce. The fix
+  above was found by that gate on its first run.
 
 ## 0.1.1
 
