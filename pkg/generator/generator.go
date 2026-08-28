@@ -20296,11 +20296,17 @@ func (g *Generator) branchOverflowValueTypeName(sub *schema.Schema, posName stri
 // {"patternProperties":{"^x":{"$ref":"#","minLength":1}}} is a legal schema that
 // re-entered here forever and ended the run in "fatal error: out of memory",
 // which no recover intercepts (#349). Thirty-nine bytes of it were enough, and
-// the shortest spelling needs no sibling written out at all: a case variant of
-// the reference keyword, {"patternProperties":{"^x":{"$rEf":"#"}}}, is an
-// unknown keyword that json's case-insensitive field matching *also* decodes
-// into $ref, so the node is a reference carrying a structural sibling that
-// nobody wrote.
+// any unknown keyword in the sibling's place did the same, because
+// hasRefStructuralSiblings counts one: {"patternProperties":{"^x":{"$ref":"#",
+// "xUnknown":1}}} is the same defect, and it is the shape the fixture holds.
+//
+// A case variant of the reference keyword used to reach it in fewer bytes still
+// -- {"patternProperties":{"^x":{"$rEf":"#"}}} was read as a $ref *and* as the
+// unknown keyword beside it, both from the one key. It no longer is: a keyword
+// spelled in another casing is an unrecognised keyword and nothing else (#350),
+// so that document is now a bucket with no reference in it and reaches this
+// function by an entirely different route. The reproduction went with the fix;
+// the class did not.
 //
 // Answering with the name the node is already being generated under is exact:
 // that type's Validate is the whole of what the sub-schema says, which is what

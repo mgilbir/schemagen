@@ -170,27 +170,30 @@ func selfReferentialValueBucketFixtures() []notFixture {
 			},
 		},
 		{
-			// The shortest spelling of the defect, and the one the issue was
-			// filed with: thirty-nine bytes, with no sibling written out at all.
-			// "$rEf" is an unknown keyword -- and encoding/json's case-insensitive
-			// field matching *also* decodes it into $ref, so the node is a
-			// reference carrying a structural sibling that nobody wrote.
+			// This was the shortest spelling of the defect when the issue was
+			// filed -- thirty-nine bytes, with no sibling written out at all --
+			// and it is not one any more. "$rEf" reached this arm because
+			// encoding/json's case-insensitive field matching decoded it into
+			// $ref *as well as* into Extensions, so one key made the node a
+			// reference and gave it a structural sibling at the same time. A
+			// keyword spelled in another casing is now an unrecognised keyword
+			// and nothing else (#350), so the bucket holds no reference and the
+			// document does not reach the arm at all.
 			//
-			// Every instance is accepted, and that is the whole statement the
-			// schema makes: read as a spec-conformant document the unknown
-			// keyword asserts nothing, and read the way the generator parses it
-			// the bucket refers to a root that asserts nothing either. js-ajv
-			// agrees; python-jsonschema errors on the document rather than
-			// judging it. What is under test here is that the generator
-			// terminates and emits a type that accepts, rather than that it
-			// rejects something.
+			// It is kept because it is the document the issue was filed with, and
+			// because the verdict it must be given did not change with the
+			// parse: every instance is accepted, which is what a bucket whose
+			// sub-schema states one unrecognised keyword says under either
+			// reading. js-ajv agrees; python-jsonschema errors on the document
+			// rather than judging it. The #349 arm itself is held by the two
+			// fixtures above, which spell their sibling out.
 			Name:       "patternprops_ref_keyword_case_variant",
 			SchemaPath: "testdata/schemas/adversarial/cycle/patternprops-ref-keyword-case-variant.json",
 			Instances: []notInstance{
 				{Name: "an empty object", Doc: `{}`, Valid: true, Why: "the schema constrains nothing"},
 				{Name: "a matching key", Doc: `{"x":""}`, Valid: true, Why: "the bucket's sub-schema asserts nothing"},
 				{Name: "a matching key one level down", Doc: `{"x":{"x":""}}`, Valid: true,
-					Why: "the recursion is real -- the type decodes into itself -- and still accepts"},
+					Why: "nothing on either reading of the document rejects at any depth"},
 				{Name: "a non-object", Doc: `"s"`, Valid: true, Why: "control"},
 			},
 		},
