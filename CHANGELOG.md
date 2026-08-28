@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- A keyword spelled in another casing is no longer enforced as the keyword it
+  resembles. `encoding/json` matches a key that matches no struct field exactly
+  a second time case-insensitively, so every JSON Schema keyword was accepted in
+  every casing — and the specification says an unrecognised keyword is ignored.
+  It went wrong in four directions at once: `{"type":"string","MinLength":5}`
+  refused `"ab"` against a constraint the document does not state,
+  `{"$rEf":"#/$defs/S"}` took a type from a reference nobody wrote,
+  `{"MinLength":"not a number"}` was refused at parse time as a malformed
+  document rather than read as the legal one it is, and where both spellings
+  appeared together the one that won was decided by their order in the document.
+  A case variant is now an unrecognised keyword and nothing else — still
+  preserved, still reachable by JSON Pointer, and constraining nothing. The
+  discriminator's own fields are read by the same rule. The keyword list is the
+  struct's own json tags, so a keyword added later is covered without a second
+  list to keep in step, and the guard asks the question of every keyword rather
+  than of the ones the issue named.
 - A `$ref` written beside a keyword that survives it no longer runs the
   generator out of memory when it is reached through a `patternProperties`
   bucket or a per-branch `additionalProperties`/`unevaluatedProperties` check
