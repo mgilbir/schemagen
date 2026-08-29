@@ -52,8 +52,8 @@ func (a *AllOfNestedAnyOfUnevaluated) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 

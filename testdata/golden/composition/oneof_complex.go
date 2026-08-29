@@ -8,9 +8,9 @@ import (
 )
 
 type EmailTarget struct {
-	EmailAddress         string                     `json:"email_address"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	EmailAddress         string                     `json:"email_address"`
 }
 
 func (e *EmailTarget) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (e *EmailTarget) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"email_address", jsonDecodeValue[string]},
+			{name: "email_address", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -125,10 +125,10 @@ func (e EmailTarget) Validate() error {
 }
 
 type HTMLContent struct {
-	HTML                 string                     `json:"html"`
 	Subject              *string                    `json:"subject,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	HTML                 string                     `json:"html"`
 }
 
 func (h *HTMLContent) UnmarshalJSON(data []byte) error {
@@ -166,8 +166,8 @@ func (h *HTMLContent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"html", jsonDecodeValue[string]},
-			{"subject", jsonDecodeValue[*string]},
+			{name: "html", decode: jsonDecodeValue[string]},
+			{name: "subject", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -247,9 +247,9 @@ func (h HTMLContent) Validate() error {
 }
 
 type SmsTarget struct {
-	PhoneNumber          string                     `json:"phone_number"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	PhoneNumber          string                     `json:"phone_number"`
 }
 
 func (s *SmsTarget) UnmarshalJSON(data []byte) error {
@@ -286,7 +286,7 @@ func (s *SmsTarget) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"phone_number", jsonDecodeValue[string]},
+			{name: "phone_number", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -364,9 +364,9 @@ func (s SmsTarget) Validate() error {
 }
 
 type TextContent struct {
-	Body                 string                     `json:"body"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Body                 string                     `json:"body"`
 }
 
 func (t *TextContent) UnmarshalJSON(data []byte) error {
@@ -403,7 +403,7 @@ func (t *TextContent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"body", jsonDecodeValue[string]},
+			{name: "body", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -481,11 +481,11 @@ func (t TextContent) Validate() error {
 }
 
 type Notification struct {
-	ID                   string                     `json:"id"`
 	Content              isNotification_Content     `json:"-"`
 	Target               isNotification_Target      `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
 }
 
 // isNotification_Content is a sealed interface for the Content field of Notification.
@@ -612,7 +612,7 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
+			{name: "id", decode: jsonDecodeValue[string]},
 		})
 	}
 

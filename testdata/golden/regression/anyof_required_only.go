@@ -53,8 +53,8 @@ func (a *AnyOfRequiredOnly) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[any]},
-			{"b", jsonDecodeValue[any]},
+			{name: "a", decode: jsonDecodeValue[any]},
+			{name: "b", decode: jsonDecodeValue[any]},
 		})
 	}
 	{

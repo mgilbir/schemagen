@@ -55,11 +55,11 @@ func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bool_field", jsonDecodeValue[*bool]},
-			{"int_field", jsonDecodeValue[*jsonInteger]},
-			{"nullable_str", jsonDecodeValue[*string]},
-			{"num_field", jsonDecodeValue[*float64]},
-			{"str_field", jsonDecodeValue[*string]},
+			{name: "bool_field", decode: jsonDecodeValue[*bool]},
+			{name: "int_field", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "nullable_str", decode: jsonDecodeValue[*string]},
+			{name: "num_field", decode: jsonDecodeValue[*float64]},
+			{name: "str_field", decode: jsonDecodeValue[*string]},
 		})
 	}
 

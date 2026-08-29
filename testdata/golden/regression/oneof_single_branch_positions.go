@@ -257,9 +257,9 @@ func (o OneOfSingleBranchPositionsMapValue) Validate() error {
 }
 
 type OneOfSingleBranchPositionsObjBranchOption0 struct {
-	K                    string                     `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    string                     `json:"k"`
 }
 
 func (o *OneOfSingleBranchPositionsObjBranchOption0) UnmarshalJSON(data []byte) error {
@@ -296,7 +296,7 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) UnmarshalJSON(data []byte) 
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[string]},
+			{name: "k", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -437,17 +437,17 @@ func (o OneOfSingleBranchPositionsTwoBranch) Validate() error {
 
 // OneOfSingleBranchPositions - A oneOf of one branch on a declared property built a sealed-interface union of one variant, and a lone variant that outruns selection is matched by every document the field can hold. So the branch was tested nowhere: constBranch accepted "b", falseBranch and emptyEnum accepted values no document satisfies, and the arity guard that let them through read a group of one as a group that never reaches the union. boundBranch, typedBranch, twoBranch, list and map are the controls: the first two are decided by selection and keep the union, and the last three were already right.
 type OneOfSingleBranchPositions struct {
+	BoundBranch          isOneOfSingleBranchPositions_BoundBranch      `json:"-"`
+	ObjBranch            isOneOfSingleBranchPositions_ObjBranch        `json:"-"`
+	TypedBranch          isOneOfSingleBranchPositions_TypedBranch      `json:"-"`
+	Map                  map[string]OneOfSingleBranchPositionsMapValue `json:"map,omitzero"`
+	AdditionalProperties map[string]json.RawMessage                    `json:"-"`
+	_jsonKeys            map[string]bool                               // set by UnmarshalJSON for optional field / dependentSchemas validation
 	ConstBranch          OneOfSingleBranchPositionsConstBranch         `json:"constBranch,omitzero"`
 	EmptyEnum            OneOfSingleBranchPositionsEmptyEnum           `json:"emptyEnum,omitzero"`
 	FalseBranch          OneOfSingleBranchPositionsFalseBranch         `json:"falseBranch,omitzero"`
 	List                 []OneOfSingleBranchPositionsListItem          `json:"list,omitzero"`
-	Map                  map[string]OneOfSingleBranchPositionsMapValue `json:"map,omitzero"`
 	TwoBranch            OneOfSingleBranchPositionsTwoBranch           `json:"twoBranch,omitzero"`
-	BoundBranch          isOneOfSingleBranchPositions_BoundBranch      `json:"-"`
-	ObjBranch            isOneOfSingleBranchPositions_ObjBranch        `json:"-"`
-	TypedBranch          isOneOfSingleBranchPositions_TypedBranch      `json:"-"`
-	AdditionalProperties map[string]json.RawMessage                    `json:"-"`
-	_jsonKeys            map[string]bool                               // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 // isOneOfSingleBranchPositions_BoundBranch is a sealed interface for the BoundBranch field of OneOfSingleBranchPositions.
@@ -571,12 +571,12 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"constBranch", jsonDecodeValue[OneOfSingleBranchPositionsConstBranch]},
-			{"emptyEnum", jsonDecodeValue[OneOfSingleBranchPositionsEmptyEnum]},
-			{"falseBranch", jsonDecodeValue[OneOfSingleBranchPositionsFalseBranch]},
-			{"list", jsonDecodeItems(jsonDecodeValue[OneOfSingleBranchPositionsListItem])},
-			{"map", jsonDecodeValues(jsonDecodeValue[OneOfSingleBranchPositionsMapValue])},
-			{"twoBranch", jsonDecodeValue[OneOfSingleBranchPositionsTwoBranch]},
+			{name: "constBranch", decode: jsonDecodeValue[OneOfSingleBranchPositionsConstBranch]},
+			{name: "emptyEnum", decode: jsonDecodeValue[OneOfSingleBranchPositionsEmptyEnum]},
+			{name: "falseBranch", decode: jsonDecodeValue[OneOfSingleBranchPositionsFalseBranch]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[OneOfSingleBranchPositionsListItem])},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[OneOfSingleBranchPositionsMapValue])},
+			{name: "twoBranch", decode: jsonDecodeValue[OneOfSingleBranchPositionsTwoBranch]},
 		})
 	}
 

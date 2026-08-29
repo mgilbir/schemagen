@@ -15,8 +15,8 @@ import (
 // is what a literal 0 decodes to and a nil *big.Int is what every int64-sized
 // value leaves behind. IsNull reports it, and the zero value is 0, not null.
 type RootNullBigIntNullable struct {
-	_int64    int64
 	_bigInt   *big.Int
+	_int64    int64
 	_isBigInt bool
 	_isNull   bool
 }

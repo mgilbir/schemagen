@@ -48,7 +48,7 @@ func (a *AnyOfFalseBranchRoot) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*string]},
+			{name: "k", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

@@ -2,6 +2,29 @@
 
 ## 0.1.2
 
+### Changed
+
+- Generated structs now declare their fields in the order that costs the least
+  memory, rather than in the order they were built in. A struct's fields are
+  laid out where they are written, and the compiler pads between them to reach
+  each field's alignment, so `{"properties":{"flag":{"type":"boolean"},
+  "count":{"type":"integer"}}}` spent seven bytes on nothing; the garbage
+  collector reads the same declaration a second way and scans a value up to its
+  last possible pointer, so a pointerless field written between two pointers was
+  scanned along with them. Both costs are paid by every value of the type. The
+  order chosen is `fieldalignment`'s, so that analyzer now reports nothing
+  against schemagen's output, and it covers the whole declaration — the
+  properties, the union field a `oneOf` becomes, the overflow maps, and the
+  unexported members the decoder fills.
+
+  Two visible consequences. Fields no longer appear in JSON-name order in the
+  declaration, though every list that is read rather than laid out still is: the
+  decoder's members, the validation order, and the property names in an error
+  message are all unchanged. And because `encoding/json` writes an object's
+  members in declaration order, the *key order of emitted JSON changes* — the
+  same members with the same values, in a different order, which JSON gives no
+  meaning to. Nothing about decoding, validation, or round-tripping changes.
+
 ### Fixed
 
 - A keyword spelled in another casing is no longer enforced as the keyword it

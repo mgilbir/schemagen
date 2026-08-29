@@ -79,10 +79,13 @@ func fieldOf(v any, name string) (reflect.Type, string) { return reflect.TypeOf(
 // contexts is two entries and each is classified on its own.
 var typeNameEmissionSites = map[string]emissionSite{
 	// ---- the goType funnel ----
-	"alias.go.tmpl | goType .LeafDecode.ShadowType":                                 {Kind: nameGoType},
-	"oneof.go.tmpl | goType .Type":                                                  {Kind: nameGoType},
-	"set_defaults.go.tmpl | goType .Type":                                           {Kind: nameGoType},
-	"struct.go.tmpl | goType .AdditionalProperties.ValueType":                       {Kind: nameGoType},
+	"alias.go.tmpl | goType .LeafDecode.ShadowType": {Kind: nameGoType},
+	"oneof.go.tmpl | goType .Type":                  {Kind: nameGoType},
+	"set_defaults.go.tmpl | goType .Type":           {Kind: nameGoType},
+	// struct.go.tmpl no longer spells the overflow map out: the whole member is
+	// a StructMember whose Type is the map, so `goType .Type` renders it -- and
+	// renders every other member of the struct too. Still the same funnel, one
+	// call further out.
 	"unmarshal.go.tmpl | goType $struct.AdditionalProperties.LeafDecode.ShadowType": {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType $struct.AdditionalProperties.ValueType":             {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType $v.LeafDecode.ShadowType":                           {Kind: nameGoType},

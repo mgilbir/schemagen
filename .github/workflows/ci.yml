@@ -74,3 +74,32 @@ jobs:
       # fixture, exactly as before -- this only proves the harness still runs.
       - name: cogen smoke
         run: make cogen COGEN_SEED=1 COGEN_ITERS=50
+
+  # The field-alignment check, in its own job because it takes about three
+  # minutes and has nothing to say about anything the job above tests.
+  #
+  # `go test ./...` already runs TestGeneratedCorpusIsFieldAligned, which
+  # measures every struct *declaration* the corpus produces. This runs the
+  # fieldalignment analyzer itself, over nine generator configurations, and the
+  # difference is the struct types declared inside a function body: the emitted
+  # MarshalJSON and UnmarshalJSON each build one, reflect cannot name one, and
+  # six of them were misordered when the layout pass first landed. Nothing but
+  # the analyzer could see it.
+  alignment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The analyzer is a build of another module and is fetched rather than
+      # vendored, so this job needs the proxy. Generated code reaches the same
+      # two dependencies the test job names.
+      - name: download dependencies
+        run: go mod download
+
+      - name: fieldalignment
+        run: make lint-alignment

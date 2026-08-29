@@ -437,7 +437,6 @@ type AllOfSiblingValues struct {
 	ConstInBranch        *AllOfSiblingValuesConstInBranch            `json:"constInBranch,omitempty"`
 	ConstOnProperty      *string                                     `json:"constOnProperty,omitempty"`
 	LaterBranchNarrows   *AllOfSiblingValuesLaterBranchNarrows       `json:"laterBranchNarrows,omitempty"`
-	ListItems            []AllOfSiblingValuesListItemsItem           `json:"listItems,omitzero"`
 	MapValues            map[string]AllOfSiblingValuesMapValuesValue `json:"mapValues,omitzero"`
 	NestedChain          *AllOfSiblingValuesNestedChain              `json:"nestedChain,omitempty"`
 	NumberSpelling       *AllOfSiblingValuesNumberSpelling           `json:"numberSpelling,omitempty"`
@@ -446,6 +445,7 @@ type AllOfSiblingValues struct {
 	ViaRef               *AllOfSiblingValuesViaRef                   `json:"viaRef,omitempty"`
 	AdditionalProperties map[string]json.RawMessage                  `json:"-"`
 	_jsonKeys            map[string]bool                             // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ListItems            []AllOfSiblingValuesListItemsItem           `json:"listItems,omitzero"`
 }
 
 func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
@@ -495,20 +495,20 @@ func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"agrees", jsonDecodeValue[*AllOfSiblingValuesAgrees]},
-			{"allOfThroughRef", jsonDecodeValue[*AllOfSiblingValuesAllOfThroughRef]},
-			{"branchNarrows", jsonDecodeValue[*AllOfSiblingValuesBranchNarrows]},
-			{"chain", jsonDecodeValue[*AllOfSiblingValuesChain]},
-			{"constInBranch", jsonDecodeValue[*AllOfSiblingValuesConstInBranch]},
-			{"constOnProperty", jsonDecodeValue[*string]},
-			{"laterBranchNarrows", jsonDecodeValue[*AllOfSiblingValuesLaterBranchNarrows]},
-			{"listItems", jsonDecodeItems(jsonDecodeValue[AllOfSiblingValuesListItemsItem])},
-			{"mapValues", jsonDecodeValues(jsonDecodeValue[AllOfSiblingValuesMapValuesValue])},
-			{"nestedChain", jsonDecodeValue[*AllOfSiblingValuesNestedChain]},
-			{"numberSpelling", jsonDecodeValue[*AllOfSiblingValuesNumberSpelling]},
-			{"rootNarrows", jsonDecodeValue[*AllOfSiblingValuesRootNarrows]},
-			{"silentBranch", jsonDecodeValue[*AllOfSiblingValuesSilentBranch]},
-			{"viaRef", jsonDecodeValue[*AllOfSiblingValuesViaRef]},
+			{name: "agrees", decode: jsonDecodeValue[*AllOfSiblingValuesAgrees]},
+			{name: "allOfThroughRef", decode: jsonDecodeValue[*AllOfSiblingValuesAllOfThroughRef]},
+			{name: "branchNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesBranchNarrows]},
+			{name: "chain", decode: jsonDecodeValue[*AllOfSiblingValuesChain]},
+			{name: "constInBranch", decode: jsonDecodeValue[*AllOfSiblingValuesConstInBranch]},
+			{name: "constOnProperty", decode: jsonDecodeValue[*string]},
+			{name: "laterBranchNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesLaterBranchNarrows]},
+			{name: "listItems", decode: jsonDecodeItems(jsonDecodeValue[AllOfSiblingValuesListItemsItem])},
+			{name: "mapValues", decode: jsonDecodeValues(jsonDecodeValue[AllOfSiblingValuesMapValuesValue])},
+			{name: "nestedChain", decode: jsonDecodeValue[*AllOfSiblingValuesNestedChain]},
+			{name: "numberSpelling", decode: jsonDecodeValue[*AllOfSiblingValuesNumberSpelling]},
+			{name: "rootNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesRootNarrows]},
+			{name: "silentBranch", decode: jsonDecodeValue[*AllOfSiblingValuesSilentBranch]},
+			{name: "viaRef", decode: jsonDecodeValue[*AllOfSiblingValuesViaRef]},
 		})
 	}
 	{

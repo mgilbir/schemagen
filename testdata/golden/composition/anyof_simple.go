@@ -56,10 +56,10 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"description", jsonDecodeValue[*string]},
-			{"name", jsonDecodeValue[*string]},
-			{"title", jsonDecodeValue[*string]},
-			{"url", jsonDecodeValue[*string]},
+			{name: "description", decode: jsonDecodeValue[*string]},
+			{name: "name", decode: jsonDecodeValue[*string]},
+			{name: "title", decode: jsonDecodeValue[*string]},
+			{name: "url", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -295,10 +295,10 @@ func (s SearchResultResult) Validate() error {
 }
 
 type SearchResult struct {
-	ID                   string                     `json:"id"`
 	Result               *SearchResultResult        `json:"result,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
 }
 
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
@@ -336,8 +336,8 @@ func (s *SearchResult) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
-			{"result", jsonDecodeValue[*SearchResultResult]},
+			{name: "id", decode: jsonDecodeValue[string]},
+			{name: "result", decode: jsonDecodeValue[*SearchResultResult]},
 		})
 	}
 	{

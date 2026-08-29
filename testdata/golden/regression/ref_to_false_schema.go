@@ -192,19 +192,19 @@ func (r RefToFalseSchemaViaNested) Validate() error {
 type RefToFalseSchema struct {
 	Always               Always                      `json:"always,omitempty"`
 	AlwaysAllOf          any                         `json:"alwaysAllOf,omitempty"`
+	ViaOneOf             isRefToFalseSchema_ViaOneOf `json:"-"`
+	Map                  map[string]Never            `json:"map,omitzero"`
+	AdditionalProperties map[string]json.RawMessage  `json:"-"`
+	_jsonKeys            map[string]bool             // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 	AlwaysList           []Always                    `json:"alwaysList,omitzero"`
 	Beside               RefToFalseSchemaBeside      `json:"beside,omitzero"`
 	List                 []Never                     `json:"list,omitzero"`
-	Map                  map[string]Never            `json:"map,omitzero"`
 	Prop                 Never                       `json:"prop,omitzero"`
 	Tuple                []any                       `json:"tuple,omitzero"`
 	ViaAllOf             RefToFalseSchemaViaAllOf    `json:"viaAllOf,omitzero"`
 	ViaAnyOf             RefToFalseSchemaViaAnyOf    `json:"viaAnyOf,omitzero"`
 	ViaNested            RefToFalseSchemaViaNested   `json:"viaNested,omitzero"`
-	ViaOneOf             isRefToFalseSchema_ViaOneOf `json:"-"`
-	AdditionalProperties map[string]json.RawMessage  `json:"-"`
-	_jsonKeys            map[string]bool             // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls           map[string]bool             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 // isRefToFalseSchema_ViaOneOf is a sealed interface for the ViaOneOf field of RefToFalseSchema.
@@ -279,17 +279,17 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"always", jsonDecodeValue[Always]},
-			{"alwaysAllOf", jsonDecodeValue[any]},
-			{"alwaysList", jsonDecodeItems(jsonDecodeValue[Always])},
-			{"beside", jsonDecodeValue[RefToFalseSchemaBeside]},
-			{"list", jsonDecodeItems(jsonDecodeValue[Never])},
-			{"map", jsonDecodeValues(jsonDecodeValue[Never])},
-			{"prop", jsonDecodeValue[Never]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"viaAllOf", jsonDecodeValue[RefToFalseSchemaViaAllOf]},
-			{"viaAnyOf", jsonDecodeValue[RefToFalseSchemaViaAnyOf]},
-			{"viaNested", jsonDecodeValue[RefToFalseSchemaViaNested]},
+			{name: "always", decode: jsonDecodeValue[Always]},
+			{name: "alwaysAllOf", decode: jsonDecodeValue[any]},
+			{name: "alwaysList", decode: jsonDecodeItems(jsonDecodeValue[Always])},
+			{name: "beside", decode: jsonDecodeValue[RefToFalseSchemaBeside]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[Never])},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[Never])},
+			{name: "prop", decode: jsonDecodeValue[Never]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "viaAllOf", decode: jsonDecodeValue[RefToFalseSchemaViaAllOf]},
+			{name: "viaAnyOf", decode: jsonDecodeValue[RefToFalseSchemaViaAnyOf]},
+			{name: "viaNested", decode: jsonDecodeValue[RefToFalseSchemaViaNested]},
 		})
 	}
 

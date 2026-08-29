@@ -23,10 +23,10 @@ func (l Label) Validate() error {
 }
 
 type Leaf struct {
-	Lb                   bool                       `json:"lb"`
-	Ls                   string                     `json:"ls"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Ls                   string                     `json:"ls"`
+	Lb                   bool                       `json:"lb"`
 }
 
 func (l *Leaf) UnmarshalJSON(data []byte) error {
@@ -64,8 +64,8 @@ func (l *Leaf) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"lb", jsonDecodeValue[bool]},
-			{"ls", jsonDecodeValue[string]},
+			{name: "lb", decode: jsonDecodeValue[bool]},
+			{name: "ls", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -193,34 +193,34 @@ func (t Tags) Validate() error {
 }
 
 type DefaultPresencePositions struct {
-	AnyArr               []any                      `json:"anyArr,omitzero"`
 	AnyMap               map[string]any             `json:"anyMap,omitzero"`
-	ArrMismatch          []string                   `json:"arrMismatch,omitzero"`
-	ArrOfNamed           []Label                    `json:"arrOfNamed,omitzero"`
 	Leaf                 *Leaf                      `json:"leaf,omitempty"`
-	LeafArr              []Leaf                     `json:"leafArr,omitzero"`
 	LeafMap              map[string]Leaf            `json:"leafMap,omitzero"`
 	MapOfArr             map[string][]int64         `json:"mapOfArr,omitzero"`
 	Mismatch             *int64                     `json:"mismatch,omitempty"`
-	NamedArr             Tags                       `json:"namedArr,omitzero"`
-	NullArr              []string                   `json:"nullArr,omitzero"`
-	OptArr               []string                   `json:"optArr,omitzero"`
 	OptBool              *bool                      `json:"optBool,omitempty"`
 	OptInt               *int64                     `json:"optInt,omitempty"`
 	OptMap               map[string]string          `json:"optMap,omitzero"`
 	OptNum               *float64                   `json:"optNum,omitempty"`
 	OptStr               *string                    `json:"optStr,omitempty"`
-	ReqArr               []string                   `json:"reqArr"`
-	ReqBool              bool                       `json:"reqBool"`
-	ReqInt               int64                      `json:"reqInt"`
 	ReqMap               map[string]string          `json:"reqMap"`
-	ReqNamed             Label                      `json:"reqNamed"`
-	ReqNum               float64                    `json:"reqNum"`
-	ReqStr               string                     `json:"reqStr"`
 	StructDflt           *Leaf                      `json:"structDflt,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	ReqNamed             Label                      `json:"reqNamed"`
+	ReqStr               string                     `json:"reqStr"`
+	AnyArr               []any                      `json:"anyArr,omitzero"`
+	ArrMismatch          []string                   `json:"arrMismatch,omitzero"`
+	ArrOfNamed           []Label                    `json:"arrOfNamed,omitzero"`
+	LeafArr              []Leaf                     `json:"leafArr,omitzero"`
+	NamedArr             Tags                       `json:"namedArr,omitzero"`
+	NullArr              []string                   `json:"nullArr,omitzero"`
+	OptArr               []string                   `json:"optArr,omitzero"`
+	ReqArr               []string                   `json:"reqArr"`
+	ReqInt               int64                      `json:"reqInt"`
+	ReqNum               float64                    `json:"reqNum"`
+	ReqBool              bool                       `json:"reqBool"`
 }
 
 func (d *DefaultPresencePositions) UnmarshalJSON(data []byte) error {
@@ -286,31 +286,31 @@ func (d *DefaultPresencePositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"anyArr", jsonDecodeItems(jsonDecodeValue[any])},
-			{"anyMap", jsonDecodeValues(jsonDecodeValue[any])},
-			{"arrMismatch", jsonDecodeItems(jsonDecodeValue[string])},
-			{"arrOfNamed", jsonDecodeItems(jsonDecodeValue[Label])},
-			{"leaf", jsonDecodeValue[*Leaf]},
-			{"leafArr", jsonDecodeItems(jsonDecodeValue[Leaf])},
-			{"leafMap", jsonDecodeValues(jsonDecodeValue[Leaf])},
-			{"mapOfArr", jsonDecodeValues(jsonDecodeItems(jsonDecodeValue[jsonInteger]))},
-			{"mismatch", jsonDecodeValue[*jsonInteger]},
-			{"namedArr", jsonDecodeValue[Tags]},
-			{"nullArr", jsonDecodeItems(jsonDecodeValue[string])},
-			{"optArr", jsonDecodeItems(jsonDecodeValue[string])},
-			{"optBool", jsonDecodeValue[*bool]},
-			{"optInt", jsonDecodeValue[*jsonInteger]},
-			{"optMap", jsonDecodeValues(jsonDecodeValue[string])},
-			{"optNum", jsonDecodeValue[*float64]},
-			{"optStr", jsonDecodeValue[*string]},
-			{"reqArr", jsonDecodeItems(jsonDecodeValue[string])},
-			{"reqBool", jsonDecodeValue[bool]},
-			{"reqInt", jsonDecodeValue[jsonInteger]},
-			{"reqMap", jsonDecodeValues(jsonDecodeValue[string])},
-			{"reqNamed", jsonDecodeValue[Label]},
-			{"reqNum", jsonDecodeValue[float64]},
-			{"reqStr", jsonDecodeValue[string]},
-			{"structDflt", jsonDecodeValue[*Leaf]},
+			{name: "anyArr", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "anyMap", decode: jsonDecodeValues(jsonDecodeValue[any])},
+			{name: "arrMismatch", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "arrOfNamed", decode: jsonDecodeItems(jsonDecodeValue[Label])},
+			{name: "leaf", decode: jsonDecodeValue[*Leaf]},
+			{name: "leafArr", decode: jsonDecodeItems(jsonDecodeValue[Leaf])},
+			{name: "leafMap", decode: jsonDecodeValues(jsonDecodeValue[Leaf])},
+			{name: "mapOfArr", decode: jsonDecodeValues(jsonDecodeItems(jsonDecodeValue[jsonInteger]))},
+			{name: "mismatch", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "namedArr", decode: jsonDecodeValue[Tags]},
+			{name: "nullArr", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "optArr", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "optBool", decode: jsonDecodeValue[*bool]},
+			{name: "optInt", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "optMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "optNum", decode: jsonDecodeValue[*float64]},
+			{name: "optStr", decode: jsonDecodeValue[*string]},
+			{name: "reqArr", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "reqBool", decode: jsonDecodeValue[bool]},
+			{name: "reqInt", decode: jsonDecodeValue[jsonInteger]},
+			{name: "reqMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "reqNamed", decode: jsonDecodeValue[Label]},
+			{name: "reqNum", decode: jsonDecodeValue[float64]},
+			{name: "reqStr", decode: jsonDecodeValue[string]},
+			{name: "structDflt", decode: jsonDecodeValue[*Leaf]},
 		})
 	}
 

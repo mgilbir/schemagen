@@ -218,18 +218,18 @@ func (t TypedFormatPositionsWrapped) Validate() error {
 
 // TypedFormatPositions - A declared string with a format, in every position it can be written. Four of them asserted nothing: an array element and a map value, whose element rules dropped the keyword; a tuple slot, which fell back to checking the JSON type; and a oneOf branch, which fell back to a bare Go string with no Validate for the union to call.
 type TypedFormatPositions struct {
+	Branch               isTypedFormatPositions_Branch `json:"-"`
 	Buckets              *TypedFormatPositionsBuckets  `json:"buckets,omitempty"`
 	Chain                *TypedChainOuter              `json:"chain,omitempty"`
 	Inline               *string                       `json:"inline,omitempty"`
-	List                 []string                      `json:"list,omitzero"`
-	MailList             []string                      `json:"mailList,omitzero"`
 	Map                  map[string]string             `json:"map,omitzero"`
 	Ref                  *TypedV4                      `json:"ref,omitempty"`
+	Wrapped              *TypedFormatPositionsWrapped  `json:"wrapped,omitempty"`
+	AdditionalProperties map[string]json.RawMessage    `json:"-"`
+	List                 []string                      `json:"list,omitzero"`
+	MailList             []string                      `json:"mailList,omitzero"`
 	StampList            []string                      `json:"stampList,omitzero"`
 	Tuple                []any                         `json:"tuple,omitzero"`
-	Wrapped              *TypedFormatPositionsWrapped  `json:"wrapped,omitempty"`
-	Branch               isTypedFormatPositions_Branch `json:"-"`
-	AdditionalProperties map[string]json.RawMessage    `json:"-"`
 }
 
 // isTypedFormatPositions_Branch is a sealed interface for the Branch field of TypedFormatPositions.
@@ -319,16 +319,16 @@ func (t *TypedFormatPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"buckets", jsonDecodeValue[*TypedFormatPositionsBuckets]},
-			{"chain", jsonDecodeValue[*TypedChainOuter]},
-			{"inline", jsonDecodeValue[*string]},
-			{"list", jsonDecodeItems(jsonDecodeValue[string])},
-			{"mailList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"map", jsonDecodeValues(jsonDecodeValue[string])},
-			{"ref", jsonDecodeValue[*TypedV4]},
-			{"stampList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"wrapped", jsonDecodeValue[*TypedFormatPositionsWrapped]},
+			{name: "buckets", decode: jsonDecodeValue[*TypedFormatPositionsBuckets]},
+			{name: "chain", decode: jsonDecodeValue[*TypedChainOuter]},
+			{name: "inline", decode: jsonDecodeValue[*string]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "mailList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "ref", decode: jsonDecodeValue[*TypedV4]},
+			{name: "stampList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "wrapped", decode: jsonDecodeValue[*TypedFormatPositionsWrapped]},
 		})
 	}
 

@@ -8,11 +8,11 @@ import (
 )
 
 type ClickEvent struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	Kind                 string                     `json:"kind"`
 	X                    int64                      `json:"x"`
 	Y                    int64                      `json:"y"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (c *ClickEvent) UnmarshalJSON(data []byte) error {
@@ -53,9 +53,9 @@ func (c *ClickEvent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"kind", jsonDecodeValue[string]},
-			{"x", jsonDecodeValue[jsonInteger]},
-			{"y", jsonDecodeValue[jsonInteger]},
+			{name: "kind", decode: jsonDecodeValue[string]},
+			{name: "x", decode: jsonDecodeValue[jsonInteger]},
+			{name: "y", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -158,10 +158,10 @@ func (c ClickEvent) Validate() error {
 }
 
 type KeypressEvent struct {
-	Key                  string                     `json:"key"`
-	Kind                 string                     `json:"kind"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Key                  string                     `json:"key"`
+	Kind                 string                     `json:"kind"`
 }
 
 func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
@@ -199,8 +199,8 @@ func (k *KeypressEvent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"key", jsonDecodeValue[string]},
-			{"kind", jsonDecodeValue[string]},
+			{name: "key", decode: jsonDecodeValue[string]},
+			{name: "kind", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -289,10 +289,10 @@ func (k KeypressEvent) Validate() error {
 }
 
 type ScrollEvent struct {
-	Delta                float64                    `json:"delta"`
-	Kind                 string                     `json:"kind"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Kind                 string                     `json:"kind"`
+	Delta                float64                    `json:"delta"`
 }
 
 func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
@@ -330,8 +330,8 @@ func (s *ScrollEvent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"delta", jsonDecodeValue[float64]},
-			{"kind", jsonDecodeValue[string]},
+			{name: "delta", decode: jsonDecodeValue[float64]},
+			{name: "kind", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -420,10 +420,10 @@ func (s ScrollEvent) Validate() error {
 }
 
 type Event struct {
-	ID                   string                     `json:"id"`
 	Payload              isEvent_Payload            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
 }
 
 // isEvent_Payload is a sealed interface for the Payload field of Event.
@@ -523,7 +523,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
+			{name: "id", decode: jsonDecodeValue[string]},
 		})
 	}
 

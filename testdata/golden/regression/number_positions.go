@@ -63,8 +63,8 @@ func (n NumberPositionsChoices) Validate() error {
 
 // NumberPositionsConstrained accepts any JSON value. Constraints apply only when the value is number.
 type NumberPositionsConstrained struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -124,22 +124,22 @@ func (n NumberPositionsConstrained) Validate() error {
 // NumberPositions - Every position a "number" can occupy, read twice: once under the default configuration, where it is a float64, and once under --exact-numbers, where it is the literal the document wrote. The two goldens are the same document and differ in that and nothing else, which is what makes the flag's reach readable rather than asserted. Issue #252.
 type NumberPositions struct {
 	Aliased              *Temperature                `json:"aliased,omitempty"`
-	AliasedList          Readings                    `json:"aliasedList,omitzero"`
 	Bounded              *float64                    `json:"bounded,omitempty"`
 	Choices              *NumberPositionsChoices     `json:"choices,omitempty"`
 	Constant             *float64                    `json:"constant,omitempty"`
 	Constrained          *NumberPositionsConstrained `json:"constrained,omitempty"`
-	Counted              []float64                   `json:"counted,omitzero"`
-	Elements             []float64                   `json:"elements,omitzero"`
 	IntegerBeside        *int64                      `json:"integerBeside,omitempty"`
 	Nullable             *float64                    `json:"nullable,omitempty"`
-	Required             float64                     `json:"required"`
 	Scalar               *float64                    `json:"scalar,omitempty"`
 	Values               map[string]float64          `json:"values,omitzero"`
 	WithDefault          *float64                    `json:"withDefault,omitempty"`
 	AdditionalProperties map[string]json.RawMessage  `json:"-"`
 	_jsonKeys            map[string]bool             // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	AliasedList          Readings                    `json:"aliasedList,omitzero"`
+	Counted              []float64                   `json:"counted,omitzero"`
+	Elements             []float64                   `json:"elements,omitzero"`
+	Required             float64                     `json:"required"`
 }
 
 func (n *NumberPositions) UnmarshalJSON(data []byte) error {
@@ -191,20 +191,20 @@ func (n *NumberPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"aliased", jsonDecodeValue[*Temperature]},
-			{"aliasedList", jsonDecodeValue[Readings]},
-			{"bounded", jsonDecodeValue[*float64]},
-			{"choices", jsonDecodeValue[*NumberPositionsChoices]},
-			{"constant", jsonDecodeValue[*float64]},
-			{"constrained", jsonDecodeValue[*NumberPositionsConstrained]},
-			{"counted", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"elements", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"integerBeside", jsonDecodeValue[*jsonInteger]},
-			{"nullable", jsonDecodeValue[*float64]},
-			{"required", jsonDecodeValue[float64]},
-			{"scalar", jsonDecodeValue[*float64]},
-			{"values", jsonDecodeValues(jsonDecodeValue[float64])},
-			{"withDefault", jsonDecodeValue[*float64]},
+			{name: "aliased", decode: jsonDecodeValue[*Temperature]},
+			{name: "aliasedList", decode: jsonDecodeValue[Readings]},
+			{name: "bounded", decode: jsonDecodeValue[*float64]},
+			{name: "choices", decode: jsonDecodeValue[*NumberPositionsChoices]},
+			{name: "constant", decode: jsonDecodeValue[*float64]},
+			{name: "constrained", decode: jsonDecodeValue[*NumberPositionsConstrained]},
+			{name: "counted", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "elements", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "integerBeside", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "nullable", decode: jsonDecodeValue[*float64]},
+			{name: "required", decode: jsonDecodeValue[float64]},
+			{name: "scalar", decode: jsonDecodeValue[*float64]},
+			{name: "values", decode: jsonDecodeValues(jsonDecodeValue[float64])},
+			{name: "withDefault", decode: jsonDecodeValue[*float64]},
 		})
 	}
 

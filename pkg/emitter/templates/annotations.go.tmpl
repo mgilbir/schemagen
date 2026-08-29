@@ -32,12 +32,25 @@
 // else keeps the static checks, or is refused outright rather than evaluated
 // with a keyword silently ignored.
 
+// A node is declared in three runs rather than by vocabulary: everything held
+// through a pointer, then everything held in a slice, then the one flag. The
+// vocabulary grouping is kept inside each run, so a keyword is still beside its
+// neighbours -- it just appears in whichever of the two runs its Go type puts it
+// in.
+//
+// What it costs is what decides the order. This struct is instantiated once per
+// subschema of the document, and every one of them is scanned by the garbage
+// collector on each cycle, so a `bool` written between two pointers is not free:
+// it pushes seven bytes of padding into the middle of the value and drags the
+// scan past both. Pointers before slices for the same reason -- a slice carries
+// its pointer in the first of its three words, and the length and capacity
+// behind it are two words the scan has to cross to reach anything written after
+// them. Putting the slices last means it crosses them once, at the end, and the
+// flag after those is not scanned at all.
 type _schemaNode struct {
 	Boolean *bool // a bare true/false schema
 
-	Type  []string // the JSON types the value may have; empty means any
-	Const *string  // JSON encoding of the const value
-	Enum  []string // JSON encodings of the permitted values
+	Const *string // JSON encoding of the const value
 
 	MultipleOf       *float64
 	Minimum          *float64
@@ -64,29 +77,19 @@ type _schemaNode struct {
 	ContentMediaType *string
 {{- end}}
 
-	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
-	Items       *_schemaNode  // items as a single schema: applies past the tuple
+	Items       *_schemaNode // items as a single schema: applies past the tuple
 	Contains    *_schemaNode
 	MinContains *int
 	MaxContains *int
 	MinItems    *int
 	MaxItems    *int
-	UniqueItems bool
 
-	Properties           []_schemaMember // by property name
-	PatternProperties    []_schemaMember // by ECMA-262 pattern over the key
 	AdditionalProperties *_schemaNode
 	PropertyNames        *_schemaNode
-	Required             []string
 	MinProperties        *int
 	MaxProperties        *int
-	DependentRequired    []_schemaDependency
-	DependentSchemas     []_schemaMember
 
-	AllOf []_schemaNode
-	AnyOf []_schemaNode
-	OneOf []_schemaNode
-	Not   *_schemaNode
+	Not *_schemaNode
 
 	If   *_schemaNode
 	Then *_schemaNode
@@ -104,6 +107,28 @@ type _schemaNode struct {
 	// assigned in init().
 	Ref *_schemaNode
 
+	// DynamicRef is a $dynamicRef or $recursiveRef, and is another conjunct like
+	// AllOf: the drafts that define these keywords are the drafts where a
+	// reference applies beside its siblings rather than replacing them.
+	DynamicRef *_dynamicRef
+{{- end}}
+
+	Type []string // the JSON types the value may have; empty means any
+	Enum []string // JSON encodings of the permitted values
+
+	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
+
+	Properties        []_schemaMember // by property name
+	PatternProperties []_schemaMember // by ECMA-262 pattern over the key
+	Required          []string
+	DependentRequired []_schemaDependency
+	DependentSchemas  []_schemaMember
+
+	AllOf []_schemaNode
+	AnyOf []_schemaNode
+	OneOf []_schemaNode
+{{- if .AnnotationsDynamic}}
+
 	// DynamicAnchors marks this node as *entering* a schema resource and lists
 	// what that resource contributes to the dynamic scope while it is being
 	// evaluated. Entering is not the same as being the resource's root: a
@@ -112,12 +137,9 @@ type _schemaNode struct {
 	// reference in this schema searches for are listed; an anchor nothing looks
 	// up changes no answer.
 	DynamicAnchors []_schemaAnchor
-
-	// DynamicRef is a $dynamicRef or $recursiveRef, and is another conjunct like
-	// AllOf: the drafts that define these keywords are the drafts where a
-	// reference applies beside its siblings rather than replacing them.
-	DynamicRef *_dynamicRef
 {{- end}}
+
+	UniqueItems bool
 }
 {{- if .AnnotationsDynamic}}
 
@@ -131,8 +153,8 @@ type _schemaNode struct {
 // resource part-way, the anchor and the node differ and the generator writes the
 // node out instead, so this spelling always means the same thing.
 type _schemaAnchor struct {
-	Name string
 	Node *_schemaNode
+	Name string
 }
 
 // _dynamicRef is a reference whose target is decided by the path taken to it
@@ -144,8 +166,8 @@ type _schemaAnchor struct {
 // where it points when the path entered no resource publishing the anchor, which
 // is what a plain $ref would have meant.
 type _dynamicRef struct {
-	Anchor   string
 	Fallback *_schemaNode
+	Anchor   string
 }
 
 // _schemaFrame is one schema resource on the dynamic scope, holding what it
@@ -198,9 +220,15 @@ type _schemaDependency struct {
 // are kept apart rather than merged into one because the keywords are: an index
 // evaluated by prefixItems says nothing about a property name, and a schema can
 // state both keywords over the same node.
+//
+// Declared pointer-carrying members first and flags last, as every struct in
+// this file is: a bool between two maps costs seven bytes of padding and drags
+// the collector's scan across both.
 type _evalResult struct {
-	ok     bool
-	reason string
+	evaluated      map[int]bool
+	evaluatedProps map[string]bool
+	reason         string
+	ok             bool
 	// reasonIsAStep says reason opens with a step into the value -- a property
 	// this node descended into, or the branch of a conditional that refused --
 	// rather than being a sentence about the value itself.
@@ -211,9 +239,7 @@ type _evalResult struct {
 	// recorded there and travels with the reason; a caller who guessed wrote
 	// `p.value matches no anyOf branch`, a member the document does not have.
 	// See issue #284 and jsonPathError.
-	reasonIsAStep  bool
-	evaluated      map[int]bool
-	evaluatedProps map[string]bool
+	reasonIsAStep bool
 }
 
 func _newEval(ok bool) _evalResult {

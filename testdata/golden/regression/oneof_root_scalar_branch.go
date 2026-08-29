@@ -8,9 +8,9 @@ import (
 )
 
 type OneOfRootScalarBranchValueOption0 struct {
-	K                    string                     `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    string                     `json:"k"`
 }
 
 func (o *OneOfRootScalarBranchValueOption0) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (o *OneOfRootScalarBranchValueOption0) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[string]},
+			{name: "k", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

@@ -66,16 +66,16 @@ func (s StampAlias) Validate() error {
 // FormatAliasPositions - Every position a format that maps to a self-marshalling Go type can reach through a named definition
 type FormatAliasPositions struct {
 	Addr                 *Addr                      `json:"addr,omitempty"`
-	AddrList             []Addr                     `json:"addr_list,omitzero"`
 	ChainedStamp         *StampAlias                `json:"chained_stamp,omitempty"`
 	OptionalStamp        *Stamp                     `json:"optional_stamp,omitempty"`
-	RequiredStamp        Stamp                      `json:"required_stamp"`
-	StampGrid            [][]Stamp                  `json:"stamp_grid,omitzero"`
-	StampList            []Stamp                    `json:"stamp_list,omitzero"`
 	StampMap             map[string]Stamp           `json:"stamp_map,omitzero"`
-	Tuple                []any                      `json:"tuple,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	RequiredStamp        Stamp                      `json:"required_stamp"`
+	AddrList             []Addr                     `json:"addr_list,omitzero"`
+	StampGrid            [][]Stamp                  `json:"stamp_grid,omitzero"`
+	StampList            []Stamp                    `json:"stamp_list,omitzero"`
+	Tuple                []any                      `json:"tuple,omitzero"`
 }
 
 func (f *FormatAliasPositions) UnmarshalJSON(data []byte) error {
@@ -120,15 +120,15 @@ func (f *FormatAliasPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"addr", jsonDecodeValue[*Addr]},
-			{"addr_list", jsonDecodeItems(jsonDecodeValue[Addr])},
-			{"chained_stamp", jsonDecodeValue[*StampAlias]},
-			{"optional_stamp", jsonDecodeValue[*Stamp]},
-			{"required_stamp", jsonDecodeValue[Stamp]},
-			{"stamp_grid", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[Stamp]))},
-			{"stamp_list", jsonDecodeItems(jsonDecodeValue[Stamp])},
-			{"stamp_map", jsonDecodeValues(jsonDecodeValue[Stamp])},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "addr", decode: jsonDecodeValue[*Addr]},
+			{name: "addr_list", decode: jsonDecodeItems(jsonDecodeValue[Addr])},
+			{name: "chained_stamp", decode: jsonDecodeValue[*StampAlias]},
+			{name: "optional_stamp", decode: jsonDecodeValue[*Stamp]},
+			{name: "required_stamp", decode: jsonDecodeValue[Stamp]},
+			{name: "stamp_grid", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[Stamp]))},
+			{name: "stamp_list", decode: jsonDecodeItems(jsonDecodeValue[Stamp])},
+			{name: "stamp_map", decode: jsonDecodeValues(jsonDecodeValue[Stamp])},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
 		})
 	}
 	{

@@ -10,8 +10,8 @@ import (
 
 // AtLeastFive accepts any JSON value. Constraints apply only when the value is number.
 type AtLeastFive struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -130,8 +130,8 @@ func (i InlineUntypedPositionsArr) Validate() error {
 
 // InlineUntypedPositionsNullableMapValue accepts any JSON value. Constraints apply only when the value is number.
 type InlineUntypedPositionsNullableMapValue struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -190,8 +190,8 @@ func (i InlineUntypedPositionsNullableMapValue) Validate() error {
 
 // InlineUntypedPositionsNum accepts any JSON value. Constraints apply only when the value is number.
 type InlineUntypedPositionsNum struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -250,8 +250,8 @@ func (i InlineUntypedPositionsNum) Validate() error {
 
 // InlineUntypedPositionsNumItemsItem accepts any JSON value. Constraints apply only when the value is number.
 type InlineUntypedPositionsNumItemsItem struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -310,9 +310,9 @@ func (i InlineUntypedPositionsNumItemsItem) Validate() error {
 
 type InlineUntypedPositionsObj struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (i *InlineUntypedPositionsObj) UnmarshalJSON(data []byte) error {
@@ -411,9 +411,9 @@ func (i InlineUntypedPositionsObj) Validate() error {
 
 type InlineUntypedPositionsObjItemsItem struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (i *InlineUntypedPositionsObjItemsItem) UnmarshalJSON(data []byte) error {
@@ -689,18 +689,18 @@ type InlineUntypedPositions struct {
 	Arr                  *InlineUntypedPositionsArr                        `json:"arr,omitempty"`
 	NullableMap          map[string]InlineUntypedPositionsNullableMapValue `json:"nullableMap,omitzero"`
 	Num                  *InlineUntypedPositionsNum                        `json:"num,omitempty"`
-	NumItems             []InlineUntypedPositionsNumItemsItem              `json:"numItems,omitzero"`
 	Obj                  *InlineUntypedPositionsObj                        `json:"obj,omitempty"`
-	ObjItems             []InlineUntypedPositionsObjItemsItem              `json:"objItems,omitzero"`
-	Slot                 []any                                             `json:"slot,omitzero"`
 	Str                  *InlineUntypedPositionsStr                        `json:"str,omitempty"`
-	StrItems             []InlineUntypedPositionsStrItemsItem              `json:"strItems,omitzero"`
-	TypedItems           []float64                                         `json:"typedItems,omitzero"`
 	TypedNum             *float64                                          `json:"typedNum,omitempty"`
 	ViaRef               *AtLeastFive                                      `json:"viaRef,omitempty"`
 	AdditionalProperties map[string]json.RawMessage                        `json:"-"`
 	_jsonKeys            map[string]bool                                   // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                                   // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	NumItems             []InlineUntypedPositionsNumItemsItem              `json:"numItems,omitzero"`
+	ObjItems             []InlineUntypedPositionsObjItemsItem              `json:"objItems,omitzero"`
+	Slot                 []any                                             `json:"slot,omitzero"`
+	StrItems             []InlineUntypedPositionsStrItemsItem              `json:"strItems,omitzero"`
+	TypedItems           []float64                                         `json:"typedItems,omitzero"`
 }
 
 func (i *InlineUntypedPositions) UnmarshalJSON(data []byte) error {
@@ -749,18 +749,18 @@ func (i *InlineUntypedPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"arr", jsonDecodeValue[*InlineUntypedPositionsArr]},
-			{"nullableMap", jsonDecodeValues(jsonDecodeValue[InlineUntypedPositionsNullableMapValue])},
-			{"num", jsonDecodeValue[*InlineUntypedPositionsNum]},
-			{"numItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsNumItemsItem])},
-			{"obj", jsonDecodeValue[*InlineUntypedPositionsObj]},
-			{"objItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsObjItemsItem])},
-			{"slot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"str", jsonDecodeValue[*InlineUntypedPositionsStr]},
-			{"strItems", jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsStrItemsItem])},
-			{"typedItems", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"typedNum", jsonDecodeValue[*float64]},
-			{"viaRef", jsonDecodeValue[*AtLeastFive]},
+			{name: "arr", decode: jsonDecodeValue[*InlineUntypedPositionsArr]},
+			{name: "nullableMap", decode: jsonDecodeValues(jsonDecodeValue[InlineUntypedPositionsNullableMapValue])},
+			{name: "num", decode: jsonDecodeValue[*InlineUntypedPositionsNum]},
+			{name: "numItems", decode: jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsNumItemsItem])},
+			{name: "obj", decode: jsonDecodeValue[*InlineUntypedPositionsObj]},
+			{name: "objItems", decode: jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsObjItemsItem])},
+			{name: "slot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "str", decode: jsonDecodeValue[*InlineUntypedPositionsStr]},
+			{name: "strItems", decode: jsonDecodeItems(jsonDecodeValue[InlineUntypedPositionsStrItemsItem])},
+			{name: "typedItems", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "typedNum", decode: jsonDecodeValue[*float64]},
+			{name: "viaRef", decode: jsonDecodeValue[*AtLeastFive]},
 		})
 	}
 	{

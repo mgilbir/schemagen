@@ -9,9 +9,15 @@
 // value leaves behind. IsNull reports it, and the zero value is 0, not null.
 {{- end}}
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
+{{- /* The *big.Int leads because it is the only member carrying a pointer, so
+       the garbage collector's scan of the wrapper stops at the first word; the
+       flags follow the int64 so they pack into the tail rather than pushing it
+       out with padding. Nothing about that depends on the schema, which is why
+       this order is written here rather than chosen by the layout pass -- but
+       layoutTable.ofDef states the same four members, and has to agree. */}}
 type {{.Name}} struct {
-	_int64    int64
 	_bigInt   *big.Int
+	_int64    int64
 	_isBigInt bool
 	{{- if .AllowsNull}}
 	_isNull   bool

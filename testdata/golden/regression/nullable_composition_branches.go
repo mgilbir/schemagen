@@ -441,9 +441,9 @@ func (n NullableCompositionBranchesAnyMinIt) Validate() error {
 }
 
 type NullableCompositionBranchesAnyObj struct {
-	K                    string                     `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    string                     `json:"k"`
 }
 
 func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
@@ -480,7 +480,7 @@ func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[string]},
+			{name: "k", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -687,21 +687,21 @@ func (n NullableCompositionBranchesOneMapVal) Validate() error {
 // NullableCompositionBranches - A composition written as {X, {"type":"null"}} collapsed to a pointer at X's own Go type, and nothing then read X again: the keywords a property carries on its parent's field, and the element checks an array carries beside it, are both taken from the property schema, which here is the wrapper and states none of them. So anyConst accepted "b", anyLen accepted "ab", anyItems accepted ["ab"], anyMinIt accepted [], anyBound accepted 1, oneMapVal accepted {"k":"a"}, and anyFalse and anyEmpty accepted documents no branch admits. anyEnum, anyObj, anyPlain and anyArr are the controls: the first two get a type of their own, whose Validate the field calls, and the last two state nothing their Go type does not already say.
 type NullableCompositionBranches struct {
 	AnyArr               *[]string                            `json:"anyArr,omitempty"`
+	AnyEnum              *NullableCompositionBranchesAnyEnum  `json:"anyEnum,omitempty"`
+	AnyObj               *NullableCompositionBranchesAnyObj   `json:"anyObj,omitempty"`
+	AnyPlain             *string                              `json:"anyPlain,omitempty"`
+	AdditionalProperties map[string]json.RawMessage           `json:"-"`
+	_jsonKeys            map[string]bool                      // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool                      // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 	AnyBound             NullableCompositionBranchesAnyBound  `json:"anyBound,omitzero"`
 	AnyConst             NullableCompositionBranchesAnyConst  `json:"anyConst,omitzero"`
 	AnyEmpty             NullableCompositionBranchesAnyEmpty  `json:"anyEmpty,omitzero"`
-	AnyEnum              *NullableCompositionBranchesAnyEnum  `json:"anyEnum,omitempty"`
 	AnyFalse             NullableCompositionBranchesAnyFalse  `json:"anyFalse,omitzero"`
 	AnyItems             NullableCompositionBranchesAnyItems  `json:"anyItems,omitzero"`
 	AnyLen               NullableCompositionBranchesAnyLen    `json:"anyLen,omitzero"`
 	AnyMinIt             NullableCompositionBranchesAnyMinIt  `json:"anyMinIt,omitzero"`
-	AnyObj               *NullableCompositionBranchesAnyObj   `json:"anyObj,omitempty"`
-	AnyPlain             *string                              `json:"anyPlain,omitempty"`
 	OneConst             NullableCompositionBranchesOneConst  `json:"oneConst,omitzero"`
 	OneMapVal            NullableCompositionBranchesOneMapVal `json:"oneMapVal,omitzero"`
-	AdditionalProperties map[string]json.RawMessage           `json:"-"`
-	_jsonKeys            map[string]bool                      // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls           map[string]bool                      // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (n *NullableCompositionBranches) UnmarshalJSON(data []byte) error {
@@ -751,19 +751,19 @@ func (n *NullableCompositionBranches) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"anyArr", jsonDecodeValue[*[]string]},
-			{"anyBound", jsonDecodeValue[NullableCompositionBranchesAnyBound]},
-			{"anyConst", jsonDecodeValue[NullableCompositionBranchesAnyConst]},
-			{"anyEmpty", jsonDecodeValue[NullableCompositionBranchesAnyEmpty]},
-			{"anyEnum", jsonDecodeValue[*NullableCompositionBranchesAnyEnum]},
-			{"anyFalse", jsonDecodeValue[NullableCompositionBranchesAnyFalse]},
-			{"anyItems", jsonDecodeValue[NullableCompositionBranchesAnyItems]},
-			{"anyLen", jsonDecodeValue[NullableCompositionBranchesAnyLen]},
-			{"anyMinIt", jsonDecodeValue[NullableCompositionBranchesAnyMinIt]},
-			{"anyObj", jsonDecodeValue[*NullableCompositionBranchesAnyObj]},
-			{"anyPlain", jsonDecodeValue[*string]},
-			{"oneConst", jsonDecodeValue[NullableCompositionBranchesOneConst]},
-			{"oneMapVal", jsonDecodeValue[NullableCompositionBranchesOneMapVal]},
+			{name: "anyArr", decode: jsonDecodeValue[*[]string]},
+			{name: "anyBound", decode: jsonDecodeValue[NullableCompositionBranchesAnyBound]},
+			{name: "anyConst", decode: jsonDecodeValue[NullableCompositionBranchesAnyConst]},
+			{name: "anyEmpty", decode: jsonDecodeValue[NullableCompositionBranchesAnyEmpty]},
+			{name: "anyEnum", decode: jsonDecodeValue[*NullableCompositionBranchesAnyEnum]},
+			{name: "anyFalse", decode: jsonDecodeValue[NullableCompositionBranchesAnyFalse]},
+			{name: "anyItems", decode: jsonDecodeValue[NullableCompositionBranchesAnyItems]},
+			{name: "anyLen", decode: jsonDecodeValue[NullableCompositionBranchesAnyLen]},
+			{name: "anyMinIt", decode: jsonDecodeValue[NullableCompositionBranchesAnyMinIt]},
+			{name: "anyObj", decode: jsonDecodeValue[*NullableCompositionBranchesAnyObj]},
+			{name: "anyPlain", decode: jsonDecodeValue[*string]},
+			{name: "oneConst", decode: jsonDecodeValue[NullableCompositionBranchesOneConst]},
+			{name: "oneMapVal", decode: jsonDecodeValue[NullableCompositionBranchesOneMapVal]},
 		})
 	}
 	{

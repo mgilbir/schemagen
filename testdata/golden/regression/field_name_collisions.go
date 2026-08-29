@@ -10,9 +10,9 @@ import (
 type FieldNameCollisions struct {
 	AdditionalProperties1 *bool                      `json:"additionalProperties,omitempty"`
 	Type                  *string                    `json:"type,omitempty"`
-	Validate1             string                     `json:"validate"`
 	AdditionalProperties  map[string]json.RawMessage `json:"-"`
 	_jsonKeys             map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Validate1             string                     `json:"validate"`
 }
 
 func (f *FieldNameCollisions) UnmarshalJSON(data []byte) error {
@@ -51,9 +51,9 @@ func (f *FieldNameCollisions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"additionalProperties", jsonDecodeValue[*bool]},
-			{"type", jsonDecodeValue[*string]},
-			{"validate", jsonDecodeValue[string]},
+			{name: "additionalProperties", decode: jsonDecodeValue[*bool]},
+			{name: "type", decode: jsonDecodeValue[*string]},
+			{name: "validate", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

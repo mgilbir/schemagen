@@ -8,10 +8,10 @@ import (
 )
 
 type DatabaseConfig struct {
-	Host                 string                     `json:"host"`
 	Port                 *int64                     `json:"port,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Host                 string                     `json:"host"`
 }
 
 func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
@@ -50,8 +50,8 @@ func (d *DatabaseConfig) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"host", jsonDecodeValue[string]},
-			{"port", jsonDecodeValue[*jsonInteger]},
+			{name: "host", decode: jsonDecodeValue[string]},
+			{name: "port", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -140,10 +140,10 @@ func (d DatabaseConfig) Validate() error {
 
 type Config struct {
 	Database             *DatabaseConfig            `json:"database,omitempty"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Name                 string                     `json:"name"`
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -182,8 +182,8 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"database", jsonDecodeValue[*DatabaseConfig]},
-			{"name", jsonDecodeValue[string]},
+			{name: "database", decode: jsonDecodeValue[*DatabaseConfig]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

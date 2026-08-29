@@ -11,13 +11,13 @@ import (
 type Person struct {
 	Active *bool `json:"active,omitempty"`
 	// Age in years
-	Age *int64 `json:"age,omitempty"`
+	Age                  *int64                     `json:"age,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	// Email address
 	Email string `json:"email"`
 	// Full name
-	Name                 string                     `json:"name"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name string `json:"name"`
 }
 
 func (p *Person) UnmarshalJSON(data []byte) error {
@@ -58,10 +58,10 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"active", jsonDecodeValue[*bool]},
-			{"age", jsonDecodeValue[*jsonInteger]},
-			{"email", jsonDecodeValue[string]},
-			{"name", jsonDecodeValue[string]},
+			{name: "active", decode: jsonDecodeValue[*bool]},
+			{name: "age", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "email", decode: jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 

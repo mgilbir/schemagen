@@ -245,13 +245,13 @@ func (w WrappedStamp) Validate() error {
 // AllOfSingleBranchType - An allOf whose branches carry the format or the enum that decides the type
 type AllOfSingleBranchType struct {
 	Addr                 *WrappedAddr               `json:"addr,omitempty"`
-	Choice               WrappedChoice              `json:"choice"`
 	Level                *WrappedLevel              `json:"level,omitempty"`
-	Raw                  WrappedRaw                 `json:"raw"`
-	Stamp                WrappedStamp               `json:"stamp"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Choice               WrappedChoice              `json:"choice"`
+	Stamp                WrappedStamp               `json:"stamp"`
+	Raw                  WrappedRaw                 `json:"raw"`
 }
 
 func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
@@ -293,11 +293,11 @@ func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"addr", jsonDecodeValue[*WrappedAddr]},
-			{"choice", jsonDecodeValue[WrappedChoice]},
-			{"level", jsonDecodeValue[*WrappedLevel]},
-			{"raw", jsonDecodeValue[WrappedRaw]},
-			{"stamp", jsonDecodeValue[WrappedStamp]},
+			{name: "addr", decode: jsonDecodeValue[*WrappedAddr]},
+			{name: "choice", decode: jsonDecodeValue[WrappedChoice]},
+			{name: "level", decode: jsonDecodeValue[*WrappedLevel]},
+			{name: "raw", decode: jsonDecodeValue[WrappedRaw]},
+			{name: "stamp", decode: jsonDecodeValue[WrappedStamp]},
 		})
 	}
 	{

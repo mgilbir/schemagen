@@ -534,7 +534,7 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) UnmarshalJSON(data []byt
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[any]},
+			{name: "k", decode: jsonDecodeValue[any]},
 		})
 	}
 	{
@@ -1443,22 +1443,26 @@ func (i InlineForbiddingPositionsTypedEmptyEnumItemsItem) Validate() error {
 
 // InlineForbiddingPositions - Issue #142: an inline sub-schema that admits no instance at all, written at every position that resolves rather than names. `items: false` forbids every element and `{"enum":[]}` forbids every value, so the array, map, slot and branch holding one is invalid the moment it holds anything -- and each came out `[]any`, `map[string]any` or a Go type with no check. The two spellings are the same statement, which is why they sit here side by side; the accept-control beside every rejection is the container that holds nothing, which stays valid throughout.
 type InlineForbiddingPositions struct {
+	EmptyEnumDependent      *NeverWithK                                                      `json:"emptyEnumDependent,omitempty"`
+	EmptyEnumNames          *NoNames                                                         `json:"emptyEnumNames,omitempty"`
+	EmptyEnumPattern        *InlineForbiddingPositionsEmptyEnumPattern                       `json:"emptyEnumPattern,omitempty"`
+	EmptyEnumUnevalProps    *InlineForbiddingPositionsEmptyEnumUnevalProps                   `json:"emptyEnumUnevalProps,omitempty"`
+	EmptyEnumValues         map[string]InlineForbiddingPositionsEmptyEnumValuesValue         `json:"emptyEnumValues,omitzero"`
+	InferredEmptyEnumItems  *InlineForbiddingPositionsInferredEmptyEnumItems                 `json:"inferredEmptyEnumItems,omitempty"`
+	InferredEmptyEnumSlot   *InlineForbiddingPositionsInferredEmptyEnumSlot                  `json:"inferredEmptyEnumSlot,omitempty"`
+	InferredEmptyEnumTail   *InlineForbiddingPositionsInferredEmptyEnumTail                  `json:"inferredEmptyEnumTail,omitempty"`
+	NullableEmptyEnumValues map[string]InlineForbiddingPositionsNullableEmptyEnumValuesValue `json:"nullableEmptyEnumValues,omitzero"`
+	AdditionalProperties    map[string]json.RawMessage                                       `json:"-"`
+	_jsonKeys               map[string]bool                                                  // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls              map[string]bool                                                  // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 	EmptyEnumAllOf          InlineForbiddingPositionsEmptyEnumAllOf                          `json:"emptyEnumAllOf,omitzero"`
 	EmptyEnumAnyOf          InlineForbiddingPositionsEmptyEnumAnyOf                          `json:"emptyEnumAnyOf,omitzero"`
 	EmptyEnumBranch         InlineForbiddingPositionsEmptyEnumBranch                         `json:"emptyEnumBranch,omitzero"`
 	EmptyEnumContains       []any                                                            `json:"emptyEnumContains,omitzero"`
-	EmptyEnumDependent      *NeverWithK                                                      `json:"emptyEnumDependent,omitempty"`
 	EmptyEnumItems          []InlineForbiddingPositionsEmptyEnumItemsItem                    `json:"emptyEnumItems,omitzero"`
-	EmptyEnumNames          *NoNames                                                         `json:"emptyEnumNames,omitempty"`
-	EmptyEnumPattern        *InlineForbiddingPositionsEmptyEnumPattern                       `json:"emptyEnumPattern,omitempty"`
 	EmptyEnumSlot           []any                                                            `json:"emptyEnumSlot,omitzero"`
 	EmptyEnumUnevalItems    []any                                                            `json:"emptyEnumUnevalItems,omitzero"`
-	EmptyEnumUnevalProps    *InlineForbiddingPositionsEmptyEnumUnevalProps                   `json:"emptyEnumUnevalProps,omitempty"`
-	EmptyEnumValues         map[string]InlineForbiddingPositionsEmptyEnumValuesValue         `json:"emptyEnumValues,omitzero"`
 	FalseItems              []InlineForbiddingPositionsFalseItemsItem                        `json:"falseItems,omitzero"`
-	InferredEmptyEnumItems  *InlineForbiddingPositionsInferredEmptyEnumItems                 `json:"inferredEmptyEnumItems,omitempty"`
-	InferredEmptyEnumSlot   *InlineForbiddingPositionsInferredEmptyEnumSlot                  `json:"inferredEmptyEnumSlot,omitempty"`
-	InferredEmptyEnumTail   *InlineForbiddingPositionsInferredEmptyEnumTail                  `json:"inferredEmptyEnumTail,omitempty"`
 	NestedFalseItems        [][]InlineForbiddingPositionsNestedFalseItemsItemItem            `json:"nestedFalseItems,omitzero"`
 	NotAnyOfEmptyEnum       InlineForbiddingPositionsNotAnyOfEmptyEnum                       `json:"notAnyOfEmptyEnum,omitzero"`
 	NotEmptyEnum            InlineForbiddingPositionsNotEmptyEnum                            `json:"notEmptyEnum,omitzero"`
@@ -1466,7 +1470,6 @@ type InlineForbiddingPositions struct {
 	NotEmptyItems           []InlineForbiddingPositionsNotEmptyItemsItem                     `json:"notEmptyItems,omitzero"`
 	NotTypedConst           InlineForbiddingPositionsNotTypedConst                           `json:"notTypedConst,omitzero"`
 	NotTypedEmptyEnum       InlineForbiddingPositionsNotTypedEmptyEnum                       `json:"notTypedEmptyEnum,omitzero"`
-	NullableEmptyEnumValues map[string]InlineForbiddingPositionsNullableEmptyEnumValuesValue `json:"nullableEmptyEnumValues,omitzero"`
 	NullableFalseItems      []InlineForbiddingPositionsNullableFalseItemsItem                `json:"nullableFalseItems,omitzero"`
 	OkEnumItems             []InlineForbiddingPositionsOkEnumItemsItem                       `json:"okEnumItems,omitzero"`
 	PlainItems              []string                                                         `json:"plainItems,omitzero"`
@@ -1474,9 +1477,6 @@ type InlineForbiddingPositions struct {
 	TypedEmptyEnumItems     []InlineForbiddingPositionsTypedEmptyEnumItemsItem               `json:"typedEmptyEnumItems,omitzero"`
 	ViaRefEmptyEnum         []NeverEnum                                                      `json:"viaRefEmptyEnum,omitzero"`
 	ViaRefFalse             []Never                                                          `json:"viaRefFalse,omitzero"`
-	AdditionalProperties    map[string]json.RawMessage                                       `json:"-"`
-	_jsonKeys               map[string]bool                                                  // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls              map[string]bool                                                  // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
@@ -1544,37 +1544,37 @@ func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"emptyEnumAllOf", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAllOf]},
-			{"emptyEnumAnyOf", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAnyOf]},
-			{"emptyEnumBranch", jsonDecodeValue[InlineForbiddingPositionsEmptyEnumBranch]},
-			{"emptyEnumContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"emptyEnumDependent", jsonDecodeValue[*NeverWithK]},
-			{"emptyEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumItemsItem])},
-			{"emptyEnumNames", jsonDecodeValue[*NoNames]},
-			{"emptyEnumPattern", jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumPattern]},
-			{"emptyEnumSlot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"emptyEnumUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
-			{"emptyEnumUnevalProps", jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumUnevalProps]},
-			{"emptyEnumValues", jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumValuesValue])},
-			{"falseItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsFalseItemsItem])},
-			{"inferredEmptyEnumItems", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumItems]},
-			{"inferredEmptyEnumSlot", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumSlot]},
-			{"inferredEmptyEnumTail", jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumTail]},
-			{"nestedFalseItems", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNestedFalseItemsItemItem]))},
-			{"notAnyOfEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotAnyOfEmptyEnum]},
-			{"notEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnum]},
-			{"notEmptyEnumBound", jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnumBound]},
-			{"notEmptyItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNotEmptyItemsItem])},
-			{"notTypedConst", jsonDecodeValue[InlineForbiddingPositionsNotTypedConst]},
-			{"notTypedEmptyEnum", jsonDecodeValue[InlineForbiddingPositionsNotTypedEmptyEnum]},
-			{"nullableEmptyEnumValues", jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsNullableEmptyEnumValuesValue])},
-			{"nullableFalseItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNullableFalseItemsItem])},
-			{"okEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsOkEnumItemsItem])},
-			{"plainItems", jsonDecodeItems(jsonDecodeValue[string])},
-			{"refEmptyEnumAnyOf", jsonDecodeValue[InlineForbiddingPositionsRefEmptyEnumAnyOf]},
-			{"typedEmptyEnumItems", jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsTypedEmptyEnumItemsItem])},
-			{"viaRefEmptyEnum", jsonDecodeItems(jsonDecodeValue[NeverEnum])},
-			{"viaRefFalse", jsonDecodeItems(jsonDecodeValue[Never])},
+			{name: "emptyEnumAllOf", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAllOf]},
+			{name: "emptyEnumAnyOf", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAnyOf]},
+			{name: "emptyEnumBranch", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumBranch]},
+			{name: "emptyEnumContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "emptyEnumDependent", decode: jsonDecodeValue[*NeverWithK]},
+			{name: "emptyEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumItemsItem])},
+			{name: "emptyEnumNames", decode: jsonDecodeValue[*NoNames]},
+			{name: "emptyEnumPattern", decode: jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumPattern]},
+			{name: "emptyEnumSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "emptyEnumUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "emptyEnumUnevalProps", decode: jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumUnevalProps]},
+			{name: "emptyEnumValues", decode: jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumValuesValue])},
+			{name: "falseItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsFalseItemsItem])},
+			{name: "inferredEmptyEnumItems", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumItems]},
+			{name: "inferredEmptyEnumSlot", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumSlot]},
+			{name: "inferredEmptyEnumTail", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumTail]},
+			{name: "nestedFalseItems", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNestedFalseItemsItemItem]))},
+			{name: "notAnyOfEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotAnyOfEmptyEnum]},
+			{name: "notEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnum]},
+			{name: "notEmptyEnumBound", decode: jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnumBound]},
+			{name: "notEmptyItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNotEmptyItemsItem])},
+			{name: "notTypedConst", decode: jsonDecodeValue[InlineForbiddingPositionsNotTypedConst]},
+			{name: "notTypedEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotTypedEmptyEnum]},
+			{name: "nullableEmptyEnumValues", decode: jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsNullableEmptyEnumValuesValue])},
+			{name: "nullableFalseItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNullableFalseItemsItem])},
+			{name: "okEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsOkEnumItemsItem])},
+			{name: "plainItems", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "refEmptyEnumAnyOf", decode: jsonDecodeValue[InlineForbiddingPositionsRefEmptyEnumAnyOf]},
+			{name: "typedEmptyEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsTypedEmptyEnumItemsItem])},
+			{name: "viaRefEmptyEnum", decode: jsonDecodeItems(jsonDecodeValue[NeverEnum])},
+			{name: "viaRefFalse", decode: jsonDecodeItems(jsonDecodeValue[Never])},
 		})
 	}
 	{

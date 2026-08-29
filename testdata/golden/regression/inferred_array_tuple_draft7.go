@@ -604,9 +604,9 @@ func (i *InferredArrayTupleDraft7) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"one", jsonDecodeValue[*InferredArrayTupleDraft7One]},
-			{"ref", jsonDecodeValue[*InferredArrayTupleDraft7Ref]},
-			{"tup", jsonDecodeValue[*InferredArrayTupleDraft7Tup]},
+			{name: "one", decode: jsonDecodeValue[*InferredArrayTupleDraft7One]},
+			{name: "ref", decode: jsonDecodeValue[*InferredArrayTupleDraft7Ref]},
+			{name: "tup", decode: jsonDecodeValue[*InferredArrayTupleDraft7Tup]},
 		})
 	}
 	{

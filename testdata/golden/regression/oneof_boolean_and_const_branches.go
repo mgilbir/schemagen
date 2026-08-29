@@ -141,9 +141,9 @@ func (o OneOfBooleanAndConstBranchesMixed) Validate() error {
 }
 
 type OneOfBooleanAndConstBranchesObjectsOnlyOption0 struct {
-	K                    string                     `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    string                     `json:"k"`
 }
 
 func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) UnmarshalJSON(data []byte) error {
@@ -180,7 +180,7 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) UnmarshalJSON(data []by
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[string]},
+			{name: "k", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -258,9 +258,9 @@ func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) Validate() error {
 }
 
 type OneOfBooleanAndConstBranchesObjectsOnlyOption1 struct {
-	J                    string                     `json:"j"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	J                    string                     `json:"j"`
 }
 
 func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) UnmarshalJSON(data []byte) error {
@@ -297,7 +297,7 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) UnmarshalJSON(data []by
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"j", jsonDecodeValue[string]},
+			{name: "j", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -375,9 +375,9 @@ func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) Validate() error {
 }
 
 type OneOfBooleanAndConstBranchesTrueBranchOption0 struct {
-	K                    string                     `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    string                     `json:"k"`
 }
 
 func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) UnmarshalJSON(data []byte) error {
@@ -414,7 +414,7 @@ func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) UnmarshalJSON(data []byt
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[string]},
+			{name: "k", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -562,15 +562,15 @@ func (o OneOfBooleanAndConstBranchesTypedEnumBranch) Validate() error {
 
 // OneOfBooleanAndConstBranches - A oneOf mixing an object branch with branches the sealed-interface union cannot select on. Selection decodes a const, an enum and a boolean `false` branch into `any`, which matches every document -- so a document satisfying exactly one branch was counted as matching all of them and refused, and a document satisfying none was left at one match and accepted. The all-object group beside them is the control: it selects correctly and must keep its union.
 type OneOfBooleanAndConstBranches struct {
-	FalseBranch          OneOfBooleanAndConstBranchesFalseBranch     `json:"falseBranch,omitzero"`
-	Mixed                OneOfBooleanAndConstBranchesMixed           `json:"mixed,omitzero"`
-	TypedEnumBranch      OneOfBooleanAndConstBranchesTypedEnumBranch `json:"typedEnumBranch,omitzero"`
 	ObjectsOnly          isOneOfBooleanAndConstBranches_ObjectsOnly  `json:"-"`
 	ScalarsOnly          isOneOfBooleanAndConstBranches_ScalarsOnly  `json:"-"`
 	TrueBranch           isOneOfBooleanAndConstBranches_TrueBranch   `json:"-"`
 	AdditionalProperties map[string]json.RawMessage                  `json:"-"`
 	_jsonKeys            map[string]bool                             // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	FalseBranch          OneOfBooleanAndConstBranchesFalseBranch     `json:"falseBranch,omitzero"`
+	Mixed                OneOfBooleanAndConstBranchesMixed           `json:"mixed,omitzero"`
+	TypedEnumBranch      OneOfBooleanAndConstBranchesTypedEnumBranch `json:"typedEnumBranch,omitzero"`
 }
 
 // isOneOfBooleanAndConstBranches_ObjectsOnly is a sealed interface for the ObjectsOnly field of OneOfBooleanAndConstBranches.
@@ -748,9 +748,9 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"falseBranch", jsonDecodeValue[OneOfBooleanAndConstBranchesFalseBranch]},
-			{"mixed", jsonDecodeValue[OneOfBooleanAndConstBranchesMixed]},
-			{"typedEnumBranch", jsonDecodeValue[OneOfBooleanAndConstBranchesTypedEnumBranch]},
+			{name: "falseBranch", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesFalseBranch]},
+			{name: "mixed", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesMixed]},
+			{name: "typedEnumBranch", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesTypedEnumBranch]},
 		})
 	}
 

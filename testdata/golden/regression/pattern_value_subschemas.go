@@ -235,7 +235,7 @@ func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*string]},
+			{name: "x", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

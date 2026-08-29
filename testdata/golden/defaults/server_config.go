@@ -12,11 +12,11 @@ type ServerConfig struct {
 	Host                 *string                    `json:"host,omitempty"`
 	LogLevel             *string                    `json:"log_level,omitempty"`
 	MaxRetries           *int64                     `json:"max_retries,omitempty"`
-	Name                 string                     `json:"name"`
 	Port                 *int64                     `json:"port,omitempty"`
 	Timeout              *float64                   `json:"timeout,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (s *ServerConfig) UnmarshalJSON(data []byte) error {
@@ -61,13 +61,13 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"debug", jsonDecodeValue[*bool]},
-			{"host", jsonDecodeValue[*string]},
-			{"log_level", jsonDecodeValue[*string]},
-			{"max_retries", jsonDecodeValue[*jsonInteger]},
-			{"name", jsonDecodeValue[string]},
-			{"port", jsonDecodeValue[*jsonInteger]},
-			{"timeout", jsonDecodeValue[*float64]},
+			{name: "debug", decode: jsonDecodeValue[*bool]},
+			{name: "host", decode: jsonDecodeValue[*string]},
+			{name: "log_level", decode: jsonDecodeValue[*string]},
+			{name: "max_retries", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "port", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "timeout", decode: jsonDecodeValue[*float64]},
 		})
 	}
 

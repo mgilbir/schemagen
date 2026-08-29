@@ -8,11 +8,11 @@ import (
 )
 
 type Measurement struct {
-	Count                int64                      `json:"count"`
 	Rating               *json.Number               `json:"rating,omitempty"`
-	Temperature          json.Number                `json:"temperature"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Temperature          json.Number                `json:"temperature"`
+	Count                int64                      `json:"count"`
 }
 
 func (m *Measurement) UnmarshalJSON(data []byte) error {
@@ -54,9 +54,9 @@ func (m *Measurement) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"count", jsonDecodeValue[jsonInteger]},
-			{"rating", jsonDecodeValue[*jsonNumber]},
-			{"temperature", jsonDecodeValue[jsonNumber]},
+			{name: "count", decode: jsonDecodeValue[jsonInteger]},
+			{name: "rating", decode: jsonDecodeValue[*jsonNumber]},
+			{name: "temperature", decode: jsonDecodeValue[jsonNumber]},
 		})
 	}
 

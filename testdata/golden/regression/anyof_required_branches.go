@@ -12,10 +12,10 @@ type AnyOfRequiredBranches struct {
 	A                    *string                    `json:"a,omitempty"`
 	B                    *string                    `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (a *AnyOfRequiredBranches) UnmarshalJSON(data []byte) error {
@@ -61,8 +61,8 @@ func (a *AnyOfRequiredBranches) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
-			{"b", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
+			{name: "b", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

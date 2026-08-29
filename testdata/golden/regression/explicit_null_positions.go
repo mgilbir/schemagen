@@ -47,7 +47,7 @@ func (l *Leaf) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*string]},
+			{name: "k", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -130,9 +130,9 @@ func (n Names) Validate() error {
 }
 
 type Numbered struct {
-	Num                  int64                      `json:"num"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Num                  int64                      `json:"num"`
 }
 
 func (n *Numbered) UnmarshalJSON(data []byte) error {
@@ -170,7 +170,7 @@ func (n *Numbered) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"num", jsonDecodeValue[jsonInteger]},
+			{name: "num", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -293,7 +293,7 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -385,9 +385,9 @@ func (s Short) Validate() error {
 }
 
 type Tagged struct {
-	Tag                  string                     `json:"tag"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Tag                  string                     `json:"tag"`
 }
 
 func (t *Tagged) UnmarshalJSON(data []byte) error {
@@ -424,7 +424,7 @@ func (t *Tagged) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"tag", jsonDecodeValue[string]},
+			{name: "tag", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -617,7 +617,7 @@ func (e *ExplicitNullPositionsInline) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*string]},
+			{name: "x", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -681,35 +681,35 @@ func (e ExplicitNullPositionsInline) Validate() error {
 
 // ExplicitNullPositions - Regression: an explicit JSON null was accepted, and silently erased, at every position whose schema does not admit one. Covers the positions a null can sit in -- an inline property, a $ref to a named alias or struct, an array element, a nested array, a map value, a tuple slot, a oneOf branch, an allOf, and the values a schema-valued additionalProperties governs -- beside the properties that DO admit null, which must go on accepting one.
 type ExplicitNullPositions struct {
+	ReqStruct            Leaf                            `json:"reqStruct"`
+	Untyped              any                             `json:"untyped,omitempty"`
+	Union                isExplicitNullPositions_Union   `json:"-"`
 	Alias                *Short                          `json:"alias,omitempty"`
-	Array                []string                        `json:"array,omitzero"`
-	ArrayOfMap           []map[string]string             `json:"arrayOfMap,omitzero"`
 	BoundOnly            *ExplicitNullPositionsBoundOnly `json:"boundOnly,omitempty"`
 	Bounded              *ExplicitNullPositionsBounded   `json:"bounded,omitempty"`
 	Count                *int64                          `json:"count,omitempty"`
 	Inline               *ExplicitNullPositionsInline    `json:"inline,omitempty"`
 	MapOfArray           map[string][]string             `json:"mapOfArray,omitzero"`
 	MapOfString          map[string]string               `json:"mapOfString,omitzero"`
-	NamedArray           Names                           `json:"namedArray,omitzero"`
-	Nested               [][]string                      `json:"nested,omitzero"`
 	NullableAlias        MaybeShort                      `json:"nullableAlias,omitempty"`
-	NullableItems        []*string                       `json:"nullableItems,omitzero"`
-	NullableOuter        []string                        `json:"nullableOuter,omitzero"`
 	NullableScalar       *string                         `json:"nullableScalar,omitempty"`
 	NullableValues       map[string]*string              `json:"nullableValues,omitzero"`
 	Overflow             *Overflow                       `json:"overflow,omitempty"`
-	ReqAlias             Short                           `json:"reqAlias"`
-	ReqArray             []string                        `json:"reqArray"`
-	ReqScalar            string                          `json:"reqScalar"`
-	ReqStruct            Leaf                            `json:"reqStruct"`
 	Scalar               *string                         `json:"scalar,omitempty"`
 	Struct               *Leaf                           `json:"struct,omitempty"`
-	Tuple                []any                           `json:"tuple,omitzero"`
-	Untyped              any                             `json:"untyped,omitempty"`
-	Union                isExplicitNullPositions_Union   `json:"-"`
 	AdditionalProperties map[string]json.RawMessage      `json:"-"`
 	_jsonKeys            map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                 // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	ReqAlias             Short                           `json:"reqAlias"`
+	ReqScalar            string                          `json:"reqScalar"`
+	Array                []string                        `json:"array,omitzero"`
+	ArrayOfMap           []map[string]string             `json:"arrayOfMap,omitzero"`
+	NamedArray           Names                           `json:"namedArray,omitzero"`
+	Nested               [][]string                      `json:"nested,omitzero"`
+	NullableItems        []*string                       `json:"nullableItems,omitzero"`
+	NullableOuter        []string                        `json:"nullableOuter,omitzero"`
+	ReqArray             []string                        `json:"reqArray"`
+	Tuple                []any                           `json:"tuple,omitzero"`
 }
 
 // isExplicitNullPositions_Union is a sealed interface for the Union field of ExplicitNullPositions.
@@ -809,39 +809,39 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 	type Alias ExplicitNullPositions
 	aux := &struct {
 		*Alias
-		Union json.RawMessage `json:"union"`
 		Count **jsonInteger   `json:"count"`
+		Union json.RawMessage `json:"union"`
 	}{
 		Alias: (*Alias)(e),
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"alias", jsonDecodeValue[*Short]},
-			{"array", jsonDecodeItems(jsonDecodeValue[string])},
-			{"arrayOfMap", jsonDecodeItems(jsonDecodeValues(jsonDecodeValue[string]))},
-			{"boundOnly", jsonDecodeValue[*ExplicitNullPositionsBoundOnly]},
-			{"bounded", jsonDecodeValue[*ExplicitNullPositionsBounded]},
-			{"count", jsonDecodeValue[*jsonInteger]},
-			{"inline", jsonDecodeValue[*ExplicitNullPositionsInline]},
-			{"mapOfArray", jsonDecodeValues(jsonDecodeItems(jsonDecodeValue[string]))},
-			{"mapOfString", jsonDecodeValues(jsonDecodeValue[string])},
-			{"namedArray", jsonDecodeValue[Names]},
-			{"nested", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[string]))},
-			{"nullableAlias", jsonDecodeValue[MaybeShort]},
-			{"nullableItems", jsonDecodeItems(jsonDecodeValue[*string])},
-			{"nullableOuter", jsonDecodeItems(jsonDecodeValue[string])},
-			{"nullableScalar", jsonDecodeValue[*string]},
-			{"nullableValues", jsonDecodeValues(jsonDecodeValue[*string])},
-			{"overflow", jsonDecodeValue[*Overflow]},
-			{"reqAlias", jsonDecodeValue[Short]},
-			{"reqArray", jsonDecodeItems(jsonDecodeValue[string])},
-			{"reqScalar", jsonDecodeValue[string]},
-			{"reqStruct", jsonDecodeValue[Leaf]},
-			{"scalar", jsonDecodeValue[*string]},
-			{"struct", jsonDecodeValue[*Leaf]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"untyped", jsonDecodeValue[any]},
+			{name: "alias", decode: jsonDecodeValue[*Short]},
+			{name: "array", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "arrayOfMap", decode: jsonDecodeItems(jsonDecodeValues(jsonDecodeValue[string]))},
+			{name: "boundOnly", decode: jsonDecodeValue[*ExplicitNullPositionsBoundOnly]},
+			{name: "bounded", decode: jsonDecodeValue[*ExplicitNullPositionsBounded]},
+			{name: "count", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "inline", decode: jsonDecodeValue[*ExplicitNullPositionsInline]},
+			{name: "mapOfArray", decode: jsonDecodeValues(jsonDecodeItems(jsonDecodeValue[string]))},
+			{name: "mapOfString", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "namedArray", decode: jsonDecodeValue[Names]},
+			{name: "nested", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[string]))},
+			{name: "nullableAlias", decode: jsonDecodeValue[MaybeShort]},
+			{name: "nullableItems", decode: jsonDecodeItems(jsonDecodeValue[*string])},
+			{name: "nullableOuter", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "nullableScalar", decode: jsonDecodeValue[*string]},
+			{name: "nullableValues", decode: jsonDecodeValues(jsonDecodeValue[*string])},
+			{name: "overflow", decode: jsonDecodeValue[*Overflow]},
+			{name: "reqAlias", decode: jsonDecodeValue[Short]},
+			{name: "reqArray", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "reqScalar", decode: jsonDecodeValue[string]},
+			{name: "reqStruct", decode: jsonDecodeValue[Leaf]},
+			{name: "scalar", decode: jsonDecodeValue[*string]},
+			{name: "struct", decode: jsonDecodeValue[*Leaf]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "untyped", decode: jsonDecodeValue[any]},
 		})
 	}
 

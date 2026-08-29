@@ -66,9 +66,9 @@ func (e EventRecordItem2Level) Validate() error {
 
 type EventRecordItem2 struct {
 	Code                 *int64                     `json:"code,omitempty"`
-	Level                EventRecordItem2Level      `json:"level"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Level                EventRecordItem2Level      `json:"level"`
 }
 
 func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
@@ -107,8 +107,8 @@ func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"code", jsonDecodeValue[*jsonInteger]},
-			{"level", jsonDecodeValue[EventRecordItem2Level]},
+			{name: "code", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "level", decode: jsonDecodeValue[EventRecordItem2Level]},
 		})
 	}
 

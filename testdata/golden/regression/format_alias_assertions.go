@@ -104,9 +104,9 @@ type FormatAliasAssertions struct {
 	Site                 *Site                      `json:"site,omitempty"`
 	UUID                 *UUID                      `json:"uuid,omitempty"`
 	V4                   *V4                        `json:"v4,omitempty"`
-	V4List               []V4                       `json:"v4_list,omitzero"`
 	V6                   *V6                        `json:"v6,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	V4List               []V4                       `json:"v4_list,omitzero"`
 }
 
 func (f *FormatAliasAssertions) UnmarshalJSON(data []byte) error {
@@ -149,14 +149,14 @@ func (f *FormatAliasAssertions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"day", jsonDecodeValue[*Day]},
-			{"email", jsonDecodeValue[*Email]},
-			{"email_map", jsonDecodeValues(jsonDecodeValue[Email])},
-			{"site", jsonDecodeValue[*Site]},
-			{"uuid", jsonDecodeValue[*UUID]},
-			{"v4", jsonDecodeValue[*V4]},
-			{"v4_list", jsonDecodeItems(jsonDecodeValue[V4])},
-			{"v6", jsonDecodeValue[*V6]},
+			{name: "day", decode: jsonDecodeValue[*Day]},
+			{name: "email", decode: jsonDecodeValue[*Email]},
+			{name: "email_map", decode: jsonDecodeValues(jsonDecodeValue[Email])},
+			{name: "site", decode: jsonDecodeValue[*Site]},
+			{name: "uuid", decode: jsonDecodeValue[*UUID]},
+			{name: "v4", decode: jsonDecodeValue[*V4]},
+			{name: "v4_list", decode: jsonDecodeItems(jsonDecodeValue[V4])},
+			{name: "v6", decode: jsonDecodeValue[*V6]},
 		})
 	}
 	{

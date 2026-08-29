@@ -70,6 +70,21 @@ func (t *MapType) GoTypeName() string {
 }
 func (t *MapType) IsPointer() bool { return false }
 
+// InterfaceType names a sealed interface this generator declares -- the union
+// type a oneOf group becomes, whose declaration the struct template writes
+// itself rather than through a TypeDef.
+//
+// It is a GoType only so that the member of a struct which holds one can be
+// measured beside the members that hold anything else; see StructMember.Type. An
+// interface's layout is the same whatever it is an interface of, so this carries
+// only the name.
+type InterfaceType struct {
+	Name string
+}
+
+func (t *InterfaceType) GoTypeName() string { return t.Name }
+func (t *InterfaceType) IsPointer() bool    { return false }
+
 // PointerType wraps another type as *T.
 type PointerType struct {
 	Inner GoType
@@ -157,7 +172,35 @@ type StructDef struct {
 	// only place that can see it: the merge paths hand generateStructDef a
 	// schema the parent's `type` never reached.
 	RejectObject bool
+
+	// memberOrder is the declaration order the layout pass chose, as indices
+	// into the list Members is built from. Empty until that pass has run, and
+	// Members then answers in the built order -- see StructDef.Members for why
+	// that fallback is the safe one.
+	memberOrder []int
+
+	// marshalAuxRawFirst is the same question for the throwaway struct
+	// MarshalJSON builds, which embeds this type by value and adds one
+	// json.RawMessage per union member. See StructDef.MarshalAuxRawFirst.
+	marshalAuxRawFirst bool
 }
+
+// MarshalAuxRawFirst reports whether the raw-bytes members of the struct
+// MarshalJSON assembles belong ahead of the embedded copy of this type rather
+// than after it.
+//
+// That struct is `struct { Alias; <one json.RawMessage per union> }`, and it is
+// handed to json.Marshal as an `any`, so it escapes to the heap and is scanned
+// like any other value. Which of its two kinds of member goes first depends on
+// this type: the collector stops at the last pointer, so whichever member
+// carries the most dead weight after its own last pointer belongs at the end.
+// For a struct ending in a run of bools that is the embedded copy; for one whose
+// last member is a map it is the json.RawMessage, whose length and capacity are
+// two words of nothing.
+//
+// Answered from the layout pass, because only that knows what this type costs
+// once its own members have been ordered.
+func (d *StructDef) MarshalAuxRawFirst() bool { return d.marshalAuxRawFirst }
 
 // NullCheckDef says where a JSON null is forbidden beneath one value, so that
 // the generated UnmarshalJSON can refuse it while it still has the document's
@@ -2099,6 +2142,10 @@ type InferredAliasDef struct {
 
 	// UnevaluatedItems validation for inferred arrays:
 	UnevaluatedItems *UnevaluatedItemsDef // unevaluatedItems constraint (Draft 2019-09+)
+
+	// memberOrder is the declaration order the layout pass chose for the three
+	// members of the wrapper. See InferredAliasDef.Members.
+	memberOrder []int
 }
 
 // NestedItemsDef describes nested array item validation for schemas like

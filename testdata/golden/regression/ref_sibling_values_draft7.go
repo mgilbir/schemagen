@@ -82,12 +82,12 @@ type RefSiblingValuesDraft7 struct {
 	ConstSibling         *Word                      `json:"constSibling,omitempty"`
 	EmptyEnumSibling     *Word                      `json:"emptyEnumSibling,omitempty"`
 	EnumSibling          *Word                      `json:"enumSibling,omitempty"`
-	ListSibling          []Word                     `json:"listSibling,omitzero"`
 	MapSibling           map[string]Word            `json:"mapSibling,omitzero"`
 	NamedEmptyEnum       *NamedEmptyEnum            `json:"namedEmptyEnum,omitempty"`
 	NamedSibling         *NamedSibling              `json:"namedSibling,omitempty"`
 	NoSibling            *Word                      `json:"noSibling,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	ListSibling          []Word                     `json:"listSibling,omitzero"`
 }
 
 func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
@@ -130,14 +130,14 @@ func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"constSibling", jsonDecodeValue[*Word]},
-			{"emptyEnumSibling", jsonDecodeValue[*Word]},
-			{"enumSibling", jsonDecodeValue[*Word]},
-			{"listSibling", jsonDecodeItems(jsonDecodeValue[Word])},
-			{"mapSibling", jsonDecodeValues(jsonDecodeValue[Word])},
-			{"namedEmptyEnum", jsonDecodeValue[*NamedEmptyEnum]},
-			{"namedSibling", jsonDecodeValue[*NamedSibling]},
-			{"noSibling", jsonDecodeValue[*Word]},
+			{name: "constSibling", decode: jsonDecodeValue[*Word]},
+			{name: "emptyEnumSibling", decode: jsonDecodeValue[*Word]},
+			{name: "enumSibling", decode: jsonDecodeValue[*Word]},
+			{name: "listSibling", decode: jsonDecodeItems(jsonDecodeValue[Word])},
+			{name: "mapSibling", decode: jsonDecodeValues(jsonDecodeValue[Word])},
+			{name: "namedEmptyEnum", decode: jsonDecodeValue[*NamedEmptyEnum]},
+			{name: "namedSibling", decode: jsonDecodeValue[*NamedSibling]},
+			{name: "noSibling", decode: jsonDecodeValue[*Word]},
 		})
 	}
 	{

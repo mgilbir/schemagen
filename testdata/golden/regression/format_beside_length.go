@@ -159,12 +159,12 @@ func (f *FormatBesideLength) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"declaredStamp", jsonDecodeValue[*string]},
-			{"declaredV4", jsonDecodeValue[*string]},
-			{"inferredV4", jsonDecodeValue[*FormatBesideLengthInferredV4]},
-			{"patternedV4", jsonDecodeValue[*string]},
-			{"refStamp", jsonDecodeValue[*BoundedStamp]},
-			{"refV4", jsonDecodeValue[*BoundedV4]},
+			{name: "declaredStamp", decode: jsonDecodeValue[*string]},
+			{name: "declaredV4", decode: jsonDecodeValue[*string]},
+			{name: "inferredV4", decode: jsonDecodeValue[*FormatBesideLengthInferredV4]},
+			{name: "patternedV4", decode: jsonDecodeValue[*string]},
+			{name: "refStamp", decode: jsonDecodeValue[*BoundedStamp]},
+			{name: "refV4", decode: jsonDecodeValue[*BoundedV4]},
 		})
 	}
 	{

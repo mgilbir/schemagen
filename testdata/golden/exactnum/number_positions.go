@@ -160,22 +160,22 @@ func (n NumberPositionsConstrained) Validate() error {
 // NumberPositions - Every position a "number" can occupy, read twice: once under the default configuration, where it is a float64, and once under --exact-numbers, where it is the literal the document wrote. The two goldens are the same document and differ in that and nothing else, which is what makes the flag's reach readable rather than asserted. Issue #252.
 type NumberPositions struct {
 	Aliased              *Temperature                `json:"aliased,omitempty"`
-	AliasedList          Readings                    `json:"aliasedList,omitzero"`
 	Bounded              *json.Number                `json:"bounded,omitempty"`
 	Choices              *NumberPositionsChoices     `json:"choices,omitempty"`
 	Constant             *json.Number                `json:"constant,omitempty"`
 	Constrained          *NumberPositionsConstrained `json:"constrained,omitempty"`
-	Counted              []json.Number               `json:"counted,omitzero"`
-	Elements             []json.Number               `json:"elements,omitzero"`
 	IntegerBeside        *int64                      `json:"integerBeside,omitempty"`
 	Nullable             *json.Number                `json:"nullable,omitempty"`
-	Required             json.Number                 `json:"required"`
 	Scalar               *json.Number                `json:"scalar,omitempty"`
 	Values               map[string]json.Number      `json:"values,omitzero"`
 	WithDefault          *json.Number                `json:"withDefault,omitempty"`
 	AdditionalProperties map[string]json.RawMessage  `json:"-"`
 	_jsonKeys            map[string]bool             // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Required             json.Number                 `json:"required"`
+	AliasedList          Readings                    `json:"aliasedList,omitzero"`
+	Counted              []json.Number               `json:"counted,omitzero"`
+	Elements             []json.Number               `json:"elements,omitzero"`
 }
 
 func (n *NumberPositions) UnmarshalJSON(data []byte) error {
@@ -236,20 +236,20 @@ func (n *NumberPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"aliased", jsonDecodeValue[*Temperature]},
-			{"aliasedList", jsonDecodeValue[Readings]},
-			{"bounded", jsonDecodeValue[*jsonNumber]},
-			{"choices", jsonDecodeValue[*NumberPositionsChoices]},
-			{"constant", jsonDecodeValue[*jsonNumber]},
-			{"constrained", jsonDecodeValue[*NumberPositionsConstrained]},
-			{"counted", jsonDecodeItems(jsonDecodeValue[jsonNumber])},
-			{"elements", jsonDecodeItems(jsonDecodeValue[jsonNumber])},
-			{"integerBeside", jsonDecodeValue[*jsonInteger]},
-			{"nullable", jsonDecodeValue[*jsonNumber]},
-			{"required", jsonDecodeValue[jsonNumber]},
-			{"scalar", jsonDecodeValue[*jsonNumber]},
-			{"values", jsonDecodeValues(jsonDecodeValue[jsonNumber])},
-			{"withDefault", jsonDecodeValue[*jsonNumber]},
+			{name: "aliased", decode: jsonDecodeValue[*Temperature]},
+			{name: "aliasedList", decode: jsonDecodeValue[Readings]},
+			{name: "bounded", decode: jsonDecodeValue[*jsonNumber]},
+			{name: "choices", decode: jsonDecodeValue[*NumberPositionsChoices]},
+			{name: "constant", decode: jsonDecodeValue[*jsonNumber]},
+			{name: "constrained", decode: jsonDecodeValue[*NumberPositionsConstrained]},
+			{name: "counted", decode: jsonDecodeItems(jsonDecodeValue[jsonNumber])},
+			{name: "elements", decode: jsonDecodeItems(jsonDecodeValue[jsonNumber])},
+			{name: "integerBeside", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "nullable", decode: jsonDecodeValue[*jsonNumber]},
+			{name: "required", decode: jsonDecodeValue[jsonNumber]},
+			{name: "scalar", decode: jsonDecodeValue[*jsonNumber]},
+			{name: "values", decode: jsonDecodeValues(jsonDecodeValue[jsonNumber])},
+			{name: "withDefault", decode: jsonDecodeValue[*jsonNumber]},
 		})
 	}
 

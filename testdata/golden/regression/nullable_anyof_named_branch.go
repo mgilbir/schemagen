@@ -154,10 +154,10 @@ func (n NullableWord) Validate() error {
 
 // NullableAnyOfNamedBranch - The same collapse at the one site that answers with an alias rather than with a field. `type X *T` is a pointer underlying type, which Go forbids methods on, so X carries no Validate and nothing ever calls T's -- neither a caller holding an X nor the property here, which reaches it through a $ref. Both nullable definitions accepted every object. Worse, the branch was generated under the alias's own name, so the enum spelling emitted the same identifier twice and the output did not compile at all.
 type NullableAnyOfNamedBranch struct {
-	Obj                  NullableObj                `json:"obj,omitzero"`
-	Word                 NullableWord               `json:"word,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Obj                  NullableObj                `json:"obj,omitzero"`
+	Word                 NullableWord               `json:"word,omitzero"`
 }
 
 func (n *NullableAnyOfNamedBranch) UnmarshalJSON(data []byte) error {
@@ -195,8 +195,8 @@ func (n *NullableAnyOfNamedBranch) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"obj", jsonDecodeValue[NullableObj]},
-			{"word", jsonDecodeValue[NullableWord]},
+			{name: "obj", decode: jsonDecodeValue[NullableObj]},
+			{name: "word", decode: jsonDecodeValue[NullableWord]},
 		})
 	}
 	{

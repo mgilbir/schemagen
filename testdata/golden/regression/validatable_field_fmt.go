@@ -9,8 +9,8 @@ import (
 type Base struct {
 	X                    *string                    `json:"x,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (b *Base) UnmarshalJSON(data []byte) error {
@@ -53,7 +53,7 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*string]},
+			{name: "x", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -129,8 +129,8 @@ func (b Base) Validate() error {
 type Inner struct {
 	Bar                  *string                    `json:"bar,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (i *Inner) UnmarshalJSON(data []byte) error {
@@ -173,7 +173,7 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bar", jsonDecodeValue[*string]},
+			{name: "bar", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -250,9 +250,9 @@ type ValidatableFieldFmt struct {
 	Foo                  *Inner                     `json:"foo,omitempty"`
 	X                    *string                    `json:"x,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (v *ValidatableFieldFmt) UnmarshalJSON(data []byte) error {
@@ -297,8 +297,8 @@ func (v *ValidatableFieldFmt) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"foo", jsonDecodeValue[*Inner]},
-			{"x", jsonDecodeValue[*string]},
+			{name: "foo", decode: jsonDecodeValue[*Inner]},
+			{name: "x", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

@@ -3,10 +3,13 @@
 {{- template "type_doc" .}}
 // {{.Name}} accepts any JSON value. Constraints apply only when the value is {{.InferredJSONType}}.
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
+{{- /* Declared in the order the layout pass chose. It is not fixed because
+       _value's type is not: the schema infers it, and a float64 belongs after
+       _raw where a string belongs before it. See generator/members.go. */}}
 type {{.Name}} struct {
-	_value {{goType .InferredGoType}}
-	_raw   json.RawMessage
-	_isRaw bool
+{{- range .Members}}
+	{{.Name}} {{goType .Type}}
+{{- end}}
 }
 
 {{template "inferred_alias_unmarshal" .}}

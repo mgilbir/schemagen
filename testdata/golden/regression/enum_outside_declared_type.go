@@ -747,7 +747,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []by
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -1458,50 +1458,50 @@ func (e EnumOutsideDeclaredTypeEnumPartialSlotItem0) Validate() error {
 
 // EnumOutsideDeclaredType - Issue #145: a schema listing enum or const members its own "type" forbids. A value cannot be both a string and 5, so {"type":"string","const":5} admits no instance -- the same statement as `false` and as {"enum":[]} -- and a partial list like {"type":"string","enum":["a",5]} admits "a" and nothing else. The members were read as admissible everywhere: the const form emitted `const Root string = 5`, which does not build, and where it did build the position accepted values the type forbids. The controls beside each row are the schemas whose members the type does admit, and the untyped enum, which must not be filtered at all.
 type EnumOutsideDeclaredType struct {
-	ArrayEnum               EnumOutsideDeclaredTypeArrayEnum                          `json:"arrayEnum,omitempty"`
-	ArrayOutsideConst       ArrayConst                                                `json:"arrayOutsideConst,omitzero"`
 	BoolEnum                *bool                                                     `json:"boolEnum,omitempty"`
-	BoolOutsideConst        BoolConst                                                 `json:"boolOutsideConst,omitzero"`
-	ConstOutsideAllOf       EnumOutsideDeclaredTypeConstOutsideAllOf                  `json:"constOutsideAllOf,omitzero"`
-	ConstOutsideAnyOf       EnumOutsideDeclaredTypeConstOutsideAnyOf                  `json:"constOutsideAnyOf,omitzero"`
-	ConstOutsideContains    []any                                                     `json:"constOutsideContains,omitzero"`
 	ConstOutsideDependent   *ForbiddenWhenK                                           `json:"constOutsideDependent,omitempty"`
-	ConstOutsideItems       []EnumOutsideDeclaredTypeConstOutsideItemsItem            `json:"constOutsideItems,omitzero"`
 	ConstOutsideNames       *NoNameAllowed                                            `json:"constOutsideNames,omitempty"`
-	ConstOutsideOneOf       EnumOutsideDeclaredTypeConstOutsideOneOf                  `json:"constOutsideOneOf,omitzero"`
 	ConstOutsidePattern     *EnumOutsideDeclaredTypeConstOutsidePattern               `json:"constOutsidePattern,omitempty"`
 	ConstOutsideProp        *string                                                   `json:"constOutsideProp,omitempty"`
-	ConstOutsideRef         NeverString                                               `json:"constOutsideRef,omitzero"`
-	ConstOutsideSlot        []any                                                     `json:"constOutsideSlot,omitzero"`
-	ConstOutsideUnevalItems []any                                                     `json:"constOutsideUnevalItems,omitzero"`
 	ConstOutsideUnevalProps *EnumOutsideDeclaredTypeConstOutsideUnevalProps           `json:"constOutsideUnevalProps,omitempty"`
 	ConstOutsideValues      map[string]EnumOutsideDeclaredTypeConstOutsideValuesValue `json:"constOutsideValues,omitzero"`
-	EnumAllOutsideProp      EnumOutsideDeclaredTypeEnumAllOutsideProp                 `json:"enumAllOutsideProp,omitzero"`
-	EnumOutsideProp         EnumOutsideDeclaredTypeEnumOutsideProp                    `json:"enumOutsideProp,omitzero"`
-	EnumPartialItems        []EnumOutsideDeclaredTypeEnumPartialItemsItem             `json:"enumPartialItems,omitzero"`
 	EnumPartialPattern      *EnumOutsideDeclaredTypeEnumPartialPattern                `json:"enumPartialPattern,omitempty"`
 	EnumPartialProp         *EnumOutsideDeclaredTypeEnumPartialProp                   `json:"enumPartialProp,omitempty"`
 	EnumPartialRef          *OnlyA                                                    `json:"enumPartialRef,omitempty"`
-	EnumPartialSlot         []any                                                     `json:"enumPartialSlot,omitzero"`
 	EnumPartialValues       map[string]EnumOutsideDeclaredTypeEnumPartialValuesValue  `json:"enumPartialValues,omitzero"`
 	FracInInteger           *EnumOutsideDeclaredTypeFracInInteger                     `json:"fracInInteger,omitempty"`
 	FracOutsideInteger      *int64                                                    `json:"fracOutsideInteger,omitempty"`
 	IntegerEnum             *EnumOutsideDeclaredTypeIntegerEnum                       `json:"integerEnum,omitempty"`
 	IntegerFloatSpelling    *int64                                                    `json:"integerFloatSpelling,omitempty"`
+	NumberEnum              *EnumOutsideDeclaredTypeNumberEnum                        `json:"numberEnum,omitempty"`
+	TypedConst              *string                                                   `json:"typedConst,omitempty"`
+	TypedEnum               *EnumOutsideDeclaredTypeTypedEnum                         `json:"typedEnum,omitempty"`
+	AdditionalProperties    map[string]json.RawMessage                                `json:"-"`
+	_jsonKeys               map[string]bool                                           // set by UnmarshalJSON for optional field / dependentSchemas validation
+	NullableEnum            EnumOutsideDeclaredTypeNullableEnum                       `json:"nullableEnum,omitzero"`
+	ArrayEnum               EnumOutsideDeclaredTypeArrayEnum                          `json:"arrayEnum,omitempty"`
+	ArrayOutsideConst       ArrayConst                                                `json:"arrayOutsideConst,omitzero"`
+	BoolOutsideConst        BoolConst                                                 `json:"boolOutsideConst,omitzero"`
+	ConstOutsideAllOf       EnumOutsideDeclaredTypeConstOutsideAllOf                  `json:"constOutsideAllOf,omitzero"`
+	ConstOutsideAnyOf       EnumOutsideDeclaredTypeConstOutsideAnyOf                  `json:"constOutsideAnyOf,omitzero"`
+	ConstOutsideContains    []any                                                     `json:"constOutsideContains,omitzero"`
+	ConstOutsideItems       []EnumOutsideDeclaredTypeConstOutsideItemsItem            `json:"constOutsideItems,omitzero"`
+	ConstOutsideOneOf       EnumOutsideDeclaredTypeConstOutsideOneOf                  `json:"constOutsideOneOf,omitzero"`
+	ConstOutsideRef         NeverString                                               `json:"constOutsideRef,omitzero"`
+	ConstOutsideSlot        []any                                                     `json:"constOutsideSlot,omitzero"`
+	ConstOutsideUnevalItems []any                                                     `json:"constOutsideUnevalItems,omitzero"`
+	EnumAllOutsideProp      EnumOutsideDeclaredTypeEnumAllOutsideProp                 `json:"enumAllOutsideProp,omitzero"`
+	EnumOutsideProp         EnumOutsideDeclaredTypeEnumOutsideProp                    `json:"enumOutsideProp,omitzero"`
+	EnumPartialItems        []EnumOutsideDeclaredTypeEnumPartialItemsItem             `json:"enumPartialItems,omitzero"`
+	EnumPartialSlot         []any                                                     `json:"enumPartialSlot,omitzero"`
 	NotConstOutside         EnumOutsideDeclaredTypeNotConstOutside                    `json:"notConstOutside,omitzero"`
 	NullOutsideConst        NullConst                                                 `json:"nullOutsideConst,omitzero"`
-	NullableEnum            EnumOutsideDeclaredTypeNullableEnum                       `json:"nullableEnum,omitzero"`
-	NumberEnum              *EnumOutsideDeclaredTypeNumberEnum                        `json:"numberEnum,omitempty"`
 	NumberOutsideConst      NumberConst                                               `json:"numberOutsideConst,omitzero"`
 	ObjectEnum              EnumOutsideDeclaredTypeObjectEnum                         `json:"objectEnum,omitempty"`
 	ObjectOutsideConst      ObjectConst                                               `json:"objectOutsideConst,omitzero"`
 	OkItems                 []EnumOutsideDeclaredTypeOkItemsItem                      `json:"okItems,omitzero"`
-	TypedConst              *string                                                   `json:"typedConst,omitempty"`
-	TypedEnum               *EnumOutsideDeclaredTypeTypedEnum                         `json:"typedEnum,omitempty"`
 	UnionEnum               EnumOutsideDeclaredTypeUnionEnum                          `json:"unionEnum,omitempty"`
 	UntypedEnum             EnumOutsideDeclaredTypeUntypedEnum                        `json:"untypedEnum,omitempty"`
-	AdditionalProperties    map[string]json.RawMessage                                `json:"-"`
-	_jsonKeys               map[string]bool                                           // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
@@ -1581,48 +1581,48 @@ func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"arrayEnum", jsonDecodeValue[EnumOutsideDeclaredTypeArrayEnum]},
-			{"arrayOutsideConst", jsonDecodeValue[ArrayConst]},
-			{"boolEnum", jsonDecodeValue[*bool]},
-			{"boolOutsideConst", jsonDecodeValue[BoolConst]},
-			{"constOutsideAllOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAllOf]},
-			{"constOutsideAnyOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAnyOf]},
-			{"constOutsideContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"constOutsideDependent", jsonDecodeValue[*ForbiddenWhenK]},
-			{"constOutsideItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideItemsItem])},
-			{"constOutsideNames", jsonDecodeValue[*NoNameAllowed]},
-			{"constOutsideOneOf", jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideOneOf]},
-			{"constOutsidePattern", jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsidePattern]},
-			{"constOutsideProp", jsonDecodeValue[*string]},
-			{"constOutsideRef", jsonDecodeValue[NeverString]},
-			{"constOutsideSlot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"constOutsideUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
-			{"constOutsideUnevalProps", jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsideUnevalProps]},
-			{"constOutsideValues", jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideValuesValue])},
-			{"enumAllOutsideProp", jsonDecodeValue[EnumOutsideDeclaredTypeEnumAllOutsideProp]},
-			{"enumOutsideProp", jsonDecodeValue[EnumOutsideDeclaredTypeEnumOutsideProp]},
-			{"enumPartialItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialItemsItem])},
-			{"enumPartialPattern", jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialPattern]},
-			{"enumPartialProp", jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialProp]},
-			{"enumPartialRef", jsonDecodeValue[*OnlyA]},
-			{"enumPartialSlot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"enumPartialValues", jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialValuesValue])},
-			{"fracInInteger", jsonDecodeValue[*EnumOutsideDeclaredTypeFracInInteger]},
-			{"fracOutsideInteger", jsonDecodeValue[*jsonInteger]},
-			{"integerEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeIntegerEnum]},
-			{"integerFloatSpelling", jsonDecodeValue[*jsonInteger]},
-			{"notConstOutside", jsonDecodeValue[EnumOutsideDeclaredTypeNotConstOutside]},
-			{"nullOutsideConst", jsonDecodeValue[NullConst]},
-			{"nullableEnum", jsonDecodeValue[EnumOutsideDeclaredTypeNullableEnum]},
-			{"numberEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeNumberEnum]},
-			{"numberOutsideConst", jsonDecodeValue[NumberConst]},
-			{"objectEnum", jsonDecodeValue[EnumOutsideDeclaredTypeObjectEnum]},
-			{"objectOutsideConst", jsonDecodeValue[ObjectConst]},
-			{"okItems", jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeOkItemsItem])},
-			{"typedConst", jsonDecodeValue[*string]},
-			{"typedEnum", jsonDecodeValue[*EnumOutsideDeclaredTypeTypedEnum]},
-			{"unionEnum", jsonDecodeValue[EnumOutsideDeclaredTypeUnionEnum]},
-			{"untypedEnum", jsonDecodeValue[EnumOutsideDeclaredTypeUntypedEnum]},
+			{name: "arrayEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeArrayEnum]},
+			{name: "arrayOutsideConst", decode: jsonDecodeValue[ArrayConst]},
+			{name: "boolEnum", decode: jsonDecodeValue[*bool]},
+			{name: "boolOutsideConst", decode: jsonDecodeValue[BoolConst]},
+			{name: "constOutsideAllOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAllOf]},
+			{name: "constOutsideAnyOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAnyOf]},
+			{name: "constOutsideContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "constOutsideDependent", decode: jsonDecodeValue[*ForbiddenWhenK]},
+			{name: "constOutsideItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideItemsItem])},
+			{name: "constOutsideNames", decode: jsonDecodeValue[*NoNameAllowed]},
+			{name: "constOutsideOneOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideOneOf]},
+			{name: "constOutsidePattern", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsidePattern]},
+			{name: "constOutsideProp", decode: jsonDecodeValue[*string]},
+			{name: "constOutsideRef", decode: jsonDecodeValue[NeverString]},
+			{name: "constOutsideSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "constOutsideUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "constOutsideUnevalProps", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsideUnevalProps]},
+			{name: "constOutsideValues", decode: jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideValuesValue])},
+			{name: "enumAllOutsideProp", decode: jsonDecodeValue[EnumOutsideDeclaredTypeEnumAllOutsideProp]},
+			{name: "enumOutsideProp", decode: jsonDecodeValue[EnumOutsideDeclaredTypeEnumOutsideProp]},
+			{name: "enumPartialItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialItemsItem])},
+			{name: "enumPartialPattern", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialPattern]},
+			{name: "enumPartialProp", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialProp]},
+			{name: "enumPartialRef", decode: jsonDecodeValue[*OnlyA]},
+			{name: "enumPartialSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "enumPartialValues", decode: jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialValuesValue])},
+			{name: "fracInInteger", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeFracInInteger]},
+			{name: "fracOutsideInteger", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "integerEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeIntegerEnum]},
+			{name: "integerFloatSpelling", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "notConstOutside", decode: jsonDecodeValue[EnumOutsideDeclaredTypeNotConstOutside]},
+			{name: "nullOutsideConst", decode: jsonDecodeValue[NullConst]},
+			{name: "nullableEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeNullableEnum]},
+			{name: "numberEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeNumberEnum]},
+			{name: "numberOutsideConst", decode: jsonDecodeValue[NumberConst]},
+			{name: "objectEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeObjectEnum]},
+			{name: "objectOutsideConst", decode: jsonDecodeValue[ObjectConst]},
+			{name: "okItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeOkItemsItem])},
+			{name: "typedConst", decode: jsonDecodeValue[*string]},
+			{name: "typedEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeTypedEnum]},
+			{name: "unionEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeUnionEnum]},
+			{name: "untypedEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeUntypedEnum]},
 		})
 	}
 

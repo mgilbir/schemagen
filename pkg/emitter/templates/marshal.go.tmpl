@@ -35,10 +35,21 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 	{{- else}}
 	type Alias {{$struct.Name}}
+	{{- /* Which of the two goes first is decided by what this type costs; see
+	       StructDef.MarshalAuxRawFirst. It moves the union's key in the emitted
+	       object, and nothing else: encoding/json writes an object's members in
+	       declaration order, and JSON gives that order no meaning. */}}
 	aux := struct {
+		{{- if $struct.MarshalAuxRawFirst}}
+		{{- range $struct.OneOfs}}
+		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- end}}
+		Alias
+		{{- else}}
 		Alias
 		{{- range $struct.OneOfs}}
 		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- end}}
 		{{- end}}
 	}{
 		Alias: (Alias)({{$recv}}),

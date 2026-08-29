@@ -346,18 +346,18 @@ func (c ContentPostureDraft7TupleItem0) Validate() error {
 
 // ContentPostureDraft7 - Issue #115: the content vocabulary under the one dialect that asserts it. Each position must carry the check, and none of them may narrow the Go type -- a number satisfies a content keyword trivially, so the wrapper keeps a non-string value verbatim and its Validate returns early.
 type ContentPostureDraft7 struct {
+	Branch               isContentPostureDraft7_Branch        `json:"-"`
 	Blob                 *ContentPostureDraft7Blob            `json:"blob,omitempty"`
 	BoundedBlob          *ContentPostureDraft7BoundedBlob     `json:"boundedBlob,omitempty"`
 	Doc                  *string                              `json:"doc,omitempty"`
 	EncodedDoc           *ContentPostureDraft7EncodedDoc      `json:"encodedDoc,omitempty"`
-	List                 []string                             `json:"list,omitzero"`
-	Tuple                []any                                `json:"tuple,omitzero"`
 	UnknownEncoding      *ContentPostureDraft7UnknownEncoding `json:"unknownEncoding,omitempty"`
 	ViaAllOf             *ContentPostureDraft7ViaAllOf        `json:"viaAllOf,omitempty"`
-	Branch               isContentPostureDraft7_Branch        `json:"-"`
 	AdditionalProperties map[string]json.RawMessage           `json:"-"`
 	_jsonKeys            map[string]bool                      // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                      // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	List                 []string                             `json:"list,omitzero"`
+	Tuple                []any                                `json:"tuple,omitzero"`
 }
 
 // isContentPostureDraft7_Branch is a sealed interface for the Branch field of ContentPostureDraft7.
@@ -447,14 +447,14 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"blob", jsonDecodeValue[*ContentPostureDraft7Blob]},
-			{"boundedBlob", jsonDecodeValue[*ContentPostureDraft7BoundedBlob]},
-			{"doc", jsonDecodeValue[*string]},
-			{"encodedDoc", jsonDecodeValue[*ContentPostureDraft7EncodedDoc]},
-			{"list", jsonDecodeItems(jsonDecodeValue[string])},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"unknownEncoding", jsonDecodeValue[*ContentPostureDraft7UnknownEncoding]},
-			{"viaAllOf", jsonDecodeValue[*ContentPostureDraft7ViaAllOf]},
+			{name: "blob", decode: jsonDecodeValue[*ContentPostureDraft7Blob]},
+			{name: "boundedBlob", decode: jsonDecodeValue[*ContentPostureDraft7BoundedBlob]},
+			{name: "doc", decode: jsonDecodeValue[*string]},
+			{name: "encodedDoc", decode: jsonDecodeValue[*ContentPostureDraft7EncodedDoc]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "unknownEncoding", decode: jsonDecodeValue[*ContentPostureDraft7UnknownEncoding]},
+			{name: "viaAllOf", decode: jsonDecodeValue[*ContentPostureDraft7ViaAllOf]},
 		})
 	}
 

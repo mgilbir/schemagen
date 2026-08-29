@@ -8,14 +8,14 @@ import (
 )
 
 type PickOneValueOption0 struct {
-	B                    int64                      `json:"b"`
 	M                    any                        `json:"m,omitempty"`
 	N                    any                        `json:"n,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	B                    int64                      `json:"b"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
@@ -63,9 +63,9 @@ func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[jsonInteger]},
-			{"m", jsonDecodeValue[any]},
-			{"n", jsonDecodeValue[any]},
+			{name: "b", decode: jsonDecodeValue[jsonInteger]},
+			{name: "m", decode: jsonDecodeValue[any]},
+			{name: "n", decode: jsonDecodeValue[any]},
 		})
 	}
 
@@ -224,11 +224,11 @@ func (p PickOneValueOption0) Validate() error {
 }
 
 type PickOneValueOption1 struct {
-	A                    int64                      `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	A                    int64                      `json:"a"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (p *PickOneValueOption1) UnmarshalJSON(data []byte) error {
@@ -273,7 +273,7 @@ func (p *PickOneValueOption1) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -636,10 +636,10 @@ func (p PickOne) Validate() error {
 
 // AllOfNestedOneOfUnevaluated - Issue #135 through oneOf, where the missing check is also a false rejection. The static approximation decides whether a branch matches from its required keys, its consts and its declared types, and a branch stating unevaluatedProperties can fail on a key none of those mention -- so it counted two matches for a document that satisfies the second branch alone, which is #111's rejection surviving one level down. The first allOf branch sits behind a $ref, which the merge follows, so both collectors have to agree on which branch that is. The second allOf branch is the control for the suppression being per variant slice: its oneOf states no unevaluatedProperties, gets no exact check, and must keep the approximation that is dropped for its sibling.
 type AllOfNestedOneOfUnevaluated struct {
-	A                    *int64                     `json:"a,omitempty"`
-	B                    *int64                     `json:"b,omitempty"`
 	M                    any                        `json:"m,omitempty"`
 	N                    any                        `json:"n,omitempty"`
+	A                    *int64                     `json:"a,omitempty"`
+	B                    *int64                     `json:"b,omitempty"`
 	Z                    *string                    `json:"z,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
@@ -689,11 +689,11 @@ func (a *AllOfNestedOneOfUnevaluated) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
-			{"m", jsonDecodeValue[any]},
-			{"n", jsonDecodeValue[any]},
-			{"z", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "m", decode: jsonDecodeValue[any]},
+			{name: "n", decode: jsonDecodeValue[any]},
+			{name: "z", decode: jsonDecodeValue[*string]},
 		})
 	}
 

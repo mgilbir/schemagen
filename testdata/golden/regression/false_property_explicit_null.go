@@ -83,7 +83,7 @@ func (f *FalsePropertyExplicitNullListItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"inner", jsonDecodeValue[any]},
+			{name: "inner", decode: jsonDecodeValue[any]},
 		})
 	}
 	{
@@ -194,8 +194,8 @@ func (f *FalsePropertyExplicitNullNested) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"inner", jsonDecodeValue[any]},
-			{"ok", jsonDecodeValue[*string]},
+			{name: "inner", decode: jsonDecodeValue[any]},
+			{name: "ok", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -269,12 +269,12 @@ func (f FalsePropertyExplicitNullNested) Validate() error {
 // FalsePropertyExplicitNull - A property whose schema is the boolean `false` must refuse the key however it is written. The rule was emitted as `field != nil`, and an explicit null decodes to exactly what an absent property leaves, so {"inline":null} passed a check whose whole job is to refuse the key's presence (issue #127). The $ref spelling beside it already refused both, through the forbidding wrapper its target generates.
 type FalsePropertyExplicitNull struct {
 	Inline               any                                 `json:"inline,omitempty"`
-	List                 []FalsePropertyExplicitNullListItem `json:"list,omitzero"`
 	Nested               *FalsePropertyExplicitNullNested    `json:"nested,omitempty"`
 	Ok                   *string                             `json:"ok,omitempty"`
-	ViaRef               No                                  `json:"viaRef,omitzero"`
 	AdditionalProperties map[string]json.RawMessage          `json:"-"`
 	_jsonKeys            map[string]bool                     // set by UnmarshalJSON for optional field / dependentSchemas validation
+	List                 []FalsePropertyExplicitNullListItem `json:"list,omitzero"`
+	ViaRef               No                                  `json:"viaRef,omitzero"`
 }
 
 func (f *FalsePropertyExplicitNull) UnmarshalJSON(data []byte) error {
@@ -315,11 +315,11 @@ func (f *FalsePropertyExplicitNull) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"inline", jsonDecodeValue[any]},
-			{"list", jsonDecodeItems(jsonDecodeValue[FalsePropertyExplicitNullListItem])},
-			{"nested", jsonDecodeValue[*FalsePropertyExplicitNullNested]},
-			{"ok", jsonDecodeValue[*string]},
-			{"viaRef", jsonDecodeValue[No]},
+			{name: "inline", decode: jsonDecodeValue[any]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[FalsePropertyExplicitNullListItem])},
+			{name: "nested", decode: jsonDecodeValue[*FalsePropertyExplicitNullNested]},
+			{name: "ok", decode: jsonDecodeValue[*string]},
+			{name: "viaRef", decode: jsonDecodeValue[No]},
 		})
 	}
 	{

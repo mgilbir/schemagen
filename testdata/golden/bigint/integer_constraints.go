@@ -12,8 +12,8 @@ import (
 // Counter - An arbitrary-precision integer counter with constraints
 // Counter holds an integer value with arbitrary-precision support (int64 + *big.Int).
 type Counter struct {
-	_int64    int64
 	_bigInt   *big.Int
+	_int64    int64
 	_isBigInt bool
 }
 

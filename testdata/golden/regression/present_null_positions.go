@@ -10,11 +10,11 @@ import (
 )
 
 type Obj struct {
-	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    string                     `json:"a"`
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (o *Obj) UnmarshalJSON(data []byte) error {
@@ -58,7 +58,7 @@ func (o *Obj) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[string]},
+			{name: "a", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -232,11 +232,11 @@ func (p PresentNullPositionsBoundOnly) Validate() error {
 }
 
 type PresentNullPositionsNullableObject struct {
-	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    string                     `json:"a"`
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
@@ -280,7 +280,7 @@ func (p *PresentNullPositionsNullableObject) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[string]},
+			{name: "a", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -474,18 +474,18 @@ func (p PresentNullPositionsReqBoundOnly) Validate() error {
 
 // PresentNullPositions - Issue #110: the positions where the schema PERMITS a null, which is the other half of explicit_null_positions.json. A null there is not refused, so it survives the decode as the nil pointer, nil collection or untouched zero an ABSENT property also leaves -- and both halves of that are wrong. It was dropped on the way out, and any keyword the property states was then measured against a zero the document never supplied.
 type PresentNullPositions struct {
+	Untyped              any                                 `json:"untyped,omitempty"`
 	BoundOnly            *PresentNullPositionsBoundOnly      `json:"boundOnly,omitempty"`
-	NullableList         []string                            `json:"nullableList,omitzero"`
 	NullableObject       *PresentNullPositionsNullableObject `json:"nullableObject,omitempty"`
 	NullableScalar       *string                             `json:"nullableScalar,omitempty"`
-	RefList              Pair                                `json:"refList,omitzero"`
 	RefObject            *Obj                                `json:"refObject,omitempty"`
-	ReqBoundOnly         PresentNullPositionsReqBoundOnly    `json:"reqBoundOnly"`
 	TypedString          *string                             `json:"typedString,omitempty"`
-	Untyped              any                                 `json:"untyped,omitempty"`
 	AdditionalProperties map[string]json.RawMessage          `json:"-"`
 	_jsonKeys            map[string]bool                     // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                     // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	NullableList         []string                            `json:"nullableList,omitzero"`
+	RefList              Pair                                `json:"refList,omitzero"`
+	ReqBoundOnly         PresentNullPositionsReqBoundOnly    `json:"reqBoundOnly"`
 }
 
 func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
@@ -531,15 +531,15 @@ func (p *PresentNullPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"boundOnly", jsonDecodeValue[*PresentNullPositionsBoundOnly]},
-			{"nullableList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"nullableObject", jsonDecodeValue[*PresentNullPositionsNullableObject]},
-			{"nullableScalar", jsonDecodeValue[*string]},
-			{"refList", jsonDecodeValue[Pair]},
-			{"refObject", jsonDecodeValue[*Obj]},
-			{"reqBoundOnly", jsonDecodeValue[PresentNullPositionsReqBoundOnly]},
-			{"typedString", jsonDecodeValue[*string]},
-			{"untyped", jsonDecodeValue[any]},
+			{name: "boundOnly", decode: jsonDecodeValue[*PresentNullPositionsBoundOnly]},
+			{name: "nullableList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "nullableObject", decode: jsonDecodeValue[*PresentNullPositionsNullableObject]},
+			{name: "nullableScalar", decode: jsonDecodeValue[*string]},
+			{name: "refList", decode: jsonDecodeValue[Pair]},
+			{name: "refObject", decode: jsonDecodeValue[*Obj]},
+			{name: "reqBoundOnly", decode: jsonDecodeValue[PresentNullPositionsReqBoundOnly]},
+			{name: "typedString", decode: jsonDecodeValue[*string]},
+			{name: "untyped", decode: jsonDecodeValue[any]},
 		})
 	}
 	{

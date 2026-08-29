@@ -8,9 +8,9 @@ import (
 )
 
 type FlexibleConfig struct {
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (f *FlexibleConfig) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

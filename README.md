@@ -322,6 +322,50 @@ nothing and leaves the position unconstrained. An unrecognised keyword is still
 preserved and still reachable by JSON Pointer, so `#/MinLength` resolves; what it
 no longer does is constrain anything.
 
+### Field order: laid out, not listed
+
+Fields are declared in the order that costs the least memory, not in the order
+the schema wrote them or the order their JSON names sort in.
+
+Go lays a struct out in the order its fields are written. Each field starts at
+the next offset its type may begin at, and the compiler pads to get there, so
+this schema
+
+```json
+{"properties": {"flag": {"type": "boolean"}, "count": {"type": "integer"}}}
+```
+
+costs 24 bytes per value if `flag` is declared first and 16 if `count` is. The
+garbage collector reads the same declaration a second way: it scans a value from
+its start up to the last byte that could hold a pointer, so a pointerless field
+written between two pointers is scanned along with them. Both costs are paid by
+every value of the type, and neither is visible in the source.
+
+Generated structs therefore declare the widest and most pointer-dense members
+first and the flags last, by the same rule
+[`fieldalignment`](https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/fieldalignment)
+uses — that analyzer reports nothing against this generator's output, and CI
+holds it to that. The whole declaration takes part: the properties, the sealed
+interface a `oneOf` becomes, the `additionalProperties` and `patternProperties`
+overflow maps, and the unexported members the decoder fills.
+
+Two things follow from it.
+
+Every list that is *read* rather than laid out is still in JSON name order — the
+decoder's member list, the order constraints are checked in, the property names
+in an error message. Only the declaration moves.
+
+And since `encoding/json` writes an object's members in declaration order, the
+key order of the JSON a generated type emits follows the layout too. It is the
+same members carrying the same values; JSON gives their order no meaning, and
+nothing about decoding, validation or round-tripping depends on it. A test that
+compares emitted JSON as *text* will see it.
+
+The layout is chosen for a 64-bit target, which is what generated code runs on
+in practice. One `.go` file is compiled by every `GOARCH`, so the order has to be
+picked once; on a 32-bit build it is a good order rather than a provably minimal
+one.
+
 ### Prose: `title` and `description`
 
 Both become the doc comment above the declaration, and where a schema states
@@ -970,6 +1014,13 @@ make cogen COGEN_ITERS=400
 
 # Format and vet
 make lint
+
+# Run the fieldalignment analyzer over the generated corpus, under every
+# generator configuration that changes the shape of a type. ~3 min, and it
+# fetches the analyzer the first time. `go test ./...` already measures every
+# struct declaration; this is what also sees the ones declared inside a
+# function body, which the emitted MarshalJSON and UnmarshalJSON each build.
+make lint-alignment
 ```
 
 ## License

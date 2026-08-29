@@ -182,7 +182,7 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) er
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*string]},
+			{name: "k", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -459,8 +459,8 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) er
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"j", jsonDecodeValue[*string]},
-			{"k", jsonDecodeValue[*string]},
+			{name: "j", decode: jsonDecodeValue[*string]},
+			{name: "k", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -694,15 +694,15 @@ func (a AnyOfBooleanAndScalarBranchesTrueBranch) Validate() error {
 
 // AnyOfBooleanAndScalarBranches - An anyOf mixing an object branch with branches the merged struct cannot place, or that the object-shape summary cannot judge. The merge is a Go struct, so a branch admitting a scalar had nowhere to decode into and the document was refused before a branch was tried; a bare "type":"object" branch admits every object, including the ones the merged field types refuse; and the summary drops the whole "at least one branch matches" assertion as soon as one branch states neither a required key nor a property check, so a `false` branch -- which matches nothing -- was read as one matching everything. The all-object group is the control: it selects on required keys and must keep the merge it already judges correctly.
 type AnyOfBooleanAndScalarBranches struct {
-	BareObjectBranch     AnyOfBooleanAndScalarBranchesBareObjectBranch `json:"bareObjectBranch,omitzero"`
-	ConstBranch          AnyOfBooleanAndScalarBranchesConstBranch      `json:"constBranch,omitzero"`
 	FalseBranch          *AnyOfBooleanAndScalarBranchesFalseBranch     `json:"falseBranch,omitempty"`
-	Mixed                AnyOfBooleanAndScalarBranchesMixed            `json:"mixed,omitzero"`
-	NotBranch            AnyOfBooleanAndScalarBranchesNotBranch        `json:"notBranch,omitzero"`
 	ObjectsOnly          *AnyOfBooleanAndScalarBranchesObjectsOnly     `json:"objectsOnly,omitempty"`
-	TrueBranch           AnyOfBooleanAndScalarBranchesTrueBranch       `json:"trueBranch,omitzero"`
 	AdditionalProperties map[string]json.RawMessage                    `json:"-"`
 	_jsonKeys            map[string]bool                               // set by UnmarshalJSON for optional field / dependentSchemas validation
+	BareObjectBranch     AnyOfBooleanAndScalarBranchesBareObjectBranch `json:"bareObjectBranch,omitzero"`
+	ConstBranch          AnyOfBooleanAndScalarBranchesConstBranch      `json:"constBranch,omitzero"`
+	Mixed                AnyOfBooleanAndScalarBranchesMixed            `json:"mixed,omitzero"`
+	NotBranch            AnyOfBooleanAndScalarBranchesNotBranch        `json:"notBranch,omitzero"`
+	TrueBranch           AnyOfBooleanAndScalarBranchesTrueBranch       `json:"trueBranch,omitzero"`
 }
 
 func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
@@ -745,13 +745,13 @@ func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bareObjectBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesBareObjectBranch]},
-			{"constBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesConstBranch]},
-			{"falseBranch", jsonDecodeValue[*AnyOfBooleanAndScalarBranchesFalseBranch]},
-			{"mixed", jsonDecodeValue[AnyOfBooleanAndScalarBranchesMixed]},
-			{"notBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesNotBranch]},
-			{"objectsOnly", jsonDecodeValue[*AnyOfBooleanAndScalarBranchesObjectsOnly]},
-			{"trueBranch", jsonDecodeValue[AnyOfBooleanAndScalarBranchesTrueBranch]},
+			{name: "bareObjectBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesBareObjectBranch]},
+			{name: "constBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesConstBranch]},
+			{name: "falseBranch", decode: jsonDecodeValue[*AnyOfBooleanAndScalarBranchesFalseBranch]},
+			{name: "mixed", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesMixed]},
+			{name: "notBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesNotBranch]},
+			{name: "objectsOnly", decode: jsonDecodeValue[*AnyOfBooleanAndScalarBranchesObjectsOnly]},
+			{name: "trueBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesTrueBranch]},
 		})
 	}
 	{

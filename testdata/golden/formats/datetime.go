@@ -9,12 +9,12 @@ import (
 )
 
 type Event struct {
-	EndsAt               *time.Time                 `json:"ends_at,omitempty"`
-	Name                 string                     `json:"name"`
 	StartsAt             time.Time                  `json:"starts_at"`
+	EndsAt               *time.Time                 `json:"ends_at,omitempty"`
 	URL                  *string                    `json:"url,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (e *Event) UnmarshalJSON(data []byte) error {
@@ -56,10 +56,10 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"ends_at", jsonDecodeValue[*jsonDateTime]},
-			{"name", jsonDecodeValue[string]},
-			{"starts_at", jsonDecodeValue[jsonDateTime]},
-			{"url", jsonDecodeValue[*string]},
+			{name: "ends_at", decode: jsonDecodeValue[*jsonDateTime]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "starts_at", decode: jsonDecodeValue[jsonDateTime]},
+			{name: "url", decode: jsonDecodeValue[*string]},
 		})
 	}
 

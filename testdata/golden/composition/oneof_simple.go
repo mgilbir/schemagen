@@ -8,9 +8,9 @@ import (
 )
 
 type Circle struct {
-	Radius               float64                    `json:"radius"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Radius               float64                    `json:"radius"`
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"radius", jsonDecodeValue[float64]},
+			{name: "radius", decode: jsonDecodeValue[float64]},
 		})
 	}
 	{
@@ -125,10 +125,10 @@ func (c Circle) Validate() error {
 }
 
 type Rectangle struct {
-	Height               float64                    `json:"height"`
-	Width                float64                    `json:"width"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Height               float64                    `json:"height"`
+	Width                float64                    `json:"width"`
 }
 
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
@@ -166,8 +166,8 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"height", jsonDecodeValue[float64]},
-			{"width", jsonDecodeValue[float64]},
+			{name: "height", decode: jsonDecodeValue[float64]},
+			{name: "width", decode: jsonDecodeValue[float64]},
 		})
 	}
 	{
@@ -247,10 +247,10 @@ func (r Rectangle) Validate() error {
 }
 
 type Drawing struct {
-	Name                 string                     `json:"name"`
 	Shape                isDrawing_Shape            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 // isDrawing_Shape is a sealed interface for the Shape field of Drawing.
@@ -332,7 +332,7 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 

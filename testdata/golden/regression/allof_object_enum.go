@@ -87,7 +87,7 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*jsonInteger]},
+			{name: "k", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -223,7 +223,7 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*jsonInteger]},
+			{name: "k", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -359,7 +359,7 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValues(jsonDecodeValue[any])},
+			{name: "k", decode: jsonDecodeValues(jsonDecodeValue[any])},
 		})
 	}
 	{
@@ -447,9 +447,9 @@ func (a AllOfObjectEnumNested) Validate() error {
 }
 
 type AllOfObjectEnumPlain struct {
-	K                    int64                      `json:"k"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	K                    int64                      `json:"k"`
 }
 
 func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
@@ -487,7 +487,7 @@ func (a *AllOfObjectEnumPlain) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[jsonInteger]},
+			{name: "k", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -616,8 +616,8 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -798,7 +798,7 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*jsonInteger]},
+			{name: "k", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -900,10 +900,10 @@ type AllOfObjectEnum struct {
 	Nested               *AllOfObjectEnumNested      `json:"nested,omitempty"`
 	Plain                *AllOfObjectEnumPlain       `json:"plain,omitempty"`
 	Reordered            *AllOfObjectEnumReordered   `json:"reordered,omitempty"`
-	Standalone           AllOfObjectEnumStandalone   `json:"standalone,omitempty"`
 	ViaRef               *AllOfObjectEnumViaRef      `json:"viaRef,omitempty"`
 	AdditionalProperties map[string]json.RawMessage  `json:"-"`
 	_jsonKeys            map[string]bool             // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Standalone           AllOfObjectEnumStandalone   `json:"standalone,omitempty"`
 }
 
 func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
@@ -946,13 +946,13 @@ func (a *AllOfObjectEnum) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"constMember", jsonDecodeValue[*AllOfObjectEnumConstMember]},
-			{"inline", jsonDecodeValue[*AllOfObjectEnumInline]},
-			{"nested", jsonDecodeValue[*AllOfObjectEnumNested]},
-			{"plain", jsonDecodeValue[*AllOfObjectEnumPlain]},
-			{"reordered", jsonDecodeValue[*AllOfObjectEnumReordered]},
-			{"standalone", jsonDecodeValue[AllOfObjectEnumStandalone]},
-			{"viaRef", jsonDecodeValue[*AllOfObjectEnumViaRef]},
+			{name: "constMember", decode: jsonDecodeValue[*AllOfObjectEnumConstMember]},
+			{name: "inline", decode: jsonDecodeValue[*AllOfObjectEnumInline]},
+			{name: "nested", decode: jsonDecodeValue[*AllOfObjectEnumNested]},
+			{name: "plain", decode: jsonDecodeValue[*AllOfObjectEnumPlain]},
+			{name: "reordered", decode: jsonDecodeValue[*AllOfObjectEnumReordered]},
+			{name: "standalone", decode: jsonDecodeValue[AllOfObjectEnumStandalone]},
+			{name: "viaRef", decode: jsonDecodeValue[*AllOfObjectEnumViaRef]},
 		})
 	}
 	{

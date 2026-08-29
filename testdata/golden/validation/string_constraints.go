@@ -11,10 +11,10 @@ import (
 type UserProfile struct {
 	Age                  *int64                     `json:"age,omitempty"`
 	Bio                  *string                    `json:"bio,omitempty"`
-	Tags                 []string                   `json:"tags,omitzero"`
-	Username             string                     `json:"username"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Username             string                     `json:"username"`
+	Tags                 []string                   `json:"tags,omitzero"`
 }
 
 func (u *UserProfile) UnmarshalJSON(data []byte) error {
@@ -55,10 +55,10 @@ func (u *UserProfile) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"age", jsonDecodeValue[*jsonInteger]},
-			{"bio", jsonDecodeValue[*string]},
-			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
-			{"username", jsonDecodeValue[string]},
+			{name: "age", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "bio", decode: jsonDecodeValue[*string]},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "username", decode: jsonDecodeValue[string]},
 		})
 	}
 

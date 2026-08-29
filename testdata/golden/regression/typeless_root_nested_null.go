@@ -7,10 +7,10 @@ import (
 )
 
 type Root struct {
-	P                    []int64                    `json:"p,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
+	P                    []int64                    `json:"p,omitzero"`
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (r *Root) UnmarshalJSON(data []byte) error {
@@ -54,7 +54,7 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"p", jsonDecodeItems(jsonDecodeValue[jsonInteger])},
+			{name: "p", decode: jsonDecodeItems(jsonDecodeValue[jsonInteger])},
 		})
 	}
 

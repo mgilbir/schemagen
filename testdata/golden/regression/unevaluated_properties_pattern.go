@@ -46,7 +46,7 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
