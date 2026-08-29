@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2
+## 0.1.3
 
 ### Changed
 
@@ -56,6 +56,11 @@
   struct's own json tags, so a keyword added later is covered without a second
   list to keep in step, and the guard asks the question of every keyword rather
   than of the ones the issue named.
+
+## 0.1.2
+
+### Fixed
+
 - A `$ref` written beside a keyword that survives it no longer runs the
   generator out of memory when it is reached through a `patternProperties`
   bucket or a per-branch `additionalProperties`/`unevaluatedProperties` check
