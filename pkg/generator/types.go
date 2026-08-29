@@ -1300,6 +1300,24 @@ type ValidationRule struct {
 	// the nil test alone.
 	PresenceTracked bool
 
+	// FieldNilable says the Go field this rule judges has a nil state, so that
+	// `field != nil` is both legal and meaningful against it.
+	//
+	// It decides whether a "forbidden" rule emits that test beside the key-set
+	// test above. The two answer different questions and neither replaces the
+	// other: the key set speaks only for a value decoded from JSON, and is nil
+	// for one a caller built in Go, where the field itself is the only evidence
+	// that the property was set at all.
+	//
+	// Whether a field has that state is a fact about the configuration as much
+	// as about the schema. Under the default an optional property is
+	// pointer-wrapped and every such field is nilable, which is why the test was
+	// emitted unconditionally; under --omit-empty=false the same property is a
+	// plain string, and `x != nil` against one is not a weak check but a
+	// compile error -- the generated package did not build at all for a schema
+	// that forbids a property. See Generator.hasNilState.
+	FieldNilable bool
+
 	// IntegerCompare is set on a numeric rule whose instance is held as an
 	// int64 and whose bound names an integer int64 holds exactly. The check is
 	// then made in int64 rather than by converting the value to float64 first.

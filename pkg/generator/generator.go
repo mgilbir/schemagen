@@ -4681,7 +4681,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		manualOmit := ""
 		if manualJSON && omitEmpty {
 			switch {
-			case goType.IsPointer() || g.isCollectionType(goType) || g.isInterfaceType(goType):
+			case g.hasNilState(goType):
 				manualOmit = "nil"
 			case g.isRawValueWrapperType(goType):
 				manualOmit = "iszero"
@@ -4711,7 +4711,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// for a named scalar and for a wrapper struct alike -- a
 				// wrapper is not comparable, so `!= zero` would not build.
 				switch {
-				case goType.IsPointer() || g.isCollectionType(goType) || g.isInterfaceType(goType):
+				case g.hasNilState(goType):
 					manualOmit = "nil"
 				case g.isRawValueWrapperType(goType):
 					manualOmit = "iszero"
@@ -4936,19 +4936,18 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// Also check if a $ref/$dynamicRef resolves to a false boolean schema.
 		//
 		// Not when the field's own type is a raw-value wrapper, on the reasoning
-		// the filter below already applies to every other rule: the rule is
-		// emitted as `field != nil` and a wrapper struct is not nilable, so it
-		// does not compile there. Nothing is lost. The wrapper is the forbidding
-		// type generated from this very schema, and its Validate -- dispatched
-		// from here like any other field's -- says the same thing more
-		// completely: `!= nil` misses a property present with a JSON null, which
-		// a `false` schema forbids too.
+		// the filter below already applies to every other rule: the wrapper is
+		// the forbidding type generated from this very schema, and its Validate
+		// -- dispatched from here like any other field's -- already says what
+		// this rule would say, and says it more completely, since it sees a
+		// property present with a JSON null.
 		if !conditionalOnlyProp && (propSchema.IsFalseSchema() || g.resolvedToFalseSchema(propSchema)) {
 			if !g.isRawValueWrapperType(fieldTypes[goFieldName]) {
 				validations = append(validations, ValidationRule{
 					FieldName: goFieldName, JSONName: propName,
 					RuleType: "forbidden", Value: true,
 					PresenceTracked: true,
+					FieldNilable:    g.hasNilState(fieldTypes[goFieldName]),
 				})
 			}
 			continue
@@ -4991,8 +4990,15 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			// only thing a forbidden rule wants to know, and the nil test it is
 			// otherwise emitted as cannot tell a present null from an absent
 			// property. See ValidationRule.PresenceTracked.
+			//
+			// Whether that nil test is emitted beside it is a question about
+			// the field rather than about the document, and is asked of the
+			// resolved Go type: --omit-empty=false leaves an optional scalar as
+			// a plain string, which nothing may be compared to nil. See
+			// ValidationRule.FieldNilable.
 			if rules[i].RuleType == "forbidden" {
 				rules[i].PresenceTracked = true
+				rules[i].FieldNilable = g.hasNilState(fieldTypes[rules[i].FieldName])
 			}
 			// Skip numeric/string/array validation on untyped 'any' fields,
 			// but keep structural rules like "forbidden" that apply to all types.
@@ -5014,14 +5020,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// uncompilable: the field is a struct, not the slice or string
 				// the rule assumes.
 				//
-				// "forbidden" is no exception, though it used to be. It is
-				// emitted as `field != nil`, which needs a nilable field; a
-				// wrapper struct is not one, so the rule does not compile there
-				// either. Nothing is lost by dropping it: the only property
-				// schema that produces the rule is {"not":{}}, which is exactly
-				// the schema the wrapper is generated from, and the wrapper's
-				// own Validate says the same thing more completely -- `!= nil`
-				// misses a present JSON null, which {"not":{}} also forbids.
+				// "forbidden" is no exception, though it used to be. Nothing is
+				// lost by dropping it: the only property schema that produces
+				// the rule is {"not":{}}, which is exactly the schema the
+				// wrapper is generated from, and the wrapper's own Validate
+				// says the same thing more completely -- it sees a property
+				// present with a JSON null, which {"not":{}} also forbids and
+				// which neither test here can tell from an absent one.
 				if g.isRawValueWrapperType(ft) {
 					continue
 				}
@@ -16963,6 +16968,25 @@ func (g *Generator) isInterfaceType(t GoType) bool {
 		}
 	}
 	return false
+}
+
+// hasNilState reports whether a value of this Go type can be nil, so that
+// `x != nil` both compiles against it and says something.
+//
+// Three shapes have that state and no others: a pointer, a slice or map, and an
+// interface. Everything else a property can be typed as -- a string, an int64, a
+// time.Time, a generated struct, one of the wrappers -- has a zero and no
+// absence, and comparing one to nil is a compile error rather than a check that
+// answers badly.
+//
+// The question is asked wherever emitted code stands in a nil for "the caller
+// never set this": what an optional field is omitted by, and whether a forbidden
+// property can be caught in a value that was built in Go rather than decoded.
+// Which fields have it is a fact about the configuration as much as about the
+// schema -- under --omit-empty=false an optional scalar is no longer
+// pointer-wrapped -- so it has to be asked of the resolved type and not assumed.
+func (g *Generator) hasNilState(t GoType) bool {
+	return t != nil && (t.IsPointer() || g.isCollectionType(t) || g.isInterfaceType(t))
 }
 
 // namedTypeAt returns the NamedType a GoType names, looking through a pointer,

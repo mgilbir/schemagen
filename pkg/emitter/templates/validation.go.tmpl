@@ -363,10 +363,34 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       property leaves, and the nil test alone passed over it. _jsonKeys is
 	       nil for a value not built from JSON, where indexing it is false and
 	       the nil test is all there is -- the same reading the required-property
-	       check gives untracked presence. */}}
-	if {{$recv}}.{{.FieldName}} != nil{{if .PresenceTracked}} || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]{{end}} {
+	       check gives untracked presence.
+
+	       An optional rule is inside the guard that opens this block, and that
+	       guard is `_jsonKeys[name]` -- the very question, already asked. So
+	       there is nothing left to test and the refusal is unconditional. (The
+	       guard's other half, _jsonNulls, never appears on this rule: a `false`
+	       schema forbids a null as much as anything else, and ruleVacuousForNull
+	       does not name it.)
+
+	       Where there is no guard -- a required property, or a `false` schema,
+	       which is read before the optional marking -- the two sources are asked
+	       together, and neither is assumed. The nil test needs a field with a
+	       nil state, which under the default configuration every optional
+	       property has and under --omit-empty=false a scalar one does not:
+	       emitting it there was not a weaker check but a package that did not
+	       build, since nothing may be compared to nil but a pointer, a slice, a
+	       map or an interface. See ValidationRule.FieldNilable. A value built in
+	       Go rather than decoded then has no evidence to offer about a scalar
+	       property -- the same blind spot an optional scalar's default and its
+	       required check already have, and for the same reason: its zero is what
+	       both a written "" and an absent property leave behind. */}}
+	{{- if .Optional}}
+	return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (no value satisfies its schema)")
+	{{- else if or .FieldNilable .PresenceTracked}}
+	if {{if .FieldNilable}}{{$recv}}.{{.FieldName}} != nil{{if .PresenceTracked}} || {{end}}{{end}}{{if .PresenceTracked}}{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]{{end}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: property is forbidden (no value satisfies its schema)")
 	}
+	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
 	{{- if .ExactCompare}}

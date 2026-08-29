@@ -27,6 +27,19 @@
 
 ### Fixed
 
+- `--omit-empty=false` no longer emits a package that does not compile for a
+  schema that forbids a property. The check for a property no value satisfies —
+  `false`, `{"enum":[]}`, `{"not":{}}` — was written as `field != nil`, which
+  holds under the default configuration because every optional property is
+  pointer-wrapped there. That flag takes the pointer away, so the same property
+  is a plain `string` and the emitted check was `e.Typed != nil (mismatched
+  types string and untyped nil)`. Whether a field has a nil state is now asked
+  of the resolved Go type rather than assumed, and where it has none the
+  document's own key set answers alone — which is the better question anyway,
+  and the one the rest of the check was already asking. Where the rule sits
+  inside the presence guard an optional property gets, that guard *is* the
+  question, so the refusal is now unconditional there instead of re-testing what
+  the guard established. No output changes under the default configuration.
 - A keyword spelled in another casing is no longer enforced as the keyword it
   resembles. `encoding/json` matches a key that matches no struct field exactly
   a second time case-insensitively, so every JSON Schema keyword was accepted in
