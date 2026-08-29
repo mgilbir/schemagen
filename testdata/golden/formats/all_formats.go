@@ -16,13 +16,13 @@ type NetworkConfig struct {
 	GatewayIP            *string                    `json:"gateway_ip,omitempty"`
 	Homepage             *string                    `json:"homepage,omitempty"`
 	Host                 *string                    `json:"host,omitempty"`
-	Name                 string                     `json:"name"`
 	PatternRule          *string                    `json:"pattern_rule,omitempty"`
-	PrimaryIP            string                     `json:"primary_ip"`
 	StartTime            *string                    `json:"start_time,omitempty"`
 	TTL                  *string                    `json:"ttl,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
+	PrimaryIP            string                     `json:"primary_ip"`
 }
 
 func (n *NetworkConfig) UnmarshalJSON(data []byte) error {
@@ -71,19 +71,19 @@ func (n *NetworkConfig) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"admin_email", jsonDecodeValue[*string]},
-			{"config_path", jsonDecodeValue[*string]},
-			{"created_date", jsonDecodeValue[*string]},
-			{"device_id", jsonDecodeValue[*string]},
-			{"docs_ref", jsonDecodeValue[*string]},
-			{"gateway_ip", jsonDecodeValue[*string]},
-			{"homepage", jsonDecodeValue[*string]},
-			{"host", jsonDecodeValue[*string]},
-			{"name", jsonDecodeValue[string]},
-			{"pattern_rule", jsonDecodeValue[*string]},
-			{"primary_ip", jsonDecodeValue[string]},
-			{"start_time", jsonDecodeValue[*string]},
-			{"ttl", jsonDecodeValue[*string]},
+			{name: "admin_email", decode: jsonDecodeValue[*string]},
+			{name: "config_path", decode: jsonDecodeValue[*string]},
+			{name: "created_date", decode: jsonDecodeValue[*string]},
+			{name: "device_id", decode: jsonDecodeValue[*string]},
+			{name: "docs_ref", decode: jsonDecodeValue[*string]},
+			{name: "gateway_ip", decode: jsonDecodeValue[*string]},
+			{name: "homepage", decode: jsonDecodeValue[*string]},
+			{name: "host", decode: jsonDecodeValue[*string]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "pattern_rule", decode: jsonDecodeValue[*string]},
+			{name: "primary_ip", decode: jsonDecodeValue[string]},
+			{name: "start_time", decode: jsonDecodeValue[*string]},
+			{name: "ttl", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

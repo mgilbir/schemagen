@@ -360,14 +360,14 @@ func (i IfBooleanBranchPositionsThenFalse) Validate() error {
 
 // IfBooleanBranchPositions - An if/then/else whose `if` or whose branch is a boolean schema, written in a property, in an array element and in a $defs entry a property refers to. The property position resolved these to `any`, which Go forbids methods on, so the keyword was enforced nowhere while the same schema at a document root was judged correctly (issue #134). The $ref column is the control that the two spellings agree.
 type IfBooleanBranchPositions struct {
+	AdditionalProperties map[string]json.RawMessage         `json:"-"`
+	_jsonKeys            map[string]bool                    // set by UnmarshalJSON for optional field / dependentSchemas validation
 	ElseFalse            IfBooleanBranchPositionsElseFalse  `json:"elseFalse,omitzero"`
 	IfFalse              IfBooleanBranchPositionsIfFalse    `json:"ifFalse,omitzero"`
 	IfTrue               IfBooleanBranchPositionsIfTrue     `json:"ifTrue,omitzero"`
 	List                 []IfBooleanBranchPositionsListItem `json:"list,omitzero"`
 	ThenFalse            IfBooleanBranchPositionsThenFalse  `json:"thenFalse,omitzero"`
 	ViaRef               IfFalse                            `json:"viaRef,omitzero"`
-	AdditionalProperties map[string]json.RawMessage         `json:"-"`
-	_jsonKeys            map[string]bool                    // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (i *IfBooleanBranchPositions) UnmarshalJSON(data []byte) error {
@@ -409,12 +409,12 @@ func (i *IfBooleanBranchPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"elseFalse", jsonDecodeValue[IfBooleanBranchPositionsElseFalse]},
-			{"ifFalse", jsonDecodeValue[IfBooleanBranchPositionsIfFalse]},
-			{"ifTrue", jsonDecodeValue[IfBooleanBranchPositionsIfTrue]},
-			{"list", jsonDecodeItems(jsonDecodeValue[IfBooleanBranchPositionsListItem])},
-			{"thenFalse", jsonDecodeValue[IfBooleanBranchPositionsThenFalse]},
-			{"viaRef", jsonDecodeValue[IfFalse]},
+			{name: "elseFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsElseFalse]},
+			{name: "ifFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsIfFalse]},
+			{name: "ifTrue", decode: jsonDecodeValue[IfBooleanBranchPositionsIfTrue]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[IfBooleanBranchPositionsListItem])},
+			{name: "thenFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsThenFalse]},
+			{name: "viaRef", decode: jsonDecodeValue[IfFalse]},
 		})
 	}
 	{

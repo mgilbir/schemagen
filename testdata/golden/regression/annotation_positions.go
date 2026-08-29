@@ -217,8 +217,8 @@ func (a AnnEnum) Validate() error {
 //
 // Deprecated: the schema marks this deprecated.
 type AnnInferred struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -503,7 +503,7 @@ func (a *AnnStruct) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -802,8 +802,8 @@ func (d DepEnum) Validate() error {
 //
 // Deprecated: the schema marks this deprecated.
 type DepInferred struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -1056,7 +1056,7 @@ func (d *DepStruct) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"c", jsonDecodeValue[*string]},
+			{name: "c", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -1331,8 +1331,8 @@ func (p PlainEnum) Validate() error {
 
 // PlainInferred accepts any JSON value. Constraints apply only when the value is number.
 type PlainInferred struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -1534,7 +1534,7 @@ func (p *PlainStruct) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[*string]},
+			{name: "b", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -1669,24 +1669,24 @@ type AnnotationPositions struct {
 	AliasPlain           *PlainAlias                `json:"aliasPlain,omitempty"`
 	BigInt               *AnnBigInt                 `json:"bigInt,omitempty"`
 	BigIntPlain          *PlainBigInt               `json:"bigIntPlain,omitempty"`
-	Dynamic              AnnDynamic                 `json:"dynamic,omitzero"`
-	DynamicPlain         PlainDynamic               `json:"dynamicPlain,omitzero"`
 	Enum                 *AnnEnum                   `json:"enum,omitempty"`
 	EnumPlain            *PlainEnum                 `json:"enumPlain,omitempty"`
 	Inferred             *AnnInferred               `json:"inferred,omitempty"`
 	InferredPlain        *PlainInferred             `json:"inferredPlain,omitempty"`
+	Struct               *AnnStruct                 `json:"struct,omitempty"`
+	StructPlain          *PlainStruct               `json:"structPlain,omitempty"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Dynamic              AnnDynamic                 `json:"dynamic,omitzero"`
+	DynamicPlain         PlainDynamic               `json:"dynamicPlain,omitzero"`
 	Not                  AnnNot                     `json:"not,omitzero"`
 	NotPlain             PlainNot                   `json:"notPlain,omitzero"`
 	RawEnum              AnnRawEnum                 `json:"rawEnum,omitempty"`
 	Runtime              AnnRuntime                 `json:"runtime,omitzero"`
 	RuntimePlain         PlainRuntime               `json:"runtimePlain,omitzero"`
-	Struct               *AnnStruct                 `json:"struct,omitempty"`
-	StructPlain          *PlainStruct               `json:"structPlain,omitempty"`
 	TypeOnly             AnnTypeOnly                `json:"typeOnly,omitzero"`
 	TypeOnlyPlain        PlainTypeOnly              `json:"typeOnlyPlain,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (a *AnnotationPositions) UnmarshalJSON(data []byte) error {
@@ -1742,25 +1742,25 @@ func (a *AnnotationPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"alias", jsonDecodeValue[*AnnAlias]},
-			{"aliasPlain", jsonDecodeValue[*PlainAlias]},
-			{"bigInt", jsonDecodeValue[*AnnBigInt]},
-			{"bigIntPlain", jsonDecodeValue[*PlainBigInt]},
-			{"dynamic", jsonDecodeValue[AnnDynamic]},
-			{"dynamicPlain", jsonDecodeValue[PlainDynamic]},
-			{"enum", jsonDecodeValue[*AnnEnum]},
-			{"enumPlain", jsonDecodeValue[*PlainEnum]},
-			{"inferred", jsonDecodeValue[*AnnInferred]},
-			{"inferredPlain", jsonDecodeValue[*PlainInferred]},
-			{"not", jsonDecodeValue[AnnNot]},
-			{"notPlain", jsonDecodeValue[PlainNot]},
-			{"rawEnum", jsonDecodeValue[AnnRawEnum]},
-			{"runtime", jsonDecodeValue[AnnRuntime]},
-			{"runtimePlain", jsonDecodeValue[PlainRuntime]},
-			{"struct", jsonDecodeValue[*AnnStruct]},
-			{"structPlain", jsonDecodeValue[*PlainStruct]},
-			{"typeOnly", jsonDecodeValue[AnnTypeOnly]},
-			{"typeOnlyPlain", jsonDecodeValue[PlainTypeOnly]},
+			{name: "alias", decode: jsonDecodeValue[*AnnAlias]},
+			{name: "aliasPlain", decode: jsonDecodeValue[*PlainAlias]},
+			{name: "bigInt", decode: jsonDecodeValue[*AnnBigInt]},
+			{name: "bigIntPlain", decode: jsonDecodeValue[*PlainBigInt]},
+			{name: "dynamic", decode: jsonDecodeValue[AnnDynamic]},
+			{name: "dynamicPlain", decode: jsonDecodeValue[PlainDynamic]},
+			{name: "enum", decode: jsonDecodeValue[*AnnEnum]},
+			{name: "enumPlain", decode: jsonDecodeValue[*PlainEnum]},
+			{name: "inferred", decode: jsonDecodeValue[*AnnInferred]},
+			{name: "inferredPlain", decode: jsonDecodeValue[*PlainInferred]},
+			{name: "not", decode: jsonDecodeValue[AnnNot]},
+			{name: "notPlain", decode: jsonDecodeValue[PlainNot]},
+			{name: "rawEnum", decode: jsonDecodeValue[AnnRawEnum]},
+			{name: "runtime", decode: jsonDecodeValue[AnnRuntime]},
+			{name: "runtimePlain", decode: jsonDecodeValue[PlainRuntime]},
+			{name: "struct", decode: jsonDecodeValue[*AnnStruct]},
+			{name: "structPlain", decode: jsonDecodeValue[*PlainStruct]},
+			{name: "typeOnly", decode: jsonDecodeValue[AnnTypeOnly]},
+			{name: "typeOnlyPlain", decode: jsonDecodeValue[PlainTypeOnly]},
 		})
 	}
 	{

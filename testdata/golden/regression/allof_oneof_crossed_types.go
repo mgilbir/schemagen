@@ -73,9 +73,9 @@ func (c *Crossed) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[any]},
-			{"b", jsonDecodeValue[any]},
-			{"kind", jsonDecodeValue[*CrossedKind]},
+			{name: "a", decode: jsonDecodeValue[any]},
+			{name: "b", decode: jsonDecodeValue[any]},
+			{name: "kind", decode: jsonDecodeValue[*CrossedKind]},
 		})
 	}
 	{

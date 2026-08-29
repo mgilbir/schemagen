@@ -46,8 +46,8 @@ func (d *DefaultSoleKeyword) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[*bool]},
-			{"s", jsonDecodeValue[*string]},
+			{name: "b", decode: jsonDecodeValue[*bool]},
+			{name: "s", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

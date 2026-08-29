@@ -416,6 +416,10 @@ func TestForeignTypeIsNeverJudgedByALocalNamesake(t *testing.T) {
 		AliasDropsMethods: true,
 		Unmarshaler:       true,
 		Marshaler:         true,
+		// A single byte with no pointer in it, which is the opposite of the
+		// two-word, pointer-carrying string the local namesake resolves to.
+		Layout:      goLayout{Size: 1, Align: 1},
+		LayoutKnown: true,
 	}
 	foreign := func() *NamedType {
 		return &NamedType{Name: "T", PkgAlias: "tpkg", foreign: published}
@@ -498,6 +502,28 @@ func TestForeignTypeIsNeverJudgedByALocalNamesake(t *testing.T) {
 			ad := aliasOverForeign(t, foreign())
 			if ad.MarshalAs != "tpkg.T" {
 				t.Errorf("MarshalAs = %q, want the qualified tpkg.T", ad.MarshalAs)
+			}
+		},
+		"Layout": func(t *testing.T) {
+			got, ok := newLayoutTable(localDefs).of(foreign())
+			if !ok {
+				t.Fatal("the published layout was not read at all, so a struct holding a foreign member " +
+					"keeps the order its members were built in for no reason")
+			}
+			if got != published.Layout {
+				t.Errorf("layout = %+v, want the published %+v. The local namesake is a string, so an answer "+
+					"of {16 8 8} is that alias's layout and not the foreign type's -- and a member placed by "+
+					"it is placed by a size and a pointer extent the type does not have", got, published.Layout)
+			}
+		},
+		"LayoutKnown": func(t *testing.T) {
+			// The owning package could not work its own type out. Falling back
+			// to the local table here is the same defect as above, arrived at
+			// from the other direction.
+			unknown := &NamedType{Name: "T", PkgAlias: "tpkg", foreign: typeShape{}}
+			if got, ok := newLayoutTable(localDefs).of(unknown); ok {
+				t.Errorf("layout = %+v for a foreign type published with none; an unknown layout has to stay "+
+					"unknown, since the only other answer available is the namesake's", got)
 			}
 		},
 	}

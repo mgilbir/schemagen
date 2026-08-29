@@ -11,11 +11,11 @@ import (
 )
 
 type CompanyAddress struct {
-	City                 string                     `json:"city"`
-	Street               string                     `json:"street"`
 	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	City                 string                     `json:"city"`
+	Street               string                     `json:"street"`
 }
 
 func (c *CompanyAddress) UnmarshalJSON(data []byte) error {
@@ -54,9 +54,9 @@ func (c *CompanyAddress) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"city", jsonDecodeValue[string]},
-			{"street", jsonDecodeValue[string]},
-			{"zip", jsonDecodeValue[*string]},
+			{name: "city", decode: jsonDecodeValue[string]},
+			{name: "street", decode: jsonDecodeValue[string]},
+			{name: "zip", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -152,9 +152,9 @@ func (c CompanyAddress) Validate() error {
 
 type CompanyEmployeesItem struct {
 	Age                  *int64                     `json:"age,omitempty"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (c *CompanyEmployeesItem) UnmarshalJSON(data []byte) error {
@@ -193,8 +193,8 @@ func (c *CompanyEmployeesItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"age", jsonDecodeValue[*jsonInteger]},
-			{"name", jsonDecodeValue[string]},
+			{name: "age", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 
@@ -296,11 +296,11 @@ func (c CompanyEmployeesItem) Validate() error {
 
 // Company - Schema with nested objects for testing JSON path in error messages
 type Company struct {
-	Address              CompanyAddress             `json:"address"`
-	Employees            []CompanyEmployeesItem     `json:"employees,omitzero"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Address              CompanyAddress             `json:"address"`
+	Name                 string                     `json:"name"`
+	Employees            []CompanyEmployeesItem     `json:"employees,omitzero"`
 }
 
 func (c *Company) UnmarshalJSON(data []byte) error {
@@ -339,9 +339,9 @@ func (c *Company) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"address", jsonDecodeValue[CompanyAddress]},
-			{"employees", jsonDecodeItems(jsonDecodeValue[CompanyEmployeesItem])},
-			{"name", jsonDecodeValue[string]},
+			{name: "address", decode: jsonDecodeValue[CompanyAddress]},
+			{name: "employees", decode: jsonDecodeItems(jsonDecodeValue[CompanyEmployeesItem])},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

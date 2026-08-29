@@ -8,11 +8,11 @@ import (
 )
 
 type OneOfBranchUnevaluatedPropertiesValueOption0 struct {
-	B                    int64                      `json:"b"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	B                    int64                      `json:"b"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (o *OneOfBranchUnevaluatedPropertiesValueOption0) UnmarshalJSON(data []byte) error {
@@ -57,7 +57,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption0) UnmarshalJSON(data []byte
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -170,11 +170,11 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) Validate() error {
 }
 
 type OneOfBranchUnevaluatedPropertiesValueOption1 struct {
-	A                    int64                      `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	A                    int64                      `json:"a"`
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (o *OneOfBranchUnevaluatedPropertiesValueOption1) UnmarshalJSON(data []byte) error {
@@ -219,7 +219,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption1) UnmarshalJSON(data []byte
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 

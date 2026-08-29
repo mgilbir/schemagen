@@ -7,9 +7,9 @@ import (
 )
 
 type OptionalEmptyArray struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	Labels               []string                   `json:"labels,omitzero"`
 	Tags                 []string                   `json:"tags,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
@@ -46,8 +46,8 @@ func (o *OptionalEmptyArray) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"labels", jsonDecodeItems(jsonDecodeValue[string])},
-			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "labels", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
 		})
 	}
 	{

@@ -47,17 +47,17 @@ func (c ConfigVersion) Validate() error {
 type Config struct {
 	// Optional count
 	Count *int64 `json:"count,omitempty"`
-	// Operation mode
-	Mode ConfigMode `json:"mode"`
 	// Optional name that can be null
-	Name *string `json:"name,omitempty"`
-	// Optional list of tags
-	Tags []string `json:"tags,omitzero"`
-	// Schema version, always 2.0
-	Version              ConfigVersion              `json:"version"`
+	Name                 *string                    `json:"name,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	// Operation mode
+	Mode ConfigMode `json:"mode"`
+	// Schema version, always 2.0
+	Version ConfigVersion `json:"version"`
+	// Optional list of tags
+	Tags []string `json:"tags,omitzero"`
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -100,11 +100,11 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"count", jsonDecodeValue[*jsonInteger]},
-			{"mode", jsonDecodeValue[ConfigMode]},
-			{"name", jsonDecodeValue[*string]},
-			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
-			{"version", jsonDecodeValue[ConfigVersion]},
+			{name: "count", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "mode", decode: jsonDecodeValue[ConfigMode]},
+			{name: "name", decode: jsonDecodeValue[*string]},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "version", decode: jsonDecodeValue[ConfigVersion]},
 		})
 	}
 

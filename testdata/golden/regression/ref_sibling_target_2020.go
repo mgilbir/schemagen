@@ -523,18 +523,18 @@ func (r RefSiblingTarget2020NoRef) Validate() error {
 
 // RefSiblingTarget2020 - Issue #153, the other half of #151's split. From 2019-09 on a $ref is an ordinary applicator, so an `enum` or a `const` written beside it applies *with* the reference and not instead of it. The enum arm of each type ladder claimed the schema first, so the sibling decided the type and the target was never followed: with the target {"type":"string","minLength":5}, "abc" was accepted at every position although the target forbids it. Every position here states both halves and every one has an accept row: "abcde" satisfies target and sibling alike, "abc" is refused by the target, "zzzzz" by the sibling. noSibling is the control that the target alone still binds, and noRef the control that an enum with no reference beside it is untouched -- it keeps its own type and admits "abc". ref_sibling_values_draft7.json is the control on the other side of the split: there the same shape must keep admitting the document the sibling forbids.
 type RefSiblingTarget2020 struct {
-	ConstForbidden       RefSiblingTarget2020ConstForbidden             `json:"constForbidden,omitzero"`
-	ConstSatisfied       RefSiblingTarget2020ConstSatisfied             `json:"constSatisfied,omitzero"`
 	DynSibling           *RefSiblingTarget2020DynSibling                `json:"dynSibling,omitempty"`
-	EnumSibling          RefSiblingTarget2020EnumSibling                `json:"enumSibling,omitzero"`
-	ListSibling          []RefSiblingTarget2020ListSiblingItem          `json:"listSibling,omitzero"`
 	MapSibling           map[string]RefSiblingTarget2020MapSiblingValue `json:"mapSibling,omitzero"`
-	NamedConst           NamedConst                                     `json:"namedConst,omitzero"`
-	NamedEnum            NamedEnum                                      `json:"namedEnum,omitzero"`
 	NoRef                *RefSiblingTarget2020NoRef                     `json:"noRef,omitempty"`
 	NoSibling            *Long                                          `json:"noSibling,omitempty"`
 	AdditionalProperties map[string]json.RawMessage                     `json:"-"`
 	_jsonKeys            map[string]bool                                // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ConstForbidden       RefSiblingTarget2020ConstForbidden             `json:"constForbidden,omitzero"`
+	ConstSatisfied       RefSiblingTarget2020ConstSatisfied             `json:"constSatisfied,omitzero"`
+	EnumSibling          RefSiblingTarget2020EnumSibling                `json:"enumSibling,omitzero"`
+	ListSibling          []RefSiblingTarget2020ListSiblingItem          `json:"listSibling,omitzero"`
+	NamedConst           NamedConst                                     `json:"namedConst,omitzero"`
+	NamedEnum            NamedEnum                                      `json:"namedEnum,omitzero"`
 }
 
 func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
@@ -580,16 +580,16 @@ func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"constForbidden", jsonDecodeValue[RefSiblingTarget2020ConstForbidden]},
-			{"constSatisfied", jsonDecodeValue[RefSiblingTarget2020ConstSatisfied]},
-			{"dynSibling", jsonDecodeValue[*RefSiblingTarget2020DynSibling]},
-			{"enumSibling", jsonDecodeValue[RefSiblingTarget2020EnumSibling]},
-			{"listSibling", jsonDecodeItems(jsonDecodeValue[RefSiblingTarget2020ListSiblingItem])},
-			{"mapSibling", jsonDecodeValues(jsonDecodeValue[RefSiblingTarget2020MapSiblingValue])},
-			{"namedConst", jsonDecodeValue[NamedConst]},
-			{"namedEnum", jsonDecodeValue[NamedEnum]},
-			{"noRef", jsonDecodeValue[*RefSiblingTarget2020NoRef]},
-			{"noSibling", jsonDecodeValue[*Long]},
+			{name: "constForbidden", decode: jsonDecodeValue[RefSiblingTarget2020ConstForbidden]},
+			{name: "constSatisfied", decode: jsonDecodeValue[RefSiblingTarget2020ConstSatisfied]},
+			{name: "dynSibling", decode: jsonDecodeValue[*RefSiblingTarget2020DynSibling]},
+			{name: "enumSibling", decode: jsonDecodeValue[RefSiblingTarget2020EnumSibling]},
+			{name: "listSibling", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTarget2020ListSiblingItem])},
+			{name: "mapSibling", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTarget2020MapSiblingValue])},
+			{name: "namedConst", decode: jsonDecodeValue[NamedConst]},
+			{name: "namedEnum", decode: jsonDecodeValue[NamedEnum]},
+			{name: "noRef", decode: jsonDecodeValue[*RefSiblingTarget2020NoRef]},
+			{name: "noSibling", decode: jsonDecodeValue[*Long]},
 		})
 	}
 	{

@@ -8,10 +8,10 @@ import (
 )
 
 type Member struct {
-	Name                 string                     `json:"name"`
 	Role                 *string                    `json:"role,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (m *Member) UnmarshalJSON(data []byte) error {
@@ -49,8 +49,8 @@ func (m *Member) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
-			{"role", jsonDecodeValue[*string]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "role", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -130,10 +130,10 @@ func (m Member) Validate() error {
 }
 
 type Team struct {
-	Members              []Member                   `json:"members"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
+	Members              []Member                   `json:"members"`
 }
 
 func (t *Team) UnmarshalJSON(data []byte) error {
@@ -171,8 +171,8 @@ func (t *Team) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"members", jsonDecodeItems(jsonDecodeValue[Member])},
-			{"name", jsonDecodeValue[string]},
+			{name: "members", decode: jsonDecodeItems(jsonDecodeValue[Member])},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

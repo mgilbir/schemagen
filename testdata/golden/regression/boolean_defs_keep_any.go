@@ -47,10 +47,10 @@ type Yes any
 
 type BooleanDefsKeepAny struct {
 	A                    Yes                        `json:"a,omitempty"`
-	B                    No                         `json:"b,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	B                    No                         `json:"b,omitzero"`
 }
 
 func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
@@ -89,8 +89,8 @@ func (b *BooleanDefsKeepAny) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[Yes]},
-			{"b", jsonDecodeValue[No]},
+			{name: "a", decode: jsonDecodeValue[Yes]},
+			{name: "b", decode: jsonDecodeValue[No]},
 		})
 	}
 	{

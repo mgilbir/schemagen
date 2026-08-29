@@ -135,12 +135,12 @@ func (r RawAlias) Validate() error {
 
 // EnumAliasDelegation - Aliases over enums that carry JSON methods of their own: a heterogeneous enum keeps raw bytes, an integer enum reads a number the way its draft does
 type EnumAliasDelegation struct {
-	Num                  IntAlias                   `json:"num"`
-	Raw                  RawAlias                   `json:"raw"`
-	RawList              []RawAlias                 `json:"raw_list,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Raw                  RawAlias                   `json:"raw"`
+	RawList              []RawAlias                 `json:"raw_list,omitzero"`
+	Num                  IntAlias                   `json:"num"`
 }
 
 func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
@@ -180,9 +180,9 @@ func (e *EnumAliasDelegation) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"num", jsonDecodeValue[IntAlias]},
-			{"raw", jsonDecodeValue[RawAlias]},
-			{"raw_list", jsonDecodeItems(jsonDecodeValue[RawAlias])},
+			{name: "num", decode: jsonDecodeValue[IntAlias]},
+			{name: "raw", decode: jsonDecodeValue[RawAlias]},
+			{name: "raw_list", decode: jsonDecodeItems(jsonDecodeValue[RawAlias])},
 		})
 	}
 	{

@@ -44,7 +44,7 @@ func (e *Extended) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bar", jsonDecodeValue[*Bar]},
+			{name: "bar", decode: jsonDecodeValue[*Bar]},
 		})
 	}
 	{
@@ -149,7 +149,7 @@ func (b *Bar) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"baz", jsonDecodeValue[*Extended]},
+			{name: "baz", decode: jsonDecodeValue[*Extended]},
 		})
 	}
 	{
@@ -272,8 +272,8 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bar", jsonDecodeValue[*Bar]},
-			{"foo", jsonDecodeValue[*RootFoo]},
+			{name: "bar", decode: jsonDecodeValue[*Bar]},
+			{name: "foo", decode: jsonDecodeValue[*RootFoo]},
 		})
 	}
 	{

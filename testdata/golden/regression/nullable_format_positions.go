@@ -1297,20 +1297,20 @@ func (n NullableFormatPositionsTupleItem0) Validate() error {
 
 // NullableFormatPositions - The nullable spelling of a formatted string, in every position it can be written. Each resolved to *string, losing the Go type the non-nullable spelling gets; the named form became `type X *string`, a pointer underlying type Go forbids methods on, so it carried no Validate and the format was enforced nowhere.
 type NullableFormatPositions struct {
+	Branch               isNullableFormatPositions_Branch           `json:"-"`
 	Buckets              *NullableFormatPositionsBuckets            `json:"buckets,omitempty"`
+	Map                  map[string]NullableFormatPositionsMapValue `json:"map,omitzero"`
+	AdditionalProperties map[string]json.RawMessage                 `json:"-"`
+	_jsonKeys            map[string]bool                            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonNulls           map[string]bool                            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 	Chain                ChainOuter                                 `json:"chain,omitzero"`
 	Inline               NullableFormatPositionsInline              `json:"inline,omitzero"`
 	List                 []NullableFormatPositionsListItem          `json:"list,omitzero"`
 	Mail                 NullableFormatPositionsMail                `json:"mail,omitzero"`
-	Map                  map[string]NullableFormatPositionsMapValue `json:"map,omitzero"`
 	Ref                  NullableV4                                 `json:"ref,omitzero"`
 	Stamp                NullableFormatPositionsStamp               `json:"stamp,omitzero"`
 	Tuple                []any                                      `json:"tuple,omitzero"`
 	Wrapped              NullableFormatPositionsWrapped             `json:"wrapped,omitzero"`
-	Branch               isNullableFormatPositions_Branch           `json:"-"`
-	AdditionalProperties map[string]json.RawMessage                 `json:"-"`
-	_jsonKeys            map[string]bool                            // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonNulls           map[string]bool                            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 // isNullableFormatPositions_Branch is a sealed interface for the Branch field of NullableFormatPositions.
@@ -1403,16 +1403,16 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"buckets", jsonDecodeValue[*NullableFormatPositionsBuckets]},
-			{"chain", jsonDecodeValue[ChainOuter]},
-			{"inline", jsonDecodeValue[NullableFormatPositionsInline]},
-			{"list", jsonDecodeItems(jsonDecodeValue[NullableFormatPositionsListItem])},
-			{"mail", jsonDecodeValue[NullableFormatPositionsMail]},
-			{"map", jsonDecodeValues(jsonDecodeValue[NullableFormatPositionsMapValue])},
-			{"ref", jsonDecodeValue[NullableV4]},
-			{"stamp", jsonDecodeValue[NullableFormatPositionsStamp]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"wrapped", jsonDecodeValue[NullableFormatPositionsWrapped]},
+			{name: "buckets", decode: jsonDecodeValue[*NullableFormatPositionsBuckets]},
+			{name: "chain", decode: jsonDecodeValue[ChainOuter]},
+			{name: "inline", decode: jsonDecodeValue[NullableFormatPositionsInline]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[NullableFormatPositionsListItem])},
+			{name: "mail", decode: jsonDecodeValue[NullableFormatPositionsMail]},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[NullableFormatPositionsMapValue])},
+			{name: "ref", decode: jsonDecodeValue[NullableV4]},
+			{name: "stamp", decode: jsonDecodeValue[NullableFormatPositionsStamp]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "wrapped", decode: jsonDecodeValue[NullableFormatPositionsWrapped]},
 		})
 	}
 

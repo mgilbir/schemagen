@@ -10,8 +10,8 @@ import (
 
 // ConstraintOnlyPositionsBranchAlternative0 accepts any JSON value. Constraints apply only when the value is number.
 type ConstraintOnlyPositionsBranchAlternative0 struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -414,9 +414,9 @@ func (c ConstraintOnlyPositionsProp) Validate() error {
 type ConstraintOnlyPositionsUnevaluated struct {
 	B                    *int64                     `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (c *ConstraintOnlyPositionsUnevaluated) UnmarshalJSON(data []byte) error {
@@ -461,7 +461,7 @@ func (c *ConstraintOnlyPositionsUnevaluated) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -688,17 +688,17 @@ func (c ConstraintOnlyPositionsTupleItem0) Validate() error {
 }
 
 type ConstraintOnlyPositions struct {
-	Branch               ConstraintOnlyPositionsBranch              `json:"branch,omitzero"`
-	List                 []ConstraintOnlyPositionsListItem          `json:"list,omitzero"`
 	Map                  map[string]ConstraintOnlyPositionsMapValue `json:"map,omitzero"`
-	Nulls                []ConstraintOnlyPositionsNullsItem         `json:"nulls,omitzero"`
-	Prop                 ConstraintOnlyPositionsProp                `json:"prop,omitzero"`
-	Tuple                []any                                      `json:"tuple,omitzero"`
 	Unevaluated          *ConstraintOnlyPositionsUnevaluated        `json:"unevaluated,omitempty"`
-	Union                ConstraintOnlyPositionsUnion               `json:"union,omitzero"`
 	AdditionalProperties map[string]json.RawMessage                 `json:"-"`
 	_jsonKeys            map[string]bool                            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Branch               ConstraintOnlyPositionsBranch              `json:"branch,omitzero"`
+	List                 []ConstraintOnlyPositionsListItem          `json:"list,omitzero"`
+	Nulls                []ConstraintOnlyPositionsNullsItem         `json:"nulls,omitzero"`
+	Prop                 ConstraintOnlyPositionsProp                `json:"prop,omitzero"`
+	Tuple                []any                                      `json:"tuple,omitzero"`
+	Union                ConstraintOnlyPositionsUnion               `json:"union,omitzero"`
 }
 
 func (c *ConstraintOnlyPositions) UnmarshalJSON(data []byte) error {
@@ -743,14 +743,14 @@ func (c *ConstraintOnlyPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"branch", jsonDecodeValue[ConstraintOnlyPositionsBranch]},
-			{"list", jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsListItem])},
-			{"map", jsonDecodeValues(jsonDecodeValue[ConstraintOnlyPositionsMapValue])},
-			{"nulls", jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsNullsItem])},
-			{"prop", jsonDecodeValue[ConstraintOnlyPositionsProp]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"unevaluated", jsonDecodeValue[*ConstraintOnlyPositionsUnevaluated]},
-			{"union", jsonDecodeValue[ConstraintOnlyPositionsUnion]},
+			{name: "branch", decode: jsonDecodeValue[ConstraintOnlyPositionsBranch]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsListItem])},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[ConstraintOnlyPositionsMapValue])},
+			{name: "nulls", decode: jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsNullsItem])},
+			{name: "prop", decode: jsonDecodeValue[ConstraintOnlyPositionsProp]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "unevaluated", decode: jsonDecodeValue[*ConstraintOnlyPositionsUnevaluated]},
+			{name: "union", decode: jsonDecodeValue[ConstraintOnlyPositionsUnion]},
 		})
 	}
 	{

@@ -46,10 +46,10 @@ func (t TaskStatus) Validate() error {
 
 type Task struct {
 	Priority             *TaskPriority              `json:"priority,omitempty"`
-	Status               TaskStatus                 `json:"status"`
-	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Status               TaskStatus                 `json:"status"`
+	Title                string                     `json:"title"`
 }
 
 func (t *Task) UnmarshalJSON(data []byte) error {
@@ -88,9 +88,9 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"priority", jsonDecodeValue[*TaskPriority]},
-			{"status", jsonDecodeValue[TaskStatus]},
-			{"title", jsonDecodeValue[string]},
+			{name: "priority", decode: jsonDecodeValue[*TaskPriority]},
+			{name: "status", decode: jsonDecodeValue[TaskStatus]},
+			{name: "title", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

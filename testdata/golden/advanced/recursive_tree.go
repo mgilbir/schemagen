@@ -9,14 +9,14 @@ import (
 
 // TreeNode - A recursive tree structure
 type TreeNode struct {
-	// Child nodes
-	Children []*TreeNode `json:"children,omitzero"`
 	// Parent node reference
-	Parent *TreeNode `json:"parent,omitempty"`
-	// Node value
-	Value                string                     `json:"value"`
+	Parent               *TreeNode                  `json:"parent,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	// Node value
+	Value string `json:"value"`
+	// Child nodes
+	Children []*TreeNode `json:"children,omitzero"`
 }
 
 func (t *TreeNode) UnmarshalJSON(data []byte) error {
@@ -55,9 +55,9 @@ func (t *TreeNode) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"children", jsonDecodeItems(jsonDecodeValue[*TreeNode])},
-			{"parent", jsonDecodeValue[*TreeNode]},
-			{"value", jsonDecodeValue[string]},
+			{name: "children", decode: jsonDecodeItems(jsonDecodeValue[*TreeNode])},
+			{name: "parent", decode: jsonDecodeValue[*TreeNode]},
+			{name: "value", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

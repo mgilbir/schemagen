@@ -310,8 +310,8 @@ func (a AllOfBoundOnlyNested) Validate() error {
 
 // AllOfBoundOnlyNum accepts any JSON value. Constraints apply only when the value is number.
 type AllOfBoundOnlyNum struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -610,17 +610,17 @@ func (a AllOfBoundOnlyTupleItem0) Validate() error {
 
 // AllOfBoundOnly - An allOf branch stating only a bound, in every position: the type is inferred from the keyword, so the value must still accept every other instance type
 type AllOfBoundOnly struct {
+	Union                isAllOfBoundOnly_Union            `json:"-"`
 	Arr                  *AllOfBoundOnlyArr                `json:"arr,omitempty"`
-	List                 []AllOfBoundOnlyListItem          `json:"list,omitzero"`
 	Map                  map[string]AllOfBoundOnlyMapValue `json:"map,omitzero"`
 	Nested               *AllOfBoundOnlyNested             `json:"nested,omitempty"`
 	Num                  *AllOfBoundOnlyNum                `json:"num,omitempty"`
 	Prop                 *AllOfBoundOnlyProp               `json:"prop,omitempty"`
-	Tuple                []any                             `json:"tuple,omitzero"`
 	ViaRef               *AllOfBoundOnlyViaRef             `json:"viaRef,omitempty"`
-	Union                isAllOfBoundOnly_Union            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage        `json:"-"`
 	_jsonNulls           map[string]bool                   // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	List                 []AllOfBoundOnlyListItem          `json:"list,omitzero"`
+	Tuple                []any                             `json:"tuple,omitzero"`
 }
 
 // isAllOfBoundOnly_Union is a sealed interface for the Union field of AllOfBoundOnly.
@@ -709,14 +709,14 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"arr", jsonDecodeValue[*AllOfBoundOnlyArr]},
-			{"list", jsonDecodeItems(jsonDecodeValue[AllOfBoundOnlyListItem])},
-			{"map", jsonDecodeValues(jsonDecodeValue[AllOfBoundOnlyMapValue])},
-			{"nested", jsonDecodeValue[*AllOfBoundOnlyNested]},
-			{"num", jsonDecodeValue[*AllOfBoundOnlyNum]},
-			{"prop", jsonDecodeValue[*AllOfBoundOnlyProp]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"viaRef", jsonDecodeValue[*AllOfBoundOnlyViaRef]},
+			{name: "arr", decode: jsonDecodeValue[*AllOfBoundOnlyArr]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[AllOfBoundOnlyListItem])},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[AllOfBoundOnlyMapValue])},
+			{name: "nested", decode: jsonDecodeValue[*AllOfBoundOnlyNested]},
+			{name: "num", decode: jsonDecodeValue[*AllOfBoundOnlyNum]},
+			{name: "prop", decode: jsonDecodeValue[*AllOfBoundOnlyProp]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "viaRef", decode: jsonDecodeValue[*AllOfBoundOnlyViaRef]},
 		})
 	}
 

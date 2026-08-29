@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz fuzz-seeds cogen validate-seeds
+.PHONY: build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz fuzz-seeds cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -52,6 +52,29 @@ vet:
 	go vet ./...
 
 lint: fmt vet
+
+# Runs golang.org/x/tools' fieldalignment analyzer over the generated corpus,
+# under every generator configuration that changes the shape of a type.
+#
+# The always-on half of this lives in `go test ./...`:
+# TestGeneratedCorpusIsFieldAligned measures every struct *declaration* the
+# corpus produces, from the compiled types, and reaches the same verdict. What
+# it cannot reach is a struct declared inside a function body, because reflect
+# cannot name one -- and the emitted MarshalJSON and UnmarshalJSON each build
+# one. This target is what sees those.
+#
+# Kept out of the Go build like validate-seeds and for the same reason: it needs
+# a build of another module, and no third-party analyzer belongs in go.mod. It
+# does need the module proxy the first time it runs.
+#
+# Run it after changing a template that declares a struct. Pass a directory to
+# keep the generated corpus for a look:
+#
+#	make lint-alignment ALIGN_DIR=/tmp/align
+ALIGN_DIR ?=
+
+lint-alignment:
+	scripts/lint-alignment.sh $(ALIGN_DIR)
 
 # The one commit of the JSON Schema Test Suite every run measures against.
 #

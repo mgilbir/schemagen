@@ -73,9 +73,9 @@ func (c CapBranchViaRef) Validate() error {
 type CapBranch struct {
 	ViaRef               *CapBranchViaRef           `json:"viaRef,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (c *CapBranch) UnmarshalJSON(data []byte) error {
@@ -119,7 +119,7 @@ func (c *CapBranch) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"viaRef", jsonDecodeValue[*CapBranchViaRef]},
+			{name: "viaRef", decode: jsonDecodeValue[*CapBranchViaRef]},
 		})
 	}
 	{
@@ -579,10 +579,10 @@ func (a AllOfPropertyConjunctionNestedA) Validate() error {
 }
 
 type AllOfPropertyConjunctionNested struct {
-	A                    AllOfPropertyConjunctionNestedA `json:"a"`
-	B                    int64                           `json:"b"`
 	AdditionalProperties map[string]json.RawMessage      `json:"-"`
 	_jsonKeys            map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    AllOfPropertyConjunctionNestedA `json:"a"`
+	B                    int64                           `json:"b"`
 }
 
 func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
@@ -621,8 +621,8 @@ func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[AllOfPropertyConjunctionNestedA]},
-			{"b", jsonDecodeValue[jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[AllOfPropertyConjunctionNestedA]},
+			{name: "b", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -1016,27 +1016,27 @@ func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"branchOnly", jsonDecodeValue[*string]},
-			{"constAgainstEnum", jsonDecodeValue[*AllOfPropertyConjunctionConstAgainstEnum]},
-			{"declared", jsonDecodeValue[*AllOfPropertyConjunctionDeclared]},
-			{"documented", jsonDecodeValue[*AllOfPropertyConjunctionDocumented]},
-			{"documentedWriteOnly", jsonDecodeValue[*AllOfPropertyConjunctionDocumentedWriteOnly]},
-			{"enumBranchNarrower", jsonDecodeValue[*AllOfPropertyConjunctionEnumBranchNarrower]},
-			{"enumRootNarrower", jsonDecodeValue[*AllOfPropertyConjunctionEnumRootNarrower]},
-			{"highBound", jsonDecodeValue[*AllOfPropertyConjunctionHighBound]},
-			{"highBoundRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionHighBoundRootTighter]},
-			{"lenRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionLenRootTighter]},
-			{"lowBound", jsonDecodeValue[*AllOfPropertyConjunctionLowBound]},
-			{"lowBoundRootTighter", jsonDecodeValue[*AllOfPropertyConjunctionLowBoundRootTighter]},
-			{"nested", jsonDecodeValue[*AllOfPropertyConjunctionNested]},
-			{"numberMeetsInteger", jsonDecodeValue[*AllOfPropertyConjunctionNumberMeetsInteger]},
-			{"numberSpelling", jsonDecodeValue[*AllOfPropertyConjunctionNumberSpelling]},
-			{"patternFirstWins", jsonDecodeValue[*AllOfPropertyConjunctionPatternFirstWins]},
-			{"reversed", jsonDecodeValue[*AllOfPropertyConjunctionReversed]},
-			{"twice", jsonDecodeValue[*AllOfPropertyConjunctionTwice]},
-			{"typeBranchNarrower", jsonDecodeValue[*AllOfPropertyConjunctionTypeBranchNarrower]},
-			{"typeRootNarrower", jsonDecodeValue[*AllOfPropertyConjunctionTypeRootNarrower]},
-			{"viaRef", jsonDecodeValue[*AllOfPropertyConjunctionViaRef]},
+			{name: "branchOnly", decode: jsonDecodeValue[*string]},
+			{name: "constAgainstEnum", decode: jsonDecodeValue[*AllOfPropertyConjunctionConstAgainstEnum]},
+			{name: "declared", decode: jsonDecodeValue[*AllOfPropertyConjunctionDeclared]},
+			{name: "documented", decode: jsonDecodeValue[*AllOfPropertyConjunctionDocumented]},
+			{name: "documentedWriteOnly", decode: jsonDecodeValue[*AllOfPropertyConjunctionDocumentedWriteOnly]},
+			{name: "enumBranchNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionEnumBranchNarrower]},
+			{name: "enumRootNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionEnumRootNarrower]},
+			{name: "highBound", decode: jsonDecodeValue[*AllOfPropertyConjunctionHighBound]},
+			{name: "highBoundRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionHighBoundRootTighter]},
+			{name: "lenRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionLenRootTighter]},
+			{name: "lowBound", decode: jsonDecodeValue[*AllOfPropertyConjunctionLowBound]},
+			{name: "lowBoundRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionLowBoundRootTighter]},
+			{name: "nested", decode: jsonDecodeValue[*AllOfPropertyConjunctionNested]},
+			{name: "numberMeetsInteger", decode: jsonDecodeValue[*AllOfPropertyConjunctionNumberMeetsInteger]},
+			{name: "numberSpelling", decode: jsonDecodeValue[*AllOfPropertyConjunctionNumberSpelling]},
+			{name: "patternFirstWins", decode: jsonDecodeValue[*AllOfPropertyConjunctionPatternFirstWins]},
+			{name: "reversed", decode: jsonDecodeValue[*AllOfPropertyConjunctionReversed]},
+			{name: "twice", decode: jsonDecodeValue[*AllOfPropertyConjunctionTwice]},
+			{name: "typeBranchNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionTypeBranchNarrower]},
+			{name: "typeRootNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionTypeRootNarrower]},
+			{name: "viaRef", decode: jsonDecodeValue[*AllOfPropertyConjunctionViaRef]},
 		})
 	}
 	{

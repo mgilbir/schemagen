@@ -8,10 +8,10 @@ import (
 )
 
 type ArrayTypesMetadataItem struct {
-	Key                  string                     `json:"key"`
-	Value                string                     `json:"value"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Key                  string                     `json:"key"`
+	Value                string                     `json:"value"`
 }
 
 func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
@@ -49,8 +49,8 @@ func (a *ArrayTypesMetadataItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"key", jsonDecodeValue[string]},
-			{"value", jsonDecodeValue[string]},
+			{name: "key", decode: jsonDecodeValue[string]},
+			{name: "value", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -130,10 +130,10 @@ func (a ArrayTypesMetadataItem) Validate() error {
 }
 
 type ArrayTypes struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	Metadata             []ArrayTypesMetadataItem   `json:"metadata,omitzero"`
 	Scores               []float64                  `json:"scores,omitzero"`
 	Tags                 []string                   `json:"tags,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
@@ -171,9 +171,9 @@ func (a *ArrayTypes) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"metadata", jsonDecodeItems(jsonDecodeValue[ArrayTypesMetadataItem])},
-			{"scores", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "metadata", decode: jsonDecodeItems(jsonDecodeValue[ArrayTypesMetadataItem])},
+			{name: "scores", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
 		})
 	}
 	{

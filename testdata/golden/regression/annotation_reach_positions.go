@@ -73,9 +73,9 @@ func (a AnnotatedString) Validate() error {
 }
 
 type ByID struct {
-	ID                   int64                      `json:"id"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   int64                      `json:"id"`
 }
 
 func (b *ByID) UnmarshalJSON(data []byte) error {
@@ -113,7 +113,7 @@ func (b *ByID) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[jsonInteger]},
+			{name: "id", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -199,9 +199,9 @@ func (b ByID) Validate() error {
 }
 
 type ByName struct {
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (b *ByName) UnmarshalJSON(data []byte) error {
@@ -238,7 +238,7 @@ func (b *ByName) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -435,7 +435,7 @@ func (d *DefaultedObject) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"n", jsonDecodeValue[*string]},
+			{name: "n", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -722,9 +722,15 @@ func (a AnnotationReachPositionsDfltViaNestedAllOf) Validate() error {
 
 // AnnotationReachPositions - How far an annotation reaches through an applicator, asked once for every keyword that consumes one. $ref and allOf bind unconditionally -- a valid instance satisfies every one of them -- so what they say about a location is said about every instance, and the Dflt*/Ann* properties below are the spellings of that. anyOf, oneOf and if/then/else bind only on the documents that match them, so 2020-12 section 7.7.1 gives them no annotation to contribute at all, and every *Cond* property is the control that says so. Issue #186 is the default half: the keyword was read off the property node alone, so it survived being written inline and vanished behind either binder. Issue #187 is the doc-comment half, in the same position. The two answers had to agree with --strict-read-write, which had been reading the reach correctly since issues #172 and #174, and now all three read one walk. The one place a doc comment deliberately stops short is a $ref written on the property: it survives into the generated source as the field's own type, which carries the referenced schema's comment already, so annViaRef documents nothing on the field and everything on AnnotatedString -- while dfltViaRef, which has no such survivor to carry it, does follow the reference.
 type AnnotationReachPositions struct {
-	AnnCondAnyOf *string `json:"annCondAnyOf,omitempty"`
-	AnnCondThen  *string `json:"annCondThen,omitempty"`
-	AnnPlain     *string `json:"annPlain,omitempty"`
+	DfltAnyViaRef UntypedDefault                          `json:"dfltAnyViaRef,omitempty"`
+	AnnCondGroup  isAnnotationReachPositions_AnnCondGroup `json:"-"`
+	// Prose on a oneOf group written on the property.
+	//
+	// Deprecated: the schema marks this deprecated.
+	AnnGroupPlain isAnnotationReachPositions_AnnGroupPlain `json:"-"`
+	AnnCondAnyOf  *string                                  `json:"annCondAnyOf,omitempty"`
+	AnnCondThen   *string                                  `json:"annCondThen,omitempty"`
+	AnnPlain      *string                                  `json:"annPlain,omitempty"`
 	// Prose written on an allOf branch of the property.
 	//
 	// Read-only: the schema says "readOnly", so the owning authority manages
@@ -744,44 +750,38 @@ type AnnotationReachPositions struct {
 	// to be present when the instance is retrieved.
 	//
 	// Deprecated: the schema marks this deprecated.
-	AnnViaNestedAllOf   *AnnotationReachPositionsAnnViaNestedAllOf  `json:"annViaNestedAllOf,omitempty"`
-	AnnViaRef           *AnnotatedString                            `json:"annViaRef,omitempty"`
-	DfltAnyViaRef       UntypedDefault                              `json:"dfltAnyViaRef,omitempty"`
-	DfltBindsBoth       *string                                     `json:"dfltBindsBoth,omitempty"`
-	DfltBoolViaRef      *DefaultedBool                              `json:"dfltBoolViaRef,omitempty"`
-	DfltCondAnyOf       *string                                     `json:"dfltCondAnyOf,omitempty"`
-	DfltCondElse        *string                                     `json:"dfltCondElse,omitempty"`
-	DfltCondOneOf       *string                                     `json:"dfltCondOneOf,omitempty"`
-	DfltCondThen        *string                                     `json:"dfltCondThen,omitempty"`
-	DfltEmptyViaRef     *DefaultedEmptyString                       `json:"dfltEmptyViaRef,omitempty"`
-	DfltInline          *string                                     `json:"dfltInline,omitempty"`
-	DfltIntViaRef       *DefaultedInt                               `json:"dfltIntViaRef,omitempty"`
-	DfltMismatchViaRef  *MistypedDefaultInt                         `json:"dfltMismatchViaRef,omitempty"`
-	DfltMultiTypeViaRef MultiTypedDefault                           `json:"dfltMultiTypeViaRef,omitzero"`
-	DfltNearestWins     *string                                     `json:"dfltNearestWins,omitempty"`
-	DfltNone            *PlainString                                `json:"dfltNone,omitempty"`
-	DfltNumberViaRef    *DefaultedNumber                            `json:"dfltNumberViaRef,omitempty"`
-	DfltObjectViaRef    *DefaultedObject                            `json:"dfltObjectViaRef,omitempty"`
-	DfltRequiredViaRef  DefaultedString                             `json:"dfltRequiredViaRef"`
-	DfltViaAllOf        *AnnotationReachPositionsDfltViaAllOf       `json:"dfltViaAllOf,omitempty"`
-	DfltViaAllOfRef     *AnnotationReachPositionsDfltViaAllOfRef    `json:"dfltViaAllOfRef,omitempty"`
-	DfltViaCycle        *SelfReferential                            `json:"dfltViaCycle,omitempty"`
-	DfltViaMergedAllOf  *string                                     `json:"dfltViaMergedAllOf,omitempty"`
-	DfltViaNestedAllOf  *AnnotationReachPositionsDfltViaNestedAllOf `json:"dfltViaNestedAllOf,omitempty"`
-	DfltViaRef          *DefaultedString                            `json:"dfltViaRef,omitempty"`
-	DfltViaRefChain     *AliasOfDefaultedString                     `json:"dfltViaRefChain,omitempty"`
-	Mode                *string                                     `json:"mode,omitempty"`
-	PickA               *int64                                      `json:"pickA,omitempty"`
-	PickB               *int64                                      `json:"pickB,omitempty"`
-	AnnCondGroup        isAnnotationReachPositions_AnnCondGroup     `json:"-"`
-	// Prose on a oneOf group written on the property.
-	//
-	// Deprecated: the schema marks this deprecated.
-	AnnGroupPlain        isAnnotationReachPositions_AnnGroupPlain `json:"-"`
-	AdditionalProperties map[string]json.RawMessage               `json:"-"`
-	_jsonKeys            map[string]bool                          // set by UnmarshalJSON for optional field / dependentSchemas validation
-	_jsonRawProps        map[string]json.RawMessage               // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
-	_jsonNulls           map[string]bool                          // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	AnnViaNestedAllOf    *AnnotationReachPositionsAnnViaNestedAllOf  `json:"annViaNestedAllOf,omitempty"`
+	AnnViaRef            *AnnotatedString                            `json:"annViaRef,omitempty"`
+	DfltBindsBoth        *string                                     `json:"dfltBindsBoth,omitempty"`
+	DfltBoolViaRef       *DefaultedBool                              `json:"dfltBoolViaRef,omitempty"`
+	DfltCondAnyOf        *string                                     `json:"dfltCondAnyOf,omitempty"`
+	DfltCondElse         *string                                     `json:"dfltCondElse,omitempty"`
+	DfltCondOneOf        *string                                     `json:"dfltCondOneOf,omitempty"`
+	DfltCondThen         *string                                     `json:"dfltCondThen,omitempty"`
+	DfltEmptyViaRef      *DefaultedEmptyString                       `json:"dfltEmptyViaRef,omitempty"`
+	DfltInline           *string                                     `json:"dfltInline,omitempty"`
+	DfltIntViaRef        *DefaultedInt                               `json:"dfltIntViaRef,omitempty"`
+	DfltMismatchViaRef   *MistypedDefaultInt                         `json:"dfltMismatchViaRef,omitempty"`
+	DfltNearestWins      *string                                     `json:"dfltNearestWins,omitempty"`
+	DfltNone             *PlainString                                `json:"dfltNone,omitempty"`
+	DfltNumberViaRef     *DefaultedNumber                            `json:"dfltNumberViaRef,omitempty"`
+	DfltObjectViaRef     *DefaultedObject                            `json:"dfltObjectViaRef,omitempty"`
+	DfltViaAllOf         *AnnotationReachPositionsDfltViaAllOf       `json:"dfltViaAllOf,omitempty"`
+	DfltViaAllOfRef      *AnnotationReachPositionsDfltViaAllOfRef    `json:"dfltViaAllOfRef,omitempty"`
+	DfltViaCycle         *SelfReferential                            `json:"dfltViaCycle,omitempty"`
+	DfltViaMergedAllOf   *string                                     `json:"dfltViaMergedAllOf,omitempty"`
+	DfltViaNestedAllOf   *AnnotationReachPositionsDfltViaNestedAllOf `json:"dfltViaNestedAllOf,omitempty"`
+	DfltViaRef           *DefaultedString                            `json:"dfltViaRef,omitempty"`
+	DfltViaRefChain      *AliasOfDefaultedString                     `json:"dfltViaRefChain,omitempty"`
+	Mode                 *string                                     `json:"mode,omitempty"`
+	PickA                *int64                                      `json:"pickA,omitempty"`
+	PickB                *int64                                      `json:"pickB,omitempty"`
+	AdditionalProperties map[string]json.RawMessage                  `json:"-"`
+	_jsonKeys            map[string]bool                             // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_jsonRawProps        map[string]json.RawMessage                  // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_jsonNulls           map[string]bool                             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	DfltRequiredViaRef   DefaultedString                             `json:"dfltRequiredViaRef"`
+	DfltMultiTypeViaRef  MultiTypedDefault                           `json:"dfltMultiTypeViaRef,omitzero"`
 }
 
 // isAnnotationReachPositions_AnnCondGroup is a sealed interface for the AnnCondGroup field of AnnotationReachPositions.
@@ -935,50 +935,50 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 	type Alias AnnotationReachPositions
 	aux := &struct {
 		*Alias
-		AnnCondGroup  json.RawMessage `json:"annCondGroup"`
-		AnnGroupPlain json.RawMessage `json:"annGroupPlain"`
 		PickA         **jsonInteger   `json:"pickA"`
 		PickB         **jsonInteger   `json:"pickB"`
+		AnnCondGroup  json.RawMessage `json:"annCondGroup"`
+		AnnGroupPlain json.RawMessage `json:"annGroupPlain"`
 	}{
 		Alias: (*Alias)(a),
 	}
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"annCondAnyOf", jsonDecodeValue[*string]},
-			{"annCondThen", jsonDecodeValue[*string]},
-			{"annPlain", jsonDecodeValue[*string]},
-			{"annViaAllOf", jsonDecodeValue[*AnnotationReachPositionsAnnViaAllOf]},
-			{"annViaMergedAllOf", jsonDecodeValue[*string]},
-			{"annViaNestedAllOf", jsonDecodeValue[*AnnotationReachPositionsAnnViaNestedAllOf]},
-			{"annViaRef", jsonDecodeValue[*AnnotatedString]},
-			{"dfltAnyViaRef", jsonDecodeValue[UntypedDefault]},
-			{"dfltBindsBoth", jsonDecodeValue[*string]},
-			{"dfltBoolViaRef", jsonDecodeValue[*DefaultedBool]},
-			{"dfltCondAnyOf", jsonDecodeValue[*string]},
-			{"dfltCondElse", jsonDecodeValue[*string]},
-			{"dfltCondOneOf", jsonDecodeValue[*string]},
-			{"dfltCondThen", jsonDecodeValue[*string]},
-			{"dfltEmptyViaRef", jsonDecodeValue[*DefaultedEmptyString]},
-			{"dfltInline", jsonDecodeValue[*string]},
-			{"dfltIntViaRef", jsonDecodeValue[*DefaultedInt]},
-			{"dfltMismatchViaRef", jsonDecodeValue[*MistypedDefaultInt]},
-			{"dfltMultiTypeViaRef", jsonDecodeValue[MultiTypedDefault]},
-			{"dfltNearestWins", jsonDecodeValue[*string]},
-			{"dfltNone", jsonDecodeValue[*PlainString]},
-			{"dfltNumberViaRef", jsonDecodeValue[*DefaultedNumber]},
-			{"dfltObjectViaRef", jsonDecodeValue[*DefaultedObject]},
-			{"dfltRequiredViaRef", jsonDecodeValue[DefaultedString]},
-			{"dfltViaAllOf", jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOf]},
-			{"dfltViaAllOfRef", jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOfRef]},
-			{"dfltViaCycle", jsonDecodeValue[*SelfReferential]},
-			{"dfltViaMergedAllOf", jsonDecodeValue[*string]},
-			{"dfltViaNestedAllOf", jsonDecodeValue[*AnnotationReachPositionsDfltViaNestedAllOf]},
-			{"dfltViaRef", jsonDecodeValue[*DefaultedString]},
-			{"dfltViaRefChain", jsonDecodeValue[*AliasOfDefaultedString]},
-			{"mode", jsonDecodeValue[*string]},
-			{"pickA", jsonDecodeValue[*jsonInteger]},
-			{"pickB", jsonDecodeValue[*jsonInteger]},
+			{name: "annCondAnyOf", decode: jsonDecodeValue[*string]},
+			{name: "annCondThen", decode: jsonDecodeValue[*string]},
+			{name: "annPlain", decode: jsonDecodeValue[*string]},
+			{name: "annViaAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsAnnViaAllOf]},
+			{name: "annViaMergedAllOf", decode: jsonDecodeValue[*string]},
+			{name: "annViaNestedAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsAnnViaNestedAllOf]},
+			{name: "annViaRef", decode: jsonDecodeValue[*AnnotatedString]},
+			{name: "dfltAnyViaRef", decode: jsonDecodeValue[UntypedDefault]},
+			{name: "dfltBindsBoth", decode: jsonDecodeValue[*string]},
+			{name: "dfltBoolViaRef", decode: jsonDecodeValue[*DefaultedBool]},
+			{name: "dfltCondAnyOf", decode: jsonDecodeValue[*string]},
+			{name: "dfltCondElse", decode: jsonDecodeValue[*string]},
+			{name: "dfltCondOneOf", decode: jsonDecodeValue[*string]},
+			{name: "dfltCondThen", decode: jsonDecodeValue[*string]},
+			{name: "dfltEmptyViaRef", decode: jsonDecodeValue[*DefaultedEmptyString]},
+			{name: "dfltInline", decode: jsonDecodeValue[*string]},
+			{name: "dfltIntViaRef", decode: jsonDecodeValue[*DefaultedInt]},
+			{name: "dfltMismatchViaRef", decode: jsonDecodeValue[*MistypedDefaultInt]},
+			{name: "dfltMultiTypeViaRef", decode: jsonDecodeValue[MultiTypedDefault]},
+			{name: "dfltNearestWins", decode: jsonDecodeValue[*string]},
+			{name: "dfltNone", decode: jsonDecodeValue[*PlainString]},
+			{name: "dfltNumberViaRef", decode: jsonDecodeValue[*DefaultedNumber]},
+			{name: "dfltObjectViaRef", decode: jsonDecodeValue[*DefaultedObject]},
+			{name: "dfltRequiredViaRef", decode: jsonDecodeValue[DefaultedString]},
+			{name: "dfltViaAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOf]},
+			{name: "dfltViaAllOfRef", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOfRef]},
+			{name: "dfltViaCycle", decode: jsonDecodeValue[*SelfReferential]},
+			{name: "dfltViaMergedAllOf", decode: jsonDecodeValue[*string]},
+			{name: "dfltViaNestedAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaNestedAllOf]},
+			{name: "dfltViaRef", decode: jsonDecodeValue[*DefaultedString]},
+			{name: "dfltViaRefChain", decode: jsonDecodeValue[*AliasOfDefaultedString]},
+			{name: "mode", decode: jsonDecodeValue[*string]},
+			{name: "pickA", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "pickB", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 

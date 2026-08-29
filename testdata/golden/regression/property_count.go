@@ -50,9 +50,9 @@ func (p *PropertyCount) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
-			{"b", jsonDecodeValue[*string]},
-			{"c", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
+			{name: "b", decode: jsonDecodeValue[*string]},
+			{name: "c", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

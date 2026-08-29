@@ -10,10 +10,10 @@ import (
 type Employee struct {
 	Department           *string                    `json:"department,omitempty"`
 	Email                *string                    `json:"email,omitempty"`
-	EmployeeID           string                     `json:"employee_id"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	EmployeeID           string                     `json:"employee_id"`
+	Name                 string                     `json:"name"`
 }
 
 func (e *Employee) UnmarshalJSON(data []byte) error {
@@ -53,10 +53,10 @@ func (e *Employee) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"department", jsonDecodeValue[*string]},
-			{"email", jsonDecodeValue[*string]},
-			{"employee_id", jsonDecodeValue[string]},
-			{"name", jsonDecodeValue[string]},
+			{name: "department", decode: jsonDecodeValue[*string]},
+			{name: "email", decode: jsonDecodeValue[*string]},
+			{name: "employee_id", decode: jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

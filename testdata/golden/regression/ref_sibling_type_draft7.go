@@ -28,9 +28,9 @@ func (s Str) Validate() error {
 }
 
 type RefSiblingTypeDraft7 struct {
+	Suppressed           Anything                   `json:"suppressed,omitempty"`
 	Bounded              *Str                       `json:"bounded,omitempty"`
 	Plain                *Str                       `json:"plain,omitempty"`
-	Suppressed           Anything                   `json:"suppressed,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
@@ -71,9 +71,9 @@ func (r *RefSiblingTypeDraft7) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"bounded", jsonDecodeValue[*Str]},
-			{"plain", jsonDecodeValue[*Str]},
-			{"suppressed", jsonDecodeValue[Anything]},
+			{name: "bounded", decode: jsonDecodeValue[*Str]},
+			{name: "plain", decode: jsonDecodeValue[*Str]},
+			{name: "suppressed", decode: jsonDecodeValue[Anything]},
 		})
 	}
 	{

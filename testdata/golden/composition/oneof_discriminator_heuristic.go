@@ -8,10 +8,10 @@ import (
 )
 
 type Circle struct {
-	Radius               float64                    `json:"radius"`
-	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Type                 string                     `json:"type"`
+	Radius               float64                    `json:"radius"`
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
@@ -49,8 +49,8 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"radius", jsonDecodeValue[float64]},
-			{"type", jsonDecodeValue[string]},
+			{name: "radius", decode: jsonDecodeValue[float64]},
+			{name: "type", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -139,10 +139,10 @@ func (c Circle) Validate() error {
 }
 
 type Square struct {
-	Side                 float64                    `json:"side"`
-	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Type                 string                     `json:"type"`
+	Side                 float64                    `json:"side"`
 }
 
 func (s *Square) UnmarshalJSON(data []byte) error {
@@ -180,8 +180,8 @@ func (s *Square) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"side", jsonDecodeValue[float64]},
-			{"type", jsonDecodeValue[string]},
+			{name: "side", decode: jsonDecodeValue[float64]},
+			{name: "type", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -270,11 +270,11 @@ func (s Square) Validate() error {
 }
 
 type Triangle struct {
-	Base                 float64                    `json:"base"`
-	Height               float64                    `json:"height"`
-	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Type                 string                     `json:"type"`
+	Base                 float64                    `json:"base"`
+	Height               float64                    `json:"height"`
 }
 
 func (t *Triangle) UnmarshalJSON(data []byte) error {
@@ -313,9 +313,9 @@ func (t *Triangle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"base", jsonDecodeValue[float64]},
-			{"height", jsonDecodeValue[float64]},
-			{"type", jsonDecodeValue[string]},
+			{name: "base", decode: jsonDecodeValue[float64]},
+			{name: "height", decode: jsonDecodeValue[float64]},
+			{name: "type", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -406,10 +406,10 @@ func (t Triangle) Validate() error {
 }
 
 type Shape struct {
-	Name                 string                     `json:"name"`
 	Geometry             isShape_Geometry           `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 // isShape_Geometry is a sealed interface for the Geometry field of Shape.
@@ -509,7 +509,7 @@ func (s *Shape) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 

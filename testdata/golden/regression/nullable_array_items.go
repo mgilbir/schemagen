@@ -9,12 +9,12 @@ import (
 )
 
 type NullableArrayItemsRowsItem struct {
-	ID                   string                     `json:"id"`
 	Qty                  *int64                     `json:"qty,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
@@ -60,8 +60,8 @@ func (n *NullableArrayItemsRowsItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
-			{"qty", jsonDecodeValue[*jsonInteger]},
+			{name: "id", decode: jsonDecodeValue[string]},
+			{name: "qty", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -205,11 +205,11 @@ func (n NullableArrayItemsRowsItem) Validate() error {
 
 // NullableArrayItems - Regression: a nullable array node ("type":["array","null"]) must still generate a named item struct for object items and preserve scalar element types, rather than collapsing to *[]any. Mirrors the explode/child-table flattening shape.
 type NullableArrayItems struct {
+	AdditionalProperties map[string]json.RawMessage    `json:"-"`
+	_jsonNulls           map[string]bool               // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 	Rows                 []*NullableArrayItemsRowsItem `json:"rows,omitzero"`
 	Scores               []float64                     `json:"scores,omitzero"`
 	Tags                 []*string                     `json:"tags,omitzero"`
-	AdditionalProperties map[string]json.RawMessage    `json:"-"`
-	_jsonNulls           map[string]bool               // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
 func (n *NullableArrayItems) UnmarshalJSON(data []byte) error {
@@ -248,9 +248,9 @@ func (n *NullableArrayItems) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"rows", jsonDecodeItems(jsonDecodeValue[*NullableArrayItemsRowsItem])},
-			{"scores", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"tags", jsonDecodeItems(jsonDecodeValue[*string])},
+			{name: "rows", decode: jsonDecodeItems(jsonDecodeValue[*NullableArrayItemsRowsItem])},
+			{name: "scores", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[*string])},
 		})
 	}
 	{

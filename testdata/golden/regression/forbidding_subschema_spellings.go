@@ -1749,7 +1749,7 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) UnmarshalJSON(data []byte) 
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[any]},
+			{name: "k", decode: jsonDecodeValue[any]},
 		})
 	}
 	{
@@ -1857,9 +1857,9 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 
 type ForbiddingSubschemaSpellingsNullableInlineNames struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (f *ForbiddingSubschemaSpellingsNullableInlineNames) UnmarshalJSON(data []byte) error {
@@ -2316,7 +2316,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) UnmarshalJSON(data []byte
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[any]},
+			{name: "k", decode: jsonDecodeValue[any]},
 		})
 	}
 	{
@@ -2560,11 +2560,8 @@ func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Validate() error {
 
 // ForbiddingSubschemaSpellings - Issue #146: the six keywords that answered a forbidding sub-schema written `false` or {"enum":[]} after #142 -- propertyNames, contains, dependentSchemas, unevaluatedItems, unevaluatedProperties, and an inferred array's item and tail -- and dropped the same statement written {"not":{}} or {"oneOf":[false,false]}. All four spellings are the empty set, so a position that answers two of them is answering by spelling rather than by meaning. Beside them: the keywords an inline object property dropped whatever the spelling, and the allOf whose unreadable branch was enforced by halves. Where a keyword judges what an instance holds, the rejection has the container holding nothing beside it; `contains` is the exception, since it demands a match rather than judging one, and a schema that admits nothing at all has no such control by definition -- the controls for those are the negations and compositions further down, which must keep admitting what they always did.
 type ForbiddingSubschemaSpellings struct {
-	AllOfContains        []any                                             `json:"allOfContains,omitzero"`
-	AllOfNot             ForbiddingSubschemaSpellingsAllOfNot              `json:"allOfNot,omitzero"`
+	StrBranchRequired    isForbiddingSubschemaSpellings_StrBranchRequired  `json:"-"`
 	AnyOfNames           *ForbiddingSubschemaSpellingsAnyOfNames           `json:"anyOfNames,omitempty"`
-	AnyOfNot             ForbiddingSubschemaSpellingsAnyOfNot              `json:"anyOfNot,omitzero"`
-	AnyOfOneFalse        ForbiddingSubschemaSpellingsAnyOfOneFalse         `json:"anyOfOneFalse,omitzero"`
 	InferredNotItems     *ForbiddingSubschemaSpellingsInferredNotItems     `json:"inferredNotItems,omitempty"`
 	InferredNotSlot      *ForbiddingSubschemaSpellingsInferredNotSlot      `json:"inferredNotSlot,omitempty"`
 	InferredNotTail      *ForbiddingSubschemaSpellingsInferredNotTail      `json:"inferredNotTail,omitempty"`
@@ -2579,31 +2576,34 @@ type ForbiddingSubschemaSpellings struct {
 	InlineNotNames       *ForbiddingSubschemaSpellingsInlineNotNames       `json:"inlineNotNames,omitempty"`
 	InlineRequired       *ForbiddingSubschemaSpellingsInlineRequired       `json:"inlineRequired,omitempty"`
 	MapWithMinProps      map[string]string                                 `json:"mapWithMinProps,omitzero"`
-	NotContains          []any                                             `json:"notContains,omitzero"`
 	NotDependent         *ForbiddingSubschemaSpellingsNotDependent         `json:"notDependent,omitempty"`
-	NotEnumBranch        ForbiddingSubschemaSpellingsNotEnumBranch         `json:"notEnumBranch,omitzero"`
-	NotFalse             ForbiddingSubschemaSpellingsNotFalse              `json:"notFalse,omitzero"`
 	NotNames             *ForbiddingSubschemaSpellingsNotNames             `json:"notNames,omitempty"`
-	NotShallowEnum       ForbiddingSubschemaSpellingsNotShallowEnum        `json:"notShallowEnum,omitzero"`
-	NotTypedConst        ForbiddingSubschemaSpellingsNotTypedConst         `json:"notTypedConst,omitzero"`
-	NotUnevalItems       []any                                             `json:"notUnevalItems,omitzero"`
 	NotUnevalProps       *ForbiddingSubschemaSpellingsNotUnevalProps       `json:"notUnevalProps,omitempty"`
 	NullableInlineNames  *ForbiddingSubschemaSpellingsNullableInlineNames  `json:"nullableInlineNames,omitempty"`
-	OkContains           []any                                             `json:"okContains,omitzero"`
 	OkNames              *ForbiddingSubschemaSpellingsOkNames              `json:"okNames,omitempty"`
-	OneOfContains        []any                                             `json:"oneOfContains,omitzero"`
 	OneOfDependent       *ForbiddingSubschemaSpellingsOneOfDependent       `json:"oneOfDependent,omitempty"`
 	OneOfNames           *ForbiddingSubschemaSpellingsOneOfNames           `json:"oneOfNames,omitempty"`
-	OneOfOneFalse        ForbiddingSubschemaSpellingsOneOfOneFalse         `json:"oneOfOneFalse,omitzero"`
-	OneOfUnevalItems     []any                                             `json:"oneOfUnevalItems,omitzero"`
 	OneOfUnevalProps     *ForbiddingSubschemaSpellingsOneOfUnevalProps     `json:"oneOfUnevalProps,omitempty"`
-	PlainItems           []string                                          `json:"plainItems,omitzero"`
 	RefNotNames          *ForbiddingSubschemaSpellingsRefNotNames          `json:"refNotNames,omitempty"`
-	UnionBranchRequired  ForbiddingSubschemaSpellingsUnionBranchRequired   `json:"unionBranchRequired,omitzero"`
-	StrBranchRequired    isForbiddingSubschemaSpellings_StrBranchRequired  `json:"-"`
 	AdditionalProperties map[string]json.RawMessage                        `json:"-"`
 	_jsonKeys            map[string]bool                                   // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                                   // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	AllOfContains        []any                                             `json:"allOfContains,omitzero"`
+	AllOfNot             ForbiddingSubschemaSpellingsAllOfNot              `json:"allOfNot,omitzero"`
+	AnyOfNot             ForbiddingSubschemaSpellingsAnyOfNot              `json:"anyOfNot,omitzero"`
+	AnyOfOneFalse        ForbiddingSubschemaSpellingsAnyOfOneFalse         `json:"anyOfOneFalse,omitzero"`
+	NotContains          []any                                             `json:"notContains,omitzero"`
+	NotEnumBranch        ForbiddingSubschemaSpellingsNotEnumBranch         `json:"notEnumBranch,omitzero"`
+	NotFalse             ForbiddingSubschemaSpellingsNotFalse              `json:"notFalse,omitzero"`
+	NotShallowEnum       ForbiddingSubschemaSpellingsNotShallowEnum        `json:"notShallowEnum,omitzero"`
+	NotTypedConst        ForbiddingSubschemaSpellingsNotTypedConst         `json:"notTypedConst,omitzero"`
+	NotUnevalItems       []any                                             `json:"notUnevalItems,omitzero"`
+	OkContains           []any                                             `json:"okContains,omitzero"`
+	OneOfContains        []any                                             `json:"oneOfContains,omitzero"`
+	OneOfOneFalse        ForbiddingSubschemaSpellingsOneOfOneFalse         `json:"oneOfOneFalse,omitzero"`
+	OneOfUnevalItems     []any                                             `json:"oneOfUnevalItems,omitzero"`
+	PlainItems           []string                                          `json:"plainItems,omitzero"`
+	UnionBranchRequired  ForbiddingSubschemaSpellingsUnionBranchRequired   `json:"unionBranchRequired,omitzero"`
 }
 
 // isForbiddingSubschemaSpellings_StrBranchRequired is a sealed interface for the StrBranchRequired field of ForbiddingSubschemaSpellings.
@@ -2725,46 +2725,46 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"allOfContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"allOfNot", jsonDecodeValue[ForbiddingSubschemaSpellingsAllOfNot]},
-			{"anyOfNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsAnyOfNames]},
-			{"anyOfNot", jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfNot]},
-			{"anyOfOneFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfOneFalse]},
-			{"inferredNotItems", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotItems]},
-			{"inferredNotSlot", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotSlot]},
-			{"inferredNotTail", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotTail]},
-			{"inferredOneOfItems", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfItems]},
-			{"inferredOneOfTail", jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfTail]},
-			{"inlineDepRequired", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineDepRequired]},
-			{"inlineFalseDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseDependent]},
-			{"inlineFalseNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseNames]},
-			{"inlineMaxProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMaxProps]},
-			{"inlineMinProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMinProps]},
-			{"inlineNotDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotDependent]},
-			{"inlineNotNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotNames]},
-			{"inlineRequired", jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineRequired]},
-			{"mapWithMinProps", jsonDecodeValues(jsonDecodeValue[string])},
-			{"notContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"notDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotDependent]},
-			{"notEnumBranch", jsonDecodeValue[ForbiddingSubschemaSpellingsNotEnumBranch]},
-			{"notFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsNotFalse]},
-			{"notNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotNames]},
-			{"notShallowEnum", jsonDecodeValue[ForbiddingSubschemaSpellingsNotShallowEnum]},
-			{"notTypedConst", jsonDecodeValue[ForbiddingSubschemaSpellingsNotTypedConst]},
-			{"notUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
-			{"notUnevalProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsNotUnevalProps]},
-			{"nullableInlineNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsNullableInlineNames]},
-			{"okContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"okNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsOkNames]},
-			{"oneOfContains", jsonDecodeItems(jsonDecodeValue[any])},
-			{"oneOfDependent", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfDependent]},
-			{"oneOfNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfNames]},
-			{"oneOfOneFalse", jsonDecodeValue[ForbiddingSubschemaSpellingsOneOfOneFalse]},
-			{"oneOfUnevalItems", jsonDecodeItems(jsonDecodeValue[any])},
-			{"oneOfUnevalProps", jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfUnevalProps]},
-			{"plainItems", jsonDecodeItems(jsonDecodeValue[string])},
-			{"refNotNames", jsonDecodeValue[*ForbiddingSubschemaSpellingsRefNotNames]},
-			{"unionBranchRequired", jsonDecodeValue[ForbiddingSubschemaSpellingsUnionBranchRequired]},
+			{name: "allOfContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "allOfNot", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAllOfNot]},
+			{name: "anyOfNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsAnyOfNames]},
+			{name: "anyOfNot", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfNot]},
+			{name: "anyOfOneFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfOneFalse]},
+			{name: "inferredNotItems", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotItems]},
+			{name: "inferredNotSlot", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotSlot]},
+			{name: "inferredNotTail", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotTail]},
+			{name: "inferredOneOfItems", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfItems]},
+			{name: "inferredOneOfTail", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfTail]},
+			{name: "inlineDepRequired", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineDepRequired]},
+			{name: "inlineFalseDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseDependent]},
+			{name: "inlineFalseNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseNames]},
+			{name: "inlineMaxProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMaxProps]},
+			{name: "inlineMinProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMinProps]},
+			{name: "inlineNotDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotDependent]},
+			{name: "inlineNotNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotNames]},
+			{name: "inlineRequired", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineRequired]},
+			{name: "mapWithMinProps", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "notContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "notDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotDependent]},
+			{name: "notEnumBranch", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotEnumBranch]},
+			{name: "notFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotFalse]},
+			{name: "notNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotNames]},
+			{name: "notShallowEnum", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotShallowEnum]},
+			{name: "notTypedConst", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotTypedConst]},
+			{name: "notUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "notUnevalProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotUnevalProps]},
+			{name: "nullableInlineNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNullableInlineNames]},
+			{name: "okContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "okNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOkNames]},
+			{name: "oneOfContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "oneOfDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfDependent]},
+			{name: "oneOfNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfNames]},
+			{name: "oneOfOneFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsOneOfOneFalse]},
+			{name: "oneOfUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "oneOfUnevalProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfUnevalProps]},
+			{name: "plainItems", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "refNotNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsRefNotNames]},
+			{name: "unionBranchRequired", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsUnionBranchRequired]},
 		})
 	}
 

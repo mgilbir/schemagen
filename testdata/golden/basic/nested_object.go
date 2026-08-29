@@ -8,10 +8,10 @@ import (
 )
 
 type AddressLocation struct {
-	Latitude             float64                    `json:"latitude"`
-	Longitude            float64                    `json:"longitude"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Latitude             float64                    `json:"latitude"`
+	Longitude            float64                    `json:"longitude"`
 }
 
 func (a *AddressLocation) UnmarshalJSON(data []byte) error {
@@ -49,8 +49,8 @@ func (a *AddressLocation) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"latitude", jsonDecodeValue[float64]},
-			{"longitude", jsonDecodeValue[float64]},
+			{name: "latitude", decode: jsonDecodeValue[float64]},
+			{name: "longitude", decode: jsonDecodeValue[float64]},
 		})
 	}
 	{
@@ -130,13 +130,13 @@ func (a AddressLocation) Validate() error {
 }
 
 type Address struct {
-	City                 string                     `json:"city"`
 	Location             *AddressLocation           `json:"location,omitempty"`
 	State                *string                    `json:"state,omitempty"`
-	Street               string                     `json:"street"`
 	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	City                 string                     `json:"city"`
+	Street               string                     `json:"street"`
 }
 
 func (a *Address) UnmarshalJSON(data []byte) error {
@@ -177,11 +177,11 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"city", jsonDecodeValue[string]},
-			{"location", jsonDecodeValue[*AddressLocation]},
-			{"state", jsonDecodeValue[*string]},
-			{"street", jsonDecodeValue[string]},
-			{"zip", jsonDecodeValue[*string]},
+			{name: "city", decode: jsonDecodeValue[string]},
+			{name: "location", decode: jsonDecodeValue[*AddressLocation]},
+			{name: "state", decode: jsonDecodeValue[*string]},
+			{name: "street", decode: jsonDecodeValue[string]},
+			{name: "zip", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{

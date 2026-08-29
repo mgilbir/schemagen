@@ -8,9 +8,9 @@ import (
 )
 
 type RootTypeObjectOnly struct {
-	A                    string                     `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    string                     `json:"a"`
 }
 
 func (r *RootTypeObjectOnly) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (r *RootTypeObjectOnly) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[string]},
+			{name: "a", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

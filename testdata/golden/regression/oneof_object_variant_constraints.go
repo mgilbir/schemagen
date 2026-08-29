@@ -9,9 +9,9 @@ import (
 )
 
 type OneOfObjectVariantConstraintsAOption0 struct {
-	X                    string                     `json:"x"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	X                    string                     `json:"x"`
 }
 
 func (o *OneOfObjectVariantConstraintsAOption0) UnmarshalJSON(data []byte) error {
@@ -48,7 +48,7 @@ func (o *OneOfObjectVariantConstraintsAOption0) UnmarshalJSON(data []byte) error
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[string]},
+			{name: "x", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -129,9 +129,9 @@ func (o OneOfObjectVariantConstraintsAOption0) Validate() error {
 }
 
 type OneOfObjectVariantConstraintsAOption1 struct {
-	Y                    int64                      `json:"y"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Y                    int64                      `json:"y"`
 }
 
 func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error {
@@ -169,7 +169,7 @@ func (o *OneOfObjectVariantConstraintsAOption1) UnmarshalJSON(data []byte) error
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"y", jsonDecodeValue[jsonInteger]},
+			{name: "y", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 

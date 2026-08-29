@@ -253,15 +253,15 @@ func (r RefSiblingValues2020MapSiblingValue) Validate() error {
 // RefSiblingValues2020 - The other side of the draft split, and the control on the change #151 makes: from 2019-09 on a $ref is an ordinary applicator and the sibling does apply, so every rejection here has to survive a fix that removes those same rejections one draft earlier. The word `false` is admitted by the target and refused by each sibling, and that refusal is the whole of what this fixture watches.
 type RefSiblingValues2020 struct {
 	ConstSibling         *RefSiblingValues2020ConstSibling              `json:"constSibling,omitempty"`
-	EmptyEnumSibling     RefSiblingValues2020EmptyEnumSibling           `json:"emptyEnumSibling,omitzero"`
 	EnumSibling          *RefSiblingValues2020EnumSibling               `json:"enumSibling,omitempty"`
-	ListSibling          []RefSiblingValues2020ListSiblingItem          `json:"listSibling,omitzero"`
 	MapSibling           map[string]RefSiblingValues2020MapSiblingValue `json:"mapSibling,omitzero"`
-	NamedEmptyEnum       NamedEmptyEnum                                 `json:"namedEmptyEnum,omitzero"`
 	NamedSibling         *NamedSibling                                  `json:"namedSibling,omitempty"`
 	NoSibling            *Word                                          `json:"noSibling,omitempty"`
 	AdditionalProperties map[string]json.RawMessage                     `json:"-"`
 	_jsonKeys            map[string]bool                                // set by UnmarshalJSON for optional field / dependentSchemas validation
+	EmptyEnumSibling     RefSiblingValues2020EmptyEnumSibling           `json:"emptyEnumSibling,omitzero"`
+	ListSibling          []RefSiblingValues2020ListSiblingItem          `json:"listSibling,omitzero"`
+	NamedEmptyEnum       NamedEmptyEnum                                 `json:"namedEmptyEnum,omitzero"`
 }
 
 func (r *RefSiblingValues2020) UnmarshalJSON(data []byte) error {
@@ -305,14 +305,14 @@ func (r *RefSiblingValues2020) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"constSibling", jsonDecodeValue[*RefSiblingValues2020ConstSibling]},
-			{"emptyEnumSibling", jsonDecodeValue[RefSiblingValues2020EmptyEnumSibling]},
-			{"enumSibling", jsonDecodeValue[*RefSiblingValues2020EnumSibling]},
-			{"listSibling", jsonDecodeItems(jsonDecodeValue[RefSiblingValues2020ListSiblingItem])},
-			{"mapSibling", jsonDecodeValues(jsonDecodeValue[RefSiblingValues2020MapSiblingValue])},
-			{"namedEmptyEnum", jsonDecodeValue[NamedEmptyEnum]},
-			{"namedSibling", jsonDecodeValue[*NamedSibling]},
-			{"noSibling", jsonDecodeValue[*Word]},
+			{name: "constSibling", decode: jsonDecodeValue[*RefSiblingValues2020ConstSibling]},
+			{name: "emptyEnumSibling", decode: jsonDecodeValue[RefSiblingValues2020EmptyEnumSibling]},
+			{name: "enumSibling", decode: jsonDecodeValue[*RefSiblingValues2020EnumSibling]},
+			{name: "listSibling", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingValues2020ListSiblingItem])},
+			{name: "mapSibling", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingValues2020MapSiblingValue])},
+			{name: "namedEmptyEnum", decode: jsonDecodeValue[NamedEmptyEnum]},
+			{name: "namedSibling", decode: jsonDecodeValue[*NamedSibling]},
+			{name: "noSibling", decode: jsonDecodeValue[*Word]},
 		})
 	}
 	{

@@ -237,16 +237,16 @@ func (c ContentPosture2020WithSchema) Validate() error {
 
 // ContentPosture2020 - Issue #115, the other posture. From 2019-09 the content vocabulary is annotation-only by definition -- the official suite marks {"contentEncoding":"base64"} satisfied by a string that is not base64 at all -- so the same schemas must produce the same types with no check in them. The type is built either way on purpose: the dialect decides what Validate does, not what the generated API is.
 type ContentPosture2020 struct {
+	Branch               isContentPosture2020_Branch   `json:"-"`
 	Blob                 *ContentPosture2020Blob       `json:"blob,omitempty"`
 	Doc                  *string                       `json:"doc,omitempty"`
 	EncodedDoc           *ContentPosture2020EncodedDoc `json:"encodedDoc,omitempty"`
-	List                 []string                      `json:"list,omitzero"`
-	Tuple                []any                         `json:"tuple,omitzero"`
 	ViaAllOf             *ContentPosture2020ViaAllOf   `json:"viaAllOf,omitempty"`
 	WithSchema           *ContentPosture2020WithSchema `json:"withSchema,omitempty"`
-	Branch               isContentPosture2020_Branch   `json:"-"`
 	AdditionalProperties map[string]json.RawMessage    `json:"-"`
 	_jsonNulls           map[string]bool               // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	List                 []string                      `json:"list,omitzero"`
+	Tuple                []any                         `json:"tuple,omitzero"`
 }
 
 // isContentPosture2020_Branch is a sealed interface for the Branch field of ContentPosture2020.
@@ -334,13 +334,13 @@ func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"blob", jsonDecodeValue[*ContentPosture2020Blob]},
-			{"doc", jsonDecodeValue[*string]},
-			{"encodedDoc", jsonDecodeValue[*ContentPosture2020EncodedDoc]},
-			{"list", jsonDecodeItems(jsonDecodeValue[string])},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"viaAllOf", jsonDecodeValue[*ContentPosture2020ViaAllOf]},
-			{"withSchema", jsonDecodeValue[*ContentPosture2020WithSchema]},
+			{name: "blob", decode: jsonDecodeValue[*ContentPosture2020Blob]},
+			{name: "doc", decode: jsonDecodeValue[*string]},
+			{name: "encodedDoc", decode: jsonDecodeValue[*ContentPosture2020EncodedDoc]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "viaAllOf", decode: jsonDecodeValue[*ContentPosture2020ViaAllOf]},
+			{name: "withSchema", decode: jsonDecodeValue[*ContentPosture2020WithSchema]},
 		})
 	}
 

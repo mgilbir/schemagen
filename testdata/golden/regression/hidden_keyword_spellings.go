@@ -49,7 +49,7 @@ func (a *AnyOfSummary) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -185,7 +185,7 @@ func (a *AnyOfSummaryFalse) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -766,14 +766,14 @@ func (h HiddenKeywordSpellingsPlainEnum) Validate() error {
 type HiddenKeywordSpellings struct {
 	AnyOfSummaryEmptyEnum *AnyOfSummary                             `json:"anyOfSummaryEmptyEnum,omitempty"`
 	AnyOfSummaryFalse     *AnyOfSummaryFalse                        `json:"anyOfSummaryFalse,omitempty"`
-	ConstNullBranch       HiddenKeywordSpellingsConstNullBranch     `json:"constNullBranch,omitzero"`
-	ConstStringBranch     HiddenKeywordSpellingsConstStringBranch   `json:"constStringBranch,omitzero"`
-	OneOfConstNull        HiddenKeywordSpellingsOneOfConstNull      `json:"oneOfConstNull,omitzero"`
 	PatternConstNull      *HiddenKeywordSpellingsPatternConstNull   `json:"patternConstNull,omitempty"`
 	PatternConstString    *HiddenKeywordSpellingsPatternConstString `json:"patternConstString,omitempty"`
 	PlainEnum             *HiddenKeywordSpellingsPlainEnum          `json:"plainEnum,omitempty"`
 	AdditionalProperties  map[string]json.RawMessage                `json:"-"`
 	_jsonKeys             map[string]bool                           // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ConstNullBranch       HiddenKeywordSpellingsConstNullBranch     `json:"constNullBranch,omitzero"`
+	ConstStringBranch     HiddenKeywordSpellingsConstStringBranch   `json:"constStringBranch,omitzero"`
+	OneOfConstNull        HiddenKeywordSpellingsOneOfConstNull      `json:"oneOfConstNull,omitzero"`
 }
 
 func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
@@ -817,14 +817,14 @@ func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"anyOfSummaryEmptyEnum", jsonDecodeValue[*AnyOfSummary]},
-			{"anyOfSummaryFalse", jsonDecodeValue[*AnyOfSummaryFalse]},
-			{"constNullBranch", jsonDecodeValue[HiddenKeywordSpellingsConstNullBranch]},
-			{"constStringBranch", jsonDecodeValue[HiddenKeywordSpellingsConstStringBranch]},
-			{"oneOfConstNull", jsonDecodeValue[HiddenKeywordSpellingsOneOfConstNull]},
-			{"patternConstNull", jsonDecodeValue[*HiddenKeywordSpellingsPatternConstNull]},
-			{"patternConstString", jsonDecodeValue[*HiddenKeywordSpellingsPatternConstString]},
-			{"plainEnum", jsonDecodeValue[*HiddenKeywordSpellingsPlainEnum]},
+			{name: "anyOfSummaryEmptyEnum", decode: jsonDecodeValue[*AnyOfSummary]},
+			{name: "anyOfSummaryFalse", decode: jsonDecodeValue[*AnyOfSummaryFalse]},
+			{name: "constNullBranch", decode: jsonDecodeValue[HiddenKeywordSpellingsConstNullBranch]},
+			{name: "constStringBranch", decode: jsonDecodeValue[HiddenKeywordSpellingsConstStringBranch]},
+			{name: "oneOfConstNull", decode: jsonDecodeValue[HiddenKeywordSpellingsOneOfConstNull]},
+			{name: "patternConstNull", decode: jsonDecodeValue[*HiddenKeywordSpellingsPatternConstNull]},
+			{name: "patternConstString", decode: jsonDecodeValue[*HiddenKeywordSpellingsPatternConstString]},
+			{name: "plainEnum", decode: jsonDecodeValue[*HiddenKeywordSpellingsPlainEnum]},
 		})
 	}
 	{

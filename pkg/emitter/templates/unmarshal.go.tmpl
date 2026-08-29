@@ -5,7 +5,7 @@ StructDef.DecodeMembers and jsonDecodeMemberError.
 */}}
 {{define "decodemembers"}}jsonDecodeMemberError(data, err, []jsonMemberDecode{
 	{{- range .DecodeMembers}}
-	{{"{"}}{{printf "%q" .JSONName}}, {{.Decoder}}},
+	{name: {{printf "%q" .JSONName}}, decode: {{.Decoder}}},
 	{{- end}}
 }){{end}}
 
@@ -121,13 +121,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 	type Alias {{$struct.Name}}
+	{{- /* The shadows are declared pointers first and raw bytes last, which is
+	       the order they cost least in: a json.RawMessage is three words with
+	       its pointer in the first, so a bare pointer written after one is
+	       scanned through sixteen bytes of length and capacity to be reached.
+	       encoding/json matches a member by its tag, so which loop comes first
+	       decides nothing else. */}}
 	aux := &struct {
 		*Alias
-		{{- range $struct.OneOfs}}
-		{{- if .JSONName}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}}"`
-		{{- end}}
-		{{- end}}
 		{{- range $struct.Fields}}
 		{{- if and .LeafDecode (not .ManualJSON)}}
 		{{- /* Shadows the promoted field of the same name: an outer field wins
@@ -135,6 +136,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		       declared int64, json.Number or time.Time is never the decode
 		       destination. See jsonInteger, jsonNumber and jsonDateTime. */}}
 		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{.JSONName}}"`
+		{{- end}}
+		{{- end}}
+		{{- range $struct.OneOfs}}
+		{{- if .JSONName}}
+		{{.FieldName}} json.RawMessage `json:"{{.JSONName}}"`
 		{{- end}}
 		{{- end}}
 	}{

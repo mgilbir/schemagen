@@ -9,8 +9,8 @@ import (
 
 type Inner struct {
 	AdditionalProperties map[string]*Inner `json:"-"`
-	_nonObject           bool              // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject        json.RawMessage   // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool              // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (i *Inner) UnmarshalJSON(data []byte) error {

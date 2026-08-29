@@ -12,9 +12,9 @@ import (
 )
 
 type RowsItem struct {
-	Label                string                     `json:"label"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Label                string                     `json:"label"`
 }
 
 func (r *RowsItem) UnmarshalJSON(data []byte) error {
@@ -51,7 +51,7 @@ func (r *RowsItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"label", jsonDecodeValue[string]},
+			{name: "label", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -194,6 +194,8 @@ func (i ItemConstraintsMarksItem) Validate() error {
 }
 
 type ItemConstraints struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	Codes                []string                   `json:"codes,omitzero"`
 	Counts               []int64                    `json:"counts,omitzero"`
 	Grid                 [][]int64                  `json:"grid,omitzero"`
@@ -203,8 +205,6 @@ type ItemConstraints struct {
 	Ratios               []float64                  `json:"ratios,omitzero"`
 	Rows                 Rows                       `json:"rows,omitzero"`
 	Tags                 Tags                       `json:"tags,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (i *ItemConstraints) UnmarshalJSON(data []byte) error {
@@ -251,15 +251,15 @@ func (i *ItemConstraints) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"codes", jsonDecodeItems(jsonDecodeValue[string])},
-			{"counts", jsonDecodeItems(jsonDecodeValue[jsonInteger])},
-			{"grid", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonInteger]))},
-			{"marks", jsonDecodeItems(jsonDecodeValue[ItemConstraintsMarksItem])},
-			{"names", jsonDecodeItems(jsonDecodeValue[string])},
-			{"nicknames", jsonDecodeItems(jsonDecodeValue[*string])},
-			{"ratios", jsonDecodeItems(jsonDecodeValue[float64])},
-			{"rows", jsonDecodeValue[Rows]},
-			{"tags", jsonDecodeValue[Tags]},
+			{name: "codes", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "counts", decode: jsonDecodeItems(jsonDecodeValue[jsonInteger])},
+			{name: "grid", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonInteger]))},
+			{name: "marks", decode: jsonDecodeItems(jsonDecodeValue[ItemConstraintsMarksItem])},
+			{name: "names", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "nicknames", decode: jsonDecodeItems(jsonDecodeValue[*string])},
+			{name: "ratios", decode: jsonDecodeItems(jsonDecodeValue[float64])},
+			{name: "rows", decode: jsonDecodeValue[Rows]},
+			{name: "tags", decode: jsonDecodeValue[Tags]},
 		})
 	}
 

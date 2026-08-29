@@ -25,10 +25,10 @@ func (c CircleKind) Validate() error {
 }
 
 type Circle struct {
-	Kind                 CircleKind                 `json:"kind"`
-	Radius               float64                    `json:"radius"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Kind                 CircleKind                 `json:"kind"`
+	Radius               float64                    `json:"radius"`
 }
 
 func (c *Circle) UnmarshalJSON(data []byte) error {
@@ -66,8 +66,8 @@ func (c *Circle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"kind", jsonDecodeValue[CircleKind]},
-			{"radius", jsonDecodeValue[float64]},
+			{name: "kind", decode: jsonDecodeValue[CircleKind]},
+			{name: "radius", decode: jsonDecodeValue[float64]},
 		})
 	}
 	{
@@ -166,11 +166,11 @@ func (r RectangleKind) Validate() error {
 }
 
 type Rectangle struct {
-	Height               float64                    `json:"height"`
-	Kind                 RectangleKind              `json:"kind"`
-	Width                float64                    `json:"width"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Kind                 RectangleKind              `json:"kind"`
+	Height               float64                    `json:"height"`
+	Width                float64                    `json:"width"`
 }
 
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
@@ -209,9 +209,9 @@ func (r *Rectangle) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"height", jsonDecodeValue[float64]},
-			{"kind", jsonDecodeValue[RectangleKind]},
-			{"width", jsonDecodeValue[float64]},
+			{name: "height", decode: jsonDecodeValue[float64]},
+			{name: "kind", decode: jsonDecodeValue[RectangleKind]},
+			{name: "width", decode: jsonDecodeValue[float64]},
 		})
 	}
 	{
@@ -618,9 +618,9 @@ func (c CanvasShapesItem) Validate() error {
 
 type Canvas struct {
 	Name                 *string                    `json:"name,omitempty"`
-	Shapes               []CanvasShapesItem         `json:"shapes"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Shapes               []CanvasShapesItem         `json:"shapes"`
 }
 
 func (c *Canvas) UnmarshalJSON(data []byte) error {
@@ -658,8 +658,8 @@ func (c *Canvas) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[*string]},
-			{"shapes", jsonDecodeItems(jsonDecodeValue[CanvasShapesItem])},
+			{name: "name", decode: jsonDecodeValue[*string]},
+			{name: "shapes", decode: jsonDecodeItems(jsonDecodeValue[CanvasShapesItem])},
 		})
 	}
 	{

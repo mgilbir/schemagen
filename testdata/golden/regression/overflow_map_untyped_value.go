@@ -10,8 +10,8 @@ import (
 
 // AtLeastFive accepts any JSON value. Constraints apply only when the value is number.
 type AtLeastFive struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -130,8 +130,8 @@ func (o OverflowMapUntypedValueArrLenValue) Validate() error {
 
 // OverflowMapUntypedValueBareValue accepts any JSON value. Constraints apply only when the value is number.
 type OverflowMapUntypedValueBareValue struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -190,9 +190,9 @@ func (o OverflowMapUntypedValueBareValue) Validate() error {
 
 type OverflowMapUntypedValueObjReqValue struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (o *OverflowMapUntypedValueObjReqValue) UnmarshalJSON(data []byte) error {
@@ -351,8 +351,8 @@ func (o OverflowMapUntypedValueStrLenValue) Validate() error {
 
 // OverflowMapUntypedValueValue accepts any JSON value. Constraints apply only when the value is number.
 type OverflowMapUntypedValueValue struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -458,12 +458,12 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"arrLen", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueArrLenValue])},
-			{"bare", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueBareValue])},
-			{"objReq", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueObjReqValue])},
-			{"strLen", jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueStrLenValue])},
-			{"typed", jsonDecodeValues(jsonDecodeValue[float64])},
-			{"viaRef", jsonDecodeValues(jsonDecodeValue[AtLeastFive])},
+			{name: "arrLen", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueArrLenValue])},
+			{name: "bare", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueBareValue])},
+			{name: "objReq", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueObjReqValue])},
+			{name: "strLen", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueStrLenValue])},
+			{name: "typed", decode: jsonDecodeValues(jsonDecodeValue[float64])},
+			{name: "viaRef", decode: jsonDecodeValues(jsonDecodeValue[AtLeastFive])},
 		})
 	}
 	{

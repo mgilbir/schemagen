@@ -10,8 +10,8 @@ import (
 type Base struct {
 	X                    *int64                     `json:"x,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (b *Base) UnmarshalJSON(data []byte) error {
@@ -55,7 +55,7 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*jsonInteger]},
+			{name: "x", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -177,7 +177,7 @@ func (a *AnyOfBranchUnevaluatedNoProperties) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*jsonInteger]},
+			{name: "x", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 

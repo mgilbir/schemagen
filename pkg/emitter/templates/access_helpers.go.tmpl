@@ -28,16 +28,18 @@ const (
 	_accessTuple
 )
 
+// Declared with the members that carry a pointer first and the plain integers
+// last, which is what keeps the garbage collector's scan of a rule's path short.
 type _accessStep struct {
-	Kind  int
-	Name  string
-	Index int
+	Name string
 	// Except and ExceptPatterns are what an _accessOther step steps past: the
 	// members the same schema object declares by name and by pattern, which are
 	// exactly the ones additionalProperties and unevaluatedProperties do not
 	// reach.
 	Except         []string
 	ExceptPatterns []string
+	Kind           int
+	Index          int
 }
 
 type _accessRule struct {

@@ -18,8 +18,8 @@
 // reaches it, so which of the three applies is a fact about the message that has
 // to travel with it. See issues #279 and #280.
 type jsonPathError struct {
-	sep string
 	err error
+	sep string
 }
 
 func (e jsonPathError) Error() string { return e.err.Error() }
@@ -87,8 +87,8 @@ func jsonElemPathf(err error, segFormat string, args ...any) error {
 // jsonMemberDecode is one member a schema declares, together with the decode
 // that member's own position performs. See jsonDecodeMemberError.
 type jsonMemberDecode struct {
-	name   string
 	decode func([]byte) error
+	name   string
 }
 
 // jsonDecodeMemberError gives a refusal raised while decoding an object the path
@@ -1102,9 +1102,9 @@ func jsonNumberIsMultipleOf(v json.Number, m string) bool {
 // value itself when Reject is set, and beneath it at the level Elem names. A
 // rule whose Elem is nil ends the walk.
 type jsonNullRule struct {
+	Elem   *jsonNullRule
 	Reject bool
 	IsMap  bool
-	Elem   *jsonNullRule
 }
 
 // checkJSONNullsAt reports the first position beneath data at which the document

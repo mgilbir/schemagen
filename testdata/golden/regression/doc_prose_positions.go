@@ -126,7 +126,7 @@ func (p *ProseBesideAllOf) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"b", jsonDecodeValue[*string]},
+			{name: "b", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -319,7 +319,7 @@ func (p *ProseViaAllOfStruct) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"s", jsonDecodeValue[*string]},
+			{name: "s", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -425,8 +425,8 @@ func (p *ProseViaAnyOf) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"x", jsonDecodeValue[*string]},
-			{"y", jsonDecodeValue[*string]},
+			{name: "x", decode: jsonDecodeValue[*string]},
+			{name: "y", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -687,7 +687,7 @@ func (p *ProseViaThen) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"k", jsonDecodeValue[*string]},
+			{name: "k", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -861,7 +861,7 @@ func (t *TitledDeprecatedStruct) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"d", jsonDecodeValue[*string]},
+			{name: "d", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -980,7 +980,7 @@ func (d *DocProsePositionsTitledElementItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"e", jsonDecodeValue[*string]},
+			{name: "e", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -1044,9 +1044,9 @@ func (d DocProsePositionsTitledElementItem) Validate() error {
 
 // ByLabel - The variant its own title names, so the label is in the identifier and only the prose is written above it.
 type ByLabel struct {
-	Label                string                     `json:"label"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Label                string                     `json:"label"`
 }
 
 func (b *ByLabel) UnmarshalJSON(data []byte) error {
@@ -1083,7 +1083,7 @@ func (b *ByLabel) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"label", jsonDecodeValue[string]},
+			{name: "label", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -1161,9 +1161,9 @@ func (b ByLabel) Validate() error {
 }
 
 type ByOrdinal struct {
-	Ordinal              int64                      `json:"ordinal"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Ordinal              int64                      `json:"ordinal"`
 }
 
 func (b *ByOrdinal) UnmarshalJSON(data []byte) error {
@@ -1201,7 +1201,7 @@ func (b *ByOrdinal) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"ordinal", jsonDecodeValue[jsonInteger]},
+			{name: "ordinal", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -1325,7 +1325,7 @@ func (d *DocProsePositionsTitledValueValue) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"v", jsonDecodeValue[*string]},
+			{name: "v", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -1389,6 +1389,7 @@ func (d DocProsePositionsTitledValueValue) Validate() error {
 
 // DocProsePositions - The two prose keywords, at every position each of them can be written and through every applicator that decides whether it is said about the declaration below it. Issue #188 is the `title` half: the keyword named the root type and a oneOf variant and reached the generated source nowhere else, so a schema whose only prose was a title documented nothing at all -- not a $defs entry, not a property, not an array element, not a map value. Issue #200 is the applicator half: a named type's comment was read off the node in hand and nothing else, so a $defs entry written {"allOf":[{"description":"..."}]} declared a bare Go type and lost its prose entirely, there being no field above it to carry it. The two are one matrix because they are one reading: unconditionalReachAt, folded once in Generator.docFor, for the title and the description and the four annotation keywords together. The *Cond and *Anyof cells are the control that says the reach stops where 2020-12 section 7.7.1 stops it, and the *Ref cells the control that says it stops at a reference, whose target carries its own comment.
 type DocProsePositions struct {
+	TitledUnion isDocProsePositions_TitledUnion `json:"-"`
 	// Prose with no label above it, which is the comment every schema in this repository's corpus used to produce.
 	DescriptionOnly          *string                   `json:"descriptionOnly,omitempty"`
 	EchoesTheRootTitle       *EchoesTheRootTitle       `json:"echoesTheRootTitle,omitempty"`
@@ -1400,7 +1401,6 @@ type DocProsePositions struct {
 	ProseBesideAllOf         *ProseBesideAllOf         `json:"proseBesideAllOf,omitempty"`
 	ProseSplitAcrossTheReach *ProseSplitAcrossTheReach `json:"proseSplitAcrossTheReach,omitempty"`
 	ProseViaAllOfAlias       *ProseViaAllOfAlias       `json:"proseViaAllOfAlias,omitempty"`
-	ProseViaAllOfArray       ProseViaAllOfArray        `json:"proseViaAllOfArray,omitzero"`
 	ProseViaAllOfEnum        *ProseViaAllOfEnum        `json:"proseViaAllOfEnum,omitempty"`
 	ProseViaAllOfStruct      *ProseViaAllOfStruct      `json:"proseViaAllOfStruct,omitempty"`
 	ProseViaAnyOf            *ProseViaAnyOf            `json:"proseViaAnyOf,omitempty"`
@@ -1430,13 +1430,13 @@ type DocProsePositions struct {
 	TitledDef              *TitledDef                                   `json:"titledDef,omitempty"`
 	TitledDeprecatedAlias  *TitledDeprecatedAlias                       `json:"titledDeprecatedAlias,omitempty"`
 	TitledDeprecatedStruct *TitledDeprecatedStruct                      `json:"titledDeprecatedStruct,omitempty"`
-	TitledElement          []DocProsePositionsTitledElementItem         `json:"titledElement,omitzero"`
 	TitledValue            map[string]DocProsePositionsTitledValueValue `json:"titledValue,omitzero"`
-	TitledUnion            isDocProsePositions_TitledUnion              `json:"-"`
 	AdditionalProperties   map[string]json.RawMessage                   `json:"-"`
 	_jsonKeys              map[string]bool                              // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps          map[string]json.RawMessage                   // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls             map[string]bool                              // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	ProseViaAllOfArray     ProseViaAllOfArray                           `json:"proseViaAllOfArray,omitzero"`
+	TitledElement          []DocProsePositionsTitledElementItem         `json:"titledElement,omitzero"`
 }
 
 // isDocProsePositions_TitledUnion is a sealed interface for the TitledUnion field of DocProsePositions.
@@ -1550,37 +1550,37 @@ func (d *DocProsePositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"descriptionOnly", jsonDecodeValue[*string]},
-			{"echoesTheRootTitle", jsonDecodeValue[*EchoesTheRootTitle]},
-			{"examplesAcrossTheReach", jsonDecodeValue[*ExamplesAcrossTheReach]},
-			{"mode", jsonDecodeValue[*string]},
-			{"nearestProseWins", jsonDecodeValue[*NearestProseWins]},
-			{"plainDef", jsonDecodeValue[*PlainDef]},
-			{"plainProperty", jsonDecodeValue[*string]},
-			{"proseBesideAllOf", jsonDecodeValue[*ProseBesideAllOf]},
-			{"proseSplitAcrossTheReach", jsonDecodeValue[*ProseSplitAcrossTheReach]},
-			{"proseViaAllOfAlias", jsonDecodeValue[*ProseViaAllOfAlias]},
-			{"proseViaAllOfArray", jsonDecodeValue[ProseViaAllOfArray]},
-			{"proseViaAllOfEnum", jsonDecodeValue[*ProseViaAllOfEnum]},
-			{"proseViaAllOfStruct", jsonDecodeValue[*ProseViaAllOfStruct]},
-			{"proseViaAnyOf", jsonDecodeValue[*ProseViaAnyOf]},
-			{"proseViaNestedAllOf", jsonDecodeValue[*ProseViaNestedAllOf]},
-			{"proseViaRef", jsonDecodeValue[*ProseViaRef]},
-			{"proseViaThen", jsonDecodeValue[*ProseViaThen]},
-			{"selfTitledDef", jsonDecodeValue[*SelfTitled]},
-			{"titleAndDescription", jsonDecodeValue[*string]},
-			{"titleCondThen", jsonDecodeValue[*string]},
-			{"titleOnly", jsonDecodeValue[*string]},
-			{"titleThenDeprecated", jsonDecodeValue[*string]},
-			{"titleViaAllOf", jsonDecodeValue[*DocProsePositionsTitleViaAllOf]},
-			{"titleViaMergedAllOf", jsonDecodeValue[*string]},
-			{"titleViaRef", jsonDecodeValue[*TitledTarget]},
-			{"titledAndDescribedDef", jsonDecodeValue[*TitledAndDescribedDef]},
-			{"titledDef", jsonDecodeValue[*TitledDef]},
-			{"titledDeprecatedAlias", jsonDecodeValue[*TitledDeprecatedAlias]},
-			{"titledDeprecatedStruct", jsonDecodeValue[*TitledDeprecatedStruct]},
-			{"titledElement", jsonDecodeItems(jsonDecodeValue[DocProsePositionsTitledElementItem])},
-			{"titledValue", jsonDecodeValues(jsonDecodeValue[DocProsePositionsTitledValueValue])},
+			{name: "descriptionOnly", decode: jsonDecodeValue[*string]},
+			{name: "echoesTheRootTitle", decode: jsonDecodeValue[*EchoesTheRootTitle]},
+			{name: "examplesAcrossTheReach", decode: jsonDecodeValue[*ExamplesAcrossTheReach]},
+			{name: "mode", decode: jsonDecodeValue[*string]},
+			{name: "nearestProseWins", decode: jsonDecodeValue[*NearestProseWins]},
+			{name: "plainDef", decode: jsonDecodeValue[*PlainDef]},
+			{name: "plainProperty", decode: jsonDecodeValue[*string]},
+			{name: "proseBesideAllOf", decode: jsonDecodeValue[*ProseBesideAllOf]},
+			{name: "proseSplitAcrossTheReach", decode: jsonDecodeValue[*ProseSplitAcrossTheReach]},
+			{name: "proseViaAllOfAlias", decode: jsonDecodeValue[*ProseViaAllOfAlias]},
+			{name: "proseViaAllOfArray", decode: jsonDecodeValue[ProseViaAllOfArray]},
+			{name: "proseViaAllOfEnum", decode: jsonDecodeValue[*ProseViaAllOfEnum]},
+			{name: "proseViaAllOfStruct", decode: jsonDecodeValue[*ProseViaAllOfStruct]},
+			{name: "proseViaAnyOf", decode: jsonDecodeValue[*ProseViaAnyOf]},
+			{name: "proseViaNestedAllOf", decode: jsonDecodeValue[*ProseViaNestedAllOf]},
+			{name: "proseViaRef", decode: jsonDecodeValue[*ProseViaRef]},
+			{name: "proseViaThen", decode: jsonDecodeValue[*ProseViaThen]},
+			{name: "selfTitledDef", decode: jsonDecodeValue[*SelfTitled]},
+			{name: "titleAndDescription", decode: jsonDecodeValue[*string]},
+			{name: "titleCondThen", decode: jsonDecodeValue[*string]},
+			{name: "titleOnly", decode: jsonDecodeValue[*string]},
+			{name: "titleThenDeprecated", decode: jsonDecodeValue[*string]},
+			{name: "titleViaAllOf", decode: jsonDecodeValue[*DocProsePositionsTitleViaAllOf]},
+			{name: "titleViaMergedAllOf", decode: jsonDecodeValue[*string]},
+			{name: "titleViaRef", decode: jsonDecodeValue[*TitledTarget]},
+			{name: "titledAndDescribedDef", decode: jsonDecodeValue[*TitledAndDescribedDef]},
+			{name: "titledDef", decode: jsonDecodeValue[*TitledDef]},
+			{name: "titledDeprecatedAlias", decode: jsonDecodeValue[*TitledDeprecatedAlias]},
+			{name: "titledDeprecatedStruct", decode: jsonDecodeValue[*TitledDeprecatedStruct]},
+			{name: "titledElement", decode: jsonDecodeItems(jsonDecodeValue[DocProsePositionsTitledElementItem])},
+			{name: "titledValue", decode: jsonDecodeValues(jsonDecodeValue[DocProsePositionsTitledValueValue])},
 		})
 	}
 

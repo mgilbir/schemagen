@@ -8,9 +8,9 @@ import (
 )
 
 type Metadata struct {
-	Version              string            `json:"version"`
 	AdditionalProperties map[string]string `json:"-"`
 	_jsonKeys            map[string]bool   // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Version              string            `json:"version"`
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
@@ -47,7 +47,7 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"version", jsonDecodeValue[string]},
+			{name: "version", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

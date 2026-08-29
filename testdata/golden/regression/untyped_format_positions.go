@@ -805,19 +805,19 @@ func (u UntypedFormatPositionsTupleItem0) Validate() error {
 
 // UntypedFormatPositions - A format stated without a type, in every position it can be written. Each resolved to `any`, which Go forbids methods on, so the format was asserted nowhere. The type it deserves is not a string: format is scoped to string instances, so a number, an object, an array, a boolean and a null all satisfy the schema outright.
 type UntypedFormatPositions struct {
+	Branch               isUntypedFormatPositions_Branch           `json:"-"`
 	Buckets              *UntypedFormatPositionsBuckets            `json:"buckets,omitempty"`
 	Chain                *UntypedChainOuter                        `json:"chain,omitempty"`
 	Inline               *UntypedFormatPositionsInline             `json:"inline,omitempty"`
-	List                 []UntypedFormatPositionsListItem          `json:"list,omitzero"`
 	Mail                 *UntypedFormatPositionsMail               `json:"mail,omitempty"`
 	Map                  map[string]UntypedFormatPositionsMapValue `json:"map,omitzero"`
 	Ref                  *BareV4                                   `json:"ref,omitempty"`
 	Stamp                *UntypedFormatPositionsStamp              `json:"stamp,omitempty"`
-	Tuple                []any                                     `json:"tuple,omitzero"`
 	Wrapped              *UntypedFormatPositionsWrapped            `json:"wrapped,omitempty"`
-	Branch               isUntypedFormatPositions_Branch           `json:"-"`
 	AdditionalProperties map[string]json.RawMessage                `json:"-"`
 	_jsonNulls           map[string]bool                           // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	List                 []UntypedFormatPositionsListItem          `json:"list,omitzero"`
+	Tuple                []any                                     `json:"tuple,omitzero"`
 }
 
 // isUntypedFormatPositions_Branch is a sealed interface for the Branch field of UntypedFormatPositions.
@@ -909,16 +909,16 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"buckets", jsonDecodeValue[*UntypedFormatPositionsBuckets]},
-			{"chain", jsonDecodeValue[*UntypedChainOuter]},
-			{"inline", jsonDecodeValue[*UntypedFormatPositionsInline]},
-			{"list", jsonDecodeItems(jsonDecodeValue[UntypedFormatPositionsListItem])},
-			{"mail", jsonDecodeValue[*UntypedFormatPositionsMail]},
-			{"map", jsonDecodeValues(jsonDecodeValue[UntypedFormatPositionsMapValue])},
-			{"ref", jsonDecodeValue[*BareV4]},
-			{"stamp", jsonDecodeValue[*UntypedFormatPositionsStamp]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"wrapped", jsonDecodeValue[*UntypedFormatPositionsWrapped]},
+			{name: "buckets", decode: jsonDecodeValue[*UntypedFormatPositionsBuckets]},
+			{name: "chain", decode: jsonDecodeValue[*UntypedChainOuter]},
+			{name: "inline", decode: jsonDecodeValue[*UntypedFormatPositionsInline]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[UntypedFormatPositionsListItem])},
+			{name: "mail", decode: jsonDecodeValue[*UntypedFormatPositionsMail]},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[UntypedFormatPositionsMapValue])},
+			{name: "ref", decode: jsonDecodeValue[*BareV4]},
+			{name: "stamp", decode: jsonDecodeValue[*UntypedFormatPositionsStamp]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "wrapped", decode: jsonDecodeValue[*UntypedFormatPositionsWrapped]},
 		})
 	}
 

@@ -10,23 +10,23 @@ import (
 
 // FormatHelperPositions - Formats whose check is a schemagenFormat* helper rather than a decode, in container positions ONLY. Draft 7 so they assert without a flag. A format on an array element or a map value used to emit the call and never declare the function, and the generated package did not compile. Container positions only is the point: a property, a tuple slot or a oneOf branch materializes a named type whose own check would pull the helper block in and mask the omission, so this fixture must contain none of them.
 type FormatHelperPositions struct {
+	HostMap              map[string]string          `json:"hostMap,omitzero"`
+	MailMap              map[string]string          `json:"mailMap,omitzero"`
+	V4map                map[string]netip.Addr      `json:"v4Map,omitzero"`
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	DateList             []string                   `json:"dateList,omitzero"`
 	DurationList         []string                   `json:"durationList,omitzero"`
 	HostList             []string                   `json:"hostList,omitzero"`
-	HostMap              map[string]string          `json:"hostMap,omitzero"`
 	IdnHostList          []string                   `json:"idnHostList,omitzero"`
 	IdnMailList          []string                   `json:"idnMailList,omitzero"`
 	MailList             []string                   `json:"mailList,omitzero"`
-	MailMap              map[string]string          `json:"mailMap,omitzero"`
 	Nested               [][]netip.Addr             `json:"nested,omitzero"`
 	RegexList            []string                   `json:"regexList,omitzero"`
 	TimeList             []string                   `json:"timeList,omitzero"`
 	URIList              []string                   `json:"uriList,omitzero"`
 	UUIDList             []string                   `json:"uuidList,omitzero"`
 	V4list               []netip.Addr               `json:"v4List,omitzero"`
-	V4map                map[string]netip.Addr      `json:"v4Map,omitzero"`
 	V6list               []netip.Addr               `json:"v6List,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
 func (f *FormatHelperPositions) UnmarshalJSON(data []byte) error {
@@ -81,22 +81,22 @@ func (f *FormatHelperPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"dateList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"durationList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"hostList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"hostMap", jsonDecodeValues(jsonDecodeValue[string])},
-			{"idnHostList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"idnMailList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"mailList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"mailMap", jsonDecodeValues(jsonDecodeValue[string])},
-			{"nested", jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr]))},
-			{"regexList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"timeList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"uriList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"uuidList", jsonDecodeItems(jsonDecodeValue[string])},
-			{"v4List", jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr])},
-			{"v4Map", jsonDecodeValues(jsonDecodeValue[jsonIPv4Addr])},
-			{"v6List", jsonDecodeItems(jsonDecodeValue[jsonIPv6Addr])},
+			{name: "dateList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "durationList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "hostList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "hostMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "idnHostList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "idnMailList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "mailList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "mailMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
+			{name: "nested", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr]))},
+			{name: "regexList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "timeList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "uriList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "uuidList", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "v4List", decode: jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr])},
+			{name: "v4Map", decode: jsonDecodeValues(jsonDecodeValue[jsonIPv4Addr])},
+			{name: "v6List", decode: jsonDecodeItems(jsonDecodeValue[jsonIPv6Addr])},
 		})
 	}
 	if aux.Nested != nil {

@@ -1,8 +1,14 @@
 {{define "struct"}}
 {{- template "type_doc" .}}
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" .HasProse}}
+{{- /* Members are in the order the layout pass chose, which is the order they
+       cost the least room and the least garbage-collector scanning in. The
+       three kinds are the schema's own properties, the sealed-interface field a
+       oneOf becomes, and the members this generator adds for itself. See
+       generator/members.go. */}}
 type {{.Name}} struct {
-{{- range .Fields}}
+{{- range .Members}}
+{{- if .IsProperty}}{{with .Field}}
 	{{- template "member_doc" .}}
 	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" .HasProse}}
 	{{- if .ManualJSON}}
@@ -11,29 +17,14 @@ type {{.Name}} struct {
 	{{.Name}} {{goType .Type}} `json:"{{.JSONName}}{{if .OmitZero}},omitzero{{else if .OmitEmpty}},omitempty{{end}}"`
 	{{- end}}
 {{- end}}
-{{- range .OneOfs}}
+{{- else if .IsUnion}}{{with .OneOf}}
 	{{- template "member_doc" .}}
 	{{- template "annotation_comment" mkAnnotationCtx .Annotations "\t" .HasProse}}
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`
 {{- end}}
-{{- if .AdditionalProperties}}
-	AdditionalProperties map[string]{{goType .AdditionalProperties.ValueType}} `json:"-"`
+{{- else}}
+	{{.Name}} {{goType .Type}}{{if .Tag}} `{{.Tag}}`{{end}}{{if .Comment}} // {{.Comment}}{{end}}
 {{- end}}
-{{- if .HasPatternProperties}}
-	PatternProperties map[string]json.RawMessage `json:"-"`
-{{- end}}
-{{- if .AcceptNonObject}}
-	_nonObject    bool            // set by UnmarshalJSON when the JSON data is not an object
-	_rawNonObject json.RawMessage // raw bytes of non-object data for lossless roundtrip
-{{- end}}
-{{- if .NeedsJSONKeys}}
-	_jsonKeys map[string]bool // set by UnmarshalJSON for optional field / dependentSchemas validation
-{{- end}}
-{{- if .NeedsRawProps}}
-	_jsonRawProps map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
-{{- end}}
-{{- if .NeedsJSONNulls}}
-	_jsonNulls map[string]bool // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 {{- end}}
 }
 {{- if .AccessRules}}

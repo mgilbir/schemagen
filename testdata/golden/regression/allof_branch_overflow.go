@@ -51,7 +51,7 @@ func (s *StrictBase) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"base", jsonDecodeValue[*jsonInteger]},
+			{name: "base", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -174,8 +174,8 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -430,7 +430,7 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -591,8 +591,8 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -747,8 +747,8 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
-			{"b", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -890,7 +890,7 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -1057,7 +1057,7 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -1193,7 +1193,7 @@ func (a *AllOfBranchOverflowObjectValueA) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"n", jsonDecodeValue[*jsonInteger]},
+			{name: "n", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -1264,9 +1264,9 @@ func (a AllOfBranchOverflowObjectValueA) Validate() error {
 }
 
 type AllOfBranchOverflowObjectValueBranch0Value struct {
-	N                    int64                      `json:"n"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	N                    int64                      `json:"n"`
 }
 
 func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) error {
@@ -1304,7 +1304,7 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) UnmarshalJSON(data []byte) 
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"n", jsonDecodeValue[jsonInteger]},
+			{name: "n", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -1434,7 +1434,7 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*AllOfBranchOverflowObjectValueA]},
+			{name: "a", decode: jsonDecodeValue[*AllOfBranchOverflowObjectValueA]},
 		})
 	}
 	{
@@ -1529,9 +1529,9 @@ func (a AllOfBranchOverflowObjectValue) Validate() error {
 }
 
 type AllOfBranchOverflowOwnAdditional struct {
-	A                    int64            `json:"a"`
 	AdditionalProperties map[string]int64 `json:"-"`
 	_jsonKeys            map[string]bool  // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    int64            `json:"a"`
 }
 
 func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
@@ -1569,7 +1569,7 @@ func (a *AllOfBranchOverflowOwnAdditional) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -1671,9 +1671,9 @@ func (a AllOfBranchOverflowOwnAdditional) Validate() error {
 }
 
 type AllOfBranchOverflowPlain struct {
-	A                    int64                      `json:"a"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	A                    int64                      `json:"a"`
 }
 
 func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
@@ -1711,7 +1711,7 @@ func (a *AllOfBranchOverflowPlain) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -1993,7 +1993,7 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -2155,8 +2155,8 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"base", jsonDecodeValue[*jsonInteger]},
-			{"other", jsonDecodeValue[*jsonInteger]},
+			{name: "base", decode: jsonDecodeValue[*jsonInteger]},
+			{name: "other", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 
@@ -2315,18 +2315,18 @@ func (a *AllOfBranchOverflow) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"adjacent", jsonDecodeValue[*AllOfBranchOverflowAdjacent]},
-			{"bare", jsonDecodeValue[*AllOfBranchOverflowBare]},
-			{"branchUnevaluated", jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluated]},
-			{"branchUnevaluatedFalse", jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluatedFalse]},
-			{"forbid", jsonDecodeValue[*AllOfBranchOverflowForbid]},
-			{"nestedAllOf", jsonDecodeValue[*AllOfBranchOverflowNestedAllOf]},
-			{"objectValue", jsonDecodeValue[*AllOfBranchOverflowObjectValue]},
-			{"ownAdditional", jsonDecodeValue[*AllOfBranchOverflowOwnAdditional]},
-			{"plain", jsonDecodeValue[*AllOfBranchOverflowPlain]},
-			{"soleBranch", jsonDecodeValue[*AllOfBranchOverflowSoleBranch]},
-			{"twoBranches", jsonDecodeValue[*AllOfBranchOverflowTwoBranches]},
-			{"viaRef", jsonDecodeValue[*AllOfBranchOverflowViaRef]},
+			{name: "adjacent", decode: jsonDecodeValue[*AllOfBranchOverflowAdjacent]},
+			{name: "bare", decode: jsonDecodeValue[*AllOfBranchOverflowBare]},
+			{name: "branchUnevaluated", decode: jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluated]},
+			{name: "branchUnevaluatedFalse", decode: jsonDecodeValue[*AllOfBranchOverflowBranchUnevaluatedFalse]},
+			{name: "forbid", decode: jsonDecodeValue[*AllOfBranchOverflowForbid]},
+			{name: "nestedAllOf", decode: jsonDecodeValue[*AllOfBranchOverflowNestedAllOf]},
+			{name: "objectValue", decode: jsonDecodeValue[*AllOfBranchOverflowObjectValue]},
+			{name: "ownAdditional", decode: jsonDecodeValue[*AllOfBranchOverflowOwnAdditional]},
+			{name: "plain", decode: jsonDecodeValue[*AllOfBranchOverflowPlain]},
+			{name: "soleBranch", decode: jsonDecodeValue[*AllOfBranchOverflowSoleBranch]},
+			{name: "twoBranches", decode: jsonDecodeValue[*AllOfBranchOverflowTwoBranches]},
+			{name: "viaRef", decode: jsonDecodeValue[*AllOfBranchOverflowViaRef]},
 		})
 	}
 	{

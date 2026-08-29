@@ -353,19 +353,19 @@ func (a AllOfInlinePositionsTupleItem0) Validate() error {
 
 // AllOfInlinePositions - A single-branch allOf written inline, in every position that resolves a type rather than naming one
 type AllOfInlinePositions struct {
+	Union                isAllOfInlinePositions_Union            `json:"-"`
 	Chain                *AllOfInlinePositionsChain              `json:"chain,omitempty"`
 	IP                   *AllOfInlinePositionsIP                 `json:"ip,omitempty"`
-	List                 []AllOfInlinePositionsListItem          `json:"list,omitzero"`
 	Lvl                  *AllOfInlinePositionsLvl                `json:"lvl,omitempty"`
 	Map                  map[string]AllOfInlinePositionsMapValue `json:"map,omitzero"`
 	Nested               *AllOfInlinePositionsNested             `json:"nested,omitempty"`
 	Pick                 *AllOfInlinePositionsPick               `json:"pick,omitempty"`
-	Raw                  AllOfInlinePositionsRaw                 `json:"raw,omitempty"`
-	Tuple                []any                                   `json:"tuple,omitzero"`
-	Union                isAllOfInlinePositions_Union            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage              `json:"-"`
 	_jsonKeys            map[string]bool                         // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                         // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	List                 []AllOfInlinePositionsListItem          `json:"list,omitzero"`
+	Raw                  AllOfInlinePositionsRaw                 `json:"raw,omitempty"`
+	Tuple                []any                                   `json:"tuple,omitzero"`
 }
 
 // isAllOfInlinePositions_Union is a sealed interface for the Union field of AllOfInlinePositions.
@@ -456,15 +456,15 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"chain", jsonDecodeValue[*AllOfInlinePositionsChain]},
-			{"ip", jsonDecodeValue[*AllOfInlinePositionsIP]},
-			{"list", jsonDecodeItems(jsonDecodeValue[AllOfInlinePositionsListItem])},
-			{"lvl", jsonDecodeValue[*AllOfInlinePositionsLvl]},
-			{"map", jsonDecodeValues(jsonDecodeValue[AllOfInlinePositionsMapValue])},
-			{"nested", jsonDecodeValue[*AllOfInlinePositionsNested]},
-			{"pick", jsonDecodeValue[*AllOfInlinePositionsPick]},
-			{"raw", jsonDecodeValue[AllOfInlinePositionsRaw]},
-			{"tuple", jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "chain", decode: jsonDecodeValue[*AllOfInlinePositionsChain]},
+			{name: "ip", decode: jsonDecodeValue[*AllOfInlinePositionsIP]},
+			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[AllOfInlinePositionsListItem])},
+			{name: "lvl", decode: jsonDecodeValue[*AllOfInlinePositionsLvl]},
+			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[AllOfInlinePositionsMapValue])},
+			{name: "nested", decode: jsonDecodeValue[*AllOfInlinePositionsNested]},
+			{name: "pick", decode: jsonDecodeValue[*AllOfInlinePositionsPick]},
+			{name: "raw", decode: jsonDecodeValue[AllOfInlinePositionsRaw]},
+			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
 		})
 	}
 

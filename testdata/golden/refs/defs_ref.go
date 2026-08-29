@@ -8,11 +8,11 @@ import (
 )
 
 type Address struct {
-	City                 string                     `json:"city"`
-	Street               string                     `json:"street"`
 	Zip                  *string                    `json:"zip,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	City                 string                     `json:"city"`
+	Street               string                     `json:"street"`
 }
 
 func (a *Address) UnmarshalJSON(data []byte) error {
@@ -51,9 +51,9 @@ func (a *Address) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"city", jsonDecodeValue[string]},
-			{"street", jsonDecodeValue[string]},
-			{"zip", jsonDecodeValue[*string]},
+			{name: "city", decode: jsonDecodeValue[string]},
+			{name: "street", decode: jsonDecodeValue[string]},
+			{name: "zip", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -135,11 +135,11 @@ func (a Address) Validate() error {
 }
 
 type Item struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	Name                 string                     `json:"name"`
 	Price                float64                    `json:"price"`
 	Quantity             int64                      `json:"quantity"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (i *Item) UnmarshalJSON(data []byte) error {
@@ -179,9 +179,9 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"name", jsonDecodeValue[string]},
-			{"price", jsonDecodeValue[float64]},
-			{"quantity", jsonDecodeValue[jsonInteger]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "price", decode: jsonDecodeValue[float64]},
+			{name: "quantity", decode: jsonDecodeValue[jsonInteger]},
 		})
 	}
 
@@ -272,11 +272,11 @@ func (i Item) Validate() error {
 
 type Order struct {
 	BillingAddress       *Address                   `json:"billing_address,omitempty"`
-	Items                []Item                     `json:"items"`
-	OrderID              string                     `json:"order_id"`
-	ShippingAddress      Address                    `json:"shipping_address"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ShippingAddress      Address                    `json:"shipping_address"`
+	OrderID              string                     `json:"order_id"`
+	Items                []Item                     `json:"items"`
 }
 
 func (o *Order) UnmarshalJSON(data []byte) error {
@@ -316,10 +316,10 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"billing_address", jsonDecodeValue[*Address]},
-			{"items", jsonDecodeItems(jsonDecodeValue[Item])},
-			{"order_id", jsonDecodeValue[string]},
-			{"shipping_address", jsonDecodeValue[Address]},
+			{name: "billing_address", decode: jsonDecodeValue[*Address]},
+			{name: "items", decode: jsonDecodeItems(jsonDecodeValue[Item])},
+			{name: "order_id", decode: jsonDecodeValue[string]},
+			{name: "shipping_address", decode: jsonDecodeValue[Address]},
 		})
 	}
 	{

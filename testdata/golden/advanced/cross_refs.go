@@ -8,11 +8,11 @@ import (
 )
 
 type Metadata struct {
-	Created              string                     `json:"created"`
-	Tags                 []string                   `json:"tags,omitzero"`
-	Title                string                     `json:"title"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Created              string                     `json:"created"`
+	Title                string                     `json:"title"`
+	Tags                 []string                   `json:"tags,omitzero"`
 }
 
 func (m *Metadata) UnmarshalJSON(data []byte) error {
@@ -51,9 +51,9 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"created", jsonDecodeValue[string]},
-			{"tags", jsonDecodeItems(jsonDecodeValue[string])},
-			{"title", jsonDecodeValue[string]},
+			{name: "created", decode: jsonDecodeValue[string]},
+			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "title", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -140,9 +140,9 @@ func (m Metadata) Validate() error {
 
 type Person struct {
 	Email                *string                    `json:"email,omitempty"`
-	Name                 string                     `json:"name"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
 }
 
 func (p *Person) UnmarshalJSON(data []byte) error {
@@ -180,8 +180,8 @@ func (p *Person) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"email", jsonDecodeValue[*string]},
-			{"name", jsonDecodeValue[string]},
+			{name: "email", decode: jsonDecodeValue[*string]},
+			{name: "name", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -262,10 +262,10 @@ func (p Person) Validate() error {
 
 type Section struct {
 	Body                 *string                    `json:"body,omitempty"`
-	Heading              string                     `json:"heading"`
-	Subsections          []Section                  `json:"subsections,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Heading              string                     `json:"heading"`
+	Subsections          []Section                  `json:"subsections,omitzero"`
 }
 
 func (s *Section) UnmarshalJSON(data []byte) error {
@@ -304,9 +304,9 @@ func (s *Section) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"body", jsonDecodeValue[*string]},
-			{"heading", jsonDecodeValue[string]},
-			{"subsections", jsonDecodeItems(jsonDecodeValue[Section])},
+			{name: "body", decode: jsonDecodeValue[*string]},
+			{name: "heading", decode: jsonDecodeValue[string]},
+			{name: "subsections", decode: jsonDecodeItems(jsonDecodeValue[Section])},
 		})
 	}
 	{
@@ -399,10 +399,10 @@ func (s Section) Validate() error {
 // Document - Schema using $defs with multiple cross-references
 type Document struct {
 	Author               *Person                    `json:"author,omitempty"`
-	Metadata             Metadata                   `json:"metadata"`
-	Sections             []Section                  `json:"sections"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Metadata             Metadata                   `json:"metadata"`
+	Sections             []Section                  `json:"sections"`
 }
 
 func (d *Document) UnmarshalJSON(data []byte) error {
@@ -441,9 +441,9 @@ func (d *Document) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"author", jsonDecodeValue[*Person]},
-			{"metadata", jsonDecodeValue[Metadata]},
-			{"sections", jsonDecodeItems(jsonDecodeValue[Section])},
+			{name: "author", decode: jsonDecodeValue[*Person]},
+			{name: "metadata", decode: jsonDecodeValue[Metadata]},
+			{name: "sections", decode: jsonDecodeItems(jsonDecodeValue[Section])},
 		})
 	}
 	{

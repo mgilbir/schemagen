@@ -84,11 +84,11 @@ func (u UnevaluatedItemsTestAllofExtendedTuple) Validate() error {
 }
 
 type UnevaluatedItemsTest struct {
+	AdditionalProperties map[string]json.RawMessage             `json:"-"`
+	_jsonKeys            map[string]bool                        // set by UnmarshalJSON for optional field / dependentSchemas validation
 	AllofExtendedTuple   UnevaluatedItemsTestAllofExtendedTuple `json:"allof_extended_tuple,omitzero"`
 	StrictTuple          []any                                  `json:"strict_tuple,omitzero"`
 	TypedOverflow        []any                                  `json:"typed_overflow,omitzero"`
-	AdditionalProperties map[string]json.RawMessage             `json:"-"`
-	_jsonKeys            map[string]bool                        // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
@@ -127,9 +127,9 @@ func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"allof_extended_tuple", jsonDecodeValue[UnevaluatedItemsTestAllofExtendedTuple]},
-			{"strict_tuple", jsonDecodeItems(jsonDecodeValue[any])},
-			{"typed_overflow", jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "allof_extended_tuple", decode: jsonDecodeValue[UnevaluatedItemsTestAllofExtendedTuple]},
+			{name: "strict_tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "typed_overflow", decode: jsonDecodeItems(jsonDecodeValue[any])},
 		})
 	}
 	{

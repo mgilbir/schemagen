@@ -9,8 +9,8 @@ import (
 
 // LowerValue accepts any JSON value. Constraints apply only when the value is number.
 type LowerValue struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -69,8 +69,8 @@ func (l LowerValue) Validate() error {
 
 type Lower struct {
 	AdditionalProperties map[string]LowerValue `json:"-"`
-	_nonObject           bool                  // set by UnmarshalJSON when the JSON data is not an object
 	_rawNonObject        json.RawMessage       // raw bytes of non-object data for lossless roundtrip
+	_nonObject           bool                  // set by UnmarshalJSON when the JSON data is not an object
 }
 
 func (l *Lower) UnmarshalJSON(data []byte) error {
@@ -232,8 +232,8 @@ func (a AllOfOverflowPositionsItemsItem) Validate() error {
 
 // AllOfOverflowPositionsNamedKeyBranch0Value accepts any JSON value. Constraints apply only when the value is number.
 type AllOfOverflowPositionsNamedKeyBranch0Value struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -292,8 +292,8 @@ func (a AllOfOverflowPositionsNamedKeyBranch0Value) Validate() error {
 
 // AllOfOverflowPositionsNamedKeyBranch1Value accepts any JSON value. Constraints apply only when the value is number.
 type AllOfOverflowPositionsNamedKeyBranch1Value struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -392,7 +392,7 @@ func (a *AllOfOverflowPositionsNamedKey) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*string]},
+			{name: "a", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -502,8 +502,8 @@ func (a AllOfOverflowPositionsNamedKey) Validate() error {
 
 // AllOfOverflowPositionsSoleBranchValue accepts any JSON value. Constraints apply only when the value is number.
 type AllOfOverflowPositionsSoleBranchValue struct {
-	_value float64
 	_raw   json.RawMessage
+	_value float64
 	_isRaw bool
 }
 
@@ -775,13 +775,13 @@ func (a AllOfOverflowPositionsViaRef) Validate() error {
 
 // AllOfOverflowPositions - Issue #112: an allOf whose branches each state an additionalProperties. Satisfying both is an allOf of the two sub-schemas, which one overflow value type cannot express, so the merge declines -- and the position was then typed map[string]any with no check at all. The runtime evaluator reads the allOf whole and is what these positions get instead.
 type AllOfOverflowPositions struct {
-	Items                []AllOfOverflowPositionsItemsItem `json:"items,omitzero"`
 	NamedKey             *AllOfOverflowPositionsNamedKey   `json:"namedKey,omitempty"`
 	SoleBranch           *AllOfOverflowPositionsSoleBranch `json:"soleBranch,omitempty"`
-	TwoBranches          AllOfOverflowPositionsTwoBranches `json:"twoBranches,omitzero"`
-	ViaRef               AllOfOverflowPositionsViaRef      `json:"viaRef,omitzero"`
 	AdditionalProperties map[string]json.RawMessage        `json:"-"`
 	_jsonKeys            map[string]bool                   // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Items                []AllOfOverflowPositionsItemsItem `json:"items,omitzero"`
+	TwoBranches          AllOfOverflowPositionsTwoBranches `json:"twoBranches,omitzero"`
+	ViaRef               AllOfOverflowPositionsViaRef      `json:"viaRef,omitzero"`
 }
 
 func (a *AllOfOverflowPositions) UnmarshalJSON(data []byte) error {
@@ -822,11 +822,11 @@ func (a *AllOfOverflowPositions) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"items", jsonDecodeItems(jsonDecodeValue[AllOfOverflowPositionsItemsItem])},
-			{"namedKey", jsonDecodeValue[*AllOfOverflowPositionsNamedKey]},
-			{"soleBranch", jsonDecodeValue[*AllOfOverflowPositionsSoleBranch]},
-			{"twoBranches", jsonDecodeValue[AllOfOverflowPositionsTwoBranches]},
-			{"viaRef", jsonDecodeValue[AllOfOverflowPositionsViaRef]},
+			{name: "items", decode: jsonDecodeItems(jsonDecodeValue[AllOfOverflowPositionsItemsItem])},
+			{name: "namedKey", decode: jsonDecodeValue[*AllOfOverflowPositionsNamedKey]},
+			{name: "soleBranch", decode: jsonDecodeValue[*AllOfOverflowPositionsSoleBranch]},
+			{name: "twoBranches", decode: jsonDecodeValue[AllOfOverflowPositionsTwoBranches]},
+			{name: "viaRef", decode: jsonDecodeValue[AllOfOverflowPositionsViaRef]},
 		})
 	}
 	{

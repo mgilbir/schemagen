@@ -10,10 +10,10 @@ import (
 
 type FieldBase struct {
 	Label                *string                    `json:"label,omitempty"`
-	Name                 string                     `json:"name"`
-	Type                 string                     `json:"type"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	Name                 string                     `json:"name"`
+	Type                 string                     `json:"type"`
 }
 
 func (f *FieldBase) UnmarshalJSON(data []byte) error {
@@ -52,9 +52,9 @@ func (f *FieldBase) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"label", jsonDecodeValue[*string]},
-			{"name", jsonDecodeValue[string]},
-			{"type", jsonDecodeValue[string]},
+			{name: "label", decode: jsonDecodeValue[*string]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "type", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -153,18 +153,18 @@ func (d DiaryFieldWidget) Validate() error {
 }
 
 type DiaryField struct {
-	Choices              []string                   `json:"choices,omitzero"`
 	Default              any                        `json:"default,omitempty"`
 	Label                *string                    `json:"label,omitempty"`
 	Max                  *float64                   `json:"max,omitempty"`
 	Min                  *float64                   `json:"min,omitempty"`
-	Name                 string                     `json:"name"`
-	Type                 string                     `json:"type"`
 	Widget               *DiaryFieldWidget          `json:"widget,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Name                 string                     `json:"name"`
+	Type                 string                     `json:"type"`
+	Choices              []string                   `json:"choices,omitzero"`
 }
 
 func (d *DiaryField) UnmarshalJSON(data []byte) error {
@@ -210,14 +210,14 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"choices", jsonDecodeItems(jsonDecodeValue[string])},
-			{"default", jsonDecodeValue[any]},
-			{"label", jsonDecodeValue[*string]},
-			{"max", jsonDecodeValue[*float64]},
-			{"min", jsonDecodeValue[*float64]},
-			{"name", jsonDecodeValue[string]},
-			{"type", jsonDecodeValue[string]},
-			{"widget", jsonDecodeValue[*DiaryFieldWidget]},
+			{name: "choices", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "default", decode: jsonDecodeValue[any]},
+			{name: "label", decode: jsonDecodeValue[*string]},
+			{name: "max", decode: jsonDecodeValue[*float64]},
+			{name: "min", decode: jsonDecodeValue[*float64]},
+			{name: "name", decode: jsonDecodeValue[string]},
+			{name: "type", decode: jsonDecodeValue[string]},
+			{name: "widget", decode: jsonDecodeValue[*DiaryFieldWidget]},
 		})
 	}
 	{

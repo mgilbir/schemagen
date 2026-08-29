@@ -233,20 +233,20 @@ func (r RefSiblingTypeSlotItem0) Validate() error {
 }
 
 type RefSiblingType struct {
-	Arr                  RefSiblingTypeArr                         `json:"arr,omitzero"`
 	Bounded              *RefSiblingTypeBounded                    `json:"bounded,omitempty"`
-	BoundedElem          []RefSiblingTypeBoundedElemItem           `json:"boundedElem,omitzero"`
 	BoundedMapv          map[string]RefSiblingTypeBoundedMapvValue `json:"boundedMapv,omitzero"`
-	BoundedSlot          []any                                     `json:"boundedSlot,omitzero"`
-	Elem                 []RefSiblingTypeElemItem                  `json:"elem,omitzero"`
 	Mapv                 map[string]RefSiblingTypeMapvValue        `json:"mapv,omitzero"`
 	Num                  *RefSiblingTypeNum                        `json:"num,omitempty"`
 	Plain                *MinLen3                                  `json:"plain,omitempty"`
-	Slot                 []any                                     `json:"slot,omitzero"`
 	Str                  *RefSiblingTypeStr                        `json:"str,omitempty"`
 	AdditionalProperties map[string]json.RawMessage                `json:"-"`
 	_jsonKeys            map[string]bool                           // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool                           // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Arr                  RefSiblingTypeArr                         `json:"arr,omitzero"`
+	BoundedElem          []RefSiblingTypeBoundedElemItem           `json:"boundedElem,omitzero"`
+	BoundedSlot          []any                                     `json:"boundedSlot,omitzero"`
+	Elem                 []RefSiblingTypeElemItem                  `json:"elem,omitzero"`
+	Slot                 []any                                     `json:"slot,omitzero"`
 }
 
 func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
@@ -294,17 +294,17 @@ func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"arr", jsonDecodeValue[RefSiblingTypeArr]},
-			{"bounded", jsonDecodeValue[*RefSiblingTypeBounded]},
-			{"boundedElem", jsonDecodeItems(jsonDecodeValue[RefSiblingTypeBoundedElemItem])},
-			{"boundedMapv", jsonDecodeValues(jsonDecodeValue[RefSiblingTypeBoundedMapvValue])},
-			{"boundedSlot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"elem", jsonDecodeItems(jsonDecodeValue[RefSiblingTypeElemItem])},
-			{"mapv", jsonDecodeValues(jsonDecodeValue[RefSiblingTypeMapvValue])},
-			{"num", jsonDecodeValue[*RefSiblingTypeNum]},
-			{"plain", jsonDecodeValue[*MinLen3]},
-			{"slot", jsonDecodeItems(jsonDecodeValue[any])},
-			{"str", jsonDecodeValue[*RefSiblingTypeStr]},
+			{name: "arr", decode: jsonDecodeValue[RefSiblingTypeArr]},
+			{name: "bounded", decode: jsonDecodeValue[*RefSiblingTypeBounded]},
+			{name: "boundedElem", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTypeBoundedElemItem])},
+			{name: "boundedMapv", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTypeBoundedMapvValue])},
+			{name: "boundedSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "elem", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTypeElemItem])},
+			{name: "mapv", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTypeMapvValue])},
+			{name: "num", decode: jsonDecodeValue[*RefSiblingTypeNum]},
+			{name: "plain", decode: jsonDecodeValue[*MinLen3]},
+			{name: "slot", decode: jsonDecodeItems(jsonDecodeValue[any])},
+			{name: "str", decode: jsonDecodeValue[*RefSiblingTypeStr]},
 		})
 	}
 	{

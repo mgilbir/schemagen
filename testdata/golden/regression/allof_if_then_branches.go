@@ -47,8 +47,8 @@ func (b *Base) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"condition", jsonDecodeValue[*string]},
-			{"delay", jsonDecodeValue[*string]},
+			{name: "condition", decode: jsonDecodeValue[*string]},
+			{name: "delay", decode: jsonDecodeValue[*string]},
 		})
 	}
 	{
@@ -113,9 +113,9 @@ func (b Base) Validate() error {
 }
 
 type TriggerToolItem struct {
-	ID                   string                     `json:"id"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
 }
 
 func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
@@ -152,7 +152,7 @@ func (t *TriggerToolItem) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
+			{name: "id", decode: jsonDecodeValue[string]},
 		})
 	}
 	{
@@ -247,17 +247,17 @@ func (t TriggerType) Validate() error {
 }
 
 type Trigger struct {
-	Condition            *string                    `json:"condition,omitempty"`
 	Default              any                        `json:"default,omitempty"`
+	Condition            *string                    `json:"condition,omitempty"`
 	Delay                *string                    `json:"delay,omitempty"`
 	Message              *string                    `json:"message,omitempty"`
-	Notify               []string                   `json:"notify,omitzero"`
 	Title                *string                    `json:"title,omitempty"`
-	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
 	Type                 *TriggerType               `json:"type,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	Notify               []string                   `json:"notify,omitzero"`
+	Tool                 []TriggerToolItem          `json:"tool,omitzero"`
 }
 
 func (t *Trigger) UnmarshalJSON(data []byte) error {
@@ -302,14 +302,14 @@ func (t *Trigger) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"condition", jsonDecodeValue[*string]},
-			{"default", jsonDecodeValue[any]},
-			{"delay", jsonDecodeValue[*string]},
-			{"message", jsonDecodeValue[*string]},
-			{"notify", jsonDecodeItems(jsonDecodeValue[string])},
-			{"title", jsonDecodeValue[*string]},
-			{"tool", jsonDecodeItems(jsonDecodeValue[TriggerToolItem])},
-			{"type", jsonDecodeValue[*TriggerType]},
+			{name: "condition", decode: jsonDecodeValue[*string]},
+			{name: "default", decode: jsonDecodeValue[any]},
+			{name: "delay", decode: jsonDecodeValue[*string]},
+			{name: "message", decode: jsonDecodeValue[*string]},
+			{name: "notify", decode: jsonDecodeItems(jsonDecodeValue[string])},
+			{name: "title", decode: jsonDecodeValue[*string]},
+			{name: "tool", decode: jsonDecodeItems(jsonDecodeValue[TriggerToolItem])},
+			{name: "type", decode: jsonDecodeValue[*TriggerType]},
 		})
 	}
 	{

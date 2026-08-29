@@ -108,6 +108,18 @@ type typeShape struct {
 	// of a local target through its own tables.
 	Unmarshaler bool
 	Marshaler   bool
+	// Layout is what a value of the type costs -- its size, its alignment, and
+	// how far into it the garbage collector must scan -- and LayoutKnown says
+	// whether the owning generator could work that out at all.
+	//
+	// A referencing package needs it to place its own members: a struct holding
+	// a foreign type has to know whether that type carries a pointer to decide
+	// where it goes. Nothing on this side can derive it, since deriving it means
+	// reading the foreign declaration. Where it is not known the referencing
+	// struct simply keeps the order its members were built in, which is what
+	// every generated struct had before layout.go existed.
+	Layout      goLayout
+	LayoutKnown bool
 }
 
 // noteTypeInfo records the owning generator's shape for a type previously

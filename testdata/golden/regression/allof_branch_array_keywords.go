@@ -219,13 +219,13 @@ func (t TwoBranches) Validate() error {
 }
 
 type AllOfBranchArrayKeywords struct {
+	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	Contains             ContainsInt                `json:"contains,omitzero"`
 	OwnPrefix            OwnPrefix                  `json:"ownPrefix,omitzero"`
 	Prefix               PrefixStr                  `json:"prefix,omitzero"`
 	TwoBranches          TwoBranches                `json:"twoBranches,omitzero"`
 	ViaRef               RefToContains              `json:"viaRef,omitzero"`
-	AdditionalProperties map[string]json.RawMessage `json:"-"`
-	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
 func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
@@ -266,11 +266,11 @@ func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"contains", jsonDecodeValue[ContainsInt]},
-			{"ownPrefix", jsonDecodeValue[OwnPrefix]},
-			{"prefix", jsonDecodeValue[PrefixStr]},
-			{"twoBranches", jsonDecodeValue[TwoBranches]},
-			{"viaRef", jsonDecodeValue[RefToContains]},
+			{name: "contains", decode: jsonDecodeValue[ContainsInt]},
+			{name: "ownPrefix", decode: jsonDecodeValue[OwnPrefix]},
+			{name: "prefix", decode: jsonDecodeValue[PrefixStr]},
+			{name: "twoBranches", decode: jsonDecodeValue[TwoBranches]},
+			{name: "viaRef", decode: jsonDecodeValue[RefToContains]},
 		})
 	}
 	{

@@ -13,10 +13,10 @@ import (
 
 // Record - Object with pattern properties and additional properties typed
 type Record struct {
-	ID                   string                     `json:"id"`
 	AdditionalProperties map[string]bool            `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	ID                   string                     `json:"id"`
 }
 
 func (r *Record) UnmarshalJSON(data []byte) error {
@@ -54,7 +54,7 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"id", jsonDecodeValue[string]},
+			{name: "id", decode: jsonDecodeValue[string]},
 		})
 	}
 	{

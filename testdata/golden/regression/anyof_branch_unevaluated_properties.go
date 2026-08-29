@@ -48,7 +48,7 @@ func (a *AnyOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 
 	if err := json.Unmarshal(_decodeData, aux); err != nil {
 		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{"a", jsonDecodeValue[*jsonInteger]},
+			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
 		})
 	}
 

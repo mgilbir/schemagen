@@ -583,6 +583,17 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		return nil, err
 	}
 
+	// Settle the order every struct's members are declared in, which is the
+	// order they cost least in rather than the order they were built in. See
+	// layout.go; StructDef.Fields is untouched, so nothing that reads a
+	// property list -- the decoder, the checks, the error paths -- moves.
+	//
+	// Last of the passes, because the members it orders are still being decided
+	// until the ones above have run: a default that resolveNamedTypeDefaults
+	// settles is what gives a struct its _jsonKeys, and a struct ordered before
+	// that would be ordered without it.
+	typeLayouts := g.orderMembersForLayout()
+
 	// Publish what this call's types are shaped like, so packages generated
 	// later in a cross-package run answer their own questions about them from
 	// this record rather than from a type table that has never seen them.
@@ -603,6 +614,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 				continue
 			}
 			nt := &NamedType{Name: name}
+			layout, layoutKnown := typeLayouts[name]
 			g.config.CrossPackage.noteTypeInfo(s, typeShape{
 				ZeroLiteral:       g.zeroLiteralForType(nt),
 				Validatable:       localTypeIsValidatable(td),
@@ -614,6 +626,8 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 				AliasDropsMethods: g.aliasDropsMethods(nt),
 				Unmarshaler:       unmarshalers[name],
 				Marshaler:         marshalers[name],
+				Layout:            layout,
+				LayoutKnown:       layoutKnown,
 			})
 		}
 	}
@@ -17054,6 +17068,14 @@ func crossPackageNamed(t GoType) *NamedType {
 	case *PrimitiveType:
 		// A built-in Go type. It holds nothing and names no generated type, in
 		// this package or any other.
+		return nil
+	case *InterfaceType:
+		// The sealed interface a oneOf group becomes. It is minted and declared
+		// by the struct template that carries the group, in the file being
+		// emitted, so it is never another package's -- and it holds no GoType:
+		// its variants are wrapper types named on the OneOfDef, which are
+		// walked from there. See StructMember.Type, the one position that puts
+		// one of these in a GoType at all.
 		return nil
 	}
 	return nil
