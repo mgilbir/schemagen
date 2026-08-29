@@ -33,20 +33,23 @@ ANALYZER=golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment
 # One entry per generator configuration whose output shape differs. The last is
 # everything at once, which is what reaches the combinations no single flag does.
 #
-# --omit-empty=false is missing on purpose: it does not currently produce code
-# that compiles (a `!= nil` emitted against a non-pointer field), and the
-# analyzer needs a package that type-checks. That is a defect of its own, filed
-# separately; when it is fixed, add the configuration here.
+# The analyzer needs a package that type-checks, so this sweep is also the only
+# thing in CI that compiles the corpus under anything but the default
+# configuration. That is not a side effect worth losing: --omit-empty=false is
+# here because it changes the Go type of every optional property, which is
+# exactly how it came to emit a `!= nil` against a plain string and produce a
+# package that did not build for any schema forbidding a property.
 declare -a CONFIGS=(
 	"default"
 	"bigint|--big-int"
 	"exact|--exact-numbers"
+	"no-omit-empty|--omit-empty=false"
 	"strict-properties|--strict-properties"
 	"strict-read-write|--strict-read-write"
 	"format-assertion|--format-assertion"
 	"hybrid|--validation|hybrid"
 	"runtime|--validation|runtime"
-	"combined|--big-int|--exact-numbers|--strict-properties|--strict-read-write|--format-assertion|--validation|hybrid"
+	"combined|--big-int|--exact-numbers|--omit-empty=false|--strict-properties|--strict-read-write|--format-assertion|--validation|hybrid"
 )
 
 workdir=${1:-}
