@@ -52,6 +52,86 @@ type Config struct {
 	// on, so a schema that states none gets what it always got.
 	ExactNumbers bool
 
+	// RawUntyped holds a position the schema gives no type to as the bytes the
+	// document wrote, rather than as the `any` encoding/json decodes them into.
+	//
+	// A schema-free position -- {"properties":{"payload":{}}}, a property whose
+	// schema is `true`, a $defs entry carrying a description and nothing else --
+	// has always been `any`, and encoding/json fills an `any` with whatever it
+	// makes of the JSON: a float64 for every number, a map[string]any for every
+	// object. So a document carrying
+	//
+	//	{"z": 9007199254740993, "a": 1.10, "big": 123456789012345678901234567890}
+	//
+	// in such a position comes back as
+	//
+	//	{"a":1.1,"big":1.2345678901234568e+29,"z":9007199254740992}
+	//
+	// -- an integer one past 2^53 rounded to its neighbour, a trailing zero
+	// dropped, a big integer rewritten in exponent notation, and the members
+	// reordered -- through a field the caller never touched. That is the gap
+	// ExactNumbers names at the end of its own comment: it acts on the declared
+	// type, and here there is no type to act on.
+	//
+	// On, every such position is encoding/json's json.RawMessage. The bytes that
+	// arrive are the bytes that leave, up to what encoding/json does to every
+	// RawMessage it writes: insignificant whitespace is dropped and the
+	// characters it always escapes inside a string are escaped. Number spelling,
+	// member order and every digit are kept. It reaches a property, an array
+	// element, a map value, a $defs alias and a reference cycle that carries no
+	// content -- the positions ExactNumbers reaches for a "number", read for a
+	// schema that states nothing -- and it reaches the values of an object typed
+	// "object" with no property schema at all, which is the same statement made
+	// about an object's members. A position held as a Go map -- that bare
+	// object, and additionalProperties: {} -- keeps each value's bytes but
+	// writes its own members in sorted order, as encoding/json writes every
+	// map; only a position held whole as a RawMessage keeps its member order.
+	//
+	// A caller cannot get there from outside, and that is why it is a
+	// configuration rather than advice. Setting UseNumber on their own
+	// json.Decoder never reaches the field: every generated struct has an
+	// UnmarshalJSON of its own and decodes its members through json.Unmarshal,
+	// which knows nothing of the decoder that called it. The field's type is the
+	// only thing that decides how the field is filled, and the type is what this
+	// changes.
+	//
+	// Opt-in for the reason ExactNumbers is: it changes the generated type, and a
+	// caller reading an `any` through a type switch wants the `any`. RawMessage
+	// hands the decode back to the caller, who is the only one who knows what a
+	// value the schema did not describe is for.
+	//
+	// What Validate says does not change. A schema that states nothing has
+	// nothing to check, and the two keywords that do judge an untyped value --
+	// const and enum -- have held it raw and compared it by JSON equality since
+	// #272, so they are not this flag's business. The comparisons that read a
+	// raw element from *beside* the untyped schema -- uniqueItems on an array of
+	// them, a contains naming a const or an enum -- are made through the same
+	// JSON-equality reduction rather than on the bytes, so [1, 1.0] is still
+	// not unique and 1.0 still satisfies {"const":1}. Byte equality is not
+	// JSON equality, and a flag about the bytes must not change a verdict
+	// defined over the values.
+	//
+	// Where it does not reach, and why:
+	//
+	//   - A tuple. Its elements are `any` because they differ from one another,
+	//     not because the schema left them untyped: each position has a schema
+	//     of its own, and the check on each reads the decoded value's kind. The
+	//     same slice is what an array with no `items` at all, and one carrying
+	//     unevaluatedItems, are held as, so a bare {"type":"array"} keeps its
+	//     []any; {"type":"array","items":{}} is the spelling that reaches this.
+	//   - An `any` that reports a gap rather than a schema. An alias whose
+	//     schema states keywords this generator could not compile stays `any`
+	//     under the NOT VALIDATED comment that says so, and a $ref that
+	//     LenientRefs degraded stays what that flag documents. Making either
+	//     raw would round-trip the value and hide that nothing is checking it.
+	//   - A oneOf branch. Which branch a value is held under is decided by its
+	//     shape, and the untyped branch is the one that catches what the others
+	//     did not; that is the union's own machinery, not a position this types.
+	//
+	// Independent of ExactNumbers and BigIntSupport, which act on a declared
+	// type and so never meet this at one position. The three compose.
+	RawUntyped bool
+
 	// FormatAssertion turns "format" into an assertion on every draft.
 	//
 	// Without it the dialect decides. Draft 3, 4, 6 and 7 leave format

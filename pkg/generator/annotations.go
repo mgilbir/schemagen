@@ -1765,7 +1765,13 @@ func (g *Generator) unenforcedAliasDef(name string, s *schema.Schema) *AliasDef 
 	if len(dropped) > 0 {
 		def.Unenforced = strings.Join(dropped, ", ")
 		g.unenforced = append(g.unenforced, UnenforcedSchema{TypeName: name, Keywords: dropped})
+		return def
 	}
+	// Nothing was dropped, so `any` is what the schema says and not a report
+	// of what the generator could not do. That is the one alias
+	// Config.RawUntyped reads: the comment above is about an interface, and
+	// stays true because the alias that carries it stays one.
+	def.Underlying = g.untypedType()
 	return def
 }
 

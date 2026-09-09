@@ -234,7 +234,16 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if err != nil {
 				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", i, err)
 			}
+			{{- if .RawElements}}
+			// Raw elements, compared as JSON values rather than as the bytes
+			// json.Marshal writes back unchanged. See _jsonCanonical.
+			key, err := _jsonCanonical(b)
+			if err != nil {
+				return jsonValueErrorf("uniqueItems check: invalid JSON at index %d: %w", i, err)
+			}
+			{{- else}}
 			key := string(b)
+			{{- end}}
 			if seen[key] {
 				return jsonValueErrorf("items are not unique (duplicate at index %d)", i)
 			}

@@ -411,6 +411,7 @@ func TestCompile(t *testing.T) {
 		"testdata/golden/defaults",
 		"testdata/golden/advanced",
 		"testdata/golden/bigint",
+		"testdata/golden/rawuntyped",
 		"testdata/golden/regression",
 	}
 

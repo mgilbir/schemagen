@@ -2,6 +2,29 @@
 
 ## 0.1.3
 
+### Added
+
+- `--raw-untyped` (`Config.RawUntyped`, config key `rawUntyped`) holds a
+  position the schema gives no type to as the bytes the document wrote
+  (`json.RawMessage`) rather than the `any` `encoding/json` decodes them into.
+  An untyped position — `{"properties":{"payload":{}}}`, a property whose
+  schema is `true`, a `$defs` entry with a description and nothing else — put
+  `{"z":9007199254740993,"a":1.10,"big":123456789012345678901234567890}`
+  through a `float64` and a `map[string]any` and returned
+  `{"a":1.1,"big":1.2345678901234568e+29,"z":9007199254740992}`: the integer
+  past 2^53 rounded, the trailing zero dropped, the big integer in exponent
+  notation, the members reordered. `--exact-numbers` could not reach it,
+  because it acts on the declared type and there is none. Under the new flag
+  the value round-trips as written in a property, an array element, a map
+  value, a `$defs` alias, a reference cycle with no content, and the values of
+  a bare `{"type":"object"}`; a tuple, a bare `{"type":"array"}`, an
+  unenforced alias, a lenient `$ref` and a `oneOf` branch keep their `any`,
+  for reasons the flag's doc comment gives. Validation verdicts are unchanged:
+  the checks that read a raw element from beside its schema — `uniqueItems`,
+  and a `contains` naming a `const` or an `enum` — compare canonical JSON
+  text rather than bytes, so `[1, 1.0]` is still not unique. Off by default,
+  and with it off the generated source is byte-identical to before.
+
 ### Changed
 
 - Generated structs now declare their fields in the order that costs the least

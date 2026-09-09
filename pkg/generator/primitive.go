@@ -60,7 +60,93 @@ func (g *Generator) primitiveTypeFromSchema(schemaType string) GoType {
 	if schemaType == "number" && g != nil && g.config.ExactNumbers {
 		return &PrimitiveType{Name: GoNumberTypeName}
 	}
+	// An object with no property schema at all. Its members are positions the
+	// schema gives no type to, exactly as {"additionalProperties":{}} would
+	// make them, so under Config.RawUntyped they are held the same way. The
+	// "array" mapping is deliberately not read through the flag: []any is
+	// what a tuple and an array carrying unevaluatedItems are held as, and
+	// the checks on those read each element as a decoded value. See
+	// Config.RawUntyped for the boundary.
+	if schemaType == "object" && g != nil && g.config.RawUntyped {
+		return &MapType{
+			KeyType:   &PrimitiveType{Name: "string"},
+			ValueType: &PrimitiveType{Name: GoRawTypeName},
+		}
+	}
 	return PrimitiveTypeFromSchema(schemaType)
+}
+
+// GoRawTypeName is the Go type a position the schema gives no type to is held
+// as under Config.RawUntyped: encoding/json's json.RawMessage, which is the
+// document's own bytes and so has not decided anything about the value.
+const GoRawTypeName = "json.RawMessage"
+
+// untypedType is the Go type for a position whose schema states nothing: `any`
+// by default, and json.RawMessage under Config.RawUntyped.
+//
+// It is asked only where `any` is what the schema *means* -- the fallback every
+// arm of resolveType declined, an alias over a schema with no keywords, a
+// reference cycle with no content. An `any` that stands for something the
+// generator could not compile is not built here and keeps its type under either
+// setting, so that the flag round-trips what the schema left open without
+// hiding what the generator gave up on. See Config.RawUntyped.
+func (g *Generator) untypedType() GoType {
+	if g != nil && g.config.RawUntyped {
+		return &PrimitiveType{Name: GoRawTypeName}
+	}
+	return &PrimitiveType{Name: "any"}
+}
+
+// rawElementSlice reports whether a Go type is a slice of json.RawMessage,
+// through a pointer if there is one: the shape an array of untyped elements has
+// under Config.RawUntyped, and the one shape whose elements a uniqueItems or a
+// contains check must compare as JSON values rather than as bytes.
+//
+// Asked of the type rather than of the schema, for the reason isExactNumberType
+// gives: the several places that build such a check reach the element's Go type
+// by different routes, and the type is the one answer they share.
+func rawElementSlice(t GoType) bool {
+	if pt, ok := t.(*PointerType); ok {
+		t = pt.Inner
+	}
+	at, ok := t.(*ArrayType)
+	if !ok {
+		return false
+	}
+	prim, ok := at.ItemType.(*PrimitiveType)
+	return ok && prim.Name == GoRawTypeName
+}
+
+// markRawElementRules sets RawElements on the uniqueItems rule of a position
+// whose elements are held as json.RawMessage, so that the emitted check reduces
+// each element to its canonical JSON text before comparing.
+//
+// json.Marshal of a RawMessage keeps the bytes as written, and the bytes are
+// not the value: [1, 1.0] and [{"a":1,"b":2},{"b":2,"a":1}] are each two
+// spellings of one element, which uniqueItems is defined to refuse. The check
+// on an `any` element gets the reduction for free from the decode; a raw
+// element has to ask for it. Called from each place that has both the rules and
+// the Go type they will be emitted against, on the same terms as
+// markExactNumberRules -- but with the failure mode reversed: a position this
+// misses compiles, and compares bytes. That is why the emitted branch takes the
+// marshalled bytes rather than the element, so it is right for an `any` element
+// as well, and why the position matrix in tests/ puts a uniqueItems beside an
+// untyped element in each shape this is called for: a property, an alias, and
+// an element that is itself an array.
+func markRawElementRules(rules []ValidationRule, t GoType) {
+	if !rawElementSlice(t) {
+		return
+	}
+	for i := range rules {
+		markRawElementRule(&rules[i], t)
+	}
+}
+
+// markRawElementRule is markRawElementRules for one rule.
+func markRawElementRule(r *ValidationRule, t GoType) {
+	if r.RuleType == "uniqueItems" && rawElementSlice(t) {
+		r.RawElements = true
+	}
 }
 
 // exactNumberRuleTypes names the rules whose emitted check reads its instance
