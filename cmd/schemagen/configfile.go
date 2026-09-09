@@ -36,6 +36,7 @@ type ConfigFile struct {
 	StrictReadWrite      *bool   `json:"strictReadWrite,omitempty"`
 	BigInt               *bool   `json:"bigInt,omitempty"`
 	ExactNumbers         *bool   `json:"exactNumbers,omitempty"`
+	RawUntyped           *bool   `json:"rawUntyped,omitempty"`
 	FormatAssertion      *bool   `json:"formatAssertion,omitempty"`
 	FormatAnnotation     *bool   `json:"formatAnnotation,omitempty"`
 	AllowRemoteRefs      *bool   `json:"allowRemoteRefs,omitempty"`

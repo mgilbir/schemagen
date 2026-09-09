@@ -78,6 +78,7 @@ Note that `-v` is `--version` on `schemagen` itself and `--verbose` on
 | `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
 | `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
 | `--exact-numbers` | | `false` | Hold `"type":"number"` as the literal the document wrote (`json.Number`) rather than the `float64` it rounds to, and compare every numeric keyword on it exactly (see below) |
+| `--raw-untyped` | | `false` | Hold a position the schema gives no type to as the bytes the document wrote (`json.RawMessage`) rather than the `any` they decode into, so number spelling, member order and every digit round-trip (see below) |
 | `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
 | `--format-annotation` | | `false` | Treat `format` as an annotation on every draft. The opposite of `--format-assertion`, and mutually exclusive with it |
 | `--allow-remote-refs` | | `false` | Allow fetching remote `$ref` schemas over HTTP/HTTPS |
@@ -298,7 +299,66 @@ Where it does not reach: a position the schema gives no type to. Those are held
 as `any`, and `encoding/json` makes a `float64` of a JSON number on the way into
 one whatever this flag says — a tuple element, an `any` field, a value judged
 only by a runtime rule. `--exact-numbers` acts on the declared type, so a schema
-that declares none gets what it always got.
+that declares none gets what it always got. `--raw-untyped`, next, is the flag
+for those.
+
+### Untyped positions: raw, or `any`
+
+A position the schema gives no type to — `{"properties":{"payload":{}}}`, a
+property whose schema is `true`, a `$defs` entry carrying a description and
+nothing else — is `any` by default, and `encoding/json` fills an `any` with
+whatever it makes of the JSON: a `float64` for every number, a `map[string]any`
+for every object. So a document carrying
+
+```json
+{"z": 9007199254740993, "a": 1.10, "m": [1.0, 2.50], "big": 123456789012345678901234567890}
+```
+
+in such a position comes back as
+
+```json
+{"a":1.1,"big":1.2345678901234568e+29,"m":[1,2.5],"z":9007199254740992}
+```
+
+— an integer one past 2^53 rounded to its neighbour, the trailing zeros
+dropped, a big integer rewritten in exponent notation, and the members
+reordered — through a field the caller never touched. Setting `UseNumber` on
+your own `json.Decoder` does not help: every generated struct has an
+`UnmarshalJSON` of its own, and it decodes its members through `json.Unmarshal`,
+which knows nothing of the decoder that called it. Only the field's type can say
+how the field is filled.
+
+```bash
+schemagen generate schema.json --raw-untyped
+```
+
+With it, every such position is `encoding/json`'s `json.RawMessage`. The bytes
+that arrive are the bytes that leave, up to what `encoding/json` does to every
+`RawMessage` it writes: insignificant whitespace is dropped and the characters
+it always escapes inside a string are escaped. Number spelling, member order and
+every digit are kept. It reaches a property, an array element (`items: {}`), a
+map value (`additionalProperties: {}`), a `$defs` alias, a reference cycle with
+no content, and the values of a bare `{"type":"object"}`. A position held as a
+Go map — the last two — keeps each value's bytes but writes its own members in
+sorted order, as `encoding/json` writes every map; a position held whole as a
+`RawMessage` keeps its member order too.
+
+Validation verdicts do not change. A schema that states nothing has nothing to
+check, and an untyped `const` or `enum` was already held raw and compared by
+JSON equality. The checks that read such an element from beside its schema —
+`uniqueItems` on an array of them, a `contains` naming a `const` or an `enum` —
+are made through the same JSON-equality reduction rather than on the bytes, so
+`[1, 1.0]` is still not unique and `1.0` still satisfies `{"const": 1}`.
+
+Where it does not reach: a tuple, whose elements are `any` because they differ
+from one another and each have a schema of their own; a bare `{"type":"array"}`,
+which is held as the same `[]any` a tuple is (`{"type":"array","items":{}}` is
+the spelling that reaches the flag); an alias whose schema states keywords the
+generator could not compile, which stays `any` under the comment that says so;
+a `$ref` that `--lenient-refs` degraded; and a `oneOf` branch, which the union's
+own machinery types. It is opt-in for the reason `--exact-numbers` is — it
+changes the generated type — and independent of both `--exact-numbers` and
+`--big-int`, which act on a declared type and so never meet it at one position.
 
 ### Property names and keywords are case-sensitive
 
@@ -862,8 +922,8 @@ schemagen generate --config schemagen.json
   directory.
 - Every boolean flag above has a config key of the same name in camel case --
   `omitEmpty`, `strictProperties`, `strictReadWrite`, `bigInt`, `exactNumbers`,
-  `formatAssertion`, `formatAnnotation`, `allowRemoteRefs`, `lenientRefs`,
-  `sharedTypes`, `rootNameFromFilename`.
+  `rawUntyped`, `formatAssertion`, `formatAnnotation`, `allowRemoteRefs`,
+  `lenientRefs`, `sharedTypes`, `rootNameFromFilename`.
 - `--field-map` keeps working and takes precedence over a document's
   `fieldNames`. The config form is preferred, since it keys by document rather
   than by file base name, which is not unique across an input set.

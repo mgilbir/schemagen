@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UntypedPositions",
+  "description": "Every position a schema can leave untyped, read twice: once under the default configuration, where it is `any`, and once under --raw-untyped, where it is the bytes the document wrote. The two goldens are the same document and differ in that and nothing else, which is what makes the flag's reach -- and its boundary -- readable rather than asserted. The controls are the positions the flag must leave alone: a tuple, a bare array, an untyped const and enum (already raw), a constraint-only schema (an inferred wrapper), and a typed integer.",
+  "type": "object",
+  "properties": {
+    "scalar": {"description": "Arbitrary JSON value"},
+    "required": {"description": "Arbitrary JSON value, required"},
+    "empty": {},
+    "anything": true,
+    "elements": {"type": "array", "items": {}},
+    "values": {"type": "object", "additionalProperties": {}},
+    "aliased": {"$ref": "#/$defs/Anything"},
+    "aliasedList": {"$ref": "#/$defs/AnythingList"},
+    "freeObject": {"type": "object"},
+    "nullableFreeObject": {"type": ["object", "null"]},
+    "cycle": {"$ref": "#/$defs/Loop"},
+    "unique": {"type": "array", "items": {}, "uniqueItems": true},
+    "nestedUnique": {"type": "array", "items": {"type": "array", "items": {}, "uniqueItems": true}},
+    "containsConst": {"type": "array", "items": {}, "contains": {"const": 1}},
+    "containsEnum": {"type": "array", "items": {}, "contains": {"enum": [1.5, {"k": 1}]}},
+    "pair": {"type": "array", "prefixItems": [{"type": "string"}, {}]},
+    "bareArray": {"type": "array"},
+    "constant": {"const": {"k": 1.0}},
+    "choices": {"enum": [1, "two", [3]]},
+    "bounded": {"minimum": 3},
+    "integerBeside": {"type": "integer"}
+  },
+  "required": ["required"],
+  "$defs": {
+    "Anything": {"description": "A definition with no type"},
+    "AnythingList": {"type": "array", "items": {}, "uniqueItems": true, "contains": {"const": 1.0}},
+    "Loop": {"$ref": "#/$defs/Loop"}
+  }
+}

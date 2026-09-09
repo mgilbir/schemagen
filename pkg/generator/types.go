@@ -1367,6 +1367,16 @@ type ValidationRule struct {
 	// text: {"const":1.0000000000000000000000000000001} arrives at the check as
 	// "1". Empty for a const that is not a number.
 	ExactValue string
+
+	// RawElements is set on a uniqueItems rule whose elements are held as
+	// json.RawMessage -- the untyped element under Config.RawUntyped -- so
+	// the emitted check compares each element's canonical JSON text rather
+	// than the bytes json.Marshal writes back unchanged. The keyword is
+	// defined over JSON values, under which 1 and 1.0 are one element; the
+	// `any` element gets that reduction from the decode, and the raw one has
+	// to be given it. See markRawElementRules. False under the default
+	// configuration, where no element is a RawMessage.
+	RawElements bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }
@@ -2204,6 +2214,13 @@ type ContainsDef struct {
 	// and an element past float64's range, which this flag admits, would not be
 	// read as a number at all.
 	ExactNumbers bool
+	// RawElements says the elements this counts over are json.RawMessage --
+	// the untyped element under Config.RawUntyped -- so a const or enum
+	// match is decided by _jsonCanonical on both sides rather than by the
+	// marshalled bytes. ConstJSON and EnumJSON then hold the literals with
+	// every digit rather than folded through float64, so the reduction has
+	// the digits to reduce. See markRawElementContains.
+	RawElements bool
 }
 
 // ContainsCheck describes one validation check applied to each element

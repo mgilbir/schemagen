@@ -2881,7 +2881,7 @@ func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) Ty
 	}
 	return &AliasDef{
 		Name:       name,
-		Underlying: &PrimitiveType{Name: "any"},
+		Underlying: g.untypedType(),
 		Doc:        g.docFor(name, s),
 	}
 }
@@ -3937,7 +3937,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			elemGoType, _ := containerElem(goType)
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(s, name, elemGoType)
 			// Extract contains/minContains/maxContains constraints.
-			containsDef, minContains, maxContains := g.containsDefFor(s, name)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name, goType)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
@@ -3993,7 +3993,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			tupleTail := g.buildTupleTailDef(s, name)
-			containsDef, minContains, maxContains := g.containsDefFor(s, name)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name, goType)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -5069,6 +5069,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// field is a json.Number there, which no float64 conversion
 				// accepts, so a rule this misses does not compile.
 				markExactNumberRule(&rules[i], ft)
+				// An element held as its own bytes is compared as a JSON value,
+				// not as the bytes. See markRawElementRules.
+				markRawElementRule(&rules[i], ft)
 				// The string rules pass the field to functions that take a
 				// string; a field typed as a named string needs an explicit
 				// conversion for that to compile.
@@ -6120,7 +6123,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
-				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name)
+				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name, goType)
 				unevalItems = g.buildUnevaluatedItemsDef(merged)
 				// The alias *is* the slice, so the per-element checks hang off
 				// the receiver rather than off a field.
@@ -6186,7 +6189,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				elemGoType, _ = containerElem(goType)
 			}
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(arraySchema, name, elemGoType)
-			containsDef, minContains, maxContains := g.containsDefFor(arraySchema, name)
+			containsDef, minContains, maxContains := g.containsDefFor(arraySchema, name, goType)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -9422,7 +9425,7 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 // that contains this property, used for scoped $ref resolution.
 func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName string, ctxSchema *schema.Schema) (GoType, error) {
 	if s == nil {
-		return &PrimitiveType{Name: "any"}, nil
+		return g.untypedType(), nil
 	}
 
 	// A property whose schema *is* the node being generated further up the stack
@@ -10029,7 +10032,7 @@ func (g *Generator) inlineConstraintWrapper(s *schema.Schema) bool {
 // resolveType converts a schema to a GoType, creating nested types if needed.
 func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if s == nil {
-		return &PrimitiveType{Name: "any"}
+		return g.untypedType()
 	}
 
 	// A "not" beside another keyword, in a position this ladder would type from
@@ -10355,7 +10358,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return def
 	}
 
-	return &PrimitiveType{Name: "any"}
+	// What is left is a schema that constrains nothing, and `any` is what that
+	// schema describes. Under Config.RawUntyped it is the document's own bytes
+	// instead, so that the value round-trips as written; see untypedType.
+	return g.untypedType()
 }
 
 // constraintOnlyNamedType materializes a schema that constrains without naming a
@@ -14063,7 +14069,8 @@ func (g *Generator) zeroJSONKind(t GoType, depth int) (string, bool) {
 			return zeroKindNumber, true
 		case "bool":
 			return zeroKindBoolean, true
-		case "any":
+		case "any", GoRawTypeName:
+			// A nil interface and a nil json.RawMessage both marshal to null.
 			return zeroKindNull, true
 		}
 		return "", false
@@ -16080,7 +16087,7 @@ func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, e
 			// way to carry it and it reached nothing: see ItemLevel.Contains.
 			if elementGoKind(elemType) == "slice" {
 				level.Contains, level.MinContains, level.MaxContains =
-					g.elemContainsDef(elemSchema, fmt.Sprintf("%sItems%d", namePrefix, len(def.Levels)))
+					g.elemContainsDef(elemSchema, fmt.Sprintf("%sItems%d", namePrefix, len(def.Levels)), elemType)
 			}
 			// An element that is a tuple in its own right. The descent stops
 			// here either way -- singleItemsSchema answers nil for a tuple,
@@ -16134,11 +16141,11 @@ func itemLevelVar(isMap bool, level int) string {
 // materialized under, exactly as it does for a field. The caller passes the
 // prefix its own element type was resolved under, so the name agrees with every
 // other type minted for this container.
-func (g *Generator) elemContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
+func (g *Generator) elemContainsDef(s *schema.Schema, parentName string, elemType GoType) (*ContainsDef, *int, *int) {
 	if s == nil || s.Contains == nil || !g.validationKeywordsEnabled() {
 		return nil, nil, nil
 	}
-	def, minContains, maxContains := g.containsDefFor(s, parentName)
+	def, minContains, maxContains := g.containsDefFor(s, parentName, elemType)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil, nil, nil
 	}
@@ -16166,7 +16173,7 @@ func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, f
 	if _, ok := base.(*ArrayType); !ok {
 		return nil
 	}
-	def, minContains, maxContains := g.containsDefFor(s, parentName+fieldName)
+	def, minContains, maxContains := g.containsDefFor(s, parentName+fieldName, fieldType)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil
 	}
@@ -16400,6 +16407,7 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 			rule.StringBacked = stringBacked
 		}
 		markExactNumberRule(&rule, elemType)
+		markRawElementRule(&rule, elemType)
 		out = append(out, rule)
 	}
 	return out
@@ -16986,7 +16994,31 @@ func (g *Generator) isInterfaceType(t GoType) bool {
 // schema -- under --omit-empty=false an optional scalar is no longer
 // pointer-wrapped -- so it has to be asked of the resolved type and not assumed.
 func (g *Generator) hasNilState(t GoType) bool {
-	return t != nil && (t.IsPointer() || g.isCollectionType(t) || g.isInterfaceType(t))
+	return t != nil && (t.IsPointer() || g.isCollectionType(t) || g.isInterfaceType(t) || g.isRawBytesType(t))
+}
+
+// isRawBytesType reports whether a Go type is json.RawMessage, directly or via
+// a named alias over it -- the type an untyped position has under
+// Config.RawUntyped. Like an interface, its nil is what the decode leaves for an
+// absent property and it marshals to null; unlike one, a value it holds is the
+// document's own bytes, so a present null is held as the four bytes and not as
+// the nil.
+func (g *Generator) isRawBytesType(t GoType) bool {
+	switch v := t.(type) {
+	case *PrimitiveType:
+		return v.Name == GoRawTypeName
+	case *NamedType:
+		if v.PkgAlias != "" {
+			return false
+		}
+		for _, td := range g.typeDefsInScope() {
+			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
+				pt, isPrim := d.Underlying.(*PrimitiveType)
+				return isPrim && pt.Name == GoRawTypeName
+			}
+		}
+	}
+	return false
 }
 
 // namedTypeAt returns the NamedType a GoType names, looking through a pointer,
@@ -17882,6 +17914,7 @@ func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldT
 		out = append(out, r)
 	}
 	markExactNumberRules(out, fieldType)
+	markRawElementRules(out, fieldType)
 	return out
 }
 
@@ -19777,7 +19810,7 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 // its name because TestContainsGateNamesEveryKeywordTheChecksRead reads that
 // function's source to hold containsCheckKeywords against what it actually
 // consults, and a wrapper is not what that gate is about.
-func (g *Generator) containsDefFor(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
+func (g *Generator) containsDefFor(s *schema.Schema, parentName string, holder GoType) (*ContainsDef, *int, *int) {
 	def, minC, maxC := g.extractContainsDef(s, parentName)
 	if def != nil {
 		// What the flag decides is how a candidate element is decoded for the
@@ -19787,8 +19820,59 @@ func (g *Generator) containsDefFor(s *schema.Schema, parentName string) (*Contai
 		// answered "no element matches the contains schema" for a document the
 		// schema permits (issue #219).
 		def.StrictReadWrite = g.config.StrictReadWrite
+		g.markRawElementContains(def, s.Contains, holder)
 	}
 	return def, minC, maxC
+}
+
+// markRawElementContains settles how a const or enum `contains` reads an
+// element held as json.RawMessage, which is what an untyped element is under
+// Config.RawUntyped.
+//
+// The check marshals each element and compares the text against the literal
+// the schema wrote. For an `any` element the marshal is a reduction -- the
+// decode already folded 1.0 to 1 and sorted the members -- and constJSONValue
+// folds the schema's side the same way, so the two texts agree wherever the
+// values do. A RawMessage marshals back as written, and the fold on the schema
+// side is then the wrong half: the check would compare a value that kept its
+// digits against a literal that lost them. So both sides are put through the
+// emitted _jsonCanonical instead, which is the reduction an untyped enum has
+// been compared through since #272, and the schema's side is re-rendered with
+// every digit so the reduction has them to work with.
+//
+// holder is the slice the elements are read from, and the answer is taken from
+// it rather than from the schema for the reason rawElementSlice gives.
+func (g *Generator) markRawElementContains(def *ContainsDef, contains *schema.Schema, holder GoType) {
+	if def == nil || contains == nil || !rawElementSlice(holder) {
+		return
+	}
+	def.RawElements = true
+	if def.ConstJSON != "" {
+		var v any
+		switch {
+		case contains.Const != nil:
+			v = *contains.Const
+		case len(contains.Enum) == 1:
+			v = contains.Enum[0]
+		default:
+			return
+		}
+		if b, err := exactJSONValue(v); err == nil {
+			def.ConstJSON = string(b)
+		}
+		return
+	}
+	if len(def.EnumJSON) > 0 && len(contains.Enum) == len(def.EnumJSON) {
+		exact := make([]string, 0, len(contains.Enum))
+		for _, v := range contains.Enum {
+			b, err := exactJSONValue(v)
+			if err != nil {
+				return
+			}
+			exact = append(exact, string(b))
+		}
+		def.EnumJSON = exact
+	}
 }
 
 // extractContainsDef resolves a `contains` sub-schema into the check it carries.
@@ -19959,6 +20043,7 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 		rules = append(rules, r)
 	}
 	markExactNumberRules(rules, goType)
+	markRawElementRules(rules, goType)
 	if len(rules) == 0 {
 		return nil
 	}

@@ -75,6 +75,11 @@ func allGoldenTests() []goldenTestCase {
 		// "number" is a float64. Its --exact-numbers twin is TestGoldenExactNumbers,
 		// and the pair is the whole statement of what that flag changes.
 		{"regression/number_positions", "testdata/schemas/regression/number_positions.json", "testdata/golden/regression/number_positions.go"},
+		// The untyped position matrix under the default configuration, where a
+		// schema that states nothing is `any`. Its --raw-untyped twin is
+		// TestGoldenRawUntyped, and the pair is the whole statement of what that
+		// flag changes and what it leaves alone.
+		{"regression/untyped_positions", "testdata/schemas/regression/untyped_positions.json", "testdata/golden/regression/untyped_positions.go"},
 		{"regression/anyof_required_branches", "testdata/schemas/regression/anyof_required_branches.json", "testdata/golden/regression/anyof_required_branches.go"},
 		// Issue #270's two ends, pinned as text because that is where they
 		// differ. root_type_object_only is `type` naming object and nothing else
@@ -611,6 +616,91 @@ func TestExactNumbersLeavesNumberlessSchemasAlone(t *testing.T) {
 			exact := generateFromSchemaWithConfig(t, path, generator.Config{PackageName: "testpkg", OmitEmpty: true, ExactNumbers: true})
 			if string(base) != string(exact) {
 				t.Errorf("%s: --exact-numbers changed a document that names no \"number\"", path)
+			}
+		})
+	}
+}
+
+// TestGoldenRawUntyped tests golden output with --raw-untyped enabled.
+//
+// The same document the default golden set reads, so that the difference
+// between the two files is the whole of what the flag does: a position whose
+// schema states nothing held as json.RawMessage, the comparisons that read such
+// an element made on its canonical text, and nothing else moved. The controls
+// in the matrix -- a tuple, a bare array, an untyped const and enum, a
+// constraint-only wrapper, a typed integer -- must read identically in both.
+func TestGoldenRawUntyped(t *testing.T) {
+	tests := []goldenTestCase{
+		{"rawuntyped/untyped_positions", "testdata/schemas/regression/untyped_positions.json", "testdata/golden/rawuntyped/untyped_positions.go"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := generateFromSchemaWithConfig(t, tc.SchemaPath, generator.Config{
+				PackageName: "testpkg",
+				OmitEmpty:   true,
+				RawUntyped:  true,
+			})
+
+			goldenPath := filepath.Join("..", tc.GoldenPath)
+			if os.Getenv("UPDATE_GOLDEN") == "true" {
+				dir := filepath.Dir(goldenPath)
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("creating golden dir: %v", err)
+				}
+				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+					t.Fatalf("updating golden file: %v", err)
+				}
+				t.Logf("Updated golden file: %s", goldenPath)
+				return
+			}
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
+				gotLines := strings.Split(string(got), "\n")
+				wantLines := strings.Split(string(want), "\n")
+				for i := range gotLines {
+					if i >= len(wantLines) {
+						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], "")
+						continue
+					}
+					if gotLines[i] != wantLines[i] {
+						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestRawUntypedLeavesTypedSchemasAlone is the other half of the golden pair
+// above, stated as an equality rather than as a second file: a document that
+// leaves no position untyped generates the same source under --raw-untyped as
+// it does under the default.
+//
+// It is the flag's boundary written as a check. The documents named below carry
+// strings, integers, numbers, enums, $refs and a composition between them, and
+// the number matrix in particular puts a constraint-only schema and a tuple
+// element in the flag's way -- so a change that reached any position other than
+// one the schema left untyped shows here rather than in a golden nobody
+// re-reads.
+func TestRawUntypedLeavesTypedSchemasAlone(t *testing.T) {
+	for _, path := range []string{
+		"testdata/schemas/validation/string_constraints.json",
+		"testdata/schemas/validation/numeric_constraints.json",
+		"testdata/schemas/basic/simple_object.json",
+		"testdata/schemas/enum/string_enum.json",
+		"testdata/schemas/refs/definitions_ref.json",
+		"testdata/schemas/composition/allof_simple.json",
+		"testdata/schemas/regression/number_positions.json",
+	} {
+		t.Run(path, func(t *testing.T) {
+			base := generateFromSchemaWithConfig(t, path, generator.Config{PackageName: "testpkg", OmitEmpty: true})
+			raw := generateFromSchemaWithConfig(t, path, generator.Config{PackageName: "testpkg", OmitEmpty: true, RawUntyped: true})
+			if string(base) != string(raw) {
+				t.Errorf("%s: --raw-untyped changed a document that leaves no position untyped", path)
 			}
 		})
 	}
