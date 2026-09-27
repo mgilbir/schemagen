@@ -2,8 +2,6 @@ package schemagen
 
 import (
 	"fmt"
-	"net/url"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -11,12 +9,13 @@ import (
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
-// refSite is a $ref together with the base URI in effect where it appears. A
-// nested $id rescopes relative refs, so the containing document's own $id is not
-// a safe base — the per-node BaseURI computed by ComputeBaseURIs is.
+// refSite is a $ref together with the node it is written on. A nested $id
+// rescopes relative refs, so the containing document's own $id is not a safe
+// base; resolving the ref on Node through the run's resource index reads the
+// base URI in effect there.
 type refSite struct {
 	Ref  string
-	Base *url.URL
+	Node *schema.Schema
 	// Scope is the schema resource the reference is written in: the nearest
 	// enclosing $id, or the document root where there is none. It is what a
 	// fragment-only ref resolves against, and it is what says whether a
@@ -26,87 +25,42 @@ type refSite struct {
 }
 
 // collectRefSites reports every $ref/$recursiveRef/$dynamicRef in s along with
-// the base URI and the schema resource in effect at its position.
+// the node it is written on and the schema resource in effect there.
 func collectRefSites(s *schema.Schema) []refSite {
 	var out []refSite
 	generator.WalkSchema(s, func(node *schema.Schema) {
 		for _, ref := range []string{node.Ref, node.RecursiveRef, node.DynamicRef} {
 			if ref != "" {
-				out = append(out, refSite{Ref: ref, Base: node.BaseURI, Scope: node.DocumentRoot})
+				out = append(out, refSite{Ref: ref, Node: node, Scope: node.DocumentRoot})
 			}
 		}
 	})
 	return out
 }
 
-// refTargetDocuments returns the candidate identities of the document a ref
-// points into, most specific first. Several spellings are returned rather than
-// one canonical answer because the identity is matched against caller-supplied
-// $ids verbatim: a ref may name a document exactly as its $id, or relative to
-// the base URI in effect. Fragment-only refs stay inside their own document and
-// return nothing.
-func refTargetDocuments(ref string, base *url.URL) []string {
-	if ref == "" || strings.HasPrefix(ref, "#") {
+// siteTargetDocument resolves a reference site through the run's resource index
+// and returns the root of the registered document it lands in, or nil for a
+// reference that does not resolve.
+//
+// The two orderings below -- packages by the $refs between their documents, and
+// --shared-types inputs by the same -- used to read a ref's target off a list of
+// URI spellings matched against input $ids, plus a file path joined by hand
+// onto the referring input's directory. Both were a second resolver beside the
+// generator's, and a second resolver answers differently: a ref inside an
+// embedded resource with a relative $id was joined onto the input's directory
+// rather than the resource's. The edge is now the answer generation itself
+// will get. A $dynamicRef or $recursiveRef is resolved as the plain reference it
+// is spelled as, which is where its static target is and so the document it
+// needs generated first.
+func siteTargetDocument(index *schema.ResourceIndex, site refSite) *schema.Schema {
+	if index == nil || site.Node == nil {
 		return nil
 	}
-	docPart := ref
-	if i := strings.Index(docPart, "#"); i >= 0 {
-		docPart = docPart[:i]
-	}
-	if docPart == "" {
+	target, err := index.Resolve(site.Ref, site.Node)
+	if err != nil || target == nil {
 		return nil
 	}
-
-	var candidates []string
-	add := func(s string) {
-		if s == "" {
-			return
-		}
-		for _, seen := range candidates {
-			if seen == s {
-				return
-			}
-		}
-		candidates = append(candidates, s)
-	}
-
-	// As written, and without a trailing empty fragment.
-	add(docPart)
-	add(strings.TrimSuffix(docPart, "#"))
-
-	refURL, err := url.Parse(docPart)
-	if err != nil {
-		return candidates
-	}
-	if refURL.IsAbs() {
-		add(refURL.String())
-		add(normalizeURI(refURL))
-		return candidates
-	}
-
-	// Relative: resolve against the base in effect. An opaque base (urn:, or
-	// any scheme with no hierarchical part) cannot meaningfully absorb a
-	// relative reference, so resolution is skipped rather than producing
-	// something like "urn:///other.json".
-	if base != nil && base.Opaque == "" && (base.Host != "" || strings.HasPrefix(base.Path, "/")) {
-		resolved := base.ResolveReference(refURL)
-		add(resolved.String())
-		add(normalizeURI(resolved))
-	}
-	return candidates
-}
-
-// normalizeURI lowercases the scheme and host, which are case-insensitive, and
-// drops an empty fragment. Paths are left alone: they are case-sensitive.
-func normalizeURI(u *url.URL) string {
-	if u == nil {
-		return ""
-	}
-	c := *u
-	c.Scheme = strings.ToLower(c.Scheme)
-	c.Host = strings.ToLower(c.Host)
-	c.Fragment = ""
-	return strings.TrimSuffix(c.String(), "#")
+	return index.DocumentOf(target)
 }
 
 // packageDoc is the minimal view of an input document needed to order packages.
@@ -130,25 +84,27 @@ type packageEdge struct {
 }
 
 // packageDependencies reports, for each package, the packages it $refs into and
-// the refs responsible.
-func packageDependencies(docs []packageDoc, docPackages map[string]string) map[string][]packageEdge {
+// the refs responsible. A ref's target is found through the run's resource
+// index, and the package it lands in is the package of the input document that
+// holds it -- which covers a resource embedded in that document as well.
+func packageDependencies(docs []packageDoc, index *schema.ResourceIndex) map[string][]packageEdge {
+	owner := make(map[*schema.Schema]packageDoc, len(docs))
+	for _, d := range docs {
+		if _, ok := owner[d.schema]; !ok {
+			owner[d.schema] = d
+		}
+	}
 	deps := make(map[string][]packageEdge)
 	for _, d := range docs {
 		if _, ok := deps[d.pkg]; !ok {
 			deps[d.pkg] = nil
 		}
 		for _, site := range collectRefSites(d.schema) {
-			for _, candidate := range refTargetDocuments(site.Ref, site.Base) {
-				targetPkg, ok := docPackages[candidate]
-				if !ok {
-					continue
-				}
-				if targetPkg == d.pkg {
-					break // same package: not a dependency
-				}
-				deps[d.pkg] = append(deps[d.pkg], packageEdge{FromDoc: d.id, ToDoc: candidate, Ref: site.Ref, ToPkg: targetPkg})
-				break // first matching candidate wins
+			to, ok := owner[siteTargetDocument(index, site)]
+			if !ok || to.pkg == d.pkg {
+				continue // a document no package owns, or this package
 			}
+			deps[d.pkg] = append(deps[d.pkg], packageEdge{FromDoc: d.id, ToDoc: to.id, Ref: site.Ref, ToPkg: to.pkg})
 		}
 	}
 	return deps
@@ -160,8 +116,8 @@ func packageDependencies(docs []packageDoc, docPackages map[string]string) map[s
 // rather than trusted from the command line. Ties keep the caller's original
 // order, making the result deterministic. Mutually-referencing packages cannot
 // be ordered — that would be an import cycle in Go — so they are reported.
-func orderPackagesByDependencies(pkgOrder []string, docs []packageDoc, docPackages map[string]string) ([]string, error) {
-	deps := packageDependencies(docs, docPackages)
+func orderPackagesByDependencies(pkgOrder []string, docs []packageDoc, index *schema.ResourceIndex) ([]string, error) {
+	deps := packageDependencies(docs, index)
 
 	dependsOn := make(map[string]map[string]bool, len(deps))
 	// maporder: fills a set; the same members end up in it in any order.
@@ -276,26 +232,19 @@ func checkInputRefCycle(args []string, edges map[string][]docRefEdge) error {
 // that one" -- so they must agree on which refs form it. Self-edges are left
 // out: a $ref back into the document being generated is resolved inside that
 // document and materializes nothing new.
-func buildDocRefEdges(args []string, byPath map[string]*schema.Schema) map[string][]docRefEdge {
-	// A ref can name another input two ways, and both have to be indexed or the
-	// edge is only found for some of the spellings. By $id, which is what an
-	// absolute-URI ref resolves to; and by file path, which is what a relative
-	// ref reaches when neither document declares an $id -- the shape of the
-	// reproducer in issue #228 that carries no $id at all.
-	pathByID := make(map[string]string, len(args)*2)
-	pathByFile := make(map[string]string, len(args))
+//
+// A ref's target is found through the run's resource index, so an input named
+// by its $id, by a relative path, or by a path through an embedded resource's
+// own base URI is one edge by the same rule generation resolves it by. See
+// siteTargetDocument.
+func buildDocRefEdges(args []string, byPath map[string]*schema.Schema, index *schema.ResourceIndex) map[string][]docRefEdge {
+	// One document listed under two paths is one document, reported under the
+	// first path given.
+	pathOf := make(map[*schema.Schema]string, len(args))
 	for _, path := range args {
-		s := byPath[path]
-		if s == nil {
-			continue
-		}
-		if abs, err := filepath.Abs(path); err == nil {
-			pathByFile[filepath.Clean(abs)] = path
-		}
-		if id := docIDOf(s); id != "" {
-			pathByID[id] = path
-			if u, err := url.Parse(id); err == nil {
-				pathByID[normalizeURI(u)] = path
+		if s := byPath[path]; s != nil {
+			if _, ok := pathOf[s]; !ok {
+				pathOf[s] = path
 			}
 		}
 	}
@@ -310,50 +259,13 @@ func buildDocRefEdges(args []string, byPath map[string]*schema.Schema) map[strin
 			edges[path] = nil
 		}
 		for _, site := range collectRefSites(s) {
-			target := ""
-			for _, candidate := range refTargetDocuments(site.Ref, site.Base) {
-				if t, ok := pathByID[candidate]; ok {
-					target = t
-					break // first matching candidate wins
-				}
-			}
-			if target == "" {
-				target = pathByFile[refTargetFile(site, path)]
-			}
-			if target != "" && target != path {
+			target, ok := pathOf[siteTargetDocument(index, site)]
+			if ok && target != path && pathOf[s] != target {
 				edges[path] = append(edges[path], docRefEdge{FromPath: path, ToPath: target, Ref: site.Ref})
 			}
 		}
 	}
 	return edges
-}
-
-// refTargetFile returns the absolute path a relative $ref reads, or "" when the
-// ref names something a file resolver would not serve. It mirrors
-// schema.FileResolver: a scheme-less ref is a path taken relative to the
-// directory holding the referring schema. A ref carrying a base URI from a
-// nested $id is left to the $id route above, which is the one that applies to
-// it.
-func refTargetFile(site refSite, fromPath string) string {
-	if site.Base != nil {
-		return ""
-	}
-	docPart := site.Ref
-	if i := strings.Index(docPart, "#"); i >= 0 {
-		docPart = docPart[:i]
-	}
-	if docPart == "" {
-		return ""
-	}
-	u, err := url.Parse(docPart)
-	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" {
-		return ""
-	}
-	abs, err := filepath.Abs(filepath.Join(filepath.Dir(fromPath), u.Path))
-	if err != nil {
-		return ""
-	}
-	return filepath.Clean(abs)
 }
 
 // findDocRefCycle returns the edges of one cycle in the document reference

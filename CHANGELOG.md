@@ -28,6 +28,25 @@
   and dropped `additionalItems`, a reading neither dialect gives, and under
   draft 4 `{"minimum":3,"exclusiveMinimum":5}` accepted 4. With no recognised
   `$schema` every form binds, as before.
+- Two schemas of one run that identify as the same URI — one `$id` declared
+  twice, in one document or across the inputs, or an `$id` naming another
+  input's file — are refused, as JSON Schema says a validator should. A
+  resource index cannot answer a URI that names two schemas; the default mode
+  used to let such an `$id` answer no `$ref`, and a document holding one kept
+  whichever of the two one walk met last and another met first. A plain-name
+  anchor declared by two nodes of one resource is refused when a reference
+  names it, rather than answered with one of them.
+- With several inputs, a file reference is confined to the input directories
+  that hold the file it is written in, rather than to the first input's
+  directory or to any of them.
+- `schema.ResourceIndex` is the library's reference resolver: a `Config.Resolver`
+  is used as the loader of an index the generator builds, and a
+  `*schema.ResourceIndex` passed as `Config.Resolver` is shared as it is, so
+  several generators see one instance of each document. A document read with
+  `schema.LoadFromFile` or through a `FileResolver` records the file it came
+  from (`RetrievalURI`) and is based on it; one decoded by the caller is given
+  a base URI under the `schemagen-document` scheme. `FileResolver` takes
+  several confinement roots (`WithFileResolverRoots`).
 
 ### Fixed
 
@@ -64,7 +83,24 @@
   JSON type only -- the numeric bounds and `multipleOf` a number, `minLength`,
   `maxLength` and `pattern` a string -- including where `contains` decides
   which items `unevaluatedItems` may still refuse.
-
+- A `$ref` resolves in the schema resource it is written in. `"#/$defs/Name"`
+  written in another document, or in a subschema with its own `$id`, meant the
+  root document's `Name` whenever the root had one — `other.json`'s
+  `{"$ref":"#/$defs/Name"}` was typed as the root's integer rather than its own
+  string, refusing every valid document and accepting invalid ones — and
+  `"#anchor"`, `"other.json#anchor"`, a URN `$id` with an anchor, a relative
+  `$id` and the static target of a `$dynamicRef` went the same way. Every
+  reference now resolves through one index of every document and embedded
+  resource of the run, keyed by absolute URI, against the base URI of the
+  resource it is written in; an embedded resource named by its `$id` from a
+  document without one, which the library could not resolve at all, resolves.
+- `--shared-types`, `--schema-package` and a config file's packages read a
+  relative `$ref` next to the file it is written in. They read it next to the
+  first input, or whichever input directory answered first, so a reference in
+  `b/y.json` to `z.json` generated from `a/z.json` in silence. All three modes
+  and the default now load their inputs and resolve references the same way,
+  and a document an input reaches by relative path is that input, not a second
+  copy of it declaring a second type.
 - Schema text can no longer become code in the generated file. A property name
   or a `$ref` string was written into a `//` comment as it stood, so a newline
   in it ended the comment and the rest was compiled:

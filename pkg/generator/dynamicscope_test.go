@@ -28,12 +28,13 @@ func dynamicScopeFixture(t *testing.T, src string) (*Generator, *schema.Schema) 
 	return g, &s
 }
 
-// TestResourceDynamicAnchorStopsAtANestedResource is the difference between
-// resourceDynamicAnchor and findDynamicAnchor, and the reason there are two.
+// TestResourceDynamicAnchorStopsAtANestedResource holds resourceDynamicAnchor to
+// the resource rule.
 //
-// findDynamicAnchor stops descending at an $id but still reads the boundary node
-// itself, which is right for "what can this document reach" and wrong for "what
-// does this resource put on the dynamic scope". The fixture is the suite's
+// A walk that stops descending at an $id but still reads the boundary node
+// itself -- which is what the generator's findDynamicAnchor did, until the
+// resource index replaced it -- answers "what does this document hold" and not
+// "what does this resource put on the dynamic scope". The fixture is the suite's
 // "after leaving a dynamic scope" shape: the document root holds $defs/thingy,
 // whose own $id makes it the resource inner_scope. Credited to the document
 // root, thingy would be on the outermost frame of every evaluation and the
@@ -66,11 +67,11 @@ func TestResourceDynamicAnchorStopsAtANestedResource(t *testing.T) {
 	if got := resourceDynamicAnchor(second, "thingy"); got == nil || got.Type[0] != "null" {
 		t.Errorf("second_scope declares thingy in its own $defs; got %v", got)
 	}
-	// findDynamicAnchor is the reading that must not be used here, and this
-	// pins the disagreement rather than assuming it.
-	if findDynamicAnchor(root, "thingy") == nil {
-		t.Error("findDynamicAnchor is expected to reach across the $id boundary; " +
-			"if it no longer does, resourceDynamicAnchor has stopped being a distinct reading")
+	// The control on the fixture: the anchor the first check must not find is
+	// really there, on the root of a nested resource, which is the one place a
+	// document-wide reading would credit it to the document root.
+	if inner.DynamicAnchor != "thingy" || inner.DocumentRoot != inner {
+		t.Error("the fixture no longer puts thingy on the root of a nested resource, so nothing above is being tested")
 	}
 }
 
@@ -516,14 +517,14 @@ func TestReferenceKeywordsFollowTheNodesOwnDialect(t *testing.T) {
 // The compiled-and-run half is TestDynamicAnchorOnANestedIdBelongsToThatResource,
 // which is what proves the binding reaches a document; this is what says
 // resolveDynamicRef asks of a scope frame the same question the generated
-// evaluator asks, rather than the one findDynamicAnchor answers. The two
+// evaluator asks, rather than the one a document-wide walk answers. The two
 // disagree only where an anchor sits on a node carrying its own $id, and no
 // corpus file has that shape -- so without this and the fixture beside it the
 // rule is held by nothing.
 func TestStaticDynamicRefReadsTheScopeByResource(t *testing.T) {
 	// A stray resource: a $defs entry with its own $id and a $dynamicAnchor,
 	// which nothing refers to. Read by resource it is on no scope any evaluation
-	// builds; read by findDynamicAnchor the document root publishes it, and it
+	// builds; read document-wide the document root publishes it, and it
 	// then outranks the bookend for every reference in the document.
 	t.Run("a boundary node publishes nothing", func(t *testing.T) {
 		g, root := dynamicScopeFixture(t, `{
@@ -550,12 +551,19 @@ func TestStaticDynamicRefReadsTheScopeByResource(t *testing.T) {
 			t.Errorf("resolveDynamicRef = %s, want the bookend: strayItemType is a resource of its own, "+
 				"so nothing that enters the document root puts its anchor on the scope", describeAnchorTarget(got))
 		}
-		// The control on the fixture rather than on the fix: if the stray anchor
-		// were not reachable by the old reading at all, the case above would
-		// pass for any implementation whatsoever.
-		if findDynamicAnchor(root, "itemType") != root.Defs["stray"] {
-			t.Error("the fixture no longer reproduces the divergence: findDynamicAnchor must still credit " +
-				"the stray anchor to the document root, or nothing here is being tested")
+		// The control on the fixture rather than on the fix: the stray anchor
+		// has to sit on the root of a resource of its own, directly under the
+		// document root, which is the one place a document-wide reading credits
+		// it to the document root. Otherwise the case above would pass for any
+		// implementation whatsoever.
+		if stray := root.Defs["stray"]; stray.DynamicAnchor != "itemType" || stray.DocumentRoot != stray {
+			t.Error("the fixture no longer puts the stray anchor on a nested resource's root, so nothing here is being tested")
+		}
+		// And the static half by the same rule: "#itemType" written in the
+		// document root names an anchor the root resource does not declare --
+		// the stray one belongs to strayItemType -- so it resolves to nothing.
+		if got := g.resolveRefInContextUncounted("#itemType", root); got != nil {
+			t.Errorf(`"#itemType" in the document root resolved to %s; the only declaration is in the resource strayItemType`, describeAnchorTarget(got))
 		}
 	})
 

@@ -152,6 +152,12 @@ func plainNameFragment(id string) string {
 // Multiple names on one node are possible and all of them count: a node may
 // carry "$anchor": "a" and "$dynamicAnchor": "b" and answer to both.
 func AnchorNames(s *Schema) []string {
+	return anchorNamesIn(s, DraftUnknown)
+}
+
+// anchorNamesIn is AnchorNames for a node read under fallback where
+// normalization settled no dialect for it.
+func anchorNamesIn(s *Schema, fallback Draft) []string {
 	if s == nil {
 		return nil
 	}
@@ -169,8 +175,12 @@ func AnchorNames(s *Schema) []string {
 	}
 	add(s.Anchor)
 	add(s.DynamicAnchor)
-	add(plainNameFragment(s.ID))
-	add(plainNameFragment(s.LegacyID))
+	// An id beside a $ref that replaces its siblings names nothing; see
+	// refReplacesSiblings.
+	if !refReplacesSiblings(s, fallback) {
+		add(plainNameFragment(s.ID))
+		add(plainNameFragment(s.LegacyID))
+	}
 	return names
 }
 
@@ -211,6 +221,15 @@ func changesScope(s *Schema) bool {
 // (see MalformedKeywords), so a document that states one is refused wherever
 // its dialect defines the keyword.
 func scopeID(s *Schema) (*url.URL, bool) {
+	return scopeIDIn(s, DraftUnknown)
+}
+
+// scopeIDIn is scopeID for a node read under fallback where normalization
+// settled no dialect for it.
+func scopeIDIn(s *Schema, fallback Draft) (*url.URL, bool) {
+	if refReplacesSiblings(s, fallback) {
+		return nil, false
+	}
 	id := s.ID
 	if id == "" {
 		id = s.LegacyID
@@ -225,6 +244,34 @@ func scopeID(s *Schema) (*url.URL, bool) {
 	return u, true
 }
 
+// refReplacesSiblings reports whether s is a node whose "$ref" replaces every
+// keyword written beside it, "$id" and "id" included: a node carrying "$ref"
+// under drafts 3 to 7, read under the dialect normalization settled for it.
+//
+// Through draft 7 "All other properties in a "$ref" object MUST be ignored"
+// (draft-07 §8.3), so an id beside a $ref neither starts a resource nor names
+// an anchor, and the suite holds that: "$ref prevents a sibling $id from
+// changing the base uri". From 2019-09 on $ref is an ordinary applicator and
+// its siblings, $id among them, apply. A node never normalized has no settled
+// dialect and is read as the later drafts read it, as the generator reads a
+// node whose dialect is unknown -- unless the caller states the dialect the
+// document is generated under (fallback), which is the dialect the generator
+// then reads such a node under.
+func refReplacesSiblings(s *Schema, fallback Draft) bool {
+	if s == nil || s.Ref == "" {
+		return false
+	}
+	d := s.DetectedDraft
+	if d == DraftUnknown {
+		d = fallback
+	}
+	switch d {
+	case Draft03, Draft04, Draft06, Draft07:
+		return true
+	}
+	return false
+}
+
 // findAnchor searches the schema tree for a node answering to the given
 // plain-name fragment, under every spelling AnchorNames recognises.
 //
@@ -233,24 +280,52 @@ func scopeID(s *Schema) (*url.URL, bool) {
 // but a resolver-fetched document is not in that index and is searched here
 // instead, so anything this search does not know about is unreachable across
 // documents while remaining reachable within one (issue #307).
+//
+// Two different nodes of the resource declaring the name is refused rather than
+// answered with the first one met, as ResourceIndex refuses it: see
+// AmbiguousAnchorError.
 func (r *LocalResolver) findAnchor(s *Schema, anchor string) (*Schema, error) {
-	if s == nil {
+	var found *Schema
+	ambiguous := false
+	seen := make(map[*Schema]bool)
+	var search func(n *Schema)
+	search = func(n *Schema) {
+		if n == nil || seen[n] {
+			return
+		}
+		seen[n] = true
+		if hasAnchorName(n, anchor) {
+			if found == nil {
+				found = n
+			} else if found != n {
+				ambiguous = true
+			}
+		}
+		// Search in all sub-schema locations, but skip sub-schemas that start
+		// their own document scope — their anchors belong to that scope, not
+		// the parent's.
+		for _, sub := range subSchemas(n) {
+			if changesScope(sub) {
+				continue
+			}
+			search(sub)
+		}
+	}
+	search(s)
+	switch {
+	case ambiguous:
+		uri := ""
+		if s != nil && s.BaseURI != nil {
+			uri = canonicalResourceURI(s)
+		}
+		if uri == "" {
+			uri = "(the document root)"
+		}
+		return nil, &AmbiguousAnchorError{Resource: uri, Anchor: anchor}
+	case found == nil:
 		return nil, fmt.Errorf("anchor %q not found", anchor)
 	}
-	if hasAnchorName(s, anchor) {
-		return s, nil
-	}
-	// Search in all sub-schema locations, but skip sub-schemas that start their
-	// own document scope — their anchors belong to that scope, not the parent's.
-	for _, sub := range subSchemas(s) {
-		if changesScope(sub) {
-			continue
-		}
-		if found, err := r.findAnchor(sub, anchor); err == nil {
-			return found, nil
-		}
-	}
-	return nil, fmt.Errorf("anchor %q not found", anchor)
+	return found, nil
 }
 
 // subSchemas returns every immediate subschema of s: every position in which
@@ -851,8 +926,11 @@ func normalizeLoadedDocument(s *Schema, draft Draft) {
 // It resolves relative paths against a base directory.
 type FileResolver struct {
 	baseDir string
-	cache   map[string]*Schema
-	draft   Draft
+	// roots are further directories reads are confined to, beside baseDir.
+	// See WithFileResolverRoots.
+	roots []string
+	cache map[string]*Schema
+	draft Draft
 }
 
 // FileResolverOption configures a FileResolver.
@@ -862,6 +940,18 @@ type FileResolverOption func(*FileResolver)
 // loads is read under. See normalizeLoadedDocument.
 func WithFileResolverDraft(d Draft) FileResolverOption {
 	return func(r *FileResolver) { r.draft = d }
+}
+
+// WithFileResolverRoots confines reads to several directory subtrees rather
+// than to baseDir's alone: one run that reads schemas from several directories
+// has one confinement root per directory, and a reference is judged against the
+// roots that hold the file it is written in. See permits.
+//
+// With roots given, an empty baseDir no longer means "unconfined": it means
+// there is no directory a relative path with nothing else to go on is joined
+// to, and such a path is refused rather than guessed at.
+func WithFileResolverRoots(dirs ...string) FileResolverOption {
+	return func(r *FileResolver) { r.roots = append(r.roots, dirs...) }
 }
 
 // NewFileResolver creates a FileResolver that loads schemas relative to baseDir.
@@ -876,17 +966,65 @@ func NewFileResolver(baseDir string, opts ...FileResolverOption) *FileResolver {
 	return r
 }
 
-// withinBase reports whether target resolves to a path inside the resolver's
-// base directory subtree. Both are made absolute and cleaned so that "../"
-// traversal cannot escape the root, and both have their symlinks resolved so
-// that a link *inside* the base directory cannot point outside it — a lexical
-// prefix check alone would accept base/link.json → /etc/passwd. An empty
-// baseDir (no confinement configured) permits any path.
-func (f *FileResolver) withinBase(target string) bool {
-	if f.baseDir == "" {
+// confinementRoots lists the directories reads are confined to, or nil when
+// nothing confines them (an empty baseDir and no roots).
+func (f *FileResolver) confinementRoots() []string {
+	var roots []string
+	if f.baseDir != "" {
+		roots = append(roots, f.baseDir)
+	}
+	return append(roots, f.roots...)
+}
+
+// permits reports whether target may be read for a reference written in the
+// document retrieved from referrer (nil, or not a file, when that is not a
+// local file).
+//
+// A read is confined to a directory subtree the resolver was given. Where it was
+// given several -- a run over schemas in a/ and b/ -- the subtrees that count
+// are the ones holding the referring file, so a document under a/ reads under
+// a/ exactly as it would have in a run of its own, and listing b/y.json beside
+// it does not open b/ to it. A referrer in none of them (a fetched document, or
+// a caller's document from elsewhere) is judged against all of them, which is
+// what a single baseDir always did.
+func (f *FileResolver) permits(target string, referrer *url.URL) bool {
+	roots := f.confinementRoots()
+	if len(roots) == 0 {
 		return true
 	}
-	absBase, err := filepath.Abs(f.baseDir)
+	if referrer != nil && referrer.Scheme == "file" {
+		from := filepath.FromSlash(referrer.Path)
+		var holding []string
+		for _, root := range roots {
+			if withinDir(root, from) {
+				holding = append(holding, root)
+			}
+		}
+		if len(holding) > 0 {
+			roots = holding
+		}
+	}
+	for _, root := range roots {
+		if withinDir(root, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// withinBase reports whether target resolves to a path inside the resolver's
+// confinement. See withinDir.
+func (f *FileResolver) withinBase(target string) bool {
+	return f.permits(target, nil)
+}
+
+// withinDir reports whether target resolves to a path inside the dir subtree.
+// Both are made absolute and cleaned so that "../" traversal cannot escape the
+// root, and both have their symlinks resolved so that a link *inside* the base
+// directory cannot point outside it — a lexical prefix check alone would accept
+// base/link.json → /etc/passwd.
+func withinDir(dir, target string) bool {
+	absBase, err := filepath.Abs(dir)
 	if err != nil {
 		return false
 	}
@@ -947,24 +1085,37 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	// Determine the file path.
 	var filePath string
 	if refURL.Scheme == "file" {
-		filePath = refURL.Path
+		filePath = filepath.FromSlash(refURL.Path)
 	} else {
 		// Relative path: resolve against baseDir or baseURI.
-		relPath := refURL.Path
-		if baseURI != nil && baseURI.Scheme == "file" {
+		relPath := filepath.FromSlash(refURL.Path)
+		switch {
+		case baseURI != nil && baseURI.Scheme == "file":
 			// Resolve relative to the base file's directory.
-			baseDir := filepath.Dir(baseURI.Path)
+			baseDir := filepath.Dir(filepath.FromSlash(baseURI.Path))
 			filePath = filepath.Join(baseDir, relPath)
-		} else {
+		case f.baseDir == "" && len(f.roots) > 0:
+			// Several roots and no base file: which directory the path is
+			// relative to is not known, and picking one is how a reference
+			// written in b/y.json came to read a/z.json.
+			return nil, fmt.Errorf("FileResolver: relative path %q has no file to be read beside", ref)
+		default:
 			filePath = filepath.Join(f.baseDir, relPath)
 		}
+	}
+	if abs, err := filepath.Abs(filePath); err == nil {
+		filePath = abs
 	}
 
 	// Confine reads to the resolver's base directory subtree. A $ref path that
 	// escapes it (via "../" sequences or an absolute file:// path) would let an
 	// untrusted schema read arbitrary files during generation, so it is rejected.
-	if !f.withinBase(filePath) {
-		return nil, fmt.Errorf("FileResolver: refusing to read %q outside base directory %q", filePath, f.baseDir)
+	if !f.permits(filePath, baseURI) {
+		roots := f.confinementRoots()
+		if len(roots) > 1 {
+			return nil, fmt.Errorf("FileResolver: refusing to read %q outside the base directory holding the referring schema (base directories %q)", filePath, roots)
+		}
+		return nil, fmt.Errorf("FileResolver: refusing to read %q outside base directory %q", filePath, roots[0])
 	}
 
 	// Check cache. The fragment stays percent-encoded; see MappingResolver.
@@ -997,6 +1148,12 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("FileResolver: parsing %q: %w", filePath, err)
 	}
 	normalizeLoadedDocument(&s, f.draft)
+	// The file is the document's base URI until an "$id" says otherwise, so a
+	// relative reference inside it is read beside it -- not beside whichever
+	// document referred to it, and not in this resolver's baseDir.
+	if u, err := FileURI(filePath); err == nil {
+		s.RetrievalURI = u
+	}
 
 	f.cache[filePath] = &s
 

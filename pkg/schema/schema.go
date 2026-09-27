@@ -1008,6 +1008,14 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 // The documentRoot is the schema node that serves as the current document root for
 // fragment resolution (initially the schema itself).
 func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
+	s.computeBaseURIs(parentBaseURI, documentRoot, DraftUnknown)
+}
+
+// computeBaseURIs is ComputeBaseURIs with the dialect a node is read under when
+// normalization settled none for it -- the dialect a caller generates the
+// document under (Config.Draft), which decides whether an $id beside a $ref
+// starts a resource. See refReplacesSiblings.
+func (s *Schema) computeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema, fallback Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
@@ -1031,7 +1039,7 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	// Which ids those are is scopeID's answer, and the resolver's anchor walk
 	// asks the same function: an id this walk could not parse used to be no
 	// scope change here and one there, which is the same two-walks shape again.
-	if idURL, ok := scopeID(s); ok {
+	if idURL, ok := scopeIDIn(s, fallback); ok {
 		if currentBase != nil {
 			currentBase = currentBase.ResolveReference(idURL)
 		} else {
@@ -1044,82 +1052,11 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	s.BaseURI = currentBase
 	s.DocumentRoot = currentDocRoot
 
-	// Recurse into all child schemas.
-	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
-	for _, sub := range s.Properties {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	for _, sub := range s.TypeSchemas {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
-	for _, sub := range s.PatternProperties {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
-	for _, sub := range s.Definitions {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
-	for _, sub := range s.Defs {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	for _, sub := range s.AllOf {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	for _, sub := range s.AnyOf {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	for _, sub := range s.OneOf {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Not != nil {
-		s.Not.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Items != nil && s.Items.Schema != nil {
-		s.Items.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Items != nil {
-		for _, sub := range s.Items.Schemas {
-			sub.ComputeBaseURIs(currentBase, currentDocRoot)
-		}
-	}
-	for _, sub := range s.PrefixItems {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		s.AdditionalProperties.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
-		s.AdditionalItems.Schema.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Contains != nil {
-		s.Contains.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.If != nil {
-		s.If.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Then != nil {
-		s.Then.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.Else != nil {
-		s.Else.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.PropertyNames != nil {
-		s.PropertyNames.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.UnevaluatedItems != nil {
-		s.UnevaluatedItems.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.UnevaluatedProperties != nil {
-		s.UnevaluatedProperties.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	if s.ContentSchema != nil {
-		s.ContentSchema.ComputeBaseURIs(currentBase, currentDocRoot)
-	}
-	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
-	for _, sub := range s.DependentSchemas {
-		sub.ComputeBaseURIs(currentBase, currentDocRoot)
+	// Recurse into all child schemas: subSchemas, the one statement of which
+	// positions hold a subschema, which the resource index and the anchor
+	// walks read too.
+	for _, sub := range subSchemas(s) {
+		sub.computeBaseURIs(currentBase, currentDocRoot, fallback)
 	}
 }
 

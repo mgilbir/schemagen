@@ -17,17 +17,27 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config                     Config
-	output                     *File
-	generated                  map[string]bool // track already-generated type names
-	generating                 map[string]bool // track types currently being generated (recursion guard)
-	defs                       map[string]*schema.Schema
-	rootTypeName               string                // Go type name for the root schema
-	rootID                     string                // $id of the root schema (for detecting self-references)
-	anchors                    map[string]string     // anchor/id → def ref path (e.g., "#something" → "#/definitions/bar")
-	dynamicAnchors             map[string]string     // $dynamicAnchor name → def ref path (e.g., "#items" → "#/$defs/items")
-	resolver                   schema.SchemaResolver // external resolver for non-local refs
-	baseURI                    *url.URL              // base URI for the root document (from $id or file path)
+	config       Config
+	output       *File
+	generated    map[string]bool // track already-generated type names
+	generating   map[string]bool // track types currently being generated (recursion guard)
+	rootTypeName string          // Go type name for the root schema
+	rootID       string          // $id of the root schema (for detecting self-references)
+	baseURI      *url.URL        // the root's $id, parsed (for detecting self-references)
+
+	// index is where every reference is resolved: the resource index of the
+	// documents this generator has been handed and has reached, keyed by
+	// absolute resource URI. See schema.ResourceIndex. There is no other
+	// lookup -- no index of the root document's definitions or anchors
+	// consulted first -- because a reference is resolved against the resource
+	// it is written in and only that, and a root-first shortcut is how
+	// "#/$defs/Name" in another document came to mean the root's Name.
+	//
+	// ownIndex is the one built for Config.Resolver when the generator was
+	// made, kept across Generate calls so a document reached twice is one
+	// instance; index is ownIndex unless a call passed WithResolver.
+	index                      *schema.ResourceIndex
+	ownIndex                   *schema.ResourceIndex
 	rootSchema                 *schema.Schema        // the root schema for local ref resolution
 	draft                      schema.Draft          // effective draft version of the root schema
 	draftOverridden            bool                  // true when Config.Draft explicitly set the draft (takes precedence over $schema)
@@ -41,11 +51,6 @@ type Generator struct {
 	// not what it failed to retrieve, so an unreachable metaschema would be
 	// re-attempted, with its timeout, at every call site.
 	metaschemaVocabularies map[string]map[string]bool
-
-	// documentRoots maps canonical $id URIs to the schema nodes that declare them.
-	// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
-	// within it resolves against that subschema, not the top-level root.
-	documentRoots map[string]*schema.Schema
 
 	// dynamicAnchorDecls memoises, by anchor name, every schema in the document
 	// that declares it. The node builder's loop check asks the question once per
@@ -333,6 +338,7 @@ func New(cfg Config) *Generator {
 	}
 	return &Generator{
 		config:             cfg,
+		ownIndex:           indexFor(cfg.Resolver, cfg.Draft),
 		pinnedNames:        pinned,
 		pinnedNameTaken:    make(map[string]bool),
 		generated:          make(map[string]bool),
@@ -355,6 +361,19 @@ func New(cfg Config) *Generator {
 	}
 }
 
+// indexFor is the resource index a generator resolves through for a configured
+// resolver: the resolver itself when the caller built the index -- the CLI
+// does, once per run, so every generator of the run sees one instance of each
+// document -- and otherwise a new index that loads through it, reading a node
+// whose dialect normalization left unsettled under Config.Draft, as the
+// generator does (see schema.WithIndexDraft).
+func indexFor(r schema.SchemaResolver, draft schema.Draft) *schema.ResourceIndex {
+	if idx, ok := r.(*schema.ResourceIndex); ok {
+		return idx
+	}
+	return schema.NewResourceIndex(r, schema.WithIndexDraft(draft))
+}
+
 // Generate processes a schema and returns the IR File.
 func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, error) {
 	var options generateOptions
@@ -367,9 +386,15 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// config are restored when this call returns, so every option is
 	// consistently scoped to the single call that passed it.
 	g.rootNameOverride = options.rootTypeName
+	if g.ownIndex == nil {
+		// A Generator built as a literal rather than by New.
+		g.ownIndex = indexFor(g.config.Resolver, g.config.Draft)
+	}
+	g.index = g.ownIndex
 	if options.resolver != nil {
 		prev := g.config.Resolver
 		g.config.Resolver = options.resolver
+		g.index = indexFor(options.resolver, g.config.Draft)
 		defer func() { g.config.Resolver = prev }()
 	}
 	if options.fieldNamesSet {
@@ -468,12 +493,20 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		}
 	}
 
-	// Compute effective base URIs, document roots, and schema resources. This
-	// enables scoped $id resolution and gives validation planning a dialect-aware
-	// view of the schema graph.
-	g.resourceGraph = schema.BuildResourceGraph(s, g.baseURI, g.draft)
-	g.documentRoots = make(map[string]*schema.Schema)
-	g.buildDocumentRoots(s)
+	// Register the document with the resource index, which computes every
+	// node's base URI and document root and indexes its resources and their
+	// anchors. A document the caller registered already -- the CLI registers
+	// every input under the file it was read from before generating any -- or a
+	// schema that is itself a node of a registered document is left as it is:
+	// registering it again would make a second identity for one schema.
+	if g.index.ResourceOf(s) == nil {
+		if err := g.index.AddDocument(s, nil); err != nil {
+			return nil, err
+		}
+	}
+	// The validation planner's view of the same resources, read from the same
+	// index, so the two cannot disagree about what a resource is.
+	g.resourceGraph = g.index.Graph(s, g.draft)
 
 	// Initialize dynamic scope with the root document root. Every type body
 	// reseeds it at the schema it is declaring for (see generateTypeDefBody), so
@@ -494,12 +527,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.dynamicAnchorDecls = nil
 	g.documentReach = nil
 
-	// Store the external resolver from config (may be nil).
-	g.resolver = g.config.Resolver
 	g.validationKeywordsDisabled = !g.hasValidationVocabulary(s)
 
 	// Settle draft 3's own format spellings before anything asks what a format
-	// keyword says. buildDocumentRoots has run, so every node's dialect is
+	// keyword says. The document is registered, so every node's dialect is
 	// answerable.
 	g.normalizeDialectFormats(s)
 
@@ -515,33 +546,6 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// these two, which is a new inconsistency of the shape issue #203 reports.
 	// TestReferenceKeywordsFollowAnExplicitDraft is what holds it.
 	g.normalizeDialectRefKeywords(s)
-
-	// Collect definitions ($defs and definitions) and build anchor index.
-	// Iterate in sorted key order for deterministic anchor registration
-	// (important when multiple defs declare the same $anchor in different scopes).
-	g.defs = make(map[string]*schema.Schema)
-	g.anchors = make(map[string]string)
-	g.dynamicAnchors = make(map[string]string)
-	//
-	// Keyed by the canonical fragment of the pointer that names each one -- the
-	// key RFC 6901-escaped, nothing percent-encoded -- and looked up by the
-	// canonical form of the ref (canonicalLocalRef), so that the lookup and the
-	// resolver agree on which definition a pointer names. Keyed by the raw key,
-	// a definition named "a/b" answered "#/$defs/a/b", which is the pointer
-	// $defs -> a -> b, and one named "a%25b" answered "#/$defs/a%25b", which
-	// names the key "a%b".
-	for _, name := range sortedKeys(s.Defs) {
-		def := s.Defs[name]
-		refPath := schema.PointerFragment("$defs", name)
-		g.defs[refPath] = def
-		g.indexAnchors(def, refPath)
-	}
-	for _, name := range sortedKeys(s.Definitions) {
-		def := s.Definitions[name]
-		refPath := schema.PointerFragment("definitions", name)
-		g.defs[refPath] = def
-		g.indexAnchors(def, refPath)
-	}
 
 	// Process definitions first — generate TypeDefs for each.
 	defNames := sortedKeys(s.Defs)
@@ -941,6 +945,19 @@ func (e *UnresolvedRefsError) AnyFetchNotAttempted() bool {
 // prefix. They are one failure with one line per resolver, so they are written
 // that way.
 func flattenResolverError(err error) string {
+	// Several documents asked for on the way to one answer -- the URI the
+	// reference resolves to, and then the file beside the referring one -- are
+	// several chains, joined; each is rendered, not only the first errors.As
+	// would find.
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		if _, isChain := err.(*schema.ResolveError); !isChain {
+			parts := make([]string, 0, len(joined.Unwrap()))
+			for _, e := range joined.Unwrap() {
+				parts = append(parts, flattenResolverError(e))
+			}
+			return strings.Join(parts, "; ")
+		}
+	}
 	var chain *schema.ResolveError
 	if errors.As(err, &chain) {
 		parts := make([]string, 0, len(chain.Errs))
@@ -2672,14 +2689,17 @@ func (g *Generator) declaredVocabulary(s *schema.Schema) map[string]bool {
 	if uri == "" && s.DocumentRoot != nil {
 		uri = s.DocumentRoot.Schema
 	}
-	if uri == "" || g.resolver == nil {
+	if uri == "" || g.index == nil {
 		return nil
 	}
 	if vocab, ok := g.metaschemaVocabularies[uri]; ok {
 		return vocab
 	}
 	var vocab map[string]bool
-	if meta, err := g.resolver.ResolveSchema(uri, nil); err == nil && meta != nil {
+	// Through the index like every other reference, so a metaschema that is
+	// also a document of the run -- or is reached again by a $ref -- is the one
+	// instance of it. $schema is an absolute URI (§8.1.1), so no base applies.
+	if meta, err := g.index.ResolveSchema(uri, nil); err == nil && meta != nil {
 		vocab = meta.Vocabulary
 	}
 	if g.metaschemaVocabularies == nil {
@@ -10546,98 +10566,6 @@ func namedOrPointer(name string, cyclic bool) GoType {
 	return &NamedType{Name: name}
 }
 
-// buildDocumentRoots walks the schema tree and registers every node that declares
-// an $id into g.documentRoots, keyed by its canonical (fully-resolved) URI.
-// This enables scoped resolution: when a subschema has $id, $ref: "#/..."
-// within it resolves against that subschema, not the top-level root.
-func (g *Generator) buildDocumentRoots(s *schema.Schema) {
-	if s == nil || s.IsBooleanSchema() {
-		return
-	}
-	// If this schema has a computed BaseURI and is its own DocumentRoot, register it.
-	if s.BaseURI != nil && s.DocumentRoot == s {
-		key := s.BaseURI.String()
-		// Strip trailing fragment "#" for consistent lookups.
-		key = strings.TrimSuffix(key, "#")
-		g.documentRoots[key] = s
-	}
-	// Recurse into all child schemas. A map's members are visited in key order:
-	// two nodes declaring the same $id (which the spec forbids, and which a
-	// document can still say) both write the one key above, and the one that
-	// writes last wins, so the order has to be a fixed one and not the map's.
-	for _, k := range sortedKeys(s.Properties) {
-		g.buildDocumentRoots(s.Properties[k])
-	}
-	for _, sub := range s.TypeSchemas {
-		g.buildDocumentRoots(sub)
-	}
-	for _, k := range sortedKeys(s.PatternProperties) {
-		g.buildDocumentRoots(s.PatternProperties[k])
-	}
-	for _, k := range sortedKeys(s.Definitions) {
-		g.buildDocumentRoots(s.Definitions[k])
-	}
-	for _, k := range sortedKeys(s.Defs) {
-		g.buildDocumentRoots(s.Defs[k])
-	}
-	for _, sub := range s.AllOf {
-		g.buildDocumentRoots(sub)
-	}
-	for _, sub := range s.AnyOf {
-		g.buildDocumentRoots(sub)
-	}
-	for _, sub := range s.OneOf {
-		g.buildDocumentRoots(sub)
-	}
-	if s.Not != nil {
-		g.buildDocumentRoots(s.Not)
-	}
-	if s.Items != nil && s.Items.Schema != nil {
-		g.buildDocumentRoots(s.Items.Schema)
-	}
-	if s.Items != nil {
-		for _, sub := range s.Items.Schemas {
-			g.buildDocumentRoots(sub)
-		}
-	}
-	for _, sub := range s.PrefixItems {
-		g.buildDocumentRoots(sub)
-	}
-	if s.AdditionalProperties != nil && s.AdditionalProperties.Schema != nil {
-		g.buildDocumentRoots(s.AdditionalProperties.Schema)
-	}
-	if s.AdditionalItems != nil && s.AdditionalItems.Schema != nil {
-		g.buildDocumentRoots(s.AdditionalItems.Schema)
-	}
-	if s.Contains != nil {
-		g.buildDocumentRoots(s.Contains)
-	}
-	if s.If != nil {
-		g.buildDocumentRoots(s.If)
-	}
-	if s.Then != nil {
-		g.buildDocumentRoots(s.Then)
-	}
-	if s.Else != nil {
-		g.buildDocumentRoots(s.Else)
-	}
-	if s.PropertyNames != nil {
-		g.buildDocumentRoots(s.PropertyNames)
-	}
-	if s.UnevaluatedItems != nil {
-		g.buildDocumentRoots(s.UnevaluatedItems)
-	}
-	if s.UnevaluatedProperties != nil {
-		g.buildDocumentRoots(s.UnevaluatedProperties)
-	}
-	if s.ContentSchema != nil {
-		g.buildDocumentRoots(s.ContentSchema)
-	}
-	for _, k := range sortedKeys(s.DependentSchemas) {
-		g.buildDocumentRoots(s.DependentSchemas[k])
-	}
-}
-
 // The three keywords whose value this generator resolves as a reference. They
 // are named rather than spelled inline because the failure diagnostic quotes
 // one, and quoting the wrong one sends the reader to the wrong keyword in their
@@ -10747,160 +10675,43 @@ func (g *Generator) noteRefAttempt(err error) {
 	g.refAttemptErrs = append(g.refAttemptErrs, err)
 }
 
+// resolveRefInContextUncounted resolves ref as written on ctx, through the
+// resource index and nothing else: against ctx's base URI, in the resource ctx
+// is written in. See schema.ResourceIndex.Resolve for the rule, and for the two
+// readings of a relative reference it falls back to.
+//
+// What the loader said about each document it could not supply is noted, as it
+// always was, so the failure names the resolver's reasons (issue #317); and so
+// is a verdict of the index's own that a caller can act on -- a URI two schemas
+// claim, an anchor two nodes declare -- since "cannot resolve" alone would send
+// them looking for a missing document that is not missing.
 func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema) *schema.Schema {
-	// Determine the effective base URI and document root from context.
-	ctxBase := g.baseURI
-	ctxDocRoot := g.rootSchema
-	if ctx != nil {
-		if ctx.BaseURI != nil {
-			ctxBase = ctx.BaseURI
-		}
-		if ctx.DocumentRoot != nil {
-			ctxDocRoot = ctx.DocumentRoot
-		}
+	if ctx == nil {
+		// A caller resolving a value that is on no schema: resolveRef, which
+		// states that it means the document being generated.
+		ctx = g.rootSchema
 	}
-
-	// 1. Direct defs map lookup (handles #/$defs/Foo, #/definitions/Bar).
-	if s, ok := g.defs[canonicalLocalRef(ref)]; ok {
+	// A ctx that belongs to no registered resource -- a node synthesized
+	// without the location of the node it stands for -- is not read in the
+	// document being generated instead. Which resource a reference is written
+	// in is the whole question, and answering it with the root is the guess
+	// that made "#/$defs/Name" in another document mean the root's Name; the
+	// index refuses such a reference, and so the run reports it rather than
+	// generating against a schema the document did not name. The same rule the
+	// runtime evaluator's node builder applies to a node with no DocumentRoot.
+	s, err := g.index.Resolve(ref, ctx)
+	if err == nil {
 		return s
 	}
-	// 2. Check anchor index (handles $id-based and $anchor-based refs).
-	if refPath, ok := g.anchors[ref]; ok {
-		if s, ok2 := g.defs[refPath]; ok2 {
-			return s
+	var refErr *schema.ReferenceError
+	if errors.As(err, &refErr) {
+		for _, load := range refErr.Loads {
+			g.noteRefAttempt(load)
 		}
-	}
-	// 3. For URN refs with fragments (e.g. "urn:...#something"), try the fragment as an anchor.
-	if idx := strings.LastIndex(ref, "#"); idx > 0 {
-		fragment := ref[idx:]
-		if refPath, ok := g.anchors[fragment]; ok {
-			if s, ok2 := g.defs[refPath]; ok2 {
-				return s
-			}
-		}
-	}
-	// 3b. Resolve as relative URI against context base URI, then check anchors and document roots.
-	if resolved := resolveRelativeURIAgainst(ref, ctxBase); resolved != "" {
-		if refPath, ok := g.anchors[resolved]; ok {
-			if s, ok2 := g.defs[refPath]; ok2 {
-				return s
-			}
-		}
-		// Check document roots by canonical URI.
-		resolvedClean := strings.TrimSuffix(resolved, "#")
-		if s, ok := g.documentRoots[resolvedClean]; ok {
-			return s
-		}
-	}
-	// 4. Fragment-only refs: use the context document root for JSON Pointer traversal.
-	if strings.HasPrefix(ref, "#") && ctxDocRoot != nil {
-		local := schema.NewLocalResolver(ctxDocRoot)
-		if s, err := local.Resolve(ref); err == nil {
-			return s
-		}
-	}
-	// 5. Try resolving as absolute/relative URI against context base, then delegate
-	//    to the external resolver. For refs with fragments (e.g., "name-defs.json#/$defs/orNull"),
-	//    first check document roots for the document part, then resolve the fragment within it.
-	if ctxBase != nil {
-		refURL, err := url.Parse(ref)
-		if err == nil {
-			absURL := ctxBase.ResolveReference(refURL)
-			// Still percent-encoded: url.Parse decoded Fragment once already,
-			// and the LocalResolver decodes what it is handed (see
-			// schema.DecodeFragment). Handing it Fragment decoded twice.
-			fragment := ""
-			if absURL.Fragment != "" {
-				fragment = absURL.EscapedFragment()
-			}
-			docURL := *absURL
-			docURL.Fragment, docURL.RawFragment = "", ""
-			docKey := docURL.String()
-
-			// Check document roots first.
-			if docSchema, ok := g.documentRoots[docKey]; ok {
-				if fragment != "" {
-					local := schema.NewLocalResolver(docSchema)
-					if s, err := local.Resolve("#" + fragment); err == nil {
-						return s
-					}
-				} else {
-					return docSchema
-				}
-			}
-
-			// Try external resolver with the absolute URI.
-			// When there's a fragment, first load the document root (without fragment)
-			// so we can register it properly, then resolve the fragment locally.
-			// This ensures ComputeBaseURIs is called on the full document, not a sub-schema.
-			if g.resolver != nil {
-				if fragment != "" {
-					// Load the document root first.
-					docSchema, err := g.resolver.ResolveSchema(docKey, ctxBase)
-					if err != nil {
-						g.noteRefAttempt(err)
-					} else {
-						g.registerRemoteSchema(docSchema, &docURL)
-						local := schema.NewLocalResolver(docSchema)
-						if resolved, err := local.Resolve("#" + fragment); err == nil {
-							return resolved
-						}
-					}
-				}
-				// Fallback: try with the full URI (no fragment, or fragment resolution failed above).
-				s, err := g.resolver.ResolveSchema(absURL.String(), ctxBase)
-				if err != nil {
-					g.noteRefAttempt(err)
-				} else {
-					g.registerRemoteSchema(s, &docURL)
-					return s
-				}
-			}
-		}
-	}
-	// 6. Try external resolver with the raw ref (handles absolute URIs, etc.).
-	if g.resolver != nil {
-		// Load the document itself before the fragment, exactly as step 5 does.
-		// A resolver may resolve the fragment for us and hand back the *sub*schema
-		// (MappingResolver does), and registering that as though it were the
-		// document makes it its own DocumentRoot -- so its siblings fall out of
-		// scope and a later "#anchor" or "$dynamicAnchor" lookup misses them.
-		if refURL, parseErr := url.Parse(ref); parseErr == nil && refURL.Fragment != "" {
-			frag := refURL.EscapedFragment()
-			docURL := *refURL
-			docURL.Fragment, docURL.RawFragment = "", ""
-			docSchema, err := g.resolver.ResolveSchema(docURL.String(), ctxBase)
-			if err != nil {
-				g.noteRefAttempt(err)
-			} else {
-				g.registerRemoteSchema(docSchema, &docURL)
-				local := schema.NewLocalResolver(docSchema)
-				if resolved, err := local.Resolve("#" + frag); err == nil {
-					return resolved
-				}
-			}
-		}
-		s, err := g.resolver.ResolveSchema(ref, ctxBase)
-		if err != nil {
-			g.noteRefAttempt(err)
-		} else {
-			// Register the remote schema so its internal $ref chains resolve.
-			if refURL, parseErr := url.Parse(ref); parseErr == nil {
-				frag := ""
-				if refURL.Fragment != "" {
-					frag = refURL.EscapedFragment()
-				}
-				refURL.Fragment, refURL.RawFragment = "", ""
-				g.registerRemoteSchema(s, refURL)
-				// If there was a fragment, resolve it within the now-registered schema.
-				if frag != "" {
-					local := schema.NewLocalResolver(s)
-					if resolved, localErr := local.ResolveSchema("#"+frag, refURL); localErr == nil {
-						return resolved
-					}
-				}
-			}
-			return s
+		var ambiguous *schema.AmbiguousAnchorError
+		var duplicate *schema.DuplicateIdentifierError
+		if errors.As(refErr.Reason, &ambiguous) || errors.As(refErr.Reason, &duplicate) || errors.Is(refErr.Reason, schema.ErrUnregisteredContext) {
+			g.noteRefAttempt(refErr.Reason)
 		}
 	}
 	return nil
@@ -11842,27 +11653,6 @@ func (g *Generator) resolveRecursiveRef(ref string, ctx *schema.Schema) *schema.
 	return target
 }
 
-// registerRemoteSchema computes base URIs for a remotely-resolved schema and
-// indexes its $id-bearing nodes into g.documentRoots so that subsequent refs
-// (including fragment-only refs like "#" within the remote document) resolve correctly.
-func (g *Generator) registerRemoteSchema(s *schema.Schema, docURI *url.URL) {
-	if s == nil {
-		return
-	}
-	// A fetched document is based on the URI it was retrieved from, which is the
-	// one the $ref asked for only when nothing redirected. docURI is the asked-for
-	// one -- it is derived from the reference here, before anything is fetched --
-	// so a document that came back from somewhere else says so on itself and that
-	// answer wins. A document declaring its own $id is unaffected either way,
-	// because ComputeBaseURIs lets the $id override the base it is handed. Issue
-	// #315; see Schema.RetrievalURI.
-	if s.RetrievalURI != nil {
-		docURI = s.RetrievalURI
-	}
-	s.ComputeBaseURIs(docURI, s)
-	g.buildDocumentRoots(s)
-}
-
 // pushDynamicScope pushes a document root onto the dynamic scope chain when
 // following a $ref that crosses a document boundary. Returns true if pushed
 // (caller must pop), false if the target is in the same scope or nil.
@@ -11902,8 +11692,9 @@ func (g *Generator) popDynamicScope() {
 //
 // Step 3 asks resourceDynamicAnchor, which is pkg/schema's resource rule and the
 // same question the generated evaluator asks of each frame it pushes. The other
-// reading -- findDynamicAnchor, which stops descending at a nested $id but still
-// reads the boundary node -- credits an anchor written on such a node to the
+// reading -- a walk that stops descending at a nested $id but still reads the
+// boundary node, which this generator had as findDynamicAnchor until the resource
+// index replaced it -- credits an anchor written on such a node to the
 // resource that merely contains it, and a resource nothing ever enters then
 // answers for every evaluation that passes overhead. That is issues #163 and
 // #164: the two paths through this generator disagreed about the same rule, and
@@ -12027,55 +11818,45 @@ func (g *Generator) dynamicRefInitialTarget(ref string, ctx *schema.Schema, reso
 		}
 	}
 
-	var initialTarget *schema.Schema
-	ctxDocRoot := g.rootSchema
-	if ctx != nil && ctx.DocumentRoot != nil {
-		ctxDocRoot = ctx.DocumentRoot
-	}
-	if anchorName != "" && ctxDocRoot != nil {
-		// Try $dynamicAnchor lookup in the local document scope first.
-		initialTarget = findDynamicAnchor(ctxDocRoot, anchorName)
-		if initialTarget == nil {
-			// Fall back to standard $anchor resolution.
-			local := schema.NewLocalResolver(ctxDocRoot)
-			if s, err := local.Resolve("#" + anchorName); err == nil {
-				initialTarget = s
+	// The initial target is the one a $ref of the same value reaches, and it is
+	// resolved by the same function: the plain-name fragment is looked up in the
+	// resource the reference names -- the one it is written in, for "#name" --
+	// where "$anchor" and "$dynamicAnchor" both declare it (2020-12 §8.2.2).
+	//
+	// A separate local walk used to come first, and it read anchors by the
+	// document rather than by the resource: it stopped at a nested $id but read
+	// the boundary node itself, so an anchor on an embedded resource's root was
+	// credited to the resource around it, and "#name" there reached a node the
+	// resource it was written in does not declare.
+	//
+	// One dialect differs. In v1 a $dynamicRef names a dynamic anchor, not a
+	// URI: "#items" in a resource that declares no "items" is not a dead
+	// reference but one the dynamic scope decides (the suite's "A $dynamicRef
+	// resolves to the first $dynamicAnchor still in scope"). Every evaluation of
+	// a document begins in its root resource, so a declaration there is in every
+	// dynamic scope and is the outermost -- the answer the scope walk gives
+	// whatever else was entered. That is the initial target taken here, and the
+	// walk that follows (resolveDynamicRef) still consults the scope. The
+	// generator used to reach it only by accident, through an index of the root
+	// document's anchors that answered every "#name" in any resource.
+	if anchorName != "" && strings.HasPrefix(ref, "#") && g.draftForSchema(ctx) == schema.DraftV1 {
+		if g.resolveRefInContextUncounted(ref, ctx) == nil {
+			if target := g.documentRootDynamicAnchor(ctx, anchorName); target != nil {
+				return target, anchorName
 			}
 		}
 	}
-	if initialTarget == nil {
-		// For JSON pointers, full URIs, or when local resolution failed.
-		initialTarget = resolve(ref, ctx)
-	}
-	return initialTarget, anchorName
+	return resolve(ref, ctx), anchorName
 }
 
-// findDynamicAnchor searches a schema tree for a sub-schema with the given
-// $dynamicAnchor value. It respects $id scope boundaries.
-func findDynamicAnchor(s *schema.Schema, anchor string) *schema.Schema {
-	if s == nil || s.IsBooleanSchema() {
+// documentRootDynamicAnchor is the node the root resource of ctx's document
+// declares $dynamicAnchor name on, or nil.
+func (g *Generator) documentRootDynamicAnchor(ctx *schema.Schema, name string) *schema.Schema {
+	doc := g.index.DocumentOf(ctx)
+	if doc == nil {
 		return nil
 	}
-	if s.DynamicAnchor == anchor {
-		return s
-	}
-	// Search child schemas, respecting $id scope boundaries.
-	for _, sub := range allSubSchemas(s) {
-		if sub == nil || sub.IsBooleanSchema() {
-			continue
-		}
-		if sub.ID != "" {
-			// New document scope — only check this node directly, not descendants.
-			if sub.DynamicAnchor == anchor {
-				return sub
-			}
-			continue
-		}
-		if found := findDynamicAnchor(sub, anchor); found != nil {
-			return found
-		}
-	}
-	return nil
+	return resourceDynamicAnchor(doc, name)
 }
 
 // allSubSchemas returns all immediate sub-schemas of a schema for tree traversal.
@@ -12137,68 +11918,6 @@ func allSubSchemas(s *schema.Schema) []*schema.Schema {
 		subs = append(subs, s.UnevaluatedItems)
 	}
 	return subs
-}
-
-// indexAnchors records the $id and the plain-name fragments of a definition for
-// anchor-based resolution. It stores both the raw $id value and the
-// canonicalized (resolved against base URI) form so that both relative and
-// absolute lookups succeed.
-//
-// When a definition declares its own $id, it creates a new document scope.
-// Its anchors belong to that scope, not the parent's, so a plain "#anchor"
-// lookup from the parent scope must NOT match them. Instead, each is registered
-// under the $id-qualified form (e.g., "https://example.com/foo#anchor").
-//
-// Which keywords declare a plain-name fragment is not decided here: it is
-// schema.AnchorNames, the one statement of that rule, shared with the resolver
-// that searches documents this one $refs into and with the resource graph. This
-// function used to answer it for itself, keyword by keyword, which is how a
-// "$dynamicAnchor" came to be indexed here -- and so reachable inside one
-// document -- while being invisible across documents (issue #307). It also
-// registered a "$anchor" under both spellings of the enclosing id but a
-// "$dynamicAnchor" under only one, an inconsistency the loop retires.
-func (g *Generator) indexAnchors(def *schema.Schema, refPath string) {
-	ids := make([]string, 0, 2)
-	for _, id := range []string{def.ID, def.LegacyID} {
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	hasOwnScope := len(ids) > 0
-
-	for _, id := range ids {
-		g.anchors[id] = refPath
-		// Also store the canonicalized URI (resolved against base URI).
-		if resolved := g.resolveRelativeURI(id); resolved != "" && resolved != id {
-			g.anchors[resolved] = refPath
-		}
-	}
-
-	for _, name := range schema.AnchorNames(def) {
-		if !hasOwnScope {
-			g.anchors["#"+name] = refPath
-			continue
-		}
-		for _, id := range ids {
-			// A name the id itself spells ({"$id": "#name"}) is already
-			// indexed above under the id; qualifying it again would only
-			// mint "#name#name".
-			if id == "#"+name {
-				continue
-			}
-			g.anchors[id+"#"+name] = refPath
-			if resolved := g.resolveRelativeURI(id); resolved != "" {
-				g.anchors[resolved+"#"+name] = refPath
-			}
-		}
-	}
-
-	// $dynamicAnchor is additionally tracked on its own for the dynamic-scope
-	// walk $dynamicRef performs, which is a different lookup from the plain
-	// "#name" one above.
-	if def.DynamicAnchor != "" && g.dynamicAnchors != nil {
-		g.dynamicAnchors["#"+def.DynamicAnchor] = refPath
-	}
 }
 
 // resolvedToFalseSchema checks if a property schema's $ref, $dynamicRef, or
@@ -12439,12 +12158,6 @@ func (g *Generator) isSelfRefInContext(ref string, ctx *schema.Schema) bool {
 		}
 	}
 	return false
-}
-
-// resolveRelativeURI resolves a relative URI against the generator's base URI.
-// Returns the resolved absolute URI string, or "" if resolution is not possible.
-func (g *Generator) resolveRelativeURI(ref string) string {
-	return resolveRelativeURIAgainst(ref, g.baseURI)
 }
 
 // resolveRelativeURIAgainst resolves a relative URI against the given base URI.
