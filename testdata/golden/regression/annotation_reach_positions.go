@@ -1899,12 +1899,27 @@ func (a AnnotationReachPositions) Validate() error {
 	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
-		for _rbKey, _rbRaw := range a._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{

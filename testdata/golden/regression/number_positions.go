@@ -447,9 +447,24 @@ func (n NumberPositions) Validate() error {
 			return fmt.Errorf("elements[%d]: value %v is less than minimum 0", _i0, _e0)
 		}
 	}
-	for _k0, _e0 := range n.Values {
-		if float64(_e0) >= 1 {
-			return fmt.Errorf("values[%q]: value %v must be less than 1", _k0, _e0)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range n.Values { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if float64(_e0) >= 1 {
+					return fmt.Errorf("values[%q]: value %v must be less than 1", _k0, _e0)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	if n._jsonKeys["counted"] {

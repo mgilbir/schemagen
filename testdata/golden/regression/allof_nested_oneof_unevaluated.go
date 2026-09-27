@@ -209,14 +209,29 @@ func (p PickOneValueOption0) Validate() error {
 			"m": true,
 			"n": true,
 		}
-		for k, v := range p.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
+		{
+			var _least string
+			var _failed error
+			for k, v := range p.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
+					}
+					if !evaluated {
+						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
 			}
-			if !evaluated {
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -592,12 +607,27 @@ func (p PickOne) Validate() error {
 	// evaluated against the document.
 	if p._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(p._jsonRawProps))
-		for _rbKey, _rbRaw := range p._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range p._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{
@@ -849,12 +879,27 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
-		for _rbKey, _rbRaw := range a._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{

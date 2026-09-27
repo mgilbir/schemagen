@@ -500,18 +500,33 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 			"typed":  true,
 			"viaRef": true,
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					if o.AdditionalProperties == nil {
+						o.AdditionalProperties = make(map[string]OverflowMapUntypedValueValue)
+					}
+					var val OverflowMapUntypedValueValue
+					if err := json.Unmarshal(rawVal, &val); err != nil {
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+					}
+					o.AdditionalProperties[rawKey] = val
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
+				}
 			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]OverflowMapUntypedValueValue)
+			if _failed != nil {
+				return _failed
 			}
-			var val OverflowMapUntypedValueValue
-			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
-			}
-			o.AdditionalProperties[rawKey] = val
 		}
 	}
 
@@ -532,51 +547,171 @@ func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+	{
+		var _least string
+		var _failed error
+		for k, v := range o.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && k >= _least {
+				continue
+			}
+			if _err := func() error {
+				raw, err := json.Marshal(v)
+				if err != nil {
+					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+				}
+				obj[k] = raw
+				return nil
+			}(); _err != nil {
+				_least, _failed = k, _err
+			}
 		}
-		obj[k] = raw
+		if _failed != nil {
+			return nil, _failed
+		}
 	}
 	return json.Marshal(obj)
 }
 
 // Validate checks OverflowMapUntypedValue against its JSON Schema constraints.
 func (o OverflowMapUntypedValue) Validate() error {
-	for _k, _val := range o.ArrLen {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "arrLen[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range o.ArrLen { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "arrLen[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k, _val := range o.Bare {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "bare[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range o.Bare { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "bare[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k, _val := range o.ObjReq {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "objReq[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range o.ObjReq { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "objReq[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k, _val := range o.StrLen {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "strLen[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range o.StrLen { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "strLen[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k, _val := range o.ViaRef {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "viaRef[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range o.ViaRef { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "viaRef[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k0, _e0 := range o.Typed {
-		if float64(_e0) < 5 {
-			return fmt.Errorf("typed[%q]: value %v is less than minimum 5", _k0, _e0)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range o.Typed { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if float64(_e0) < 5 {
+					return fmt.Errorf("typed[%q]: value %v is less than minimum 5", _k0, _e0)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
-	for _k0, _e0 := range o.AdditionalProperties {
-		if _err := _e0.Validate(); _err != nil {
-			return jsonElemPathf(_err, "[%q]", _k0)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range o.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _err := _e0.Validate(); _err != nil {
+					return jsonElemPathf(_err, "[%q]", _k0)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	return nil

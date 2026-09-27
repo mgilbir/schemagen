@@ -176,6 +176,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// presence is untracked and the check is skipped, consistent with how
 	// optional-property validation below treats _jsonKeys.
 	if {{$recv}}._jsonKeys != nil {
+		{{- /* maporder: not a map: ranges a slice literal. */}}
 		for _, _req := range []string{ {{- range $i, $r := $struct.RequiredJSON}}{{if $i}}, {{end}}{{printf "%q" $r}}{{- end -}} } {
 			if !{{$recv}}._jsonKeys[_req] {
 				return fmt.Errorf("%s: required property is missing", _req)
@@ -489,11 +490,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if and $struct.AdditionalProperties $struct.AdditionalProperties.Forbidden}}
-	if len({{$recv}}.AdditionalProperties) > 0 {
-		for k := range {{$recv}}.AdditionalProperties {
-			return jsonValueErrorf("additional property %q is not allowed", k)
-		}
-	}
+	{{- /* Every map loop below that can refuse a member is opened with
+	       least_key_open, so that a document with several bad members is
+	       refused for the same one -- the least key -- on every run. A plain
+	       range returning at the first refusal named whichever member Go's
+	       randomised map order reached first. */}}
+	{{- $lk := leastKey "k" "_" (printf "%s.AdditionalProperties" $recv) "_failed"}}
+	{{- template "least_key_open" $lk}}
+		return jsonValueErrorf("additional property %q is not allowed", k)
+	{{- template "least_key_close" $lk}}
 	{{- end}}
 	{{- range $oi, $oneOf := $struct.ObjectOneOfs}}
 	// object-level oneOf: exactly one flattened variant must match.
@@ -702,7 +707,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
 			{{- end}}
 		}
-		for k, v := range {{$recv}}.PatternProperties {
+		{{- $lk := leastKey "k" "v" (printf "%s.PatternProperties" $recv) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			_ = v
 			{{- range $i, $pp := $struct.PatternProperties}}
 			{{- if or $pp.IsForbidden (ne $pp.TypeName "") (gt (len $pp.Validations) 0)}}
@@ -895,12 +901,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- end}}
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 	}
 	{{- end}}
 	{{- range $struct.ValidatableFields}}
 	{{- if and .IsSlice .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
+		{{- /* maporder: not a map: ranges a slice; this arm is the pointer-to-slice field. */}}
 		for _i, _item := range *{{$recv}}.{{.FieldName}} {
 			{{- if .ElemIsPointer}}
 			if _item == nil {
@@ -933,36 +941,40 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- else if and .IsMap .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
-		for _k, _val := range *{{$recv}}.{{.FieldName}} {
+		{{- $lk := leastKey "_k" "_val" (printf "*%s.%s" $recv .FieldName) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			{{- if .ElemIsPointer}}
 			if _val == nil {
 				{{- if .ElemRejectsNull}}
 				return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
 				{{- else}}
-				continue // a JSON null left no value behind to check
+				return nil // a JSON null left no value behind to check
 				{{- end}}
 			}
 			{{- end}}
 			if err := _val.Validate(); err != nil {
 				return jsonPathf(err, "{{jsonErrorName .JSONName}}[%q]", _k)
 			}
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 	}
 	{{- else if .IsMap}}
-	for _k, _val := range {{$recv}}.{{.FieldName}} {
+	{{- $lk := leastKey "_k" "_val" (printf "%s.%s" $recv .FieldName) "_failed"}}
+	{{- template "least_key_open" $lk}}
 		{{- if .ElemIsPointer}}
 		if _val == nil {
 			{{- if .ElemRejectsNull}}
 			return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
 			{{- else}}
-			continue // a JSON null left no value behind to check
+			return nil // a JSON null left no value behind to check
 			{{- end}}
 		}
 		{{- end}}
 		if err := _val.Validate(); err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}[%q]", _k)
 		}
-	}
+		return nil
+	{{- template "least_key_close" $lk}}
 	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
 		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
@@ -1106,11 +1118,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- if $dep.AllowedKeys}}
 		{
 			_allowedKeys := map[string]bool{ {{- range $dep.AllowedKeys}}{{printf "%q" .}}: true, {{end -}} }
-			for _k := range {{$recv}}._jsonKeys {
+			{{- $lk := leastKey "_k" "_" (printf "%s._jsonKeys" $recv) "_failed"}}
+			{{- template "least_key_open" $lk}}
 				if !_allowedKeys[_k] {
 					return fmt.Errorf("dependentSchema %q: property %q is not allowed", {{printf "%q" $dep.TriggerKey}}, _k)
 				}
-			}
+				return nil
+			{{- template "least_key_close" $lk}}
 		}
 		{{- end}}
 		{{- if $dep.RequiredProps}}
@@ -1159,7 +1173,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if $struct.HasPropertyNames}}
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range {{$recv}}._jsonKeys {
+	{{- $lk := leastKey "_pnKey" "_" (printf "%s._jsonKeys" $recv) "_failed"}}
+	{{- template "least_key_open" $lk}}
 		{{- if $struct.PropertyNames.IsForbidden}}
 		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
 		{{- end}}
@@ -1193,7 +1208,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 		}
 		{{- end}}
-	}
+		{{- if not $struct.PropertyNames.IsForbidden}}
+		return nil
+		{{- end}}
+	{{- template "least_key_close" $lk}}
 	{{- end}}
 	{{- if $struct.HasBranchOverflowChecks}}
 	{{- /* An allOf/anyOf branch's own additionalProperties or
@@ -1221,7 +1239,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		for k, _bv := range {{$recv}}._jsonRawProps {
+		{{- $lk := leastKey "k" "_bv" (printf "%s._jsonRawProps" $recv) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			_ = _bv
 			_bAcct := false
 			{{- if gt (len $branch.AccountedNames) 0}}
@@ -1251,7 +1270,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- end}}
 			}
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 	}
 	{{- end}}
 	{{- end}}
@@ -1275,13 +1295,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// evaluated against the document.
 	if {{$recv}}._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
-		for _rbKey, _rbRaw := range {{$recv}}._jsonRawProps {
+		{{- $lk := leastKey "_rbKey" "_rbRaw" (printf "%s._jsonRawProps" $recv) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
 				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 		{{- range $ri, $check := $struct.RuntimeBranchChecks}}
 		{
 			_rbNode{{$ri}} := {{$check.NodeLiteral}}
@@ -1472,6 +1494,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if $branch.AllEvaluated}}
 				// Matching branch evaluates all properties.
+				{{- /* maporder: fills a set; the same members end up in it in any order. */}}
 				for _k := range {{$recv}}._jsonKeys {
 					evaluatedNames[_k] = true
 				}
@@ -1479,6 +1502,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- range $branch.Patterns}}
 				{
 					_re := ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode)
+					{{- /* maporder: fills a set; the same members end up in it in any order. */}}
 					for _k := range {{$recv}}._jsonKeys {
 						if _re.MatchString(_k) {
 							evaluatedNames[_k] = true
@@ -1492,7 +1516,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- end}}
-		for k, v := range {{$recv}}.AdditionalProperties {
+		{{- $lk := leastKey "k" "v" (printf "%s.AdditionalProperties" $recv) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			evaluated := false
 			_ = v
 			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
@@ -1502,6 +1527,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
 			if !evaluated {
+				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
 				for _, re := range evaluatedPatterns {
 					if re.MatchString(k) {
 						evaluated = true
@@ -1533,9 +1559,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- end}}
 			}
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 		{{- if $struct.HasPatternProperties}}
-		for k, v := range {{$recv}}.PatternProperties {
+		{{- $lk := leastKey "k" "v" (printf "%s.PatternProperties" $recv) "_failed"}}
+		{{- template "least_key_open" $lk}}
 			evaluated := false
 			_ = v
 			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
@@ -1545,6 +1573,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
 			if !evaluated {
+				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
 				for _, re := range evaluatedPatterns {
 					if re.MatchString(k) {
 						evaluated = true
@@ -1576,7 +1605,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- end}}
 			}
-		}
+			return nil
+		{{- template "least_key_close" $lk}}
 		{{- end}}
 	}
 	{{- end}}
@@ -1621,10 +1651,19 @@ if {{$recv}}.{{$iv.FieldName}} != nil {
 {{- $errf := pathErrf $path}}
 {{- $joinf := pathJoin $path}}
 {{- $args := itemArgs $iv $li}}
-for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
+{{- $container := itemRange $recv $iv $li}}
+{{- /* A map level is refused for its least failing key rather than for
+       whichever member Go's randomised map order reached first; see
+       least_key_open. A slice level ranges in index order and needs nothing. */}}
+{{- $lk := leastKey $lv.IndexVar $lv.ElemVar $container "_failed"}}
+{{- if $lv.IsMap}}
+{{- template "least_key_open" $lk}}
+{{- else}}
+for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
+{{- end}}
 	{{- if $lv.ElemIsPointer}}
 	if {{$lv.ElemVar}} == nil {
-		continue // a JSON null left no value behind to check
+		{{if $lv.IsMap}}return nil{{else}}continue{{end}} // a JSON null left no value behind to check
 	}
 	{{- end}}
 	{{- if $lv.CallValidate}}
@@ -1815,7 +1854,12 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{itemRange $recv $iv $li}} {
 	{{- if lt (add $li 1) (len $iv.Levels)}}
 	{{- template "item_level" (mkItemLevelCtx $recv $iv (add $li 1))}}
 	{{- end}}
+{{- if $lv.IsMap}}
+	return nil
+{{- template "least_key_close" $lk}}
+{{- else}}
 }
+{{- end}}
 {{- end}}
 
 {{- /* validation_rule_inline emits a validation check on _uVal for a single rule.
@@ -2500,4 +2544,45 @@ declares a field for it at all.
 				}
 				{{- end}}
 {{- end}}
+{{- end}}
+
+
+{{- /* least_key_open and least_key_close bracket a loop over a map whose body
+       can refuse a member. The body is written as it would be inside the loop,
+       with `return nil` where the loop would `continue`; the context is
+       leastKey's: the key and value variables, the map, and what the enclosing
+       function returns the error with.
+
+       Go randomises the order a map is ranged in, on purpose, so a loop that
+       returns at the first member it refuses refuses a document with several
+       bad members for a different one from run to run. This one checks the
+       members and keeps the refusal for the least key -- the member the runtime
+       evaluator's sorted walk names for the same document. A key at or past the
+       least refusal found so far cannot change the answer and is not checked,
+       so a document that passes costs what it cost before plus one direct call
+       per member: every member checked once, in whatever order, with nothing
+       sorted and nothing allocated -- where ranging over sorted keys would sort
+       them on every call to find a refusal that is rare. The body is a function
+       literal called in place so that its returns stay returns. */}}
+{{define "least_key_open"}}
+{
+	var _least string
+	var _failed error
+	{{- /* maporder: keeps the refusal for the least failing key, which no order of the loop changes. */}}
+	for {{.Vars}} := range {{.Container}} { // refused for the least failing key
+		if _failed != nil && {{.Key}} >= _least {
+			continue
+		}
+		if _err := func() error {
+{{- end}}
+
+{{define "least_key_close"}}
+		}(); _err != nil {
+			_least, _failed = {{.Key}}, _err
+		}
+	}
+	if _failed != nil {
+		return {{.Ret}}
+	}
+}
 {{- end}}

@@ -602,6 +602,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- if $struct.NeedsJSONKeys}}
 		{{$recv}}._jsonKeys = make(map[string]bool, len(raw))
+		{{- /* maporder: fills a set; the same members end up in it in any order. */}}
 		for _k := range raw {
 			{{$recv}}._jsonKeys[_k] = true
 		}
@@ -656,9 +657,22 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 		}
 		{{- end}}
+		{{- /* Where a member can be refused -- a null the schema forbids, a value
+		       that does not decode -- in least-key terms rather than map order:
+		       the refusal is for the least key, not for whichever member the
+		       randomised map order reached first. See least_key_open. Where
+		       nothing can be refused the loop only files each member under its
+		       own key, and stays a plain loop. */}}
+		{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType)))}}
+		{{- $lk := leastKey "rawKey" "rawVal" "raw" "_failed"}}
+		{{- if $refuses}}
+		{{- template "least_key_open" $lk}}
+		{{- else}}
+		{{- /* maporder: files each member under its own key, which are distinct, and refuses none. */}}
 		for rawKey, rawVal := range raw {
+		{{- end}}
 			if knownFields[rawKey] {
-				continue
+				{{if $refuses}}return nil{{else}}continue{{end}}
 			}
 			{{- if $struct.HasPatternProperties}}
 			matchesPattern := false
@@ -673,7 +687,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 					{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
 				}
 				{{$recv}}.PatternProperties[rawKey] = rawVal
-				continue
+				{{if $refuses}}return nil{{else}}continue{{end}}
 			}
 			{{- end}}
 			{{- with $struct.OverflowNullCheck}}
@@ -711,7 +725,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{$recv}}.AdditionalProperties[rawKey] = val
 			{{- end}}
 			{{- end}}
+		{{- if $refuses}}
+			return nil
+		{{- template "least_key_close" $lk}}
+		{{- else}}
 		}
+		{{- end}}
 		{{- end}}
 	}
 	{{- end}}

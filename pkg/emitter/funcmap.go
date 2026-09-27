@@ -88,6 +88,7 @@ func FuncMap() template.FuncMap {
 		"formatHelperName":       formatHelperNameFunc,
 		"formatValueExpr":        formatValueExprFunc,
 		"itemRange":              itemRangeFunc,
+		"leastKey":               leastKeyFunc,
 		"itemElem":               itemElemFunc,
 		"itemPath":               itemPathFunc,
 		"pathErrf":               pathErrfFunc,
@@ -394,6 +395,25 @@ func itemRangeFunc(recv string, def generator.ItemValidationDef, level int) stri
 		return expr
 	}
 	return itemElemFunc(def, level-1)
+}
+
+// leastKeyCtx is the context of least_key_open and least_key_close: the
+// loop's key and value variables ("_" for a value the body does not read), the
+// map it ranges over, and what the enclosing function returns the refusal with.
+type leastKeyCtx struct {
+	Key, Val, Container, Ret string
+}
+
+// Vars is the loop's variable list, without a blank value.
+func (c leastKeyCtx) Vars() string {
+	if c.Val == "_" {
+		return c.Key
+	}
+	return c.Key + ", " + c.Val
+}
+
+func leastKeyFunc(key, val, container, ret string) leastKeyCtx {
+	return leastKeyCtx{Key: key, Val: val, Container: container, Ret: ret}
 }
 
 // itemElemFunc renders a level's element, dereferenced when the element type is

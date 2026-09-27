@@ -504,6 +504,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if !_nestedOk {
 			continue
 		}
+		{{- /* maporder: not a map: ranges a slice, _nested is asserted to []any above. */}}
 		for _j, _nestedElem := range _nested {
 			{{- if eq .ItemsNested.ItemsType "integer"}}
 			_f, _fOk := _nestedElem.(float64)
@@ -692,6 +693,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{
 				branchEvals := []int{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.EvaluatedCount}}{{end -}} }
 				branchAllEval := []bool{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.AllEvaluated}}{{end -}} }
+				{{- /* maporder: not a map: ranges a slice, branchEvals is the []int declared above. */}}
 				for _bi, _be := range branchEvals {
 					if branchAllEval[_bi] {
 						allEvaluated = true
@@ -707,6 +709,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{
 				branchEvals := []int{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.EvaluatedCount}}{{end -}} }
 				branchAllEval := []bool{ {{- range $i, $b := .Branches}}{{if $i}}, {{end}}{{$b.AllEvaluated}}{{end -}} }
+				{{- /* maporder: not a map: ranges a slice, branchEvals is the []int declared above. */}}
 				for _bi, _be := range branchEvals {
 					if branchAllEval[_bi] {
 						allEvaluated = true

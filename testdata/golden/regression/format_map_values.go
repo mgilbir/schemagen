@@ -33,21 +33,36 @@ func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					if string(rawVal) == "null" {
+						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+					}
+					if f.AdditionalProperties == nil {
+						f.AdditionalProperties = make(map[string]string)
+					}
+					var val string
+					if err := json.Unmarshal(rawVal, &val); err != nil {
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+					}
+					f.AdditionalProperties[rawKey] = val
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
+				}
 			}
-			if string(rawVal) == "null" {
-				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+			if _failed != nil {
+				return _failed
 			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]string)
-			}
-			var val string
-			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
-			}
-			f.AdditionalProperties[rawKey] = val
 		}
 	}
 
@@ -68,12 +83,27 @@ func (f FormatMapValues) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+	{
+		var _least string
+		var _failed error
+		for k, v := range f.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && k >= _least {
+				continue
+			}
+			if _err := func() error {
+				raw, err := json.Marshal(v)
+				if err != nil {
+					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+				}
+				obj[k] = raw
+				return nil
+			}(); _err != nil {
+				_least, _failed = k, _err
+			}
 		}
-		obj[k] = raw
+		if _failed != nil {
+			return nil, _failed
+		}
 	}
 	return json.Marshal(obj)
 }

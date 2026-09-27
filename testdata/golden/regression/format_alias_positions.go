@@ -262,9 +262,24 @@ func (f FormatAliasPositions) Validate() error {
 			return jsonPathf(err, "stamp_list[%d]", _i)
 		}
 	}
-	for _k, _val := range f.StampMap {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "stamp_map[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range f.StampMap { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "stamp_map[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i0, _e0 := range f.StampGrid {

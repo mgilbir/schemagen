@@ -223,8 +223,22 @@ func (n NoNames) MarshalJSON() ([]byte, error) {
 // Validate checks NoNames against its JSON Schema constraints.
 func (n NoNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range n._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range n._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -484,10 +498,25 @@ func (i InlineForbiddingPositionsEmptyEnumPattern) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^a", ecmaflags.Unicode),
 		}
-		for k, v := range i.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, "^a")
+		{
+			var _least string
+			var _failed error
+			for k, v := range i.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, "^a")
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -626,14 +655,29 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) Validate() error {
 		evaluatedNames := map[string]bool{
 			"k": true,
 		}
-		for k, v := range i.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
+		{
+			var _least string
+			var _failed error
+			for k, v := range i.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
+					}
+					if !evaluated {
+						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
 			}
-			if !evaluated {
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -1835,9 +1879,24 @@ func (i InlineForbiddingPositions) Validate() error {
 			return jsonPathf(err, "emptyEnumUnevalProps")
 		}
 	}
-	for _k, _val := range i.EmptyEnumValues {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "emptyEnumValues[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range i.EmptyEnumValues { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "emptyEnumValues[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i, _item := range i.FalseItems {
@@ -1910,9 +1969,24 @@ func (i InlineForbiddingPositions) Validate() error {
 			return jsonPathf(err, "notTypedEmptyEnum")
 		}
 	}
-	for _k, _val := range i.NullableEmptyEnumValues {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "nullableEmptyEnumValues[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range i.NullableEmptyEnumValues { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "nullableEmptyEnumValues[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i, _item := range i.NullableFalseItems {

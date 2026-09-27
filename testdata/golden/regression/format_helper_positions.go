@@ -270,9 +270,24 @@ func (f FormatHelperPositions) Validate() error {
 			return fmt.Errorf("hostList[%d]: %w", _i0, _err)
 		}
 	}
-	for _k0, _e0 := range f.HostMap {
-		if _err := schemagenFormatHostname(string(_e0)); _err != nil {
-			return fmt.Errorf("hostMap[%q]: %w", _k0, _err)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range f.HostMap { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _err := schemagenFormatHostname(string(_e0)); _err != nil {
+					return fmt.Errorf("hostMap[%q]: %w", _k0, _err)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i0, _e0 := range f.IdnHostList {
@@ -290,9 +305,24 @@ func (f FormatHelperPositions) Validate() error {
 			return fmt.Errorf("mailList[%d]: %w", _i0, _err)
 		}
 	}
-	for _k0, _e0 := range f.MailMap {
-		if _err := schemagenFormatEmail(string(_e0)); _err != nil {
-			return fmt.Errorf("mailMap[%q]: %w", _k0, _err)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range f.MailMap { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _err := schemagenFormatEmail(string(_e0)); _err != nil {
+					return fmt.Errorf("mailMap[%q]: %w", _k0, _err)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i0, _e0 := range f.Nested {
@@ -327,9 +357,24 @@ func (f FormatHelperPositions) Validate() error {
 			return fmt.Errorf("v4List[%d]: %w", _i0, _err)
 		}
 	}
-	for _k0, _e0 := range f.V4map {
-		if _err := schemagenFormatIPv4Addr(_e0); _err != nil {
-			return fmt.Errorf("v4Map[%q]: %w", _k0, _err)
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range f.V4map { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _err := schemagenFormatIPv4Addr(_e0); _err != nil {
+					return fmt.Errorf("v4Map[%q]: %w", _k0, _err)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i0, _e0 := range f.V6list {

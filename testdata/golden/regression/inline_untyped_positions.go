@@ -899,9 +899,24 @@ func (i InlineUntypedPositions) Validate() error {
 			return jsonPathf(err, "arr")
 		}
 	}
-	for _k, _val := range i.NullableMap {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "nullableMap[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range i.NullableMap { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "nullableMap[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	if i.Num != nil {

@@ -85,35 +85,50 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 			ecma262.MustCompile("^num_", ecmaflags.Unicode),
 			ecma262.MustCompile("^x-", ecmaflags.Unicode),
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					for _, re := range patternRegexps {
+						if re.MatchString(rawKey) {
+							matchesPattern = true
+							break
+						}
+					}
+					if matchesPattern {
+						if r.PatternProperties == nil {
+							r.PatternProperties = make(map[string]json.RawMessage)
+						}
+						r.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if string(rawVal) == "null" {
+						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+					}
+					if r.AdditionalProperties == nil {
+						r.AdditionalProperties = make(map[string]bool)
+					}
+					var val bool
+					if err := json.Unmarshal(rawVal, &val); err != nil {
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+					}
+					r.AdditionalProperties[rawKey] = val
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if r.PatternProperties == nil {
-					r.PatternProperties = make(map[string]json.RawMessage)
-				}
-				r.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if string(rawVal) == "null" {
-				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]bool)
-			}
-			var val bool
-			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
-			}
-			r.AdditionalProperties[rawKey] = val
 		}
 	}
 
@@ -137,12 +152,27 @@ func (r Record) MarshalJSON() ([]byte, error) {
 	for k, v := range r.PatternProperties {
 		obj[k] = v
 	}
-	for k, v := range r.AdditionalProperties {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+	{
+		var _least string
+		var _failed error
+		for k, v := range r.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && k >= _least {
+				continue
+			}
+			if _err := func() error {
+				raw, err := json.Marshal(v)
+				if err != nil {
+					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+				}
+				obj[k] = raw
+				return nil
+			}(); _err != nil {
+				_least, _failed = k, _err
+			}
 		}
-		obj[k] = raw
+		if _failed != nil {
+			return nil, _failed
+		}
 	}
 	return json.Marshal(obj)
 }
@@ -166,79 +196,94 @@ func (r Record) Validate() error {
 			ecma262.MustCompile("^num_", ecmaflags.Unicode),
 			ecma262.MustCompile("^x-", ecmaflags.Unicode),
 		}
-		for k, v := range r.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					b := bytes.TrimSpace(v)
-					var jt string
-					if len(b) == 0 {
-						jt = "unknown"
-					} else {
-						switch b[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(b, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
+		{
+			var _least string
+			var _failed error
+			for k, v := range r.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							b := bytes.TrimSpace(v)
+							var jt string
+							if len(b) == 0 {
+								jt = "unknown"
+							} else {
+								switch b[0] {
+								case '"':
+									jt = "string"
+								case '{':
+									jt = "object"
+								case '[':
+									jt = "array"
+								case 't', 'f':
+									jt = "boolean"
+								case 'n':
+									jt = "null"
+								default:
+									jt = "number"
+									// Draft 6 onward reads the value: 1.0 is an integer, so
+									// the number is parsed rather than scanned. Every arm
+									// below that accepts "number" also accepts "integer", so
+									// widening this classification narrows nothing.
+									var _ppNum float64
+									if json.Unmarshal(b, &_ppNum) == nil &&
+										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
+										jt = "integer"
+									}
+								}
+							}
+							if jt != "integer" {
+								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^num_", k)
 							}
 						}
 					}
-					if jt != "integer" {
-						return fmt.Errorf("patternProperties %s: key %q value must be integer", "^num_", k)
+					if ppRegexps[1].MatchString(k) {
+						{
+							b := bytes.TrimSpace(v)
+							var jt string
+							if len(b) == 0 {
+								jt = "unknown"
+							} else {
+								switch b[0] {
+								case '"':
+									jt = "string"
+								case '{':
+									jt = "object"
+								case '[':
+									jt = "array"
+								case 't', 'f':
+									jt = "boolean"
+								case 'n':
+									jt = "null"
+								default:
+									jt = "number"
+									// Draft 6 onward reads the value: 1.0 is an integer, so
+									// the number is parsed rather than scanned. Every arm
+									// below that accepts "number" also accepts "integer", so
+									// widening this classification narrows nothing.
+									var _ppNum float64
+									if json.Unmarshal(b, &_ppNum) == nil &&
+										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
+										jt = "integer"
+									}
+								}
+							}
+							if jt != "string" {
+								return fmt.Errorf("patternProperties %s: key %q value must be string", "^x-", k)
+							}
+						}
 					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
 				}
 			}
-			if ppRegexps[1].MatchString(k) {
-				{
-					b := bytes.TrimSpace(v)
-					var jt string
-					if len(b) == 0 {
-						jt = "unknown"
-					} else {
-						switch b[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(b, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-						}
-					}
-					if jt != "string" {
-						return fmt.Errorf("patternProperties %s: key %q value must be string", "^x-", k)
-					}
-				}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}

@@ -383,21 +383,36 @@ func (u UntypedFormatPositionsBuckets) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^p", ecmaflags.Unicode),
 		}
-		for k, v := range u.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					// The sub-schema's own type answers for it: the value is
-					// decoded into it, so the decode enforces shape and the
-					// Validate enforces everything beyond it.
-					var _pv UntypedFormatPositionsBucketsPattern0
-					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
-					}
-					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
-					}
+		{
+			var _least string
+			var _failed error
+			for k, v := range u.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
 				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							// The sub-schema's own type answers for it: the value is
+							// decoded into it, so the decode enforces shape and the
+							// Validate enforces everything beyond it.
+							var _pv UntypedFormatPositionsBucketsPattern0
+							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							}
+							if _vErr := _pv.Validate(); _vErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+							}
+						}
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -1172,9 +1187,24 @@ func (u UntypedFormatPositions) Validate() error {
 			return jsonPathf(err, "mail")
 		}
 	}
-	for _k, _val := range u.Map {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "map[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range u.Map { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "map[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	if u.Ref != nil {
