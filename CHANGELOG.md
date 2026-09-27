@@ -120,6 +120,11 @@
     document's URI, and a definition in the name-collision warnings by the
     location its document or embedded resource wrote it at
     (`#/definitions/Thing`, not the `$defs/Thing` mirror).
+  - Two URLs that redirect to one remote document share one parsed copy of it,
+    and a remote document served as `text/plain` — as `raw.githubusercontent.com`
+    serves every file — is read. Whether a body is a schema is decided by
+    parsing it; the `Content-Type` is named only to explain one that does not
+    parse.
 
 ## 0.1.3
 

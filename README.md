@@ -979,7 +979,7 @@ This enables the HTTP resolver, which fetches and caches remote schemas at gener
 
 > **Security note:** with `--allow-remote-refs`, `$ref` URLs from the input schema are fetched with no host allowlist. Running it on an untrusted schema is a server-side request forgery (SSRF) vector -- a `$ref` can point the fetch at internal services or cloud metadata endpoints. Only enable it for schemas you trust, and prefer vendoring remote schemas locally.
 >
-> Within that limit, remote fetches are bounded: responses are capped at 10 MiB, redirect chains at 5 hops with `https` → `http` downgrades refused, and a non-JSON `Content-Type` is rejected rather than parsed. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree, with symlinks resolved before the check, so a link inside the subtree cannot read outside it.
+> Within that limit, remote fetches are bounded: responses are capped at 10 MiB, redirect chains at 5 hops with `https` → `http` downgrades refused, and a body that does not parse as JSON is refused (with the `Content-Type` named when it is not a JSON one). The `Content-Type` itself is not a gate: `raw.githubusercontent.com` serves every file as `text/plain`, and a body that parses as a schema is one whatever the header says. Two URLs that redirect to one document share one parsed copy of it. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree, with symlinks resolved before the check, so a link inside the subtree cannot read outside it.
 
 ### Draft Override
 

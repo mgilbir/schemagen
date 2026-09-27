@@ -1121,11 +1121,7 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 
 	// Check cache.
 	if cached, ok := h.cache[docKey]; ok {
-		if fragment != "" {
-			local := NewLocalResolver(cached)
-			return local.ResolveLocal("#" + fragment)
-		}
-		return cached, nil
+		return h.resolveFragment(cached, fragment)
 	}
 
 	// Fetch the schema.
@@ -1157,11 +1153,17 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("HTTP %d", resp.StatusCode)}
 	}
 
-	// An HTML error page parses as neither schema nor useful error, so reject a
-	// clearly non-JSON body up front. An absent Content-Type is tolerated: some
-	// schema hosts omit it, and json.Unmarshal is the real check either way.
-	if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
-		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("Content-Type %q, want JSON", ct)}
+	// A document already fetched under the URL this request ended at is that
+	// document, whatever URL asked for it. The cache is keyed by final URL as
+	// well as requested URL, but the lookup above can only ask the requested
+	// one -- which final URL a request lands on is not known until it has been
+	// made -- so without this a second URL redirecting to the same place
+	// fetched and parsed the document again. Two instances of one document are
+	// two Go types for one schema, and two answers to every question that
+	// compares nodes by identity (cycle detection, the resource graph).
+	if cached, ok := h.cache[retrievalKey]; ok {
+		h.cache[docKey] = cached
+		return h.resolveFragment(cached, fragment)
 	}
 
 	body, err := h.readCapped(resp.Body, docKey)
@@ -1169,9 +1171,24 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, err
 	}
 
+	// The Content-Type does not decide whether the body is a schema; parsing it
+	// does. The header is read only to explain a body that does not parse --
+	// an HTML error page served with a 200 is the case it was checked for --
+	// and it used to be a gate instead: anything but a JSON media type was
+	// refused before the body was read. That refused every schema served as
+	// text/plain, which is what raw.githubusercontent.com serves every file as
+	// and so the usual host for a GitHub-hosted schema, and what many static
+	// servers send for a .json file they have no mapping for. RFC 8259 §11
+	// registers application/json, but nothing in JSON Schema requires a
+	// server to use it, and a body that parses as a schema is one whatever the
+	// header says.
 	var s Schema
 	if err := json.Unmarshal(body, &s); err != nil {
-		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("parsing schema: %w", err)}
+		reason := fmt.Errorf("parsing schema: %w", err)
+		if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
+			reason = fmt.Errorf("Content-Type %q, and the body is not JSON: %w", ct, err)
+		}
+		return nil, &RemoteFetchError{URL: docKey, Reason: reason}
 	}
 	normalizeLoadedDocument(&s, h.draft)
 	if retrievalURL, err := url.Parse(retrievalKey); err == nil {
@@ -1182,13 +1199,16 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	if retrievalKey != docKey {
 		h.cache[retrievalKey] = &s
 	}
+	return h.resolveFragment(&s, fragment)
+}
 
+// resolveFragment resolves a fragment, still percent-encoded, within a fetched
+// document, or returns the document for an empty one.
+func (h *HTTPResolver) resolveFragment(doc *Schema, fragment string) (*Schema, error) {
 	if fragment != "" {
-		local := NewLocalResolver(&s)
-		return local.ResolveLocal("#" + fragment)
+		return NewLocalResolver(doc).ResolveLocal("#" + fragment)
 	}
-
-	return &s, nil
+	return doc, nil
 }
 
 // RemoteFetchError reports a remote $ref the HTTP resolver was permitted to
