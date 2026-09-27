@@ -1,4 +1,4 @@
-.PHONY: guards build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
+.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -63,6 +63,14 @@ GOLDEN_ACCEPT ?=
 # TestGuardTableIsCurrent fails until this has been run.
 guards:
 	go generate ./pkg/emitter
+
+# Re-renders pkg/generator/unicode_tables.go, the Unicode tables identifiers and
+# struct-tag names are decided by, under the toolchain of the go.mod minimum
+# (go1.25.5, Unicode 15.0.0) whatever Go runs make. Generated code is compiled
+# by every Go from that minimum on, so a letter only a newer Unicode has must
+# not reach it. TestUnicodeTablesArePinned compares the file under the minimum.
+unicode-tables:
+	go generate ./pkg/generator
 
 golden:
 	UPDATE_GOLDEN=1 GOLDEN_ACCEPT=$(GOLDEN_ACCEPT) go test ./tests/... -run '^(TestGolden|TestEveryGoldenFileHasAGenerator)' -count=1

@@ -211,8 +211,12 @@ func checkPackageIdentifiers(pkg string, imports []generator.Import) error {
 	return nil
 }
 
+// isPackageIdentifier reports whether s can name a package or an import under
+// every Go the generated code supports: generator.IsIdentifier answers from the
+// oldest supported Go's Unicode tables, where token.IsIdentifier would answer
+// from the running one's.
 func isPackageIdentifier(s string) bool {
-	return token.IsIdentifier(s) && !token.Lookup(s).IsKeyword() && s != "_"
+	return generator.IsIdentifier(s) && s != "_"
 }
 
 // Emit takes a generator.File and returns gofmt-formatted Go source code.

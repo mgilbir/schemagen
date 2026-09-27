@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"unicode"
 )
 
 // reservedFieldNames are identifiers the emitter generates on a struct as
@@ -103,21 +102,8 @@ func LoadFieldMapFile(path string) (FieldMapFile, error) {
 }
 
 // isExportedGoIdentifier reports whether s is a valid Go identifier that begins
-// with an upper-case letter (i.e. exported).
+// with an upper-case letter (i.e. exported), under every Go the generated code
+// supports. See IsExportedIdentifier and unicodeident.go.
 func isExportedGoIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		if i == 0 {
-			if !unicode.IsUpper(r) {
-				return false
-			}
-			continue
-		}
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
-			return false
-		}
-	}
-	return !goKeywords[s]
+	return IsExportedIdentifier(s)
 }

@@ -142,6 +142,11 @@
   it spells a name of its own, which the file's DOES NOT COMPILE notice names.
   A nullable `oneOf` of `null` and an unresolved `$ref` is `any`, like any other
   property holding an unresolved reference.
+- Identifiers and struct-tag names are decided by the Unicode tables of the
+  oldest supported Go (the go.mod minimum, Unicode 15.0.0), not by the Go
+  running the generator. A generator built with Go 1.27 (Unicode 17) emitted a
+  field `Ɤx` for a property `ɤx` and a field `AᲉ` for `aᲉ`, which Go 1.25 does
+  not compile, and a tag Go 1.25's `encoding/json` ignores.
 - Schema text can no longer become code in the generated file. A property name
   or a `$ref` string was written into a `//` comment as it stood, so a newline
   in it ended the comment and the rest was compiled:
@@ -246,8 +251,9 @@
   gone. `Generator.DeclaredTypeName` and `Generator.NameMoves` report what the
   name registry declared and moved; `NamingDefectError` is what generation
   returns if a declaration ever reaches a name held for another node.
-  `NumberedName` is the registry's spelling rule, for callers that name things
-  beside the generator.
+  `NumberedName`, `IsIdentifier`, `IsExportedIdentifier` and
+  `IdentifierToLower` are the registry's spelling rule and the pinned-Unicode
+  identifier predicates, for callers that name things beside the generator.
 - Through the library with `SharedTypes` and no pins, identical definitions of
   two documents are two types (`Thing`, `Thing2`) rather than one: the
   generator cannot judge that two definitions agree, and sharing a name between

@@ -1058,7 +1058,11 @@ A derived name is always **exported**, which capitalizing alone cannot guarantee
 | `日本語`, `한국어`, `العربية`, `ภาษาไทย` | `X日本語`, `X한국어`, `Xالعربية`, `Xภาษาไทย` | no upper case exists in the script |
 | `привет`, `Ωμέγα`, `café` | `Привет`, `Ωμέγα`, `Café` | Cyrillic, Greek and Latin have case, so nothing is prefixed |
 
-The JSON tag keeps the original property name either way, so this changes the Go API of a generated type and not the wire format. Two properties whose derived names collide (`日本語` beside `X日本語`) are numbered apart exactly as any other clash is. Use `--field-map` to pin individual properties to chosen Go field names:
+The JSON tag keeps the original property name either way, so this changes the Go API of a generated type and not the wire format. Two properties whose derived names collide (`日本語` beside `X日本語`) are numbered apart exactly as any other clash is.
+
+Which characters are letters, which are upper case and what a letter capitalizes to are taken from the Unicode version of the oldest Go the generated code supports (the go.mod minimum: Go 1.25, Unicode 15.0), whichever Go runs `schemagen`. A letter a later Unicode added is treated like punctuation in a derived name (`aᲉb` → `AB`), a case pair a later Unicode added is not applied (`ɤx` → `Xɤx`, not `Ɤx`), and a property name holding such a letter is read and written by hand rather than through a struct tag — Go 1.25 would not compile the identifier, and its `encoding/json` would ignore the tag.
+
+Use `--field-map` to pin individual properties to chosen Go field names:
 
 ```bash
 schemagen generate --field-map names.json person.json address.json

@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -12633,7 +12632,14 @@ func tagNameIsRepresentable(jsonName string) bool {
 	if jsonName == "-" {
 		return false
 	}
-	// The rest is encoding/json's isValidTag, applied to the whole name.
+	// The rest is encoding/json's isValidTag, applied to the whole name -- with
+	// its unicode.IsLetter and unicode.IsDigit answered from the tables of the
+	// oldest Go the generated code supports (see unicodeident.go). isValidTag
+	// runs in the program that compiles the generated code, under whichever Go
+	// that is, and a name holding a letter only a newer Unicode has is an
+	// invalid tag there: encoding/json drops it and uses the Go field name, so
+	// the property is read and written under another key without a word. Such a
+	// name goes to the hand-written path, which every Go reads alike.
 	if jsonName == "" {
 		return false
 	}
@@ -12641,7 +12647,7 @@ func tagNameIsRepresentable(jsonName string) bool {
 		if strings.ContainsRune(validTagPunctuation, r) {
 			continue
 		}
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+		if !identLetter(r) && !identDigit(r) {
 			return false
 		}
 	}

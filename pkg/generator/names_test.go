@@ -2,7 +2,6 @@ package generator
 
 import (
 	"encoding/json"
-	"go/token"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -87,7 +86,7 @@ func TestCrossPackageImportAliasStepsAroundGeneratedNames(t *testing.T) {
 		if alias == name {
 			t.Errorf("a sibling package named %s is imported as %s, which generated code already spells", name, alias)
 		}
-		if !token.IsIdentifier(alias) {
+		if !IsIdentifier(alias) {
 			t.Errorf("the alias %q for a package named %s is not an identifier", alias, name)
 		}
 	}

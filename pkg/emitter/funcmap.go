@@ -784,12 +784,17 @@ func numberEnumValueFunc(v any) string {
 	return strconv.Quote(fmt.Sprintf("%v", v))
 }
 
+// receiverNameFunc is a method's receiver: the type name's first letter,
+// lowered by the generator's pinned case mapping. strings.ToLower asked the
+// Go running the generator, and a newer Go can lower a letter onto one the
+// oldest Go the generated code supports does not have -- a receiver that
+// compiles on one and not the other. See generator.IdentifierToLower.
 func receiverNameFunc(name string) string {
 	if name == "" {
 		return "x"
 	}
 	r, _ := utf8.DecodeRuneInString(name)
-	return strings.ToLower(string(r))
+	return string(generator.IdentifierToLower(r))
 }
 
 // addFunc adds two integers.
