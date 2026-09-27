@@ -1220,16 +1220,30 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
 	}
 	body := string(src)
+	checked := 0
 	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
 		for _, stringBacked := range []bool{true, false} {
+			// No name means the format emits no helper call in that shape
+			// (it is carried by a typed value instead), so there is no
+			// declaration to look for.
 			name := formatHelperNameFunc(format, stringBacked)
 			if name == "" {
+				// A format the generator checks on a string has to name its
+				// helper, or the skip above would hide the one case this
+				// test exists for.
+				if stringBacked && generator.FormatCheckableOnString(format) {
+					t.Errorf("format %q is checkable on a string, but formatHelperNameFunc names no helper for it", format)
+				}
 				continue
 			}
+			checked++
 			if !strings.Contains(body, "func "+name+"(") {
 				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Errorf("no helper name checked; formatHelperNameFunc has stopped naming the helpers, and this test with it")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mgilbir/schemagen/internal/testgo"
+	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
@@ -53,7 +54,9 @@ const workDirFixtureSchema = `{
 // The returned path is that pipe.
 func buildRealWorkDir(t *testing.T, dir string) string {
 	t.Helper()
-	code, err := tryGenerateWithValidation(json.RawMessage(workDirFixtureSchema), nil, schema.Draft202012, false, true, false)
+	code, err := tryGenerateWithValidation(json.RawMessage(workDirFixtureSchema), generator.Config{
+		PackageName: "testpkg", OmitEmpty: true, Draft: schema.Draft202012, FormatAssertion: true,
+	})
 	if err != nil {
 		t.Fatalf("generating the fixture module: %v", err)
 	}

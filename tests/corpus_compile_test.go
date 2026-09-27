@@ -37,7 +37,8 @@ import (
 // A schema this generator refuses is not a failure here. Refusing is a
 // legitimate answer -- half the adversarial corpus is malformed on purpose --
 // and the property under test is narrower and absolute: whatever is emitted
-// must compile.
+// must compile. Which schemas are refused is pinned, though (see
+// pinnedRefusals), because a refusal is a schema leaving this gate.
 //
 // The configuration is the CLI's default, and deliberately only that. Every
 // other configuration multiplies the corpus by another full build, and the
@@ -68,13 +69,15 @@ func TestGeneratedCorpusCompiles(t *testing.T) {
 	// so a compiler error naming a directory can be reported against a file
 	// someone can open.
 	pkgDir := make(map[string]string, len(schemas))
-	emitted, refused := 0, 0
+	emitted := 0
+	refusals := newRefusalLedger(corpusDefaultSweep)
 	for i, path := range schemas {
-		src, helpers, ok := generateForCompile(t, em, path)
-		if !ok {
-			refused++
+		src, helpers, err := generateForCompile(em, path)
+		if err != nil {
+			refusals.refuse(path, err)
 			continue
 		}
+		refusals.generated()
 		name := fmt.Sprintf("p%04d", i)
 		sub := filepath.Join(dir, name)
 		if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -93,7 +96,8 @@ func TestGeneratedCorpusCompiles(t *testing.T) {
 	}
 
 	t.Logf("compiling %d packages generated from %d corpus schemas (%d refused by the generator)",
-		emitted, len(schemas), refused)
+		emitted, len(schemas), len(refusals.refused))
+	refusals.check(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -116,26 +120,28 @@ func TestGeneratedCorpusCompiles(t *testing.T) {
 	t.Errorf("generated code does not compile (%v):\n%s", err, report)
 }
 
+// corpusDefaultSweep names the refusal set of the sweeps that generate the
+// corpus as the CLI's default does, through generateForCompile.
+const corpusDefaultSweep = "corpus/default"
+
 // generateForCompile runs one schema through the pipeline exactly as the CLI's
-// default does, and reports ok=false for a schema the generator declines.
+// default does, and reports why for a schema the generator declines.
 //
 // The file resolver rooted at the schema's own directory is part of "as the CLI
 // does": a corpus schema that $refs a sibling file resolves there and nowhere
 // else, and without it every such schema would be counted as refused and
 // quietly leave the gate.
-func generateForCompile(t *testing.T, em *emitter.Emitter, path string) (src, helpers []byte, ok bool) {
-	t.Helper()
-
+func generateForCompile(em *emitter.Emitter, path string) (src, helpers []byte, err error) {
 	s, err := schema.LoadFromFile(path)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, fmt.Errorf("load: %w", err)
 	}
 	s.NormalizeForDraft(schema.DraftUnknown)
 	s.ComputeBaseURIs(nil, s)
 
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, err
 	}
 	cfg := generator.Config{
 		PackageName: "gen",
@@ -145,19 +151,22 @@ func generateForCompile(t *testing.T, em *emitter.Emitter, path string) (src, he
 		Resolver:    schema.NewCompositeResolver(schema.NewFileResolver(filepath.Dir(abs))),
 	}
 	ir, err := generator.New(cfg).Generate(s)
-	if err != nil || ir == nil {
-		return nil, nil, false
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate: %w", err)
+	}
+	if ir == nil {
+		return nil, nil, fmt.Errorf("generate: no output")
 	}
 	src, err = em.Emit(ir)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, fmt.Errorf("emit: %w", err)
 	}
 	helpers, hasHelpers, err := em.EmitHelpers(cfg.PackageName, generator.HelpersReferencedBy(string(src)))
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, fmt.Errorf("emit helpers: %w", err)
 	}
 	if !hasHelpers {
 		helpers = nil
 	}
-	return src, helpers, true
+	return src, helpers, nil
 }

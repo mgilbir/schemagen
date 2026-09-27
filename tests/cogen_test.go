@@ -242,6 +242,46 @@ var coConfigs = []*coConfig{
 		cfg:  generator.Config{PackageName: coPackageName, OmitEmpty: true, LenientRefs: true},
 	},
 
+	// Numbers held as json.Number and compared exactly through math/big. The
+	// grammar's numbers sit on a fractional lattice (0.5, 2.5), so every
+	// "number" property, element and $defs alias changes type, decoder and
+	// comparison; the round-trip is still exact equality and every numeric
+	// mutant still has to be rejected, now by the exact comparison.
+	{
+		name: "exactnum",
+		cfg:  generator.Config{PackageName: coPackageName, OmitEmpty: true, ExactNumbers: true},
+	},
+
+	// Untyped positions held as json.RawMessage, "format" asserted whatever
+	// the dialect says, and readOnly/writeOnly acting on decode and encode.
+	//
+	// Stated plainly, as for lenientrefs: the grammar emits no untyped
+	// position, no "format" and no readOnly or writeOnly, so rawuntyped and
+	// formatassert emit source identical to static for every document it can
+	// build today, and the summary's distinct count says so on every run.
+	// strictrw does differ -- the flag changes the emitted marshal code even
+	// with no annotation to act on -- and is exercised in that. They are in the
+	// matrix for the same reason lenientrefs is: a flag that broke an ordinary
+	// check while doing nothing it was asked to would be invisible to a suite
+	// that never set it. Reaching what each flag is *for* needs grammar
+	// positions of its own -- an untyped property with a round-trip compared
+	// on the bytes, a format with a co-generated conforming value and a mutant
+	// only the asserting configuration must reject, a readOnly property whose
+	// presence is the mutant -- and the day one lands its count stops being
+	// zero on its own.
+	{
+		name: "rawuntyped",
+		cfg:  generator.Config{PackageName: coPackageName, OmitEmpty: true, RawUntyped: true},
+	},
+	{
+		name: "formatassert",
+		cfg:  generator.Config{PackageName: coPackageName, OmitEmpty: true, FormatAssertion: true},
+	},
+	{
+		name: "strictrw",
+		cfg:  generator.Config{PackageName: coPackageName, OmitEmpty: true, StrictReadWrite: true},
+	},
+
 	// Everything at once. Flags that are individually correct can still
 	// interact -- a big-integer wrapper as a value field, an overflow check on a
 	// struct whose optional properties are no longer pointers -- and no
@@ -252,6 +292,10 @@ var coConfigs = []*coConfig{
 			PackageName:      coPackageName,
 			StrictProperties: true,
 			BigIntSupport:    true,
+			ExactNumbers:     true,
+			RawUntyped:       true,
+			FormatAssertion:  true,
+			StrictReadWrite:  true,
 			LenientRefs:      true,
 			Validation:       generator.ValidationModeHybrid,
 		},
@@ -1293,12 +1337,49 @@ func coBowtieVerdicts(dir string, schemaJSON []byte, instances []json.RawMessage
 // coBowtieTally accumulates cross-check counts across iterations.
 type coBowtieTally struct {
 	mu         sync.Mutex
+	iterations int // iterations a cross-check was attempted for
 	cases      int
 	agree      int
 	disagree   int
 	unknown    int
 	errors     int
 	complaints []string
+}
+
+// verdict is what the cross-check concludes about itself, as failures. Caller
+// holds mu.
+//
+// A disagreement is the finding the check exists for. The other three are the
+// check failing to be a check. It used to pass with "0 instances judged, 4
+// errors" -- uvx missing, every call failing, nothing compared -- and a nightly
+// that compares nothing reads exactly like one that compared everything and
+// agreed. So it has to have judged something; errors, which are iterations
+// with no verdict at all, must not be most of what it attempted; and "unknown"
+// -- the reference implementations disagreeing with each other, or saying
+// nothing -- must not be most of what it judged, because an oracle that mostly
+// abstains is not answering the question either.
+func (b *coBowtieTally) verdict() []string {
+	var out []string
+	if b.disagree > 0 {
+		out = append(out, fmt.Sprintf("%d reference disagreements; see the log above", b.disagree))
+	}
+	if b.iterations == 0 {
+		return append(out, "the bowtie cross-check was requested and attempted nothing")
+	}
+	if b.agree+b.disagree == 0 {
+		out = append(out, fmt.Sprintf("the bowtie cross-check judged no instance across %d iterations "+
+			"(%d errors, %d unknown); it compared nothing, and a run that compares nothing is not a pass",
+			b.iterations, b.errors, b.unknown))
+	}
+	if 2*b.errors > b.iterations {
+		out = append(out, fmt.Sprintf("the bowtie cross-check errored on %d of %d iterations; "+
+			"most of the sample went unjudged", b.errors, b.iterations))
+	}
+	if 2*b.unknown > b.cases {
+		out = append(out, fmt.Sprintf("the reference implementations gave no agreed verdict on %d of %d instances; "+
+			"an oracle that mostly abstains is not answering the question", b.unknown, b.cases))
+	}
+	return out
 }
 
 func (b *coBowtieTally) note(s string) {
@@ -1314,48 +1395,59 @@ func (b *coBowtieTally) note(s string) {
 // coCheck already collected, so the case is compiled once per iteration
 // whether or not the cross-check is on.
 func coCrossCheck(tally *coBowtieTally, cc *coConfig, iter int, doc *coDoc, res coResult, impls []string) {
-	muts := coMutationsFor(cc, doc)
-	if len(res.mutants) != len(muts) {
+	tally.mu.Lock()
+	tally.iterations++
+	tally.mu.Unlock()
+	// Every way out before a verdict is an error, counted and said: an
+	// iteration that quietly returned used to leave no trace in the tally at
+	// all, which is how "nothing was judged" could look like a small sample.
+	fail := func(format string, args ...any) {
 		tally.mu.Lock()
 		tally.errors++
 		tally.mu.Unlock()
-		tally.note(fmt.Sprintf("iter %d: the generated program produced no usable verdicts", iter))
+		tally.note(fmt.Sprintf("iter %d: ", iter) + fmt.Sprintf(format, args...))
+	}
+	muts := coMutationsFor(cc, doc)
+	if len(res.mutants) != len(muts) {
+		fail("the generated program produced no usable verdicts")
 		return
 	}
 	schemaJSON, err := json.Marshal(doc.schema())
 	if err != nil {
+		fail("marshal schema: %v", err)
 		return
 	}
 	instance := doc.instance()
 	instanceJSON, err := json.Marshal(instance)
 	if err != nil {
+		fail("marshal instance: %v", err)
 		return
 	}
 	instances := []json.RawMessage{instanceJSON}
 	for _, m := range muts {
 		mutated, err := m.apply(instance)
 		if err != nil {
+			fail("apply mutation %s: %v", m.key(), err)
 			return
 		}
 		raw, err := json.Marshal(mutated)
 		if err != nil {
+			fail("marshal mutant %s: %v", m.key(), err)
 			return
 		}
 		instances = append(instances, raw)
 	}
 
-	dir, err := os.MkdirTemp("", "schemagen-cogen-bowtie-*")
+	dir, err := testgo.MkdirWorkTemp("schemagen-cogen-")
 	if err != nil {
+		fail("tmpdir: %v", err)
 		return
 	}
 	defer os.RemoveAll(dir)
 
 	outcomes, err := coBowtieVerdicts(dir, schemaJSON, instances, impls)
 	if err != nil {
-		tally.mu.Lock()
-		tally.errors++
-		tally.mu.Unlock()
-		tally.note(fmt.Sprintf("iter %d: bowtie: %v", iter, err))
+		fail("bowtie: %v", err)
 		return
 	}
 
@@ -1506,6 +1598,15 @@ func TestCoGenerated(t *testing.T) {
 	bowtie := os.Getenv("SCHEMAGEN_COGEN_BOWTIE") == "1"
 	impls := strings.Split(coEnvString("SCHEMAGEN_COGEN_BOWTIE_IMPLS", "python-jsonschema,js-ajv"), ",")
 	bowtieMax := coEnvInt("SCHEMAGEN_COGEN_BOWTIE_MAX", 20)
+	if bowtie {
+		// Asked for and unrunnable is a failure, not a quieter run: without uvx
+		// every cross-check errors, and the summary used to read "0 instances
+		// judged, 4 errors" on a green job.
+		if _, err := exec.LookPath("uvx"); err != nil {
+			t.Fatalf("SCHEMAGEN_COGEN_BOWTIE=1 but uvx is not on PATH (%v); the cross-check drives Bowtie "+
+				"through uvx and would judge nothing. Install uv, or leave the variable unset", err)
+		}
+	}
 
 	configNote := "dealt over " + strings.Join(coConfigNames(), ",")
 	if pinned != nil {
@@ -1620,16 +1721,16 @@ func TestCoGenerated(t *testing.T) {
 
 	if bowtie {
 		tally.mu.Lock()
-		t.Logf("bowtie cross-check via %s: %d instances judged, %d agree, %d disagree, %d unknown, %d errors",
-			strings.Join(impls, ", "), tally.cases, tally.agree, tally.disagree, tally.unknown, tally.errors)
+		t.Logf("bowtie cross-check via %s: %d iterations cross-checked, %d instances judged, %d agree, %d disagree, %d unknown, %d errors",
+			strings.Join(impls, ", "), tally.iterations, tally.cases, tally.agree, tally.disagree, tally.unknown, tally.errors)
 		complaints := append([]string(nil), tally.complaints...)
-		disagree := tally.disagree
+		verdict := tally.verdict()
 		tally.mu.Unlock()
 		for _, c := range complaints {
 			t.Logf("  %s", c)
 		}
-		if disagree > 0 {
-			t.Errorf("%d reference disagreements; see the log above", disagree)
+		for _, problem := range verdict {
+			t.Error(problem)
 		}
 	}
 

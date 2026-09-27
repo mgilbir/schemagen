@@ -397,67 +397,61 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCompile verifies that all generated golden files compile.
+// TestCompile verifies that every golden file on disk compiles.
+//
+// It walks testdata/golden rather than naming directories. The list it used to
+// carry named eleven of the twelve directories and not exactnum, so the
+// --exact-numbers goldens were never compiled: a golden planted there that did
+// not build passed the whole suite. Walking means a directory added for the next
+// flag is compiled the day it appears; TestEveryGoldenFileHasAGenerator is the
+// other half, holding every file here to a runner that regenerates it, and the
+// configuration that runner uses is named in each subtest.
 func TestCompile(t *testing.T) {
-	// Collect all golden files
-	goldenDirs := []string{
-		"testdata/golden/basic",
-		"testdata/golden/refs",
-		"testdata/golden/enum",
-		"testdata/golden/composition",
-		"testdata/golden/validation",
-		"testdata/golden/formats",
-		"testdata/golden/defaults",
-		"testdata/golden/advanced",
-		"testdata/golden/bigint",
-		"testdata/golden/rawuntyped",
-		"testdata/golden/regression",
+	owner := map[string]string{}
+	for _, set := range goldenSets() {
+		for _, tc := range set.cases {
+			owner[filepath.ToSlash(tc.GoldenPath)] = set.name
+		}
+	}
+	files := goldenFilesOnDisk(t)
+	if len(files) == 0 {
+		t.Fatal("no golden files found under testdata/golden; the walk is not looking at the corpus")
 	}
 
 	// We can't compile all files together since they may have conflicting type names
 	// (e.g., Address in nested_object.go and defs_ref.go). Instead, compile each separately.
-	for _, dir := range goldenDirs {
-		fullDir := filepath.Join("..", dir)
-		entries, err := os.ReadDir(fullDir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			t.Fatalf("reading %s: %v", dir, err)
+	for _, rel := range files {
+		set := owner[rel]
+		if set == "" {
+			set = "unregistered"
 		}
+		t.Run(set+"/"+strings.TrimPrefix(rel, "testdata/golden/"), func(t *testing.T) {
+			singleTmpDir := t.TempDir()
 
-		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".go") {
-				continue
+			if err := writeTestGoMod(singleTmpDir, "compile_test"); err != nil {
+				t.Fatalf("writing go.mod: %v", err)
 			}
 
-			t.Run(dir+"/"+entry.Name(), func(t *testing.T) {
-				singleTmpDir := t.TempDir()
+			data, err := os.ReadFile(filepath.Join("..", rel))
+			if err != nil {
+				t.Fatalf("reading golden file: %v", err)
+			}
 
-				if err := writeTestGoMod(singleTmpDir, "compile_test"); err != nil {
-					t.Fatalf("writing go.mod: %v", err)
-				}
+			name := filepath.Base(rel)
+			content := strings.Replace(string(data), "package testpkg", "package compile_test", 1)
+			if err := os.WriteFile(filepath.Join(singleTmpDir, name), []byte(content), 0o644); err != nil {
+				t.Fatalf("writing file: %v", err)
+			}
+			writeSharedHelpers(t, singleTmpDir, content)
 
-				data, err := os.ReadFile(filepath.Join(fullDir, entry.Name()))
-				if err != nil {
-					t.Fatalf("reading golden file: %v", err)
-				}
-
-				content := strings.Replace(string(data), "package testpkg", "package compile_test", 1)
-				if err := os.WriteFile(filepath.Join(singleTmpDir, entry.Name()), []byte(content), 0o644); err != nil {
-					t.Fatalf("writing file: %v", err)
-				}
-				writeSharedHelpers(t, singleTmpDir, content)
-
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				cmd := testgo.Command(ctx, singleTmpDir, "build", ".")
-				output, err := cmd.CombinedOutput()
-				if err != nil {
-					t.Fatalf("compilation failed:\n%s\nerror: %v", string(output), err)
-				}
-			})
-		}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := testgo.Command(ctx, singleTmpDir, "build", ".")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("compilation failed:\n%s\nerror: %v", string(output), err)
+			}
+		})
 	}
 }
 

@@ -68,11 +68,14 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 	pkgSchema := make(map[string]string, len(schemas))
 	var pkgs []string
 	measured := 0
+	refusals := newRefusalLedger(corpusDefaultSweep)
 	for i, path := range schemas {
-		src, helpers, ok := generateForCompile(t, em, path)
-		if !ok {
+		src, helpers, err := generateForCompile(em, path)
+		if err != nil {
+			refusals.refuse(path, err)
 			continue
 		}
+		refusals.generated()
 		name := fmt.Sprintf("p%04d", i)
 		sub := filepath.Join(dir, name)
 		if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -102,6 +105,7 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 	if len(pkgs) == 0 {
 		t.Fatal("no package declared a struct; the gate is measuring nothing")
 	}
+	refusals.check(t)
 
 	checkDir := filepath.Join(dir, "aligncheck")
 	if err := os.MkdirAll(checkDir, 0o755); err != nil {

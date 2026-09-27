@@ -47,8 +47,19 @@ test:
 test-short:
 	go test ./... -short -count=1
 
+# Regenerates the goldens, and reports every one it changed with a diffstat and
+# the changed lines. A run that changed any golden fails, so the change cannot
+# be blessed without being seen; once it has been read and is what was meant,
+# acknowledge it:
+#
+#	make golden GOLDEN_ACCEPT=1
+#
+# The files are written either way, so `git diff` shows what to review. See
+# tests/golden_check_test.go.
+GOLDEN_ACCEPT ?=
+
 golden:
-	UPDATE_GOLDEN=true go test ./tests/... -v -count=1
+	UPDATE_GOLDEN=1 GOLDEN_ACCEPT=$(GOLDEN_ACCEPT) go test ./tests/... -run '^(TestGolden|TestEveryGoldenFileHasAGenerator)' -count=1
 
 fmt:
 	go fmt ./...
@@ -330,11 +341,12 @@ fuzz-seeds:
 #                                         configuration instead of dealing
 #                                         them. One of: static, hybrid,
 #                                         runtime, bigint, strict, noomit,
-#                                         lenientrefs, all. This is what a
-#                                         failure report names, and what to
-#                                         reach for when a defect has been
-#                                         narrowed to a flag and the question
-#                                         is how far it spreads.
+#                                         lenientrefs, exactnum, rawuntyped,
+#                                         formatassert, strictrw, all. This
+#                                         is what a failure report names,
+#                                         and what to reach for when a defect
+#                                         has been narrowed to a flag and the
+#                                         question is how far it spreads.
 #
 #   SCHEMAGEN_COGEN_INCLUDE_KNOWN_GAPS=1  re-admit the constructs the harness
 #                                         steps around because schemagen is

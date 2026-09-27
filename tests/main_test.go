@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"testing"
 
 	"github.com/mgilbir/schemagen/internal/testgo"
@@ -10,4 +11,11 @@ import (
 // back on the way out, deleting it if this was the last test binary using it.
 // Every go command this package runs goes through testgo.Command, which refuses
 // to run in a binary that skipped this.
-func TestMain(m *testing.M) { testgo.Main(m) }
+//
+// It also prints what an UPDATE_GOLDEN run changed, last, so a regeneration
+// ends on the list of goldens it rewrote; see checkGolden.
+func TestMain(m *testing.M) {
+	code := testgo.Run(m)
+	reportGoldenChanges()
+	os.Exit(code)
+}

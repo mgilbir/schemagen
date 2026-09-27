@@ -1353,19 +1353,43 @@ func tryParse(schemaJSON json.RawMessage) error {
 	return nil
 }
 
+// externalCaseConfig is the generator configuration every harness in this file
+// generates a suite file's groups under: the draft its directory names, the
+// format posture its path states, big integers for the bignum files, and the
+// suite's remotes as the resolver.
+//
+// One function because there were three, and they had drifted: the
+// validation harness passed the draft and the format posture, and the codegen
+// and round-trip harnesses passed neither. A draft-7 group with no $schema was
+// therefore compiled and round-tripped as a 2020-12 document -- array-form
+// "items" and all -- and validated as the draft-7 document it is, so the three
+// test names reported on two different generations of one schema.
+//
+// Refs are strict, matching the CLI default: a ref no resolver can serve fails
+// generation rather than degrading to any. Leniency let a schema the harness
+// had silently emptied out still count as a pass, so the suite measured a
+// validator built from a schema nobody wrote.
+func externalCaseConfig(resolver schema.SchemaResolver, draft, file string) generator.Config {
+	formatAssertion, formatAnnotation := formatPostureFor(file)
+	return generator.Config{
+		PackageName:      "testpkg",
+		OmitEmpty:        true,
+		Resolver:         resolver,
+		Draft:            draftFromDir(draft),
+		BigIntSupport:    isBignumFile(file),
+		FormatAssertion:  formatAssertion,
+		FormatAnnotation: formatAnnotation,
+	}
+}
+
 // tryGenerateAndCompile attempts the full pipeline: parse → generate IR → emit → compile.
-func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
+func tryGenerateAndCompile(schemaJSON json.RawMessage, cfg generator.Config) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	// Refs are strict here, matching the CLI default: a ref no resolver can
-	// serve fails generation rather than degrading to any. Leniency let a
-	// schema the harness had silently emptied out still count as a pass, so
-	// the suite measured a validator built from a schema nobody wrote.
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -1410,18 +1434,13 @@ func tryGenerateAndCompile(schemaJSON json.RawMessage, resolver schema.SchemaRes
 }
 
 // tryRoundTrip attempts the full round-trip: parse → generate → compile → unmarshal → marshal → compare.
-func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, resolver schema.SchemaResolver, bigInt bool) error {
+func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, cfg generator.Config) error {
 	var s schema.Schema
 	if err := json.Unmarshal(schemaJSON, &s); err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
 	s.Normalize()
 
-	// Refs are strict here, matching the CLI default: a ref no resolver can
-	// serve fails generation rather than degrading to any. Leniency let a
-	// schema the harness had silently emptied out still count as a pass, so
-	// the suite measured a validator built from a schema nobody wrote.
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, BigIntSupport: bigInt}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -1585,7 +1604,7 @@ func main() {
 // tryGenerateWithValidation attempts: parse → generate → emit, returns generated code
 // only if it contains a Validate() method. Returns ("", nil) if no Validate() method
 // is found (not an error, just a skip condition).
-func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.SchemaResolver, draft schema.Draft, bigInt, formatAssertion, formatAnnotation bool) (string, error) {
+func tryGenerateWithValidation(schemaJSON json.RawMessage, cfg generator.Config) (string, error) {
 	var s schema.Schema
 	// Handle boolean false schema: "false" is not a JSON object, so we construct
 	// the Schema struct manually with BooleanSchema set to false.
@@ -1598,11 +1617,6 @@ func tryGenerateWithValidation(schemaJSON json.RawMessage, resolver schema.Schem
 	}
 	s.Normalize()
 
-	// Refs are strict here, matching the CLI default: a ref no resolver can
-	// serve fails generation rather than degrading to any. Leniency let a
-	// schema the harness had silently emptied out still count as a pass, so
-	// the suite measured a validator built from a schema nobody wrote.
-	cfg := generator.Config{PackageName: "testpkg", OmitEmpty: true, Resolver: resolver, Draft: draft, BigIntSupport: bigInt, FormatAssertion: formatAssertion, FormatAnnotation: formatAnnotation}
 	gen := generator.New(cfg)
 	ir, err := gen.Generate(&s)
 	if err != nil {
@@ -1809,7 +1823,7 @@ func TestExternalCodeGen(t *testing.T) {
 						}
 						key := flakySweep.offer(failureKey(draft, filenameWithoutExt(file), group.Description))
 						t.Run(group.Description, func(t *testing.T) {
-							err := tryGenerateAndCompile(group.Schema, resolver, isBignumFile(file))
+							err := tryGenerateAndCompile(group.Schema, externalCaseConfig(resolver, draft, file))
 							checkKnownFailure(t, key, err, knownCodeGenFailures)
 						})
 					}
@@ -1862,7 +1876,7 @@ func TestExternalRoundTrip(t *testing.T) {
 							for i, tc := range validTests {
 								key := caseKeys[i]
 								t.Run(tc.Description, func(t *testing.T) {
-									err := tryRoundTrip(group.Schema, tc.Data, resolver, isBignumFile(file))
+									err := tryRoundTrip(group.Schema, tc.Data, externalCaseConfig(resolver, draft, file))
 									checkKnownFailure(t, key, err, knownRoundTripFailures)
 								})
 							}
@@ -1995,8 +2009,7 @@ func TestExternalValidation(t *testing.T) {
 						groupKey := failureKey(draft, filenameWithoutExt(file), group.Description)
 
 						// Generate code once per group.
-						formatAssertion, formatAnnotation := formatPostureFor(file)
-						code, cgErr := tryGenerateWithValidation(group.Schema, resolver, draftFromDir(draft), isBignumFile(file), formatAssertion, formatAnnotation)
+						code, cgErr := tryGenerateWithValidation(group.Schema, externalCaseConfig(resolver, draft, file))
 
 						if cgErr != nil {
 							skippedCG++
