@@ -103,9 +103,11 @@ func (e externalClaims) merge(byPath map[string]*schema.Schema) map[string]*sche
 		return byPath
 	}
 	merged := make(map[string]*schema.Schema, len(byPath)+len(e.byLabel))
+	// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 	for k, v := range byPath {
 		merged[k] = v
 	}
+	// maporder: copies members under their own keys, which are distinct, so no order writes a different map; the loop above it runs first, whatever either's order.
 	for k, v := range e.byLabel {
 		merged[k] = v
 	}
@@ -475,6 +477,7 @@ func (w *externalWalker) isDefinitionEntry(res, node *schema.Schema) bool {
 	if !ok {
 		entries = make(map[*schema.Schema]bool, len(res.Defs)+len(res.Definitions))
 		for _, m := range []map[string]*schema.Schema{res.Defs, res.Definitions} {
+			// maporder: fills a set; the same members end up in it in any order.
 			for _, def := range m {
 				entries[def] = true
 			}
@@ -758,6 +761,7 @@ func externalFilePath(docPart string, base *url.URL, fromFile string) string {
 // ownedDocuments is the set of document roots a run generates itself.
 func ownedDocuments(byPath map[string]*schema.Schema) map[*schema.Schema]bool {
 	owned := make(map[*schema.Schema]bool, len(byPath))
+	// maporder: fills a set; the same members end up in it in any order.
 	for _, s := range byPath {
 		if s != nil {
 			owned[s] = true

@@ -139,3 +139,45 @@ jobs:
 
       - name: fieldalignment
         run: make lint-alignment
+
+  # The full determinism sweep, in its own job for the same reason as the
+  # alignment check: it takes minutes and says nothing about what the test job
+  # tests. `go test ./...` already holds the corpus to "same input, same output"
+  # in one process and runs the binary over the scenarios written to drive each
+  # known site. This adds the schema of every JSON Schema Test Suite group, and
+  # every corpus schema run through the binary as separate processes, with more
+  # runs each -- Go iterates a small map in one of only as many orders as it has
+  # members, so what the extra runs buy is the site only a two- or three-member
+  # map in some schema reaches.
+  #
+  # Under both Go versions, as the check job is: the generated code the sweep
+  # type-checks is compiled by the caller's Go, and the order a map yields is
+  # the runtime's, so a site either toolchain could expose is one to catch.
+  determinism:
+    name: determinism (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: go.mod minimum
+            go-version-file: go.mod
+          - name: stable
+            go-version: stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.go-version-file }}
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      # The generated code the sweep type-checks imports the same two
+      # dependencies the test job names; the suite is cloned at its pinned
+      # commit by the target itself.
+      - name: download dependencies
+        run: go mod download
+
+      - name: determinism
+        run: make test-determinism

@@ -164,6 +164,7 @@ func orderPackagesByDependencies(pkgOrder []string, docs []packageDoc, docPackag
 	deps := packageDependencies(docs, docPackages)
 
 	dependsOn := make(map[string]map[string]bool, len(deps))
+	// maporder: fills a set; the same members end up in it in any order.
 	for pkg, edges := range deps {
 		dependsOn[pkg] = make(map[string]bool, len(edges))
 		for _, e := range edges {
@@ -184,8 +185,10 @@ func orderPackagesByDependencies(pkgOrder []string, docs []packageDoc, docPackag
 	ordered := make([]string, 0, len(pkgOrder))
 	for len(remaining) > 0 {
 		ready := make([]string, 0, len(remaining))
+		// maporder: the ready set is sorted by input position, which is distinct per package, before it is used.
 		for pkg := range remaining {
 			satisfied := true
+			// maporder: a predicate; it returns the same answer whichever member it stops at.
 			for dep := range dependsOn[pkg] {
 				if remaining[dep] {
 					satisfied = false

@@ -81,9 +81,15 @@ func LoadFieldMapFile(path string) (FieldMapFile, error) {
 		return nil, fmt.Errorf("parsing field map %s: %w", path, err)
 	}
 
-	for file, types := range fm {
-		for typeName, props := range types {
-			for prop, goName := range props {
+	// In key order at every level, so that a file with several bad entries is
+	// refused for the same one on every run rather than for whichever the map
+	// happened to yield first.
+	for _, file := range sortedKeys(fm) {
+		types := fm[file]
+		for _, typeName := range sortedKeys(types) {
+			props := types[typeName]
+			for _, prop := range sortedKeys(props) {
+				goName := props[prop]
 				if !isExportedGoIdentifier(goName) {
 					return nil, fmt.Errorf(
 						"field map %s: %q -> %s.%s maps to %q, which is not a valid exported Go identifier",

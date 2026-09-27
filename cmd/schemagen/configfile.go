@@ -310,6 +310,7 @@ func (s *fieldNameSpec) lookup(argPath, docID string) generator.FieldNameMap {
 
 	var merged generator.FieldNameMap
 	for _, src := range sources {
+		// maporder: merges one source's overrides under their own keys, which are distinct within a source; sources are applied in their slice order.
 		for typeName, props := range src {
 			if merged == nil {
 				merged = generator.FieldNameMap{}
@@ -317,6 +318,7 @@ func (s *fieldNameSpec) lookup(argPath, docID string) generator.FieldNameMap {
 			if merged[typeName] == nil {
 				merged[typeName] = map[string]string{}
 			}
+			// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 			for prop, name := range props {
 				merged[typeName][prop] = name
 			}
@@ -340,10 +342,12 @@ func (s *fieldNameSpec) noteApplied(argPath string, applied map[string]map[strin
 		dst = map[string]map[string]bool{}
 		s.applied[argPath] = dst
 	}
+	// maporder: fills a set; the same members end up in it in any order.
 	for typeName, props := range applied {
 		if dst[typeName] == nil {
 			dst[typeName] = map[string]bool{}
 		}
+		// maporder: fills a set; the same members end up in it in any order.
 		for prop := range props {
 			dst[typeName][prop] = true
 		}
@@ -381,7 +385,9 @@ func (s *fieldNameSpec) warnUnusedConfigFieldNames(w io.Writer) {
 			warnings = append(warnings, fmt.Sprintf("config fieldNames for %q matched no input schema", e.label))
 			continue
 		}
+		// maporder: the warnings are sorted before they are printed.
 		for typeName, props := range e.names {
+			// maporder: the warnings are sorted before they are printed.
 			for prop := range props {
 				applied := false
 				for _, path := range e.paths {

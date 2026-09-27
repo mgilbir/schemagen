@@ -176,6 +176,7 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 	// not claims and are not visible from here -- and a qualified name that lands
 	// on one of those is what PinnedNameCollisionError refuses.
 	taken := make(map[string]bool, len(claims))
+	// maporder: fills a set; the same members end up in it in any order.
 	for name := range claims {
 		taken[name] = true
 	}
@@ -616,6 +617,7 @@ func shareableNames(claims map[string][]nameClaim) map[string]bool {
 	shareable := make(map[string]bool, len(claims))
 	refsOf := make(map[string][]string, len(claims))
 
+	// maporder: each name's verdict is computed from its own group alone and written under its own key.
 	for name, group := range claims {
 		if len(group) < 2 {
 			continue
@@ -642,6 +644,7 @@ func shareableNames(claims map[string][]nameClaim) map[string]bool {
 
 	for changed := true; changed; {
 		changed = false
+		// maporder: removes names until nothing changes; removal only ever shrinks the set and the loop runs to the fixed point, which is the same greatest fixed point in any order.
 		for name := range shareable {
 			for _, target := range refsOf[name] {
 				if shareable[target] {

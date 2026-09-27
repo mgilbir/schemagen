@@ -245,6 +245,7 @@ func (r *rootNameSpec) warnUnused(w io.Writer) {
 	}
 	var unused []string
 	for _, m := range []map[string]string{r.byID, r.byFile, r.byBase} {
+		// maporder: the unused keys are sorted before they are printed.
 		for key := range m {
 			if !r.used[key] && !r.configKeys[key] {
 				unused = append(unused, key)

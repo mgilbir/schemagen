@@ -323,6 +323,7 @@ type Generator struct {
 // New creates a new Generator with the given configuration.
 func New(cfg Config) *Generator {
 	pinned := make(map[string]bool, len(cfg.DefinitionTypeNames))
+	// maporder: fills a set; the same members end up in it in any order.
 	for _, name := range cfg.DefinitionTypeNames {
 		pinned[name] = true
 	}
@@ -857,6 +858,7 @@ func (e *UnresolvedRefsError) AnySuppliableDocument() bool {
 // schema.UnsupportedFormatError. It is the case for which converting the
 // document, rather than supplying it or fetching it, is the answer.
 func (e *UnresolvedRefsError) AnyUnsupportedFormat() bool {
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for _, cause := range e.Causes {
 		if cause == nil {
 			continue
@@ -891,6 +893,7 @@ func (e *UnresolvedRefsError) AnySameDocument() bool {
 // network already reached: --allow-remote-refs was passed, a request was made,
 // and the request is what did not produce a schema.
 func (e *UnresolvedRefsError) AnyFetchAttempted() bool {
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for _, cause := range e.Causes {
 		var fetch *schema.RemoteFetchError
 		if errors.As(cause, &fetch) {
@@ -1223,6 +1226,7 @@ func (g *Generator) causesFor(refs []string) map[string]error {
 
 func (g *Generator) neverResolvedRefs() []string {
 	refs := make([]string, 0, len(g.unresolvedRefs))
+	// maporder: refs is sorted before it is returned.
 	for ref := range g.unresolvedRefs {
 		if g.resolvedRefs[ref] {
 			continue
@@ -2619,11 +2623,13 @@ func (g *Generator) metaschemaFormatPosture(s *schema.Schema) (asserts, declared
 	if len(vocab) == 0 {
 		return false, false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for uri := range vocab {
 		if strings.HasSuffix(uri, "/vocab/format-assertion") {
 			return true, true
 		}
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for uri := range vocab {
 		if strings.HasSuffix(uri, "/vocab/format-annotation") {
 			return false, true
@@ -4125,6 +4131,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	// Extract dependentRequired constraints.
 	var depRequired []DependentRequiredDef
 	if g.validationKeywordsEnabled() {
+		// maporder: depRequired is sorted by trigger key, which is distinct per entry, right below.
 		for trigger, deps := range s.DependentRequired {
 			if len(deps) > 0 {
 				sorted := make([]string, len(deps))
@@ -4331,6 +4338,11 @@ type UnenforcedSchema struct {
 // naming one of those would send the reader looking for a declaration that is
 // not there, and a diagnostic nobody can act on is one they learn to skip.
 func (g *Generator) UnenforcedSchemas() []UnenforcedSchema {
+	// Nothing was declared when Generate never got as far as building a file,
+	// and the other diagnostics answer empty in that state rather than panic.
+	if g.output == nil {
+		return nil
+	}
 	declared := make(map[string]bool, len(g.output.TypeDefs))
 	for _, td := range g.output.TypeDefs {
 		declared[td.TypeName()] = true
@@ -4971,8 +4983,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// plain Go string or int64 and its keywords reach nothing.
 				rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
 			}
-			// Also apply constraints from patternProperties whose pattern matches this property name.
-			for pattern, patSchema := range s.PatternProperties {
+			// Also apply constraints from patternProperties whose pattern matches this
+			// property name, in pattern order: the rules land in Validate in the order
+			// they are appended, so iterating the map would reorder the generated
+			// checks, and which of two failing checks reports, from run to run.
+			for _, pattern := range sortedKeys(s.PatternProperties) {
+				patSchema := s.PatternProperties[pattern]
 				if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
 					rules = append(rules, extractValidationRules(goFieldName, propName, patSchema)...)
 				}
@@ -5335,6 +5351,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// Extract dependentRequired constraints.
 	var depRequired []DependentRequiredDef
 	if g.validationKeywordsEnabled() {
+		// maporder: depRequired is sorted by trigger key, which is distinct per entry, right below.
 		for trigger, deps := range s.DependentRequired {
 			if len(deps) > 0 {
 				sorted := make([]string, len(deps))
@@ -5694,6 +5711,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	g.mergeDocSources[merged] = s
 
 	// Copy any properties from the parent schema itself.
+	// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
 		g.recordMergedProperty(merged, k, v, nil)
@@ -5738,6 +5756,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	if s.UnevaluatedProperties != nil && merged.UnevaluatedProperties == nil {
 		merged.UnevaluatedProperties = s.UnevaluatedProperties
 	}
+	// maporder: writes only keys the target does not hold yet, and one map's keys are distinct, so no two iterations write the same key.
 	for k, v := range s.PatternProperties {
 		if merged.PatternProperties == nil {
 			merged.PatternProperties = make(map[string]*schema.Schema)
@@ -5814,9 +5833,11 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// the two are unioned into a fresh map -- mutating merged's would write
 		// through to the sub-schema mergeAllOfBranches took it from.
 		combined := make(map[string][]string, len(merged.DependentRequired)+len(s.DependentRequired))
+		// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 		for trigger, deps := range merged.DependentRequired {
 			combined[trigger] = deps
 		}
+		// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 		for trigger, deps := range s.DependentRequired {
 			combined[trigger] = mergeStringSets(combined[trigger], deps)
 		}
@@ -6588,12 +6609,14 @@ func (g *Generator) mergeAllOfBranches(target *schema.Schema, allOf []*schema.Sc
 		// about all of them and the annotation reading records it as such -- and,
 		// where something has already spoken about the same property, what the
 		// two say is conjoined rather than replaced. See conjoinAllOfProperty.
+		// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 		for k, v := range resolved.Properties {
 			target.Properties[k] = g.conjoinAllOfProperty(target.Properties[k], v)
 			g.recordMergedProperty(target, k, v, nil)
 		}
 		target.Required = append(target.Required, resolved.Required...)
 		// Merge patternProperties from allOf sub-schemas.
+		// maporder: writes only keys the target does not hold yet, and one map's keys are distinct, so no two iterations write the same key.
 		for k, v := range resolved.PatternProperties {
 			if target.PatternProperties == nil {
 				target.PatternProperties = make(map[string]*schema.Schema)
@@ -7105,6 +7128,7 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 	// branch *asserts* -- the two annotations (#174) and, where the group is
 	// applied in full elsewhere, the field's own rules (#213). See
 	// mergedPropertyOrigins.
+	// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 	for k, v := range resolved.Properties {
 		if existing, exists := target.Properties[k]; exists {
 			target.Properties[k] = mergeVariantPropertySchemas(existing, v, g.propertyBindsUnconditionally(target, k))
@@ -7113,6 +7137,7 @@ func (g *Generator) mergeVariantObjectPropertiesInto(target *schema.Schema, vari
 		}
 		g.recordMergedProperty(target, k, v, &via)
 	}
+	// maporder: writes only keys the target does not hold yet, and one map's keys are distinct, so no two iterations write the same key.
 	for k, v := range resolved.PatternProperties {
 		if target.PatternProperties == nil {
 			target.PatternProperties = make(map[string]*schema.Schema)
@@ -8131,6 +8156,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	g.mergeDocSources[merged] = s
 
 	// Copy any properties from the parent schema itself.
+	// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 	for k, v := range s.Properties {
 		merged.Properties[k] = v
 		g.recordMergedProperty(merged, k, v, nil)
@@ -8147,6 +8173,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 		// contributes its annotations only to the documents that match it. The
 		// property is merged for its type and recorded as conditional, on the same
 		// reasoning as mergeVariantObjectPropertiesInto.
+		// maporder: each iteration reads and writes only its own key's entries, and the keys are distinct.
 		for k, v := range resolved.Properties {
 			if _, exists := merged.Properties[k]; !exists {
 				merged.Properties[k] = v
@@ -8827,6 +8854,7 @@ func (g *Generator) oneOfVariantFullyChecked(variant *schema.Schema, goType GoTy
 	if err := json.Unmarshal(raw, &present); err != nil {
 		return false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if oneOfSelectableKeywords[key] {
 			continue
@@ -8883,6 +8911,7 @@ func sameStringSet(a, b []string) bool {
 	if len(left) != len(right) {
 		return false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for v := range left {
 		if _, ok := right[v]; !ok {
 			return false
@@ -10514,21 +10543,24 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 		key = strings.TrimSuffix(key, "#")
 		g.documentRoots[key] = s
 	}
-	// Recurse into all child schemas.
-	for _, sub := range s.Properties {
-		g.buildDocumentRoots(sub)
+	// Recurse into all child schemas. A map's members are visited in key order:
+	// two nodes declaring the same $id (which the spec forbids, and which a
+	// document can still say) both write the one key above, and the one that
+	// writes last wins, so the order has to be a fixed one and not the map's.
+	for _, k := range sortedKeys(s.Properties) {
+		g.buildDocumentRoots(s.Properties[k])
 	}
 	for _, sub := range s.TypeSchemas {
 		g.buildDocumentRoots(sub)
 	}
-	for _, sub := range s.PatternProperties {
-		g.buildDocumentRoots(sub)
+	for _, k := range sortedKeys(s.PatternProperties) {
+		g.buildDocumentRoots(s.PatternProperties[k])
 	}
-	for _, sub := range s.Definitions {
-		g.buildDocumentRoots(sub)
+	for _, k := range sortedKeys(s.Definitions) {
+		g.buildDocumentRoots(s.Definitions[k])
 	}
-	for _, sub := range s.Defs {
-		g.buildDocumentRoots(sub)
+	for _, k := range sortedKeys(s.Defs) {
+		g.buildDocumentRoots(s.Defs[k])
 	}
 	for _, sub := range s.AllOf {
 		g.buildDocumentRoots(sub)
@@ -10583,8 +10615,8 @@ func (g *Generator) buildDocumentRoots(s *schema.Schema) {
 	if s.ContentSchema != nil {
 		g.buildDocumentRoots(s.ContentSchema)
 	}
-	for _, sub := range s.DependentSchemas {
-		g.buildDocumentRoots(sub)
+	for _, k := range sortedKeys(s.DependentSchemas) {
+		g.buildDocumentRoots(s.DependentSchemas[k])
 	}
 }
 
@@ -11000,6 +11032,7 @@ func (g *Generator) conditionalOnlyProperties(target *schema.Schema, enforced ma
 		return nil
 	}
 	var out map[string]bool
+	// maporder: fills a set; the same members end up in it in any order.
 	for name, origin := range byName {
 		// via rather than the `conditional` flag beside it, though the merge
 		// sets the two together: a contribution whose group was not named
@@ -17480,6 +17513,7 @@ func enumTypeCarriesSchema(s *schema.Schema) bool {
 	if !ok {
 		return false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		switch key {
 		case "enum", "const", "type", "allOf", "$ref":
@@ -17494,6 +17528,7 @@ func enumTypeCarriesSchema(s *schema.Schema) bool {
 	// known about what it demands -- except for the handful known to demand
 	// nothing, which keywordsOnly lets through here for the same reason: a schema
 	// must not lose its enum type for carrying a comment.
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range s.Extensions {
 		if !inertKeywords[key] {
 			return false
@@ -17542,6 +17577,7 @@ func (g *Generator) hasValidationVocabulary(s *schema.Schema) bool {
 }
 
 func declaresValidationVocabulary(vocabulary map[string]bool) bool {
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for uri, required := range vocabulary {
 		if required && strings.HasSuffix(uri, "/vocab/validation") {
 			return true
@@ -20182,6 +20218,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 	if err := json.Unmarshal(raw, &present); err != nil {
 		return nil, false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if !aliasVariantKeywords[key] {
 			return nil, false
@@ -20360,6 +20397,7 @@ func patternRulesCoverSchema(s *schema.Schema) bool {
 	if !ok {
 		return false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if !patternValueScalarKeywords[key] {
 			return false
@@ -20765,11 +20803,13 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 	}
 
 	// Direct properties on the root schema — these are always evaluated.
+	// maporder: fills a set; the same members end up in it in any order.
 	for k := range s.Properties {
 		names[k] = true
 	}
 
 	// Pattern properties on the root schema.
+	// maporder: fills a set; the same members end up in it in any order.
 	for pattern := range s.PatternProperties {
 		patterns[pattern] = true
 	}
@@ -20874,7 +20914,10 @@ func (g *Generator) collectEvaluatedProperties(s *schema.Schema) (names map[stri
 	// so the generated Validate() can build the evaluated set dynamically.
 
 	// dependentSchemas: properties evaluated only when the trigger key is present.
-	for triggerKey, depSchema := range s.DependentSchemas {
+	// In trigger order, because each entry becomes one block of the generated
+	// Validate and the map's order would change the file from run to run.
+	for _, triggerKey := range sortedKeys(s.DependentSchemas) {
+		depSchema := s.DependentSchemas[triggerKey]
 		branch := g.collectBranchEval(depSchema)
 		if branch != nil && (branch.HasNames() || branch.HasPatterns() || branch.AllEvaluated) {
 			conditionals = append(conditionals, ConditionalEval{
@@ -20996,11 +21039,13 @@ func (g *Generator) collectEvaluatedFromNestedOnPath(s *schema.Schema, names map
 	}
 
 	// Direct properties.
+	// maporder: fills a set; the same members end up in it in any order.
 	for k := range s.Properties {
 		names[k] = true
 	}
 
 	// Pattern properties.
+	// maporder: fills a set; the same members end up in it in any order.
 	for pattern := range s.PatternProperties {
 		patterns[pattern] = true
 	}
@@ -21070,8 +21115,8 @@ func (g *Generator) collectEvaluatedFromNestedOnPath(s *schema.Schema, names map
 	}
 
 	// Recurse into dependentSchemas.
-	for _, depSchema := range s.DependentSchemas {
-		g.collectEvaluatedFromNestedOnPath(depSchema, names, patterns, allEvaluated, onPath)
+	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		g.collectEvaluatedFromNestedOnPath(s.DependentSchemas[trigger], names, patterns, allEvaluated, onPath)
 	}
 }
 
@@ -21087,11 +21132,13 @@ func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schem
 	}
 
 	// Direct properties.
+	// maporder: fills a set; the same members end up in it in any order.
 	for k := range s.Properties {
 		names[k] = true
 	}
 
 	// Pattern properties.
+	// maporder: fills a set; the same members end up in it in any order.
 	for pattern := range s.PatternProperties {
 		patterns[pattern] = true
 	}
@@ -21136,8 +21183,8 @@ func (g *Generator) collectEvaluatedFromNestedExcludeConditional(s *schema.Schem
 	// The caller handles them via conditional evaluation.
 
 	// Recurse into dependentSchemas.
-	for _, depSchema := range s.DependentSchemas {
-		g.collectEvaluatedFromNestedOnPath(depSchema, names, patterns, allEvaluated, onPath)
+	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		g.collectEvaluatedFromNestedOnPath(s.DependentSchemas[trigger], names, patterns, allEvaluated, onPath)
 	}
 }
 
@@ -21163,6 +21210,7 @@ func (g *Generator) collectBranchEval(s *schema.Schema) *EvalBranchDef {
 	// Collect branch-matching metadata: required keys and const checks.
 	branch.RequiredKeys = append([]string(nil), s.Required...)
 	sort.Strings(branch.RequiredKeys)
+	// maporder: the const checks are sorted by property name, which is distinct per check, right below.
 	for propName, propSchema := range s.Properties {
 		if propSchema != nil && propSchema.Const != nil {
 			jsonVal, err := constJSONValue(*propSchema.Const)
@@ -21192,6 +21240,7 @@ func (g *Generator) extractIfCondition(s *schema.Schema) *IfConditionDef {
 	// We can evaluate if-schemas that use properties with const constraints
 	// and/or required fields.
 	var constChecks []ConstCheck
+	// maporder: the const checks are sorted by property name, which is distinct per check, right below.
 	for propName, propSchema := range s.Properties {
 		if propSchema != nil && propSchema.Const != nil {
 			jsonVal, err := constJSONValue(*propSchema.Const)
@@ -21566,6 +21615,7 @@ func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBran
 			branch.RequiredKeys = append([]string(nil), sub.Required...)
 			sort.Strings(branch.RequiredKeys)
 		}
+		// maporder: the const checks are sorted by property name, which is distinct per check, below.
 		for propName, propSchema := range sub.Properties {
 			if propSchema != nil && propSchema.Const != nil {
 				jsonVal, err := constJSONValue(*propSchema.Const)
@@ -21919,6 +21969,7 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 					owner:       s,
 				})
 				taken.dependentTriggers = map[string]bool{}
+				// maporder: fills a set; the same members end up in it in any order.
 				for trigger := range routed {
 					taken.dependentTriggers[trigger] = true
 				}
@@ -22464,9 +22515,11 @@ func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, i
 	var allEvaluated bool
 
 	// Direct properties on this sub-schema.
+	// maporder: fills a set; the same members end up in it in any order.
 	for k := range s.Properties {
 		names[k] = true
 	}
+	// maporder: fills a set; the same members end up in it in any order.
 	for pattern := range s.PatternProperties {
 		patterns[pattern] = true
 	}
@@ -22532,8 +22585,8 @@ func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, i
 		}
 		g.collectEvaluatedFromNested(sub, names, patterns, &allEvaluated)
 	}
-	for _, dep := range s.DependentSchemas {
-		g.collectEvaluatedFromNested(dep, names, patterns, &allEvaluated)
+	for _, trigger := range sortedKeys(s.DependentSchemas) {
+		g.collectEvaluatedFromNested(s.DependentSchemas[trigger], names, patterns, &allEvaluated)
 	}
 
 	check := &BranchOverflowCheck{
@@ -23225,6 +23278,7 @@ func (g *Generator) importAlias(importPath string) string {
 	for i := 2; ; i++ {
 		taken := reservedImportNames[alias]
 		if !taken {
+			// maporder: a predicate; it returns the same answer whichever member it stops at.
 			for _, existing := range g.crossImports {
 				if existing == alias {
 					taken = true

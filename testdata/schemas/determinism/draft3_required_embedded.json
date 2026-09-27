@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://determinism.example/root",
+  "anyOf": [
+    {
+      "$ref": "http://determinism.example/d3"
+    },
+    {
+      "type": "string"
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "d3": {
+      "$schema": "http://json-schema.org/draft-03/schema#",
+      "$id": "http://determinism.example/d3",
+      "type": "object",
+      "properties": {
+        "a": {
+          "required": true
+        },
+        "b": {
+          "required": true
+        },
+        "c": {
+          "required": true
+        },
+        "d": {
+          "required": true
+        },
+        "e": {
+          "required": true
+        },
+        "f": {
+          "required": true
+        },
+        "g": {
+          "required": true
+        },
+        "h": {
+          "required": true
+        },
+        "i": {
+          "required": true
+        },
+        "j": {
+          "required": true
+        },
+        "k": {
+          "required": true
+        },
+        "l": {
+          "required": true
+        }
+      }
+    }
+  }
+}

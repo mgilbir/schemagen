@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "a": {
+      "type": "string"
+    },
+    "b": {
+      "type": "string"
+    },
+    "c": {
+      "type": "string"
+    },
+    "d": {
+      "type": "string"
+    },
+    "e": {
+      "type": "string"
+    },
+    "f": {
+      "type": "string"
+    },
+    "g": {
+      "type": "string"
+    },
+    "h": {
+      "type": "string"
+    },
+    "i": {
+      "type": "string"
+    },
+    "j": {
+      "type": "string"
+    },
+    "k": {
+      "type": "string"
+    },
+    "l": {
+      "type": "string"
+    }
+  },
+  "dependentSchemas": {
+    "a": {
+      "properties": {
+        "x_a": {
+          "type": "integer"
+        }
+      }
+    },
+    "b": {
+      "properties": {
+        "x_b": {
+          "type": "integer"
+        }
+      }
+    },
+    "c": {
+      "properties": {
+        "x_c": {
+          "type": "integer"
+        }
+      }
+    },
+    "d": {
+      "properties": {
+        "x_d": {
+          "type": "integer"
+        }
+      }
+    },
+    "e": {
+      "properties": {
+        "x_e": {
+          "type": "integer"
+        }
+      }
+    },
+    "f": {
+      "properties": {
+        "x_f": {
+          "type": "integer"
+        }
+      }
+    },
+    "g": {
+      "properties": {
+        "x_g": {
+          "type": "integer"
+        }
+      }
+    },
+    "h": {
+      "properties": {
+        "x_h": {
+          "type": "integer"
+        }
+      }
+    },
+    "i": {
+      "properties": {
+        "x_i": {
+          "type": "integer"
+        }
+      }
+    },
+    "j": {
+      "properties": {
+        "x_j": {
+          "type": "integer"
+        }
+      }
+    },
+    "k": {
+      "properties": {
+        "x_k": {
+          "type": "integer"
+        }
+      }
+    },
+    "l": {
+      "properties": {
+        "x_l": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}
