@@ -4,6 +4,33 @@
 
 ### Fixed
 
+- Schema text can no longer become code in the generated file. A property name
+  or a `$ref` string was written into a `//` comment as it stood, so a newline
+  in it ended the comment and the rest was compiled:
+  `{"dependentSchemas":{"t\npanic(\"INJECTED\")\n//":{...}}}` put a
+  `panic` in `Validate`, and under `--lenient-refs` a `$ref` of
+  `"other.json#/x\nimport _ \"net/http/pprof\"\n//"` added an import to the
+  top of the file, whose `init` then runs in every program that links the
+  package. Escaping was a function each template had to remember to call; it is
+  now a guard the emitter appends to every template action, chosen by where in
+  the Go source the action writes (code, comment, string literal, format
+  literal, struct tag), and a test reads every template and fails on any action
+  that writes a value into a literal or into code without the escaper for that
+  place. The same fix covers the failures that were loud rather than silent: a
+  `pattern` holding a backslash under `patternProperties` or on a non-object
+  branch (`"^\\d+$"`) no longer fails with `unknown escape sequence`, a `%`
+  in a pattern is printed rather than read as a verb, a NUL, a byte order mark
+  or a bidirectional control in a `description`, `title` or `examples` is
+  written as an escape rather than failing with a dump of the source, and a
+  discriminator or a `oneOf` property whose name holds a quote or a backtick is
+  generated rather than refused.
+- A `oneOf` at a property whose name a struct tag cannot carry — `"a,b"`,
+  `"-"`, `""`, a name with a quote — is read and written under its exact name.
+  The union's member went through a struct tag no matter what the name was, and
+  a property named `""` was taken for a union standing for the whole value.
+- A package name or import alias that is not a Go identifier is refused with an
+  error naming it, instead of reaching gofmt and failing with a dump of the
+  file.
 - `{"propertyNames":{"pattern":""}}` no longer emits a loop that declares a
   variable it never uses. The empty pattern matches every name and constrains
   nothing.

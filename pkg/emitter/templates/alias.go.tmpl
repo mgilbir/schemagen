@@ -151,13 +151,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
-	if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} {
-		return jsonValueErrorf("length %d is less than minimum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
+	if utf8.RuneCountInString(string({{$recv}})) < {{numLit .Value}} {
+		return jsonValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
-	if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} {
-		return jsonValueErrorf("length %d exceeds maximum {{.Value}}", utf8.RuneCountInString(string({{$recv}})))
+	if utf8.RuneCountInString(string({{$recv}})) > {{numLit .Value}} {
+		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
@@ -217,13 +217,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- template "string_content_check" (mkStringContentCtx (printf "string(%s)" $recv) "" .)}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
-	if len({{$recv}}) < {{.Value}} {
-		return jsonValueErrorf("has %d items, minimum is {{.Value}}", len({{$recv}}))
+	if len({{$recv}}) < {{numLit .Value}} {
+		return jsonValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
-	if len({{$recv}}) > {{.Value}} {
-		return jsonValueErrorf("has %d items, maximum is {{.Value}}", len({{$recv}}))
+	if len({{$recv}}) > {{numLit .Value}} {
+		return jsonValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
@@ -272,26 +272,26 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			variantValid = false
 			{{- end}}
 			{{- if eq .RuleType "minLength"}}
-			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}})) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxLength"}}
-			if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} { variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}})) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
-			if float64({{$recv}}) < {{.Value}} { variantValid = false }
+			if float64({{$recv}}) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maximum"}}
-			if float64({{$recv}}) > {{.Value}} { variantValid = false }
+			if float64({{$recv}}) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
-			if float64({{$recv}}) <= {{.Value}} { variantValid = false }
+			if float64({{$recv}}) <= {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
-			if float64({{$recv}}) >= {{.Value}} { variantValid = false }
+			if float64({{$recv}}) >= {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
 			{
-				_quot := float64({{$recv}}) / {{.Value}}
+				_quot := float64({{$recv}}) / {{numLit .Value}}
 				if math.Abs(_quot - math.Round(_quot)) > 1e-9 { variantValid = false }
 			}
 			{{- end}}
@@ -299,10 +299,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
-			if len({{$recv}}) < {{.Value}} { variantValid = false }
+			if len({{$recv}}) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxItems"}}
-			if len({{$recv}}) > {{.Value}} { variantValid = false }
+			if len({{$recv}}) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- end}}
 			if variantValid { anyOfValid = true }
@@ -327,26 +327,26 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			variantValid = false
 			{{- end}}
 			{{- if eq .RuleType "minLength"}}
-			if utf8.RuneCountInString(string({{$recv}})) < {{.Value}} { variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}})) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxLength"}}
-			if utf8.RuneCountInString(string({{$recv}})) > {{.Value}} { variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}})) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
-			if float64({{$recv}}) < {{.Value}} { variantValid = false }
+			if float64({{$recv}}) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maximum"}}
-			if float64({{$recv}}) > {{.Value}} { variantValid = false }
+			if float64({{$recv}}) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
-			if float64({{$recv}}) <= {{.Value}} { variantValid = false }
+			if float64({{$recv}}) <= {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
-			if float64({{$recv}}) >= {{.Value}} { variantValid = false }
+			if float64({{$recv}}) >= {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
 			{
-				_quot := float64({{$recv}}) / {{.Value}}
+				_quot := float64({{$recv}}) / {{numLit .Value}}
 				if math.Abs(_quot - math.Round(_quot)) > 1e-9 { variantValid = false }
 			}
 			{{- end}}
@@ -354,10 +354,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
-			if len({{$recv}}) < {{.Value}} { variantValid = false }
+			if len({{$recv}}) < {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxItems"}}
-			if len({{$recv}}) > {{.Value}} { variantValid = false }
+			if len({{$recv}}) > {{numLit .Value}} { variantValid = false }
 			{{- end}}
 			{{- end}}
 			if variantValid { oneOfCount++ }

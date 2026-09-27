@@ -69,6 +69,8 @@ var mapOrderGuardedPackages = []string{
 	"pkg/schema",
 	"pkg/generator",
 	"pkg/emitter",
+	"pkg/emitter/internal/gocontext",
+	"pkg/emitter/internal/gocontext/guardgen",
 	"pkg/validationruntime",
 }
 

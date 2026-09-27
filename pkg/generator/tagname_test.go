@@ -323,7 +323,7 @@ func TestEmittedTagSpellingsMatchTheStructTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the struct template: %v", err)
 	}
-	const tagExpr = "`json:\"{{.JSONName}}{{if .OmitZero}},omitzero{{else if .OmitEmpty}},omitempty{{end}}\"`"
+	const tagExpr = "`json:\"{{jsonTagName .JSONName}}{{if .OmitZero}},omitzero{{else if .OmitEmpty}},omitempty{{end}}\"`"
 	if !strings.Contains(string(src), tagExpr) {
 		t.Fatalf("the struct template no longer writes the field tag as\n\t%s\n"+
 			"so emittedTagSpellings may no longer be every spelling a property name is put into. "+

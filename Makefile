@@ -1,4 +1,4 @@
-.PHONY: build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
+.PHONY: guards build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -57,6 +57,12 @@ test-short:
 # The files are written either way, so `git diff` shows what to review. See
 # tests/golden_check_test.go.
 GOLDEN_ACCEPT ?=
+
+# Recomputes pkg/emitter/guards_gen.go, the Go context of every template action
+# and the escaping guard the emitter appends to it, after a template changes.
+# TestGuardTableIsCurrent fails until this has been run.
+guards:
+	go generate ./pkg/emitter
 
 golden:
 	UPDATE_GOLDEN=1 GOLDEN_ACCEPT=$(GOLDEN_ACCEPT) go test ./tests/... -run '^(TestGolden|TestEveryGoldenFileHasAGenerator)' -count=1

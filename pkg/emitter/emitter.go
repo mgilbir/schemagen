@@ -10,8 +10,14 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io/fs"
+	"slices"
+	"strings"
+	"sync"
 	"text/template"
+	"text/template/parse"
 
+	"github.com/mgilbir/schemagen/pkg/emitter/internal/gocontext"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -24,16 +30,196 @@ type Emitter struct {
 }
 
 // New creates a new Emitter with all templates parsed and ready.
+//
+// The templates are parsed once per process and shared: they are embedded, so
+// every Emitter would build the same thing. A parsed template is safe to
+// execute from several goroutines at once, and nothing here changes it after
+// it is built.
 func New() (*Emitter, error) {
+	sharedTemplatesOnce.Do(func() {
+		sharedTemplates, sharedTemplatesErr = parseTemplates()
+	})
+	if sharedTemplatesErr != nil {
+		return nil, sharedTemplatesErr
+	}
+	return &Emitter{tmpl: sharedTemplates}, nil
+}
+
+var (
+	sharedTemplatesOnce sync.Once
+	sharedTemplates     *template.Template
+	sharedTemplatesErr  error
+)
+
+//go:generate go run ./internal/gocontext/guardgen
+
+func parseTemplates() (*template.Template, error) {
+	tmpl, err := parseTemplatesUnguarded()
+	if err != nil {
+		return nil, err
+	}
+	// Every action gets the guard for the Go context it writes into, before the
+	// templates run for the first time. See internal/gocontext.
+	if err := applyGuardTable(tmpl); err != nil {
+		return nil, err
+	}
+	return tmpl, nil
+}
+
+func parseTemplatesUnguarded() (*template.Template, error) {
 	tmpl, err := template.New("").Funcs(FuncMap()).ParseFS(templateFS, "templates/*.go.tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("emitter: parsing templates: %w", err)
 	}
-	return &Emitter{tmpl: tmpl}, nil
+	return tmpl, nil
+}
+
+// guardEntry is one row of guardTable: the output action at byte offset pos of
+// the named template, and the guard appended to it.
+type guardEntry struct {
+	template string
+	pos      parse.Pos
+	guard    string
+}
+
+// applyGuardTable appends to every output action the guard guards_gen.go
+// names for it.
+//
+// The table is the context analysis of internal/gocontext, run ahead of time:
+// the analysis costs more than the rest of building the emitter, and its
+// answer depends on the embedded templates alone. Two checks keep the table
+// from answering for other templates than its own. The templates are hashed
+// and must be the ones the table was computed from, which is what makes a
+// template edited without `go generate ./pkg/emitter` an error here rather
+// than a guard on the wrong action; and every output action must have exactly
+// one entry, and every entry an action. TestGuardTableIsCurrent recomputes the
+// table and holds the checked-in one to it.
+func applyGuardTable(t *template.Template) error {
+	sub, err := fs.Sub(templateFS, "templates")
+	if err != nil {
+		return err
+	}
+	hash, err := gocontext.TemplatesHash(sub)
+	if err != nil {
+		return fmt.Errorf("emitter: hashing templates: %w", err)
+	}
+	if hash != guardTableTemplatesHash {
+		return fmt.Errorf("emitter: guards_gen.go was computed from other templates than the ones embedded; run go generate ./pkg/emitter")
+	}
+	// The table is in template-name order and, within a template, in position
+	// order, which is the order forEachOutputAction visits a template's
+	// actions in; so each template's rows are a run of the table and are
+	// matched against its actions one for one, with no index to build.
+	//
+	// The nodes are allocated in blocks, one of each kind for the whole table:
+	// this runs in every process that generates code, and a node at a time was
+	// most of what it cost.
+	n := len(guardTable)
+	cmds := make([]parse.CommandNode, n)
+	idents := make([]parse.IdentifierNode, n)
+	args := make([]parse.Node, n)
+	// Each pipeline's commands are copied into this, with the guard after
+	// them, rather than appended to where each one grows its own array.
+	pipes := make([]*parse.CommandNode, 0, 4*n)
+	applied := 0
+	for _, tt := range t.Templates() {
+		if tt.Tree == nil || tt.Tree.Root == nil {
+			continue
+		}
+		name := tt.Name()
+		row, _ := slices.BinarySearchFunc(guardTable, name, func(e guardEntry, name string) int {
+			return strings.Compare(e.template, name)
+		})
+		var missing error
+		forEachOutputAction(tt.Tree.Root, func(a *parse.ActionNode) {
+			if missing != nil {
+				return
+			}
+			if row >= n || guardTable[row].template != name || guardTable[row].pos != a.Pos {
+				loc, _ := tt.Tree.ErrorContext(a)
+				missing = fmt.Errorf("emitter: %s: action %s has no entry in guards_gen.go; run go generate ./pkg/emitter", loc, a)
+				return
+			}
+			id := &idents[row]
+			id.NodeType, id.Ident = parse.NodeIdentifier, guardTable[row].guard
+			id.SetTree(tt.Tree).SetPos(a.Pos)
+			args[row] = id
+			cmd := &cmds[row]
+			cmd.NodeType, cmd.Pos, cmd.Args = parse.NodeCommand, a.Pos, args[row:row+1:row+1]
+			start := len(pipes)
+			pipes = append(append(pipes, a.Pipe.Cmds...), cmd)
+			a.Pipe.Cmds = pipes[start:len(pipes):len(pipes)]
+			row++
+			applied++
+		})
+		if missing != nil {
+			return missing
+		}
+		if row < n && guardTable[row].template == name {
+			return fmt.Errorf("emitter: guards_gen.go has an entry for %s at %d, which is not an output action; run go generate ./pkg/emitter", name, guardTable[row].pos)
+		}
+	}
+	if applied != len(guardTable) {
+		return fmt.Errorf("emitter: guards_gen.go has %d entries for %d output actions; run go generate ./pkg/emitter", len(guardTable), applied)
+	}
+	return nil
+}
+
+// forEachOutputAction calls f for every action under n that writes output --
+// every one that is not a {{$x := ...}} or {{$x = ...}}.
+func forEachOutputAction(n parse.Node, f func(*parse.ActionNode)) {
+	switch n := n.(type) {
+	case *parse.ListNode:
+		if n == nil {
+			return
+		}
+		for _, c := range n.Nodes {
+			forEachOutputAction(c, f)
+		}
+	case *parse.ActionNode:
+		if len(n.Pipe.Decl) == 0 {
+			f(n)
+		}
+	case *parse.IfNode:
+		forEachOutputAction(n.List, f)
+		forEachOutputAction(n.ElseList, f)
+	case *parse.RangeNode:
+		forEachOutputAction(n.List, f)
+		forEachOutputAction(n.ElseList, f)
+	case *parse.WithNode:
+		forEachOutputAction(n.List, f)
+		forEachOutputAction(n.ElseList, f)
+	}
+}
+
+// checkPackageIdentifiers refuses a package clause or an import alias that is
+// not a Go identifier. Both are written into code as they stand -- there is no
+// escaping an identifier -- and neither comes from the naming layer: the
+// package name is the caller's, and an alias can be derived from an import
+// path the caller supplied. A name like "a-b" used to reach gofmt and fail
+// there with a dump of the whole file, and one holding a newline could put a
+// declaration of its own at the top of the file.
+func checkPackageIdentifiers(pkg string, imports []generator.Import) error {
+	if !isPackageIdentifier(pkg) {
+		return fmt.Errorf("emitter: package name %q is not a Go identifier", pkg)
+	}
+	for _, imp := range imports {
+		if imp.Alias != "" && imp.Alias != "_" && imp.Alias != "." && !isPackageIdentifier(imp.Alias) {
+			return fmt.Errorf("emitter: import alias %q for %q is not a Go identifier", imp.Alias, imp.Path)
+		}
+	}
+	return nil
+}
+
+func isPackageIdentifier(s string) bool {
+	return token.IsIdentifier(s) && !token.Lookup(s).IsKeyword() && s != "_"
 }
 
 // Emit takes a generator.File and returns gofmt-formatted Go source code.
 func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
+	if err := checkPackageIdentifiers(f.PackageName, f.Imports); err != nil {
+		return nil, err
+	}
 	data := fileData{
 		PackageName:          f.PackageName,
 		Imports:              f.Imports,
@@ -255,6 +441,9 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262", "ecma262")
 	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 
+	if err := checkPackageIdentifiers(packageName, imports); err != nil {
+		return nil, false, err
+	}
 	data := helperFileData{
 		PackageName: packageName,
 		Imports:     imports,

@@ -12,16 +12,16 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		return []byte("null"), nil
 	}
 	{{- end}}
-	{{- /* Check if we have any top-level oneOfs (empty JSONName) */}}
+	{{- /* Check if we have any top-level oneOfs (see OneOfDef.IsProperty) */}}
 	{{- $hasTopLevelOneOf := false}}
 	{{- range $struct.OneOfs}}
-	{{- if not .JSONName}}{{$hasTopLevelOneOf = true}}{{end}}
+	{{- if not .IsProperty}}{{$hasTopLevelOneOf = true}}{{end}}
 	{{- end}}
 
 	{{- if $hasTopLevelOneOf}}
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	{{- range $oof := $struct.OneOfs}}
-	{{- if not $oof.JSONName}}
+	{{- if not $oof.IsProperty}}
 	if {{$recv}}.{{$oof.FieldName}} != nil {
 		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
 		{{- range $oof.Variants}}
@@ -42,13 +42,21 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	aux := struct {
 		{{- if $struct.MarshalAuxRawFirst}}
 		{{- range $struct.OneOfs}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- if .ManualJSON}}
+		{{.FieldName}} json.RawMessage `json:"-"`
+		{{- else}}
+		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
+		{{- end}}
 		{{- end}}
 		Alias
 		{{- else}}
 		Alias
 		{{- range $struct.OneOfs}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- if .ManualJSON}}
+		{{.FieldName}} json.RawMessage `json:"-"`
+		{{- else}}
+		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
+		{{- end}}
 		{{- end}}
 		{{- end}}
 	}{
@@ -70,7 +78,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 
-	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
+	{{- if or (hasManualFields $struct.Fields) $struct.HasManualJSONOneOf $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
@@ -79,6 +87,15 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
+	{{- range $struct.OneOfs}}
+	{{- if .ManualJSON}}
+	// The union's property name cannot go in a struct tag, so its member is
+	// written by hand; an unset union writes nothing, as omitempty would have.
+	if len(aux.{{.FieldName}}) > 0 {
+		obj[{{printf "%q" .JSONName}}] = aux.{{.FieldName}}
+	}
+	{{- end}}
+	{{- end}}
 	{{- range $struct.Fields}}
 	{{- if .ManualJSON}}
 	{{- if eq .ManualOmit "nil"}}

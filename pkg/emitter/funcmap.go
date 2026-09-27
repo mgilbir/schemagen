@@ -95,6 +95,22 @@ func FuncMap() template.FuncMap {
 		"pathJoin":               pathJoinFunc,
 		"itemArgs":               itemArgsFunc,
 		"argPrefix":              argPrefixFunc,
+
+		// The escapers, one per Go context. See goescape.go.
+		"commentLine": commentLineFunc,
+		"fmtText":     fmtTextFunc,
+		"numLit":      numLitFunc,
+		"fmtCat":      fmtCatFunc,
+		"jsonTagName": jsonTagNameFunc,
+		"rawString":   rawStringFunc,
+
+		// The guards New appends to every action (guards_gen.go). A template
+		// never calls these itself.
+		"_goCode":    guardCode,
+		"_goComment": guardComment,
+		"_goString":  guardString,
+		"_goFormat":  guardFormat,
+		"_goRaw":     guardRaw,
 	}
 }
 
@@ -142,14 +158,14 @@ func mkItemLevelCtxFunc(recv string, def generator.ItemValidationDef, level int)
 // contains check from an array property's.
 type ContainsContext struct {
 	Expr        string
-	Path        string
+	Path        formatText
 	Args        string // see TupleContext.Args
 	Def         generator.ContainsDef
 	MinContains *int
 	MaxContains *int
 }
 
-func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+func mkContainsCtxFunc(expr string, path formatText, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
 	ctx := ContainsContext{Expr: expr, Path: path, MinContains: minContains, MaxContains: maxContains}
 	if def != nil {
 		ctx.Def = *def
@@ -160,7 +176,7 @@ func mkContainsCtxFunc(expr, path string, def *generator.ContainsDef, minContain
 // mkContainsCtxIn is mkContainsCtx for an array reached inside an enclosing
 // loop -- an array that is another container's element -- whose error path
 // carries that loop's verbs and needs its variables to fill them.
-func mkContainsCtxInFunc(expr, path, args string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+func mkContainsCtxInFunc(expr string, path formatText, args string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
 	ctx := mkContainsCtxFunc(expr, path, def, minContains, maxContains)
 	ctx.Args = args
 	return ctx
@@ -178,19 +194,19 @@ func mkContainsCtxInFunc(expr, path, args string, def *generator.ContainsDef, mi
 // Callers not inside such a loop pass "", and the emitted code is unchanged.
 type TupleContext struct {
 	Expr      string
-	Path      string
+	Path      formatText
 	Args      string
 	Items     []generator.TupleItemDef
 	Tail      *generator.TupleItemDef
 	TailStart int
 }
 
-func mkTupleCtxFunc(expr, path string, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
+func mkTupleCtxFunc(expr string, path formatText, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
 	return TupleContext{Expr: expr, Path: path, Items: items, Tail: tail, TailStart: len(items)}
 }
 
 // mkTupleCtxIn is mkTupleCtx for a tuple reached inside an enclosing loop.
-func mkTupleCtxInFunc(expr, path, args string, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
+func mkTupleCtxInFunc(expr string, path formatText, args string, items []generator.TupleItemDef, tail *generator.TupleItemDef) TupleContext {
 	ctx := mkTupleCtxFunc(expr, path, items, tail)
 	ctx.Args = args
 	return ctx
@@ -202,12 +218,12 @@ func mkTupleCtxInFunc(expr, path, args string, items []generator.TupleItemDef, t
 // accepted rather than making the template reach for an address it cannot take.
 type TupleCaseContext struct {
 	Cond string
-	Path string
+	Path formatText
 	Args string
 	Item generator.TupleItemDef
 }
 
-func mkTupleCaseFunc(cond string, item any, path, args string) TupleCaseContext {
+func mkTupleCaseFunc(cond string, item any, path formatText, args string) TupleCaseContext {
 	ctx := TupleCaseContext{Cond: cond, Path: path, Args: args}
 	switch v := item.(type) {
 	case generator.TupleItemDef:
@@ -225,12 +241,12 @@ func mkTupleCaseFunc(cond string, item any, path, args string) TupleCaseContext 
 // the caller says which slice it runs over and how its failures are named.
 type UnevalItemsContext struct {
 	Expr string
-	Path string
+	Path formatText
 	Args string // see TupleContext.Args
 	Def  generator.UnevaluatedItemsDef
 }
 
-func mkUnevalItemsCtxFunc(expr, path string, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
+func mkUnevalItemsCtxFunc(expr string, path formatText, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
 	ctx := UnevalItemsContext{Expr: expr, Path: path}
 	if def != nil {
 		ctx.Def = *def
@@ -240,7 +256,7 @@ func mkUnevalItemsCtxFunc(expr, path string, def *generator.UnevaluatedItemsDef)
 
 // mkUnevalItemsCtxIn is mkUnevalItemsCtx for an array reached inside an
 // enclosing loop.
-func mkUnevalItemsCtxInFunc(expr, path, args string, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
+func mkUnevalItemsCtxInFunc(expr string, path formatText, args string, def *generator.UnevaluatedItemsDef) UnevalItemsContext {
 	ctx := mkUnevalItemsCtxFunc(expr, path, def)
 	ctx.Args = args
 	return ctx
@@ -276,7 +292,7 @@ func mkAliasFormatCtxFunc(recv string, rule generator.ValidationRule) AliasForma
 // rather than over a named field or receiver.
 type StringFormatContext struct {
 	Expr string
-	Path string
+	Path formatText
 	// Args is the argument list a Path carrying format verbs needs -- an element
 	// check names its index, so its path is "items[%d]" and cannot be printed
 	// without one. Empty for the positions whose path is a literal.
@@ -288,11 +304,11 @@ type StringFormatContext struct {
 	StringBacked bool
 }
 
-func mkStringFormatCtxFunc(expr, path string, value any, stringBacked bool) StringFormatContext {
+func mkStringFormatCtxFunc(expr string, path formatText, value any, stringBacked bool) StringFormatContext {
 	return StringFormatContext{Expr: expr, Path: path, Value: value, StringBacked: stringBacked}
 }
 
-func mkStringFormatCtxArgsFunc(expr, path, args string, value any, stringBacked bool) StringFormatContext {
+func mkStringFormatCtxArgsFunc(expr string, path formatText, args string, value any, stringBacked bool) StringFormatContext {
 	return StringFormatContext{Expr: expr, Path: path, Args: args, Value: value, StringBacked: stringBacked}
 }
 
@@ -308,13 +324,13 @@ func mkStringFormatCtxArgsFunc(expr, path, args string, value any, stringBacked 
 // path is "items[%d]" and cannot be printed without one.
 type StringContentContext struct {
 	Expr      string
-	Path      string
+	Path      formatText
 	Args      string
 	Encoding  string
 	MediaType string
 }
 
-func contentCtx(expr, path, args string, rule generator.ValidationRule) StringContentContext {
+func contentCtx(expr string, path formatText, args string, rule generator.ValidationRule) StringContentContext {
 	ctx := StringContentContext{Expr: expr, Path: path, Args: args}
 	if check, ok := rule.Value.(generator.ContentCheck); ok {
 		ctx.Encoding, ctx.MediaType = check.Encoding, check.MediaType
@@ -322,11 +338,11 @@ func contentCtx(expr, path, args string, rule generator.ValidationRule) StringCo
 	return ctx
 }
 
-func mkStringContentCtxFunc(expr, path string, rule generator.ValidationRule) StringContentContext {
+func mkStringContentCtxFunc(expr string, path formatText, rule generator.ValidationRule) StringContentContext {
 	return contentCtx(expr, path, "", rule)
 }
 
-func mkStringContentCtxArgsFunc(expr, path, args string, rule generator.ValidationRule) StringContentContext {
+func mkStringContentCtxArgsFunc(expr string, path formatText, args string, rule generator.ValidationRule) StringContentContext {
 	return contentCtx(expr, path, args, rule)
 }
 
@@ -438,10 +454,10 @@ func itemElemFunc(def generator.ItemValidationDef, level int) string {
 // #280. The message such a path opens is marked by pathErrfFunc, since a
 // container that does have a name has to glue the two together without a "."
 // between them.
-func itemPathFunc(def generator.ItemValidationDef, level int) string {
+func itemPathFunc(def generator.ItemValidationDef, level int) formatText {
 	var b strings.Builder
 	if def.JSONName != "" {
-		b.WriteString(jsonErrorNameFunc(def.JSONName))
+		b.WriteString(string(jsonErrorNameFunc(def.JSONName)))
 	}
 	for i := 0; i <= level; i++ {
 		if def.Levels[i].IsMap {
@@ -450,7 +466,7 @@ func itemPathFunc(def generator.ItemValidationDef, level int) string {
 			b.WriteString("[%d]")
 		}
 	}
-	return b.String()
+	return formatText(b.String())
 }
 
 // pathIsAccessorLed reports whether an error path opens with an accessor rather
@@ -462,8 +478,8 @@ func itemPathFunc(def generator.ItemValidationDef, level int) string {
 // property named "[%d]" renders as "[%%d]" and a property named "[x]" as "[x]".
 // Only a path this generator built with no name in front can begin with the two
 // characters of a format verb inside the first bracket.
-func pathIsAccessorLed(path string) bool {
-	return strings.HasPrefix(path, "[%d]") || strings.HasPrefix(path, "[%q]")
+func pathIsAccessorLed(path formatText) bool {
+	return strings.HasPrefix(string(path), "[%d]") || strings.HasPrefix(string(path), "[%q]")
 }
 
 // pathErrfFunc names the constructor a check under this error path builds its
@@ -471,7 +487,7 @@ func pathIsAccessorLed(path string) bool {
 // where it opens with an accessor. The second has to be marked, because a
 // message opening with "[1]" is glued to its container's path with nothing
 // between it, where a message opening with a member name takes a ".".
-func pathErrfFunc(path string) string {
+func pathErrfFunc(path formatText) string {
 	if pathIsAccessorLed(path) {
 		return "jsonElemErrorf"
 	}
@@ -480,7 +496,7 @@ func pathErrfFunc(path string) string {
 
 // pathJoinFunc is pathErrfFunc for the joiner rather than the constructor: what
 // an element's own Validate error is put behind this path with.
-func pathJoinFunc(path string) string {
+func pathJoinFunc(path formatText) string {
 	if pathIsAccessorLed(path) {
 		return "jsonElemPathf"
 	}
@@ -504,25 +520,6 @@ func itemArgsFunc(def generator.ItemValidationDef, level int) string {
 		parts[i] = def.Levels[i].IndexVar
 	}
 	return strings.Join(parts, ", ")
-}
-
-// commentFunc renders text as the tail of a Go line comment. Text spanning
-// several lines (schema descriptions may contain newlines) is continued with
-// a "//" prefix at the given indent, so the emitted source stays valid Go
-// instead of breaking out of the comment.
-func commentFunc(indent, text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	return strings.ReplaceAll(text, "\n", "\n"+indent+"// ")
-}
-
-// jsonErrorNameFunc escapes a JSON property name for safe embedding inside a Go
-// double-quoted fmt format string. It applies Go string-literal escaping
-// (quotes, backslashes, control characters) and doubles percent signs so they
-// are not interpreted as format verbs. Without this, a property name containing
-// a quote, backslash, or percent produces uncompilable or misformatted code.
-func jsonErrorNameFunc(s string) string {
-	return strings.ReplaceAll(goStringLiteralFunc(s), "%", "%%")
 }
 
 func validationValueFunc(recv string, rule generator.ValidationRule) string {
@@ -801,15 +798,6 @@ func isRawMessageFunc(v any) bool {
 	return false
 }
 
-// goStringLiteralFunc escapes a string for use inside a Go double-quoted string literal.
-// This handles characters like double quotes and backslashes that would otherwise
-// break the generated Go source code.
-func goStringLiteralFunc(s string) string {
-	// Use %q to get a properly quoted string, then strip the surrounding quotes.
-	q := fmt.Sprintf("%q", s)
-	return q[1 : len(q)-1]
-}
-
 // goStringQuoteFunc returns a Go quoted string literal (with surrounding quotes).
 // This is useful in templates where backtick strings can't be used.
 func goStringQuoteFunc(s string) string {
@@ -918,8 +906,12 @@ func ppTypeValuesFunc(v any) []string {
 
 // ppTypeValuesMsgFunc renders the allowed type list for an error message,
 // e.g. ["string","null"] → `string, null`.
-func ppTypeValuesMsgFunc(v any) string {
-	return strings.Join(ppTypeValuesFunc(v), ", ")
+//
+// The names are the schema's own "type" strings, so they are escaped for the
+// format literal they are written into rather than trusted to be the seven
+// JSON type names.
+func ppTypeValuesMsgFunc(v any) formatText {
+	return fmtTextFunc(strings.Join(ppTypeValuesFunc(v), ", "))
 }
 
 // derefIntFunc dereferences an *int pointer for use in templates.
@@ -1013,11 +1005,15 @@ func numBoundFunc(rule generator.ValidationRule) string {
 // so no message that existed before moves -- and a Go constant is what those
 // checks still compare, so the integer notation GoNumberLiteral chooses for a
 // whole number is still the right rendering there.
-func numBoundMsgFunc(rule generator.ValidationRule) string {
+//
+// It is written into a format literal, and returns formatText: what it renders
+// is a number wherever the schema reader held one, and escaped wherever it did
+// not.
+func numBoundMsgFunc(rule generator.ValidationRule) formatText {
 	if rule.ExactCompare {
-		return exactNumberBound(rule)
+		return fmtTextFunc(exactNumberBound(rule))
 	}
-	return numBoundFunc(rule)
+	return fmtTextFunc(numBoundFunc(rule))
 }
 
 // exactMultipleOfFunc renders the divisibility test for a number held exactly.

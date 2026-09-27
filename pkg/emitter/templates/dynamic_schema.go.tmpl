@@ -115,8 +115,8 @@ holds".
 {{- else if eq $c.Kind "exclusiveMinimum"}}_dynNumOK(_v, func(_n float64) bool { return _n > {{dynNum $c.Value}} })
 {{- else if eq $c.Kind "exclusiveMaximum"}}_dynNumOK(_v, func(_n float64) bool { return _n < {{dynNum $c.Value}} })
 {{- else if eq $c.Kind "multipleOf"}}_dynNumOK(_v, func(_n float64) bool { return math.Mod(_n, {{dynNum $c.Value}}) == 0 })
-{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{$c.Value}} })
-{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{$c.Value}} })
+{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{numLit $c.Value}} })
+{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{numLit $c.Value}} })
 {{- else if eq $c.Kind "pattern"}}_dynStrOK(_v, func(_str string) bool { _m, _ := ecma262.MatchString({{ecmaPattern $c.Value}}, ecmaflags.Unicode, _str); return _m })
 {{- else}}true
 {{- end}}
