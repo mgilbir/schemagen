@@ -67,8 +67,8 @@
   hand did not compile (`v.AB undefined`), neither did a `multipleOf` on a
   property of a type named `Q…`, and on an alias named `Q…` the refusal reported
   the quotient as the value that failed.
-- Schema parsing no longer uses in-band markers, wrapping integers, or a
-  dialect gate that could not see every subschema.
+- Schema parsing no longer uses in-band markers, wrapping integers, a
+  second percent-decode, or a dialect gate that could not see every subschema.
   - Draft 3's boolean `"required": true` was stored as the property name
     `"\x00__draft3_required_true__"` in the required list. At a draft-3 root, or
     under `additionalProperties` with no `$schema`, it reached the generator as
@@ -83,6 +83,12 @@
     minimum that large admits none. An error message states the bound as the
     schema wrote it (`1e19`, not `9223372036854775807`), and a bound past int32
     is emitted as a constant expression that compiles on a 32-bit target too.
+  - A JSON Pointer in a `$ref` is percent-decoded once, then split, then
+    RFC 6901-unescaped, by one decoder every resolver and the generator share
+    (RFC 6901 §6). A reference into another document was decoded twice, so
+    `#/$defs/a%2525b` named the key `a%b` there and `a%25b` locally; and a local
+    pointer was split before decoding, so `#/$defs/a%2Fb` named the key `a/b`
+    where every implementation Bowtie runs walks `a`, then `b`.
   - The subschemas inside `dependencies`, `extends` and `disallow` are parsed
     with the document, so the dialect pass gates them like any other subschema:
     a draft-4 `dependencies.a.properties.b.const` was enforced although draft 4
@@ -108,7 +114,9 @@
     now at `#/definitions/a`; `{"disallow":{"not":"a type"}}` at `#/not/not` is
     now at `#/disallow/not`. A null or non-schema entry is named at the entry
     (`#/extends/0`, `#/dependencies/a`, `#/type/1`) rather than at its keyword
-    with the entry in the message. A value in another document is named by that
+    with the entry in the message, and a location is written as a URI
+    fragment, so a key a fragment cannot hold literally is percent-encoded
+    (`#/patternProperties/%5Ea`). A value in another document is named by that
     document's URI, and a definition in the name-collision warnings by the
     location its document or embedded resource wrote it at
     (`#/definitions/Thing`, not the `$defs/Thing` mirror).

@@ -87,20 +87,16 @@ func (r *LocalResolver) resolve(ref string) (*Schema, error) {
 		return r.root, nil
 	}
 
-	// Plain-name anchor: "#foo" (no slash after #)
-	if !strings.HasPrefix(ref, "#/") {
-		anchor := ref[1:] // strip leading "#"
-		return r.findAnchor(r.root, anchor)
+	decoded, err := DecodeFragment(ref[1:])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ref, err)
 	}
-
-	// JSON Pointer: "#/path/to/thing"
-	path := strings.TrimPrefix(ref, "#/")
-	parts := strings.Split(path, "/")
-	for i, p := range parts {
-		parts[i] = UnescapePointerToken(p)
+	tokens, isPointer := pointerTokens(decoded)
+	if !isPointer {
+		// A plain-name anchor: "#foo".
+		return r.findAnchor(r.root, decoded)
 	}
-
-	return r.walkPath(r.root, parts, ref)
+	return r.walkPath(r.root, tokens, ref)
 }
 
 // plainNameFragment returns the anchor name an id declares when it is a
@@ -648,40 +644,109 @@ func parseIndex(s string) (int, error) {
 // maxInt is the largest value an int can hold on this platform.
 const maxInt = int(^uint(0) >> 1)
 
-// UnescapePointerToken decodes one reference token of a JSON Pointer that
-// arrived as a URI fragment, which is the only way a $ref ever carries one.
+// DecodeFragment percent-decodes a URI fragment -- the text after "#", as the
+// reference wrote it -- once.
 //
-// Per RFC 6901 §6 the two decodings happen in one order and not the other:
-// percent-decoding first (RFC 3986 §3.5), then the JSON Pointer escapes. The
-// fragment is a URI component, so its percent-escapes belong to the outer
-// encoding layer and have to come off before anything reads the pointer syntax
-// underneath. The orders are not interchangeable -- "%7E1" percent-decodes to
-// "~1" and then unescapes to "/", while unescaping first finds no literal "~1"
-// and leaves the token naming "~1" -- so a caller that picks the wrong one
-// names a different member of the document than the pointer does.
+// This is the first of the two decodings a JSON Pointer in a $ref goes through,
+// and it has to happen exactly once and before the second. RFC 6901 §6: a JSON
+// Pointer in a URI fragment is represented by percent-encoding its characters,
+// so reading one back is "percent-decode the fragment, then read the result as
+// a JSON Pointer". Two consequences follow, and this package used to get both
+// wrong:
 //
-// It is exported because that answer has three consumers and must be one
-// function: the resolver below, which decides what a $ref reaches; the
-// generator's ref-to-name derivation, which names what it reached; and
-// cmd/schemagen's shared-definition bookkeeping, which has to agree with both
-// about which definition a pointer names. Two of the three had their own copy
-// and one of those copies was wrong -- it never percent-decoded at all, though
-// its comment said it did (issue #305). The same collapse as #178 and #203/#211:
-// one rule, one implementation.
-func UnescapePointerToken(token string) string {
-	if decoded, err := url.PathUnescape(token); err == nil {
-		token = decoded
+//   - A "%2F" is a "/" and therefore a separator between reference tokens.
+//     "#/$defs/a%2Fb" is the pointer /$defs/a/b, which walks $defs, then a, then
+//     b. Splitting before decoding read it as a single key "a/b" -- a key only
+//     "~1" can name -- and every implementation Bowtie runs walks a -> b.
+//   - Decoding twice is a different function from decoding once:
+//     "#/$defs/a%2525b" names the key "a%25b", and a second decode names "a%b".
+//     The resolvers split a reference with url.Parse, which had already decoded
+//     the fragment, and then handed it to a LocalResolver that decoded it
+//     again, so a pointer reached one key inside its own document and another
+//     through any other document.
+//
+// A fragment whose percent-encoding is malformed ("100%") is refused, as
+// url.Parse refuses the same reference when it names another document: the two
+// paths agreeing is the point.
+func DecodeFragment(fragment string) (string, error) {
+	decoded, err := url.PathUnescape(fragment)
+	if err != nil {
+		return "", fmt.Errorf("fragment %q is not validly percent-encoded: %w", fragment, err)
 	}
-	return unescapeJSONPointer(token)
+	return decoded, nil
 }
 
-// unescapeJSONPointer decodes JSON Pointer escaping (RFC 6901):
-// ~1 → / and ~0 → ~
-func unescapeJSONPointer(token string) string {
-	// Order matters: ~1 first, then ~0
-	token = strings.ReplaceAll(token, "~1", "/")
-	token = strings.ReplaceAll(token, "~0", "~")
-	return token
+// FragmentPointer reads a URI fragment, as the reference wrote it and without
+// its "#", as a JSON Pointer. It returns the pointer's reference tokens and
+// reports whether the fragment is a JSON Pointer at all -- empty (the whole
+// document) or beginning with "/" once decoded -- rather than a plain-name
+// anchor.
+//
+// This is the one decoder of a pointer in a reference. Every resolver in this
+// package walks the tokens it returns, and pkg/generator and cmd/schemagen read
+// what a pointer names through it too: a name derived from a pointer has to be
+// the name of the node the resolver reached, and a second implementation is
+// how the two came apart before (issue #305).
+func FragmentPointer(fragment string) (tokens []string, isPointer bool, err error) {
+	decoded, err := DecodeFragment(fragment)
+	if err != nil {
+		return nil, false, err
+	}
+	tokens, isPointer = pointerTokens(decoded)
+	return tokens, isPointer, nil
+}
+
+// pointerTokens splits an already percent-decoded fragment into JSON Pointer
+// reference tokens: split on "/", then unescape "~1" to "/" and "~0" to "~" in
+// each token, in that order (RFC 6901 §4) -- "~01" is the key "~1", not "/".
+func pointerTokens(decoded string) ([]string, bool) {
+	if decoded == "" {
+		return nil, true
+	}
+	if decoded[0] != '/' {
+		return nil, false
+	}
+	tokens := strings.Split(decoded[1:], "/")
+	for i, t := range tokens {
+		t = strings.ReplaceAll(t, "~1", "/")
+		tokens[i] = strings.ReplaceAll(t, "~0", "~")
+	}
+	return tokens, true
+}
+
+// PointerFragment writes reference tokens as the canonical fragment naming
+// them: "#" followed by the JSON Pointer, each token escaped per RFC 6901, and
+// then percent-encoded exactly where RFC 3986 §3.5 requires it -- every
+// character a fragment may not hold literally, "%" included, and nothing else.
+// FragmentPointer reads it back as the same tokens, and every spelling of one
+// pointer that FragmentPointer accepts maps to this one string, which makes it
+// a key two spellings of a reference share.
+func PointerFragment(tokens ...string) string {
+	var b strings.Builder
+	b.WriteByte('#')
+	for _, t := range tokens {
+		b.WriteByte('/')
+		t = strings.ReplaceAll(t, "~", "~0")
+		t = strings.ReplaceAll(t, "/", "~1")
+		for i := 0; i < len(t); i++ {
+			if c := t[i]; isFragmentChar(c) {
+				b.WriteByte(c)
+			} else {
+				b.WriteString(fmt.Sprintf("%%%02X", c))
+			}
+		}
+	}
+	return b.String()
+}
+
+// isFragmentChar reports whether RFC 3986 lets a fragment hold c literally:
+// pchar, "/" and "?", less pct-encoded's "%", which has to be escaped itself.
+func isFragmentChar(c byte) bool {
+	switch {
+	case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		return true
+	}
+	return strings.IndexByte("-._~!$&'()*+,;=:@/?", c) >= 0
 }
 
 // ---------- MappingResolver (static URI → Schema map) ----------
@@ -715,10 +780,12 @@ func (m *MappingResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, 
 		resolved = baseURI.ResolveReference(refURL)
 	}
 
-	// Split into document URI (without fragment) and fragment.
-	fragment := resolved.Fragment
+	// Split into document URI (without fragment) and fragment. The fragment is
+	// taken still percent-encoded: url.Parse has decoded Fragment once already,
+	// and the LocalResolver decodes what it is handed. See DecodeFragment.
+	fragment := resolved.EscapedFragment()
 	docURI := *resolved
-	docURI.Fragment = ""
+	docURI.Fragment, docURI.RawFragment = "", ""
 	docKey := docURI.String()
 
 	// Look up the document schema.
@@ -900,8 +967,8 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("FileResolver: refusing to read %q outside base directory %q", filePath, f.baseDir)
 	}
 
-	// Check cache.
-	fragment := refURL.Fragment
+	// Check cache. The fragment stays percent-encoded; see MappingResolver.
+	fragment := refURL.EscapedFragment()
 	if cached, ok := f.cache[filePath]; ok {
 		if fragment != "" {
 			local := NewLocalResolver(cached)
@@ -1045,10 +1112,11 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("HTTPResolver: fragment-only ref %q not handled", ref)
 	}
 
-	// Split into document URI (without fragment) and fragment.
-	fragment := resolved.Fragment
+	// Split into document URI (without fragment) and fragment. The fragment
+	// stays percent-encoded; see MappingResolver.
+	fragment := resolved.EscapedFragment()
 	docURI := *resolved
-	docURI.Fragment = ""
+	docURI.Fragment, docURI.RawFragment = "", ""
 	docKey := docURI.String()
 
 	// Check cache.
@@ -1081,7 +1149,7 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	retrievalKey := docKey
 	if resp.Request != nil && resp.Request.URL != nil {
 		final := *resp.Request.URL
-		final.Fragment = ""
+		final.Fragment, final.RawFragment = "", ""
 		retrievalKey = final.String()
 	}
 

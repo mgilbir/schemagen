@@ -523,15 +523,23 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.defs = make(map[string]*schema.Schema)
 	g.anchors = make(map[string]string)
 	g.dynamicAnchors = make(map[string]string)
+	//
+	// Keyed by the canonical fragment of the pointer that names each one -- the
+	// key RFC 6901-escaped, nothing percent-encoded -- and looked up by the
+	// canonical form of the ref (canonicalLocalRef), so that the lookup and the
+	// resolver agree on which definition a pointer names. Keyed by the raw key,
+	// a definition named "a/b" answered "#/$defs/a/b", which is the pointer
+	// $defs -> a -> b, and one named "a%25b" answered "#/$defs/a%25b", which
+	// names the key "a%b".
 	for _, name := range sortedKeys(s.Defs) {
 		def := s.Defs[name]
-		refPath := "#/$defs/" + name
+		refPath := schema.PointerFragment("$defs", name)
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
 	}
 	for _, name := range sortedKeys(s.Definitions) {
 		def := s.Definitions[name]
-		refPath := "#/definitions/" + name
+		refPath := schema.PointerFragment("definitions", name)
 		g.defs[refPath] = def
 		g.indexAnchors(def, refPath)
 	}
@@ -10751,7 +10759,7 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 	}
 
 	// 1. Direct defs map lookup (handles #/$defs/Foo, #/definitions/Bar).
-	if s, ok := g.defs[ref]; ok {
+	if s, ok := g.defs[canonicalLocalRef(ref)]; ok {
 		return s
 	}
 	// 2. Check anchor index (handles $id-based and $anchor-based refs).
@@ -10796,9 +10804,15 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		refURL, err := url.Parse(ref)
 		if err == nil {
 			absURL := ctxBase.ResolveReference(refURL)
-			fragment := absURL.Fragment
+			// Still percent-encoded: url.Parse decoded Fragment once already,
+			// and the LocalResolver decodes what it is handed (see
+			// schema.DecodeFragment). Handing it Fragment decoded twice.
+			fragment := ""
+			if absURL.Fragment != "" {
+				fragment = absURL.EscapedFragment()
+			}
 			docURL := *absURL
-			docURL.Fragment = ""
+			docURL.Fragment, docURL.RawFragment = "", ""
 			docKey := docURL.String()
 
 			// Check document roots first.
@@ -10850,9 +10864,9 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		// document makes it its own DocumentRoot -- so its siblings fall out of
 		// scope and a later "#anchor" or "$dynamicAnchor" lookup misses them.
 		if refURL, parseErr := url.Parse(ref); parseErr == nil && refURL.Fragment != "" {
-			frag := refURL.Fragment
+			frag := refURL.EscapedFragment()
 			docURL := *refURL
-			docURL.Fragment = ""
+			docURL.Fragment, docURL.RawFragment = "", ""
 			docSchema, err := g.resolver.ResolveSchema(docURL.String(), ctxBase)
 			if err != nil {
 				g.noteRefAttempt(err)
@@ -10870,8 +10884,11 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 		} else {
 			// Register the remote schema so its internal $ref chains resolve.
 			if refURL, parseErr := url.Parse(ref); parseErr == nil {
-				frag := refURL.Fragment
-				refURL.Fragment = ""
+				frag := ""
+				if refURL.Fragment != "" {
+					frag = refURL.EscapedFragment()
+				}
+				refURL.Fragment, refURL.RawFragment = "", ""
 				g.registerRemoteSchema(s, refURL)
 				// If there was a fragment, resolve it within the now-registered schema.
 				if frag != "" {
@@ -15012,61 +15029,88 @@ func (g *Generator) isNullableComposition(s *schema.Schema) bool {
 //	"#/definitions/tilde~0field" → "TildeField" (JSON Pointer unescaping)
 //	"foo%22bar"             → "FooBar" (URL decoding)
 //
-// The last pointer token is decoded by schema.UnescapePointerToken, so this
-// reads the same pointer the resolver does: percent-decoding first, RFC 6901
-// second. It used to do the two the other way round, which is a different
-// function on any token whose percent-escapes decode into a tilde escape --
-// "%7E0" names the key "~" and was read as naming "~0".
+// A fragment is read by schema.FragmentPointer, the decoder the resolver uses,
+// so this names the token the resolver walks to: percent-decoding once, then
+// splitting, then RFC 6901. Decoding a single token after splitting, as this
+// used to, is a different function -- "%7E0" names the key "~" and was read as
+// naming "~0" (issue #305), and "a%2Fb" is two tokens, the last of them "b",
+// where a split before decoding saw one.
 //
 // Nearly everywhere that is invisible, because the name is only a label for a
 // node the resolver has already chosen: a $defs entry is named from its key, a
 // node already materialized keeps the name it has, and two nodes that land on
 // one name are numbered apart. The exception is applyDiscriminator, where a
 // mapping value and a variant's $ref are compared *by the names they derive*
-// and never resolved at all. There the old order matched a mapping value
+// and never resolved at all. There a different reading matched a mapping value
 // against the definition a different pointer names, and the generated switch
 // decoded the document into the wrong variant -- accepting what its schema
 // forbids and refusing what it requires, in both directions at once. Issue #305.
 func refToGoName(ref string) string {
-	// Strip fragment from URIs/URNs: "urn:...#something" → use "something"
-	name := ref
+	var name string
 	if idx := strings.LastIndex(ref, "#"); idx >= 0 {
 		fragment := ref[idx+1:]
 		if fragment == "" {
 			// Fragment-only ref "#" — use "Root" as the name.
 			return "Root"
 		}
-		name = fragment
-	}
-
-	// For JSON Pointer paths like "/definitions/foo/bar", take the last segment.
-	if strings.Contains(name, "/") {
-		parts := strings.Split(name, "/")
-		// Find the last non-empty segment.
-		for i := len(parts) - 1; i >= 0; i-- {
-			if parts[i] != "" {
-				name = parts[i]
-				break
+		tokens, isPointer, err := schema.FragmentPointer(fragment)
+		switch {
+		case err != nil:
+			// Not validly percent-encoded, so no resolver reaches anything with
+			// it; the name is only a label for the error that follows.
+			name = lastNonEmptySegment(fragment)
+		case isPointer:
+			// The last non-empty token.
+			for i := len(tokens) - 1; i >= 0 && name == ""; i-- {
+				name = tokens[i]
 			}
+		default:
+			// A plain-name anchor.
+			name, _ = schema.DecodeFragment(fragment)
 		}
-		// If all segments are empty, use a fallback.
-		if name == "" || name == ref {
-			return "X"
+	} else {
+		// A URI with no fragment names a document, by its last path segment.
+		name = lastNonEmptySegment(ref)
+		if decoded, err := url.PathUnescape(name); err == nil {
+			name = decoded
 		}
 	}
+	if name == "" {
+		return "X"
+	}
 
-	// For URN refs without fragment (e.g. "urn:uuid:deadbeef-1234"),
-	// take the last colon-separated segment.
+	// For URN refs (e.g. "urn:uuid:deadbeef-1234"), take the last
+	// colon-separated segment.
 	if strings.Contains(name, ":") {
 		parts := strings.Split(name, ":")
 		name = parts[len(parts)-1]
 	}
+	return SchemaNameToGoName(name)
+}
 
-	// Decode the token the same way the resolver does, which is the whole point:
-	// this names what that ref reached, so it has to be reading the same pointer.
-	// See schema.UnescapePointerToken for the order and why it is not the other
-	// one.
-	return SchemaNameToGoName(schema.UnescapePointerToken(name))
+// lastNonEmptySegment returns the last non-empty "/"-separated segment of s.
+func lastNonEmptySegment(s string) string {
+	parts := strings.Split(s, "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] != "" {
+			return parts[i]
+		}
+	}
+	return ""
+}
+
+// canonicalLocalRef returns the canonical spelling of a fragment-only JSON
+// Pointer ref -- the key g.defs is indexed by (see schema.PointerFragment) --
+// or ref unchanged when it is anything else.
+func canonicalLocalRef(ref string) string {
+	if !strings.HasPrefix(ref, "#") {
+		return ref
+	}
+	tokens, isPointer, err := schema.FragmentPointer(ref[1:])
+	if err != nil || !isPointer {
+		return ref
+	}
+	return schema.PointerFragment(tokens...)
 }
 
 // enumConstNames derives the Go constant name for every value of an enum and

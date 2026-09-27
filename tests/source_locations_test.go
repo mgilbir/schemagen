@@ -13,8 +13,8 @@ import (
 
 // A refusal names where the document wrote the value it refuses, and this file
 // holds that to an oracle rather than to a list of expected strings: the
-// location a diagnostic prints is read as a JSON Pointer (readPointerFragment)
-// and walked through the document's own bytes, parsed
+// location a diagnostic prints is decoded with the one pointer decoder
+// (schema.FragmentPointer) and walked through the document's own bytes, parsed
 // here independently of pkg/schema, and what it reaches has to be the offending
 // value itself. A location in this package's rewritten spelling of the document
 // -- "#/allOf/1" for the second "extends" entry, "#/$defs/a" for a draft-07
@@ -226,7 +226,7 @@ func assertLocationReaches(t *testing.T, msg string, docs map[string]string, off
 	if !ok {
 		t.Fatalf("the refusal names %q, a document the run does not hold:\n%s", docPart, msg)
 	}
-	tokens, isPointer, err := readPointerFragment(fragment)
+	tokens, isPointer, err := schema.FragmentPointer(fragment)
 	if err != nil || !isPointer {
 		t.Fatalf("the refusal names %q, which is not a JSON Pointer fragment (%v):\n%s", loc, err, msg)
 	}
@@ -242,22 +242,6 @@ func assertLocationReaches(t *testing.T, msg string, docs map[string]string, off
 		gotJSON, _ := json.Marshal(got)
 		t.Fatalf("the refusal names %q, which holds %s in the document, not the offending %s:\n%s\ndocument: %s", loc, gotJSON, offending, msg, raw)
 	}
-}
-
-// readPointerFragment reads a fragment as a JSON Pointer, per RFC 6901: split
-// on "/", then "~1" and "~0" unescaped in each token.
-func readPointerFragment(fragment string) ([]string, bool, error) {
-	if fragment == "" {
-		return nil, true, nil
-	}
-	if !strings.HasPrefix(fragment, "/") {
-		return nil, false, nil
-	}
-	tokens := strings.Split(fragment[1:], "/")
-	for i, t := range tokens {
-		tokens[i] = strings.ReplaceAll(strings.ReplaceAll(t, "~1", "/"), "~0", "~")
-	}
-	return tokens, true, nil
 }
 
 // printedLocation returns the location a refusal starts its complaint with: the

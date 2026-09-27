@@ -42,7 +42,7 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/degen/null-in-properties.json",                          // #/properties/a: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-items.json",                                  // #/items: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-not.json",                                    // #/not: schema is null (a schema must be an object or boolean)
-		"testdata/schemas/adversarial/degen/null-patternprops-val.json",                       // #/patternProperties/^a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/degen/null-patternprops-val.json",                       // #/patternProperties/%5Ea: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-propertynames.json",                          // #/propertyNames: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/draft/deps-array-of-numbers.json",                       // #/dependencies/a: must be an array of property names, got: [1,2,3]
 		"testdata/schemas/adversarial/draft/draft3-disallow-junk.json",                        // #/disallow/not: a schema must be an object or a boolean, got: "a type"
@@ -97,10 +97,10 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/nil2/nested-defs-null.json",                             // #/$defs/a/$defs/b: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/nested-dependentschemas-null.json",                 // #/properties/a/dependentSchemas/x: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/nested-oneof-null.json",                            // #/properties/a/oneOf/0: schema is null (a schema must be an object or boolean)
-		"testdata/schemas/adversarial/nil2/nested-patternprops-null.json",                     // #/properties/a/patternProperties/^x: schema is null (a schema must be an object or bool...
+		"testdata/schemas/adversarial/nil2/nested-patternprops-null.json",                     // #/properties/a/patternProperties/%5Ex: schema is null (a schema must be an object or b...
 		"testdata/schemas/adversarial/nil2/not-allof-null.json",                               // #/not/allOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/oneof-null-min.json",                               // #/oneOf/0: schema is null (a schema must be an object or boolean)
-		"testdata/schemas/adversarial/nil2/patternprops-null-min.json",                        // #/patternProperties/^a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/patternprops-null-min.json",                        // #/patternProperties/%5Ea: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/prefixitems-null-min.json",                         // #/prefixItems/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/typeschemas-null.json",                             // #/type/1: must be a type name or a schema, got: null
 		"testdata/schemas/adversarial/num/mincontains-maxcontains.json",                       // #/maxContains: -5: must be a non-negative integer

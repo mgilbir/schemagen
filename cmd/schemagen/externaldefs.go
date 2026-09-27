@@ -714,23 +714,27 @@ func documentRootRefName(doc *schema.Schema, ref string) string {
 // wrote it at: "/$defs/Inner" is "$defs/Inner" and "/properties/a/properties/b"
 // is "properties/a/properties/b". A plain-name anchor has no container.
 //
-// Each token is decoded the resolver's way, so the message names the key the
-// document actually holds rather than the spelling the ref reached it by: a
-// claim from "#/properties/%7E1" reads as properties// -- the property really
-// is called "/" -- where it used to echo the escape back untouched.
+// The fragment is read by the resolver's own decoder, schema.FragmentPointer,
+// so the message names the key the document actually holds rather than the
+// spelling the ref reached it by: a claim from "#/properties/%7E1" reads as
+// properties// -- the property really is called "/" -- where it used to echo
+// the escape back untouched.
 func pointerClaimParts(fragment string) (keyword, defKey string) {
 	if fragment == "" {
 		return "", ""
 	}
-	if !strings.HasPrefix(fragment, "/") {
-		return "", schema.UnescapePointerToken(fragment)
+	tokens, isPointer, err := schema.FragmentPointer(fragment)
+	switch {
+	case err != nil:
+		return "", fragment
+	case !isPointer:
+		anchor, _ := schema.DecodeFragment(fragment)
+		return "", anchor
+	case len(tokens) == 0:
+		return "", ""
 	}
-	parts := strings.Split(strings.TrimPrefix(fragment, "/"), "/")
-	for i, p := range parts {
-		parts[i] = schema.UnescapePointerToken(p)
-	}
-	last := len(parts) - 1
-	return strings.Join(parts[:last], "/"), parts[last]
+	last := len(tokens) - 1
+	return strings.Join(tokens[:last], "/"), tokens[last]
 }
 
 // externalFilePath reports the file a referenced document was read from, as a

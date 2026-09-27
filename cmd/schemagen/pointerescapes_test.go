@@ -16,8 +16,9 @@ import (
 // first finds no literal "~1" and leaves a token naming "~1". Two different
 // members of the same document.
 //
-// pkg/schema.UnescapePointerToken is now the single implementation, and these
-// are the three places a disagreement with it was observable. Issue #305.
+// pkg/schema.FragmentPointer is now the single implementation -- percent-decode
+// the whole fragment once, split it on "/", then unescape each token -- and
+// these are the three places a disagreement with it was observable. Issue #305.
 
 // ---------- the demotion (#305) ----------
 
@@ -194,8 +195,8 @@ func TestDiscriminatorMappingDispatchesOnWhatThePointerNames(t *testing.T) {
 // contest at all and no diagnostic is produced -- which is what the old
 // derivation did, deriving X1 for the escaped one -- and the claim each is
 // reported under has to be one location for both, where the document holds the
-// key -- the pointer "#/properties/~1", which names the key "/" -- rather than
-// the escape either ref reached it by.
+// key -- the canonical pointer "#/properties/~1", which schema.FragmentPointer
+// reads back as the key "/" -- rather than the escape either ref reached it by.
 func TestClaimDiagnosticNamesTheKeyTheDocumentHolds(t *testing.T) {
 	dir, paths := writeSchemas(t,
 		"a.json", `{

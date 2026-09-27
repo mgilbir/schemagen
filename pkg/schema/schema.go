@@ -1150,11 +1150,12 @@ func (s *Schema) EffectiveRef() string {
 // "#/examples/0", so the element is the schema and the array is not.
 func (s *Schema) extensionSchema(key string, tokens []string, raw json.RawMessage) (*Schema, error) {
 	// Memoize per (keyword, path): "#/examples/0" and "#/examples/1" are
-	// different nodes, so keying on the keyword alone would alias them.
-	cacheKey := key
-	if len(tokens) > 0 {
-		cacheKey = key + "/" + strings.Join(tokens, "/")
-	}
+	// different nodes, so keying on the keyword alone would alias them. The
+	// key is the path's canonical pointer, not its tokens joined on "/": a
+	// token may itself hold a "/", so "#/x/a~1b" (one token, "a/b") and
+	// "#/x/a/b" (two) joined to one key and the second ref was handed the
+	// first one's node.
+	cacheKey := PointerFragment(append([]string{key}, tokens...)...)
 	if cached, ok := s.extensionSchemas[cacheKey]; ok {
 		return cached, nil
 	}

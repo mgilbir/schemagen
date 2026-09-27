@@ -82,7 +82,8 @@ var unlocated = source{set: true}
 // ok is false for a node no document wrote -- one built through the Go API -- and
 // for a document not normalized yet.
 //
-// PointerFragment(tokens...) writes the location as a URI fragment.
+// PointerFragment(tokens...) writes the location as a URI fragment that
+// FragmentPointer reads back to the same tokens.
 func (s *Schema) SourceLocation() (doc *Schema, tokens []string, ok bool) {
 	root, tokens, ok := s.pathUpTo(nil)
 	if !ok || root.src.doc == nil {
@@ -259,15 +260,6 @@ func atPath(err error, path ...string) error {
 		return &subPathError{path: append(append([]string(nil), path...), inner.path...), err: inner.err}
 	}
 	return &subPathError{path: path, err: err}
-}
-
-// PointerFragment writes reference tokens as the URI fragment naming them: "#"
-// followed by the JSON Pointer, each token escaped per RFC 6901.
-func PointerFragment(tokens ...string) string {
-	if len(tokens) == 0 {
-		return "#"
-	}
-	return "#/" + strings.Join(escapeTokens(tokens), "/")
 }
 
 // escapeTokens applies RFC 6901's escaping to each token.

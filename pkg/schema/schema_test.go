@@ -408,23 +408,33 @@ func TestResolveDefs(t *testing.T) {
 // A pointer in a fragment is percent-decoded before it is read as a pointer,
 // and the resolver is where that order is decided for everything downstream.
 //
+// RFC 6901 §6 fixes the order: a JSON Pointer in a URI fragment is represented
+// by percent-encoding it, so it is read back by percent-decoding the whole
+// fragment once, then splitting the result on "/", then unescaping "~1" and
+// "~0" in each token.
+//
 // Every case below is a key that one spelling reaches and another spelling of
-// the same characters does not, so a resolver that took the two decodings in
-// the other order would not fail to resolve -- it would resolve to the *other*
-// definition and hand back a schema. Nothing about the answer would look wrong.
-// That is the shape of issue #305, and this file had no case that could see it:
-// with the order reversed inside UnescapePointerToken, the whole of pkg/schema
-// still passed.
+// the same characters does not, so a resolver that took the steps in another
+// order would not fail to resolve -- it would resolve to the *other* definition
+// and hand back a schema. Nothing about the answer would look wrong. That is
+// the shape of issue #305, and this file had no case that could see it: with
+// the order reversed, the whole of pkg/schema still passed.
 func TestResolvePercentEscapedPointerToken(t *testing.T) {
 	slash := &Schema{Type: TypeList{"string"}, Title: "slash"}
 	tildeOne := &Schema{Type: TypeList{"integer"}, Title: "tilde-one"}
 	tilde := &Schema{Type: TypeList{"boolean"}, Title: "tilde"}
 	tildeZero := &Schema{Type: TypeList{"number"}, Title: "tilde-zero"}
+	aThenB := &Schema{Type: TypeList{"null"}, Title: "a then b"}
+	aSlashB := &Schema{Type: TypeList{"object"}, Title: "the key a/b"}
+	percent := &Schema{Type: TypeList{"array"}, Title: "the key %25"}
 	s := &Schema{Defs: map[string]*Schema{
-		"/":  slash,
-		"~1": tildeOne,
-		"~":  tilde,
-		"~0": tildeZero,
+		"/":   slash,
+		"~1":  tildeOne,
+		"~":   tilde,
+		"~0":  tildeZero,
+		"a":   {Properties: map[string]*Schema{"b": aThenB}},
+		"a/b": aSlashB,
+		"%25": percent,
 	}}
 	r := NewResolver(s)
 
@@ -442,9 +452,18 @@ func TestResolvePercentEscapedPointerToken(t *testing.T) {
 		{"#/$defs/%7E0", tilde},
 		{"#/$defs/~0", tilde},
 		{"#/$defs/~00", tildeZero},
-		// A percent-escaped separator is a character of the key, not a step of
-		// the pointer: "%2F" is the key "/" and does not descend anywhere.
-		{"#/$defs/%2F", slash},
+		// A percent-escaped separator is a separator: "%2F" decodes to "/"
+		// before the pointer is split, so "#/$defs/a%2Fproperties%2Fb" walks
+		// $defs, a, properties, b (RFC 6901 §6). Only "~1" puts a "/" inside a
+		// key. Bowtie's python-jsonschema, js-ajv and go-jsonschema all walk it
+		// the first way; this resolver used to split first and read one key.
+		{"#/$defs/a%2Fproperties%2Fb", aThenB},
+		{"#/$defs/a~1b", aSlashB},
+		{"#/$defs/a%7E1b", aSlashB},
+		// Decoded exactly once: "%2525" is "%25", the key's own spelling, and
+		// not "%" -- which is what a second decode, the one a reference into
+		// another document used to get, would have looked up.
+		{"#/$defs/%2525", percent},
 	} {
 		resolved, err := r.Resolve(tt.ref)
 		if err != nil {

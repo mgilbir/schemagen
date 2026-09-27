@@ -157,7 +157,8 @@ type docLocator struct {
 }
 
 // name returns the location of n as a URI reference -- a fragment for the home
-// document -- and whether n has one. The fragment is schema.PointerFragment.
+// document -- and whether n has one. The fragment is schema.PointerFragment,
+// which schema.FragmentPointer reads back to the same tokens.
 func (l docLocator) name(n *schema.Schema) (string, bool) {
 	doc, tokens, ok := n.SourceLocation()
 	if !ok {

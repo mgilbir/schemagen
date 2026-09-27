@@ -1641,11 +1641,16 @@ func TestRefToGoName(t *testing.T) {
 		// first, so "%7E1" becomes "~1" and then names the key "/", and "%7E0"
 		// becomes "~0" and then names the key "~". Reading them the other way
 		// round leaves the escape intact and names "~1" and "~0" instead --
-		// different keys of the same document. See schema.UnescapePointerToken.
+		// different keys of the same document. See schema.FragmentPointer.
 		{"#/$defs/%7E1", "X"},
 		{"#/$defs/%7E0", "X"},
 		{"#/$defs/~01", "X1"},
 		{"#/$defs/~00", "X0"},
+		// A percent-escaped separator is a separator once the fragment is
+		// decoded (RFC 6901 §6), so the last token is "b"; only "~1" puts a
+		// "/" inside a token.
+		{"#/$defs/a%2Fb", "B"},
+		{"#/$defs/a~1b", "AB"},
 		// Empty path segments
 		{"#/definitions//definitions/", "Definitions"},
 		// URN refs
@@ -3231,7 +3236,9 @@ func TestNullSubschemaInContainerReturnsError(t *testing.T) {
 		{"defs", `{"$defs":{"a":null}}`, "#/$defs/a"},
 		// Where the document wrote it, not its "$defs" mirror.
 		{"definitions", `{"definitions":{"a":null}}`, "#/definitions/a: schema is null"},
-		{"patternProperties", `{"patternProperties":{"^a":null}}`, "#/patternProperties/^a: schema is null"},
+		// A location is written as a URI fragment ("^" is not a fragment
+		// character), which schema.FragmentPointer reads back to the key.
+		{"patternProperties", `{"patternProperties":{"^a":null}}`, "#/patternProperties/%5Ea: schema is null"},
 		{"dependentSchemas", `{"dependentSchemas":{"a":null}}`, "#/dependentSchemas/a"},
 		{"prefixItems", `{"prefixItems":[null]}`, "#/prefixItems/0"},
 		{"itemsArray", `{"items":[null]}`, "#/items/0"},

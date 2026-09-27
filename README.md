@@ -396,8 +396,9 @@ gives it: under draft 4, `{"minimum":3,"exclusiveMinimum":5}` is refused as
 draft 6's spelling rather than read as if `exclusiveMinimum` were absent. With
 no recognised `$schema` every draft's form binds.
 
-The location a refusal names is where the document wrote the value, as a JSON
-Pointer fragment (`#/extends/1/minLength`, `#/definitions/a`) -- never the path
+The location a refusal names is where the document wrote the value, as a URI
+fragment (`#/extends/1/minLength`, `#/definitions/a`, `#/patternProperties/%5Ea`)
+that reads back through the same pointer decoder a `$ref` uses -- never the path
 into schemagen's rewritten form of the document, where draft 3's `extends` is
 an `allOf` and a draft-07 `definitions` is mirrored as `$defs`. A value in
 another document is named by that document's URI and a fragment into it. The
@@ -411,11 +412,14 @@ comparison compiles on 32-bit targets too.
 A key written twice in one object means its last value, for every keyword and
 every object in the document, which is what `encoding/json` does for a map.
 
-A pointer into a draft 3-7 keyword that is read as its modern replacement --
-`#/dependencies/a`, `#/extends/0`, `#/disallow/1`, draft 3's `#/type/1` --
-names the subschema where the document wrote it. A pointer into a keyword the
-node's dialect does not define (draft 3's `#/not`) reaches its value, as one
-into any unknown keyword does.
+A JSON Pointer in a `$ref` is read as RFC 6901 §6 says: the fragment is
+percent-decoded once, then split on `/`, then `~1` and `~0` are unescaped. So
+`#/$defs/a%2Fb` walks `a` and then `b`, and only `#/$defs/a~1b` names a key
+called `a/b`. A pointer into a draft 3-7 keyword that is read as its modern
+replacement -- `#/dependencies/a`, `#/extends/0`, `#/disallow/1`, draft 3's
+`#/type/1` -- names the subschema where the document wrote it. A pointer into
+a keyword the node's dialect does not define (draft 3's `#/not`) reaches its
+value, as one into any unknown keyword does.
 
 ### Field order: laid out, not listed
 

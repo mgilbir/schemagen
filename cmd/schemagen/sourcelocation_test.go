@@ -11,12 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
 // The name-collision diagnostics name each definition by where its document
 // wrote it, and these hold that to an oracle rather than to expected strings:
-// every location a diagnostic prints is read as a JSON Pointer
-// (readLocationFragment) and walked through the bytes of the document or
+// every location a diagnostic prints is decoded with the one pointer decoder
+// (schema.FragmentPointer) and walked through the bytes of the document or
 // resource the line names, parsed here with encoding/json alone, and what it
 // reaches has to be that definition as written.
 //
@@ -161,7 +163,7 @@ func assertDefinitionAt(t *testing.T, paths []string, where, loc, want, diagnost
 	if doc == nil {
 		t.Fatalf("the diagnostic names %q, which is no document or resource of the run:\n%s", where, diagnostic)
 	}
-	tokens, isPointer, err := readLocationFragment(strings.TrimPrefix(loc, "#"))
+	tokens, isPointer, err := schema.FragmentPointer(strings.TrimPrefix(loc, "#"))
 	if err != nil || !isPointer {
 		t.Fatalf("the diagnostic names %q in %s, which is not a JSON Pointer fragment (%v):\n%s", loc, where, err, diagnostic)
 	}
@@ -177,21 +179,6 @@ func assertDefinitionAt(t *testing.T, paths []string, where, loc, want, diagnost
 		gotJSON, _ := json.Marshal(got)
 		t.Fatalf("the diagnostic names %q in %s, which holds %s, not the definition %s:\n%s", loc, where, gotJSON, want, diagnostic)
 	}
-}
-
-// readLocationFragment reads a fragment as a JSON Pointer, per RFC 6901.
-func readLocationFragment(fragment string) ([]string, bool, error) {
-	if fragment == "" {
-		return nil, true, nil
-	}
-	if !strings.HasPrefix(fragment, "/") {
-		return nil, false, nil
-	}
-	tokens := strings.Split(fragment[1:], "/")
-	for i, t := range tokens {
-		tokens[i] = strings.ReplaceAll(strings.ReplaceAll(t, "~1", "/"), "~0", "~")
-	}
-	return tokens, true, nil
 }
 
 // findResource returns the object in v whose "$id" is id.
