@@ -23,10 +23,10 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- range $oof := $struct.OneOfs}}
 	{{- if not $oof.JSONName}}
 	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
 		{{- range $oof.Variants}}
 		case *{{.WrapperName}}:
-			return json.Marshal(v.{{.FieldName}})
+			return json.Marshal(_sel.{{.FieldName}})
 		{{- end}}
 		}
 	}
@@ -57,10 +57,10 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- range $oof := $struct.OneOfs}}
 
 	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
 		{{- range $oof.Variants}}
 		case *{{.WrapperName}}:
-			raw, err := json.Marshal(v.{{.FieldName}})
+			raw, err := json.Marshal(_sel.{{.FieldName}})
 			if err != nil {
 				return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{$oof.FieldName}}: %w", err)
 			}
@@ -133,8 +133,8 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- end}}
 	{{- if $struct.HasPatternProperties}}
 	{{- /* maporder: copies members under their own keys, which are distinct; json.Marshal writes obj in key order. */}}
-	for k, v := range {{$recv}}.PatternProperties {
-		obj[k] = v
+	for _key, _member := range {{$recv}}.PatternProperties {
+		obj[_key] = _member
 	}
 	{{- end}}
 	{{- if $struct.NeedsJSONNulls}}
@@ -169,19 +169,19 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
 	{{- /* maporder: a copy into obj under the same keys, which are distinct, so
 	       no order of the loop writes a different obj. */}}
-	for k, v := range {{$recv}}.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range {{$recv}}.AdditionalProperties {
+		obj[_key] = _member
 	}
 	{{- else}}
 	{{- /* A member that fails to marshal is reported for the least key, not for
 	       whichever the randomised map order reached first. */}}
-	{{- $lk := leastKey "k" "v" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
+	{{- $lk := leastKey "_key" "_member" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
 	{{- template "least_key_open" $lk}}
-		raw, err := json.Marshal(v)
+		raw, err := json.Marshal(_member)
 		if err != nil {
-			return fmt.Errorf("marshaling additional property %q: %w", k, err)
+			return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 		}
-		obj[k] = raw
+		obj[_key] = raw
 		return nil
 	{{- template "least_key_close" $lk}}
 	{{- end}}

@@ -8,8 +8,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// Non-object data was silently accepted — validate non-object constraints if any.
 	if {{$recv}}._nonObject {
 		{{- if gt (len $struct.NonObjectValidations) 0}}
-		v := {{$recv}}._rawNonObject
-		_ = v
+		_nonObj := {{$recv}}._rawNonObject
+		_ = _nonObj
 		{{- range $struct.NonObjectValidations}}
 		{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
 		{
@@ -21,7 +21,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			// being 0 (issue #270). A numeric keyword does not apply to a value
 			// that is not a number.
 			var _num *float64
-			if err := json.Unmarshal(v, &_num); err == nil && _num != nil {
+			if err := json.Unmarshal(_nonObj, &_num); err == nil && _num != nil {
 				num := *_num
 				{{- if eq .RuleType "ppMinimum"}}
 				if num < {{.Value}} {
@@ -44,8 +44,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppMultipleOf"}}
-				q := num / {{.Value}}
-				if math.Abs(q - math.Round(q)) > 1e-9 {
+				_quot := num / {{.Value}}
+				if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
 					return jsonValueErrorf("value %v is not a multiple of {{.Value}}", num)
 				}
 				{{- end}}
@@ -57,15 +57,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			// Through a pointer, so that a null is not measured as the empty
 			// string. See the numeric block above.
 			var _s *string
-			if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-				s := *_s
+			if err := json.Unmarshal(_nonObj, &_s); err == nil && _s != nil {
+				_str := *_s
 				{{- if eq .RuleType "ppMinLength"}}
-				if utf8.RuneCountInString(s) < {{.Value}} {
+				if utf8.RuneCountInString(_str) < {{.Value}} {
 					return jsonValueErrorf("string length is less than minLength {{.Value}}")
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppMaxLength"}}
-				if utf8.RuneCountInString(s) > {{.Value}} {
+				if utf8.RuneCountInString(_str) > {{.Value}} {
 					return jsonValueErrorf("string length exceeds maxLength {{.Value}}")
 				}
 				{{- end}}
@@ -77,9 +77,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			// Through a pointer, so that a null is not matched as the empty
 			// string. See the numeric block above.
 			var _s *string
-			if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-				s := *_s
-				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
+			if err := json.Unmarshal(_nonObj, &_s); err == nil && _s != nil {
+				_str := *_s
+				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _str); !matched {
 					return jsonValueErrorf("value does not match pattern {{.Value}}")
 				}
 			}
@@ -90,7 +90,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			// Through a pointer, so that a null is not measured as the empty
 			// array. See the numeric block above.
 			var _arr *[]json.RawMessage
-			if err := json.Unmarshal(v, &_arr); err == nil && _arr != nil {
+			if err := json.Unmarshal(_nonObj, &_arr); err == nil && _arr != nil {
 				arr := *_arr
 				{{- if eq .RuleType "ppMinItems"}}
 				if len(arr) < {{.Value}} {
@@ -107,12 +107,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 		{{- if eq .RuleType "ppType"}}
 		{
-			b := bytes.TrimSpace(v)
+			_trim := bytes.TrimSpace(_nonObj)
 			var jt string
-			if len(b) == 0 {
+			if len(_trim) == 0 {
 				jt = "unknown"
 			} else {
-				switch b[0] {
+				switch _trim[0] {
 				case '"': jt = "string"
 				case '{': jt = "object"
 				case '[': jt = "array"
@@ -121,8 +121,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				default:
 					jt = "number"
 					isInt := true
-					for _, c := range b {
-						if c == '.' || c == 'e' || c == 'E' {
+					for _, _ch := range _trim {
+						if _ch == '.' || _ch == 'e' || _ch == 'E' {
 							isInt = false
 							break
 						}
@@ -288,14 +288,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{
 		{{- if .IsPointer}}
 		if {{$recv}}.{{.FieldName}} != nil {
-		q := float64(*{{$recv}}.{{.FieldName}}) / {{numBound .}}
-		if math.Abs(q - math.Round(q)) > 1e-9 {
+		_quot := float64(*{{$recv}}.{{.FieldName}}) / {{numBound .}}
+		if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 		}
 		}
 		{{- else}}
-		q := float64({{$recv}}.{{.FieldName}}) / {{numBound .}}
-		if math.Abs(q - math.Round(q)) > 1e-9 {
+		_quot := float64({{$recv}}.{{.FieldName}}) / {{numBound .}}
+		if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 		}
 		{{- end}}
@@ -345,24 +345,24 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		arr := {{$recv}}.{{.FieldName}}
 		{{- end}}
 		seen := make(map[string]bool, len(arr))
-		for i, item := range arr {
-			b, err := json.Marshal(item)
+		for _at, item := range arr {
+			_enc, err := json.Marshal(item)
 			if err != nil {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", i, err)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", _at, err)
 			}
 			{{- if .RawElements}}
 			// The elements are the document's own bytes, and the bytes are not
 			// the value: 1 and 1.0 are one element to uniqueItems. Reduced to
 			// the one text every equal JSON value shares. See _jsonCanonical.
-			key, err := _jsonCanonical(b)
+			key, err := _jsonCanonical(_enc)
 			if err != nil {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: invalid JSON at index %d: %w", i, err)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: invalid JSON at index %d: %w", _at, err)
 			}
 			{{- else}}
-			key := string(b)
+			key := string(_enc)
 			{{- end}}
 			if seen[key] {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", i)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", _at)
 			}
 			seen[key] = true
 		}
@@ -495,9 +495,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       refused for the same one -- the least key -- on every run. A plain
 	       range returning at the first refusal named whichever member Go's
 	       randomised map order reached first. */}}
-	{{- $lk := leastKey "k" "_" (printf "%s.AdditionalProperties" $recv) "_failed"}}
+	{{- $lk := leastKey "_key" "_" (printf "%s.AdditionalProperties" $recv) "_failed"}}
 	{{- template "least_key_open" $lk}}
-		return jsonValueErrorf("additional property %q is not allowed", k)
+		return jsonValueErrorf("additional property %q is not allowed", _key)
 	{{- template "least_key_close" $lk}}
 	{{- end}}
 	{{- range $oi, $oneOf := $struct.ObjectOneOfs}}
@@ -707,14 +707,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
 			{{- end}}
 		}
-		{{- $lk := leastKey "k" "v" (printf "%s.PatternProperties" $recv) "_failed"}}
+		{{- $lk := leastKey "_key" "_member" (printf "%s.PatternProperties" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
-			_ = v
+			_ = _member
 			{{- range $i, $pp := $struct.PatternProperties}}
 			{{- if or $pp.IsForbidden (ne $pp.TypeName "") (gt (len $pp.Validations) 0)}}
-			if ppRegexps[{{$i}}].MatchString(k) {
+			if ppRegexps[{{$i}}].MatchString(_key) {
 				{{- if $pp.IsForbidden}}
-				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, {{printf "%q" $pp.Pattern}})
+				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, {{printf "%q" $pp.Pattern}})
 				{{- end}}
 				{{- if $pp.TypeName}}
 				{
@@ -722,23 +722,23 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv {{$pp.TypeName}}
-					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(v, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, k, _uErr)
+					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_member, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, _key, _uErr)
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, k, _vErr)
+						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, _key, _vErr)
 					}
 				}
 				{{- end}}
 				{{- range $pp.Validations}}
 				{{- if eq .RuleType "ppType"}}
 				{
-					b := bytes.TrimSpace(v)
+					_trim := bytes.TrimSpace(_member)
 					var jt string
-					if len(b) == 0 {
+					if len(_trim) == 0 {
 						jt = "unknown"
 					} else {
-						switch b[0] {
+						switch _trim[0] {
 						case '"': jt = "string"
 						case '{': jt = "object"
 						case '[': jt = "array"
@@ -751,8 +751,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 							// fractional part or an exponent is not an integer,
 							// whatever its value.
 							isInt := true
-							for _, c := range b {
-								if c == '.' || c == 'e' || c == 'E' {
+							for _, _ch := range _trim {
+								if _ch == '.' || _ch == 'e' || _ch == 'E' {
 									isInt = false
 									break
 								}
@@ -766,7 +766,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 							// below that accepts "number" also accepts "integer", so
 							// widening this classification narrows nothing.
 							var _ppNum float64
-							if json.Unmarshal(b, &_ppNum) == nil &&
+							if json.Unmarshal(_trim, &_ppNum) == nil &&
 								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 								jt = "integer"
 							}
@@ -778,15 +778,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- $want := index $wants 0}}
 					{{- if eq $want "integer"}}
 					if jt != "integer" {
-						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, k)
+						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, _key)
 					}
 					{{- else if eq $want "number"}}
 					if jt != "integer" && jt != "number" {
-						return fmt.Errorf("patternProperties %s: key %q value must be number", {{printf "%q" $pp.Pattern}}, k)
+						return fmt.Errorf("patternProperties %s: key %q value must be number", {{printf "%q" $pp.Pattern}}, _key)
 					}
 					{{- else}}
 					if jt != {{printf "%q" $want}} {
-						return fmt.Errorf("patternProperties %s: key %q value must be {{$want}}", {{printf "%q" $pp.Pattern}}, k)
+						return fmt.Errorf("patternProperties %s: key %q value must be {{$want}}", {{printf "%q" $pp.Pattern}}, _key)
 					}
 					{{- end}}
 					{{- else}}
@@ -801,7 +801,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- end}}
 					{{- end}}
 					if !_ppTypeOK {
-						return fmt.Errorf("patternProperties %s: key %q value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, k)
+						return fmt.Errorf("patternProperties %s: key %q value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, _key)
 					}
 					{{- end}}
 				}
@@ -813,32 +813,32 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// no-op and reports no error, so the bound was measured
 					// against a zero the document never wrote (issue #270).
 					var _num *float64
-					if err := json.Unmarshal(v, &_num); err == nil && _num != nil {
+					if err := json.Unmarshal(_member, &_num); err == nil && _num != nil {
 						num := *_num
 						{{- if eq .RuleType "ppMinimum"}}
 						if num < {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v is less than minimum {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+							return fmt.Errorf("patternProperties %s: key %q value %v is less than minimum {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaximum"}}
 						if num > {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v exceeds maximum {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+							return fmt.Errorf("patternProperties %s: key %q value %v exceeds maximum {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMinimum"}}
 						if num <= {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v must be greater than {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+							return fmt.Errorf("patternProperties %s: key %q value %v must be greater than {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMaximum"}}
 						if num >= {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v must be less than {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+							return fmt.Errorf("patternProperties %s: key %q value %v must be less than {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMultipleOf"}}
-						q := num / {{.Value}}
-						if math.Abs(q - math.Round(q)) > 1e-9 {
-							return fmt.Errorf("patternProperties %s: key %q value %v is not a multiple of {{.Value}}", {{printf "%q" $pp.Pattern}}, k, num)
+						_quot := num / {{.Value}}
+						if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
+							return fmt.Errorf("patternProperties %s: key %q value %v is not a multiple of {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
 						}
 						{{- end}}
 					}
@@ -849,16 +849,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// Through a pointer, so that a null is not measured as the
 					// empty array. See the numeric block above.
 					var _arr *[]json.RawMessage
-					if err := json.Unmarshal(v, &_arr); err == nil && _arr != nil {
+					if err := json.Unmarshal(_member, &_arr); err == nil && _arr != nil {
 						arr := *_arr
 						{{- if eq .RuleType "ppMinItems"}}
 						if len(arr) < {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q array length %d is less than minItems {{.Value}}", {{printf "%q" $pp.Pattern}}, k, len(arr))
+							return fmt.Errorf("patternProperties %s: key %q array length %d is less than minItems {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, len(arr))
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaxItems"}}
 						if len(arr) > {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q array length %d exceeds maxItems {{.Value}}", {{printf "%q" $pp.Pattern}}, k, len(arr))
+							return fmt.Errorf("patternProperties %s: key %q array length %d exceeds maxItems {{.Value}}", {{printf "%q" $pp.Pattern}}, _key, len(arr))
 						}
 						{{- end}}
 					}
@@ -869,16 +869,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// Through a pointer, so that a null is not measured as the
 					// empty string. See the numeric block above.
 					var _s *string
-					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-						s := *_s
+					if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
+						_str := *_s
 						{{- if eq .RuleType "ppMinLength"}}
-						if utf8.RuneCountInString(s) < {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+						if utf8.RuneCountInString(_str) < {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength {{.Value}}", {{printf "%q" $pp.Pattern}}, _key)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaxLength"}}
-						if utf8.RuneCountInString(s) > {{.Value}} {
-							return fmt.Errorf("patternProperties %s: key %q string length exceeds maxLength {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+						if utf8.RuneCountInString(_str) > {{.Value}} {
+							return fmt.Errorf("patternProperties %s: key %q string length exceeds maxLength {{.Value}}", {{printf "%q" $pp.Pattern}}, _key)
 						}
 						{{- end}}
 					}
@@ -889,10 +889,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// Through a pointer, so that a null is not matched as the
 					// empty string. See the numeric block above.
 					var _s *string
-					if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-						s := *_s
-						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, s); !matched {
-							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, k)
+					if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
+						_str := *_s
+						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _str); !matched {
+							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{.Value}}", {{printf "%q" $pp.Pattern}}, _key)
 						}
 					}
 				}
@@ -1239,33 +1239,33 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		{{- $lk := leastKey "k" "_bv" (printf "%s._jsonRawProps" $recv) "_failed"}}
+		{{- $lk := leastKey "_key" "_bv" (printf "%s._jsonRawProps" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
 			_ = _bv
 			_bAcct := false
 			{{- if gt (len $branch.AccountedNames) 0}}
-			if _branchAcct{{$ci}}[k] { _bAcct = true }
+			if _branchAcct{{$ci}}[_key] { _bAcct = true }
 			{{- end}}
 			{{- if gt (len $branch.AccountedPatterns) 0}}
 			if !_bAcct {
 				for _, _re := range _branchPat{{$ci}} {
-					if _re.MatchString(k) { _bAcct = true; break }
+					if _re.MatchString(_key) { _bAcct = true; break }
 				}
 			}
 			{{- end}}
 			if !_bAcct {
 				{{- if $branch.IsForbidden}}
-				return fmt.Errorf("{{$branch.Keyword}}: property %q is not allowed", k)
+				return fmt.Errorf("{{$branch.Keyword}}: property %q is not allowed", _key)
 				{{- else if $branch.TypeName}}
 				{
 					// The sub-schema's own type answers for the value: the decode
 					// enforces its shape and the Validate enforces the rest.
 					var _bVal {{$branch.TypeName}}
 					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", _key, _bErr)
 					}
 					if _bErr := _bVal.Validate(); _bErr != nil {
-						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", k, _bErr)
+						return fmt.Errorf("{{$branch.Keyword}}: property %q: %w", _key, _bErr)
 					}
 				}
 				{{- end}}
@@ -1516,12 +1516,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- end}}
-		{{- $lk := leastKey "k" "v" (printf "%s.AdditionalProperties" $recv) "_failed"}}
+		{{- $lk := leastKey "_key" "_member" (printf "%s.AdditionalProperties" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
 			evaluated := false
-			_ = v
+			_ = _member
 			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
-			if evaluatedNames[k] {
+			if evaluatedNames[_key] {
 				evaluated = true
 			}
 			{{- end}}
@@ -1529,7 +1529,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			if !evaluated {
 				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
 				for _, re := range evaluatedPatterns {
-					if re.MatchString(k) {
+					if re.MatchString(_key) {
 						evaluated = true
 						break
 					}
@@ -1538,20 +1538,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			if !evaluated {
 				{{- if $uneval.IsForbidden}}
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
 				{{- if $uneval.ValueIsNull}}
 				{{- /* No Go type holds only null, so the raw bytes are what
 				       decides -- the same reading uneval_items_check takes for
 				       the same sub-schema. Both overflow maps hold
 				       json.RawMessage, which is the value's own bytes. */}}
-				if string(v) != "null" {
-					return jsonValueErrorf("unevaluated property %q: must be null", k)
+				if string(_member) != "null" {
+					return jsonValueErrorf("unevaluated property %q: must be null", _key)
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
+				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
+					return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1562,12 +1562,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return nil
 		{{- template "least_key_close" $lk}}
 		{{- if $struct.HasPatternProperties}}
-		{{- $lk := leastKey "k" "v" (printf "%s.PatternProperties" $recv) "_failed"}}
+		{{- $lk := leastKey "_key" "_member" (printf "%s.PatternProperties" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
 			evaluated := false
-			_ = v
+			_ = _member
 			{{- if or (gt (len $uneval.EvaluatedNames) 0) $uneval.HasConditionalEvals}}
-			if evaluatedNames[k] {
+			if evaluatedNames[_key] {
 				evaluated = true
 			}
 			{{- end}}
@@ -1575,7 +1575,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			if !evaluated {
 				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
 				for _, re := range evaluatedPatterns {
-					if re.MatchString(k) {
+					if re.MatchString(_key) {
 						evaluated = true
 						break
 					}
@@ -1584,20 +1584,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			if !evaluated {
 				{{- if $uneval.IsForbidden}}
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+				return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
 				{{- if $uneval.ValueIsNull}}
 				{{- /* No Go type holds only null, so the raw bytes are what
 				       decides -- the same reading uneval_items_check takes for
 				       the same sub-schema. Both overflow maps hold
 				       json.RawMessage, which is the value's own bytes. */}}
-				if string(v) != "null" {
-					return jsonValueErrorf("unevaluated property %q: must be null", k)
+				if string(_member) != "null" {
+					return jsonValueErrorf("unevaluated property %q: must be null", _key)
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
+				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
+					return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1864,79 +1864,79 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 
 {{- /* validation_rule_inline emits a validation check on _uVal for a single rule.
        Used by schema-valued unevaluatedProperties to validate each overflow value.
-       The variable k (property name) is available for error messages. */}}
+       The variable _key (property name) is available for error messages. */}}
 {{define "validation_rule_inline"}}
 {{- if eq .RuleType "minLength"}}
 				if utf8.RuneCountInString(_uVal) < {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: length %d is less than minimum {{.Value}}", k, utf8.RuneCountInString(_uVal))
+					return jsonValueErrorf("unevaluated property %q: length %d is less than minimum {{.Value}}", _key, utf8.RuneCountInString(_uVal))
 				}
 {{- end}}
 {{- if eq .RuleType "maxLength"}}
 				if utf8.RuneCountInString(_uVal) > {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: length %d exceeds maximum {{.Value}}", k, utf8.RuneCountInString(_uVal))
+					return jsonValueErrorf("unevaluated property %q: length %d exceeds maximum {{.Value}}", _key, utf8.RuneCountInString(_uVal))
 				}
 {{- end}}
 {{- if eq .RuleType "minimum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} < {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{numBoundMsg .}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{numBoundMsg .}}", _key, _uVal)
 				}
 {{- else}}
 				if float64(_uVal) < {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{.Value}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{.Value}}", _key, _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "maximum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} > {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{numBoundMsg .}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{numBoundMsg .}}", _key, _uVal)
 				}
 {{- else}}
 				if float64(_uVal) > {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{.Value}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{.Value}}", _key, _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMinimum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} <= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{numBoundMsg .}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{numBoundMsg .}}", _key, _uVal)
 				}
 {{- else}}
 				if float64(_uVal) <= {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{.Value}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{.Value}}", _key, _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMaximum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} >= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{numBoundMsg .}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{numBoundMsg .}}", _key, _uVal)
 				}
 {{- else}}
 				if float64(_uVal) >= {{.Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{.Value}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{.Value}}", _key, _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "pattern"}}
 				{
 					if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uVal); !matched {
-						return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", k, {{printf "%q" .Value}})
+						return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", _key, {{printf "%q" .Value}})
 					}
 				}
 {{- end}}
 {{- if eq .RuleType "multipleOf"}}
 {{- if .ExactCompare}}
 				if !{{exactMultipleOf . "_uVal"}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{numBoundMsg .}}", k, _uVal)
+					return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{numBoundMsg .}}", _key, _uVal)
 				}
 {{- else}}
 				{
 					_q := float64(_uVal) / {{.Value}}
 					if math.Abs(_q - math.Round(_q)) > 1e-9 {
-						return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{.Value}}", k, _uVal)
+						return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{.Value}}", _key, _uVal)
 					}
 				}
 {{- end}}

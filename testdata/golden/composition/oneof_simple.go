@@ -102,8 +102,8 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -224,8 +224,8 @@ func (r Rectangle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -276,8 +276,8 @@ func (*Drawing_Rectangle) isDrawing_Shape() {}
 // GetCircle returns the Circle variant value, or the zero value if not set.
 func (d *Drawing) GetCircle() *Circle {
 	if d != nil {
-		if v, ok := d.Shape.(*Drawing_Circle); ok {
-			return v.Circle
+		if _sel, ok := d.Shape.(*Drawing_Circle); ok {
+			return _sel.Circle
 		}
 	}
 	var zero *Circle
@@ -287,8 +287,8 @@ func (d *Drawing) GetCircle() *Circle {
 // GetRectangle returns the Rectangle variant value, or the zero value if not set.
 func (d *Drawing) GetRectangle() *Rectangle {
 	if d != nil {
-		if v, ok := d.Shape.(*Drawing_Rectangle); ok {
-			return v.Rectangle
+		if _sel, ok := d.Shape.(*Drawing_Rectangle); ok {
+			return _sel.Rectangle
 		}
 	}
 	var zero *Rectangle
@@ -490,15 +490,15 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 	}
 
 	if d.Shape != nil {
-		switch v := d.Shape.(type) {
+		switch _sel := d.Shape.(type) {
 		case *Drawing_Circle:
-			raw, err := json.Marshal(v.Circle)
+			raw, err := json.Marshal(_sel.Circle)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Drawing.Shape: %w", err)
 			}
 			aux.Shape = raw
 		case *Drawing_Rectangle:
-			raw, err := json.Marshal(v.Rectangle)
+			raw, err := json.Marshal(_sel.Rectangle)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Drawing.Shape: %w", err)
 			}
@@ -513,8 +513,8 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

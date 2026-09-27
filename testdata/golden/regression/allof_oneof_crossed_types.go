@@ -175,8 +175,8 @@ func (c Crossed) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

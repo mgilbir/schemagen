@@ -164,11 +164,11 @@ func (t TypedFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.PatternProperties {
-		obj[k] = v
+	for _key, _member := range t.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -183,29 +183,29 @@ func (t TypedFormatPositionsBuckets) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range t.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range t.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv TypedFormatPositionsBucketsPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -270,8 +270,8 @@ func (*TypedFormatPositions_Integer) isTypedFormatPositions_Branch() {}
 // GetString returns the String variant value, or the zero value if not set.
 func (t *TypedFormatPositions) GetString() string {
 	if t != nil {
-		if v, ok := t.Branch.(*TypedFormatPositions_String); ok {
-			return v.String
+		if _sel, ok := t.Branch.(*TypedFormatPositions_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -281,8 +281,8 @@ func (t *TypedFormatPositions) GetString() string {
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (t *TypedFormatPositions) GetInteger() int64 {
 	if t != nil {
-		if v, ok := t.Branch.(*TypedFormatPositions_Integer); ok {
-			return v.Integer
+		if _sel, ok := t.Branch.(*TypedFormatPositions_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -490,15 +490,15 @@ func (t TypedFormatPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if t.Branch != nil {
-		switch v := t.Branch.(type) {
+		switch _sel := t.Branch.(type) {
 		case *TypedFormatPositions_String:
-			raw, err := json.Marshal(v.String)
+			raw, err := json.Marshal(_sel.String)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", err)
 			}
 			aux.Branch = raw
 		case *TypedFormatPositions_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", err)
 			}
@@ -513,8 +513,8 @@ func (t TypedFormatPositions) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

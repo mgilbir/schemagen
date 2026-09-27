@@ -187,8 +187,8 @@ func (b BooleanDefsKeepAny) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

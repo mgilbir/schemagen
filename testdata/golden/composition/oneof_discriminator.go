@@ -126,8 +126,8 @@ func (c ClickEvent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -257,8 +257,8 @@ func (k KeypressEvent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range k.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range k.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -388,8 +388,8 @@ func (s ScrollEvent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -456,8 +456,8 @@ func (*Event_ScrollEvent) isEvent_Payload() {}
 // GetClickEvent returns the ClickEvent variant value, or the zero value if not set.
 func (e *Event) GetClickEvent() *ClickEvent {
 	if e != nil {
-		if v, ok := e.Payload.(*Event_ClickEvent); ok {
-			return v.ClickEvent
+		if _sel, ok := e.Payload.(*Event_ClickEvent); ok {
+			return _sel.ClickEvent
 		}
 	}
 	var zero *ClickEvent
@@ -467,8 +467,8 @@ func (e *Event) GetClickEvent() *ClickEvent {
 // GetKeypressEvent returns the KeypressEvent variant value, or the zero value if not set.
 func (e *Event) GetKeypressEvent() *KeypressEvent {
 	if e != nil {
-		if v, ok := e.Payload.(*Event_KeypressEvent); ok {
-			return v.KeypressEvent
+		if _sel, ok := e.Payload.(*Event_KeypressEvent); ok {
+			return _sel.KeypressEvent
 		}
 	}
 	var zero *KeypressEvent
@@ -478,8 +478,8 @@ func (e *Event) GetKeypressEvent() *KeypressEvent {
 // GetScrollEvent returns the ScrollEvent variant value, or the zero value if not set.
 func (e *Event) GetScrollEvent() *ScrollEvent {
 	if e != nil {
-		if v, ok := e.Payload.(*Event_ScrollEvent); ok {
-			return v.ScrollEvent
+		if _sel, ok := e.Payload.(*Event_ScrollEvent); ok {
+			return _sel.ScrollEvent
 		}
 	}
 	var zero *ScrollEvent
@@ -619,21 +619,21 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	}
 
 	if e.Payload != nil {
-		switch v := e.Payload.(type) {
+		switch _sel := e.Payload.(type) {
 		case *Event_ClickEvent:
-			raw, err := json.Marshal(v.ClickEvent)
+			raw, err := json.Marshal(_sel.ClickEvent)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
 			}
 			aux.Payload = raw
 		case *Event_KeypressEvent:
-			raw, err := json.Marshal(v.KeypressEvent)
+			raw, err := json.Marshal(_sel.KeypressEvent)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
 			}
 			aux.Payload = raw
 		case *Event_ScrollEvent:
-			raw, err := json.Marshal(v.ScrollEvent)
+			raw, err := json.Marshal(_sel.ScrollEvent)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
 			}
@@ -648,8 +648,8 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

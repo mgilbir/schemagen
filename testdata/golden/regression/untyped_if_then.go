@@ -46,8 +46,8 @@ func (u UntypedIfThen) Validate() error {
 	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
-	if _dynNumOK(_v, func(f float64) bool { return f < 0.0 }) {
-		if !(_dynNumOK(_v, func(f float64) bool { return f >= -10.0 })) {
+	if _dynNumOK(_v, func(_n float64) bool { return _n < 0.0 }) {
+		if !(_dynNumOK(_v, func(_n float64) bool { return _n >= -10.0 })) {
 			return fmt.Errorf("then: value does not satisfy the then schema")
 		}
 	} else {

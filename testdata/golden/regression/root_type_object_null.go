@@ -112,8 +112,8 @@ func (r RootTypeObjectNull) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -122,15 +122,15 @@ func (r RootTypeObjectNull) MarshalJSON() ([]byte, error) {
 func (r RootTypeObjectNull) Validate() error {
 	// Non-object data was silently accepted — validate non-object constraints if any.
 	if r._nonObject {
-		v := r._rawNonObject
-		_ = v
+		_nonObj := r._rawNonObject
+		_ = _nonObj
 		{
-			b := bytes.TrimSpace(v)
+			_trim := bytes.TrimSpace(_nonObj)
 			var jt string
-			if len(b) == 0 {
+			if len(_trim) == 0 {
 				jt = "unknown"
 			} else {
-				switch b[0] {
+				switch _trim[0] {
 				case '"':
 					jt = "string"
 				case '{':
@@ -144,8 +144,8 @@ func (r RootTypeObjectNull) Validate() error {
 				default:
 					jt = "number"
 					isInt := true
-					for _, c := range b {
-						if c == '.' || c == 'e' || c == 'E' {
+					for _, _ch := range _trim {
+						if _ch == '.' || _ch == 'e' || _ch == 'E' {
 							isInt = false
 							break
 						}

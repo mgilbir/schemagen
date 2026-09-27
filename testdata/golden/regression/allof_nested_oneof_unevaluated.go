@@ -179,8 +179,8 @@ func (p PickOneValueOption0) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -212,22 +212,22 @@ func (p PickOneValueOption0) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range p.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range p.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -358,8 +358,8 @@ func (p PickOneValueOption1) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -413,8 +413,8 @@ func (*PickOne_PickOneValueOption1) isPickOne_Value() {}
 // GetPickOneValueOption0 returns the PickOneValueOption0 variant value, or the zero value if not set.
 func (p *PickOne) GetPickOneValueOption0() *PickOneValueOption0 {
 	if p != nil {
-		if v, ok := p.Value.(*PickOne_PickOneValueOption0); ok {
-			return v.PickOneValueOption0
+		if _sel, ok := p.Value.(*PickOne_PickOneValueOption0); ok {
+			return _sel.PickOneValueOption0
 		}
 	}
 	var zero *PickOneValueOption0
@@ -424,8 +424,8 @@ func (p *PickOne) GetPickOneValueOption0() *PickOneValueOption0 {
 // GetPickOneValueOption1 returns the PickOneValueOption1 variant value, or the zero value if not set.
 func (p *PickOne) GetPickOneValueOption1() *PickOneValueOption1 {
 	if p != nil {
-		if v, ok := p.Value.(*PickOne_PickOneValueOption1); ok {
-			return v.PickOneValueOption1
+		if _sel, ok := p.Value.(*PickOne_PickOneValueOption1); ok {
+			return _sel.PickOneValueOption1
 		}
 	}
 	var zero *PickOneValueOption1
@@ -571,11 +571,11 @@ func (p *PickOne) UnmarshalJSON(data []byte) error {
 func (p PickOne) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if p.Value != nil {
-		switch v := p.Value.(type) {
+		switch _sel := p.Value.(type) {
 		case *PickOne_PickOneValueOption0:
-			return json.Marshal(v.PickOneValueOption0)
+			return json.Marshal(_sel.PickOneValueOption0)
 		case *PickOne_PickOneValueOption1:
-			return json.Marshal(v.PickOneValueOption1)
+			return json.Marshal(_sel.PickOneValueOption1)
 		}
 	}
 	return []byte("null"), nil
@@ -839,8 +839,8 @@ func (a AllOfNestedOneOfUnevaluated) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

@@ -146,8 +146,8 @@ func (s ServerConfig) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

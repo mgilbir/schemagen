@@ -110,8 +110,8 @@ func (s StrictBase) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -121,14 +121,14 @@ func (s StrictBase) Validate() error {
 	{
 		var _least string
 		var _failed error
-		for k := range s.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key := range s.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				return jsonValueErrorf("additional property %q is not allowed", k)
+				return jsonValueErrorf("additional property %q is not allowed", _key)
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -274,11 +274,11 @@ func (a AllOfBranchOverflowAdjacent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.PatternProperties {
-		obj[k] = v
+	for _key, _member := range a.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -293,20 +293,20 @@ func (a AllOfBranchOverflowAdjacent) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range a.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range a.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -324,20 +324,20 @@ func (a AllOfBranchOverflowAdjacent) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "integer" {
-								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^x", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^x", _key)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -358,30 +358,30 @@ func (a AllOfBranchOverflowAdjacent) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					_ = _bv
 					_bAcct := false
-					if _branchAcct0[k] {
+					if _branchAcct0[_key] {
 						_bAcct = true
 					}
 					if !_bAcct {
 						for _, _re := range _branchPat0 {
-							if _re.MatchString(k) {
+							if _re.MatchString(_key) {
 								_bAcct = true
 								break
 							}
 						}
 					}
 					if !_bAcct {
-						return fmt.Errorf("additionalProperties: property %q is not allowed", k)
+						return fmt.Errorf("additionalProperties: property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -536,8 +536,8 @@ func (a AllOfBranchOverflowBare) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -551,8 +551,8 @@ func (a AllOfBranchOverflowBare) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
@@ -564,16 +564,16 @@ func (a AllOfBranchOverflowBare) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowBareBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -719,8 +719,8 @@ func (a AllOfBranchOverflowBranchUnevaluated) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -737,14 +737,14 @@ func (a AllOfBranchOverflowBranchUnevaluated) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					_ = _bv
 					_bAcct := false
-					if _branchAcct0[k] {
+					if _branchAcct0[_key] {
 						_bAcct = true
 					}
 					if !_bAcct {
@@ -753,16 +753,16 @@ func (a AllOfBranchOverflowBranchUnevaluated) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowBranchUnevaluatedBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("unevaluatedProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("unevaluatedProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("unevaluatedProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("unevaluatedProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -890,8 +890,8 @@ func (a AllOfBranchOverflowBranchUnevaluatedFalse) MarshalJSON() ([]byte, error)
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -908,22 +908,22 @@ func (a AllOfBranchOverflowBranchUnevaluatedFalse) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					_ = _bv
 					_bAcct := false
-					if _branchAcct0[k] {
+					if _branchAcct0[_key] {
 						_bAcct = true
 					}
 					if !_bAcct {
-						return fmt.Errorf("unevaluatedProperties: property %q is not allowed", k)
+						return fmt.Errorf("unevaluatedProperties: property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1041,8 +1041,8 @@ func (a AllOfBranchOverflowForbid) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1056,19 +1056,19 @@ func (a AllOfBranchOverflowForbid) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					_ = _bv
 					_bAcct := false
 					if !_bAcct {
-						return fmt.Errorf("additionalProperties: property %q is not allowed", k)
+						return fmt.Errorf("additionalProperties: property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1223,8 +1223,8 @@ func (a AllOfBranchOverflowNestedAllOf) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1238,8 +1238,8 @@ func (a AllOfBranchOverflowNestedAllOf) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
@@ -1251,16 +1251,16 @@ func (a AllOfBranchOverflowNestedAllOf) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowNestedAllOfBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1369,8 +1369,8 @@ func (a AllOfBranchOverflowObjectValueA) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1484,8 +1484,8 @@ func (a AllOfBranchOverflowObjectValueBranch0Value) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1607,8 +1607,8 @@ func (a AllOfBranchOverflowObjectValue) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1627,8 +1627,8 @@ func (a AllOfBranchOverflowObjectValue) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
@@ -1640,16 +1640,16 @@ func (a AllOfBranchOverflowObjectValue) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowObjectValueBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1789,19 +1789,19 @@ func (a AllOfBranchOverflowOwnAdditional) MarshalJSON() ([]byte, error) {
 	{
 		var _least string
 		var _failed error
-		for k, v := range a.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range a.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -1951,8 +1951,8 @@ func (a AllOfBranchOverflowPlain) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2051,19 +2051,19 @@ func (a AllOfBranchOverflowSoleBranch) MarshalJSON() ([]byte, error) {
 	{
 		var _least string
 		var _failed error
-		for k, v := range a.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range a.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -2279,8 +2279,8 @@ func (a AllOfBranchOverflowTwoBranches) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2294,8 +2294,8 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
@@ -2307,16 +2307,16 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowTwoBranchesBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -2328,8 +2328,8 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
@@ -2341,16 +2341,16 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowTwoBranchesBranch1Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", k, _bErr)
+								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -2478,8 +2478,8 @@ func (a AllOfBranchOverflowViaRef) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2496,22 +2496,22 @@ func (a AllOfBranchOverflowViaRef) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, _bv := range a._jsonRawProps { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _bv := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					_ = _bv
 					_bAcct := false
-					if _branchAcct0[k] {
+					if _branchAcct0[_key] {
 						_bAcct = true
 					}
 					if !_bAcct {
-						return fmt.Errorf("additionalProperties: property %q is not allowed", k)
+						return fmt.Errorf("additionalProperties: property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -2666,8 +2666,8 @@ func (a AllOfBranchOverflow) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

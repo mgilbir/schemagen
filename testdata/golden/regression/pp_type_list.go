@@ -83,11 +83,11 @@ func (r Root) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.PatternProperties {
-		obj[k] = v
+	for _key, _member := range r.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -102,20 +102,20 @@ func (r Root) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range r.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range r.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -133,7 +133,7 @@ func (r Root) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
@@ -147,13 +147,13 @@ func (r Root) Validate() error {
 								_ppTypeOK = true
 							}
 							if !_ppTypeOK {
-								return fmt.Errorf("patternProperties %s: key %q value must be one of: string, null", "^v", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be one of: string, null", "^v", _key)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A method's own locals no longer shadow its receiver. The receiver is named
+  after the type's first letter, and the templates declared single-letter
+  locals inside method bodies, so a type named `V…` with a property decoded by
+  hand did not compile (`v.AB undefined`), neither did a `multipleOf` on a
+  property of a type named `Q…`, and on an alias named `Q…` the refusal reported
+  the quotient as the value that failed.
+
 ## 0.1.3
 
 ### Added

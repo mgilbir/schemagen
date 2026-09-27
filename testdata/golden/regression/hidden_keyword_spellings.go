@@ -101,8 +101,8 @@ func (a AnyOfSummary) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -252,8 +252,8 @@ func (a AnyOfSummaryFalse) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -598,11 +598,11 @@ func (h HiddenKeywordSpellingsPatternConstNull) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range h.PatternProperties {
-		obj[k] = v
+	for _key, _member := range h.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range h.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range h.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -617,29 +617,29 @@ func (h HiddenKeywordSpellingsPatternConstNull) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range h.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range h.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv HiddenKeywordSpellingsPatternConstNullPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -753,11 +753,11 @@ func (h HiddenKeywordSpellingsPatternConstString) MarshalJSON() ([]byte, error) 
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range h.PatternProperties {
-		obj[k] = v
+	for _key, _member := range h.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range h.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range h.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -772,29 +772,29 @@ func (h HiddenKeywordSpellingsPatternConstString) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range h.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range h.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv HiddenKeywordSpellingsPatternConstStringPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -951,8 +951,8 @@ func (h HiddenKeywordSpellings) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range h.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range h.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

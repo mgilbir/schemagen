@@ -127,8 +127,8 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) MarshalJSON() ([]byte, err
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -158,22 +158,22 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range o.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range o.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -304,8 +304,8 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption1) MarshalJSON() ([]byte, err
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -361,8 +361,8 @@ func (*OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOpt
 // GetOneOfBranchUnevaluatedPropertiesValueOption0 returns the OneOfBranchUnevaluatedPropertiesValueOption0 variant value, or the zero value if not set.
 func (o *OneOfBranchUnevaluatedProperties) GetOneOfBranchUnevaluatedPropertiesValueOption0() *OneOfBranchUnevaluatedPropertiesValueOption0 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0); ok {
-			return v.OneOfBranchUnevaluatedPropertiesValueOption0
+		if _sel, ok := o.Value.(*OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0); ok {
+			return _sel.OneOfBranchUnevaluatedPropertiesValueOption0
 		}
 	}
 	var zero *OneOfBranchUnevaluatedPropertiesValueOption0
@@ -372,8 +372,8 @@ func (o *OneOfBranchUnevaluatedProperties) GetOneOfBranchUnevaluatedPropertiesVa
 // GetOneOfBranchUnevaluatedPropertiesValueOption1 returns the OneOfBranchUnevaluatedPropertiesValueOption1 variant value, or the zero value if not set.
 func (o *OneOfBranchUnevaluatedProperties) GetOneOfBranchUnevaluatedPropertiesValueOption1() *OneOfBranchUnevaluatedPropertiesValueOption1 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1); ok {
-			return v.OneOfBranchUnevaluatedPropertiesValueOption1
+		if _sel, ok := o.Value.(*OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1); ok {
+			return _sel.OneOfBranchUnevaluatedPropertiesValueOption1
 		}
 	}
 	var zero *OneOfBranchUnevaluatedPropertiesValueOption1
@@ -522,11 +522,11 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 func (o OneOfBranchUnevaluatedProperties) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if o.Value != nil {
-		switch v := o.Value.(type) {
+		switch _sel := o.Value.(type) {
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0:
-			return json.Marshal(v.OneOfBranchUnevaluatedPropertiesValueOption0)
+			return json.Marshal(_sel.OneOfBranchUnevaluatedPropertiesValueOption0)
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1:
-			return json.Marshal(v.OneOfBranchUnevaluatedPropertiesValueOption1)
+			return json.Marshal(_sel.OneOfBranchUnevaluatedPropertiesValueOption1)
 		}
 	}
 	return []byte("null"), nil

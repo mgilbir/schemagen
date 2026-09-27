@@ -82,8 +82,8 @@ func (o OneOfRequiredOnlyObjectValueOption0) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -183,8 +183,8 @@ func (o OneOfRequiredOnlyObjectValueOption1) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -240,8 +240,8 @@ func (*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1) isOneOfRequi
 // GetOneOfRequiredOnlyObjectValueOption0 returns the OneOfRequiredOnlyObjectValueOption0 variant value, or the zero value if not set.
 func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption0() *OneOfRequiredOnlyObjectValueOption0 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0); ok {
-			return v.OneOfRequiredOnlyObjectValueOption0
+		if _sel, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0); ok {
+			return _sel.OneOfRequiredOnlyObjectValueOption0
 		}
 	}
 	var zero *OneOfRequiredOnlyObjectValueOption0
@@ -251,8 +251,8 @@ func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption0() *OneO
 // GetOneOfRequiredOnlyObjectValueOption1 returns the OneOfRequiredOnlyObjectValueOption1 variant value, or the zero value if not set.
 func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption1() *OneOfRequiredOnlyObjectValueOption1 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1); ok {
-			return v.OneOfRequiredOnlyObjectValueOption1
+		if _sel, ok := o.Value.(*OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1); ok {
+			return _sel.OneOfRequiredOnlyObjectValueOption1
 		}
 	}
 	var zero *OneOfRequiredOnlyObjectValueOption1
@@ -395,11 +395,11 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 func (o OneOfRequiredOnlyObject) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if o.Value != nil {
-		switch v := o.Value.(type) {
+		switch _sel := o.Value.(type) {
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
-			return json.Marshal(v.OneOfRequiredOnlyObjectValueOption0)
+			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption0)
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
-			return json.Marshal(v.OneOfRequiredOnlyObjectValueOption1)
+			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption1)
 		}
 	}
 	return []byte("null"), nil

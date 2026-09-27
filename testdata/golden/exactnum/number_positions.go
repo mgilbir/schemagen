@@ -431,8 +431,8 @@ func (n NumberPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

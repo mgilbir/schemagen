@@ -383,8 +383,8 @@ func (i InlineUntypedPositionsObj) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -484,8 +484,8 @@ func (i InlineUntypedPositionsObjItemsItem) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -881,8 +881,8 @@ func (i InlineUntypedPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

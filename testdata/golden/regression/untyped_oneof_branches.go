@@ -51,7 +51,7 @@ func (u UntypedOneOfBranches) Validate() error {
 		if _dynIsInteger(_v) {
 			_matches++
 		}
-		if _dynNumOK(_v, func(f float64) bool { return f >= 2.0 }) {
+		if _dynNumOK(_v, func(_n float64) bool { return _n >= 2.0 }) {
 			_matches++
 		}
 		if _matches != 1 {

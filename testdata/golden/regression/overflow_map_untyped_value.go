@@ -263,8 +263,8 @@ func (o OverflowMapUntypedValueObjReqValue) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -550,19 +550,19 @@ func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
 	{
 		var _least string
 		var _failed error
-		for k, v := range o.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range o.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {

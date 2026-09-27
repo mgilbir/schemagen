@@ -139,8 +139,8 @@ func (o OneOfOptionalConstPOption0) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -302,8 +302,8 @@ func (o OneOfOptionalConstPOption1) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -362,8 +362,8 @@ func (*OneOfOptionalConst_OneOfOptionalConstPOption1) isOneOfOptionalConst_P() {
 // GetOneOfOptionalConstPOption0 returns the OneOfOptionalConstPOption0 variant value, or the zero value if not set.
 func (o *OneOfOptionalConst) GetOneOfOptionalConstPOption0() *OneOfOptionalConstPOption0 {
 	if o != nil {
-		if v, ok := o.P.(*OneOfOptionalConst_OneOfOptionalConstPOption0); ok {
-			return v.OneOfOptionalConstPOption0
+		if _sel, ok := o.P.(*OneOfOptionalConst_OneOfOptionalConstPOption0); ok {
+			return _sel.OneOfOptionalConstPOption0
 		}
 	}
 	var zero *OneOfOptionalConstPOption0
@@ -373,8 +373,8 @@ func (o *OneOfOptionalConst) GetOneOfOptionalConstPOption0() *OneOfOptionalConst
 // GetOneOfOptionalConstPOption1 returns the OneOfOptionalConstPOption1 variant value, or the zero value if not set.
 func (o *OneOfOptionalConst) GetOneOfOptionalConstPOption1() *OneOfOptionalConstPOption1 {
 	if o != nil {
-		if v, ok := o.P.(*OneOfOptionalConst_OneOfOptionalConstPOption1); ok {
-			return v.OneOfOptionalConstPOption1
+		if _sel, ok := o.P.(*OneOfOptionalConst_OneOfOptionalConstPOption1); ok {
+			return _sel.OneOfOptionalConstPOption1
 		}
 	}
 	var zero *OneOfOptionalConstPOption1
@@ -570,15 +570,15 @@ func (o OneOfOptionalConst) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.P != nil {
-		switch v := o.P.(type) {
+		switch _sel := o.P.(type) {
 		case *OneOfOptionalConst_OneOfOptionalConstPOption0:
-			raw, err := json.Marshal(v.OneOfOptionalConstPOption0)
+			raw, err := json.Marshal(_sel.OneOfOptionalConstPOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfOptionalConst.P: %w", err)
 			}
 			aux.P = raw
 		case *OneOfOptionalConst_OneOfOptionalConstPOption1:
-			raw, err := json.Marshal(v.OneOfOptionalConstPOption1)
+			raw, err := json.Marshal(_sel.OneOfOptionalConstPOption1)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfOptionalConst.P: %w", err)
 			}
@@ -618,8 +618,8 @@ func (o OneOfOptionalConst) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

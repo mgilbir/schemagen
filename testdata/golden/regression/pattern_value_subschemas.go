@@ -173,8 +173,8 @@ func (p PatternValueSubschemasPattern2) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -290,8 +290,8 @@ func (p PatternValueSubschemasPattern3) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -343,14 +343,14 @@ func (p *PatternValueSubschemasPattern6) UnmarshalJSON(data []byte) error {
 func (p PatternValueSubschemasPattern6) Validate() error {
 	{
 		seen := make(map[string]bool, len(p))
-		for i, item := range p {
-			b, err := json.Marshal(item)
+		for _at, item := range p {
+			_enc, err := json.Marshal(item)
 			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", i, err)
+				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
 			}
-			key := string(b)
+			key := string(_enc)
 			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", i)
+				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 			}
 			seen[key] = true
 		}
@@ -479,8 +479,8 @@ func (p PatternValueSubschemasPattern9) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -574,11 +574,11 @@ func (p PatternValueSubschemasPattern10) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.PatternProperties {
-		obj[k] = v
+	for _key, _member := range p.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -593,20 +593,20 @@ func (p PatternValueSubschemasPattern10) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range p.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range p.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -624,31 +624,31 @@ func (p PatternValueSubschemasPattern10) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "string" {
-								return fmt.Errorf("patternProperties %s: key %q value must be string", "^z", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be string", "^z", _key)
 							}
 						}
 						{
 							// Through a pointer, so that a null is not measured as the
 							// empty string. See the numeric block above.
 							var _s *string
-							if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-								s := *_s
-								if utf8.RuneCountInString(s) < 5 {
-									return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^z", k)
+							if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
+								_str := *_s
+								if utf8.RuneCountInString(_str) < 5 {
+									return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^z", _key)
 								}
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -737,19 +737,19 @@ func (p PatternValueSubschemasPattern11) MarshalJSON() ([]byte, error) {
 	{
 		var _least string
 		var _failed error
-		for k, v := range p.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range p.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -878,7 +878,7 @@ func (p PatternValueSubschemasPattern13) Validate() error {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	if _dynIsString(_v) {
-		if !(_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= 5 })) {
+		if !(_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 5 })) {
 			return fmt.Errorf("then: value does not satisfy the then schema")
 		}
 	} else {
@@ -945,8 +945,8 @@ func (p PatternValueSubschemasPattern14) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1036,8 +1036,8 @@ func (p PatternValueSubschemasPattern15) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1106,8 +1106,8 @@ func (p PatternValueSubschemasPattern16) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1117,14 +1117,14 @@ func (p PatternValueSubschemasPattern16) Validate() error {
 	{
 		var _least string
 		var _failed error
-		for k := range p.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key := range p.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				return jsonValueErrorf("additional property %q is not allowed", k)
+				return jsonValueErrorf("additional property %q is not allowed", _key)
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -1283,11 +1283,11 @@ func (p PatternValueSubschemas) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.PatternProperties {
-		obj[k] = v
+	for _key, _member := range p.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1322,258 +1322,258 @@ func (p PatternValueSubschemas) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range p.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range p.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[1].MatchString(k) {
+					if ppRegexps[1].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern1
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[2].MatchString(k) {
+					if ppRegexps[2].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern2
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^c", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^c", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^c", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^c", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[3].MatchString(k) {
+					if ppRegexps[3].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern3
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^d", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^d", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^d", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^d", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[4].MatchString(k) {
+					if ppRegexps[4].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv D
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^e", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^e", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^e", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^e", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[5].MatchString(k) {
+					if ppRegexps[5].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern5
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^f", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^f", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^f", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^f", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[6].MatchString(k) {
+					if ppRegexps[6].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern6
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^g", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^g", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^g", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^g", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[7].MatchString(k) {
+					if ppRegexps[7].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern7
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^h", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^h", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^h", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^h", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[8].MatchString(k) {
+					if ppRegexps[8].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern8
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^i", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^i", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^i", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^i", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[9].MatchString(k) {
+					if ppRegexps[9].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern9
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^j", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^j", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^j", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^j", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[10].MatchString(k) {
+					if ppRegexps[10].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern10
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^k", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^k", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^k", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^k", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[11].MatchString(k) {
+					if ppRegexps[11].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern11
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^l", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^l", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^l", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^l", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[12].MatchString(k) {
+					if ppRegexps[12].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern12
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^m", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^m", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^m", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^m", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[13].MatchString(k) {
+					if ppRegexps[13].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern13
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^n", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^n", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^n", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^n", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[14].MatchString(k) {
+					if ppRegexps[14].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern14
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^o", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^o", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^o", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^o", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[15].MatchString(k) {
+					if ppRegexps[15].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern15
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[16].MatchString(k) {
+					if ppRegexps[16].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern16
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^q", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^q", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^q", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^q", _key, _vErr)
 							}
 						}
 					}
-					if ppRegexps[17].MatchString(k) {
+					if ppRegexps[17].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -1591,25 +1591,25 @@ func (p PatternValueSubschemas) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "integer" {
-								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^r", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^r", _key)
 							}
 						}
 					}
-					if ppRegexps[18].MatchString(k) {
+					if ppRegexps[18].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -1627,45 +1627,45 @@ func (p PatternValueSubschemas) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "string" {
-								return fmt.Errorf("patternProperties %s: key %q value must be string", "^s", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be string", "^s", _key)
 							}
 						}
 						{
 							// Through a pointer, so that a null is not measured as the
 							// empty string. See the numeric block above.
 							var _s *string
-							if err := json.Unmarshal(v, &_s); err == nil && _s != nil {
-								s := *_s
-								if utf8.RuneCountInString(s) < 5 {
-									return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^s", k)
+							if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
+								_str := *_s
+								if utf8.RuneCountInString(_str) < 5 {
+									return fmt.Errorf("patternProperties %s: key %q string length is less than minLength 5", "^s", _key)
 								}
 							}
 						}
 					}
-					if ppRegexps[20].MatchString(k) {
+					if ppRegexps[20].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv PatternValueSubschemasPattern20
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^u", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^u", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^u", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^u", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {

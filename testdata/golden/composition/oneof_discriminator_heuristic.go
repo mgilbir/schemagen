@@ -107,8 +107,8 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -238,8 +238,8 @@ func (s Square) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -374,8 +374,8 @@ func (t Triangle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -442,8 +442,8 @@ func (*Shape_Triangle) isShape_Geometry() {}
 // GetCircle returns the Circle variant value, or the zero value if not set.
 func (s *Shape) GetCircle() *Circle {
 	if s != nil {
-		if v, ok := s.Geometry.(*Shape_Circle); ok {
-			return v.Circle
+		if _sel, ok := s.Geometry.(*Shape_Circle); ok {
+			return _sel.Circle
 		}
 	}
 	var zero *Circle
@@ -453,8 +453,8 @@ func (s *Shape) GetCircle() *Circle {
 // GetSquare returns the Square variant value, or the zero value if not set.
 func (s *Shape) GetSquare() *Square {
 	if s != nil {
-		if v, ok := s.Geometry.(*Shape_Square); ok {
-			return v.Square
+		if _sel, ok := s.Geometry.(*Shape_Square); ok {
+			return _sel.Square
 		}
 	}
 	var zero *Square
@@ -464,8 +464,8 @@ func (s *Shape) GetSquare() *Square {
 // GetTriangle returns the Triangle variant value, or the zero value if not set.
 func (s *Shape) GetTriangle() *Triangle {
 	if s != nil {
-		if v, ok := s.Geometry.(*Shape_Triangle); ok {
-			return v.Triangle
+		if _sel, ok := s.Geometry.(*Shape_Triangle); ok {
+			return _sel.Triangle
 		}
 	}
 	var zero *Triangle
@@ -605,21 +605,21 @@ func (s Shape) MarshalJSON() ([]byte, error) {
 	}
 
 	if s.Geometry != nil {
-		switch v := s.Geometry.(type) {
+		switch _sel := s.Geometry.(type) {
 		case *Shape_Circle:
-			raw, err := json.Marshal(v.Circle)
+			raw, err := json.Marshal(_sel.Circle)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
 			}
 			aux.Geometry = raw
 		case *Shape_Square:
-			raw, err := json.Marshal(v.Square)
+			raw, err := json.Marshal(_sel.Square)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
 			}
 			aux.Geometry = raw
 		case *Shape_Triangle:
-			raw, err := json.Marshal(v.Triangle)
+			raw, err := json.Marshal(_sel.Triangle)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
 			}
@@ -634,8 +634,8 @@ func (s Shape) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

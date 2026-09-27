@@ -102,8 +102,8 @@ func (e EmailTarget) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -224,8 +224,8 @@ func (h HTMLContent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range h.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range h.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -341,8 +341,8 @@ func (s SmsTarget) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range s.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range s.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -458,8 +458,8 @@ func (t TextContent) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -511,8 +511,8 @@ func (*Notification_HTMLContent) isNotification_Content() {}
 // GetTextContent returns the TextContent variant value, or the zero value if not set.
 func (n *Notification) GetTextContent() *TextContent {
 	if n != nil {
-		if v, ok := n.Content.(*Notification_TextContent); ok {
-			return v.TextContent
+		if _sel, ok := n.Content.(*Notification_TextContent); ok {
+			return _sel.TextContent
 		}
 	}
 	var zero *TextContent
@@ -522,8 +522,8 @@ func (n *Notification) GetTextContent() *TextContent {
 // GetHTMLContent returns the HTMLContent variant value, or the zero value if not set.
 func (n *Notification) GetHTMLContent() *HTMLContent {
 	if n != nil {
-		if v, ok := n.Content.(*Notification_HTMLContent); ok {
-			return v.HTMLContent
+		if _sel, ok := n.Content.(*Notification_HTMLContent); ok {
+			return _sel.HTMLContent
 		}
 	}
 	var zero *HTMLContent
@@ -553,8 +553,8 @@ func (*Notification_SmsTarget) isNotification_Target() {}
 // GetEmailTarget returns the EmailTarget variant value, or the zero value if not set.
 func (n *Notification) GetEmailTarget() *EmailTarget {
 	if n != nil {
-		if v, ok := n.Target.(*Notification_EmailTarget); ok {
-			return v.EmailTarget
+		if _sel, ok := n.Target.(*Notification_EmailTarget); ok {
+			return _sel.EmailTarget
 		}
 	}
 	var zero *EmailTarget
@@ -564,8 +564,8 @@ func (n *Notification) GetEmailTarget() *EmailTarget {
 // GetSmsTarget returns the SmsTarget variant value, or the zero value if not set.
 func (n *Notification) GetSmsTarget() *SmsTarget {
 	if n != nil {
-		if v, ok := n.Target.(*Notification_SmsTarget); ok {
-			return v.SmsTarget
+		if _sel, ok := n.Target.(*Notification_SmsTarget); ok {
+			return _sel.SmsTarget
 		}
 	}
 	var zero *SmsTarget
@@ -879,15 +879,15 @@ func (n Notification) MarshalJSON() ([]byte, error) {
 	}
 
 	if n.Content != nil {
-		switch v := n.Content.(type) {
+		switch _sel := n.Content.(type) {
 		case *Notification_TextContent:
-			raw, err := json.Marshal(v.TextContent)
+			raw, err := json.Marshal(_sel.TextContent)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Notification.Content: %w", err)
 			}
 			aux.Content = raw
 		case *Notification_HTMLContent:
-			raw, err := json.Marshal(v.HTMLContent)
+			raw, err := json.Marshal(_sel.HTMLContent)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Notification.Content: %w", err)
 			}
@@ -896,15 +896,15 @@ func (n Notification) MarshalJSON() ([]byte, error) {
 	}
 
 	if n.Target != nil {
-		switch v := n.Target.(type) {
+		switch _sel := n.Target.(type) {
 		case *Notification_EmailTarget:
-			raw, err := json.Marshal(v.EmailTarget)
+			raw, err := json.Marshal(_sel.EmailTarget)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Notification.Target: %w", err)
 			}
 			aux.Target = raw
 		case *Notification_SmsTarget:
-			raw, err := json.Marshal(v.SmsTarget)
+			raw, err := json.Marshal(_sel.SmsTarget)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling Notification.Target: %w", err)
 			}
@@ -919,8 +919,8 @@ func (n Notification) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

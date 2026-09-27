@@ -230,7 +230,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- range $struct.Fields}}
 		{{- if .ManualJSON}}
-		if v, ok := raw[{{printf "%q" .JSONName}}]; ok {
+		if _member, ok := raw[{{printf "%q" .JSONName}}]; ok {
 			{{- if .LeafDecode}}
 			{{- if .LeafDecode.Integers}}
 			// Decoded through the shadow for the reason the aux fields above are:
@@ -248,7 +248,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			// but its date-times are the same date-times.
 			{{- end}}
 			var _iv {{goType .LeafDecode.ShadowType}}
-			if err := json.Unmarshal(v, &_iv); err != nil {
+			if err := json.Unmarshal(_member, &_iv); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
@@ -257,7 +257,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			       field it lands in: this block exists precisely because that name
 			       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
 			       is a name the caller has no way to find. Issue #282. */}}
-			if err := json.Unmarshal(v, &{{$recv}}.{{.Name}}); err != nil {
+			if err := json.Unmarshal(_member, &{{$recv}}.{{.Name}}); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{- end}}

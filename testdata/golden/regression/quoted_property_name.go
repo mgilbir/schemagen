@@ -78,22 +78,22 @@ func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
 		if _rawErr != nil {
 			return _rawErr
 		}
-		if v, ok := raw["arr\"key"]; ok {
-			if err := json.Unmarshal(v, &q.ArrKey); err != nil {
+		if _member, ok := raw["arr\"key"]; ok {
+			if err := json.Unmarshal(_member, &q.ArrKey); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", "arr\"key")
 			}
 		}
-		if v, ok := raw["foo\"bar"]; ok {
-			if err := json.Unmarshal(v, &q.FooBar); err != nil {
+		if _member, ok := raw["foo\"bar"]; ok {
+			if err := json.Unmarshal(_member, &q.FooBar); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", "foo\"bar")
 			}
 		}
-		if v, ok := raw["map\"key"]; ok {
+		if _member, ok := raw["map\"key"]; ok {
 			// Decoded through the shadow for the reason the aux fields above are:
 			// a property name that cannot go in a struct tag is decoded by hand,
 			// but its integers are the same integers.
 			var _iv map[string]jsonInteger
-			if err := json.Unmarshal(v, &_iv); err != nil {
+			if err := json.Unmarshal(_member, &_iv); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", "map\"key")
 			}
 			q.MapKey = jsonIntegerMap(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
@@ -201,8 +201,8 @@ func (q QuotedPropertyName) MarshalJSON() ([]byte, error) {
 		}
 		obj["map\"key"] = raw
 	}
-	for k, v := range q.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range q.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

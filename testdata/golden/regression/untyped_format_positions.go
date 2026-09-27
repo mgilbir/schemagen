@@ -367,11 +367,11 @@ func (u UntypedFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range u.PatternProperties {
-		obj[k] = v
+	for _key, _member := range u.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range u.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range u.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -386,29 +386,29 @@ func (u UntypedFormatPositionsBuckets) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range u.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range u.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv UntypedFormatPositionsBucketsPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -859,8 +859,8 @@ func (*UntypedFormatPositions_Boolean) isUntypedFormatPositions_Branch() {}
 // GetUntypedFormatPositionsBranchOption0 returns the UntypedFormatPositionsBranchOption0 variant value, or the zero value if not set.
 func (u *UntypedFormatPositions) GetUntypedFormatPositionsBranchOption0() UntypedFormatPositionsBranchOption0 {
 	if u != nil {
-		if v, ok := u.Branch.(*UntypedFormatPositions_UntypedFormatPositionsBranchOption0); ok {
-			return v.UntypedFormatPositionsBranchOption0
+		if _sel, ok := u.Branch.(*UntypedFormatPositions_UntypedFormatPositionsBranchOption0); ok {
+			return _sel.UntypedFormatPositionsBranchOption0
 		}
 	}
 	var zero UntypedFormatPositionsBranchOption0
@@ -870,8 +870,8 @@ func (u *UntypedFormatPositions) GetUntypedFormatPositionsBranchOption0() Untype
 // GetBoolean returns the Boolean variant value, or the zero value if not set.
 func (u *UntypedFormatPositions) GetBoolean() bool {
 	if u != nil {
-		if v, ok := u.Branch.(*UntypedFormatPositions_Boolean); ok {
-			return v.Boolean
+		if _sel, ok := u.Branch.(*UntypedFormatPositions_Boolean); ok {
+			return _sel.Boolean
 		}
 	}
 	var zero bool
@@ -1106,15 +1106,15 @@ func (u UntypedFormatPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if u.Branch != nil {
-		switch v := u.Branch.(type) {
+		switch _sel := u.Branch.(type) {
 		case *UntypedFormatPositions_UntypedFormatPositionsBranchOption0:
-			raw, err := json.Marshal(v.UntypedFormatPositionsBranchOption0)
+			raw, err := json.Marshal(_sel.UntypedFormatPositionsBranchOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", err)
 			}
 			aux.Branch = raw
 		case *UntypedFormatPositions_Boolean:
-			raw, err := json.Marshal(v.Boolean)
+			raw, err := json.Marshal(_sel.Boolean)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", err)
 			}
@@ -1154,8 +1154,8 @@ func (u UntypedFormatPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range u.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range u.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

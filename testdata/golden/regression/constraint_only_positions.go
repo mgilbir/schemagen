@@ -281,7 +281,7 @@ func (c ConstraintOnlyPositionsMapValue) Validate() error {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	if _dynIsString(_v) {
-		if !(_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= 3 })) {
+		if !(_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 3 })) {
 			return fmt.Errorf("then: value does not satisfy the then schema")
 		}
 	} else {
@@ -528,8 +528,8 @@ func (c ConstraintOnlyPositionsUnevaluated) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -872,8 +872,8 @@ func (c ConstraintOnlyPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

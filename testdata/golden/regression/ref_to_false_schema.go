@@ -223,8 +223,8 @@ func (*RefToFalseSchema_Never) isRefToFalseSchema_ViaOneOf() {}
 // GetNever returns the Never variant value, or the zero value if not set.
 func (r *RefToFalseSchema) GetNever() *Never {
 	if r != nil {
-		if v, ok := r.ViaOneOf.(*RefToFalseSchema_Never); ok {
-			return v.Never
+		if _sel, ok := r.ViaOneOf.(*RefToFalseSchema_Never); ok {
+			return _sel.Never
 		}
 	}
 	var zero *Never
@@ -465,9 +465,9 @@ func (r RefToFalseSchema) MarshalJSON() ([]byte, error) {
 	}
 
 	if r.ViaOneOf != nil {
-		switch v := r.ViaOneOf.(type) {
+		switch _sel := r.ViaOneOf.(type) {
 		case *RefToFalseSchema_Never:
-			raw, err := json.Marshal(v.Never)
+			raw, err := json.Marshal(_sel.Never)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling RefToFalseSchema.ViaOneOf: %w", err)
 			}
@@ -507,8 +507,8 @@ func (r RefToFalseSchema) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

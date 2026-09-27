@@ -110,14 +110,14 @@ holds".
 {{- else}}true
 {{- end}}
 {{- else if eq $c.Kind "const"}}_dynConstOK(_v, {{printf "%q" $c.Value}})
-{{- else if eq $c.Kind "minimum"}}_dynNumOK(_v, func(f float64) bool { return f >= {{dynNum $c.Value}} })
-{{- else if eq $c.Kind "maximum"}}_dynNumOK(_v, func(f float64) bool { return f <= {{dynNum $c.Value}} })
-{{- else if eq $c.Kind "exclusiveMinimum"}}_dynNumOK(_v, func(f float64) bool { return f > {{dynNum $c.Value}} })
-{{- else if eq $c.Kind "exclusiveMaximum"}}_dynNumOK(_v, func(f float64) bool { return f < {{dynNum $c.Value}} })
-{{- else if eq $c.Kind "multipleOf"}}_dynNumOK(_v, func(f float64) bool { return math.Mod(f, {{dynNum $c.Value}}) == 0 })
-{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= {{$c.Value}} })
-{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) <= {{$c.Value}} })
-{{- else if eq $c.Kind "pattern"}}_dynStrOK(_v, func(s string) bool { _m, _ := ecma262.MatchString({{ecmaPattern $c.Value}}, ecmaflags.Unicode, s); return _m })
+{{- else if eq $c.Kind "minimum"}}_dynNumOK(_v, func(_n float64) bool { return _n >= {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "maximum"}}_dynNumOK(_v, func(_n float64) bool { return _n <= {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "exclusiveMinimum"}}_dynNumOK(_v, func(_n float64) bool { return _n > {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "exclusiveMaximum"}}_dynNumOK(_v, func(_n float64) bool { return _n < {{dynNum $c.Value}} })
+{{- else if eq $c.Kind "multipleOf"}}_dynNumOK(_v, func(_n float64) bool { return math.Mod(_n, {{dynNum $c.Value}}) == 0 })
+{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{$c.Value}} })
+{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{$c.Value}} })
+{{- else if eq $c.Kind "pattern"}}_dynStrOK(_v, func(_str string) bool { _m, _ := ecma262.MatchString({{ecmaPattern $c.Value}}, ecmaflags.Unicode, _str); return _m })
 {{- else}}true
 {{- end}}
 {{- end}}

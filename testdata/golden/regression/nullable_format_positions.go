@@ -572,11 +572,11 @@ func (n NullableFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.PatternProperties {
-		obj[k] = v
+	for _key, _member := range n.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -591,29 +591,29 @@ func (n NullableFormatPositionsBuckets) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range n.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range n.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv NullableFormatPositionsBucketsPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1352,8 +1352,8 @@ func (*NullableFormatPositions_Integer) isNullableFormatPositions_Branch() {}
 // GetNullableFormatPositionsBranchOption0 returns the NullableFormatPositionsBranchOption0 variant value, or the zero value if not set.
 func (n *NullableFormatPositions) GetNullableFormatPositionsBranchOption0() NullableFormatPositionsBranchOption0 {
 	if n != nil {
-		if v, ok := n.Branch.(*NullableFormatPositions_NullableFormatPositionsBranchOption0); ok {
-			return v.NullableFormatPositionsBranchOption0
+		if _sel, ok := n.Branch.(*NullableFormatPositions_NullableFormatPositionsBranchOption0); ok {
+			return _sel.NullableFormatPositionsBranchOption0
 		}
 	}
 	var zero NullableFormatPositionsBranchOption0
@@ -1363,8 +1363,8 @@ func (n *NullableFormatPositions) GetNullableFormatPositionsBranchOption0() Null
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (n *NullableFormatPositions) GetInteger() int64 {
 	if n != nil {
-		if v, ok := n.Branch.(*NullableFormatPositions_Integer); ok {
-			return v.Integer
+		if _sel, ok := n.Branch.(*NullableFormatPositions_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -1607,15 +1607,15 @@ func (n NullableFormatPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if n.Branch != nil {
-		switch v := n.Branch.(type) {
+		switch _sel := n.Branch.(type) {
 		case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
-			raw, err := json.Marshal(v.NullableFormatPositionsBranchOption0)
+			raw, err := json.Marshal(_sel.NullableFormatPositionsBranchOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
 			}
 			aux.Branch = raw
 		case *NullableFormatPositions_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
 			}
@@ -1655,8 +1655,8 @@ func (n NullableFormatPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
