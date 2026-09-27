@@ -189,11 +189,10 @@ func TestBothReferenceKeywordsOnOneNodeAreBothNamed(t *testing.T) {
 // true, and a predicate is the smallest thing that can be wrong about that.
 func TestUnresolvedRefsErrorSeparatesSameAndOtherDocumentRefs(t *testing.T) {
 	cases := []struct {
-		name          string
-		refs          []string
-		wantSame      bool
-		wantOtherDoc  bool
-		wantKeywordOf map[string][]string
+		name         string
+		refs         []string
+		wantSame     bool
+		wantOtherDoc bool
 	}{
 		{name: "pointer", refs: []string{"#/$defs/x"}, wantSame: true},
 		{name: "anchor", refs: []string{"#name"}, wantSame: true},

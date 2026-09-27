@@ -1,14 +1,20 @@
 package generator
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
+
+	"github.com/mgilbir/schemagen/internal/tagoracle"
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // emittedTagSpellings are every `json:"..."` tag body the struct template can
@@ -22,71 +28,137 @@ import (
 // silent hole in what this file measures.
 var emittedTagSpellings = []string{"", ",omitempty", ",omitzero"}
 
-// encodingJSONCarries reports what encoding/json actually does with the tag the
-// emitter would write for this property name: true only when, for every spelling
-// the template can produce, marshalling writes exactly this key and unmarshalling
-// reads exactly this key back.
-//
-// It is deliberately an experiment rather than a re-implementation. The whole
-// defect behind issues #246 and #247 was a hand-written model of the tag grammar
-// that had drifted from the parser, and a second hand-written model would only
-// move the drift somewhere else.
-//
-// The struct is built with reflect.StructOf, which models everything below
-// encoding/json but not the Go source layer above it: a backtick would close the
-// raw string literal the tag is written in, and the scanner drops a carriage
-// return from one. Neither is visible here, and neither has to be --
-// tagNameIsRepresentable must refuse both anyway, which
-// TestTagRepresentabilityRefusesTheSourceLayerHazards states separately.
-//
-// The field is called "F" -- exported -- on purpose, and that is the boundary of
-// what this file measures. The question here is only whether a *tag* can carry a
-// name; whether the *field* the emitter mints for it can be serialized at all is
-// a separate mechanism, and a broken one: a property named 日本語 becomes a Go
-// field named 日本語, which has no upper case and so is unexported, and
-// encoding/json ignores an unexported field however good its tag is. That is not
-// something tagNameIsRepresentable can or should decide -- `json:"日本語"` is a
-// perfectly valid tag, as this oracle will confirm -- and repairing it means
-// changing the Go name the generator hands its callers. It belongs to
-// JSONPropertyToGoName, whose doc comment already promises "a Go exported field
-// name", not to the tag grammar.
-func encodingJSONCarries(jsonName string) bool {
-	for _, opts := range emittedTagSpellings {
-		typ := reflect.StructOf([]reflect.StructField{{
-			Name: "F",
-			Type: reflect.TypeOf(""),
-			Tag:  reflect.StructTag(`json:"` + jsonName + opts + `"`),
-		}})
+// jsonImpl names one of the two encoding/json implementations Go ships.
+type jsonImpl bool
 
-		// Encode: the one key written must be this name.
-		v := reflect.New(typ).Elem()
-		v.Field(0).SetString("written")
-		out, err := json.Marshal(v.Interface())
-		if err != nil {
-			return false
-		}
-		var got map[string]string
-		if err := json.Unmarshal(out, &got); err != nil {
-			return false
-		}
-		if len(got) != 1 || got[jsonName] != "written" {
-			return false
-		}
+const (
+	jsonV1 jsonImpl = false // the original: the default through Go 1.26, GOEXPERIMENT=nojsonv2
+	jsonV2 jsonImpl = true  // backed by encoding/json/v2: the default from Go 1.27, GOEXPERIMENT=jsonv2
+)
 
-		// Decode: this name must reach the field.
-		in, err := json.Marshal(map[string]string{jsonName: "read"})
-		if err != nil {
-			return false
-		}
-		p := reflect.New(typ)
-		if err := json.Unmarshal(in, p.Interface()); err != nil {
-			return false
-		}
-		if p.Elem().Field(0).String() != "read" {
-			return false
+func (i jsonImpl) String() string {
+	if i == jsonV2 {
+		return "the encoding/json/v2-backed encoding/json (GOEXPERIMENT=jsonv2, the Go 1.27 default)"
+	}
+	return "the original encoding/json (GOEXPERIMENT=nojsonv2, the default through Go 1.26)"
+}
+
+// tagVerdicts is what each encoding/json implementation says about one name.
+type tagVerdicts map[jsonImpl]bool
+
+// carriedByAll is the only answer the generator may act on. Generated code is
+// compiled by its caller, with the caller's Go and the caller's GOEXPERIMENT,
+// and neither is the generator's to choose: a name the predicate calls
+// representable has to survive whichever encoding/json that turns out to be.
+func (v tagVerdicts) carriedByAll() bool { return v[jsonV1] && v[jsonV2] }
+
+// rejectedBy names the implementations that do not carry the name.
+func (v tagVerdicts) rejectedBy() string {
+	var out []string
+	for _, impl := range []jsonImpl{jsonV1, jsonV2} {
+		if !v[impl] {
+			out = append(out, impl.String())
 		}
 	}
-	return true
+	return strings.Join(out, " and ")
+}
+
+// encodingJSONVerdicts asks both encoding/json implementations, by experiment
+// (see tagoracle.Carries), whether the tag the emitter writes for each name
+// carries that name.
+//
+// A test binary is linked against one of them, so the other is asked through
+// internal/tagoracle/probe, built with the opposite GOEXPERIMENT setting on the
+// same toolchain. Both are asked that way, so the two answers come from the
+// same code built two ways; the in-process answer for this binary's own
+// implementation is then required to match the probe's, which is what makes
+// the probe evidence rather than a second opinion that could be wrong on its
+// own.
+//
+// Before this, the tests below asked only the implementation the test binary
+// happened to link, which made them a statement about the toolchain running the
+// tests rather than about the code being generated: on Go 1.27, whose default
+// is the v2-backed implementation, the punctuation check failed 138 times on a
+// clean checkout -- every character v2 accepts and the original does not,
+// reported as missing from the constant -- although the constant was right.
+// Adding those characters would have been the wrong fix: the generated code
+// would then silently rename those properties for every caller on the original
+// implementation, which is every caller on Go 1.25 or 1.26 by default.
+func encodingJSONVerdicts(t *testing.T, names []string) []tagVerdicts {
+	t.Helper()
+	out := make([]tagVerdicts, len(names))
+	for i := range out {
+		out[i] = tagVerdicts{}
+	}
+	for _, impl := range []jsonImpl{jsonV1, jsonV2} {
+		carried := probeEncodingJSON(t, impl, names)
+		for i := range names {
+			out[i][impl] = carried[i]
+		}
+	}
+	// The probe built as this binary is built has to agree with this binary.
+	self := jsonImpl(tagoracle.JSONv2)
+	for i, name := range names {
+		if got := tagoracle.Carries(name, emittedTagSpellings); got != out[i][self] {
+			t.Fatalf("in process, %s says %s is carried=%v; the probe built with the same GOEXPERIMENT says %v. "+
+				"The probe is not measuring what this binary measures, so nothing it says about the other "+
+				"implementation can be trusted", self, strconv.Quote(name), got, out[i][self])
+		}
+	}
+	return out
+}
+
+// probeEncodingJSON runs internal/tagoracle/probe built with the GOEXPERIMENT
+// setting that selects impl, and returns its answer for every name.
+func probeEncodingJSON(t *testing.T, impl jsonImpl, names []string) []bool {
+	t.Helper()
+	req, err := json.Marshal(tagoracle.Request{Names: names, Spellings: emittedTagSpellings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setting := "nojsonv2"
+	if impl == jsonV2 {
+		setting = "jsonv2"
+	}
+	// Appended to whatever the caller already asked for, so the rest of their
+	// experiment set is kept and this one setting wins: the go command reads
+	// the list left to right.
+	experiment := setting
+	if base := os.Getenv("GOEXPERIMENT"); base != "" {
+		experiment = base + "," + setting
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := testgo.Command(ctx, filepath.Join("..", ".."), "run", "./internal/tagoracle/probe")
+	cmd.Env = append(cmd.Env, "GOEXPERIMENT="+experiment)
+	cmd.Stdin = bytes.NewReader(req)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the tag probe under GOEXPERIMENT=%s: %v\n%s\n"+
+			"Both encoding/json implementations have to be reachable on this toolchain for the tag grammar to be "+
+			"checked against what callers can compile with; GOEXPERIMENT=jsonv2 exists from Go 1.25, the go.mod minimum",
+			experiment, err, stderr.String())
+	}
+	var resp tagoracle.Response
+	if err := json.Unmarshal(stdout, &resp); err != nil {
+		t.Fatalf("reading the tag probe's answer under GOEXPERIMENT=%s: %v\n%s", experiment, err, stdout)
+	}
+	if jsonImpl(resp.JSONv2) != impl {
+		t.Fatalf("the probe built under GOEXPERIMENT=%s reports that it linked %s; the setting did not take, "+
+			"so the answer is about the wrong implementation", experiment, jsonImpl(resp.JSONv2))
+	}
+	if len(resp.Carried) != len(names) || len(resp.Names) != len(names) {
+		t.Fatalf("the probe answered %d of %d names", len(resp.Carried), len(names))
+	}
+	for i := range names {
+		if resp.Names[i] != names[i] {
+			t.Fatalf("the probe was asked about %s and received %s; the transport altered the name",
+				strconv.Quote(names[i]), strconv.Quote(resp.Names[i]))
+		}
+	}
+	return resp.Carried
 }
 
 // tagNameCorpus is the population both directions of the agreement check run
@@ -122,50 +194,52 @@ func tagNameCorpus() []string {
 
 // TestTagRepresentabilityMatchesEncodingJSON is the guard that makes
 // needsManualJSON follow encoding/json's tag grammar rather than a list of
-// characters somebody has been bitten by.
+// characters somebody has been bitten by -- the grammar of both
+// implementations, because a caller may compile the generated code with either.
 //
-// The load-bearing direction is the first: a name the predicate calls
-// representable but encoding/json does not carry is a key silently renamed or
-// dropped on every document -- that is exactly what issues #246 and #247 were,
-// and what the "-" and 🎉 cases were before anyone filed them. It is asserted
-// unconditionally.
+// The predicate has to be exactly the conjunction of their verdicts, in both
+// directions.
 //
-// The second direction -- that a name the predicate refuses is one
-// encoding/json would really have mangled -- keeps the hand-written path from
-// quietly swallowing names a tag could have carried. It is asserted only when
-// encoding/json is running its v1 tag rules, because GOEXPERIMENT=jsonv2 accepts
-// names v1 discards (it reserves only , \ ' " and the backtick) and the extra
-// permissiveness is not something this generator should depend on: a type
-// generated here has to work in a caller's build, and the caller chooses the
-// experiment.
+// A name the predicate calls representable but some implementation does not
+// carry is a key silently renamed or dropped on every document, for every
+// caller building with that implementation -- that is exactly what issues #246
+// and #247 were, and what the "-" and 🎉 cases were before anyone filed them.
+// 🎉 is carried by the v2-backed implementation and discarded by the original,
+// so a predicate that followed whichever Go the generator was built with would
+// reintroduce the bug for every caller on the other one.
+//
+// A name the predicate refuses although both implementations carry it is
+// pushed onto the hand-written marshal path for no reason. That direction used
+// to be asserted only when the test binary happened to be linked against the
+// original implementation, which on Go 1.27 meant never; it is asserted on
+// every toolchain now, because both implementations are asked on every
+// toolchain.
 func TestTagRepresentabilityMatchesEncodingJSON(t *testing.T) {
-	v1Rules := !encodingJSONCarries("🎉")
-	if !v1Rules {
-		t.Logf("encoding/json is carrying a tag name its v1 rules reject, so this build has " +
-			"GOEXPERIMENT=jsonv2 semantics; only the direction that matters for correctness is checked")
-	}
+	names := tagNameCorpus()
+	verdicts := encodingJSONVerdicts(t, names)
 
-	for _, name := range tagNameCorpus() {
+	for i, name := range names {
 		representable := tagNameIsRepresentable(name)
-		carried := encodingJSONCarries(name)
+		carried := verdicts[i].carriedByAll()
 
 		if representable && !carried {
-			t.Errorf("tagNameIsRepresentable(%s) = true, but encoding/json does not carry that name "+
+			t.Errorf("tagNameIsRepresentable(%s) = true, but %s does not carry that name "+
 				"through the tag the emitter writes -- the key would be silently renamed or dropped on "+
-				"every document. The predicate has to follow encoding/json's own grammar (parseTag, "+
-				"isValidTag, and the `json:\"-\"` special case); see needsManualJSON",
-				strconv.Quote(name))
+				"every document a caller building with it reads or writes. The predicate has to follow the "+
+				"intersection of both implementations' grammars (the original's parseTag and isValidTag, and "+
+				"the `json:\"-\"` special case); see needsManualJSON",
+				strconv.Quote(name), verdicts[i].rejectedBy())
 		}
-		if v1Rules && !representable && carried {
-			t.Errorf("tagNameIsRepresentable(%s) = false, but encoding/json carries that name fine -- "+
-				"the property is being pushed onto the hand-written marshal path for no reason",
+		if !representable && carried {
+			t.Errorf("tagNameIsRepresentable(%s) = false, but every encoding/json implementation carries "+
+				"that name fine -- the property is being pushed onto the hand-written marshal path for no reason",
 				strconv.Quote(name))
 		}
 	}
 
 	// needsManualJSON is the complement every caller asks for, and it is the one
 	// that would be edited by somebody who never reads the predicate.
-	for _, name := range tagNameCorpus() {
+	for _, name := range names {
 		if needsManualJSON(name) == tagNameIsRepresentable(name) {
 			t.Fatalf("needsManualJSON(%s) is not the complement of tagNameIsRepresentable", strconv.Quote(name))
 		}
@@ -189,28 +263,48 @@ func TestTagRepresentabilityRefusesTheSourceLayerHazards(t *testing.T) {
 }
 
 // TestValidTagPunctuationMatchesEncodingJSON pins the one transcribed constant
-// against the standard library it was transcribed from, character by character.
+// against the standard library it was transcribed from, character by character
+// -- against both of the standard library's encoding/json implementations.
 //
-// The corpus test above would catch a character wrongly added to it (that name
-// then fails to round-trip through encoding/json) and, under v1 rules, one
-// wrongly removed. This states the source of the list, so the failure names the
-// cause instead of a list of surprising strings.
+// The property is that validTagPunctuation is exactly the punctuation *every*
+// implementation a caller can compile generated code with accepts in a tag
+// name: the intersection, not whichever one the test binary links. Go 1.25 and
+// 1.26 default to the original implementation and 1.27 to the v2-backed one,
+// and each offers the other through GOEXPERIMENT, so the question is the same
+// on every toolchain the module supports and so is the answer. This test used
+// to compare the constant with the running binary alone, and on Go 1.27 it
+// failed 138 times on a clean checkout, asking for characters only v2 accepts
+// -- characters that, added to the constant, would become keys the original
+// implementation silently renames.
+//
+// Each character is asked about inside a name ("a" + c + "b") rather than
+// alone, because the constant is a statement about characters: alone, "-" is
+// the tag that means "skip this field" and is refused for that reason, which
+// tagNameIsRepresentable handles separately and the corpus test above checks.
+//
+// The corpus test would catch a character wrongly added to the constant (that
+// name then fails to round-trip) and one wrongly removed. This states the
+// source of the list, so the failure names the cause instead of a list of
+// surprising strings.
 func TestValidTagPunctuationMatchesEncodingJSON(t *testing.T) {
+	var runes []rune
+	var names []string
 	for r := rune(0); r < 0x300; r++ {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			continue // admitted by the letter/digit arm, not by the list
 		}
-		want := encodingJSONCarries(string(r))
+		runes = append(runes, r)
+		names = append(names, "a"+string(r)+"b")
+	}
+	verdicts := encodingJSONVerdicts(t, names)
+	for i, r := range runes {
+		want := verdicts[i].carriedByAll()
 		got := strings.ContainsRune(validTagPunctuation, r)
-		// "-" alone is the tag that means "skip this field", so encoding/json
-		// does not carry it even though isValidTag admits the character.
-		if r == '-' {
-			want = true
-		}
-		if got != want {
-			t.Errorf("validTagPunctuation %s %q, and encoding/json %s it",
-				map[bool]string{true: "contains", false: "omits"}[got], r,
-				map[bool]string{true: "accepts", false: "rejects"}[want])
+		switch {
+		case got && !want:
+			t.Errorf("validTagPunctuation contains %q, and %s rejects it", r, verdicts[i].rejectedBy())
+		case !got && want:
+			t.Errorf("validTagPunctuation omits %q, and every encoding/json implementation accepts it", r)
 		}
 	}
 }
