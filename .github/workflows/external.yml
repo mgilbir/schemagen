@@ -1,0 +1,90 @@
+name: External suite
+
+# The JSON Schema Test Suite conformance gate: every test group of every draft,
+# generated, compiled, round-tripped and validated against the suite's own
+# verdicts, at the pinned JSTS_COMMIT, with the known-failure maps checked in
+# both directions and minValidatedGroups as a floor.
+#
+# It is the only broad semantic oracle this project has, and until this
+# workflow existed it ran only when somebody remembered to run it: ci.yml said
+# "run it locally before merging", the gate was "hard" only when run, and its
+# floor had a margin of zero. A regression in a shape the suite covers could
+# land and sit on main until the next person happened to run
+# `make test-external`. This runs it every night and on demand.
+#
+# Nightly and manual, not on push or pull_request: a run compiles ~27,000
+# programs and takes ~25 minutes on an idle 16-core workstation, longer on a
+# runner. `make test-external` stays the thing to run before merging a
+# generator or emitter change; this is what catches the merge that did not.
+on:
+  schedule:
+    # 05:53 UTC, clear of fuzz.yml (03:17) and cogen.yml (04:41) so the three
+    # nightly jobs never contend for runners or confuse a failure between them.
+    # Off the hour on purpose: Actions defers cron jobs piled on round times.
+    - cron: '53 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a run in progress: a half-finished conformance run says less
+# than a finished one, and the next nightly is a day away.
+concurrency:
+  group: external-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  external:
+    name: external suite (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # The go test inside `make test-external` has its own -timeout 90m, which
+    # fails loudly -- a panic with every goroutine's stack -- rather than
+    # passing quietly. This is the backstop above it, for a hang outside the
+    # test binary (a clone, a download) and for a slow runner: generous, because
+    # a job killed at the deadline has told nobody anything.
+    timeout-minutes: 150
+    strategy:
+      # Each leg is its own evidence; one Go failing must not cancel the other.
+      fail-fast: false
+      matrix:
+        include:
+          # The go.mod minimum, which is what CI's other jobs build with.
+          - name: go.mod minimum
+            go-version-file: go.mod
+          # Current stable. Generated code is compiled with the caller's Go,
+          # and from Go 1.27 that links the encoding/json/v2-backed
+          # encoding/json by default; the suite is the broadest check of
+          # generated code there is, so it runs under both.
+          - name: stable
+            go-version: stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.go-version-file }}
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      # Generated code imports the ECMA-262 regexp package and x/net/idna,
+      # which only generated code reaches; see ci.yml. Pulled up front so a
+      # network problem fails here, plainly, rather than as a wave of
+      # compile failures attributed to schemas.
+      - name: download dependencies
+        run: go mod download
+
+      # The run needs disk as well as time: its build cache goes under TMPDIR,
+      # and the test refuses to start below 8 GiB free on that volume
+      # (requireCacheHeadroom), failing this job with a message that names the
+      # requirement instead of dying mid-run and reading as schema failures.
+      # This step only puts the figure in the log next to that refusal.
+      - name: disk
+        run: df -h / "${RUNNER_TEMP}" "${TMPDIR:-/tmp}"
+
+      # Clones the suite at the pinned JSTS_COMMIT (refusing a modified
+      # checkout), fetches the meta-schemas, and runs the gate. Any failure --
+      # a group that stopped validating, a known failure that started passing,
+      # the coverage floor, the disk precondition -- exits non-zero and fails
+      # the job.
+      - name: conformance
+        run: make test-external

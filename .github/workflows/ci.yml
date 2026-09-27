@@ -14,13 +14,33 @@ concurrency:
 
 jobs:
   check:
+    name: check (${{ matrix.name }})
     runs-on: ubuntu-latest
+    # Two Go versions, because the code this project produces is compiled by
+    # its caller with the caller's Go, and the two ends of what that can be are
+    # not interchangeable. The go.mod minimum is what the module promises to
+    # build with. Current stable is what a contributor installs today -- and
+    # from Go 1.27 its encoding/json is backed by encoding/json/v2, which
+    # accepts struct tags the original rejects. Before this matrix CI built
+    # with the minimum alone, and `go test ./...` on a clean checkout was red
+    # on stable for months without CI noticing (138 failures in the tag
+    # grammar test). The tag tests ask both encoding/json implementations on
+    # every toolchain now; this is what runs everything else under both.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: go.mod minimum
+            go-version-file: go.mod
+          - name: stable
+            go-version: stable
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ matrix.go-version-file }}
+          go-version: ${{ matrix.go-version }}
           cache: true
 
       # gofmt exits 0 even when it has complaints, so fail on non-empty output.
@@ -50,10 +70,25 @@ jobs:
       - name: build
         run: go build ./...
 
-      # The JSON Schema Test Suite conformance run is gated behind
-      # SCHEMAGEN_RUN_EXTERNAL and is not part of this job: it needs the suite
-      # cloned (make download-test-suite) and takes ~25 minutes. Run it locally
-      # with `make test-external` before merging generator or emitter changes.
+      # The suite is checked out, at the pinned JSTS_COMMIT, for its fuzz
+      # seeds: FuzzGenerate takes every test group's schema as a seed when the
+      # suite is present, so without it this job replayed a fifth of the corpus
+      # that a developer with the suite replays and that the nightly fuzz job
+      # searches from -- three runs of one test, three corpora, and nothing
+      # saying so. FuzzGenerate logs the provenance of its seeds and any
+      # difference from this job's.
+      - name: download test suite
+        run: make download-test-suite
+
+      # The JSON Schema Test Suite conformance run itself is gated behind
+      # SCHEMAGEN_RUN_EXTERNAL and is not part of this job: it takes ~25
+      # minutes. external.yml runs it nightly under both Go versions; run it
+      # locally with `make test-external` before merging generator or emitter
+      # changes.
+      #
+      # Goldens are compared here, never rewritten: the golden tests refuse
+      # UPDATE_GOLDEN when GITHUB_ACTIONS is set, so a job that regenerated its
+      # goldens before comparing them cannot pass.
       - name: test
         run: go test ./... -count=1
 
@@ -80,7 +115,8 @@ jobs:
   #
   # `go test ./...` already runs TestGeneratedCorpusIsFieldAligned, which
   # measures every struct *declaration* the corpus produces. This runs the
-  # fieldalignment analyzer itself, over nine generator configurations, and the
+  # fieldalignment analyzer itself, over every generator configuration that
+  # changes the shape of a type (see scripts/lint-alignment.sh), and the
   # difference is the struct types declared inside a function body: the emitted
   # MarshalJSON and UnmarshalJSON each build one, reflect cannot name one, and
   # six of them were misordered when the layout pass first landed. Nothing but
